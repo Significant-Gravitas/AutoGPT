@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 
 from AFAAS.core.lib.sdk.logger import AFAASLogger
-from AFAAS.core.agents import AbstractAgent
-from AFAAS.core.configuration import AFAASModel
+from AFAAS.interfaces.agent import AbstractAgent
+from AFAAS.interfaces.configuration import AFAASModel
 
 
 from  AFAAS.core.lib.sdk.logger import AFAASLogger

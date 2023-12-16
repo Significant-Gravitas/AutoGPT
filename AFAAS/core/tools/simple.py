@@ -13,7 +13,7 @@ LOG = AFAASLogger(name=__name__)
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.core.configuration import (Configurable,
+from AFAAS.interfaces.configuration import (Configurable,
                                                          SystemConfiguration)
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.resource.model_providers import (

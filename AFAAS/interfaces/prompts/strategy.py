@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     #from AFAAS.core.agents.planner.main import PlannerAgent
     pass
 
-from AFAAS.core.configuration import SystemConfiguration
+from AFAAS.interfaces.configuration import SystemConfiguration
 from AFAAS.interfaces.prompts.schema import \
      PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.prompts.utils.utils import json_loads

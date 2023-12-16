@@ -2,7 +2,7 @@ import json
 import logging
 
 from autogpt.config import AIDirectives, AIProfile, Config
-from AFAAS.core.configuration import SystemConfiguration, UserConfigurable
+from AFAAS.interfaces.configuration import SystemConfiguration, UserConfigurable
 from AFAAS.interfaces.prompts import (ChatPrompt,  PromptStrategyLanguageModelClassification,
                                     PromptStrategy)
 from AFAAS.interfaces.prompts.utils import json_loads

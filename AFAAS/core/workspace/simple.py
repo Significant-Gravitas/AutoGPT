@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from AFAAS.core.configuration import (Configurable,
+from AFAAS.interfaces.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
 

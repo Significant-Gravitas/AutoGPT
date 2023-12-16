@@ -14,7 +14,7 @@ from typing import Optional
 from pydantic import Field
 
 from AFAAS.core.lib.sdk.logger import AFAASLogger
-from AFAAS.core.configuration import AFAASModel
+from AFAAS.interfaces.configuration import AFAASModel
 
 LOG = AFAASLogger(name=__name__)
 

@@ -14,7 +14,7 @@ import tiktoken
 from openai import APIError, RateLimitError, completions  # , OpenAI, Em
 
 from  AFAAS.core.lib.sdk.logger import AFAASLogger
-from AFAAS.core.configuration import (Configurable,
+from AFAAS.interfaces.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
 from AFAAS.core.resource.model_providers.chat_schema import (

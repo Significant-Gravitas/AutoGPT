@@ -17,7 +17,7 @@ from AFAAS.interfaces.agent.loop import \
     BaseLoop  # Import only where it's needed
 from AFAAS.interfaces.agent.models import \
     BaseAgentConfiguration
-from AFAAS.core.configuration import SystemSettings
+from AFAAS.interfaces.configuration import SystemSettings
 
 LOG = AFAASLogger(name=__name__)
 

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import Field
 
-from AFAAS.core.configuration import (Configurable,
+from AFAAS.interfaces.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          SystemSettings)
 

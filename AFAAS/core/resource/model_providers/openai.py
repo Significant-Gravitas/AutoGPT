@@ -11,7 +11,7 @@ import openai
 import tiktoken
 from pydantic import SecretStr
 
-from AFAAS.core.configuration import Configurable, UserConfigurable
+from AFAAS.interfaces.configuration import Configurable, UserConfigurable
 from AFAAS.core.resource.model_providers.schema import (
     AssistantChatMessageDict, AssistantToolCallDict, ChatMessage,
     BaseChatModelInfo, ChatModelProvider, ChatModelResponse,

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
-    from AFAAS.core.configuration import *
+    from AFAAS.interfaces.configuration import *
     from .tool_parameters import ToolParameter
 
 from AFAAS.core.lib.context_items import ContextItem

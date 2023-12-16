@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from autogpt.models.command_registry import CommandRegistry
 
 <<<<<<< HEAD
-from AFAAS.core.configuration import Configurable
+from AFAAS.interfaces.configuration import Configurable
 from AFAAS.interfaces.prompts import ChatPrompt
 from AFAAS.core.resource.model_providers import (BaseChatModelProvider,
                                                    ChatMessage,

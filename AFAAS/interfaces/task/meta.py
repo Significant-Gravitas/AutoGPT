@@ -2,16 +2,8 @@ from __future__ import annotations
 
 import enum
 
-from AFAAS.core.agents import AbstractAgent
-from AFAAS.core.configuration import AFAASModel
-
-# if TYPE_CHECKING:
-# from AFAAS.core.agents import BaseAgent
-
-# from .plan import Plan
-
-
-
+from AFAAS.interfaces.agent import AbstractAgent
+from AFAAS.interfaces.configuration import AFAASModel
 
 class TaskStatus(AFAASModel):
     """

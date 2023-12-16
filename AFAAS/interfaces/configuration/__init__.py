@@ -1,5 +1,5 @@
 """The configuration encapsulates settings for all Agent subsystems."""
-from AFAAS.core.configuration.schema import (
+from AFAAS.interfaces.configuration.schema import (
     AFAASModel, Configurable, SystemConfiguration, SystemSettings,
     UserConfigurable)
 

@@ -11,7 +11,7 @@ from typing import IO, Any, BinaryIO, Callable, Literal, Optional, TextIO, overl
 
 from AFAAS.core.configuration.schema import SystemConfiguration
 
-from AFAAS.core.configuration import (Configurable,
+from AFAAS.interfaces.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
 from AFAAS.core.lib.sdk.logger import AFAASLogger

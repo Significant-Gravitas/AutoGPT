@@ -15,7 +15,7 @@ from AFAAS.interfaces.agent.models import (
     BaseAgentConfiguration, BaseAgentDirectives, BaseAgentSystems)
 from AFAAS.interfaces.agent.loop import (  # Import only where it's needed
     BaseLoop, BaseLoopHook)
-from AFAAS.core.configuration import (Configurable,
+from AFAAS.interfaces.configuration import (Configurable,
                                                          SystemSettings)
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.interfaces.workspace import AbstractFileWorkspace

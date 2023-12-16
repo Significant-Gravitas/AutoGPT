@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 from AFAAS.core.lib.sdk import AFAASLogger
 from AFAAS.core.lib.task.plan import Plan
-from AFAAS.core.configuration import UserConfigurable
+from AFAAS.interfaces.configuration import UserConfigurable
 from AFAAS.interfaces.prompts.schema import \
      PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.prompts.utils import \

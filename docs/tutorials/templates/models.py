@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from AFAAS.core.configuration import SystemConfiguration, SystemSettings
+from AFAAS.interfaces.configuration import SystemConfiguration, SystemSettings
 from AFAAS.interfaces.db import MemorySettings
 from AFAAS.core.plugin.simple import PluginLocation
 from AFAAS.core.resource.model_providers import OpenAISettings

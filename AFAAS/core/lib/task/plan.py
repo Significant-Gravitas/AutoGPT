@@ -16,7 +16,7 @@ from .task import Task
 LOG = AFAASLogger(name=__name__)
 
 
-from AFAAS.core.agents import AbstractAgent
+from AFAAS.interfaces.agent import AbstractAgent
 
 
 class Plan(BaseTask):

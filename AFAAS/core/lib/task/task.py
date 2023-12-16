@@ -13,7 +13,7 @@ from .base import BaseTask
 from .meta import TaskStatusList
 from .rag.afaas_smart_rag import AFAAS_SMART_RAG_Strategy
 
-# from AFAAS.core.configuration import AFAASModel
+# from AFAAS.interfaces.configuration import AFAASModel
 # from AFAAS.core.tools.schema import ToolResult
 
 

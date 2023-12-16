@@ -1,6 +1,6 @@
 from importlib import import_module
 
-from AFAAS.core.configuration import SystemConfiguration
+from AFAAS.interfaces.configuration import SystemConfiguration
 
 # from AFAAS.interfaces.workspace import AbstractFileWorkspace
 

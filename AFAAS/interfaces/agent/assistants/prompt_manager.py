@@ -12,7 +12,7 @@ from AFAAS.interfaces.agent.features.agentmixin import \
 if TYPE_CHECKING:
     pass
 
-from AFAAS.core.configuration import (Configurable,
+from AFAAS.interfaces.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          SystemSettings,
                                                          UserConfigurable)

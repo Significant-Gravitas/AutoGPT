@@ -1,7 +1,7 @@
 # import json
 # 
 
-# from AFAAS.core.configuration import Configurable, SystemConfiguration, SystemSettings
+# from AFAAS.interfaces.configuration import Configurable, SystemConfiguration, SystemSettings
 # from AFAAS.interfaces.db import Memory
 # from AFAAS.interfaces.workspace import Workspace
 
