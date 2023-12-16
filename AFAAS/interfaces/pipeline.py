@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine
-from AFAAS.core.agents.routing.main import RoutingAgent
 from AFAAS.core.agents.routing.strategies import AutoCorrectionStrategy
 from AFAAS.core.lib.task import Task
 from AFAAS.core.resource.model_providers import ChatModelResponse
@@ -24,12 +23,12 @@ class BasePipeline(BaseLoop):
     
 
 class Pipeline(BasePipeline):
-    def __init__(self, task : Task, agent : RoutingAgent, autocorrection_strategy : AutoCorrectionStrategy = None , autocorrection_post_processing : Callable = None):
+    def __init__(self, task : Task, agent : BaseAgent, autocorrection_strategy : AutoCorrectionStrategy = None , autocorrection_post_processing : Callable = None):
 
         super().__init__()
         self.jobs : list[JobInterface]= []
         #self._loop = agent._loop 
-        self._agent : RoutingAgent = agent
+        self._agent : BaseAgent = agent
         self._task : Task = task
         self.autocorrection_strategy = autocorrection_strategy or AutoCorrectionStrategy
         self.autocorrection_post_processing = autocorrection_post_processing or self.default_autocorrection_post_processing
@@ -44,7 +43,7 @@ class Pipeline(BasePipeline):
                 self.jobs.insert(i + 1, job)
                 break
 
-    async def execute(self) -> (Optional[Task],Optional[RoutingAgent]):
+    async def execute(self) -> (Optional[Task],Optional[BaseAgent]):
         if self.jobs:
             current_job = self.jobs.pop()
             pipeline_response = await self._execute_job(current_job)

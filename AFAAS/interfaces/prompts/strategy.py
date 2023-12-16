@@ -11,9 +11,9 @@ if TYPE_CHECKING:
     pass
 
 from AFAAS.core.configuration import SystemConfiguration
-from AFAAS.core.prompting.schema import \
+AFAAS.interfaces.prompts.schema import \
     LanguageModelClassification
-from AFAAS.core.prompting.utils.utils import json_loads
+AFAAS.interfaces.prompts.utils.utils import json_loads
 from AFAAS.core.resource.model_providers import (
     AbstractLanguageModelProvider, AssistantChatMessageDict, ChatModelResponse,
     ChatPrompt, CompletionModelFunction)

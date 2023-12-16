@@ -11,7 +11,7 @@ import enum
 # )
 
 
-class LanguageModelClassification(str, enum.Enum):
+class PromptStrategyLanguageModelClassification(str, enum.Enum):
     """The LanguageModelClassification is a functional description of the model.
 
     This is used to determine what kind of model to use for a given prompt.

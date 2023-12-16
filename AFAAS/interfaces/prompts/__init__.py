@@ -1,6 +1,6 @@
-from AFAAS.core.prompting.base import (
+from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy, BasePromptStrategy)
-from AFAAS.core.prompting.schema import \
+AFAAS.interfaces.prompts.schema import \
     LanguageModelClassification
 
 from .utils import (json_loads, to_dotted_list, to_md_quotation,

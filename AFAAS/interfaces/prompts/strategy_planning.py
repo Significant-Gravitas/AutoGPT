@@ -12,9 +12,9 @@ if TYPE_CHECKING:
 from AFAAS.core.lib.sdk import AFAASLogger
 from AFAAS.core.lib.task.plan import Plan
 from AFAAS.core.configuration import UserConfigurable
-from AFAAS.core.prompting.schema import \
+AFAAS.interfaces.prompts.schema import \
     LanguageModelClassification
-from AFAAS.core.prompting.utils.utils import \
+AFAAS.interfaces.prompts.utils.utils import \
     to_numbered_list
 from AFAAS.core.resource.model_providers import (
     ChatMessage, CompletionModelFunction)
