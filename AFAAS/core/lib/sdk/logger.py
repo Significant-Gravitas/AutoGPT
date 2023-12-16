@@ -185,7 +185,7 @@ class AFAASLogger(logging.Logger):
 
         # File Handler
         os.makedirs(log_folder, exist_ok=True)
-        log_file_path = os.path.join(log_folder, LOG_FILENAME)
+        log_file_path = os.path.join(log_folder, self.LOG_FILENAME)
         file_handler = logging.handlers.TimedRotatingFileHandler(
             log_file_path, when="midnight", interval=1, backupCount=7
         )
