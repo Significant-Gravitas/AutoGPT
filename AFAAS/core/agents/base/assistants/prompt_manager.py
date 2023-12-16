@@ -23,7 +23,6 @@ from AFAAS.core.prompting.schema import \
 from AFAAS.core.resource.model_providers import (
     BaseChatModelProvider, ChatModelResponse, ModelProviderName,
     OpenAIModelName)
-from AFAAS.core.workspace import AbstractFileWorkspace
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -106,9 +105,6 @@ class PromptManager(Configurable, AgentMixin):
             "openai": agent_systems["chat_model_provider"]
         }
         strategies: dict[str, AbstractPromptStrategy] = agent_systems["strategies"]
-        workspace: AbstractFileWorkspace = agent_systems["workspace"]
-
-        self._workspace = workspace
 
         self._providers: dict[LanguageModelClassification, BaseChatModelProvider] = {}
         for model, model_config in self._configuration.models.items():
