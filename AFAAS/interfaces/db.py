@@ -11,14 +11,14 @@ from typing import TYPE_CHECKING
 
 from pydantic import Field
 
-from AFAAS.interfaces.configuration import (Configurable,
+from AFAAS.configs import (Configurable,
                                                          SystemConfiguration,
                                                          SystemSettings)
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.db_table import AbstractTable
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name=__name__)
 class MemoryAdapterType(Enum):
     SQLLIKE_JSON_FILE = "json_file"

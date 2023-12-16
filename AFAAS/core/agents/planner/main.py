@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
 from pydantic import Field
 
-from AFAAS.core.lib.task.plan import Plan
+from AFAAS.lib.task.plan import Plan
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.adapters.openai import (
     OpenAIProvider, OpenAISettings)
@@ -16,7 +16,7 @@ from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, PromptManager, ToolE
 from .loop import PlannerLoop
 from .models import PlannerAgentConfiguration  # PlannerAgentSystemSettings,
 from .models import PlannerAgentSystems
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 LOG =  AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:

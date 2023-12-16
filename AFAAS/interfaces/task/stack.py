@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING, Any, Generator
 from pydantic import Field
 
 from AFAAS.interfaces.agent import AbstractAgent
-from AFAAS.interfaces.configuration import AFAASModel
+from AFAAS.configs import AFAASModel
 from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.plan import AbstractPlan
 from AFAAS.interfaces.task.task import AbstractTask
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name=__name__)
 
 class TaskStack(AFAASModel):

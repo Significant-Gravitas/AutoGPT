@@ -9,15 +9,15 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Optional
 import yaml
 from pydantic import Field, root_validator
 
-from AFAAS.core.lib.message_agent_agent import MessageAgentAgent
-from AFAAS.core.lib.message_agent_llm import MessageAgentLLM
-from AFAAS.core.lib.message_agent_user import MessageAgentUser
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.message_agent_agent import MessageAgentAgent
+from AFAAS.lib.message_agent_llm import MessageAgentLLM
+from AFAAS.lib.message_agent_user import MessageAgentUser
+from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.interfaces.agent.loop import \
     BaseLoop  # Import only where it's needed
 from AFAAS.interfaces.agent.models import \
     BaseAgentConfiguration
-from AFAAS.interfaces.configuration import SystemSettings
+from AFAAS.configs import SystemSettings
 
 LOG = AFAASLogger(name=__name__)
 

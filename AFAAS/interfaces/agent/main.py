@@ -15,13 +15,13 @@ from AFAAS.interfaces.agent.models import (
     BaseAgentConfiguration, BaseAgentDirectives, BaseAgentSystems)
 from AFAAS.interfaces.agent.loop import (  # Import only where it's needed
     BaseLoop, BaseLoopHook)
-from AFAAS.interfaces.configuration import (Configurable,
+from AFAAS.configs import (Configurable,
                                                          SystemSettings)
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
 from .abstract import AbstractAgent
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name = __name__)
 
 
@@ -369,7 +369,7 @@ class BaseAgent(Configurable, AbstractAgent):
             LOG.notice(f"Failed to import {module}.strategies: {e}")
 
         from .strategies.autocorrection import AutoCorrectionStrategy
-        from AFAAS.core.lib.task.rag.afaas_smart_rag import AFAAS_SMART_RAG_Strategy
+        from AFAAS.lib.task.rag.afaas_smart_rag import AFAAS_SMART_RAG_Strategy
         common_strategies = [AutoCorrectionStrategy(
                 **AutoCorrectionStrategy.default_configuration.dict()
             ),

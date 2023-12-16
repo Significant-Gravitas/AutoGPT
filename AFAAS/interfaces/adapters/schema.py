@@ -6,7 +6,7 @@ from typing import Callable, ClassVar, Protocol
 
 from pydantic import BaseModel, Field, SecretStr, validator
 
-from AFAAS.interfaces.configuration import SystemConfiguration, UserConfigurable
+from AFAAS.configs import SystemConfiguration, UserConfigurable
 from AFAAS.interfaces.adapters.configuration import (
     Embedding,
     BaseProviderBudget, 
@@ -14,7 +14,7 @@ from AFAAS.interfaces.adapters.configuration import (
     BaseProviderSettings,
     BaseProviderUsage, 
 )
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 
 class ModelProviderService(str, enum.Enum):

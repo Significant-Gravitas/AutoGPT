@@ -7,7 +7,7 @@ from typing import List
 
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.interfaces.db_nosql import NoSQLMemory
-from AFAAS.core.lib.sdk.logger import AFAASLogger   
+from AFAAS.lib.sdk.logger import AFAASLogger   
 LOG = AFAASLogger(name=__name__)
 
 class JSONFileMemory(NoSQLMemory):

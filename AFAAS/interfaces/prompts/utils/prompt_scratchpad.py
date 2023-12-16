@@ -3,10 +3,10 @@ from typing import Callable
 
 from pydantic import BaseModel, Field
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.interfaces.adapters.chat_schema import \
     CompletionModelFunction
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 LOG = AFAASLogger(name=__name__)
 

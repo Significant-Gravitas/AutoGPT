@@ -12,7 +12,7 @@ import yaml
 from bs4 import BeautifulSoup
 from pylatexenc.latex2text import LatexNodes2Text
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
 

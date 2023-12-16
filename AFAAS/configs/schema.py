@@ -14,7 +14,7 @@ from pydantic.main import ModelMetaclass
 T = TypeVar("T")
 M = TypeVar("M", bound=BaseModel)
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name=__name__)
 
 

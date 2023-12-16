@@ -1,6 +1,6 @@
 
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.core.agents.planner.strategies.initial_plan import (
     InitialPlanStrategy, InitialPlanStrategyConfiguration)
 from AFAAS.core.agents.planner.strategies.select_tool import (

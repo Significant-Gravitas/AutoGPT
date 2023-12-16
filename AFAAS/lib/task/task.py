@@ -7,12 +7,12 @@ from pydantic import BaseModel, Field, validator
 
 from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.meta import TaskStatusList
 from .rag.afaas_smart_rag import AFAAS_SMART_RAG_Strategy
 
-# from AFAAS.interfaces.configuration import AFAASModel
+# from AFAAS.configs import AFAASModel
 # from AFAAS.core.tools.schema import ToolResult
 
 

@@ -6,7 +6,7 @@ import threading
 from threading import Semaphore
 from typing import Literal, Optional
 
-from AFAAS.interfaces.configuration.schema  import (SystemConfiguration,
+from AFAAS.configs.schema  import (SystemConfiguration,
                                                UserConfigurable)
 
 from .base import VoiceBase

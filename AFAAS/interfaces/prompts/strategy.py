@@ -4,20 +4,20 @@ import abc
 import re
 from typing import TYPE_CHECKING, Optional
 
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
     #from AFAAS.core.agents.planner.main import PlannerAgent
     pass
 
-from AFAAS.interfaces.configuration import SystemConfiguration
+from AFAAS.configs import SystemConfiguration
 from AFAAS.interfaces.prompts.schema import \
      PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.prompts.utils.utils import json_loads
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider, AssistantChatMessageDict, ChatModelResponse,
     ChatPrompt, CompletionModelFunction)
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name = __name__)
 RESPONSE_SCHEMA = JSONSchema(
     type=JSONSchema.Type.OBJECT,

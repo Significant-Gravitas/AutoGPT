@@ -5,7 +5,7 @@ from typing import Iterator, Optional, TypeVar
 
 import spacy
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.interfaces.adapters import (
     BaseChatModelProvider, ChatMessage, ModelTokenizer)
 from AFAAS.interfaces.adapters.chat_schema import \

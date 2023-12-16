@@ -13,8 +13,8 @@ from duckduckgo_search import DDGS
 
 from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.core.tools.command_decorator import tool
-from AFAAS.core.lib.sdk.errors import ConfigurationError
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.sdk.errors import ConfigurationError
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 COMMAND_CATEGORY = "web_search"
 COMMAND_CATEGORY_TITLE = "Web Search"

@@ -4,9 +4,9 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from AFAAS.interfaces.configuration.schema  import (
+from AFAAS.configs.schema  import (
     AFAASMessageType, AFAASModel)
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 
 class MessageAgentLLM(AFAASModel):

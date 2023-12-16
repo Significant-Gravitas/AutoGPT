@@ -14,13 +14,13 @@ from pathlib import Path
 from typing import Iterator, Literal
 
 from AFAAS.app.lib.task.task import Task
-from AFAAS.core.lib.sdk import logger
+from AFAAS.lib.sdk import logger
 from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.tools.command_decorator import tool
-from AFAAS.core.lib.sdk.errors import \
+from AFAAS.lib.sdk.errors import \
     DuplicateOperationError
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
 from .file_operations_utils import read_textual_file

@@ -12,10 +12,10 @@ from pathlib import Path
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
 
-from AFAAS.interfaces.configuration.schema  import UserConfigurable
+from AFAAS.configs.schema  import UserConfigurable
 
 from AFAAS.interfaces.workspace import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG =  AFAASLogger(name=__name__)
 

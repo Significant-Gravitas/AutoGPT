@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.core.lib.task.task import Task
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.task.task import Task
+from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.core.agents.routing import RoutingAgent
 from AFAAS.core.agents.routing.strategies.routing import \
     RoutingStrategyConfiguration

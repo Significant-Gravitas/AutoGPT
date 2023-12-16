@@ -11,7 +11,7 @@ from AFAAS.interfaces.adapters import (
     ModelProviderName,
     OpenAIModelName,
 )
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 
 class QueryLanguageModel(Ability):

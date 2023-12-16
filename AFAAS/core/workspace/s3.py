@@ -15,13 +15,13 @@ import boto3
 import botocore.exceptions
 from pydantic import SecretStr
 
-from AFAAS.interfaces.configuration.schema  import UserConfigurable
+from AFAAS.configs.schema  import UserConfigurable
 
 from AFAAS.interfaces.workspace import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 
 if TYPE_CHECKING:
     import mypy_boto3_s3
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 LOG =  AFAASLogger(name=__name__)
 
 

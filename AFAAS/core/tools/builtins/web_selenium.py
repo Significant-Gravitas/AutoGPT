@@ -21,14 +21,14 @@ from selenium.webdriver.safari.options import Options as SafariOptions
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.core.tools.command_decorator import tool
-from AFAAS.core.lib.sdk.errors import ToolExecutionError
-from AFAAS.core.utils.json_schema import JSONSchema
-from AFAAS.core.utils.processing.html import (
+from AFAAS.lib.sdk.errors import ToolExecutionError
+from AFAAS.lib.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.processing.html import (
     extract_hyperlinks, format_hyperlinks)
-from AFAAS.core.utils.processing.text import summarize_text
-from AFAAS.core.utils.url.validators import validate_url
+from AFAAS.lib.utils.processing.text import summarize_text
+from AFAAS.lib.utils.url.validators import validate_url
 
 LOG = AFAASLogger(name=__name__)
 

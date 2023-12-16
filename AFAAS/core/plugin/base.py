@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Type
 
 from pydantic import BaseModel
 
-from AFAAS.interfaces.configuration import (SystemConfiguration,
+from AFAAS.configs import (SystemConfiguration,
                                                          UserConfigurable)
 
 if TYPE_CHECKING:

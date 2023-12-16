@@ -4,7 +4,7 @@ import pathlib
 from io import BytesIO
 from uuid import uuid4
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware

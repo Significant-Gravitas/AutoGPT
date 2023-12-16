@@ -5,12 +5,12 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
-    from AFAAS.interfaces.configuration import *
+    from AFAAS.configs import *
     from .tool_parameters import ToolParameter
 
-from AFAAS.core.lib.context_items import ContextItem
-from AFAAS.core.lib.task import Task
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.context_items import ContextItem
+from AFAAS.interfaces.task import AbstractTask
+from AFAAS.lib.sdk.logger import AFAASLogger
 from langchain.tools.base import BaseTool
 
 LOG = AFAASLogger(name=__name__)

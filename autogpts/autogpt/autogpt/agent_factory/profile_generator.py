@@ -2,14 +2,14 @@ import json
 import logging
 
 from autogpt.config import AIDirectives, AIProfile, Config
-from AFAAS.interfaces.configuration import SystemConfiguration, UserConfigurable
+from AFAAS.configs import SystemConfiguration, UserConfigurable
 from AFAAS.interfaces.prompts import (ChatPrompt,  PromptStrategyLanguageModelClassification,
                                     PromptStrategy)
 from AFAAS.interfaces.prompts.utils import json_loads
 from AFAAS.interfaces.adapters.schema import (
     AssistantChatMessageDict, ChatMessage, ChatModelProvider,
     CompletionModelFunction)
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)
 

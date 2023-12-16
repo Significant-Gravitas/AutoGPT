@@ -12,7 +12,7 @@ class PlansTable(BaseNoSQLTable):
     secondary_key = "agent_id"
     third_key = "user_id"
 
-    from AFAAS.core.lib.task.plan import Plan
+    from AFAAS.lib.task.plan import Plan
 
     def add(self, value: dict, id: str = Plan.generate_uuid()) -> str:
         return super().add(value, id)

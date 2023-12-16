@@ -4,12 +4,12 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional
 
 from pydantic import Field
 
-from AFAAS.core.lib.action import (ActionErrorResult, ActionResult,
+from AFAAS.lib.action import (ActionErrorResult, ActionResult,
                                            ActionSuccessResult)
-from AFAAS.core.lib.context_items import ContextItem
-from AFAAS.core.lib.task import TaskStatusList
-from AFAAS.core.lib.task.plan import Plan
-from AFAAS.core.lib.task.task import Task
+from AFAAS.lib.context_items import ContextItem
+from AFAAS.lib.task import TaskStatusList
+from AFAAS.lib.task.plan import Plan
+from AFAAS.lib.task.task import Task
 from AFAAS.interfaces.agent.exceptions import (
     AgentException, ToolExecutionError, UnknownToolError)
 from AFAAS.core.tools import ToolOutput
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 from AFAAS.interfaces.agent import BaseLoop, BaseLoopHook
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger, NOTICE, TRACE
+from AFAAS.lib.sdk.logger import AFAASLogger, NOTICE, TRACE
 LOG = AFAASLogger(name=__name__)
 
 

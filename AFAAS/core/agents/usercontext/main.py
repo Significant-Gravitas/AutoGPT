@@ -11,7 +11,7 @@ from AFAAS.interfaces.workspace import AbstractFileWorkspace
 from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, PromptManager
 from .loop import UserContextLoop
 from .models import UserContextAgentConfiguration, UserContextAgentSystems
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 LOG =  AFAASLogger(name=__name__)
 
 

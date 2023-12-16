@@ -8,8 +8,8 @@ from typing import Any, Literal, Optional, TypedDict
 
 from pydantic import BaseModel
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
-from AFAAS.interfaces.configuration import (AFAASModel,
+from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.configs import (AFAASModel,
                                                          SystemSettings)
 
 from AFAAS.interfaces.db_table import AbstractTable

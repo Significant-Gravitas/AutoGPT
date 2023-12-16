@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import yaml
 from pydantic import BaseModel
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
 

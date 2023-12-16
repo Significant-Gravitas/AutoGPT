@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.core.lib.task.plan import Plan
+    from AFAAS.lib.task.plan import Plan
     from AFAAS.core.db.table import AbstractTable
     from AFAAS.interfaces.adapters import \
         CompletionModelFunction , ChatModelResponse
@@ -12,8 +12,8 @@ if TYPE_CHECKING:
     from AFAAS.core.tools.tools import Tool
     from AFAAS.interfaces.prompts.strategy import BasePromptStrategy
 
-    from ..main import BaseAgent
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+    from AFAAS.interfaces.agent import BaseAgent
+from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name = __name__)
 
 class AgentMixin:

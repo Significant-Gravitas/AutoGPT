@@ -4,7 +4,7 @@ import logging
 import os
 
 import requests
-from AFAAS.interfaces.configuration import SystemConfiguration, UserConfigurable
+from AFAAS.configs import SystemConfiguration, UserConfigurable
 from autogpt.speech.base import VoiceBase
 from playsound import playsound
 

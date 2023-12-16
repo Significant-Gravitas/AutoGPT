@@ -27,7 +27,7 @@ Module Usage:
     This module is used to define and structure the various elements involved in a chat interaction within the AutoGPT framework. It is imported and utilized in constructing and processing prompts, messages, and function calls within the chat-based interaction model.
 
 Examples:
-    >>> from AFAAS.core.utils.json_schema import JSONSchema
+    >>> from AFAAS.lib.utils.json_schema import JSONSchema
     >>> from AFAAS.core.agents.exampleagent.strategies.mystrategy import MyStrategy
 
     >>> # Defining a function specification
@@ -59,7 +59,7 @@ from pydantic import BaseModel, Field
 from AFAAS.interfaces.adapters.schema import (
     AbstractLanguageModelProvider, BaseModelInfo, BaseModelResponse,
     ModelProviderService)
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 
 class Role(str, enum.Enum):

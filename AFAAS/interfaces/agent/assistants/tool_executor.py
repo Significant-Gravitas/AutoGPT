@@ -8,7 +8,7 @@ class ToolExecutor(AgentMixin):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        from AFAAS.core.lib.sdk.logger import AFAASLogger
+        from AFAAS.lib.sdk.logger import AFAASLogger
 
         AFAASLogger(name=__name__).trace(
             "ToolExecutor : Has not been implemented yet"

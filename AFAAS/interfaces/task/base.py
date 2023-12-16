@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Optional, Union, get_args
 from pydantic import BaseModel, Field, validator
 
 from AFAAS.interfaces.agent import AbstractAgent
-from AFAAS.interfaces.configuration import AFAASModel
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.configs import AFAASModel
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 # from AFAAS.core.tools.schema import ToolResult
 LOG = AFAASLogger(name=__name__)

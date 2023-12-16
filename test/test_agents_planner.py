@@ -1,7 +1,7 @@
 
 import uuid
 from AFAAS.core.agents import PlannerAgent
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
 

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 from pydantic import Field
 
-from AFAAS.interfaces.configuration import AFAASModel
+from AFAAS.configs import AFAASModel
 
 if TYPE_CHECKING:
     from AFAAS.core.agents import (AbstractAgent,                                                PlannerAgent)

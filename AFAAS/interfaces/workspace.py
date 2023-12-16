@@ -9,12 +9,12 @@ from pathlib import Path
 from pydantic import Field
 from typing import IO, Any, BinaryIO, Callable, Literal, Optional, TextIO, overload
 
-from AFAAS.interfaces.configuration.schema  import SystemConfiguration
+from AFAAS.configs.schema  import SystemConfiguration
 
-from AFAAS.interfaces.configuration import (Configurable,
+from AFAAS.configs import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 LOG =  AFAASLogger(name=__name__)
 
 

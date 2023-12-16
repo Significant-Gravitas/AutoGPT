@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from autogpt.config import Config
     from autogpt.speech import TTSConfig
 
-from AFAAS.interfaces.configuration import SystemConfiguration, UserConfigurable
+from AFAAS.configs import SystemConfiguration, UserConfigurable
 from AFAAS.core.runner.client_lib.logging import BelowLevelFilter
 
 from .formatters import AutoGptFormatter, StructuredLoggingFormatter

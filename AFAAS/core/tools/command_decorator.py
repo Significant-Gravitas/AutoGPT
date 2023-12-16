@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 from AFAAS.core.tools.tool_parameters import ToolParameter
 from AFAAS.core.tools.tools import Tool, ToolOutput
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 # Unique identifier for AutoGPT commands
 AUTO_GPT_TOOL_IDENTIFIER = "auto_gpt_command"

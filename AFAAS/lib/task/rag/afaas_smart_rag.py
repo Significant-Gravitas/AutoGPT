@@ -7,7 +7,7 @@ from typing import Optional,TYPE_CHECKING
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 if  TYPE_CHECKING: 
-    from AFAAS.core.lib.task import Task
+    from AFAAS.interfaces.task import AbstractTask
 
 from AFAAS.interfaces.prompts.strategy import (
     BasePromptStrategy, DefaultParsedResponse, PromptStrategiesConfiguration)
@@ -15,8 +15,8 @@ from AFAAS.interfaces.prompts.schema import \
      PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.adapters import (
     AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
-from AFAAS.core.utils.json_schema import JSONSchema
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.utils.json_schema import JSONSchema
+from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name = __name__)
 
 from AFAAS.interfaces.prompts.utils import to_md_quotation        
@@ -99,7 +99,7 @@ class AFAAS_SMART_RAG_Strategy(BasePromptStrategy):
 
 
     def build_prompt(
-        self, task : Task , **kwargs
+        self, task : AbstractTask , **kwargs
     ) -> ChatPrompt:
         LOG.debug("Building prompt for task : " + task.debug_dump_str())
         self._task : Task = task

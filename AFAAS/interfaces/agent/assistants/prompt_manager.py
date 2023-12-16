@@ -12,7 +12,7 @@ from AFAAS.interfaces.agent.features.agentmixin import \
 if TYPE_CHECKING:
     pass
 
-from AFAAS.interfaces.configuration import (Configurable,
+from AFAAS.configs import (Configurable,
                                                          SystemConfiguration,
                                                          SystemSettings,
                                                          UserConfigurable)
@@ -24,7 +24,7 @@ from AFAAS.interfaces.adapters import (
     BaseChatModelProvider, ChatModelResponse, ModelProviderName,
 )
 from AFAAS.core.adapters.openai import OpenAIModelName
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 
 LOG = AFAASLogger(name=__name__)

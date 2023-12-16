@@ -8,7 +8,7 @@ import yaml
 
 from AFAAS.core.agents import \
     PlannerAgent  # ## TODO should work for every Agent
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 DEFAULT_SETTINGS_FILE = str(Path("~/auto-gpt/default_agent_settings.yml").expanduser())
 

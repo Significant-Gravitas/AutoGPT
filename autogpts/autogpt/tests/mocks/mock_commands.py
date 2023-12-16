@@ -1,5 +1,5 @@
 from autogpt.command_decorator import command
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 COMMAND_CATEGORY = "mock"
 

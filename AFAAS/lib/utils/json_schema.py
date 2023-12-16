@@ -6,7 +6,7 @@ from typing import Literal, Optional
 
 from jsonschema import Draft7Validator
 from pydantic import BaseModel
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name=__name__)
 
 class JSONSchema(BaseModel):

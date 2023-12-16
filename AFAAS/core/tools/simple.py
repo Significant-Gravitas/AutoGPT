@@ -6,14 +6,14 @@ from dataclasses import dataclass, field
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, Iterator
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.interfaces.configuration import (Configurable,
+from AFAAS.configs import (Configurable,
                                                          SystemConfiguration)
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.interfaces.adapters import (

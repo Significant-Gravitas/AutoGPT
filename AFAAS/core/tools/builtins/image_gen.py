@@ -16,17 +16,17 @@ client = OpenAI()
 import requests
 from PIL import Image
 
-from AFAAS.core.lib.task.task import Task
+from AFAAS.lib.task.task import Task
 from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.core.tools.command_decorator import tool
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 COMMAND_CATEGORY = "text_to_image"
 COMMAND_CATEGORY_TITLE = "Text to Image"
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 LOG =  AFAASLogger(name=__name__)
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
 

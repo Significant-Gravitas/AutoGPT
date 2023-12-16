@@ -11,8 +11,8 @@ from pydantic import Field
 from AFAAS.interfaces.agent import AbstractAgent
 from AFAAS.interfaces.task.plan import AbstractPlan
 from AFAAS.interfaces.task.meta import TaskStatusList
-from AFAAS.core.lib.sdk.logger import AFAASLogger
-from AFAAS.core.lib.task.task import Task
+from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.task.task import Task
 
 LOG = AFAASLogger(name=__name__)
 

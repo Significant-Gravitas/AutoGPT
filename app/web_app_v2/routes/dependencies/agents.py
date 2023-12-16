@@ -1,6 +1,6 @@
-from AFAAS.core.lib.sdk.errors import *
-from AFAAS.core.lib.sdk.logger import AFAASLogger
-from AFAAS.core.lib.sdk.schema import *
+from AFAAS.lib.sdk.errors import *
+from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.schema import *
 from fastapi import APIRouter, Depends, Query, Request, Response, UploadFile
 
 LOG = AFAASLogger(name=__name__)

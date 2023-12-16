@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
-    from AFAAS.core.lib.context_items import ContextItem
+    from AFAAS.lib.context_items import ContextItem
 
     from AFAAS.interfaces.agent import BaseAgent
 

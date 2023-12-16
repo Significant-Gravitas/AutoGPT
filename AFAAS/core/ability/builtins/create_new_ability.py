@@ -4,7 +4,7 @@ from typing import ClassVar
 from AFAAS.core.ability.base import Ability, AbilityConfiguration
 from AFAAS.core.ability.schema import AbilityResult
 from AFAAS.core.plugin.simple import PluginLocation, PluginStorageFormat
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 
 class CreateNewAbility(Ability):

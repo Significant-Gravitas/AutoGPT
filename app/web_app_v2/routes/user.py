@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import yaml
-from AFAAS.core.lib.sdk.errors import *
-from AFAAS.core.lib.sdk.logger import AFAASLogger
-from AFAAS.core.lib.sdk.schema import *
+from AFAAS.lib.sdk.errors import *
+from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.schema import *
 from fastapi import APIRouter, FastAPI, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 # prompting
-from AFAAS.core.lib.action_history import Episode
+from AFAAS.lib.action_history import Episode
 from AFAAS.interfaces.prompts.strategy import (
     DefaultParsedResponse,  PromptStrategyLanguageModelClassification)
 from AFAAS.interfaces.prompts.strategy_planning import (

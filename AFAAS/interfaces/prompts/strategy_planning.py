@@ -9,9 +9,9 @@ if TYPE_CHECKING:
 
     from AFAAS.interfaces.agent.main import BaseAgent
 
-from AFAAS.core.lib.sdk import AFAASLogger
-from AFAAS.core.lib.task.plan import Plan
-from AFAAS.interfaces.configuration import UserConfigurable
+from AFAAS.lib.sdk import AFAASLogger
+from AFAAS.lib.task.plan import Plan
+from AFAAS.configs import UserConfigurable
 from AFAAS.interfaces.prompts.schema import \
      PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.prompts.utils import \

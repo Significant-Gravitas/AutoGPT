@@ -11,14 +11,14 @@ from typing import Iterator, Literal
 TOOL_CATEGORY = "file_operations"
 TOOL_CATEGORY_TITLE = "File Operations"
 
-from AFAAS.core.lib.task.task import Task
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.task.task import Task
+from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.tools.command_decorator import tool
-from AFAAS.core.lib.sdk.errors import \
+from AFAAS.lib.sdk.errors import \
     DuplicateOperationError
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
 from .file_operations_utils import decode_textual_file

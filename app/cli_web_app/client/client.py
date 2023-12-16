@@ -7,7 +7,7 @@ import click
 import requests
 
 from AFAAS.core.agents import PlannerAgent
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 BASE_URL = "http://localhost:8080/api/v1"
 MAX_ATTEMPTS = 3

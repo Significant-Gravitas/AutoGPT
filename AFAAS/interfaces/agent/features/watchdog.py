@@ -4,12 +4,12 @@ from contextlib import ExitStack
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ...base import BaseAgentConfiguration
+    from AFAAS.interfaces.agent import BaseAgentConfiguration
 
-from AFAAS.core.lib.action_history import EpisodicActionHistory
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.action_history import EpisodicActionHistory
+from AFAAS.lib.sdk.logger import AFAASLogger
 
-from ...base import BaseAgent
+from AFAAS.interfaces.agent import BaseAgent
 
 LOG = AFAASLogger(name=__name__)
 

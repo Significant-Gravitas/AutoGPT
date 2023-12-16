@@ -27,7 +27,7 @@ import uuid
 
 from typing import Optional
 
-from AFAAS.core.lib.message_agent_user import Questions
+from AFAAS.lib.message_agent_user import Questions
 from AFAAS.interfaces.prompts.strategy import (
     BasePromptStrategy, PromptStrategiesConfiguration)
 from AFAAS.interfaces.prompts.schema import \
@@ -37,10 +37,10 @@ from AFAAS.interfaces.prompts.utils import (
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider, AssistantChatMessageDict, ChatMessage,
     ChatPrompt, CompletionModelFunction)
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 LOG =  AFAASLogger(name=__name__)
 
 class RefineUserContextFunctionNames(str, enum.Enum):

@@ -28,7 +28,7 @@ from autogpt.agents.utils.prompt_scratchpad import PromptScratchpad
 from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
-from AFAAS.interfaces.configuration import (Configurable, SystemConfiguration,
+from AFAAS.configs import (Configurable, SystemConfiguration,
                                         SystemSettings, UserConfigurable)
 from AFAAS.interfaces.prompts.schema import (ChatMessage, ChatPrompt,
                                            CompletionModelFunction)

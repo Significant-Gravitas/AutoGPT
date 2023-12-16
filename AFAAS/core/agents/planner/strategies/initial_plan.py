@@ -2,7 +2,7 @@ import enum
 
 from typing import Optional
 
-from AFAAS.core.lib.task import Task
+from AFAAS.interfaces.task import AbstractTask
 from AFAAS.core.agents.planner.main import PlannerAgent
 from AFAAS.interfaces.prompts.strategy import (
     BasePromptStrategy,  PromptStrategyLanguageModelClassification,
@@ -11,7 +11,7 @@ from AFAAS.interfaces.prompts.utils import (
     json_loads, to_numbered_list)
 from AFAAS.interfaces.adapters import (
     AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 
 class InitialPlanFunctionNames(str, enum.Enum):
