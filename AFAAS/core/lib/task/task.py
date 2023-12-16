@@ -5,12 +5,11 @@ from typing import TYPE_CHECKING, Optional
 
 from pydantic import BaseModel, Field, validator
 
-from AFAAS.core.agents import BaseAgent
+from AFAAS.interfaces.agent import BaseAgent
 
-from ..sdk.logger import AFAASLogger
-# from .plan import Plan
-from .base import BaseTask
-from .meta import TaskStatusList
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.interfaces.task.base import AbstractBaseTask
+from AFAAS.interfaces.task.meta import TaskStatusList
 from .rag.afaas_smart_rag import AFAAS_SMART_RAG_Strategy
 
 # from AFAAS.interfaces.configuration import AFAASModel
@@ -21,10 +20,10 @@ from .rag.afaas_smart_rag import AFAAS_SMART_RAG_Strategy
 LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
-    from .stack import TaskStack
+    from AFAAS.interfaces.task.stack import TaskStack
 
 
-class Task(BaseTask):
+class Task(AbstractBaseTask):
     """
     Model representing a task.
 
@@ -55,7 +54,7 @@ class Task(BaseTask):
 
     _task_parent_id: str = Field()
     @property
-    def task_parent(self) -> BaseTask:
+    def task_parent(self) ->  AbstractBaseTask:
         LOG.trace(f"{self.debug_formated_str(True)} {self.__class__.__name__}.task_parent({self._task_parent_id})")
         try:
             # Lazy load the parent task
@@ -64,7 +63,7 @@ class Task(BaseTask):
             raise ValueError(f"No parent task found with ID {self._task_parent_id}")
 
     @task_parent.setter
-    def task_parent(self, task: BaseTask):
+    def task_parent(self, task:  AbstractBaseTask):
         LOG.trace(f"{self.__class__.__name__}.task_parent.setter()")
         if not isinstance(task, Task):
             raise ValueError("task_parent must be an instance of Task")
@@ -76,7 +75,7 @@ class Task(BaseTask):
     @property
     def task_predecessors(self) -> TaskStack:
         if self._task_predecessors is None:
-            from .stack import TaskStack
+            from AFAAS.interfaces.task.stack import TaskStack
 
             self._task_predecessors = TaskStack(parent_task=self, description="Predecessors")
         return self._task_predecessors
@@ -84,7 +83,7 @@ class Task(BaseTask):
     @property
     def task_successors(self) -> TaskStack:
         if self._task_successors is None:
-            from .stack import TaskStack
+            from AFAAS.interfaces.task.stack import TaskStack
 
             self._task_successors = TaskStack(parent_task=self, description="Successors")
         return self._task_successors
@@ -119,8 +118,8 @@ class Task(BaseTask):
     task_text_output_as_uml: Optional[str]
     """ Placeholder : The agent summary of his own doing while performing the task as a UML diagram"""
 
-    class Config(BaseTask.Config):
-        default_exclude = set(BaseTask.Config.default_exclude) | {
+    class Config( AbstractBaseTask.Config):
+        default_exclude = set( AbstractBaseTask.Config.default_exclude) | {
             # If commented create an infinite loop
             "task_parent",
             "task_predecessors",
@@ -131,10 +130,10 @@ class Task(BaseTask):
         LOG.trace(f"{self.__class__.__name__}.__init__() : {data['task_goal']}")
         super().__init__(**data)
         if '_task_predecessors' in data and isinstance(data['_task_predecessors'], list):
-            from AFAAS.core.lib.task.stack import TaskStack
+            from AFAAS.interfaces.task.stack import TaskStack
             self._task_predecessors = TaskStack(parent_task = self, _task_ids = data['_task_predecessors'])
         if '_task_successors' in data and isinstance(data['_task_successors'], list):
-            from AFAAS.core.lib.task.stack import TaskStack
+            from AFAAS.interfaces.task.stack import TaskStack
             self._task_successors = TaskStack(parent_task = self, _task_ids = data['_task_successors'])
 
     @property

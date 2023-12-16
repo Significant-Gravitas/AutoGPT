@@ -15,7 +15,7 @@ import boto3
 import botocore.exceptions
 from pydantic import SecretStr
 
-from AFAAS.core.configuration.schema import UserConfigurable
+from AFAAS.interfaces.configuration.schema  import UserConfigurable
 
 from AFAAS.interfaces.workspace import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 

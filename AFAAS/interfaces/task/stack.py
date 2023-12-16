@@ -1,26 +1,19 @@
 from __future__ import annotations
 
 import json
-
-from AFAAS.core.lib.sdk.logger import AFAASLogger
-from AFAAS.interfaces.agent import AbstractAgent
-from AFAAS.interfaces.configuration import AFAASModel
-
-
-from  AFAAS.core.lib.sdk.logger import AFAASLogger
-LOG = AFAASLogger(name=__name__)
-
-
 from typing import TYPE_CHECKING, Any, Generator
-
 from pydantic import Field
 
-from .base import BaseTask
-from .plan import Plan
-
+from AFAAS.interfaces.agent import AbstractAgent
+from AFAAS.interfaces.configuration import AFAASModel
+from AFAAS.interfaces.task.base import AbstractBaseTask
+from AFAAS.interfaces.task.plan import AbstractPlan
+from AFAAS.interfaces.task.task import AbstractTask
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG = AFAASLogger(name=__name__)
 
 class TaskStack(AFAASModel):
-    parent_task: BaseTask = Field(..., exclude=True)
+    parent_task: AbstractBaseTask = Field(..., exclude=True)
     _task_ids: list[str] = Field(default=[])
 
     def __init__(self, **data: Any):
@@ -59,7 +52,7 @@ class TaskStack(AFAASModel):
             raise TypeError(f"Expected TaskStack or dict, received {type(v)}")
 
 
-    def add(self, task: BaseTask):
+    def add(self, task: AbstractBaseTask):
         """
         Add a task. Can also mark it as ready.
         """
@@ -67,11 +60,11 @@ class TaskStack(AFAASModel):
         LOG.trace(self._task_ids)
 
         self._task_ids.append(task.task_id)
-        parent_is_plan : bool = isinstance(self.parent_task, Plan)
+        parent_is_plan : bool = isinstance(self.parent_task, AbstractPlan)
         if parent_is_plan:
-            plan: Plan = self.parent_task
+            plan: AbstractPlan = self.parent_task
         else:
-            plan: Plan = self.parent_task.agent.plan
+            plan: AbstractPlan = self.parent_task.agent.plan
             plan._register_task_as_modified(task_id=self.parent_task.task_id)
 
         if(self.parent_task.subtasks == self) : 
@@ -87,13 +80,13 @@ class TaskStack(AFAASModel):
                 LOG.warning(f"Added subtask should only be added if parent_task is READY. Current state of {self.parent_task.debug_formated_str()} is {self.parent_task.state}")
             
 
-    def get_task(self, task_id) -> BaseTask:
+    def get_task(self, task_id) -> AbstractBaseTask:
         """
         Get a specific task.
         """
         return self.parent_task.agent.plan.get_task(task_id)
 
-    def get_all_tasks_from_stack(self) -> list[BaseTask]:
+    def get_all_tasks_from_stack(self) -> list[AbstractBaseTask]:
         """
         Get all tasks. If only_ready is True, return only ready tasks.
         """
@@ -102,7 +95,7 @@ class TaskStack(AFAASModel):
         ]
     
 
-    def get_all_task_ids_from_stack(self) -> list[BaseTask]:
+    def get_all_task_ids_from_stack(self) -> list[AbstractBaseTask]:
         """
         Get all tasks. If only_ready is True, return only ready tasks.
         """
@@ -110,7 +103,7 @@ class TaskStack(AFAASModel):
             task_id for task_id in self._task_ids
         ]
 
-    def get_ready_tasks_from_stack(self) -> list[BaseTask]:
+    def get_ready_tasks_from_stack(self) -> list[AbstractBaseTask]:
         """
         Get all ready tasks.
         """
@@ -123,7 +116,7 @@ class TaskStack(AFAASModel):
         ]
     
 
-    def get_done_tasks_from_stack(self) -> list[BaseTask]:
+    def get_done_tasks_from_stack(self) -> list[AbstractBaseTask]:
         """
         Get all ready tasks.
         """
@@ -135,7 +128,7 @@ class TaskStack(AFAASModel):
             self.parent_task.agent.plan.get_task(task_id) for task_id in common_task_ids
         ]
 
-    def get_active_tasks_from_stack(self) -> list[BaseTask]:
+    def get_active_tasks_from_stack(self) -> list[AbstractBaseTask]:
         """
         Get all active tasks.
         """

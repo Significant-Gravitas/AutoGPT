@@ -12,7 +12,7 @@ aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 import tiktoken
 from openai import APIError, RateLimitError, completions  # , OpenAI, Em
 
-from  AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.interfaces.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)

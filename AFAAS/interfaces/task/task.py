@@ -1,5 +1,5 @@
-from .base import BaseTask
+from .base import AbstractBaseTask
 
-class AbstractTask(BaseTask):
+class AbstractTask(AbstractBaseTask):
     pass
 

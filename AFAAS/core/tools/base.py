@@ -9,7 +9,7 @@ from pydantic import Field
 
 from AFAAS.interfaces.agent.assistants import LanguageModelConfiguration
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
-from ..configuration import SystemConfiguration
+from AFAAS.interfaces.configuration import SystemConfiguration
 from ..plugin.base import PluginLocation
 from ..resource.model_providers import CompletionModelFunction
 from ..tools.schema import ToolResult

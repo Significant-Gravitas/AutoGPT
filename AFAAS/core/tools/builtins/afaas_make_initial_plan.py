@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from AFAAS.core.lib.task.meta import TaskStatusList
+from AFAAS.interfaces.task.meta import TaskStatusList
 
 TOOL_CATEGORY = "framework"
 TOOL_CATEGORY_TITLE = "Framework"

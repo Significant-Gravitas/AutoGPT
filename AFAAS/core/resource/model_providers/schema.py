@@ -6,7 +6,7 @@ from typing import Callable, ClassVar, Protocol
 
 from pydantic import BaseModel, Field, SecretStr, validator
 
-from ...configuration import SystemConfiguration, UserConfigurable
+from AFAAS.interfaces.configuration import SystemConfiguration, UserConfigurable
 from ..schema import (
     Embedding,
     BaseProviderBudget, 

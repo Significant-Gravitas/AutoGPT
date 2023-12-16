@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, validator
 
 from AFAAS.interfaces.agent import AbstractAgent
 from AFAAS.interfaces.configuration import AFAASModel
-from ..sdk.logger import AFAASLogger
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 
 # from AFAAS.core.tools.schema import ToolResult
 LOG = AFAASLogger(name=__name__)
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from .stack import TaskStack
 
 
-class BaseTask(AFAASModel):
+class AbstractBaseTask(abc.ABC, AFAASModel):
     """
     Model representing a task.
 
@@ -44,7 +44,7 @@ class BaseTask(AFAASModel):
     ### GENERAL properties
     ###
     if TYPE_CHECKING:
-        from AFAAS.core.agents import BaseAgent
+        from AFAAS.interfaces.agent import BaseAgent
 
     agent: AbstractAgent = Field(exclude=True)
 
@@ -114,7 +114,7 @@ class BaseTask(AFAASModel):
         LOG.trace(f"{self.__class__.__name__}.__init__()")
         super().__init__(**data)
         if '_subtasks' in data and isinstance(data['_subtasks'], list):
-            from AFAAS.core.lib.task.stack import TaskStack
+            from AFAAS.interfaces.task.stack import TaskStack
             self._subtasks = TaskStack(parent_task = self, _task_ids = data['_subtasks'])
 
     def dict_memory(self, **kwargs) -> dict:
@@ -128,24 +128,24 @@ class BaseTask(AFAASModel):
                 field_type = field_info.outer_type_
 
                 # Direct check for BaseTask instances
-                if isinstance(field_value, BaseTask):
+                if isinstance(field_value, AbstractBaseTask):
                     d[field] = field_value.task_id
 
                 # Check for lists of BaseTask instances
                 if isinstance(field_value, list) and issubclass(
-                    get_args(field_type)[0], BaseTask
+                    get_args(field_type)[0], AbstractBaseTask
                 ):
                     # Replace the list of BaseTask instances with a list of their task_ids
                     d[field] = [v.task_id for v in field_value]
 
         return self._apply_custom_encoders(data=d)
 
-    def add_task(self, task: "BaseTask"):
+    def add_task(self, task: "AbstractBaseTask"):
         LOG.debug(f"Adding task {self.debug_formated_str()} to {task.debug_formated_str()}")
         self.subtasks.add(task=task)
         self.agent.plan._register_new_task(task=task)
 
-    def add_tasks(self, tasks: list["BaseTask"]):
+    def add_tasks(self, tasks: list["AbstractBaseTask"]):
         LOG.debug(f"Adding {len(tasks)} tasks to {self.debug_formated_str()}")
         for task in tasks:
             self.add_task(task=task)
@@ -218,7 +218,7 @@ class BaseTask(AFAASModel):
         )
 
         # 1. Set all task_predecessors_id to null if they reference the task to be removed
-        def clear_predecessors(task: BaseTask):
+        def clear_predecessors(task: AbstractBaseTask):
             if task_id in task.task_predecessors_id:
                 task.task_predecessors_id.remove(task_id)
             for subtask in task.subtasks.get_all_tasks_from_stack() or []:
@@ -226,7 +226,7 @@ class BaseTask(AFAASModel):
 
         # 2. Remove leaves with status "DONE" if ALL their siblings have this status
         def should_remove_siblings(
-            task: BaseTask, task_parent: Optional[BaseTask] = None
+            task: AbstractBaseTask, task_parent: Optional[AbstractBaseTask] = None
         ) -> bool:
             # If it's a leaf and has a parent
             if not task.subtasks and task_parent:
@@ -246,7 +246,7 @@ class BaseTask(AFAASModel):
             should_remove_siblings(task=task)
             clear_predecessors(task=task)
 
-    def find_ready_tasks(self) -> list[BaseTask]:
+    def find_ready_tasks(self) -> list[AbstractBaseTask]:
         """
         Get tasks that have status "READY", no subtasks, and no task_predecessors_id.
 
@@ -261,7 +261,7 @@ class BaseTask(AFAASModel):
         )
         ready_tasks = []
 
-        def check_task(task: BaseTask):
+        def check_task(task: AbstractBaseTask):
             if (
                 task.is_ready()
             ):
@@ -277,7 +277,7 @@ class BaseTask(AFAASModel):
 
         return ready_tasks
 
-    def find_first_ready_task(self) -> Optional[BaseTask]:
+    def find_first_ready_task(self) -> Optional[AbstractBaseTask]:
         """
         Get the first task that has status "READY", no subtasks, and no task_predecessors_id.
 
@@ -292,7 +292,7 @@ class BaseTask(AFAASModel):
             + "- Plan.get_next_task()\n"
         )
 
-        def check_task(task: BaseTask) -> Optional[BaseTask]:
+        def check_task(task: AbstractBaseTask) -> Optional[AbstractBaseTask]:
             if (
                 task.is_ready()
             ):
@@ -316,10 +316,10 @@ class BaseTask(AFAASModel):
         return None
         
 
-    def find_ready_branch(self) -> list[BaseTask]:
+    def find_ready_branch(self) -> list[AbstractBaseTask]:
         ready_tasks = []
 
-        def check_task(task: BaseTask, found_ready: bool) -> bool:
+        def check_task(task: AbstractBaseTask, found_ready: bool) -> bool:
             nonlocal ready_tasks
             if task.is_ready():
                 ready_tasks.append(task)
@@ -390,7 +390,7 @@ class BaseTask(AFAASModel):
     
 
     @staticmethod
-    def debug_info_parse_task(task: BaseTask) -> str:
+    def debug_info_parse_task(task: AbstractBaseTask) -> str:
         from .task import Task
 
         parsed_response = f"Task {task.debug_formated_str()} :\n"
@@ -449,4 +449,4 @@ class BaseTask(AFAASModel):
         return return_str
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.
-BaseTask.update_forward_refs()
+AbstractBaseTask.update_forward_refs()

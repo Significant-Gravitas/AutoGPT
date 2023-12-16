@@ -1,4 +1,4 @@
-from .base import BaseTask
+from .base import AbstractBaseTask
 
-class AbstractPlan(BaseTask):
+class AbstractPlan(AbstractBaseTask):
     pass

@@ -9,7 +9,7 @@ from pathlib import Path
 from pydantic import Field
 from typing import IO, Any, BinaryIO, Callable, Literal, Optional, TextIO, overload
 
-from AFAAS.core.configuration.schema import SystemConfiguration
+from AFAAS.interfaces.configuration.schema  import SystemConfiguration
 
 from AFAAS.interfaces.configuration import (Configurable,
                                                          SystemConfiguration,

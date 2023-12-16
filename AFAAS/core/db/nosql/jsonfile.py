@@ -64,7 +64,7 @@ class JSONFileMemory(NoSQLMemory):
         else:
             raise KeyError(f"No such key '{key}' in table {table_name}")
 
-    from  AFAAS.interfaces.db_table import AbstractTable 
+    from AFAAS.interfaces.db_table import AbstractTable 
     def list(self, 
              table_name: str,
              filter: AbstractTable.FilterDict = {},

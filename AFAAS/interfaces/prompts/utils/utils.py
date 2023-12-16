@@ -2,7 +2,7 @@ import ast
 import json
 import re
 
-from  AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
 

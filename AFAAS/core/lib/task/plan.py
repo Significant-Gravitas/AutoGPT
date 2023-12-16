@@ -8,18 +8,15 @@ from typing import TYPE_CHECKING, ClassVar
 from pydantic import Field
 
 # from AFAAS.core.memory import
-from ..sdk.logger import AFAASLogger
-from .base import BaseTask
-from .meta import TaskStatusList
-from .task import Task
+from AFAAS.interfaces.agent import AbstractAgent
+from AFAAS.interfaces.task.plan import AbstractPlan
+from AFAAS.interfaces.task.meta import TaskStatusList
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.core.lib.task.task import Task
 
 LOG = AFAASLogger(name=__name__)
 
-
-from AFAAS.interfaces.agent import AbstractAgent
-
-
-class Plan(BaseTask):
+class Plan(AbstractPlan):
     _instance: ClassVar[dict[Plan]] = {}
 
     # List & Dict for Lazy loading & lazy saving

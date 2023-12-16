@@ -4,7 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from AFAAS.core.configuration.schema import (
+from AFAAS.interfaces.configuration.schema  import (
     AFAASMessageType, AFAASModel)
 
 
