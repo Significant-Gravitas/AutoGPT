@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 import yaml
 from pydantic import Field, root_validator
 
-from AFAAS.core.agents.base import PromptManager
-from AFAAS.core.agents.base.models import (
+from AFAAS.interfaces.agent import PromptManager
+from AFAAS.interfaces.agent.models import (
     BaseAgentConfiguration, BaseAgentDirectives, BaseAgentSystems)
-from AFAAS.core.agents.base.loop import (  # Import only where it's needed
+from AFAAS.interfaces.agent.loop import (  # Import only where it's needed
     BaseLoop, BaseLoopHook)
 from AFAAS.core.configuration import (Configurable,
                                                          SystemSettings)

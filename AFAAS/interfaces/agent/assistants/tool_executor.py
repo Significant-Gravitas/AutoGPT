@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from AFAAS.core.agents.base.features.agentmixin import \
+from AFAAS.interfaces.agent.features.agentmixin import \
     AgentMixin
 
 

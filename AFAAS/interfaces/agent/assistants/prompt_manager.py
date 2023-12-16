@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import validator
 
-from AFAAS.core.agents.base.features.agentmixin import \
+from AFAAS.interfaces.agent.features.agentmixin import \
     AgentMixin
 
 if TYPE_CHECKING:
