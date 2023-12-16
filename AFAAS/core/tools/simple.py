@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 from AFAAS.interfaces.configuration import (Configurable,
                                                          SystemConfiguration)
 from AFAAS.interfaces.db import AbstractMemory
-from AFAAS.core.resource.model_providers import (
+from AFAAS.interfaces.adapters import (
     BaseChatModelProvider, CompletionModelFunction, ModelProviderName)
 from AFAAS.core.tools.base import (BaseToolsRegistry, BaseTool,
                                                       ToolConfiguration)

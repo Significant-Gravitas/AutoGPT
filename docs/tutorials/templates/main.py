@@ -12,7 +12,7 @@ from AFAAS.core.agents.usercontext.system import \
     MyCustomAgentSystemSettings  # Import system settings
 from AFAAS.core.memory import Memory
 from AFAAS.core.planning import SimplePlanner
-from AFAAS.core.resource.model_providers.openai import OpenAIProvider
+from AFAAS.core.adapters.openai import OpenAIProvider
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
 

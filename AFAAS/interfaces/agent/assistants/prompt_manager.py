@@ -20,10 +20,12 @@ from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy, BasePromptStrategy)
 from AFAAS.interfaces.prompts.schema import \
      PromptStrategyLanguageModelClassification
-from AFAAS.core.resource.model_providers import (
+from AFAAS.interfaces.adapters import (
     BaseChatModelProvider, ChatModelResponse, ModelProviderName,
-    OpenAIModelName)
+)
+from AFAAS.core.adapters.openai import OpenAIModelName
 from AFAAS.core.lib.sdk.logger import AFAASLogger
+
 
 LOG = AFAASLogger(name=__name__)
 

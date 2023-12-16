@@ -3,7 +3,7 @@ import enum
 # from pydantic import BaseModel, Field
 
 # from AFAAS.core.tools.schema import ToolResult
-# from AFAAS.core.resource.model_providers.chat_schema import (
+# from AFAAS.interfaces.adapters.chat_schema import (
 #     ChatMessage,
 #     ChatMessageDict,
 #     ChatModelResponse,

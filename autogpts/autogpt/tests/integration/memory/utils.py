@@ -3,7 +3,7 @@ import autogpt.memory.vector.providers.base as memory_provider_base
 import numpy
 import pytest
 from autogpt.config.config import Config
-from AFAAS.core.resource.model_providers import OPEN_AI_EMBEDDING_MODELS
+from AFAAS.interfaces.adapters import OPEN_AI_EMBEDDING_MODELS
 from autogpt.memory.vector import get_memory
 from autogpt.memory.vector.utils import Embedding
 from pytest_mock import MockerFixture

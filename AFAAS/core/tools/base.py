@@ -11,7 +11,7 @@ from AFAAS.interfaces.agent.assistants import LanguageModelConfiguration
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 from AFAAS.interfaces.configuration import SystemConfiguration
 from ..plugin.base import PluginLocation
-from ..resource.model_providers import CompletionModelFunction
+from AFAAS.interfaces.adapters import CompletionModelFunction
 from ..tools.schema import ToolResult
 from ..utils.json_schema import JSONSchema
 from .schema import ToolResult

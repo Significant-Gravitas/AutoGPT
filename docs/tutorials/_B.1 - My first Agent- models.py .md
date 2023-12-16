@@ -49,7 +49,7 @@ from AFAAS.interfaces.agent.models import (
 )
 from AFAAS.core.planning import PlannerSettings
 from AFAAS.core.plugin.simple import PluginLocation
-from AFAAS.core.resource.model_providers import OpenAISettings
+from AFAAS.interfaces.adapters import OpenAISettings
 
 ```
 

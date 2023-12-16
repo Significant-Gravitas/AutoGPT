@@ -4,7 +4,7 @@ import uuid
 from typing import Awaitable, Callable
 
 from AFAAS.interfaces.db import AbstractMemory
-from AFAAS.core.resource.model_providers import \
+from AFAAS.core.adapters.openai import \
     OpenAIProvider
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 

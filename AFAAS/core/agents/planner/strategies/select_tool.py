@@ -18,7 +18,7 @@ from AFAAS.interfaces.prompts.strategy import (
 from AFAAS.interfaces.prompts.strategy_planning import (
     PlanningPromptStrategiesConfiguration, PlanningPromptStrategy)
 from AFAAS.interfaces.prompts.utils import indent
-from AFAAS.core.resource.model_providers import (
+from AFAAS.interfaces.adapters import (
     AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
 
 

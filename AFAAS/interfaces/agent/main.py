@@ -41,7 +41,7 @@ class BaseAgent(Configurable, AbstractAgent):
         memory: AbstractMemory.SystemSettings = AbstractMemory.SystemSettings()
         #workspace: AbstractFileWorkspace.SystemSettings
 
-        from AFAAS.core.resource.model_providers.openai import \
+        from AFAAS.core.adapters.openai import \
             OpenAISettings
 
         chat_model_provider: OpenAISettings = OpenAISettings()

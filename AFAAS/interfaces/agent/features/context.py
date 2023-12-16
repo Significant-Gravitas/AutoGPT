@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 
     from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.core.resource.model_providers import ChatMessage, ChatPrompt
+from AFAAS.interfaces.adapters import ChatMessage, ChatPrompt
 
 
 class AgentContext:

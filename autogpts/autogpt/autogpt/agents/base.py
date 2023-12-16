@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from autogpt.config import Config
 <<<<<<< HEAD
     from AFAAS.interfaces.prompts.strategy import PromptStrategy
-    from AFAAS.core.resource.model_providers.schema import (
+    from AFAAS.interfaces.adapters.schema import (
 =======
     from autogpt.core.prompting.base import PromptStrategy
     from autogpt.core.resource.model_providers.schema import (
@@ -32,7 +32,7 @@ from AFAAS.interfaces.configuration import (Configurable, SystemConfiguration,
                                         SystemSettings, UserConfigurable)
 from AFAAS.interfaces.prompts.schema import (ChatMessage, ChatPrompt,
                                            CompletionModelFunction)
-from AFAAS.core.resource.model_providers.openai import (OPEN_AI_CHAT_MODELS,
+from AFAAS.core.adapters.openai import (OPEN_AI_CHAT_MODELS,
                                                           OpenAIModelName)
 from AFAAS.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.llm.providers.openai import get_openai_command_specs

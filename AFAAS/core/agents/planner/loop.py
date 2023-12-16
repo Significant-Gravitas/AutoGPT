@@ -16,7 +16,7 @@ from AFAAS.core.tools import ToolOutput
 
 if TYPE_CHECKING:
     from AFAAS.core.agents.planner import PlannerAgent
-    from AFAAS.core.resource.model_providers import (
+    from AFAAS.interfaces.adapters import (
         ChatModelResponse,
     )
 
@@ -254,7 +254,7 @@ class PlannerLoop(BaseLoop):
     ToolArgs = dict[str, str]
     AgentThoughts = dict[str, Any]
     ThoughtProcessOutput = tuple[ToolName, ToolArgs, AgentThoughts]
-    from AFAAS.core.resource.model_providers.chat_schema import (
+    from AFAAS.interfaces.adapters.chat_schema import (
         ChatMessage, ChatPrompt)
 
     async def select_tool(

@@ -9,7 +9,7 @@ from AFAAS.interfaces.prompts.strategy import (
     PromptStrategiesConfiguration)
 from AFAAS.interfaces.prompts.utils import (
     json_loads, to_numbered_list)
-from AFAAS.core.resource.model_providers import (
+from AFAAS.interfaces.adapters import (
     AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
 from AFAAS.core.utils.json_schema import JSONSchema
 

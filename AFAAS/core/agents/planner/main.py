@@ -7,7 +7,7 @@ from pydantic import Field
 
 from AFAAS.core.lib.task.plan import Plan
 from AFAAS.interfaces.db import AbstractMemory
-from AFAAS.core.resource.model_providers import (
+from AFAAS.core.adapters.openai import (
     OpenAIProvider, OpenAISettings)
 from AFAAS.core.tools import (TOOL_CATEGORIES,
                                                  SimpleToolRegistry)

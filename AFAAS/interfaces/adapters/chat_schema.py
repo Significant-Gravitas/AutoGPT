@@ -56,7 +56,7 @@ from typing import (Any, Callable, Dict, Generic, List, Literal, Optional,
 
 from pydantic import BaseModel, Field
 
-from AFAAS.core.resource.model_providers.schema import (
+from AFAAS.interfaces.adapters.schema import (
     AbstractLanguageModelProvider, BaseModelInfo, BaseModelResponse,
     ModelProviderService)
 from AFAAS.core.utils.json_schema import JSONSchema

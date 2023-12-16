@@ -13,7 +13,7 @@ from AFAAS.interfaces.agent.models import (
 
 class PlannerAgentSystems(BaseAgentSystems):
     tool_registry: str = "AFAAS.core.tools.SimpleToolRegistry"
-    chat_model_provider: str = "AFAAS.core.resource.model_providers.OpenAIProvider"
+    chat_model_provider: str = "AFAAS.core.adapters.openai.OpenAIProvider"
     prompt_manager: str = "AFAAS.interfaces.agent.PromptManager"
 
     class Config(BaseAgentSystems.Config):

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from AFAAS.core.lib.task.plan import Plan
     from AFAAS.core.db.table import AbstractTable
-    from AFAAS.core.resource.model_providers import \
+    from AFAAS.interfaces.adapters import \
         CompletionModelFunction , ChatModelResponse
     from AFAAS.core.tools.base import BaseToolsRegistry
     from AFAAS.core.tools.tools import Tool

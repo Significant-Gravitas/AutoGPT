@@ -9,7 +9,7 @@ from AFAAS.interfaces.configuration import (SystemConfiguration,
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.db import AbstractMemory
-    from AFAAS.core.resource.model_providers import (
+    from AFAAS.interfaces.adapters import (
         BaseChatModelProvider, EmbeddingModelProvider)
     from AFAAS.core.tools import BaseToolsRegistry, Tool
 

@@ -6,9 +6,9 @@ from typing import Iterator, Optional, TypeVar
 import spacy
 
 from AFAAS.core.lib.sdk.logger import AFAASLogger
-from AFAAS.core.resource.model_providers import (
+from AFAAS.interfaces.adapters import (
     BaseChatModelProvider, ChatMessage, ModelTokenizer)
-from AFAAS.core.resource.model_providers.chat_schema import \
+from AFAAS.interfaces.adapters.chat_schema import \
     ChatPrompt
 
 LOG = AFAASLogger(name=__name__)

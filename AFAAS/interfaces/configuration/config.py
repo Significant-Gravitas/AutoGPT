@@ -10,7 +10,7 @@ import autogpt
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from AFAAS.interfaces.configuration.schema  import Configurable, SystemSettings, UserConfigurable
-from AFAAS.core.resource.model_providers.openai.openai import OPEN_AI_CHAT_MODELS, OpenAICredentials
+from AFAAS.core.adapters.openai.openai import OPEN_AI_CHAT_MODELS, OpenAICredentials
 from autogpt.logs.config import LogFormatName, LoggingConfig
 from autogpt.plugins.plugins_config import PluginsConfig
 from autogpt.speech import TTSConfig
@@ -19,7 +19,7 @@ from pydantic import Field, validator
 
 from AFAAS.interfaces.configuration.schema  import (Configurable,
                                                                 SystemSettings)
-from AFAAS.core.resource.model_providers.openai import \
+from AFAAS.core.adapters.openai import \
     OPEN_AI_CHAT_MODELS
 
 PROJECT_ROOT = Path(autogpt.__file__).parent.parent

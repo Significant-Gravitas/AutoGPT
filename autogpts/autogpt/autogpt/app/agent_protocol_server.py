@@ -33,7 +33,7 @@ from autogpt.agent_manager import AgentManager
 from autogpt.commands.system import finish
 from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
-from AFAAS.core.resource.model_providers import ChatModelProvider
+from AFAAS.interfaces.adapters import ChatModelProvider
 from autogpt.file_workspace import (
     AbstractFileWorkspace,
     AbstractFileWorkspaceBackendName,

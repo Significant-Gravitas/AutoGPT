@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 <<<<<<< HEAD
 from AFAAS.interfaces.configuration import Configurable
 from AFAAS.interfaces.prompts import ChatPrompt
-from AFAAS.core.resource.model_providers import (BaseChatModelProvider,
+from AFAAS.interfaces.adapters import (BaseChatModelProvider,
                                                    ChatMessage,
                                                    ChatModelResponse)
 from autogpt.llm.api_manager import ApiManager

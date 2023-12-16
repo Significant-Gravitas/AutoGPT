@@ -16,7 +16,7 @@ from AFAAS.interfaces.prompts.schema import \
      PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.prompts.utils import \
     to_numbered_list
-from AFAAS.core.resource.model_providers import (
+from AFAAS.interfaces.adapters import (
     ChatMessage, CompletionModelFunction)
 
 from AFAAS.interfaces.prompts.strategy import (RESPONSE_SCHEMA, BasePromptStrategy,

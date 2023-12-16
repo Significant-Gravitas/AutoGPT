@@ -5,7 +5,7 @@ from AFAAS.core.ability.base import Ability, AbilityConfiguration
 from AFAAS.core.ability.schema import AbilityResult
 from AFAAS.core.planning.simple import LanguageModelConfiguration
 from AFAAS.core.plugin.simple import PluginLocation, PluginStorageFormat
-from AFAAS.core.resource.model_providers import (
+from AFAAS.interfaces.adapters import (
     ChatMessage,
     ChatModelProvider,
     ModelProviderName,

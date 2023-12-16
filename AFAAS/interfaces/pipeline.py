@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine
 from AFAAS.core.agents.routing.strategies import AutoCorrectionStrategy
 from AFAAS.core.lib.task import Task
-from AFAAS.core.resource.model_providers import ChatModelResponse
+from AFAAS.interfaces.adapters import ChatModelResponse
 from AFAAS.interfaces.job import JobInterface
 from AFAAS.interfaces.agent import BaseLoop, BaseAgent
 

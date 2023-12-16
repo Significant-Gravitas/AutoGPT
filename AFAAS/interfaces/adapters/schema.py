@@ -7,15 +7,14 @@ from typing import Callable, ClassVar, Protocol
 from pydantic import BaseModel, Field, SecretStr, validator
 
 from AFAAS.interfaces.configuration import SystemConfiguration, UserConfigurable
-from ..schema import (
+from AFAAS.interfaces.adapters.configuration import (
     Embedding,
     BaseProviderBudget, 
     BaseProviderCredentials, 
     BaseProviderSettings,
     BaseProviderUsage, 
-    ResourceType,
 )
-from ...utils.json_schema import JSONSchema
+from AFAAS.core.utils.json_schema import JSONSchema
 
 
 class ModelProviderService(str, enum.Enum):
@@ -111,7 +110,6 @@ class BaseModelProviderBudget(BaseProviderBudget):
 
 
 class BaseModelProviderSettings(BaseProviderSettings):
-    resource_type: ResourceType = ResourceType.MODEL
     configuration: BaseModelProviderConfiguration
     credentials: BaseModelProviderCredentials
     budget: BaseModelProviderBudget

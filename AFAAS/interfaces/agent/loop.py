@@ -11,7 +11,7 @@ from AFAAS.interfaces.prompts.strategy import BasePromptStrategy
 from .features.agentmixin import AgentMixin
 
 if TYPE_CHECKING:
-    from AFAAS.core.resource.model_providers.chat_schema import \
+    from AFAAS.interfaces.adapters.chat_schema import \
         ChatModelResponse
 
     from . import BaseAgent
