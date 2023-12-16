@@ -142,6 +142,7 @@ class AbstractMemory(Configurable, abc.ABC):
             config = {"memory_adapter": "json_file", "json_file_path": "~/auto-gpt/data/"}
             memory = Memory.get_adapter(config)
         """
+        #FIXME: Move to a dependancy ingestion patern
         adapter_type = memory_settings.configuration.memory_adapter
         config_key = base64.b64encode(
             json.dumps(memory_settings.configuration.dict()).encode()
@@ -200,7 +201,7 @@ class AbstractMemory(Configurable, abc.ABC):
             messages_table = memory.get_table("messages_history")
             users_table = memory.get_table("users")
         """
-
+        #FIXME: Move to a dependancy ingestion patern
         if self.__class__ == AbstractMemory:
             raise TypeError(
                 "get_table method cannot be called on Memory class directly"

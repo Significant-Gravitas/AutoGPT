@@ -453,9 +453,9 @@ class BaseAgent(Configurable, AbstractAgent):
     ) -> uuid.UUID:
         # TODO : Remove the user_id argument
         # NOTE : Monkey Patching
-        BaseAgent.SystemSettings.Config.extra = "allow"
-        BaseAgentSystems.Config.extra = "allow"
-        BaseAgentConfiguration.Config.extra = "allow"
+        # BaseAgent.SystemSettings.Config.extra = "allow"
+        # # BaseAgentSystems.Config.extra = "allow"
+        # BaseAgentConfiguration.Config.extra = "allow"
 
         from AFAAS.interfaces.db import AbstractMemory
 
@@ -502,8 +502,8 @@ class BaseAgent(Configurable, AbstractAgent):
         """
         LOG.trace(f"Entering : {cls.__name__}.list_users_agents_from_memory()")
         from AFAAS.interfaces.db import AbstractMemory
-        from AFAAS.core.db.table import (AbstractTable,
-                                                                AgentsTable)
+        from AFAAS.interfaces.db_table import AbstractTable
+        from AFAAS.core.db.table import AgentsTable
 
         memory_settings = AbstractMemory.SystemSettings()
 

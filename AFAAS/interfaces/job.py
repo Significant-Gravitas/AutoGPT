@@ -1,4 +1,4 @@
-from AFAAS.core.lib.task import Task
+from __future__ import annotations
 from AFAAS.interfaces.prompts import BasePromptStrategy
 
 

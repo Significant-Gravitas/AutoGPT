@@ -14,7 +14,7 @@ from AFAAS.interfaces.configuration import SystemConfiguration
 from AFAAS.interfaces.prompts.schema import \
      PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.prompts.utils.utils import json_loads
-from AFAAS.core.resource.model_providers import (
+from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider, AssistantChatMessageDict, ChatModelResponse,
     ChatPrompt, CompletionModelFunction)
 from AFAAS.core.lib.sdk.logger import AFAASLogger
