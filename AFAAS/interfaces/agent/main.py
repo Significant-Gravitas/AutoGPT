@@ -17,7 +17,7 @@ from AFAAS.interfaces.agent.loop import (  # Import only where it's needed
     BaseLoop, BaseLoopHook)
 from AFAAS.core.configuration import (Configurable,
                                                          SystemSettings)
-from AFAAS.core.memory.base import AbstractMemory
+from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.workspace.simple import LocalFileWorkspace
 
 from .abstract import AbstractAgent
@@ -453,7 +453,7 @@ class BaseAgent(Configurable, AbstractAgent):
         BaseAgentSystems.Config.extra = "allow"
         BaseAgentConfiguration.Config.extra = "allow"
 
-        from AFAAS.core.memory.base import AbstractMemory
+        from AFAAS.interfaces.db import AbstractMemory
 
         memory_settings = agent_settings.memory
 
@@ -496,8 +496,8 @@ class BaseAgent(Configurable, AbstractAgent):
             print(agent_settings_list)
         """
         LOG.trace(f"Entering : {cls.__name__}.list_users_agents_from_memory()")
-        from AFAAS.core.memory.base import AbstractMemory
-        from AFAAS.core.memory.table import (AbstractTable,
+        from AFAAS.interfaces.db import AbstractMemory
+        from AFAAS.core.db.table import (AbstractTable,
                                                                 AgentsTable)
 
         memory_settings = AbstractMemory.SystemSettings()
@@ -539,8 +539,8 @@ class BaseAgent(Configurable, AbstractAgent):
         agent_id: uuid.UUID,
         user_id: uuid.UUID,
     ) -> BaseAgent:
-        from AFAAS.core.memory.base import AbstractMemory
-        from AFAAS.core.memory.table import AgentsTable
+        from AFAAS.interfaces.db import AbstractMemory
+        from AFAAS.core.db.table import AgentsTable
 
         # memory_settings = Memory.SystemSettings(configuration=agent_settings.memory)
         memory_settings = agent_settings.memory

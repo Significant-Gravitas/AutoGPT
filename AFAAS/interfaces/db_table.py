@@ -7,7 +7,7 @@ from typing import (TYPE_CHECKING, Any, Callable, Literal, Optional, TypedDict,
                     Union)
 
 if TYPE_CHECKING:
-    from AFAAS.core.memory.base import AbstractMemory
+    from AFAAS.interfaces.db import AbstractMemory
 
 
 class AbstractTable(abc.ABC):

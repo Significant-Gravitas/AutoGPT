@@ -3,7 +3,7 @@ import logging
 import uuid
 from typing import Awaitable, Callable
 
-from AFAAS.core.agents.base import BaseAgent, Configurable
+from AFAAS.interfaces.agent import BaseAgent, Configurable
 from AFAAS.core.agents.usercontext.configuration import \
     MyCustomAgentConfiguration  # Import configuration
 from AFAAS.core.agents.usercontext.loop import \

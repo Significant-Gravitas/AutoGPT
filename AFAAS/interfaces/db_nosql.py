@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from AFAAS.core.memory.base import AbstractMemory
+from AFAAS.interfaces.db import AbstractMemory
 
 if TYPE_CHECKING:
-    from AFAAS.core.memory.table.base import AbstractTable
+    from AFAAS.interfaces.db_table import AbstractTable
 
 
 class NoSQLMemory(AbstractMemory):

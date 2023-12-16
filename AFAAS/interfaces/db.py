@@ -16,7 +16,7 @@ from AFAAS.core.configuration import (Configurable,
                                                          SystemSettings)
 
 if TYPE_CHECKING:
-    from AFAAS.core.memory.table.base import AbstractTable
+    from AFAAS.interfaces.db_table import AbstractTable
 
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name=__name__)
@@ -207,43 +207,43 @@ class AbstractMemory(Configurable, abc.ABC):
             )
 
         if table_name == "agents":
-            from AFAAS.core.memory.table import AgentsTable
+            from AFAAS.core.db.table import AgentsTable
 
             returnvalue = AgentsTable(memory=self)
             return returnvalue
 
         if table_name == "tasks":
-            from AFAAS.core.memory.table import TasksTable
+            from AFAAS.core.db.table import TasksTable
 
             returnvalue = TasksTable(memory=self)
             return returnvalue
 
         elif table_name == "plans":
-            from AFAAS.core.memory.table import PlansTable
+            from AFAAS.core.db.table import PlansTable
 
             returnvalue = PlansTable(memory=self)
             return returnvalue
 
         elif table_name == "message_agent_agent":
-            from AFAAS.core.memory.table import \
+            from AFAAS.core.db.table import \
                 MessagesAgentAgentTable
 
             return MessagesAgentAgentTable(memory=self)
 
         elif table_name == "message_agent_llm":
-            from AFAAS.core.memory.table import \
+            from AFAAS.core.db.table import \
                 MessagesAgentLLMTable
 
             return MessagesAgentLLMTable(memory=self)
 
         elif table_name == "message_user_agent":
-            from AFAAS.core.memory.table import \
+            from AFAAS.core.db.table import \
                 MessagesUserAgentTable
 
             return MessagesUserAgentTable(memory=self)
 
         elif table_name == "users_informations":
-            from AFAAS.core.memory.table import \
+            from AFAAS.core.db.table import \
                 UsersInformationsTable
 
             return UsersInformationsTable(memory=self)

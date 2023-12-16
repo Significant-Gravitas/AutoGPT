@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Optional
 
 from pydantic import Field
 
-from AFAAS.core.agents.base.models import (
+from AFAAS.interfaces.agent.models import (
     BaseAgentConfiguration,
     BaseAgentSettings,
     BaseAgentSystems,
