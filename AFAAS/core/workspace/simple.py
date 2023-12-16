@@ -12,7 +12,7 @@ from AFAAS.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
 
-from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
+from AFAAS.interfaces.workspace import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 
 if TYPE_CHECKING:
     # Cyclic import
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 class AbstractFileWorkspaceConfiguration(SystemConfiguration):
     root: str = ""
-    parent: str = UserConfigurable(default="~/auto-gpt/agents")
+    app_workspace: str = UserConfigurable(default="~/auto-gpt/agents")
     restrict_to_root: bool = UserConfigurable(default=True)
 
 
@@ -69,7 +69,7 @@ class LocalFileWorkspace(AbstractFileWorkspace):
         """Whether to restrict generated paths to the root."""
         return self._restrict_to_root
 
-    def initialize(self) -> None:
+    def _initialize(self) -> None:
         self.root.mkdir(exist_ok=True, parents=True)
 
     def open_file(self, path: str | Path, mode: str = "r"):
@@ -113,20 +113,20 @@ class LocalFileWorkspace(AbstractFileWorkspace):
         settings : LocalFileWorkspace.SystemSettings,
         
     ) -> Path:
-        workspace_parent = cls.SystemSettings().configuration.parent
-        workspace_parent = Path(workspace_parent).expanduser().resolve()
-        workspace_parent.mkdir(parents=True, exist_ok=True)
+        workspace_root = cls.SystemSettings().configuration.app_workspace
+        workspace_root = Path(workspace_root).expanduser().resolve()
+        workspace_root.mkdir(parents=True, exist_ok=True)
 
         # user_id = settings.user_id
         # agent_id = settings.agent_id
-        workspace_root = workspace_parent / str(user_id) / str(agent_id)
-        workspace_root.mkdir(parents=True, exist_ok=True)
+        agent_root = workspace_root / str(user_id) / str(agent_id)
+        agent_root.mkdir(parents=True, exist_ok=True)
 
-        cls.SystemSettings().configuration.root = str(workspace_root)
+        cls.SystemSettings().configuration.root = str(agent_root)
 
-        log_path = workspace_root / "logs"
+        log_path = agent_root / "logs"
         log_path.mkdir(parents=True, exist_ok=True)
         (log_path / "debug.log").touch()
         (log_path / "cycle.log").touch()
 
-        return workspace_root
+        return agent_root

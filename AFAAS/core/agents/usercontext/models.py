@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from AFAAS.core.agents.base.models import (
+from AFAAS.interfaces.agent.models import (
     BaseAgentConfiguration, BaseAgentSystems)
 
 if TYPE_CHECKING:
@@ -13,7 +13,7 @@ class UserContextAgentSystems(BaseAgentSystems):
 
     ability_registry : str  ="AFAAS.core.ability.SimpleToolRegistry"
     chat_model_provider : str  = "AFAAS.core.resource.model_providers.OpenAIProvider"
-    prompt_manager : str ="AFAAS.core.agents.base.PromptManager"
+    prompt_manager : str ="AFAAS.interfaces.agent.PromptManager"
     
     class Config(BaseAgentSystems.Config):
         pass

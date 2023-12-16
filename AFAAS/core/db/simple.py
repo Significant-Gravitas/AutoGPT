@@ -2,8 +2,8 @@
 # 
 
 # from AFAAS.core.configuration import Configurable, SystemConfiguration, SystemSettings
-# from AFAAS.core.memory.base import Memory
-# from AFAAS.core.workspace import Workspace
+# from AFAAS.interfaces.db import Memory
+# from AFAAS.interfaces.workspace import Workspace
 
 
 # class MemoryConfiguration(SystemConfiguration):

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Awaitable, Callable
 
-from ..base import BaseLoop
+from AFAAS.interfaces.agent import BaseLoop
 
 if TYPE_CHECKING:
-    from ..base import BaseAgent
+    from AFAAS.interfaces.agent import BaseAgent
     from AFAAS.core.resource.model_providers import ChatModelResponse
 
 from .strategies import RefineUserContextFunctionNames

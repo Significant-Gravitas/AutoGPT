@@ -5,32 +5,36 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
-from typing import IO
+from typing import IO , Optional
 
-from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
-
+from AFAAS.interfaces.workspace import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 LOG =  AFAASLogger(name=__name__)
 
+class AGPTLocalFileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
+    pass
 
 class AGPTLocalFileWorkspace(AbstractFileWorkspace):
     """A class that represents a file workspace."""
 
-    def __init__(self, config: AbstractFileWorkspaceConfiguration):
-        self._root = self._sanitize_path(config.root)
-        self._restrict_to_root = config.restrict_to_root
-        super().__init__()
+    class SystemSettings(AbstractFileWorkspace.SystemSettings):
+        configuration : AGPTLocalFileWorkspaceConfiguration = AGPTLocalFileWorkspaceConfiguration()
+
+    def __init__(self, config: AGPTLocalFileWorkspace = AGPTLocalFileWorkspaceConfiguration()):
+        super().__init__(config = config)
+        self._restrict_to_agent_workspace = config.restrict_to_agent_workspace
 
     @property
     def root(self) -> Path:
         """The root directory of the file workspace."""
-        return self._root
+        return self._agent_workspace
 
     @property
     def restrict_to_root(self) -> bool:
         """Whether to restrict generated paths to the root."""
-        return self._restrict_to_root
+        return self._restrict_to_agent_workspace
 
-    def initialize(self) -> None:
+    def _initialize(self) -> None:
         self.root.mkdir(exist_ok=True, parents=True)
 
     def open_file(self, path: str | Path, binary: bool = False) -> IO:
@@ -68,3 +72,11 @@ class AGPTLocalFileWorkspace(AbstractFileWorkspace):
         """Delete a file in the workspace."""
         full_path = self.get_path(path)
         full_path.unlink()
+
+    @staticmethod
+    def _sanitize_path(
+        relative_path: str | Path,
+        agent_workspace_path: Optional[str | Path] = None,
+        restrict_to_root: bool = True,
+    ) -> Path: 
+        super()._sanitize_path(relative_path = relative_path, agent_workspace_path = agent_workspace_path, restrict_to_root = restrict_to_root)

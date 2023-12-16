@@ -7,14 +7,14 @@ from pydantic import Field
 if TYPE_CHECKING:
     pass
 
-from AFAAS.core.agents.base.models import (
+from AFAAS.interfaces.agent.models import (
     BaseAgentConfiguration, BaseAgentSystems)
 
 
 class PlannerAgentSystems(BaseAgentSystems):
     tool_registry: str = "AFAAS.core.tools.SimpleToolRegistry"
     chat_model_provider: str = "AFAAS.core.resource.model_providers.OpenAIProvider"
-    prompt_manager: str = "AFAAS.core.agents.base.PromptManager"
+    prompt_manager: str = "AFAAS.interfaces.agent.PromptManager"
 
     class Config(BaseAgentSystems.Config):
         pass

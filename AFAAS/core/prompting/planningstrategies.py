@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Optional, Union
 if TYPE_CHECKING:
     from AFAAS.core.agents.planner.main import PlannerAgent
 
-    from AFAAS.core.agents.base.main import BaseAgent
+    from AFAAS.interfaces.agent.main import BaseAgent
 
 from AFAAS.core.lib.sdk import AFAASLogger
 from AFAAS.core.lib.task.plan import Plan
@@ -202,7 +202,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
         #     plugin.post_prompt(self)
 
         # Construct full prompt
-        from autogpt.AFAAS.core.agents.base.assistants.prompt_manager import \
+        from autogpt.AFAAS.interfaces.agent.assistants.prompt_manager import \
             get_os_info
 
         full_prompt_parts: list[str] = (

@@ -15,8 +15,8 @@ from typing import Iterator, Literal
 
 from AFAAS.app.lib.task.task import Task
 from AFAAS.core.lib.sdk import logger
-from AFAAS.core.agents.base import BaseAgent
-from AFAAS.core.memory.base import AbstractMemory
+from AFAAS.interfaces.agent import BaseAgent
+from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.tools.command_decorator import tool
 from AFAAS.core.lib.sdk.errors import \
     DuplicateOperationError

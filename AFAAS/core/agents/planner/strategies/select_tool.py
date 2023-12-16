@@ -4,7 +4,7 @@ import enum
 
 from typing import TYPE_CHECKING, Callable, Optional
 
-from AFAAS.core.agents.base.agent_directives import \
+from AFAAS.interfaces.agent.agent_directives import \
     BaseAgentDirectives
 
 if TYPE_CHECKING:

@@ -1,2 +1,2 @@
-from AFAAS.core.memory.nosql import (cosmodb, dynamodb,
-                                                        jsonfile, mongodb)
+# from AFAAS.core.db.nosql import (cosmodb, dynamodb,
+#                                                         jsonfile, mongodb)

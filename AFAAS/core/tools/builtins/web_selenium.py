@@ -19,7 +19,7 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.safari.options import Options as SafariOptions
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents.base import BaseAgent
+    from AFAAS.interfaces.agent import BaseAgent
 
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.tools.command_decorator import tool

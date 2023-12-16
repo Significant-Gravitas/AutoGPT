@@ -14,7 +14,7 @@ from google.cloud.exceptions import NotFound
 
 from AFAAS.core.configuration.schema import UserConfigurable
 
-from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
+from AFAAS.interfaces.workspace import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 
 LOG =  AFAASLogger(name=__name__)
@@ -34,24 +34,23 @@ class GCSFileWorkspace_AlphaRealease(AbstractFileWorkspace):
     _bucket: storage.Bucket
 
     def __init__(self, config: GCSFileWorkspaceConfiguration):
+        super().__init__(config = config)
         self._bucket_name = config.bucket
-        self._root = config.root
-        assert self._root.is_absolute()
+        assert self._agent_workspace.is_absolute()
 
         self._gcs = storage.Client()
-        super().__init__()
 
     @property
     def root(self) -> Path:
         """The root directory of the file workspace."""
-        return self._root
+        return self._agent_workspace
 
     @property
     def restrict_to_root(self) -> bool:
         """Whether to restrict generated paths to the root."""
         return True
 
-    def initialize(self) -> None:
+    def _initialize(self) -> None:
         LOG.debug(f"Initializing {repr(self)}...")
         try:
             self._bucket = self._gcs.get_bucket(self._bucket_name)
@@ -110,4 +109,4 @@ class GCSFileWorkspace_AlphaRealease(AbstractFileWorkspace):
         blob.delete()
 
     def __repr__(self) -> str:
-        return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self._root})"
+        return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self._agent_workspace})"

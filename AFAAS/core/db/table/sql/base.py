@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from ..base import AbstractTable
+from AFAAS.interfaces.db_table import AbstractTable
 
 
 class BaseSQLTable(AbstractTable):

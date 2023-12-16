@@ -2,7 +2,7 @@ import enum
 from pathlib import Path
 from typing import Optional
 
-from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
+from AFAAS.interfaces.workspace import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 from .simple import LocalFileWorkspace
 
 
@@ -13,11 +13,13 @@ class FileWorkspaceBackendName(str, enum.Enum):
 
 
 def get_workspace(
-    backend: FileWorkspaceBackendName, *, id: str = "", root_path: Optional[Path] = None
-) -> AbstractFileWorkspace:
-    assert bool(root_path) != bool(id), "Specify root_path or id to get workspace"
-    if root_path is None:
-                root_path = Path(f"/workspaces/{id}")
+    backend: FileWorkspaceBackendName
+    , *
+    , user_id: str
+    , agent_id : str
+    #, root_path: Optional[Path] = None
+    )  -> AbstractFileWorkspace :
+    root_path = Path(f"/workspaces/{user_id}/{agent_id}")
 
     match backend:
         case FileWorkspaceBackendName.LOCAL:
@@ -33,7 +35,7 @@ def get_workspace(
             raise ValueError(f"Unknown workspace backend {backend}")
         
     config : AbstractFileWorkspaceConfiguration =  workspace_class.SystemSettings.configuration.from_env()
-    config.root = root_path
+    config.agent_workspace = root_path
     return workspace_class(config)
 
 __all__ = [

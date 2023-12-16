@@ -7,8 +7,8 @@ from typing import Any, ClassVar
 import inflection
 from pydantic import Field
 
-from ..agents.base.assistants import LanguageModelConfiguration
-from ..agents.base.features.agentmixin import AgentMixin
+from AFAAS.interfaces.agent.assistants import LanguageModelConfiguration
+from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 from ..configuration import SystemConfiguration
 from ..plugin.base import PluginLocation
 from ..resource.model_providers import CompletionModelFunction

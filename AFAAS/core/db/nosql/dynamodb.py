@@ -7,9 +7,9 @@ import boto3
 from botocore.exceptions import NoCredentialsError
 
 if TYPE_CHECKING:
-    from AFAAS.core.memory.base import AbstractMemory
+    from AFAAS.interfaces.db import AbstractMemory
 
-from AFAAS.core.memory.nosqlmemory import NoSQLMemory
+from AFAAS.interfaces.db_nosql import NoSQLMemory
 
 
 class DynamoDBMemory(NoSQLMemory):

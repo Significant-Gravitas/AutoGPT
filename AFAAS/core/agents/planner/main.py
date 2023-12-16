@@ -6,13 +6,13 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 from pydantic import Field
 
 from AFAAS.core.lib.task.plan import Plan
-from AFAAS.core.memory.base import AbstractMemory
+from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.resource.model_providers import (
     OpenAIProvider, OpenAISettings)
 from AFAAS.core.tools import (TOOL_CATEGORIES,
                                                  SimpleToolRegistry)
 
-from ..base import BaseAgent, BaseLoopHook, PromptManager, ToolExecutor
+from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, PromptManager, ToolExecutor
 from .loop import PlannerLoop
 from .models import PlannerAgentConfiguration  # PlannerAgentSystemSettings,
 from .models import PlannerAgentSystems
@@ -20,7 +20,7 @@ from AFAAS.core.lib.sdk.logger import AFAASLogger
 LOG =  AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
-    from AFAAS.core.workspace.simple import LocalFileWorkspace
+    from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
 
 class PlannerAgent(BaseAgent):
@@ -58,12 +58,12 @@ class PlannerAgent(BaseAgent):
 
     def __init__(
         self,
+        user_id: uuid.UUID,
         settings: PlannerAgent.SystemSettings,
         memory: AbstractMemory,
         chat_model_provider: OpenAIProvider,
-        workspace: LocalFileWorkspace,
         prompt_manager: PromptManager,
-        user_id: uuid.UUID,
+        workspace: AbstractFileWorkspace, # = AGPTLocalFileWorkspace.SystemSettings(),
         agent_id: uuid.UUID = None,
         **kwargs,
     ):
@@ -205,10 +205,10 @@ class PlannerAgent(BaseAgent):
         cls,
         agent_settings: PlannerAgent.SystemSettings,
     ):
-        from AFAAS.core.workspace import FileWorkspaceBackendName, get_workspace
-        from AFAAS.core.workspace.simple import LocalFileWorkspace
+        #from AFAAS.interfaces.workspace import FileWorkspaceBackendName, get_workspace
+        from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
-        return LocalFileWorkspace.create_workspace(
+        return agent_settings.workspace.__class__.create_workspace(
             user_id=agent_settings.user_id,
             agent_id=agent_settings.agent_id,
             settings=agent_settings

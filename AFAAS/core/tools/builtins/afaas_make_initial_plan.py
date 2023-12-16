@@ -10,7 +10,7 @@ TOOL_CATEGORY_TITLE = "Framework"
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents.base import BaseAgent
+    from AFAAS.interfaces.agent import BaseAgent
 
 from AFAAS.core.lib.task.plan import Plan
 from AFAAS.core.lib.task.task import Task

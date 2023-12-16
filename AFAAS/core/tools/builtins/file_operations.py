@@ -8,10 +8,13 @@ import os.path
 from pathlib import Path
 from typing import Iterator, Literal
 
+TOOL_CATEGORY = "file_operations"
+TOOL_CATEGORY_TITLE = "File Operations"
+
 from AFAAS.core.lib.task.task import Task
 from AFAAS.core.lib.sdk.logger import AFAASLogger
-from AFAAS.core.agents.base import BaseAgent
-from AFAAS.core.memory.base import AbstractMemory
+from AFAAS.interfaces.agent import BaseAgent
+from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.tools.command_decorator import tool
 from AFAAS.core.lib.sdk.errors import \
     DuplicateOperationError

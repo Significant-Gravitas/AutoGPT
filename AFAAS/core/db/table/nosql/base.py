@@ -12,7 +12,7 @@ from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.configuration import (AFAASModel,
                                                          SystemSettings)
 
-from ..base import AbstractTable
+from AFAAS.interfaces.db_table import AbstractTable
 
 LOG = AFAASLogger(name=__name__)
 

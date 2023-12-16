@@ -3,12 +3,12 @@ from __future__ import annotations
 import uuid
 from typing import Awaitable, Callable
 
-from AFAAS.core.memory.base import AbstractMemory
+from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.resource.model_providers import \
     OpenAIProvider
-from AFAAS.core.workspace.simple import LocalFileWorkspace
+from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
-from ..base import BaseAgent, BaseLoopHook, PromptManager
+from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, PromptManager
 from .loop import UserContextLoop
 from .models import UserContextAgentConfiguration, UserContextAgentSystems
 from AFAAS.core.lib.sdk.logger import AFAASLogger
@@ -39,9 +39,9 @@ class UserContextAgent(BaseAgent):
         settings: UserContextAgent.SystemSettings,
         memory: AbstractMemory,
         chat_model_provider: OpenAIProvider,
-        workspace: LocalFileWorkspace,
         prompt_manager: PromptManager,
         user_id: uuid.UUID,
+        workspace: AbstractFileWorkspace, # = AGPTLocalFileWorkspace.SystemSettings(),
         agent_id: uuid.UUID = None,
         **kwargs
     ):

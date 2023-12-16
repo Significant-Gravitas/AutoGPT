@@ -11,11 +11,11 @@ from AFAAS.core.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents.base import BaseAgent
+    from AFAAS.interfaces.agent import BaseAgent
 
 from AFAAS.core.configuration import (Configurable,
                                                          SystemConfiguration)
-from AFAAS.core.memory.base import AbstractMemory
+from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.resource.model_providers import (
     BaseChatModelProvider, CompletionModelFunction, ModelProviderName)
 from AFAAS.core.tools.base import (BaseToolsRegistry, BaseTool,
@@ -24,7 +24,7 @@ from AFAAS.core.tools.command_decorator import \
     AUTO_GPT_TOOL_IDENTIFIER
 # from AFAAS.core.tools.builtins import BUILTIN_TOOLS
 from AFAAS.core.tools.schema import ToolResult
-from AFAAS.core.workspace.base import AbstractFileWorkspace
+from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
 
 class ToolsRegistryConfiguration(SystemConfiguration):

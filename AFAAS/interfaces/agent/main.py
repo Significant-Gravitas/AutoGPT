@@ -18,7 +18,7 @@ from AFAAS.interfaces.agent.loop import (  # Import only where it's needed
 from AFAAS.core.configuration import (Configurable,
                                                          SystemSettings)
 from AFAAS.interfaces.db import AbstractMemory
-from AFAAS.core.workspace.simple import LocalFileWorkspace
+from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
 from .abstract import AbstractAgent
 from AFAAS.core.lib.sdk.logger import AFAASLogger
@@ -39,7 +39,8 @@ class BaseAgent(Configurable, AbstractAgent):
         agent_setting_class: Optional[str]
 
         memory: AbstractMemory.SystemSettings = AbstractMemory.SystemSettings()
-        workspace: LocalFileWorkspace.SystemSettings = LocalFileWorkspace.SystemSettings()
+        #workspace: AbstractFileWorkspace.SystemSettings
+
         from AFAAS.core.resource.model_providers.openai import \
             OpenAISettings
 
@@ -108,7 +109,7 @@ class BaseAgent(Configurable, AbstractAgent):
         self,
         settings: BaseAgent.SystemSettings,
         memory: AbstractMemory,
-        workspace: LocalFileWorkspace,
+        workspace: AbstractFileWorkspace,
         prompt_manager: PromptManager,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
@@ -262,6 +263,7 @@ class BaseAgent(Configurable, AbstractAgent):
     def get_instance_from_settings(
         cls,
         agent_settings: BaseAgent.SystemSettings,
+        workspace: AbstractFileWorkspace,
     ) -> BaseAgent:
         """
         Retrieve an agent instance based on the provided settings and LOG.
@@ -308,7 +310,7 @@ class BaseAgent(Configurable, AbstractAgent):
                     existing_systems=system_dict,
                 )
 
-        agent = agent_class(**system_dict)
+        agent = agent_class(**system_dict , workspace=workspace)
 
         for key, value in items:
             if key not in agent_class.SystemSettings.Config.default_exclude:
@@ -390,7 +392,8 @@ class BaseAgent(Configurable, AbstractAgent):
     @classmethod
     def create_agent(
         cls,
-        agent_settings: BaseAgent.SystemSettings
+        agent_settings: BaseAgent.SystemSettings,
+        workspace: AbstractFileWorkspace,
     ) -> AbstractAgent:
         """
         Create and return a new agent based on the provided settings and LOG.
@@ -427,6 +430,7 @@ class BaseAgent(Configurable, AbstractAgent):
 
         agent = cls.get_instance_from_settings(
             agent_settings=agent_settings,
+            workspace=workspace
         )
 
         return agent
@@ -476,9 +480,10 @@ class BaseAgent(Configurable, AbstractAgent):
     def list_users_agents_from_memory(
         cls,
         user_id: uuid.UUID,
+        #workspace: AbstractFileWorkspace,
         page: int = 1,
         page_size: int = 10,
-    ) -> list[BaseAgent.SystemSettings]:
+    )  -> list[dict] : #-> list[BaseAgent.SystemSettings]:   
         """
         Fetch a list of agent settings from memory based on the user ID.
 
@@ -524,10 +529,12 @@ class BaseAgent(Configurable, AbstractAgent):
         )
 
         agent_list: list[dict] = agent_table.list(filter=filter)
+        return agent_list
         agent_settings_list: list[cls.SystemSettings] = []
 
         # TODO : Move to Table
         for agent in agent_list:
+            agent["workspace"] = workspace
             agent_settings_list.append(cls.SystemSettings(**agent))
 
         return agent_settings_list

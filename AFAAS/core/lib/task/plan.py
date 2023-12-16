@@ -59,8 +59,8 @@ class Plan(BaseTask):
         self.agent.plan: Plan = self
 
         # Load the tasks from the database
-        from AFAAS.core.memory.base import AbstractMemory
-        from AFAAS.core.memory.table import AbstractTable
+        from AFAAS.interfaces.db import AbstractMemory
+        from AFAAS.core.db.table import AbstractTable
         agent: AbstractAgent = kwargs["agent"]
         memory : AbstractMemory = agent._memory
         task_table : AbstractTable = memory.get_table("tasks")
@@ -458,7 +458,7 @@ class Plan(BaseTask):
         """
         Get a plan from the database
         """
-        from AFAAS.core.memory.base import AbstractMemory
+        from AFAAS.interfaces.db import AbstractMemory
         memory : AbstractMemory = agent._memory
         plan_table = memory.get_table("plans")
         plan_dict = plan_table.get(plan_id = plan_id, agent_id = agent.agent_id)

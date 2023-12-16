@@ -17,11 +17,11 @@ from pydantic import SecretStr
 
 from AFAAS.core.configuration.schema import UserConfigurable
 
-from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
+from AFAAS.interfaces.workspace import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 
 if TYPE_CHECKING:
     import mypy_boto3_s3
-
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 LOG =  AFAASLogger(name=__name__)
 
 
@@ -41,9 +41,9 @@ class S3FileWorkspace_AlphaRelease(AbstractFileWorkspace):
     _bucket: mypy_boto3_s3.service_resource.Bucket
 
     def __init__(self, config: S3FileWorkspaceConfiguration):
+        super().__init__(config = config)
         self._bucket_name = config.bucket
-        self._root = config.root
-        assert self._root.is_absolute()
+        assert self._agent_workspace.is_absolute()
 
         # https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html
         self._s3 = boto3.resource(
@@ -53,27 +53,25 @@ class S3FileWorkspace_AlphaRelease(AbstractFileWorkspace):
             else None,
         )
 
-        super().__init__()
-
     @property
     def root(self) -> Path:
         """The root directory of the file workspace."""
-        return self._root
+        return self._agent_workspace
 
     @property
     def restrict_to_root(self):
         """Whether to restrict generated paths to the root."""
         return True
 
-    def initialize(self) -> None:
-        logger.debug(f"Initializing {repr(self)}...")
+    def _initialize(self) -> None:
+        LOG.debug(f"Initializing {repr(self)}...")
         try:
             self._s3.meta.client.head_bucket(Bucket=self._bucket_name)
             self._bucket = self._s3.Bucket(self._bucket_name)
         except botocore.exceptions.ClientError as e:
             if "(404)" not in str(e):
                 raise
-            logger.info(f"Bucket '{self._bucket_name}' does not exist; creating it...")
+            LOG.info(f"Bucket '{self._bucket_name}' does not exist; creating it...")
             self._bucket = self._s3.create_bucket(Bucket=self._bucket_name)
 
     def get_path(self, relative_path: str | Path) -> Path:
@@ -127,4 +125,4 @@ class S3FileWorkspace_AlphaRelease(AbstractFileWorkspace):
         obj.delete()
 
     def __repr__(self) -> str:
-        return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self._root})"
+        return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self._agent_workspace})"

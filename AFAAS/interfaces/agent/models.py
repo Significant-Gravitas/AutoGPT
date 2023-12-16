@@ -2,12 +2,13 @@ from importlib import import_module
 
 from AFAAS.core.configuration import SystemConfiguration
 
-# from AFAAS.core.workspace.simple import LocalFileWorkspace
+# from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
 
 class BaseAgentSystems(SystemConfiguration):
+
     memory: str = "AFAAS.interfaces.db.Memory"
-    workspace: str = "AFAAS.core.workspace.simple.LocalFileWorkspace"
+    workspace: str = "AFAAS.core.workspace.local.AGPTLocalFileWorkspace"
 
     class Config(SystemConfiguration.Config):
         extra = "allow"

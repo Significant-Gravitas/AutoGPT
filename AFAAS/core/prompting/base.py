@@ -92,7 +92,7 @@ class PromptStrategiesConfiguration(SystemConfiguration):
     presence_penalty: Optional[float] = None  # Avoid certain subjects
 
 
-from AFAAS.core.agents.base.features.agentmixin import \
+from AFAAS.interfaces.agent.features.agentmixin import \
     AgentMixin
 
 

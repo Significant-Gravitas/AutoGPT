@@ -10,7 +10,7 @@ from AFAAS.core.lib.context_items import ContextItem
 from AFAAS.core.lib.task import TaskStatusList
 from AFAAS.core.lib.task.plan import Plan
 from AFAAS.core.lib.task.task import Task
-from AFAAS.core.agents.base.exceptions import (
+from AFAAS.interfaces.agent.exceptions import (
     AgentException, ToolExecutionError, UnknownToolError)
 from AFAAS.core.tools import ToolOutput
 
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
         ChatModelResponse,
     )
 
-from AFAAS.core.agents.base import BaseLoop, BaseLoopHook
+from AFAAS.interfaces.agent import BaseLoop, BaseLoopHook
 
 from AFAAS.core.lib.sdk.logger import AFAASLogger, NOTICE, TRACE
 LOG = AFAASLogger(name=__name__)

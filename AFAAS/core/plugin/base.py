@@ -8,7 +8,7 @@ from AFAAS.core.configuration import (SystemConfiguration,
                                                          UserConfigurable)
 
 if TYPE_CHECKING:
-    from AFAAS.core.memory.base import AbstractMemory
+    from AFAAS.interfaces.db import AbstractMemory
     from AFAAS.core.resource.model_providers import (
         BaseChatModelProvider, EmbeddingModelProvider)
     from AFAAS.core.tools import BaseToolsRegistry, Tool

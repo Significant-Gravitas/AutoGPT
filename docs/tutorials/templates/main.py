@@ -13,7 +13,7 @@ from AFAAS.core.agents.usercontext.system import \
 from AFAAS.core.memory import Memory
 from AFAAS.core.planning import SimplePlanner
 from AFAAS.core.resource.model_providers.openai import OpenAIProvider
-from AFAAS.core.workspace import LocalFileWorkspace
+from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
 
 # Define your custom agent class. The class name should reflect its purpose.
@@ -32,7 +32,7 @@ class MyCustomAgent(BaseAgent, Configurable):
         
         memory: Memory,
         openai_provider: OpenAIProvider,
-        workspace: LocalFileWorkspace,
+        workspace: AbstractFileWorkspace,
         planning: SimplePlanner,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,

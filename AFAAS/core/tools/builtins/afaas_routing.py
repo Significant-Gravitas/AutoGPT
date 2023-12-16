@@ -8,7 +8,7 @@ TOOL_CATEGORY_TITLE = "Framework"
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents.base import BaseAgent
+    from AFAAS.interfaces.agent import BaseAgent
 
 from AFAAS.core.lib.task.task import Task
 from AFAAS.core.lib.sdk.logger import AFAASLogger
@@ -46,13 +46,13 @@ async def afaas_routing(
         # routing_settings.agent_goals=  agent.agent_goals
         # routing_settings.agent_goal_sentence=  agent.agent_goal_sentence
         routing_settings.memory = agent._memory._settings
-        routing_settings.workspace = agent._workspace._settings
         routing_settings.chat_model_provider = agent._chat_model_provider._settings
         routing_settings.note_to_agent_length = note_to_agent_length
 
         # USER CONTEXT AGENT : Save RoutingAgent Settings in DB (for POW / POC)
         new_routing_agent: RoutingAgent = RoutingAgent.create_agent(
-            agent_settings=routing_settings
+            agent_settings=routing_settings,
+            workspace=agent._workspace,
         )
 
         # # USER CONTEXT AGENT : Get RoutingAgent from DB (for POW / POC)
@@ -60,6 +60,7 @@ async def afaas_routing(
 
         routing_agent: RoutingAgent = RoutingAgent.get_instance_from_settings(
             agent_settings=routing_settings,
+            workspace=agent._workspace,
         )
 
         routing_return: dict = await routing_agent.run(

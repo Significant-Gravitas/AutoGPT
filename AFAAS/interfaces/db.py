@@ -151,7 +151,7 @@ class AbstractMemory(Configurable, abc.ABC):
             return AbstractMemory._instances[config_key]
 
         if adapter_type == MemoryAdapterType.NOSQL_JSON_FILE:
-            from AFAAS.core.memory.nosql.jsonfile import \
+            from AFAAS.core.db.nosql.jsonfile import \
                 JSONFileMemory
 
             LOG.notice(

@@ -17,7 +17,7 @@ class AgentFileManager:
         """The root directory of the workspace."""
         return self._root
 
-    def initialize(self) -> None:
+    def _initialize(self) -> None:
         self.root.mkdir(exist_ok=True, parents=True)
         self.init_file_ops_log(self.file_ops_log_path)
 

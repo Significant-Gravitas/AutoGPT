@@ -5,7 +5,7 @@ import uuid
 
 from pathlib import Path
 
-from AFAAS.core.memory.base import AbstractMemory
+from AFAAS.interfaces.db import AbstractMemory
 
 
 class SQLLikeJSONFileMemory(AbstractMemory):

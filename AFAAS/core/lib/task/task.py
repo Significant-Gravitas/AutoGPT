@@ -232,7 +232,7 @@ class Task(BaseTask):
         task_table.add(value=task, id=task.task_id)
 
     def save_in_db(self):
-        from AFAAS.core.memory.table import AbstractTable
+        from AFAAS.core.db.table import AbstractTable
 
         memory = self.agent._memory
         task_table: AbstractTable = memory.get_table("tasks")

@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 from typing import List
 
-from AFAAS.core.memory.base import AbstractMemory
-from AFAAS.core.memory.nosqlmemory import NoSQLMemory
+from AFAAS.interfaces.db import AbstractMemory
+from AFAAS.interfaces.db_nosql import NoSQLMemory
 from AFAAS.core.lib.sdk.logger import AFAASLogger   
 LOG = AFAASLogger(name=__name__)
 
@@ -64,7 +64,7 @@ class JSONFileMemory(NoSQLMemory):
         else:
             raise KeyError(f"No such key '{key}' in table {table_name}")
 
-    from AFAAS.core.memory.table import AbstractTable 
+    from  AFAAS.interfaces.db_table import AbstractTable 
     def list(self, 
              table_name: str,
              filter: AbstractTable.FilterDict = {},

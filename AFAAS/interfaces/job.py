@@ -17,7 +17,7 @@ class JobInterface(abc.ABC, BaseModel):
     strategy_kwargs : dict
     response_post_process : Callable
     autocorrection : bool = False
-    task_id: str = Field()#default_factory=lambda: Task.generate_uuid())
+    job_id: str = Field(default_factory=lambda: JobInterface.generate_uuid())
 
     @staticmethod
     def generate_uuid():
