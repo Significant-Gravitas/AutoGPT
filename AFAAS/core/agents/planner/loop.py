@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional
 
 from pydantic import Field
 
-from AFAAS.lib.action import (ActionErrorResult, ActionResult,
-                                           ActionSuccessResult)
+# from AFAAS.lib.action import (ActionErrorResult, ActionResult,
+#                                            ActionSuccessResult)
 from AFAAS.lib.context_items import ContextItem
 from AFAAS.lib.task import TaskStatusList
 from AFAAS.lib.task.plan import Plan
@@ -292,8 +292,8 @@ class PlannerLoop(BaseLoop):
         command_name: str,
         current_task: Task,
         command_args: dict[str, str] = {},
-    ) -> ActionResult:
-        result: ActionResult
+    ) -> Any:
+        result: any
 
         # NOTE : Test tools individually
         # command_name = "web_search"
@@ -309,7 +309,7 @@ class PlannerLoop(BaseLoop):
 
         except AgentException as e:
             #FIXME : Implement retry mechanism if a fail
-            return_value = ActionErrorResult(reason=e.message, error=e)
+            return_value = AgentException(reason=e.message, error=e)
 
         return return_value
 

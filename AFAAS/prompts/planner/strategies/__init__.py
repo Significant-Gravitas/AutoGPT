@@ -1,4 +1,4 @@
-
+from __future__ import annotations
 
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.core.agents.planner.strategies.initial_plan import (
