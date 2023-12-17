@@ -1,8 +1,8 @@
-from AFAAS.interfaces.adapters.chat_schema import (
+from AFAAS.interfaces.adapters.chat_model import (
     AssistantChatMessage, AssistantChatMessageDict, AssistantFunctionCall,
     AssistantFunctionCallDict, BaseChatModelProvider, ChatMessage,
     ChatModelInfo, ChatModelResponse, ChatPrompt, CompletionModelFunction)
-from AFAAS.interfaces.adapters.schema import (
+from AFAAS.interfaces.adapters.language_model import (
     AbstractLanguageModelProvider, AbstractModelProvider, BaseModelInfo,
     BaseModelProviderBudget, BaseModelProviderCredentials,
     BaseModelProviderSettings, BaseModelProviderUsage, BaseModelResponse,

@@ -52,16 +52,44 @@ Examples:
 import abc
 import enum
 from typing import (Any, Callable, Dict, Generic, List, Literal, Optional,
-                    TypedDict, TypeVar, Union)
+                    TypedDict, TypeVar, Union, ClassVar)
 
 from pydantic import BaseModel, Field
 
-from AFAAS.interfaces.adapters.schema import (
+from AFAAS.interfaces.adapters.language_model import (
     AbstractLanguageModelProvider, BaseModelInfo, BaseModelResponse,
     ModelProviderService)
 from AFAAS.lib.utils.json_schema import JSONSchema
 
+class AbstractRoleLabels(abc.ABC, BaseModel):
+    USER: str
+    SYSTEM: str
+    ASSISTANT: str
+    FUNCTION: Optional[str] = None
 
+
+class AbstractChatMessage(abc.ABC, BaseModel):
+    _role_labels: ClassVar[AbstractRoleLabels]
+    role: str
+    content: str
+
+    @classmethod
+    def assistant(cls, content: str) -> "AbstractChatMessage":
+        return cls(role=cls._role_labels.ASSISTANT, content=content)
+
+    @classmethod
+    def user(cls, content: str) -> "AbstractChatMessage":
+        return cls(role=cls._role_labels.USER, content=content)
+
+    @classmethod
+    def system(cls, content: str) -> "AbstractChatMessage":
+        return cls(role=cls._role_labels.SYSTEM, content=content)
+
+    def dict(self, **kwargs):
+        d = super().dict(**kwargs)
+        d["role"] = self.role
+        return d
+    
 class Role(str, enum.Enum):
 
     """
@@ -522,21 +550,12 @@ class ChatModelResponse(BaseModelResponse, Generic[_T]):
 # Chat Models #
 ###############
 
-
 class ChatModelInfo(BaseModelInfo):
     """Struct for language model information."""
 
     llm_service = ModelProviderService.CHAT
     max_tokens: int
     has_function_call_api: bool = False
-
-
-# class ChatModelResponse(ModelResponse, Generic[_T]):
-# """Standard response struct for a response from a language model."""
-
-# response: AssistantChatMessageDict
-# parsed_result: _T = None
-
 
 class BaseChatModelProvider(AbstractLanguageModelProvider):
     @abc.abstractmethod

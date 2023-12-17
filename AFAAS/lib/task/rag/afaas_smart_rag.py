@@ -1,16 +1,17 @@
 from __future__ import annotations
+from langchain.tools import DuckDuckGoSearchRun
 
 import enum
 import os
 import uuid
-from typing import Optional,TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Callable
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 if  TYPE_CHECKING: 
     from AFAAS.interfaces.task import AbstractTask
 
 from AFAAS.interfaces.prompts.strategy import (
-    BasePromptStrategy, DefaultParsedResponse, PromptStrategiesConfiguration)
+    AbstractPromptStrategy, DefaultParsedResponse, PromptStrategiesConfiguration)
 from AFAAS.interfaces.prompts.schema import \
      PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.adapters import (
@@ -19,7 +20,8 @@ from AFAAS.lib.utils.json_schema import JSONSchema
 from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name = __name__)
 
-from AFAAS.interfaces.prompts.utils import to_md_quotation        
+from AFAAS.interfaces.prompts.utils import (to_dotted_list, to_md_quotation,
+                    to_numbered_list, to_string_list, indent)     
 class AFAAS_SMART_RAGStrategyFunctionNames(str, enum.Enum):
     MAKE_SMART_RAG: str = "afaas_smart_rag"
 
@@ -38,7 +40,7 @@ class AFAAS_SMART_RAGStrategyConfiguration(PromptStrategiesConfiguration):
     temperature : float = 0.4
 
 
-class AFAAS_SMART_RAG_Strategy(BasePromptStrategy):
+class AFAAS_SMART_RAG_Strategy(AbstractPromptStrategy):
     default_configuration = AFAAS_SMART_RAGStrategyConfiguration()
     STRATEGY_NAME = "afaas_smart_rag"
 
@@ -62,9 +64,9 @@ class AFAAS_SMART_RAG_Strategy(BasePromptStrategy):
         self.task_context_length = task_context_length
 
     def set_tools(self, 
-                    task :Task, 
-                    task_history : list[Task],
-                    task_sibblings : list[Task],
+                    task : AbstractTask, 
+                    task_history : list[AbstractTask],
+                    task_sibblings : list[AbstractTask],
               **kwargs):
         self.afaas_smart_rag : CompletionModelFunction = CompletionModelFunction(
             name=AFAAS_SMART_RAGStrategyFunctionNames.MAKE_SMART_RAG.value,
@@ -91,18 +93,18 @@ class AFAAS_SMART_RAG_Strategy(BasePromptStrategy):
                 ),
             }
         )   
-        
+
 
         self._tools = [
             self.afaas_smart_rag,
         ]
 
 
-    def build_prompt(
+    def build_message(
         self, task : AbstractTask , **kwargs
     ) -> ChatPrompt:
         LOG.debug("Building prompt for task : " + task.debug_dump_str())
-        self._task : Task = task
+        self._task : AbstractTask = task
         self._model_name = kwargs.get("model_name")
         smart_rag_param = {
             "task_goal" : task.task_goal,
@@ -112,12 +114,25 @@ class AFAAS_SMART_RAG_Strategy(BasePromptStrategy):
             'task_path' : kwargs.get('task_path', None),
             'related_tasks' : kwargs.get('related_tasks', None),
         }
-        return self.build_prompt_common(task, template_name= f'{self.STRATEGY_NAME}.jinja', template_params = smart_rag_param)
 
-    
-    def build_prompt_common(self, task : Task, template_name : str, template_params : dict):
-        LOG.debug("Building common prompt for task : " + task.debug_dump_str())
+        messages = []
+        messages.append(
+                        ChatMessage.system(
+                            self._build_jinja_message(task = task, 
+                                            template_name= f'{self.STRATEGY_NAME}.jinja', template_params = smart_rag_param)
+                            )
+                    )
+        messages.append(
+            ChatMessage.system(
+                self.response_format_instruction(
+                    model_name=self._model_name,
+                    )
+                )
+            )
 
+        return self.build_chat_prompt(messages=messages)
+
+    def _build_jinja_message(self, task : AbstractTask, template_name : str, template_params : dict) -> str:
         current_directory = os.path.dirname(os.path.abspath(__file__))
         file_loader = FileSystemLoader(current_directory)
         env = Environment(loader=file_loader,
@@ -127,15 +142,17 @@ class AFAAS_SMART_RAG_Strategy(BasePromptStrategy):
         template = env.get_template(template_name)
 
         template_params.update({"to_md_quotation": to_md_quotation,
+                                 "to_dotted_list": to_dotted_list, 
+                                 "to_numbered_list": to_numbered_list,
+                                    "to_string_list": to_string_list,
+                                    "indent": indent, 
                                 "task" : self._task})
-        content = template.render(template_params)
-        messages = [ChatMessage.system(content)]
+        return template.render(template_params)
+        
+
+    def build_chat_prompt(self, messages: list[ChatMessage])-> ChatPrompt:
+
         strategy_tools = self.get_tools()
-
-        messages.append(ChatMessage.system(self.response_format_instruction(
-            model_name=self._model_name,
-        )))
-
         prompt = ChatPrompt(
             messages=messages,
             tools=strategy_tools,
@@ -155,7 +172,7 @@ class AFAAS_SMART_RAG_Strategy(BasePromptStrategy):
         # parsed_response.command_name
         # self._task.task_context = response_content.get("task_context", None)
         # self._task.task_context = response_content.get("task_context", None)
-    
+
     def response_format_instruction(self, model_name: str) -> str:
         model_provider = self._agent._chat_model_provider
         return super().response_format_instruction(language_model_provider=model_provider, model_name = model_name)

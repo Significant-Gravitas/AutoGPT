@@ -100,13 +100,8 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     STRATEGY_NAME: str
     default_configuration: PromptStrategiesConfiguration
 
-    @property
     @abc.abstractmethod
-    def model_classification(self) ->  PromptStrategyLanguageModelClassification:
-        ...
-
-    @abc.abstractmethod
-    def build_prompt(self, *_, **kwargs) -> ChatPrompt:
+    def build_message(self, *_, **kwargs) -> ChatPrompt:
         ...
 
     @abc.abstractmethod
@@ -117,10 +112,9 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     def set_tools(self, **kwargs):
         ...
 
-
-class BasePromptStrategy(AbstractPromptStrategy):
     @property
     def model_classification(self) ->  PromptStrategyLanguageModelClassification:
+        LOG.notice("Deprecated: Use `dependency injection` instead")
         return self._model_classification
 
     # TODO : This implementation is shit :)

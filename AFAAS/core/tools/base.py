@@ -10,7 +10,6 @@ from pydantic import Field
 from AFAAS.interfaces.agent.assistants import LanguageModelConfiguration
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 from AFAAS.configs import SystemConfiguration
-from ..plugin.base import PluginLocation
 from AFAAS.interfaces.adapters import CompletionModelFunction
 from ..tools.schema import ToolResult
 from AFAAS.lib.utils.json_schema  import JSONSchema
@@ -20,7 +19,6 @@ from .schema import ToolResult
 class ToolConfiguration(SystemConfiguration):
     """Struct for model configuration."""
 
-    location: PluginLocation
     packages_required: list[str] = Field(default_factory=list)
     language_model_required: LanguageModelConfiguration = None
     memory_provider_required: bool = False

@@ -57,7 +57,7 @@ class SelectToolStrategy(PlanningPromptStrategy):
     def model_classification(self) ->  PromptStrategyLanguageModelClassification:
         return self._model_classification
 
-    def build_prompt(
+    def build_message(
         self,
         agent: "PlannerAgent",
         # instruction: str,

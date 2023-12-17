@@ -29,7 +29,7 @@ from typing import Optional
 
 from AFAAS.lib.message_agent_user import Questions
 from AFAAS.interfaces.prompts.strategy import (
-    BasePromptStrategy, PromptStrategiesConfiguration)
+    AbstractPromptStrategy, PromptStrategiesConfiguration)
 from AFAAS.interfaces.prompts.schema import \
      PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.prompts.utils import (
@@ -77,7 +77,7 @@ class RefineUserContextStrategyConfiguration(PromptStrategiesConfiguration):
     temperature : float =  0.9
 
 
-class RefineUserContextStrategy(BasePromptStrategy):
+class RefineUserContextStrategy(AbstractPromptStrategy):
     """
     A strategy that guides the AI in refining and clarifying user requirements based on the COCE Framework.
 
@@ -300,7 +300,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             self.function_validate_goal,
         ]
         
-    def build_prompt(
+    def build_message(
         self, interupt_refinement_process: bool, user_objective: str = "", **kwargs
     ) -> ChatPrompt:
         """

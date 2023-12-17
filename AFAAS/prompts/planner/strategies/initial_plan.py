@@ -5,7 +5,7 @@ from typing import Optional
 # from AFAAS.interfaces.task import AbstractTask
 # from AFAAS.core.agents.planner.main import PlannerAgent
 from AFAAS.interfaces.prompts.strategy import (
-    BasePromptStrategy,  PromptStrategyLanguageModelClassification,
+    AbstractPromptStrategy,  PromptStrategyLanguageModelClassification,
     PromptStrategiesConfiguration)
 from AFAAS.interfaces.prompts.utils import (
     json_loads, to_numbered_list)
@@ -28,7 +28,7 @@ class InitialPlanStrategyConfiguration(PromptStrategiesConfiguration):
     temperature: float = 0.9
 
 
-class InitialPlanStrategy(BasePromptStrategy):
+class InitialPlanStrategy(AbstractPromptStrategy):
     default_configuration = InitialPlanStrategyConfiguration()
     STRATEGY_NAME = "make_initial_plan"
 
@@ -116,7 +116,7 @@ class InitialPlanStrategy(BasePromptStrategy):
 
         self._tools = [self.DEFAULT_CREATE_PLAN_FUNCTION]
 
-    def build_prompt(
+    def build_message(
         self,
         agent_name: str,
         agent_role: str,

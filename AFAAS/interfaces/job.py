@@ -1,5 +1,5 @@
 from __future__ import annotations
-from AFAAS.interfaces.prompts import BasePromptStrategy
+from AFAAS.interfaces.prompts import AbstractPromptStrategy
 
 
 from pydantic import BaseModel, Field
@@ -13,7 +13,7 @@ from typing import Callable, Type
 class JobInterface(abc.ABC, BaseModel):
     class Config(BaseModel.Config):
         arbitrary_types_allowed = True
-    strategy : Type[BasePromptStrategy]
+    strategy : Type[AbstractPromptStrategy]
     strategy_kwargs : dict
     response_post_process : Callable
     autocorrection : bool = False

@@ -4,7 +4,7 @@ import abc
 import enum
 from typing import Callable, ClassVar, Protocol
 
-from pydantic import BaseModel, Field, SecretStr, validator
+from pydantic import BaseModel, Field,  validator
 
 from AFAAS.configs import SystemConfiguration, UserConfigurable
 from AFAAS.interfaces.adapters.configuration import (
@@ -14,7 +14,6 @@ from AFAAS.interfaces.adapters.configuration import (
     BaseProviderSettings,
     BaseProviderUsage, 
 )
-from AFAAS.lib.utils.json_schema import JSONSchema
 
 
 class ModelProviderService(str, enum.Enum):

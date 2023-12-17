@@ -17,10 +17,10 @@ from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.configs import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
-from AFAAS.interfaces.adapters.chat_schema import (
+from AFAAS.interfaces.adapters.chat_model import (
     AssistantChatMessageDict, AssistantToolCallDict, BaseChatModelProvider,
     ChatMessage, ChatModelInfo, ChatModelResponse, CompletionModelFunction)
-from AFAAS.interfaces.adapters.schema import (
+from AFAAS.interfaces.adapters.language_model import (
     BaseModelProviderBudget, BaseModelProviderCredentials,
     BaseModelProviderSettings, BaseModelProviderUsage, Embedding,
     EmbeddingModelInfo, EmbeddingModelProvider, EmbeddingModelResponse,

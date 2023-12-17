@@ -6,7 +6,7 @@ from AFAAS.configs import SystemConfiguration, UserConfigurable
 from AFAAS.interfaces.prompts import (ChatPrompt,  PromptStrategyLanguageModelClassification,
                                     PromptStrategy)
 from AFAAS.interfaces.prompts.utils import json_loads
-from AFAAS.interfaces.adapters.schema import (
+from AFAAS.interfaces.adapters.language_model import (
     AssistantChatMessageDict, ChatMessage, ChatModelProvider,
     CompletionModelFunction)
 from AFAAS.lib.utils.json_schema import JSONSchema

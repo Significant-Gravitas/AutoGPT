@@ -344,15 +344,15 @@ class BaseAgent(Configurable, AbstractAgent):
         )
         return system_instance
 
-    from AFAAS.interfaces.prompts.strategy import (BasePromptStrategy)
+    from AFAAS.interfaces.prompts.strategy import (AbstractPromptStrategy)
     @classmethod
-    def get_strategies(cls) -> list[BasePromptStrategy]:
+    def get_strategies(cls) -> list[AbstractPromptStrategy]:
 
         module = cls.__module__.rsplit('.', 1)[0]
         LOG.trace(f"Entering : {module}.get_strategies()")
 
-        from AFAAS.interfaces.prompts.strategy import (BasePromptStrategy)
-        stategies : list[BasePromptStrategy] = []
+        from AFAAS.interfaces.prompts.strategy import (AbstractPromptStrategy)
+        stategies : list[AbstractPromptStrategy] = []
 
         try:
             # Dynamically import the strategies from the module

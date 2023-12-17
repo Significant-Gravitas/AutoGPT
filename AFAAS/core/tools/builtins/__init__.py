@@ -1,5 +1,4 @@
-from AFAAS.core.tools.builtins.create_new_tool import \
-    CreateNewTool
+
 
 TOOL_CATEGORIES = [
     "AFAAS.core.tools.builtins.execute_code",

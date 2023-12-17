@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
     from autogpt.config import Config
-    from AFAAS.interfaces.adapters.schema import ChatModelProvider
+    from AFAAS.interfaces.adapters.language_model import ChatModelProvider
 
 from autogpt.config.ai_directives import AIDirectives
 

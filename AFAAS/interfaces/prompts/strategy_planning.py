@@ -19,7 +19,7 @@ from AFAAS.interfaces.prompts.utils import \
 from AFAAS.interfaces.adapters import (
     ChatMessage, CompletionModelFunction)
 
-from AFAAS.interfaces.prompts.strategy import (RESPONSE_SCHEMA, BasePromptStrategy,
+from AFAAS.interfaces.prompts.strategy import (RESPONSE_SCHEMA, AbstractPromptStrategy,
                    PromptStrategiesConfiguration)
 
 LOG = AFAASLogger(name=__name__)
@@ -70,7 +70,7 @@ class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
     progress_summaries: dict[tuple[int, int], str] = {(0, 0): ""}
 
 
-class PlanningPromptStrategy(BasePromptStrategy):
+class PlanningPromptStrategy(AbstractPromptStrategy):
     def __init__(
         self,
         model_classification:  PromptStrategyLanguageModelClassification,

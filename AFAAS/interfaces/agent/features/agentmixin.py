@@ -10,7 +10,7 @@ if TYPE_CHECKING:
         CompletionModelFunction , ChatModelResponse
     from AFAAS.core.tools.base import BaseToolsRegistry
     from AFAAS.core.tools.tools import Tool
-    from AFAAS.interfaces.prompts.strategy import BasePromptStrategy
+    from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
 
     from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -64,7 +64,7 @@ class AgentMixin:
     def get_table(self, table_name: str) -> AbstractTable:
         return self._agent._memory.get_table(table_name=table_name)
 
-    def get_strategy(self, strategy_name: str) -> BasePromptStrategy:
+    def get_strategy(self, strategy_name: str) -> AbstractPromptStrategy:
         return self._agent._prompt_manager._prompt_strategies[strategy_name]
 
     async def _execute_strategy(

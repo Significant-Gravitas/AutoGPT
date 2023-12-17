@@ -254,7 +254,7 @@ class PlannerLoop(BaseLoop):
     ToolArgs = dict[str, str]
     AgentThoughts = dict[str, Any]
     ThoughtProcessOutput = tuple[ToolName, ToolArgs, AgentThoughts]
-    from AFAAS.interfaces.adapters.chat_schema import (
+    from AFAAS.interfaces.adapters.chat_model import (
         ChatMessage, ChatPrompt)
 
     async def select_tool(

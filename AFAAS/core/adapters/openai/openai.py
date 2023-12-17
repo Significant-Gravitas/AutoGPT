@@ -3,24 +3,23 @@ import functools
 import math
 import os
 import time
-from typing import Any, Callable, Dict, ParamSpec, Tuple, TypeVar
+from typing import Any, Callable, Dict, ParamSpec, Tuple, TypeVar, ClassVar
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, APIError, RateLimitError, completions
 from openai.resources import AsyncCompletions, AsyncEmbeddings
 
 aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 import tiktoken
-from openai import APIError, RateLimitError, completions  # , OpenAI, Em
 
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.configs import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
-from AFAAS.interfaces.adapters.chat_schema import (
+from AFAAS.interfaces.adapters.chat_model import (AbstractChatMessage,
     AssistantChatMessageDict, AssistantToolCallDict, BaseChatModelProvider,
-    ChatMessage, ChatModelInfo, ChatModelResponse, CompletionModelFunction)
-from AFAAS.interfaces.adapters.schema import (
-    BaseModelProviderBudget, BaseModelProviderCredentials,
+    AbstractRoleLabels, ChatMessage, ChatModelInfo, ChatModelResponse, CompletionModelFunction)
+from AFAAS.interfaces.adapters.language_model import (
+    BaseModelProviderBudget, BaseModelProviderConfiguration, BaseModelProviderCredentials,
     BaseModelProviderSettings, BaseModelProviderUsage, Embedding,
     EmbeddingModelInfo, EmbeddingModelProvider, EmbeddingModelResponse,
     ModelProviderName, ModelProviderService, ModelTokenizer)
@@ -34,6 +33,16 @@ _P = ParamSpec("_P")
 OpenAIEmbeddingParser = Callable[[Embedding], Embedding]
 OpenAIChatParser = Callable[[str], dict]
 
+
+class OpenAIRoleLabel(AbstractRoleLabels):
+    USER = "user"
+    SYSTEM = "system"
+    ASSISTANT = "assistant"
+
+    FUNCTION = "function"
+    """May be used for the return value of function calls"""
+class OpenAIChatMessage(AbstractChatMessage):
+    _role_labels: ClassVar[OpenAIRoleLabel] = OpenAIRoleLabel()
 
 class OpenAIModelName(str, enum.Enum):
     """
@@ -130,7 +139,7 @@ OPEN_AI_MODELS = {
 }
 
 
-class OpenAIConfiguration(SystemConfiguration):
+class OpenAIConfiguration(BaseModelProviderConfiguration):
     """Configuration for OpenAI.
 
     Attributes:
@@ -290,7 +299,7 @@ class OpenAIProvider(
     @classmethod
     def count_message_tokens(
         cls,
-        messages: ChatMessage | list[ChatMessage],
+        messages: OpenAIChatMessage | list[ChatMessage],
         model_name: OpenAIModelName,
     ) -> int:
         """
@@ -309,7 +318,7 @@ class OpenAIProvider(
             >>> print(token_count)
             5
         """
-        if isinstance(messages, ChatMessage):
+        if isinstance(messages, OpenAIChatMessage):
             messages = [messages]
 
         if model_name.startswith("gpt-3.5-turbo"):
@@ -901,7 +910,7 @@ def _functions_compat_fix_kwargs(
     )
 
     completion_kwargs["messages"] = [
-        ChatMessage.system(
+        OpenAIChatMessage.system(
             "# tool usage instructions\n\n"
             "Specify a '```tool_calls' block in your response,"
             " with a valid JSON object that adheres to the following schema:\n\n"

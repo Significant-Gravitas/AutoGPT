@@ -17,7 +17,7 @@ from AFAAS.configs import (Configurable,
                                                          SystemSettings,
                                                          UserConfigurable)
 from AFAAS.interfaces.prompts.strategy import (
-    AbstractPromptStrategy, BasePromptStrategy)
+    AbstractPromptStrategy, AbstractPromptStrategy)
 from AFAAS.interfaces.prompts.schema import \
      PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.adapters import (
@@ -129,7 +129,7 @@ class PromptManager(Configurable, AgentMixin):
         if strategy_name not in self._prompt_strategies:
             raise ValueError(f"Invalid strategy name {strategy_name}")
 
-        prompt_strategy: BasePromptStrategy = self._prompt_strategies[strategy_name]
+        prompt_strategy: AbstractPromptStrategy = self._prompt_strategies[strategy_name]
         if not hasattr(prompt_strategy, "_agent") or prompt_strategy._agent is None:
             prompt_strategy.set_agent(agent=self._agent)
 
@@ -160,7 +160,7 @@ class PromptManager(Configurable, AgentMixin):
         template_kwargs.update(kwargs)
         template_kwargs.update(model_configuration)
 
-        prompt = prompt_strategy.build_prompt(**template_kwargs)
+        prompt = prompt_strategy.build_message(**template_kwargs)
 
         response: ChatModelResponse = await provider.create_chat_completion(
             chat_messages=prompt.messages,
