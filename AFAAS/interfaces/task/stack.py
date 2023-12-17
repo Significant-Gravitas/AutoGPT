@@ -4,7 +4,7 @@ import json
 from typing import TYPE_CHECKING, Any, Generator
 from pydantic import Field
 
-from AFAAS.interfaces.agent import AbstractAgent
+#from AFAAS.interfaces.agent import AbstractAgent
 from AFAAS.configs import AFAASModel
 from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.plan import AbstractPlan
@@ -52,7 +52,7 @@ class TaskStack(AFAASModel):
             raise TypeError(f"Expected TaskStack or dict, received {type(v)}")
 
 
-    def add(self, task: AbstractBaseTask):
+    def add(self, task: AbstractTask):
         """
         Add a task. Can also mark it as ready.
         """
@@ -86,7 +86,7 @@ class TaskStack(AFAASModel):
         """
         return self.parent_task.agent.plan.get_task(task_id)
 
-    def get_all_tasks_from_stack(self) -> list[AbstractBaseTask]:
+    def get_all_tasks_from_stack(self) -> list[AbstractTask]:
         """
         Get all tasks. If only_ready is True, return only ready tasks.
         """
@@ -95,7 +95,7 @@ class TaskStack(AFAASModel):
         ]
     
 
-    def get_all_task_ids_from_stack(self) -> list[AbstractBaseTask]:
+    def get_all_task_ids_from_stack(self) -> list[AbstractTask]:
         """
         Get all tasks. If only_ready is True, return only ready tasks.
         """
@@ -103,7 +103,7 @@ class TaskStack(AFAASModel):
             task_id for task_id in self._task_ids
         ]
 
-    def get_ready_tasks_from_stack(self) -> list[AbstractBaseTask]:
+    def get_ready_tasks_from_stack(self) -> list[AbstractTask]:
         """
         Get all ready tasks.
         """
@@ -116,7 +116,7 @@ class TaskStack(AFAASModel):
         ]
     
 
-    def get_done_tasks_from_stack(self) -> list[AbstractBaseTask]:
+    def get_done_tasks_from_stack(self) -> list[AbstractTask]:
         """
         Get all ready tasks.
         """
@@ -128,7 +128,7 @@ class TaskStack(AFAASModel):
             self.parent_task.agent.plan.get_task(task_id) for task_id in common_task_ids
         ]
 
-    def get_active_tasks_from_stack(self) -> list[AbstractBaseTask]:
+    def get_active_tasks_from_stack(self) -> list[AbstractTask]:
         """
         Get all active tasks.
         """
