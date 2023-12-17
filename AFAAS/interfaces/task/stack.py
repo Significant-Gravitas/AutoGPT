@@ -7,8 +7,9 @@ from pydantic import Field
 #from AFAAS.interfaces.agent import AbstractAgent
 from AFAAS.configs import AFAASModel
 from AFAAS.interfaces.task.base import AbstractBaseTask
-from AFAAS.interfaces.task.plan import AbstractPlan
-from AFAAS.interfaces.task.task import AbstractTask
+if TYPE_CHECKING:
+    from AFAAS.interfaces.task.plan import AbstractPlan
+    from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name=__name__)
 
