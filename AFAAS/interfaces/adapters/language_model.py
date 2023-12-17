@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import abc
 import enum
+import json
+import re
 from typing import Callable, ClassVar, Protocol
 
 from pydantic import BaseModel, Field,  validator
@@ -191,3 +193,22 @@ class EmbeddingModelProvider(AbstractModelProvider):
         **kwargs,
     ) -> EmbeddingModelResponse:
         ...
+
+
+# def _tool_calls_compat_extract_calls(response: str) -> list[AssistantToolCallDict]:
+#     import json
+#     import re
+
+#     LOG.trace(f"Trying to extract tool calls from response:\n{response}")
+
+#     if response[0] == "[":
+#         tool_calls: list[AssistantToolCallDict] = json.loads(response)
+#     else:
+#         block = re.search(r"```(?:tool_calls)?\n(.*)\n```\s*$", response, re.DOTALL)
+#         if not block:
+#             raise ValueError("Could not find tool calls block in response")
+#         tool_calls: list[AssistantToolCallDict] = json.loads(block.group(1))
+
+#     for t in tool_calls:
+#         t["function"]["arguments"] = str(t["function"]["arguments"])  # HACK
+#     return tool_calls

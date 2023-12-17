@@ -12,7 +12,7 @@ from AFAAS.core.agents.usercontext.system import \
     MyCustomAgentSystemSettings  # Import system settings
 from AFAAS.core.memory import Memory
 from AFAAS.core.planning import SimplePlanner
-from AFAAS.core.adapters.openai import OpenAIProvider
+from AFAAS.core.adapters.openai import AFAASChatOpenAI
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
 
@@ -31,7 +31,7 @@ class MyCustomAgent(BaseAgent, Configurable):
         settings: MyCustomAgentSystemSettings,
         
         memory: Memory,
-        openai_provider: OpenAIProvider,
+        openai_provider: AFAASChatOpenAI,
         workspace: AbstractFileWorkspace,
         planning: SimplePlanner,
         user_id: uuid.UUID,

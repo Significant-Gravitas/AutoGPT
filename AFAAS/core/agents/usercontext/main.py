@@ -5,7 +5,7 @@ from typing import Awaitable, Callable
 
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.adapters.openai import \
-    OpenAIProvider
+    AFAASChatOpenAI
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
 from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, PromptManager
@@ -38,7 +38,7 @@ class UserContextAgent(BaseAgent):
         self,
         settings: UserContextAgent.SystemSettings,
         memory: AbstractMemory,
-        chat_model_provider: OpenAIProvider,
+        chat_model_provider: AFAASChatOpenAI,
         prompt_manager: PromptManager,
         user_id: uuid.UUID,
         workspace: AbstractFileWorkspace, # = AGPTLocalFileWorkspace.SystemSettings(),

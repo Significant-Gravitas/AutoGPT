@@ -8,7 +8,7 @@ from pydantic import Field
 from AFAAS.lib.task.plan import Plan
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.adapters.openai import (
-    OpenAIProvider, OpenAISettings)
+    AFAASChatOpenAI, OpenAISettings)
 from AFAAS.core.tools import (TOOL_CATEGORIES,
                                                  SimpleToolRegistry)
 
@@ -61,7 +61,7 @@ class PlannerAgent(BaseAgent):
         user_id: uuid.UUID,
         settings: PlannerAgent.SystemSettings,
         memory: AbstractMemory,
-        chat_model_provider: OpenAIProvider,
+        chat_model_provider: AFAASChatOpenAI,
         prompt_manager: PromptManager,
         workspace: AbstractFileWorkspace, # = AGPTLocalFileWorkspace.SystemSettings(),
         agent_id: uuid.UUID = None,

@@ -5,7 +5,6 @@ import enum
 import os
 import uuid
 from typing import Optional, TYPE_CHECKING, Callable
-from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 if  TYPE_CHECKING: 
     from AFAAS.interfaces.task import AbstractTask
@@ -20,8 +19,6 @@ from AFAAS.lib.utils.json_schema import JSONSchema
 from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name = __name__)
 
-from AFAAS.interfaces.prompts.utils import (to_dotted_list, to_md_quotation,
-                    to_numbered_list, to_string_list, indent)     
 class AFAAS_SMART_RAGStrategyFunctionNames(str, enum.Enum):
     MAKE_SMART_RAG: str = "afaas_smart_rag"
 
@@ -132,36 +129,6 @@ class AFAAS_SMART_RAG_Strategy(AbstractPromptStrategy):
 
         return self.build_chat_prompt(messages=messages)
 
-    def _build_jinja_message(self, task : AbstractTask, template_name : str, template_params : dict) -> str:
-        current_directory = os.path.dirname(os.path.abspath(__file__))
-        file_loader = FileSystemLoader(current_directory)
-        env = Environment(loader=file_loader,
-            autoescape=select_autoescape(['html', 'xml']),
-            extensions=["jinja2.ext.loopcontrols"]
-            )
-        template = env.get_template(template_name)
-
-        template_params.update({"to_md_quotation": to_md_quotation,
-                                 "to_dotted_list": to_dotted_list, 
-                                 "to_numbered_list": to_numbered_list,
-                                    "to_string_list": to_string_list,
-                                    "indent": indent, 
-                                "task" : self._task})
-        return template.render(template_params)
-        
-
-    def build_chat_prompt(self, messages: list[ChatMessage])-> ChatPrompt:
-
-        strategy_tools = self.get_tools()
-        prompt = ChatPrompt(
-            messages=messages,
-            tools=strategy_tools,
-            tool_choice="auto",
-            default_tool_choice=self.default_tool_choice,
-            tokens_used=0,
-        )
-
-        return prompt
 
     def parse_response_content(
         self,

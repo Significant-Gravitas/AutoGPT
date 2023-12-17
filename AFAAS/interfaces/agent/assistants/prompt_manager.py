@@ -17,7 +17,7 @@ from AFAAS.configs import (Configurable,
                                                          SystemSettings,
                                                          UserConfigurable)
 from AFAAS.interfaces.prompts.strategy import (
-    AbstractPromptStrategy, AbstractPromptStrategy)
+    AbstractPromptStrategy)
 from AFAAS.interfaces.prompts.schema import \
      PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.adapters import (

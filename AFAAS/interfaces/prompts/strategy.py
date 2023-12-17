@@ -1,22 +1,31 @@
 from __future__ import annotations
 
 import abc
+import os
 import re
+import sys
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from typing import TYPE_CHECKING, Optional
 
 from AFAAS.lib.utils.json_schema import JSONSchema
 
-if TYPE_CHECKING:
-    #from AFAAS.core.agents.planner.main import PlannerAgent
+from AFAAS.interfaces.agent.features.agentmixin import \
+    AgentMixin
+
+if  TYPE_CHECKING: 
+    from AFAAS.interfaces.task import AbstractTask
     pass
 
 from AFAAS.configs import SystemConfiguration
 from AFAAS.interfaces.prompts.schema import \
      PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.prompts.utils.utils import json_loads
+from AFAAS.interfaces.prompts.utils import (to_dotted_list, to_md_quotation,
+                    to_numbered_list, to_string_list, indent)     
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider, AssistantChatMessageDict, ChatModelResponse,
-    ChatPrompt, CompletionModelFunction)
+    ChatPrompt, CompletionModelFunction, ChatMessage )
+
 from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name = __name__)
 RESPONSE_SCHEMA = JSONSchema(
@@ -91,9 +100,6 @@ class PromptStrategiesConfiguration(SystemConfiguration):
     frequency_penalty: Optional[float] = None  # Avoid repeting oneselfif coding 0.3
     presence_penalty: Optional[float] = None  # Avoid certain subjects
 
-
-from AFAAS.interfaces.agent.features.agentmixin import \
-    AgentMixin
 
 
 class AbstractPromptStrategy(AgentMixin, abc.ABC):
@@ -229,3 +235,45 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     @staticmethod
     def get_autocorrection_response(response: ChatModelResponse):
         return response.parsed_result[0]["command_args"]["note_to_agent"]
+
+
+    def _build_jinja_message(self, task : AbstractTask, template_name : str, template_params : dict) -> str:
+        """Build a message using jinja2 template engine"""
+
+        # Get the module of the calling (child) class
+        class_module = sys.modules[self.__class__.__module__]
+        child_directory = os.path.dirname(os.path.abspath(class_module.__file__))
+        # Check if template exists in child class directory, else use parent directory
+        if os.path.exists(os.path.join(child_directory, template_name)):
+            directory_to_use = child_directory
+        else:
+            directory_to_use = os.path.dirname(os.path.abspath(__file__))
+
+        file_loader = FileSystemLoader(directory_to_use)
+        env = Environment(loader=file_loader,
+            autoescape=select_autoescape(['html', 'xml']),
+            extensions=["jinja2.ext.loopcontrols"]
+            )
+        template = env.get_template(template_name)
+
+        template_params.update({"to_md_quotation": to_md_quotation,
+                                 "to_dotted_list": to_dotted_list, 
+                                 "to_numbered_list": to_numbered_list,
+                                 "to_string_list": to_string_list,
+                                 "indent": indent, 
+                                 "task" : self._task})
+        return template.render(template_params)
+        
+
+    def build_chat_prompt(self, messages: list[ChatMessage])-> ChatPrompt:
+
+        strategy_tools = self.get_tools()
+        prompt = ChatPrompt(
+            messages=messages,
+            tools=strategy_tools,
+            tool_choice="auto",
+            default_tool_choice=self.default_tool_choice,
+            tokens_used=0,
+        )
+
+        return prompt

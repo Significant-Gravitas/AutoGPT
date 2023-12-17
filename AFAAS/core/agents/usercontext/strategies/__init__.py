@@ -13,7 +13,7 @@ class StrategiesSetConfiguration(PromptStrategiesConfiguration):
 
 class StrategiesSet:
     from AFAAS.interfaces.prompts.strategy import (
-        AbstractPromptStrategy, AbstractPromptStrategy)
+        AbstractPromptStrategy)
 
     @staticmethod
     def get_strategies()-> list[AbstractPromptStrategy]:

@@ -32,7 +32,7 @@ from autogpt.config import (
     ConfigBuilder,
     assert_config_has_openai_api_key,
 )
-from AFAAS.core.adapters.openai import OpenAIProvider
+from AFAAS.core.adapters.openai import AFAASChatOpenAI
 from AFAAS.core.runner.client_lib.utils import coroutine
 from autogpt.logs.config import configure_chat_plugins, configure_logging
 from autogpt.logs.helpers import print_attribute, speak
@@ -369,7 +369,7 @@ async def run_auto_gpt_server(
     await server.start()
 
 
-def _configure_openai_provider(config: Config) -> OpenAIProvider:
+def _configure_openai_provider(config: Config) -> AFAASChatOpenAI:
     """Create a configured OpenAIProvider object.
 
     Args:
@@ -381,9 +381,9 @@ def _configure_openai_provider(config: Config) -> OpenAIProvider:
     if config.openai_credentials is None:
         raise RuntimeError("OpenAI key is not configured")
 
-    openai_settings = OpenAIProvider.default_settings.copy(deep=True)
+    openai_settings = AFAASChatOpenAI.default_settings.copy(deep=True)
     openai_settings.credentials = config.openai_credentials
-    return OpenAIProvider(
+    return AFAASChatOpenAI(
         settings=openai_settings,
         logger=logging.getLogger("OpenAIProvider"),
     )
