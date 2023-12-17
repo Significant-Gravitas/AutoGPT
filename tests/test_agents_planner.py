@@ -2,6 +2,7 @@
 import uuid
 from AFAAS.core.agents import PlannerAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.core.workspace.local import AGPTLocalFileWorkspace, AGPTLocalFileWorkspaceConfiguration
 
 LOG = AFAASLogger(name=__name__)
 
@@ -12,4 +13,5 @@ agent_settings: PlannerAgent.SystemSettings = PlannerAgent.SystemSettings(
 
 PLANNERAGENT = PlannerAgent.get_instance_from_settings(
             agent_settings=agent_settings,
+            workspace=AGPTLocalFileWorkspace()
         )

@@ -3,10 +3,10 @@ import json
 import uuid
 import copy
 
-from AFAAS.app.lib.task.task import Task
-from AFAAS.app.lib.task.plan import Plan
-from AFAAS.app.lib.task.meta import TaskStatusList
-from AFAAS.tests.test_agents_planner import PLANNERAGENT
+from AFAAS.lib.task.task import Task
+from AFAAS.lib.task.plan import Plan
+from AFAAS.interfaces.task.meta import TaskStatusList
+from test_agents_planner import PLANNERAGENT
 
 plan_prepare_dinner = Plan(task_id="100", task_goal="100. Prepare Dinner for Family",
                             agent = PLANNERAGENT

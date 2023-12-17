@@ -57,7 +57,7 @@
             "name": "Mac unit-test",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/autogpts/AFAAS/tests/run.py",
+            "program": "${workspaceFolder}/tests/run.py",
             "args": ["run"],
             "console": "integratedTerminal",
             "env": {
