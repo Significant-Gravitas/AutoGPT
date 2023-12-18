@@ -1,6 +1,6 @@
 import dataclasses
 
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 
 @dataclasses.dataclass

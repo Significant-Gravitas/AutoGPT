@@ -33,12 +33,13 @@ from autogpt.agent_manager import AgentManager
 from autogpt.commands.system import finish
 from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
-from AFAAS.core.resource.model_providers import ChatModelProvider
+from AFAAS.interfaces.adapters import ChatModelProvider
 from autogpt.file_workspace import (
     AbstractFileWorkspace,
     AbstractFileWorkspaceBackendName,
     get_workspace,
 )
+from autogpt.logs.utils import fmt_kwargs
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
 
 logger = logging.getLogger(__name__)
@@ -273,13 +274,13 @@ class AgentProtocolServer:
                 + ("\n\n" if "\n" in str(execute_result) else " ")
                 + f"{execute_result}\n\n"
             )
-            if execute_command_args and execute_command != "ask_user"
+            if execute_command_args and execute_command != ask_user.__name__
             else ""
         )
         output += f"{raw_output['thoughts']['speak']}\n\n"
         output += (
             f"Next Command: {next_command}({fmt_kwargs(next_command_args)})"
-            if next_command != "ask_user"
+            if next_command != ask_user.__name__
             else next_command_args["question"]
         )
 
@@ -417,18 +418,14 @@ class AgentProtocolServer:
         task_llm_provider = copy.deepcopy(self.llm_provider)
         _extra_request_headers = task_llm_provider._configuration.extra_request_headers
 
-        _extra_request_headers["X-AP-TaskID"] = task.task_id
+        _extra_request_headers["AP-TaskID"] = task.task_id
         if step_id:
-            _extra_request_headers["X-AP-StepID"] = step_id
+            _extra_request_headers["AP-StepID"] = step_id
         if task.additional_input and (user_id := task.additional_input.get("user_id")):
-            _extra_request_headers["X-AutoGPT-UserID"] = user_id
+            _extra_request_headers["AutoGPT-UserID"] = user_id
 
         return task_llm_provider
 
 
 def task_agent_id(task_id: str | int) -> str:
     return f"AutoGPT-{task_id}"
-
-
-def fmt_kwargs(kwargs: dict) -> str:
-    return ", ".join(f"{n}={repr(v)}" for n, v in kwargs.items())

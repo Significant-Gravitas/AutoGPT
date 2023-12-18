@@ -1,10 +1,12 @@
-from logging import Logger
-
 from AFAAS.core.agents.usercontext.strategies.refine_user_context import (
-    RefineUserContextFunctionNames, RefineUserContextStrategy,
-    RefineUserContextStrategyConfiguration)
-from AFAAS.core.prompting.base import (
-    BasePromptStrategy, PromptStrategiesConfiguration)
+    RefineUserContextFunctionNames,
+    RefineUserContextStrategy,
+    RefineUserContextStrategyConfiguration,
+)
+from AFAAS.interfaces.prompts.strategy import (
+    AbstractPromptStrategy,
+    PromptStrategiesConfiguration,
+)
 
 
 class StrategiesSetConfiguration(PromptStrategiesConfiguration):
@@ -12,13 +14,12 @@ class StrategiesSetConfiguration(PromptStrategiesConfiguration):
 
 
 class StrategiesSet:
-    from AFAAS.core.prompting.base import (
-        AbstractPromptStrategy, BasePromptStrategy)
+    from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
 
     @staticmethod
-    def get_strategies(logger : Logger = Logger(__name__))-> list[BasePromptStrategy]:
+    def get_strategies() -> list[AbstractPromptStrategy]:
         return [
             RefineUserContextStrategy(
-                logger=logger, **RefineUserContextStrategy.default_configuration.dict()
+                **RefineUserContextStrategy.default_configuration.dict()
             ),
         ]

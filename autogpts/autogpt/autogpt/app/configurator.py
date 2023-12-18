@@ -11,12 +11,12 @@ from autogpt.config import Config
 from autogpt.config.config import GPT_3_MODEL, GPT_4_MODEL
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import LogFormatName
-from autogpt.logs.helpers import print_attribute, request_user_double_check
+from autogpt.logs.helpers import request_user_double_check
 from autogpt.memory.vector import get_supported_memory_backends
 from colorama import Back, Fore, Style
 
 if TYPE_CHECKING:
-    from AFAAS.core.resource.model_providers.openai import OpenAICredentials
+    from AFAAS.core.adapters.openai import OpenAICredentials
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,6 @@ def apply_overrides_to_config(
         config.logging.log_file_format = LogFormatName(log_file_format)
 
     if continuous:
-        print_attribute("Continuous Mode", "ENABLED", title_color=Fore.YELLOW)
         logger.warning(
             "Continuous mode is not recommended. It is potentially dangerous and may"
             " cause your AI to run forever or carry out actions you would not usually"
@@ -86,7 +85,6 @@ def apply_overrides_to_config(
         config.continuous_mode = True
 
         if continuous_limit:
-            print_attribute("Continuous Limit", continuous_limit)
             config.continuous_limit = continuous_limit
 
     # Check if continuous limit is used without continuous mode
@@ -94,12 +92,10 @@ def apply_overrides_to_config(
         raise click.UsageError("--continuous-limit can only be used with --continuous")
 
     if speak:
-        print_attribute("Speak Mode", "ENABLED")
         config.tts_config.speak_mode = True
 
     # Set the default LLM models
     if gpt3only:
-        print_attribute("GPT3.5 Only Mode", "ENABLED")
         # --gpt3only should always use gpt-3.5-turbo, despite user's FAST_LLM config
         config.fast_llm = GPT_3_MODEL
         config.smart_llm = GPT_3_MODEL
@@ -112,7 +108,6 @@ def apply_overrides_to_config(
         )
         == GPT_4_MODEL
     ):
-        print_attribute("GPT4 Only Mode", "ENABLED")
         # --gpt4only should always use gpt-4, despite user's SMART_LLM config
         config.fast_llm = GPT_4_MODEL
         config.smart_llm = GPT_4_MODEL
@@ -135,14 +130,10 @@ def apply_overrides_to_config(
                 },
                 msg=f"{supported_memory}",
             )
-            print_attribute(
-                "Defaulting to", config.memory_backend, title_color=Fore.YELLOW
-            )
         else:
             config.memory_backend = chosen
 
     if skip_reprompt:
-        print_attribute("Skip Re-prompt", "ENABLED")
         config.skip_reprompt = True
 
     if ai_settings_file:
@@ -155,7 +146,6 @@ def apply_overrides_to_config(
             request_user_double_check()
             exit(1)
 
-        print_attribute("Using AI Settings File", file)
         config.ai_settings_file = config.project_root / file
         config.skip_reprompt = True
 
@@ -169,14 +159,12 @@ def apply_overrides_to_config(
             request_user_double_check()
             exit(1)
 
-        print_attribute("Using Prompt Settings File", file)
         config.prompt_settings_file = config.project_root / file
 
     if browser_name:
         config.selenium_web_browser = browser_name
 
     if allow_downloads:
-        print_attribute("Native Downloading", "ENABLED")
         logger.warning(
             msg=f"{Back.LIGHTYELLOW_EX}"
             "AutoGPT will now be able to download and save files to your machine."

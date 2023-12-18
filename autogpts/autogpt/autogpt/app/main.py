@@ -32,7 +32,7 @@ from autogpt.config import (
     ConfigBuilder,
     assert_config_has_openai_api_key,
 )
-from AFAAS.core.resource.model_providers.openai import OpenAIProvider
+from AFAAS.core.adapters.openai import AFAASChatOpenAI
 from AFAAS.core.runner.client_lib.utils import coroutine
 from autogpt.logs.config import configure_chat_plugins, configure_logging
 from autogpt.logs.helpers import print_attribute, speak
@@ -120,9 +120,24 @@ async def run_auto_gpt(
             )
 
     if not config.skip_news:
-        print_motd(config, logger)
+        print_motd(config)
         print_git_branch_info(logger)
         print_python_version_info(logger)
+        print_attribute("Smart LLM", config.smart_llm)
+        print_attribute("Fast LLM", config.fast_llm)
+        print_attribute("Browser", config.selenium_web_browser)
+        if config.continuous_mode:
+            print_attribute("Continuous Mode", "ENABLED", title_color=Fore.YELLOW)
+            if continuous_limit:
+                print_attribute("Continuous Limit", config.continuous_limit)
+        if config.tts_config.speak_mode:
+            print_attribute("Speak Mode", "ENABLED")
+        if ai_settings:
+            print_attribute("Using AI Settings File", ai_settings)
+        if prompt_settings:
+            print_attribute("Using Prompt Settings File", prompt_settings)
+        if config.allow_downloads:
+            print_attribute("Native Downloading", "ENABLED")
 
     if install_plugin_deps:
         install_plugin_dependencies()
@@ -354,7 +369,7 @@ async def run_auto_gpt_server(
     await server.start()
 
 
-def _configure_openai_provider(config: Config) -> OpenAIProvider:
+def _configure_openai_provider(config: Config) -> AFAASChatOpenAI:
     """Create a configured OpenAIProvider object.
 
     Args:
@@ -366,9 +381,9 @@ def _configure_openai_provider(config: Config) -> OpenAIProvider:
     if config.openai_credentials is None:
         raise RuntimeError("OpenAI key is not configured")
 
-    openai_settings = OpenAIProvider.default_settings.copy(deep=True)
+    openai_settings = AFAASChatOpenAI.default_settings.copy(deep=True)
     openai_settings.credentials = config.openai_credentials
-    return OpenAIProvider(
+    return AFAASChatOpenAI(
         settings=openai_settings,
         logger=logging.getLogger("OpenAIProvider"),
     )

@@ -1,14 +1,21 @@
 import json
 import logging
+import os.path
 import tempfile
 from pathlib import Path
 from xml.etree import ElementTree
 
 import docx
+import pytest
 import yaml
 from AFAAS.core.tools.builtins.file_operations_utils import (
     is_file_binary_fn, read_textual_file)
 from bs4 import BeautifulSoup
+
+from autogpt.commands.file_operations_utils import (
+    decode_textual_file,
+    is_file_binary_fn,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -148,15 +155,18 @@ respective_file_creation_functions = {
 binary_files_extensions = [".pdf", ".docx"]
 
 
-def test_parsers():
-    for (
-        file_extension,
-        c_file_creator,
-    ) in respective_file_creation_functions.items():
-        created_file_path = Path(c_file_creator())
-        loaded_text = read_textual_file(created_file_path, logger)
+@pytest.mark.parametrize(
+    "file_extension, c_file_creator",
+    respective_file_creation_functions.items(),
+)
+def test_parsers(file_extension, c_file_creator):
+    created_file_path = Path(c_file_creator())
+    with open(created_file_path, "rb") as file:
+        loaded_text = decode_textual_file(file, os.path.splitext(file.name)[1], logger)
 
         assert plain_text_str in loaded_text
 
         should_be_binary = file_extension in binary_files_extensions
-        assert should_be_binary == is_file_binary_fn(created_file_path)
+        assert should_be_binary == is_file_binary_fn(file)
+
+    created_file_path.unlink()  # cleanup

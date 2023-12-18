@@ -1,15 +1,15 @@
 import json
 from typing import Optional
 
-from AFAAS.core.lib.sdk.errors import *
-from AFAAS.core.lib.sdk.logger import AFAASLogger
-from AFAAS.core.lib.sdk.schema import *
+from AFAAS.lib.sdk.errors import *
+from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.schema import *
 from fastapi import APIRouter, Depends, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
 from .dependencies.agents import get_agent
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 """
 /agents (GET): Returns a list of all agents.
@@ -40,8 +40,7 @@ import yaml
 from fastapi import APIRouter, FastAPI, Request
 
 from AFAAS.core.agents import PlannerAgent
-from app.cli_web_app.server.schema import \
-    AgentMessageRequestBody
+from app.cli_web_app.server.schema import AgentMessageRequestBody
 
 afaas_agent_router = APIRouter()
 agent_router = APIRouter()

@@ -4,16 +4,16 @@ import inspect
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents.base import BaseAgent
-    from AFAAS.core.configuration import *
+    from AFAAS.interfaces.agent import BaseAgent
+    from AFAAS.configs import *
     from .tool_parameters import ToolParameter
 
-from AFAAS.core.lib.context_items import ContextItem
-from AFAAS.core.lib.task import Task
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.context_items import ContextItem
+from AFAAS.interfaces.task import AbstractTask
+from AFAAS.lib.sdk.logger import AFAASLogger
 from langchain.tools.base import BaseTool
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 ToolReturnValue = Any
 ToolOutput = ToolReturnValue | tuple[ToolReturnValue, ContextItem]
@@ -78,11 +78,11 @@ class Tool:
         ]
         return f"{self.name}: {self.description.rstrip('.')}. Params: ({', '.join(params)})"
 
-    def default_success_check_callback(self , task: Task, tool_output: Any):
+    def default_success_check_callback(self, task: Task, tool_output: Any):
         LOG.trace(f"Tool.default_success_check_callback() called for {self}")
         LOG.debug(f"Task = {task}")
         LOG.debug(f"Tool output = {tool_output}")
-        
+
         return self.description
 
-        #return summary
+        # return summary

@@ -7,22 +7,20 @@ from typing import Any, ClassVar
 import inflection
 from pydantic import Field
 
-from ..agents.base.assistants import LanguageModelConfiguration
-from ..agents.base.features.agentmixin import AgentMixin
-from ..configuration import SystemConfiguration
-from ..plugin.base import PluginLocation
-from ..resource.model_providers import CompletionModelFunction
+from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
+from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
+from AFAAS.configs import SystemConfiguration
+from AFAAS.interfaces.adapters import CompletionModelFunction
 from ..tools.schema import ToolResult
-from ..utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 from .schema import ToolResult
 
 
 class ToolConfiguration(SystemConfiguration):
     """Struct for model configuration."""
 
-    location: PluginLocation
     packages_required: list[str] = Field(default_factory=list)
-    language_model_required: LanguageModelConfiguration = None
+    language_model_required: AbstractPromptConfiguration = None
     memory_provider_required: bool = False
     workspace_required: bool = False
 
@@ -82,7 +80,7 @@ class BaseTool(AgentMixin, abc.ABC):
 
 
 class BaseToolsRegistry(AgentMixin, abc.ABC):
-    def __init__(self, settings, logger):
+    def __init__(self, settings):
         pass  # NOTE : Avoid passing too many arguments to AgentMixin
 
     @abc.abstractmethod

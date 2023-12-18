@@ -10,9 +10,10 @@ if TYPE_CHECKING:
     from autogpt.config import Config
     from autogpt.models.command_registry import CommandRegistry
 
-from AFAAS.core.configuration import Configurable
-from AFAAS.core.prompting import ChatPrompt
-from AFAAS.core.resource.model_providers import (BaseChatModelProvider,
+<<<<<<< HEAD
+from AFAAS.configs import Configurable
+from AFAAS.interfaces.prompts import ChatPrompt
+from AFAAS.interfaces.adapters import (BaseChatModelProvider,
                                                    ChatMessage,
                                                    ChatModelResponse)
 from autogpt.llm.api_manager import ApiManager
@@ -22,6 +23,32 @@ from autogpt.logs.log_cycle import (CURRENT_CONTEXT_FILE_NAME,
 from autogpt.models.action_history import (Action, ActionErrorResult,
                                            ActionInterruptedByHuman,
                                            ActionResult, ActionSuccessResult)
+=======
+from pydantic import Field
+
+from autogpt.core.configuration import Configurable
+from autogpt.core.prompting import ChatPrompt
+from autogpt.core.resource.model_providers import (
+    AssistantChatMessageDict,
+    ChatMessage,
+    ChatModelProvider,
+)
+from autogpt.llm.api_manager import ApiManager
+from autogpt.logs.log_cycle import (
+    CURRENT_CONTEXT_FILE_NAME,
+    NEXT_ACTION_FILE_NAME,
+    USER_INPUT_FILE_NAME,
+    LogCycleHandler,
+)
+from autogpt.logs.utils import fmt_kwargs
+from autogpt.models.action_history import (
+    Action,
+    ActionErrorResult,
+    ActionInterruptedByHuman,
+    ActionResult,
+    ActionSuccessResult,
+)
+>>>>>>> upstream/master
 from autogpt.models.command import CommandOutput
 from autogpt.models.context_item import ContextItem
 from pydantic import Field
@@ -30,10 +57,23 @@ from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 from .features.context import ContextMixin
 from .features.file_workspace import AbstractFileWorkspaceMixin
 from .features.watchdog import WatchdogMixin
+<<<<<<< HEAD
 from .prompt_strategies.one_shot import (OneShotAgentPromptConfiguration,
                                          OneShotAgentPromptStrategy)
 from .lib.sdk.errors import (AgentException, CommandExecutionError,
                                UnknownCommandError)
+=======
+from .prompt_strategies.one_shot import (
+    OneShotAgentPromptConfiguration,
+    OneShotAgentPromptStrategy,
+)
+from .utils.exceptions import (
+    AgentException,
+    AgentTerminated,
+    CommandExecutionError,
+    UnknownCommandError,
+)
+>>>>>>> upstream/master
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +104,8 @@ class Agent(
         name="Agent",
         description=__doc__,
     )
+
+    prompt_strategy: OneShotAgentPromptStrategy
 
     def __init__(
         self,
@@ -153,20 +195,20 @@ class Agent(
         return prompt
 
     def parse_and_process_response(
-        self, llm_response: ChatModelResponse, *args, **kwargs
+        self, llm_response: AssistantChatMessageDict, *args, **kwargs
     ) -> Agent.ThoughtProcessOutput:
         for plugin in self.config.plugins:
             if not plugin.can_handle_post_planning():
                 continue
-            llm_response.response["content"] = plugin.post_planning(
-                llm_response.response.get("content", "")
+            llm_response["content"] = plugin.post_planning(
+                llm_response.get("content", "")
             )
 
         (
             command_name,
             arguments,
             assistant_reply_dict,
-        ) = self.prompt_strategy.parse_response_content(llm_response.response)
+        ) = self.prompt_strategy.parse_response_content(llm_response)
 
         self.log_cycle_handler.log_cycle(
             self.ai_profile.ai_name,
@@ -232,8 +274,13 @@ class Agent(
                     self.context.add(context_item)
 
                 result = ActionSuccessResult(outputs=return_value)
+            except AgentTerminated:
+                raise
             except AgentException as e:
                 result = ActionErrorResult.from_exception(e)
+                logger.warning(
+                    f"{command_name}({fmt_kwargs(command_args)}) raised an error: {e}"
+                )
 
             result_tlength = self.llm_provider.count_tokens(str(result), self.llm.name)
             if result_tlength > self.send_token_limit // 3:

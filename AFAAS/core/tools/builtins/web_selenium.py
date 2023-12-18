@@ -5,7 +5,6 @@ from __future__ import annotations
 TOOL_CATEGORY = "web_browse"
 TOOL_CATEGORY_TITLE = "Web Browsing"
 
-import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Type
@@ -20,18 +19,17 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.safari.options import Options as SafariOptions
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents.base import BaseAgent
+    from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.core.tools.command_decorator import tool
-from AFAAS.core.lib.sdk.errors import ToolExecutionError
-from AFAAS.core.utils.json_schema import JSONSchema
-from AFAAS.core.utils.processing.html import (
-    extract_hyperlinks, format_hyperlinks)
-from AFAAS.core.utils.processing.text import summarize_text
-from AFAAS.core.utils.url.validators import validate_url
+from AFAAS.lib.sdk.errors import ToolExecutionError
+from AFAAS.lib.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.processing.html import extract_hyperlinks, format_hyperlinks
+from AFAAS.lib.utils.processing.text import summarize_text
+from AFAAS.lib.utils.url.validators import validate_url
 
-logger = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 FILE_DIR = Path(__file__).parent.parent
 TOKENS_TO_TRIGGER_SUMMARY = 50
@@ -180,7 +178,7 @@ def open_page_in_browser(url: str) -> WebDriver:
     Returns:
         driver (WebDriver): A driver object representing the browser window to scrape
     """
-    logging.getLogger("selenium").setLevel(logging.CRITICAL)
+    LOG.getLogger("selenium").setLevel(LOG.CRITICAL)
 
     options_available: dict[str, Type[BrowserOptions]] = {
         "chrome": ChromeOptions,
@@ -271,7 +269,7 @@ async def summarize_memorize_webpage(
         raise ValueError("No text to summarize")
 
     text_length = len(text)
-    logger.info(f"Text length: {text_length} characters")
+    LOG.info(f"Text length: {text_length} characters")
 
     # memory = get_memory(agent.legacy_config)
 

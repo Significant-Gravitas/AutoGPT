@@ -5,22 +5,21 @@ from __future__ import annotations
 TOOL_CATEGORY = "system"
 TOOL_CATEGORY_TITLE = "System"
 
-import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents.base import BaseAgent
+    from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.core.lib.task.task import Task
-from AFAAS.core.lib.sdk.logger import AFAASLogger
-from AFAAS.core.agents.base.features.context import \
-    get_agent_context
+from AFAAS.lib.task.task import Task
+from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.interfaces.agent.features.context import get_agent_context
 from AFAAS.core.tools.command_decorator import tool
-# from AFAAS.core.lib.sdk.errors import AgentTerminated, InvalidArgumentError
-from AFAAS.core.lib.sdk.errors import InvalidArgumentError
-from AFAAS.core.utils.json_schema import JSONSchema
 
-logger = AFAASLogger(__name__)
+# from AFAAS.lib.sdk.errors import AgentTerminated, InvalidArgumentError
+from AFAAS.lib.sdk.errors import InvalidArgumentError
+from AFAAS.lib.utils.json_schema import JSONSchema
+
+LOG = AFAASLogger(name=__name__)
 
 
 @tool(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Callable, Iterable, TypeVar
 
-from AFAAS.core.resource.model_providers import CompletionModelFunction
+from AFAAS.interfaces.adapters import CompletionModelFunction
 from autogpt.models.command import Command
 from colorama import Fore, Style
 from openai.error import (APIError, RateLimitError, ServiceUnavailableError,

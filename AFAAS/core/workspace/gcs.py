@@ -5,16 +5,22 @@ stores the files in a Google Cloud Storage bucket.
 from __future__ import annotations
 
 import inspect
-import logging
+
+from io import IOBase
 from pathlib import Path
 
 from google.cloud import storage
+from google.cloud.exceptions import NotFound
 
-from AFAAS.core.configuration.schema import UserConfigurable
+from AFAAS.configs.schema import UserConfigurable
 
-from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
+from AFAAS.interfaces.workspace import (
+    AbstractFileWorkspace,
+    AbstractFileWorkspaceConfiguration,
+)
+from AFAAS.lib.sdk.logger import AFAASLogger
 
-logger = logging.getLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 class GCSFileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
@@ -24,64 +30,85 @@ class GCSFileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
 class GCSFileWorkspace_AlphaRealease(AbstractFileWorkspace):
     """A class that represents a Google Cloud Storage workspace."""
 
-
     class SystemSettings(AbstractFileWorkspace.SystemSettings):
         configuration = GCSFileWorkspaceConfiguration
 
     _bucket: storage.Bucket
 
     def __init__(self, config: GCSFileWorkspaceConfiguration):
+        super().__init__(config=config)
         self._bucket_name = config.bucket
-        self._root = config.root
+        assert self._agent_workspace.is_absolute()
 
         self._gcs = storage.Client()
-        super().__init__()
 
     @property
     def root(self) -> Path:
         """The root directory of the file workspace."""
-        return self._root
+        return self._agent_workspace
 
     @property
-    def restrict_to_root(self):
+    def restrict_to_root(self) -> bool:
         """Whether to restrict generated paths to the root."""
         return True
 
-    def initialize(self) -> None:
-        self._bucket = self._gcs.get_bucket(self._bucket_name)
+    def _initialize(self) -> None:
+        LOG.debug(f"Initializing {repr(self)}...")
+        try:
+            self._bucket = self._gcs.get_bucket(self._bucket_name)
+        except NotFound:
+            LOG.info(f"Bucket '{self._bucket_name}' does not exist; creating it...")
+            self._bucket = self._gcs.create_bucket(self._bucket_name)
 
     def get_path(self, relative_path: str | Path) -> Path:
-        return super().get_path(relative_path).relative_to(Path("/"))
+        return super().get_path(relative_path).relative_to("/")
 
-    def open_file(self, path: str | Path, mode: str = "r"):
-        """Open a file in the workspace."""
+    def _get_blob(self, path: str | Path) -> storage.Blob:
         path = self.get_path(path)
-        blob = self._bucket.blob(str(path))
-        return blob
+        return self._bucket.blob(str(path))
+
+    def open_file(self, path: str | Path, binary: bool = False) -> IOBase:
+        """Open a file in the workspace."""
+        blob = self._get_blob(path)
+        blob.reload()  # pin revision number to prevent version mixing while reading
+        return blob.open("rb" if binary else "r")
 
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
         """Read a file in the workspace."""
-        blob = self.open_file(path, "r")
-        file_content = (
-            blob.download_as_text() if not binary else blob.download_as_bytes()
-        )
-        return file_content
+        return self.open_file(path, binary).read()
 
-    async def _write_file(self, path: str | Path, content: str | bytes):
+    async def write_file(self, path: str | Path, content: str | bytes) -> None:
         """Write to a file in the workspace."""
-        blob = self.open_file(path, "w")
-        blob.upload_from_string(content) if isinstance(
-            content, str
-        ) else blob.upload_from_file(content)
+        blob = self._get_blob(path)
 
-    def list_files(self, path: str | Path = ".") -> list[Path]:
-        """List all files in a directory in the workspace."""
+        if isinstance(content, str):
+            blob.upload_from_string(content)
+        else:
+            blob.upload_from_file(content)
+
+        if self.on_write_file:
+            path = Path(path)
+            if path.is_absolute():
+                path = path.relative_to(self.root)
+            res = self.on_write_file(path)
+            if inspect.isawaitable(res):
+                await res
+
+    def list(self, path: str | Path = ".") -> list[Path]:
+        """List all files (recursively) in a directory in the workspace."""
         path = self.get_path(path)
-        blobs = self._bucket.list_blobs(prefix=str(path))
-        return [Path(blob.name) for blob in blobs if not blob.name.endswith("/")]
+        return [
+            Path(blob.name).relative_to(path)
+            for blob in self._bucket.list_blobs(
+                prefix=f"{path}/" if path != Path(".") else None
+            )
+        ]
 
     def delete_file(self, path: str | Path) -> None:
         """Delete a file in the workspace."""
         path = self.get_path(path)
         blob = self._bucket.blob(str(path))
         blob.delete()
+
+    def __repr__(self) -> str:
+        return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self._agent_workspace})"

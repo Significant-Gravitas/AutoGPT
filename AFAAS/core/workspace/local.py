@@ -4,56 +4,93 @@ The LocalFileWorkspace class implements a AbstractFileWorkspace that works with 
 from __future__ import annotations
 
 import inspect
-import logging
 from pathlib import Path
+from typing import IO, Optional
 
-from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
+from AFAAS.interfaces.workspace import (
+    AbstractFileWorkspace,
+    AbstractFileWorkspaceConfiguration,
+)
+from AFAAS.lib.sdk.logger import AFAASLogger
 
-logger = logging.getLogger(__name__)
+LOG = AFAASLogger(name=__name__)
+
+
+class AGPTLocalFileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
+    pass
 
 
 class AGPTLocalFileWorkspace(AbstractFileWorkspace):
     """A class that represents a file workspace."""
 
-    def __init__(self, config: AbstractFileWorkspaceConfiguration):
-        self._root = self._sanitize_path(config.root)
-        self._restrict_to_root = config.restrict_to_root
-        super().__init__()
+    class SystemSettings(AbstractFileWorkspace.SystemSettings):
+        configuration: AGPTLocalFileWorkspaceConfiguration = (
+            AGPTLocalFileWorkspaceConfiguration()
+        )
+
+    def __init__(
+        self, config: AGPTLocalFileWorkspace = AGPTLocalFileWorkspaceConfiguration()
+    ):
+        super().__init__(config=config)
+        self._restrict_to_agent_workspace = config.restrict_to_agent_workspace
 
     @property
     def root(self) -> Path:
         """The root directory of the file workspace."""
-        return self._root
+        return self._agent_workspace
 
     @property
-    def restrict_to_root(self):
+    def restrict_to_root(self) -> bool:
         """Whether to restrict generated paths to the root."""
-        return self._restrict_to_root
+        return self._restrict_to_agent_workspace
 
-    def initialize(self) -> None:
+    def _initialize(self) -> None:
         self.root.mkdir(exist_ok=True, parents=True)
 
-    def open_file(self, path: str | Path, mode: str = "r"):
+    def open_file(self, path: str | Path, binary: bool = False) -> IO:
         """Open a file in the workspace."""
-        full_path = self.get_path(path)
-        return open(full_path, mode)
+        return self._open_file(path, "rb" if binary else "r")
 
-    def read_file(self, path: str | Path, binary: bool = False):
+    def _open_file(self, path: str | Path, mode: str = "r") -> IO:
+        full_path = self.get_path(path)
+        return open(full_path, mode)  # type: ignore
+
+    def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
         """Read a file in the workspace."""
-        with self.open_file(path, "rb" if binary else "r") as file:
+        with self._open_file(path, "rb" if binary else "r") as file:
             return file.read()
 
-    async def _write_file(self, path: str | Path, content: str | bytes):
+    async def write_file(self, path: str | Path, content: str | bytes) -> None:
         """Write to a file in the workspace."""
-        with self.open_file(path, "wb" if type(content) is bytes else "w") as file:
+        with self._open_file(path, "wb" if type(content) is bytes else "w") as file:
             file.write(content)
 
-    def list_files(self, path: str | Path = "."):
-        """List all files in a directory in the workspace."""
-        full_path = self.get_path(path)
-        return [str(file) for file in full_path.glob("*") if file.is_file()]
+        if self.on_write_file:
+            path = Path(path)
+            if path.is_absolute():
+                path = path.relative_to(self.root)
+            res = self.on_write_file(path)
+            if inspect.isawaitable(res):
+                await res
 
-    def delete_file(self, path: str | Path):
+    def list(self, path: str | Path = ".") -> list[Path]:
+        """List all files (recursively) in a directory in the workspace."""
+        path = self.get_path(path)
+        return [file.relative_to(path) for file in path.rglob("*") if file.is_file()]
+
+    def delete_file(self, path: str | Path) -> None:
         """Delete a file in the workspace."""
         full_path = self.get_path(path)
         full_path.unlink()
+
+    @staticmethod
+    def _sanitize_path(
+        relative_path: str | Path,
+        agent_workspace_path: Optional[str | Path] = None,
+        restrict_to_root: bool = True,
+    ) -> Path:
+        super()._sanitize_path(
+            relative_path=relative_path,
+            agent_workspace_path=agent_workspace_path,
+            restrict_to_root=restrict_to_root,
+        )

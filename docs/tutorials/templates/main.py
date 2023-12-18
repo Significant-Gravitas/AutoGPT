@@ -3,17 +3,20 @@ import logging
 import uuid
 from typing import Awaitable, Callable
 
-from AFAAS.core.agents.base import BaseAgent, Configurable
-from AFAAS.core.agents.usercontext.configuration import \
-    MyCustomAgentConfiguration  # Import configuration
-from AFAAS.core.agents.usercontext.loop import \
-    UserContextLoop  # Import the UserContextLoop or your custom loop
-from AFAAS.core.agents.usercontext.system import \
-    MyCustomAgentSystemSettings  # Import system settings
+from AFAAS.interfaces.agent import BaseAgent, Configurable
+from AFAAS.core.agents.usercontext.configuration import (
+    MyCustomAgentConfiguration,
+)  # Import configuration
+from AFAAS.core.agents.usercontext.loop import (
+    UserContextLoop,
+)  # Import the UserContextLoop or your custom loop
+from AFAAS.core.agents.usercontext.system import (
+    MyCustomAgentSystemSettings,
+)  # Import system settings
 from AFAAS.core.memory import Memory
 from AFAAS.core.planning import SimplePlanner
-from AFAAS.core.resource.model_providers.openai import OpenAIProvider
-from AFAAS.core.workspace import LocalFileWorkspace
+from AFAAS.core.adapters.openai import AFAASChatOpenAI
+from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
 
 # Define your custom agent class. The class name should reflect its purpose.
@@ -29,10 +32,9 @@ class MyCustomAgent(BaseAgent, Configurable):
     def __init__(
         self,
         settings: MyCustomAgentSystemSettings,
-        logger: logging.Logger,
         memory: Memory,
-        openai_provider: OpenAIProvider,
-        workspace: LocalFileWorkspace,
+        openai_provider: AFAASChatOpenAI,
+        workspace: AbstractFileWorkspace,
         planning: SimplePlanner,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
@@ -114,7 +116,6 @@ class MyCustomAgent(BaseAgent, Configurable):
         cls,
         user_objective: str,
         agent_settings: MyCustomAgentSettings,
-        logger: logging.Logger,
     ) -> dict:
         """Determine the agent name and goals based on the user objective and settings.
 

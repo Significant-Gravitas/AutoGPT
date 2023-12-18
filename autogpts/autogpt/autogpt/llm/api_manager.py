@@ -6,8 +6,8 @@ from typing import List, Optional
 from openai import OpenAI
 
 client = OpenAI()
-from AFAAS.core.resource.model_providers.openai import OPEN_AI_MODELS
-from AFAAS.core.resource.model_providers.schema import ChatModelInfo
+from AFAAS.core.adapters.openai import OPEN_AI_MODELS
+from AFAAS.interfaces.adapters.language_model import ChatModelInfo
 from autogpt.singleton import Singleton
 from openai import Model
 

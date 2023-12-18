@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Optional
 
 from pydantic import Field
 
-from AFAAS.core.agents.base.models import (
+from AFAAS.interfaces.agent.models import (
     BaseAgentConfiguration,
     BaseAgentSettings,
     BaseAgentSystems,
@@ -49,7 +49,7 @@ from AFAAS.core.agents.base.models import (
 )
 from AFAAS.core.planning import PlannerSettings
 from AFAAS.core.plugin.simple import PluginLocation
-from AFAAS.core.resource.model_providers import OpenAISettings
+from AFAAS.interfaces.adapters import OpenAISettings
 
 ```
 

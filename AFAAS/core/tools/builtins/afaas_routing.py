@@ -5,20 +5,18 @@ from __future__ import annotations
 TOOL_CATEGORY = "framework"
 TOOL_CATEGORY_TITLE = "Framework"
 
-import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents.base import BaseAgent
+    from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.core.lib.task.task import Task
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.task.task import Task
+from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.core.agents.routing import RoutingAgent
-from AFAAS.core.agents.routing.strategies.routing import \
-    RoutingStrategyConfiguration
+from AFAAS.core.agents.routing.strategies.routing import RoutingStrategyConfiguration
 from AFAAS.core.tools.command_decorator import tool
 
-logger = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 @tool(
@@ -44,16 +42,14 @@ async def afaas_routing(
             current_task=task,
             note_to_agent_length=note_to_agent_length,
         )
-        # routing_settings.agent_goals=  agent.agent_goals
-        # routing_settings.agent_goal_sentence=  agent.agent_goal_sentence
         routing_settings.memory = agent._memory._settings
-        routing_settings.workspace = agent._workspace._settings
-        routing_settings.chat_model_provider = agent._chat_model_provider._settings
         routing_settings.note_to_agent_length = note_to_agent_length
 
         # USER CONTEXT AGENT : Save RoutingAgent Settings in DB (for POW / POC)
         new_routing_agent: RoutingAgent = RoutingAgent.create_agent(
-            agent_settings=routing_settings, logger=agent._logger
+            agent_settings=routing_settings,
+            workspace=agent._workspace,
+            default_llm_provider=agent.default_llm_provider,
         )
 
         # # USER CONTEXT AGENT : Get RoutingAgent from DB (for POW / POC)
@@ -61,16 +57,14 @@ async def afaas_routing(
 
         routing_agent: RoutingAgent = RoutingAgent.get_instance_from_settings(
             agent_settings=routing_settings,
-            logger=agent._logger,
+            workspace=agent._workspace,
+            default_llm_provider=agent.default_llm_provider,
         )
 
         routing_return: dict = await routing_agent.run(
             user_input_handler=agent._user_input_handler,
             user_message_handler=agent._user_message_handler,
         )
-
-        # agent.agent_goal_sentence =     routing_return["agent_goal_sentence"]
-        # agent.agent_goals =     routing_return["agent_goals"]
 
         return routing_return
     except Exception as e:

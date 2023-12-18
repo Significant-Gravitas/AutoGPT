@@ -1,25 +1,25 @@
 from __future__ import annotations
 
-import logging
 import uuid
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
 from pydantic import Field
 
-from AFAAS.core.lib.task.plan import Plan
-from AFAAS.core.memory.base import AbstractMemory
-from AFAAS.core.resource.model_providers import (
-    OpenAIProvider, OpenAISettings)
-from AFAAS.core.tools import (TOOL_CATEGORIES,
-                                                 SimpleToolRegistry)
+from AFAAS.lib.task.plan import Plan
+from AFAAS.interfaces.db import AbstractMemory
+from AFAAS.core.adapters.openai import AFAASChatOpenAI, OpenAISettings
+from AFAAS.core.tools import TOOL_CATEGORIES, SimpleToolRegistry
 
-from ..base import BaseAgent, BaseLoopHook, PromptManager, ToolExecutor
+from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, PromptManager, ToolExecutor
 from .loop import PlannerLoop
 from .models import PlannerAgentConfiguration  # PlannerAgentSystemSettings,
 from .models import PlannerAgentSystems
+from AFAAS.lib.sdk.logger import AFAASLogger
+
+LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
-    from AFAAS.core.workspace.simple import LocalFileWorkspace
+    from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
 
 class PlannerAgent(BaseAgent):
@@ -35,8 +35,6 @@ class PlannerAgent(BaseAgent):
         description: str = "A simple agent."
         configuration: PlannerAgentConfiguration = PlannerAgentConfiguration()
 
-        # chat_model_provider: OpenAISettings = Field(default=OpenAISettings(), exclude=True)
-        chat_model_provider: OpenAISettings = OpenAISettings()
         tool_registry: SimpleToolRegistry.SystemSettings = (
             SimpleToolRegistry.SystemSettings()
         )
@@ -57,21 +55,20 @@ class PlannerAgent(BaseAgent):
 
     def __init__(
         self,
-        settings: PlannerAgent.SystemSettings,
-        logger: logging.Logger,
-        memory: AbstractMemory,
-        chat_model_provider: OpenAIProvider,
-        workspace: LocalFileWorkspace,
-        prompt_manager: PromptManager,
         user_id: uuid.UUID,
+        settings: PlannerAgent.SystemSettings,
+        memory: AbstractMemory,
+        prompt_manager: PromptManager,
+        default_llm_provider: AFAASChatOpenAI,
+        workspace: AbstractFileWorkspace,  # = AGPTLocalFileWorkspace.SystemSettings(),
         agent_id: uuid.UUID = None,
         **kwargs,
     ):
         super().__init__(
             settings=settings,
-            logger=logger,
             memory=memory,
             workspace=workspace,
+            prompt_manager=prompt_manager,
             user_id=user_id,
             agent_id=agent_id,
         )
@@ -84,8 +81,7 @@ class PlannerAgent(BaseAgent):
         #
         # Step 1 : Set the chat model provider
         #
-        self._chat_model_provider = chat_model_provider
-        # self._chat_model_provider.set_agent(agent=self)
+        self.default_llm_provider = default_llm_provider
 
         #
         # Step 2 : Load prompt_settings.yaml (configuration)
@@ -95,8 +91,8 @@ class PlannerAgent(BaseAgent):
         #
         # Step 3 : Set the chat model provider
         #
-        self._prompt_manager = prompt_manager
-        self._prompt_manager.set_agent(agent=self)
+        # self._prompt_manager = prompt_manager
+        # self._prompt_manager.set_agent(agent=self)
 
         #
         # Step 4 : Set the ToolRegistry
@@ -104,10 +100,9 @@ class PlannerAgent(BaseAgent):
         self._tool_registry = SimpleToolRegistry.with_tool_modules(
             modules=TOOL_CATEGORIES,
             agent=self,
-            logger=self._logger,
             memory=memory,
             workspace=workspace,
-            model_providers=chat_model_provider,
+            model_providers=default_llm_provider,
         )
         # self._tool_registry.set_agent(agent=self)
 
@@ -125,13 +120,17 @@ class PlannerAgent(BaseAgent):
         ### Step 5a : Create the plan
         ###
         # FIXME: Long term : PlannerLoop / Pipeline get all ready tasks & launch them => Parralelle processing of tasks
-        if hasattr( settings, "plan_id" ) and settings.plan_id is not None :
-            self.plan: Plan = Plan.get_plan_from_db(settings.plan_id) # Plan(user_id=user_id)
-            self._loop.set_current_task(task = self.plan.find_first_ready_task())
-        else :
-            self.plan: Plan = Plan.create_in_db(agent= self)
-            #self._loop.add_initial_tasks()
-            self._loop.set_current_task(task = self.plan.get_ready_tasks()[0])
+        if hasattr(settings, "plan_id") and settings.plan_id is not None:
+            self.plan: Plan = Plan.get_plan_from_db(
+                plan_id=settings.plan_id, agent=self
+            )  # Plan(user_id=user_id)
+            # task = self.plan.find_first_ready_task()
+            # self._loop.set_current_task(task = task)
+            self._loop.set_current_task(task=self.plan.get_next_task())
+        else:
+            self.plan: Plan = Plan.create_in_db(agent=self)
+            # self._loop.add_initial_tasks()
+            self._loop.set_current_task(task=self.plan.get_ready_tasks()[0])
             self.plan_id = self.plan.plan_id
 
         ###
@@ -195,86 +194,23 @@ class PlannerAgent(BaseAgent):
 
     @classmethod
     def _create_agent_custom_treatment(
-        cls, agent_settings: PlannerAgent.SystemSettings, logger: logging.Logger
+        cls,
+        agent_settings: PlannerAgent.SystemSettings,
     ) -> None:
-        return cls._create_workspace(agent_settings=agent_settings, logger=logger)
+        return cls._create_workspace(agent_settings=agent_settings)
 
     @classmethod
     def _create_workspace(
         cls,
         agent_settings: PlannerAgent.SystemSettings,
-        logger: logging.Logger,
     ):
-        from AFAAS.core.workspace import FileWorkspaceBackendName, get_workspace
-        from AFAAS.core.workspace.simple import LocalFileWorkspace
+        from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
-        return LocalFileWorkspace.create_workspace(
+        return agent_settings.workspace.__class__.create_workspace(
             user_id=agent_settings.user_id,
             agent_id=agent_settings.agent_id,
             settings=agent_settings,
-            logger=logger,
         )
-
-    @classmethod
-    def get_strategies(cls) -> list:
-        # TODO : Continue refactorization => move to loop ?
-        from AFAAS.core.agents.planner.strategies import \
-            StrategiesSet
-
-        return StrategiesSet.get_strategies()
-
-        # strategies_config = SimplePromptStrategiesConfiguration(
-        #         name_and_goals=strategies.NameAndGoals.default_configuration,
-        #         initial_plan=strategies.InitialPlan.default_configuration,
-        #         next_ability=strategies.NextTool.default_configuration,)
-        # #agent_settings.prompt_manager.configuration.prompt_strategies = strategies_config
-
-        # #
-        # # Dynamicaly load all strategies
-        # # To do so Intanciate all class that inherit from PromptStrategy in package Strategy
-        # #
-        # simple_strategies = {}
-        # import inspect
-        # from  AFAAS.core.agents.simple.lib.base import PromptStrategy
-        # for strategy_name, strategy_config in strategies_config.__dict__.items():
-        #     strategy_module = getattr(strategies, strategy_name)
-        #     # Filter classes that are subclasses of PromptStrategy and are defined within that module
-        #     strategy_classes = [member for name, member in inspect.getmembers(strategy_module)
-        #                         if inspect.isclass(member) and
-        #                         issubclass(member, PromptStrategy) and
-        #                         member.__module__ == strategy_module.__name__]
-        #     if not strategy_classes:
-        #         raise ValueError(f"No valid class found in module {strategy_name}")
-        #     strategy_instance = strategy_classes[0](**strategy_config.dict())
-
-        #     simple_strategies[strategy_name] = strategy_instance
-
-    @classmethod
-    async def determine_agent_name_and_goals(
-        cls,
-        user_objective: str,
-        agent_settings: PlannerAgent.SystemSettings,
-        logger: logging.Logger,
-    ) -> dict:
-        logger.trace("Loading OpenAI provider.")
-        provider: OpenAIProvider = cls._get_system_instance(
-            "chat_model_provider",
-            agent_settings,
-            logger=logger,
-        )
-        logger.trace("Loading agent planner.")
-        agent_planner: PromptManager = cls._get_system_instance(
-            "prompt_manager",
-            agent_settings,
-            logger=logger,
-            model_providers={"openai": provider},
-        )
-        logger.trace("determining agent name and goals.")
-        model_response = await agent_planner.decide_name_and_goals(
-            user_objective,
-        )
-
-        return model_response.content
 
     def __repr__(self):
         return "PlannerAgent()"
@@ -285,11 +221,10 @@ class PlannerAgent(BaseAgent):
 
 
 def test_hook(**kwargs):
-    logger: logging.Logger = kwargs["agent"]._logger
-    logger.notice("Entering test_hook Function")
-    logger.notice(
+    LOG.notice("Entering test_hook Function")
+    LOG.notice(
         "Hooks are an experimental plug-in system that may fade away as we are transiting from a Loop logic to a Pipeline logic."
     )
     test = "foo_bar"
     for key, value in kwargs.items():
-        logger.debug(f"{key}: {value}")
+        LOG.debug(f"{key}: {value}")

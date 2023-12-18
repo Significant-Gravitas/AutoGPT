@@ -218,7 +218,7 @@ def benchmark():
         ignore_unknown_options=True,
     )
 )
-#@click.argument("agent_name")
+# @click.argument("agent_name")
 @click.argument("subprocess_args", nargs=-1, type=click.UNPROCESSED)
 def start(subprocess_args):
     """Starts the benchmark command"""
@@ -449,7 +449,6 @@ def benchmark_tests_details(test_name):
             except IOError:
                 print(f"IOError: file could not be read: {data_file}")
                 continue
-
 
 
 if __name__ == "__main__":

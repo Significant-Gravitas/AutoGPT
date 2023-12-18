@@ -3,18 +3,17 @@ from __future__ import annotations
 TOOL_CATEGORY = "framework"
 TOOL_CATEGORY_TITLE = "Framework"
 
-import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents.base import BaseAgent
+    from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.core.lib.task.task import Task
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.task.task import Task
+from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.core.tools.command_decorator import tool
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
-logger = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 @tool(

@@ -5,11 +5,12 @@ from __future__ import annotations
 TOOL_CATEGORY = "user_interaction"
 TOOL_CATEGORY_TITLE = "User Interaction"
 
-from AFAAS.core.lib.task.task import Task
-from AFAAS.core.agents.base import BaseAgent
-# from AFAAS.core.utils.app import clean_input
+from AFAAS.lib.task.task import Task
+from AFAAS.interfaces.agent import BaseAgent
+
+# from AFAAS.lib.app import clean_input
 from AFAAS.core.tools.command_decorator import tool
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 
 @tool(

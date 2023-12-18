@@ -1,0 +1,17 @@
+## System Prompt
+{{ system_prompt }}
+
+{% if event_history %}
+## Progress
+{{ progress }}
+{% endif %}
+
+## Response Format Instruction
+{{ response_format_instr }}
+
+{% for message in extra_messages %}
+{{ message }}
+{% endfor %}
+
+## Final Instruction
+{{ final_instruction_msg }}

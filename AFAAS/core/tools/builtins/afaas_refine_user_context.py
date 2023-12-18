@@ -5,17 +5,18 @@ from __future__ import annotations
 TOOL_CATEGORY = "framework"
 TOOL_CATEGORY_TITLE = "Framework"
 
-import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents.base import BaseAgent
+    from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.core.lib.task.task import Task
+from AFAAS.lib.task.task import Task
 from AFAAS.core.agents.usercontext import UserContextAgent
 from AFAAS.core.tools.command_decorator import tool
 
-logger = logging.getLogger(__name__)
+from AFAAS.lib.sdk.logger import AFAASLogger
+
+LOG = AFAASLogger(name=__name__)
 
 
 @tool(
@@ -42,19 +43,18 @@ async def afaas_refine_user_context(task: Task, agent: BaseAgent) -> None:
         usercontext_settings.agent_goal_sentence = agent.agent_goal_sentence
         usercontext_settings.memory = agent._memory._settings
         usercontext_settings.workspace = agent._workspace._settings
-        usercontext_settings.chat_model_provider = agent._chat_model_provider._settings
+        usercontext_settings.chat_model_provider = agent.default_llm_provider._settings
 
         # FIXME: REMOVE WHEN WE GO LIVE
         # USER CONTEXT AGENT : Save UserContextAgent Settings in DB (for POW / POC)
         new_user_context_agent = UserContextAgent.create_agent(
-            agent_settings=usercontext_settings, logger=agent._logger
+            agent_settings=usercontext_settings
         )
         # USER CONTEXT AGENT : Get UserContextAgent from DB (for POW / POC)
         usercontext_settings.agent_id = new_user_context_agent.agent_id
 
         user_context_agent = UserContextAgent.get_instance_from_settings(
             agent_settings=usercontext_settings,
-            logger=agent._logger,
         )
 
         user_context_return: dict = await user_context_agent.run(

@@ -6,13 +6,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import yaml
-from AFAAS.core.lib.sdk.errors import *
-from AFAAS.core.lib.sdk.logger import AFAASLogger
-from AFAAS.core.lib.sdk.schema import *
+from AFAAS.lib.sdk.errors import *
+from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.schema import *
 from fastapi import APIRouter, FastAPI, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 from AFAAS.core.agents import PlannerAgent
 
@@ -150,7 +150,7 @@ async def create_agent(request: Request, task_request: AgentRequestBody) -> Agen
 
         agent = PlannerAgent.create_agent(
             agent_settings=agent_settings,
-            logger=LOG,
+            LOG=LOG,
         )
         api_agent = Agent.from_afaas(agent=agent_settings)
         LOG.info(api_agent.json())

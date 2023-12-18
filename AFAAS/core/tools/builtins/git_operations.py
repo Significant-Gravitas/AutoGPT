@@ -7,12 +7,12 @@ from pathlib import Path
 
 from git.repo import Repo
 
-from AFAAS.core.lib.task.task import Task
-from AFAAS.core.agents.base import BaseAgent
+from AFAAS.lib.task.task import Task
+from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.core.tools.command_decorator import tool
-from AFAAS.core.lib.sdk.errors import ToolExecutionError
-from AFAAS.core.utils.json_schema import JSONSchema
-from AFAAS.core.utils.url.validators import validate_url
+from AFAAS.lib.sdk.errors import ToolExecutionError
+from AFAAS.lib.utils.json_schema import JSONSchema
+from AFAAS.lib.utils.url.validators import validate_url
 
 from .decorators import sanitize_path_arg
 

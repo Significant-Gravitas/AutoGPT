@@ -4,17 +4,25 @@ import pathlib
 from io import BytesIO
 from uuid import uuid4
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from .routes import (AgentMiddleware, UserIDMiddleware, afaas_agent_router,
-                    afaas_artifact_router, afaas_user_router, agent_router,
-                    app_router, artifact_router, user_router)
+from .routes import (
+    AgentMiddleware,
+    UserIDMiddleware,
+    afaas_agent_router,
+    afaas_artifact_router,
+    afaas_user_router,
+    agent_router,
+    app_router,
+    artifact_router,
+    user_router,
+)
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 port = os.getenv("PORT", 8000)
 load_dotenv()

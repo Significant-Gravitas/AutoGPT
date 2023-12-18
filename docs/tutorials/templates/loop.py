@@ -1,9 +1,11 @@
 # Import necessary libraries and modules from the afaas framework and other packages.
 from typing import Awaitable, Callable
 
-from AFAAS.core.agents.base import BaseAgent, BaseLoop
-from AFAAS.core.prompting.base import (LoophooksDict,
-                                         PromptStrategiesConfiguration)
+from AFAAS.interfaces.agent import BaseAgent, BaseLoop
+from AFAAS.interfaces.prompts.strategy import (
+    LoophooksDict,
+    PromptStrategiesConfiguration,
+)
 
 
 # Define your custom loop class. The class name should reflect its purpose.

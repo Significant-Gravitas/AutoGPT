@@ -2,23 +2,22 @@
 
 from __future__ import annotations
 
-from AFAAS.core.lib.task.meta import TaskStatusList
+from AFAAS.interfaces.task.meta import TaskStatusList
 
 TOOL_CATEGORY = "framework"
 TOOL_CATEGORY_TITLE = "Framework"
 
-import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents.base import BaseAgent
+    from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.core.lib.task.plan import Plan
-from AFAAS.core.lib.task.task import Task
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.task.plan import Plan
+from AFAAS.lib.task.task import Task
+from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.core.tools.command_decorator import tool
 
-logger = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 @tool(
@@ -30,7 +29,7 @@ logger = AFAASLogger(__name__)
 async def afaas_make_initial_plan(task: Task, agent: BaseAgent) -> None:
     # plan =  self.execute_strategy(
     agent._loop.tool_registry().list_tools_descriptions()
-    agent._logger.warning(
+    LOG.warning(
         f"This function is not maintained and should only be used at your own risk."
     )
     plan = await agent._loop._execute_strategy(

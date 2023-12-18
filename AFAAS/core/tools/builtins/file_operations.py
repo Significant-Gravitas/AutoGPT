@@ -2,30 +2,27 @@
 
 from __future__ import annotations
 
-TOOL_CATEGORY = "file_operations"
-TOOL_CATEGORY_TITLE = "File Operations"
-
-import contextlib
 import hashlib
-import logging
 import os
 import os.path
 from pathlib import Path
 from typing import Iterator, Literal
 
-from AFAAS.core.lib.task.task import Task
-from AFAAS.core.lib.sdk.logger import AFAASLogger
-from AFAAS.core.agents.base import BaseAgent
-from AFAAS.core.memory.base import AbstractMemory
+TOOL_CATEGORY = "file_operations"
+TOOL_CATEGORY_TITLE = "File Operations"
+
+from AFAAS.lib.task.task import Task
+from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.interfaces.agent import BaseAgent
+from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.tools.command_decorator import tool
-from AFAAS.core.lib.sdk.errors import \
-    DuplicateOperationError
-from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.lib.sdk.errors import DuplicateOperationError
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
-from .file_operations_utils import read_textual_file
+from .file_operations_utils import decode_textual_file
 
-logger = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 Operation = Literal["write", "append", "delete"]
 
@@ -84,7 +81,7 @@ def file_operations_state(log_path: str | Path) -> dict[str, str]:
     return state
 
 
-@sanitize_path_arg("file_path")
+@sanitize_path_arg("file_path", make_relative=True)
 def is_duplicate_operation(
     operation: Operation, file_path: Path, agent: BaseAgent, checksum: str | None = None
 ) -> bool:
@@ -99,10 +96,6 @@ def is_duplicate_operation(
     Returns:
         True if the operation has already been performed on the file
     """
-    # Make the file path into a relative path if possible
-    with contextlib.suppress(ValueError):
-        file_path = file_path.relative_to(agent.workspace.root)
-
     state = file_operations_state(agent.file_manager.file_ops_log_path)
     if operation == "delete" and str(file_path) not in state:
         return True
@@ -111,25 +104,24 @@ def is_duplicate_operation(
     return False
 
 
-@sanitize_path_arg("file_path")
+@sanitize_path_arg("file_path", make_relative=True)
 def log_operation(
-    operation: Operation, file_path: Path, agent: BaseAgent, checksum: str | None = None
+    operation: Operation,
+    file_path: str | Path,
+    agent: BaseAgent,
+    checksum: str | None = None,
 ) -> None:
-    """Log the file operation to the file_logger.log
+    """Log the file operation to the file_LOG.log
 
     Args:
         operation: The operation to log
         file_path: The name of the file the operation was performed on
         checksum: The checksum of the contents to be written
     """
-    # Make the file path into a relative path if possible
-    with contextlib.suppress(ValueError):
-        file_path = file_path.relative_to(agent.workspace.root)
-
     log_entry = f"{operation}: {file_path}"
     if checksum is not None:
         log_entry += f" #{checksum}"
-    logger.trace(f"Logging file operation: {log_entry}")
+    LOG.trace(f"Logging file operation: {log_entry}")
     append_to_file(
         agent.file_manager.file_ops_log_path, f"{log_entry}\n", agent, should_log=False
     )
@@ -146,7 +138,6 @@ def log_operation(
         )
     },
 )
-@sanitize_path_arg("filename")
 def read_file(filename: Path, task: Task, agent: BaseAgent) -> str:
     """Read a file and return the contents
 
@@ -156,8 +147,8 @@ def read_file(filename: Path, task: Task, agent: BaseAgent) -> str:
     Returns:
         str: The contents of the file
     """
-    content = read_textual_file(filename, logger)
-    # TODO: content = agent.workspace.read_file(filename)
+    file = agent.workspace.open_file(filename, binary=True)
+    content = decode_textual_file(file, os.path.splitext(filename)[1])
 
     # # TODO: invalidate/update memory when file is edited
     # file_memory = MemoryItem.from_text_file(content, str(filename), agent.config)
@@ -181,17 +172,17 @@ def ingest_file(
     #     memory: An object with an add() method to store the chunks in memory
     # """
     # try:
-    #     logger.info(f"Ingesting file {filename}")
+    #     LOG.info(f"Ingesting file {filename}")
     #     content = read_file(filename)
 
     # TODO: differentiate between different types of files
     file_memory = MemoryItemFactory.from_text_file(content, filename)
-    logger.trace(f"Created memory: {file_memory.dump(True)}")
+    LOG.trace(f"Created memory: {file_memory.dump(True)}")
     memory.add(file_memory)
 
-    #   logger.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
+    #   LOG.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
     # except Exception as err:
-    #   logger.warning(f"Error while ingesting file '{filename}': {err}")
+    #   LOG.warning(f"Error while ingesting file '{filename}': {err}")
 
 
 @tool(
@@ -211,7 +202,6 @@ def ingest_file(
     },
     aliases=["create_file"],
 )
-@sanitize_path_arg("filename")
 async def write_to_file(
     filename: Path, contents: str, task: Task, agent: BaseAgent
 ) -> str:
@@ -225,14 +215,14 @@ async def write_to_file(
         str: A message indicating success or failure
     """
     checksum = text_checksum(contents)
-    if is_duplicate_operation("write", filename, agent, checksum):
-        raise DuplicateOperationError(f"File {filename.name} has already been updated.")
+    if is_duplicate_operation("write", Path(filename), agent, checksum):
+        raise DuplicateOperationError(f"File {filename} has already been updated.")
 
-    directory = os.path.dirname(filename)
-    os.makedirs(directory, exist_ok=True)
+    if directory := os.path.dirname(filename):
+        agent.workspace.get_path(directory).mkdir(exist_ok=True)
     await agent.workspace.write_file(filename, contents)
     log_operation("write", filename, agent, checksum)
-    return f"File {filename.name} has been written successfully."
+    return f"File {filename} has been written successfully."
 
 
 def append_to_file(
@@ -267,7 +257,6 @@ def append_to_file(
         )
     },
 )
-@sanitize_path_arg("folder")
 def list_folder(folder: Path, task: Task, agent: BaseAgent) -> list[str]:
     """Lists files in a folder recursively
 
@@ -277,15 +266,4 @@ def list_folder(folder: Path, task: Task, agent: BaseAgent) -> list[str]:
     Returns:
         list[str]: A list of files found in the folder
     """
-    found_files = []
-
-    for root, _, files in os.walk(folder):
-        for file in files:
-            if file.startswith("."):
-                continue
-            relative_path = os.path.relpath(
-                os.path.join(root, file), agent.workspace.root
-            )
-            found_files.append(relative_path)
-
-    return found_files
+    return [str(p) for p in agent.workspace.list(folder)]

@@ -1,0 +1,49 @@
+## Instructions :
+Right bellow there is a set of informations given to new an Autonomous Agent backed by a Large Language Model (LLM). Select the relevant UML diagram and make a resume while avoiding duplicated or unrelated information to the execution of his tasks. 
+
+Task description : 
+{{ to_md_quotation(task.long_description) }}
+
+## Rules :
+- We will not touch the "situational context" section
+- History and context are very important be sure you remove strictly unrelated information for the excecution of the task
+- If there is a redundance between a textual context & UML, keep the UML version
+
+{% if task.task_parent %}
+### Situational context : 
+This task is part of a projects and is located as follow in the WBS : 
+{% for parent in task_path %}{% if loop.index > 1 %}{{ '\t' * (loop.index - 1) }}->{% endif %}{{ parent.task_goal }} ({{ parent.task_id }})
+{% endfor %}{# 
+  #}{% if task_sibblings %}{#  
+          #}{% for sibbling in task_sibblings %}{{ '\t' * task_path|length }}{{ sibbling.task_goal }} (({{ sibbling.task_id }})): {{ sibbling.state }}
+{#        #}{% endfor %}{# 
+  #}{% endif %}{# 
+#}{% endif %}
+
+{% if task_history %}
+### Historical context : 
+These are the last task completed (maximum {{task_history|length}} tasks):
+{% for task in task_history %}{{ loop.index }}. {{ task.task_goal }} (({{ task.task_id }})) gave following results : 
+{{ to_md_quotation(task.task_text_output) }}
+```plantuml
+{{ task.task_text_output_as_uml }}
+```
+{% endfor %}
+
+### Context as UML : 
+This are the task that have been done previously :{#
+#}{% for task in task_history %}{{ loop.index }}. {{ task.task_goal }} (({{ task.task_id }})) gave following results : 
+```plantuml{{ task.task_text_output_as_uml }}```
+{% endfor %}
+{% endif %}{#
+
+
+#}{% if similar_tasks %}
+### Random task : 
+This are the tasks that might be related :
+{{task.task_goal}} , {{task.task_text_output}} , {{task.text_output_as_uml}}
+{% endif %}
+
+## FINAL WORDS :
+
+You most not assume any information and you must stay true to the facts above

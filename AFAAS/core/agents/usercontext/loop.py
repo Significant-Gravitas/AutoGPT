@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Awaitable, Callable
 
-from ..base import BaseLoop
+from AFAAS.interfaces.agent import BaseLoop
 
 if TYPE_CHECKING:
-    from ..base import BaseAgent
-    from AFAAS.core.resource.model_providers import ChatModelResponse
+    from AFAAS.interfaces.agent import BaseAgent
+    from AFAAS.interfaces.adapters import ChatModelResponse
 
 from .strategies import RefineUserContextFunctionNames
+from AFAAS.lib.sdk.logger import AFAASLogger
+
+LOG = AFAASLogger(name=__name__)
 
 
 class UserContextLoop(BaseLoop):
@@ -20,7 +23,7 @@ class UserContextLoop(BaseLoop):
     Attributes:
         _active (bool): Indicates whether the loop is active or paused.
         loop_count (int): The number of loop iterations performed.
-    
+
     Example:
         ```
         agent = MyCustomAgent()
@@ -33,7 +36,6 @@ class UserContextLoop(BaseLoop):
         )
         ```
     """
-
 
     class LoophooksDict(BaseLoop.LoophooksDict):
         pass
@@ -80,7 +82,7 @@ class UserContextLoop(BaseLoop):
             )
             ```
         """
-        self._agent._logger.info(f"Running UserContextLoop")
+        LOG.info(f"Running UserContextLoop")
 
         self.loop_count = 0
         user_input = ""
@@ -93,11 +95,9 @@ class UserContextLoop(BaseLoop):
             # if _active is false, then the loop is paused
             if self._active:
                 self.loop_count += 1
-                self._agent._logger.info(
-                    f"Starting loop iteration number {self.loop_count}"
-                )
+                LOG.info(f"Starting loop iteration number {self.loop_count}")
 
-                model_response : ChatModelResponse = await self._execute_strategy(
+                model_response: ChatModelResponse = await self._execute_strategy(
                     strategy_name="refine_user_context",
                     interupt_refinement_process=interupt_refinement_process,
                     user_objective=user_objectives,
@@ -123,20 +123,20 @@ class UserContextLoop(BaseLoop):
                     == RefineUserContextFunctionNames.VALIDATE_REQUIREMENTS
                     and reformulated_goal is not None
                 ):
-                    self._agent._logger.info(f"Exiting UserContextLoop")
+                    LOG.info(f"Exiting UserContextLoop")
                     return_value: dict = {
                         "agent_goal_sentence": reformulated_goal,
                         "agent_goals": model_response.parsed_result["goal_list"],
                     }
                     return return_value
                 else:
-                    self._agent._logger.error(model_response.parsed_result)
+                    LOG.error(model_response.parsed_result)
                     raise Exception
 
                 if user_objectives.lower() == "y" and self.loop_count > 1:
                     interupt_refinement_process = True
 
-                await self.save_agent() # TODO : self.save_agent()
+                await self.save_agent()  # TODO : self.save_agent()
 
     def __repr__(self):
         """Return a string representation of the UserContextLoop.

@@ -10,8 +10,11 @@ from pydantic import Field, validator
 
 if TYPE_CHECKING:
     from autogpt.config import Config
-    from AFAAS.core.prompting.base import PromptStrategy
-    from AFAAS.core.resource.model_providers.schema import (
+    from AFAAS.interfaces.prompts.strategy import PromptStrategy
+    from AFAAS.interfaces.adapters.language_model import (
+    from autogpt.core.prompting.base import PromptStrategy
+    from autogpt.core.resource.model_providers.schema import (
+        AssistantChatMessageDict,
         ChatModelInfo,
         BaseChatModelProvider,
         ChatModelResponse,
@@ -22,11 +25,11 @@ from autogpt.agents.utils.prompt_scratchpad import PromptScratchpad
 from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
-from AFAAS.core.configuration import (Configurable, SystemConfiguration,
+from AFAAS.configs import (Configurable, SystemConfiguration,
                                         SystemSettings, UserConfigurable)
-from AFAAS.core.prompting.schema import (ChatMessage, ChatPrompt,
+from AFAAS.interfaces.prompts.schema import (ChatMessage, ChatPrompt,
                                            CompletionModelFunction)
-from AFAAS.core.resource.model_providers.openai import (OPEN_AI_CHAT_MODELS,
+from AFAAS.core.adapters.openai import (OPEN_AI_CHAT_MODELS,
                                                           OpenAIModelName)
 from AFAAS.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.llm.providers.openai import get_openai_command_specs
@@ -238,7 +241,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         prompt = self.on_before_think(prompt, scratchpad=self._prompt_scratchpad)
 
         logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
-        raw_response = await self.llm_provider.create_chat_completion(
+        response = await self.llm_provider.create_chat_completion(
             prompt.messages,
             functions=get_openai_command_specs(
                 self.command_registry.list_available_commands(self)
@@ -247,11 +250,16 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
             if self.config.use_functions_api
             else [],
             model_name=self.llm.name,
+            completion_parser=lambda r: self.parse_and_process_response(
+                r,
+                prompt,
+                scratchpad=self._prompt_scratchpad,
+            ),
         )
         self.config.cycle_count += 1
 
         return self.on_response(
-            llm_response=raw_response,
+            llm_response=response,
             prompt=prompt,
             scratchpad=self._prompt_scratchpad,
         )
@@ -388,18 +396,14 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
             The parsed command name and command args, if any, and the agent thoughts.
         """
 
-        return self.parse_and_process_response(
-            llm_response,
-            prompt,
-            scratchpad=scratchpad,
-        )
+        return llm_response.parsed_result
 
         # TODO: update memory/context
 
     @abstractmethod
     def parse_and_process_response(
         self,
-        llm_response: ChatModelResponse,
+        llm_response: AssistantChatMessageDict,
         prompt: ChatPrompt,
         scratchpad: PromptScratchpad,
     ) -> ThoughtProcessOutput:

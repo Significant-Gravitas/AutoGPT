@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "agpt"
-version = "0.4.7"
+version = "0.5.0"
 authors = [
   "Significant Gravitas <support@agpt.co>",
 ]
@@ -22,6 +22,7 @@ serve = "autogpt.app.cli:serve"
 
 [tool.poetry.dependencies]
 python = "^3.10"
+auto-gpt-plugin-template = {git = "https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template", rev = "0.1.0"}
 # autogpt-forge = { path = "../forge" }
 autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "autogpts/forge"}
 beautifulsoup4 = "^4.12.2"
@@ -31,16 +32,16 @@ click = "*"
 colorama = "^0.4.6"
 distro = "^1.8.0"
 docker = "*"
-duckduckgo-search = "^3.0.2"
+duckduckgo-search = "^4.0.0"
 en-core-web-sm = {url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl"}
 fastapi = "*"
 ftfy = "^6.1.1"
+gitpython = "^3.1.32"
 google-api-python-client = "*"
 gTTS = "^2.3.1"
 hypercorn = "^0.14.4"
 inflection = "*"
 jsonschema = "*"
-markdown = "*"
 numpy = "*"
 openai = "^0.27.10"
 orjson = "^3.8.10"
@@ -70,12 +71,12 @@ openapi-python-client = "^0.14.0"
 agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
 google-cloud-logging = "^3.8.0"
 google-cloud-storage = "^2.13.0"
+psycopg2-binary = "^2.9.9"
 
 [tool.poetry.extras]
 benchmark = ["agbenchmark"]
 
 [tool.poetry.group.dev.dependencies]
-auto-gpt-plugin-template = {git = "https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template", rev = "0.1.0"}
 black = "*"
 boto3-stubs = {extras = ["s3"], version = "^1.33.6"}
 flake8 = "*"
@@ -140,15 +141,10 @@ extend_skip = [
 follow_imports = 'skip'
 check_untyped_defs = true
 disallow_untyped_calls = true
-disallow_untyped_defs = true
 files = [
     'autogpt/**/*.py',
     'tests/**/*.py'
 ]
-
-[[tool.mypy.overrides]]
-module = 'tests.*'
-disallow_untyped_defs = false
 
 [[tool.mypy.overrides]]
 module = [

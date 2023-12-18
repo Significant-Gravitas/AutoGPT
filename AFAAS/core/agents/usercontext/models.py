@@ -2,26 +2,24 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from AFAAS.core.agents.base.models import (
-    BaseAgentConfiguration, BaseAgentSystems)
+from AFAAS.interfaces.agent.models import BaseAgentConfiguration, BaseAgentSystems
 
 if TYPE_CHECKING:
     pass
 
 
 class UserContextAgentSystems(BaseAgentSystems):
+    ability_registry: str = "AFAAS.core.ability.SimpleToolRegistry"
+    chat_model_provider: str = "AFAAS.core.adapters.openai.chatmodel.AFAASChatOpenAI"
+    prompt_manager: str = "AFAAS.interfaces.agent.PromptManager"
 
-    ability_registry : str  ="AFAAS.core.ability.SimpleToolRegistry"
-    chat_model_provider : str  = "AFAAS.core.resource.model_providers.OpenAIProvider"
-    prompt_manager : str ="AFAAS.core.agents.base.PromptManager"
-    
     class Config(BaseAgentSystems.Config):
         pass
 
 
 class UserContextAgentConfiguration(BaseAgentConfiguration):
     systems: UserContextAgentSystems = UserContextAgentSystems()
-    agent_name="UCC (User Context Checker)"
+    agent_name = "UCC (User Context Checker)"
 
     class Config(BaseAgentConfiguration.Config):
         pass
@@ -43,8 +41,8 @@ class UserContextAgentConfiguration(BaseAgentConfiguration):
 #     chat_model_provider: OpenAISettings
 #     prompt_manager: PromptManager.SystemSettings
 
-#     user_id: uuid.UUID 
-#     parent_agent_id: str 
+#     user_id: uuid.UUID
+#     parent_agent_id: str
 #     parent_agent : BaseAgent
 
 #     agent_name: str = Field(default="UserHelperAgent")
