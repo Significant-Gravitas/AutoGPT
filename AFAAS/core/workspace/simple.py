@@ -8,11 +8,12 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from AFAAS.configs import (Configurable,
-                                                         SystemConfiguration,
-                                                         UserConfigurable)
+from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
 
-from AFAAS.interfaces.workspace import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
+from AFAAS.interfaces.workspace import (
+    AbstractFileWorkspace,
+    AbstractFileWorkspaceConfiguration,
+)
 
 if TYPE_CHECKING:
     # Cyclic import
@@ -26,11 +27,12 @@ class AbstractFileWorkspaceConfiguration(SystemConfiguration):
 
 
 class LocalFileWorkspace(AbstractFileWorkspace):
-
     class SystemSettings(AbstractFileWorkspace.SystemSettings):
         name = "workspace"
         description = "The workspace is the root directory for all agent activity."
-        configuration: AbstractFileWorkspaceConfiguration = AbstractFileWorkspaceConfiguration()
+        configuration: AbstractFileWorkspaceConfiguration = (
+            AbstractFileWorkspaceConfiguration()
+        )
 
     NULL_BYTES = ["\0", "\000", "\x00", "\u0000", "%00"]
 
@@ -38,7 +40,6 @@ class LocalFileWorkspace(AbstractFileWorkspace):
         self,
         settings: LocalFileWorkspace.SystemSettings,
         agent_systems: list[Configurable],
-        
     ):
         # self._configuration = settings.configuration
         # LOG = logger
@@ -87,8 +88,6 @@ class LocalFileWorkspace(AbstractFileWorkspace):
         with self.open_file(path, "wb" if type(content) is bytes else "w") as file:
             file.write(content)
 
-
-
     def list_files(self, path: str | Path = "."):
         """List all files in a directory in the workspace."""
         full_path = self.get_path(path)
@@ -99,8 +98,6 @@ class LocalFileWorkspace(AbstractFileWorkspace):
         full_path = self.get_path(path)
         full_path.unlink()
 
-
-
     ###################################
     # Factory methods for agent setup #
     ###################################
@@ -110,8 +107,7 @@ class LocalFileWorkspace(AbstractFileWorkspace):
         cls,
         user_id: uuid.UUID,
         agent_id: uuid.UUID,
-        settings : LocalFileWorkspace.SystemSettings,
-        
+        settings: LocalFileWorkspace.SystemSettings,
     ) -> Path:
         workspace_root = cls.SystemSettings().configuration.app_workspace
         workspace_root = Path(workspace_root).expanduser().resolve()

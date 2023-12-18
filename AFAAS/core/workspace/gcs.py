@@ -12,12 +12,15 @@ from pathlib import Path
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
 
-from AFAAS.configs.schema  import UserConfigurable
+from AFAAS.configs.schema import UserConfigurable
 
-from AFAAS.interfaces.workspace import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
+from AFAAS.interfaces.workspace import (
+    AbstractFileWorkspace,
+    AbstractFileWorkspaceConfiguration,
+)
 from AFAAS.lib.sdk.logger import AFAASLogger
 
-LOG =  AFAASLogger(name=__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 class GCSFileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
@@ -27,14 +30,13 @@ class GCSFileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
 class GCSFileWorkspace_AlphaRealease(AbstractFileWorkspace):
     """A class that represents a Google Cloud Storage workspace."""
 
-
     class SystemSettings(AbstractFileWorkspace.SystemSettings):
         configuration = GCSFileWorkspaceConfiguration
 
     _bucket: storage.Bucket
 
     def __init__(self, config: GCSFileWorkspaceConfiguration):
-        super().__init__(config = config)
+        super().__init__(config=config)
         self._bucket_name = config.bucket
         assert self._agent_workspace.is_absolute()
 

@@ -10,10 +10,8 @@ import yaml
 
 from fastapi import requests
 
-from app.cli_web_app.server.api import \
-    task_handler
-from app.client_lib.shared_click_commands import \
-    DEFAULT_SETTINGS_FILE
+from app.cli_web_app.server.api import task_handler
+from app.client_lib.shared_click_commands import DEFAULT_SETTINGS_FILE
 from app.client_lib.utils import coroutine
 
 
@@ -54,8 +52,7 @@ async def client(settings_file) -> None:
     if settings_file.exists():
         settings = yaml.safe_load(settings_file.read_text())
 
-    from app.cli_web_app.client.client import \
-        run
+    from app.cli_web_app.client.client import run
 
     # with autogpt_server():
     run()

@@ -9,25 +9,26 @@ from pathlib import Path
 from pydantic import Field
 from typing import IO, Any, BinaryIO, Callable, Literal, Optional, TextIO, overload
 
-from AFAAS.configs.schema  import SystemConfiguration
+from AFAAS.configs.schema import SystemConfiguration
 
-from AFAAS.configs import (Configurable,
-                                                         SystemConfiguration,
-                                                         UserConfigurable)
+from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
 from AFAAS.lib.sdk.logger import AFAASLogger
-LOG =  AFAASLogger(name=__name__)
+
+LOG = AFAASLogger(name=__name__)
 
 
-class  AbstractFileWorkspaceConfiguration(SystemConfiguration):
+class AbstractFileWorkspaceConfiguration(SystemConfiguration):
     restrict_to_agent_workspace: bool = True
-    app_workspace: Path = UserConfigurable(default=Path("~/auto-gpt/agents").expanduser().resolve())
+    app_workspace: Path = UserConfigurable(
+        default=Path("~/auto-gpt/agents").expanduser().resolve()
+    )
     agent_workspace: Path = Path("/")
     user_id: str = None
     agent_id: str = None
 
     @property
     def agent_workspace(self) -> Path:
-        if not self.user_id or not self.agent_id :
+        if not self.user_id or not self.agent_id:
             raise ValueError("user_id and agent_id must be set")
         return self.app_workspace / self.user_id / self.agent_id
 
@@ -43,7 +44,6 @@ class AbstractFileWorkspace(Configurable, ABC):
     def __init__(self, config: AbstractFileWorkspaceConfiguration, *args, **kwargs):
         self._config = config
         pass
-        
 
     on_write_file: Callable[[Path], Any] | None = None
     """
@@ -63,7 +63,6 @@ class AbstractFileWorkspace(Configurable, ABC):
     def restrict_to_root(self) -> bool:
         """Whether to restrict file access to within the workspace's root path."""
 
-    
     def initialize(self) -> None:
         """
         Calling `initialize()` should bring the workspace to a ready-to-use state.
@@ -180,9 +179,13 @@ class AbstractFileWorkspace(Configurable, ABC):
         if agent_workspace_path is None:
             return Path(relative_path).resolve()
 
-        LOG.debug(f"Resolving path '{relative_path}' in workspace '{agent_workspace_path}'")
+        LOG.debug(
+            f"Resolving path '{relative_path}' in workspace '{agent_workspace_path}'"
+        )
 
-        agent_workspace_path, relative_path = Path(agent_workspace_path).resolve(), Path(relative_path)
+        agent_workspace_path, relative_path = Path(
+            agent_workspace_path
+        ).resolve(), Path(relative_path)
 
         LOG.debug(f"Resolved root as '{agent_workspace_path}'")
 
@@ -208,18 +211,15 @@ class AbstractFileWorkspace(Configurable, ABC):
 
         return full_path
 
-
     @classmethod
     def create_workspace(
         cls,
         user_id: str,
         agent_id: str,
-        settings : AbstractFileWorkspace.SystemSettings,
-        
+        settings: AbstractFileWorkspace.SystemSettings,
     ) -> Path:
-
         workspace = cls()
-        workspace.initialize(config = settings.configuration)
+        workspace.initialize(config=settings.configuration)
 
         # log_path = workspace.root / "logs"
         # #FIXME: create a log file for each agent

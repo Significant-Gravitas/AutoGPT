@@ -7,7 +7,6 @@ from AFAAS.interfaces.task.stack import TaskStack
 from AFAAS.interfaces.task.meta import TaskStatusList
 
 
-
 class AbstractTask(AbstractBaseTask):
     @abstractmethod
     def __init__(self, **data):
@@ -60,21 +59,21 @@ class AbstractTask(AbstractBaseTask):
         ...
 
     @abstractmethod
-    def add_predecessor(self, task: 'AbstractTask'):
+    def add_predecessor(self, task: "AbstractTask"):
         ...
 
     @abstractmethod
-    def add_successor(self, task: 'AbstractTask'):
-        ...
-
-    @classmethod
-    @abstractmethod
-    def get_task_from_db(cls, task_id: str, agent: BaseAgent) -> 'AbstractTask':
+    def add_successor(self, task: "AbstractTask"):
         ...
 
     @classmethod
     @abstractmethod
-    def create_in_db(cls, task: 'AbstractTask', agent: BaseAgent):
+    def get_task_from_db(cls, task_id: str, agent: BaseAgent) -> "AbstractTask":
+        ...
+
+    @classmethod
+    @abstractmethod
+    def create_in_db(cls, task: "AbstractTask", agent: BaseAgent):
         ...
 
     @abstractmethod
@@ -82,7 +81,9 @@ class AbstractTask(AbstractBaseTask):
         ...
 
     @abstractmethod
-    def get_task_path(self, task_to_root: bool = False, include_self: bool = False) -> list['AbstractTask']:
+    def get_task_path(
+        self, task_to_root: bool = False, include_self: bool = False
+    ) -> list["AbstractTask"]:
         ...
 
     @abstractmethod
@@ -90,7 +91,7 @@ class AbstractTask(AbstractBaseTask):
         ...
 
     @abstractmethod
-    def get_sibblings(self) -> list['AbstractTask']:
+    def get_sibblings(self) -> list["AbstractTask"]:
         ...
 
     @abstractmethod
@@ -102,9 +103,14 @@ class AbstractTask(AbstractBaseTask):
         ...
 
     @abstractmethod
-    async def prepare_rag(self, predecessors: bool = True, successors: bool = False,
-                          history: int = 10, sibblings: bool = True,
-                          path: bool = True, similar_tasks: int = 0,
-                          avoid_redondancy: bool = False):
+    async def prepare_rag(
+        self,
+        predecessors: bool = True,
+        successors: bool = False,
+        history: int = 10,
+        sibblings: bool = True,
+        path: bool = True,
+        similar_tasks: int = 0,
+        avoid_redondancy: bool = False,
+    ):
         ...
-

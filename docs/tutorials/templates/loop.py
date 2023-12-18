@@ -2,8 +2,10 @@
 from typing import Awaitable, Callable
 
 from AFAAS.interfaces.agent import BaseAgent, BaseLoop
-from AFAAS.interfaces.prompts.strategy import (LoophooksDict,
-                                         PromptStrategiesConfiguration)
+from AFAAS.interfaces.prompts.strategy import (
+    LoophooksDict,
+    PromptStrategiesConfiguration,
+)
 
 
 # Define your custom loop class. The class name should reflect its purpose.

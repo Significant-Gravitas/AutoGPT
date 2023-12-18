@@ -5,23 +5,33 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
-from typing import IO , Optional
+from typing import IO, Optional
 
-from AFAAS.interfaces.workspace import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
+from AFAAS.interfaces.workspace import (
+    AbstractFileWorkspace,
+    AbstractFileWorkspaceConfiguration,
+)
 from AFAAS.lib.sdk.logger import AFAASLogger
-LOG =  AFAASLogger(name=__name__)
+
+LOG = AFAASLogger(name=__name__)
+
 
 class AGPTLocalFileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
     pass
+
 
 class AGPTLocalFileWorkspace(AbstractFileWorkspace):
     """A class that represents a file workspace."""
 
     class SystemSettings(AbstractFileWorkspace.SystemSettings):
-        configuration : AGPTLocalFileWorkspaceConfiguration = AGPTLocalFileWorkspaceConfiguration()
+        configuration: AGPTLocalFileWorkspaceConfiguration = (
+            AGPTLocalFileWorkspaceConfiguration()
+        )
 
-    def __init__(self, config: AGPTLocalFileWorkspace = AGPTLocalFileWorkspaceConfiguration()):
-        super().__init__(config = config)
+    def __init__(
+        self, config: AGPTLocalFileWorkspace = AGPTLocalFileWorkspaceConfiguration()
+    ):
+        super().__init__(config=config)
         self._restrict_to_agent_workspace = config.restrict_to_agent_workspace
 
     @property
@@ -78,5 +88,9 @@ class AGPTLocalFileWorkspace(AbstractFileWorkspace):
         relative_path: str | Path,
         agent_workspace_path: Optional[str | Path] = None,
         restrict_to_root: bool = True,
-    ) -> Path: 
-        super()._sanitize_path(relative_path = relative_path, agent_workspace_path = agent_workspace_path, restrict_to_root = restrict_to_root)
+    ) -> Path:
+        super()._sanitize_path(
+            relative_path=relative_path,
+            agent_workspace_path=agent_workspace_path,
+            restrict_to_root=restrict_to_root,
+        )

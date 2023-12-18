@@ -78,11 +78,11 @@ class Tool:
         ]
         return f"{self.name}: {self.description.rstrip('.')}. Params: ({', '.join(params)})"
 
-    def default_success_check_callback(self , task: Task, tool_output: Any):
+    def default_success_check_callback(self, task: Task, tool_output: Any):
         LOG.trace(f"Tool.default_success_check_callback() called for {self}")
         LOG.debug(f"Task = {task}")
         LOG.debug(f"Tool output = {tool_output}")
-        
+
         return self.description
 
-        #return summary
+        # return summary

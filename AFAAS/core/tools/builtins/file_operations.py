@@ -16,8 +16,7 @@ from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.tools.command_decorator import tool
-from AFAAS.lib.sdk.errors import \
-    DuplicateOperationError
+from AFAAS.lib.sdk.errors import DuplicateOperationError
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
@@ -107,10 +106,10 @@ def is_duplicate_operation(
 
 @sanitize_path_arg("file_path", make_relative=True)
 def log_operation(
-    operation: Operation, 
+    operation: Operation,
     file_path: str | Path,
-    agent: BaseAgent, 
-    checksum: str | None = None
+    agent: BaseAgent,
+    checksum: str | None = None,
 ) -> None:
     """Log the file operation to the file_LOG.log
 

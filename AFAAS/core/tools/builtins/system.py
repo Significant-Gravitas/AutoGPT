@@ -12,9 +12,9 @@ if TYPE_CHECKING:
 
 from AFAAS.lib.task.task import Task
 from AFAAS.lib.sdk.logger import AFAASLogger
-from AFAAS.interfaces.agent.features.context import \
-    get_agent_context
+from AFAAS.interfaces.agent.features.context import get_agent_context
 from AFAAS.core.tools.command_decorator import tool
+
 # from AFAAS.lib.sdk.errors import AgentTerminated, InvalidArgumentError
 from AFAAS.lib.sdk.errors import InvalidArgumentError
 from AFAAS.lib.utils.json_schema import JSONSchema

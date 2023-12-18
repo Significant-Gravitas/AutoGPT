@@ -8,15 +8,13 @@ from typing import Any, Optional, Union
 
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
-from AFAAS.configs.schema  import Configurable, SystemSettings, UserConfigurable
+from AFAAS.configs.schema import Configurable, SystemSettings, UserConfigurable
 from AFAAS.core.adapters.openai.chatmodel import OPEN_AI_CHAT_MODELS, OpenAICredentials
 from colorama import Fore
 from pydantic import Field, validator
 
-from AFAAS.configs.schema  import (Configurable,
-                                                                SystemSettings)
-from AFAAS.core.adapters.openai import \
-    OPEN_AI_CHAT_MODELS
+from AFAAS.configs.schema import Configurable, SystemSettings
+from AFAAS.core.adapters.openai import OPEN_AI_CHAT_MODELS
 
 PROJECT_ROOT = Path(autogpt.__file__).parent.parent
 AI_SETTINGS_FILE = Path("ai_settings.yaml")

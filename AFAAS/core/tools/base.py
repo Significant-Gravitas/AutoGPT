@@ -12,7 +12,7 @@ from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 from AFAAS.configs import SystemConfiguration
 from AFAAS.interfaces.adapters import CompletionModelFunction
 from ..tools.schema import ToolResult
-from AFAAS.lib.utils.json_schema  import JSONSchema
+from AFAAS.lib.utils.json_schema import JSONSchema
 from .schema import ToolResult
 
 

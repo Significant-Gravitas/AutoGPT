@@ -7,7 +7,6 @@ from AFAAS.interfaces.agent import AbstractAgent
 
 
 class AbstractPlan(AbstractBaseTask):
-
     # Properties
     @property
     @abstractmethod
@@ -38,19 +37,27 @@ class AbstractPlan(AbstractBaseTask):
         ...
 
     @abstractmethod
-    def get_next_task(self, task: Optional[AbstractTask] = None) -> Optional[AbstractTask]:
+    def get_next_task(
+        self, task: Optional[AbstractTask] = None
+    ) -> Optional[AbstractTask]:
         ...
 
     @abstractmethod
-    def get_ready_tasks(self, task_ids_set: Optional[list[str]] = None) -> list[AbstractTask]:
+    def get_ready_tasks(
+        self, task_ids_set: Optional[list[str]] = None
+    ) -> list[AbstractTask]:
         ...
 
     @abstractmethod
-    def get_active_tasks(self, task_ids_set: Optional[list[str]] = None) -> list[AbstractTask]:
+    def get_active_tasks(
+        self, task_ids_set: Optional[list[str]] = None
+    ) -> list[AbstractTask]:
         ...
 
     @abstractmethod
-    def get_first_ready_tasks(self, task_ids_set: Optional[list[str]] = None) -> AbstractTask:
+    def get_first_ready_tasks(
+        self, task_ids_set: Optional[list[str]] = None
+    ) -> AbstractTask:
         ...
 
     @abstractmethod
@@ -63,7 +70,7 @@ class AbstractPlan(AbstractBaseTask):
 
     @classmethod
     @abstractmethod
-    def create_in_db(cls, agent: AbstractAgent) -> 'AbstractPlan':
+    def create_in_db(cls, agent: AbstractAgent) -> "AbstractPlan":
         ...
 
     @abstractmethod
@@ -72,10 +79,9 @@ class AbstractPlan(AbstractBaseTask):
 
     @classmethod
     @abstractmethod
-    def get_plan_from_db(cls, plan_id: str, agent: AbstractAgent) -> 'AbstractPlan':
+    def get_plan_from_db(cls, plan_id: str, agent: AbstractAgent) -> "AbstractPlan":
         ...
 
     @abstractmethod
     def generate_pitch(self, task: Optional[AbstractTask] = None) -> str:
         ...
-

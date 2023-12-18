@@ -7,7 +7,8 @@ P = ParamSpec("P")
 T = TypeVar("T")
 
 from AFAAS.lib.sdk.logger import AFAASLogger
-LOG =  AFAASLogger(name=__name__)
+
+LOG = AFAASLogger(name=__name__)
 
 
 def sanitize_path_arg(

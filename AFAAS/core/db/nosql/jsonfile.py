@@ -7,8 +7,10 @@ from typing import List
 
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.interfaces.db_nosql import NoSQLMemory
-from AFAAS.lib.sdk.logger import AFAASLogger   
+from AFAAS.lib.sdk.logger import AFAASLogger
+
 LOG = AFAASLogger(name=__name__)
+
 
 class JSONFileMemory(NoSQLMemory):
     def __init__(
@@ -64,11 +66,13 @@ class JSONFileMemory(NoSQLMemory):
         else:
             raise KeyError(f"No such key '{key}' in table {table_name}")
 
-    from AFAAS.interfaces.db_table import AbstractTable 
-    def list(self, 
-             table_name: str,
-             filter: AbstractTable.FilterDict = {},
-             ) -> list[dict]:
+    from AFAAS.interfaces.db_table import AbstractTable
+
+    def list(
+        self,
+        table_name: str,
+        filter: AbstractTable.FilterDict = {},
+    ) -> list[dict]:
         table_path = Path(self._configuration.json_file_path, table_name)
         data = []
         for json_file in table_path.glob("**/*.json"):

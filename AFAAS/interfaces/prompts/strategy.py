@@ -9,24 +9,36 @@ from typing import TYPE_CHECKING, Optional
 
 from AFAAS.lib.utils.json_schema import JSONSchema
 
-from AFAAS.interfaces.agent.features.agentmixin import \
-    AgentMixin
+from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 
-if  TYPE_CHECKING: 
+if TYPE_CHECKING:
     from AFAAS.interfaces.task import AbstractTask
+
     pass
 
 from AFAAS.configs import SystemConfiguration
 from AFAAS.interfaces.prompts.utils.utils import json_loads
-from AFAAS.interfaces.prompts.utils import (to_dotted_list, to_md_quotation,
-                    to_numbered_list, to_string_list, indent)     
+from AFAAS.interfaces.prompts.utils import (
+    to_dotted_list,
+    to_md_quotation,
+    to_numbered_list,
+    to_string_list,
+    indent,
+)
 from AFAAS.interfaces.adapters import (
-    AbstractLanguageModelProvider, AssistantChatMessageDict, ChatModelResponse,
-    ChatPrompt, CompletionModelFunction, ChatMessage,AbstractPromptConfiguration )
+    AbstractLanguageModelProvider,
+    AssistantChatMessageDict,
+    ChatModelResponse,
+    ChatPrompt,
+    CompletionModelFunction,
+    ChatMessage,
+    AbstractPromptConfiguration,
+)
 
 
 from AFAAS.lib.sdk.logger import AFAASLogger
-LOG = AFAASLogger(name = __name__)
+
+LOG = AFAASLogger(name=__name__)
 RESPONSE_SCHEMA = JSONSchema(
     type=JSONSchema.Type.OBJECT,
     properties={
@@ -100,6 +112,7 @@ class PromptStrategiesConfiguration(SystemConfiguration):
     # frequency_penalty: Optional[float] = None  # Avoid repeting oneselfif coding 0.3
     # presence_penalty: Optional[float] = None  # Avoid certain subjects
 
+
 class AbstractPromptStrategy(AgentMixin, abc.ABC):
     STRATEGY_NAME: str
     default_configuration: PromptStrategiesConfiguration
@@ -119,7 +132,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     @abc.abstractmethod
     def get_llm_provider(self) -> AbstractLanguageModelProvider:
         return self._agent.default_llm_provider
-    
+
     @abc.abstractmethod
     def get_prompt_config(self) -> AbstractPromptConfiguration:
         return self.get_llm_provider().get_default_config()
@@ -244,8 +257,9 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     def get_autocorrection_response(response: ChatModelResponse):
         return response.parsed_result[0]["command_args"]["note_to_agent"]
 
-
-    def _build_jinja_message(self, task : AbstractTask, template_name : str, template_params : dict) -> str:
+    def _build_jinja_message(
+        self, task: AbstractTask, template_name: str, template_params: dict
+    ) -> str:
         """Build a message using jinja2 template engine"""
 
         # Get the module of the calling (child) class
@@ -258,23 +272,26 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
             directory_to_use = os.path.dirname(os.path.abspath(__file__))
 
         file_loader = FileSystemLoader(directory_to_use)
-        env = Environment(loader=file_loader,
-            autoescape=select_autoescape(['html', 'xml']),
-            extensions=["jinja2.ext.loopcontrols"]
-            )
+        env = Environment(
+            loader=file_loader,
+            autoescape=select_autoescape(["html", "xml"]),
+            extensions=["jinja2.ext.loopcontrols"],
+        )
         template = env.get_template(template_name)
 
-        template_params.update({"to_md_quotation": to_md_quotation,
-                                 "to_dotted_list": to_dotted_list, 
-                                 "to_numbered_list": to_numbered_list,
-                                 "to_string_list": to_string_list,
-                                 "indent": indent, 
-                                 "task" : self._task})
+        template_params.update(
+            {
+                "to_md_quotation": to_md_quotation,
+                "to_dotted_list": to_dotted_list,
+                "to_numbered_list": to_numbered_list,
+                "to_string_list": to_string_list,
+                "indent": indent,
+                "task": self._task,
+            }
+        )
         return template.render(template_params)
-        
 
-    def build_chat_prompt(self, messages: list[ChatMessage])-> ChatPrompt:
-
+    def build_chat_prompt(self, messages: list[ChatMessage]) -> ChatPrompt:
         strategy_tools = self.get_tools()
         prompt = ChatPrompt(
             messages=messages,

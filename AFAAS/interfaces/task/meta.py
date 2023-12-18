@@ -5,6 +5,7 @@ import enum
 from AFAAS.interfaces.agent import AbstractAgent
 from AFAAS.configs import AFAASModel
 
+
 class TaskStatus(AFAASModel):
     """
     Model representing the status of a task.

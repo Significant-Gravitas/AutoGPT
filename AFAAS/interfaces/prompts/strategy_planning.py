@@ -13,15 +13,17 @@ from AFAAS.lib.sdk import AFAASLogger
 from AFAAS.lib.task.plan import Plan
 from AFAAS.configs import UserConfigurable
 
-from AFAAS.interfaces.prompts.utils import \
-    to_numbered_list
-from AFAAS.interfaces.adapters import (
-    ChatMessage, CompletionModelFunction)
+from AFAAS.interfaces.prompts.utils import to_numbered_list
+from AFAAS.interfaces.adapters import ChatMessage, CompletionModelFunction
 
-from AFAAS.interfaces.prompts.strategy import (RESPONSE_SCHEMA, AbstractPromptStrategy,
-                   PromptStrategiesConfiguration)
+from AFAAS.interfaces.prompts.strategy import (
+    RESPONSE_SCHEMA,
+    AbstractPromptStrategy,
+    PromptStrategiesConfiguration,
+)
 
 LOG = AFAASLogger(name=__name__)
+
 
 class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
     # DEFAULT_PROMPT_SCRATCHPAD = PromptScratchpad(
@@ -198,8 +200,7 @@ class AbstractPlanningPromptStrategy(AbstractPromptStrategy):
         #     plugin.post_prompt(self)
 
         # Construct full prompt
-        from autogpt.AFAAS.interfaces.agent.assistants.prompt_manager import \
-            get_os_info
+        from autogpt.AFAAS.interfaces.agent.assistants.prompt_manager import get_os_info
 
         full_prompt_parts: list[str] = (
             self._generate_intro_prompt(agent=agent)

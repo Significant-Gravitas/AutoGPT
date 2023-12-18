@@ -13,15 +13,16 @@ LOG = AFAASLogger(name=__name__)
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.configs import (Configurable,
-                                                         SystemConfiguration)
+from AFAAS.configs import Configurable, SystemConfiguration
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.interfaces.adapters import (
-    BaseChatModelProvider, CompletionModelFunction, ModelProviderName)
-from AFAAS.core.tools.base import (BaseToolsRegistry, BaseTool,
-                                                      ToolConfiguration)
-from AFAAS.core.tools.command_decorator import \
-    AUTO_GPT_TOOL_IDENTIFIER
+    BaseChatModelProvider,
+    CompletionModelFunction,
+    ModelProviderName,
+)
+from AFAAS.core.tools.base import BaseToolsRegistry, BaseTool, ToolConfiguration
+from AFAAS.core.tools.command_decorator import AUTO_GPT_TOOL_IDENTIFIER
+
 # from AFAAS.core.tools.builtins import BUILTIN_TOOLS
 from AFAAS.core.tools.schema import ToolResult
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
@@ -87,7 +88,6 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
     def __init__(
         self,
         settings: SimpleToolRegistry.SystemSettings,
-        
         memory: AbstractMemory,
         workspace: AbstractFileWorkspace,
         model_providers: dict[ModelProviderName, BaseChatModelProvider],
@@ -206,9 +206,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         ```
         """
         if cmd.name in self.tools:
-            LOG.warn(
-                f"Tool '{cmd.name}' already registered and will be overwritten!"
-            )
+            LOG.warn(f"Tool '{cmd.name}' already registered and will be overwritten!")
         self.tools[cmd.name] = cmd
 
         if cmd.name in self.tool_aliases:
@@ -401,7 +399,6 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
     def with_tool_modules(
         modules: list[str],
         agent: BaseAgent,
-        
         memory: AbstractMemory,
         workspace: AbstractFileWorkspace,
         model_providers: dict[ModelProviderName, BaseChatModelProvider],
@@ -432,9 +429,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         # ]
         enabled_tool_modules = [x for x in modules]
 
-        LOG.trace(
-            f"The following tool categories are enabled: {enabled_tool_modules}"
-        )
+        LOG.trace(f"The following tool categories are enabled: {enabled_tool_modules}")
 
         for tool_module in enabled_tool_modules:
             new_registry.import_tool_module(tool_module)
@@ -483,7 +478,11 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
                 tool = attr.tool
 
             # Register tool classes
-            elif inspect.isclass(attr) and issubclass(attr, BaseTool) and attr != BaseTool:
+            elif (
+                inspect.isclass(attr)
+                and issubclass(attr, BaseTool)
+                and attr != BaseTool
+            ):
                 tool = attr()
 
             if tool:
@@ -526,7 +525,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         return category
 
     async def call(self, tool_name: str, **kwargs) -> ToolResult:
-        LOG =  AFAASLogger(name=__name__)
+        LOG = AFAASLogger(name=__name__)
         LOG.warning("ToolRegistry.call() is deprecated")
 
         return await self.perform(tool_name=tool_name, **kwargs)

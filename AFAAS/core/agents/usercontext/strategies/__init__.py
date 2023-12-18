@@ -1,10 +1,12 @@
-
-
 from AFAAS.core.agents.usercontext.strategies.refine_user_context import (
-    RefineUserContextFunctionNames, RefineUserContextStrategy,
-    RefineUserContextStrategyConfiguration)
+    RefineUserContextFunctionNames,
+    RefineUserContextStrategy,
+    RefineUserContextStrategyConfiguration,
+)
 from AFAAS.interfaces.prompts.strategy import (
-    AbstractPromptStrategy, PromptStrategiesConfiguration)
+    AbstractPromptStrategy,
+    PromptStrategiesConfiguration,
+)
 
 
 class StrategiesSetConfiguration(PromptStrategiesConfiguration):
@@ -12,12 +14,12 @@ class StrategiesSetConfiguration(PromptStrategiesConfiguration):
 
 
 class StrategiesSet:
-    from AFAAS.interfaces.prompts.strategy import (
-        AbstractPromptStrategy)
+    from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
 
     @staticmethod
-    def get_strategies()-> list[AbstractPromptStrategy]:
+    def get_strategies() -> list[AbstractPromptStrategy]:
         return [
-            RefineUserContextStrategy(**RefineUserContextStrategy.default_configuration.dict()
+            RefineUserContextStrategy(
+                **RefineUserContextStrategy.default_configuration.dict()
             ),
         ]

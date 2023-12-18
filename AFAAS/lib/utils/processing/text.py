@@ -6,10 +6,8 @@ from typing import Iterator, Optional, TypeVar
 import spacy
 
 from AFAAS.lib.sdk.logger import AFAASLogger
-from AFAAS.interfaces.adapters import (
-    BaseChatModelProvider, ChatMessage, ModelTokenizer)
-from AFAAS.interfaces.adapters.chatmodel import \
-    ChatPrompt
+from AFAAS.interfaces.adapters import BaseChatModelProvider, ChatMessage, ModelTokenizer
+from AFAAS.interfaces.adapters.chatmodel import ChatPrompt
 
 LOG = AFAASLogger(name=__name__)
 LOG.notice(

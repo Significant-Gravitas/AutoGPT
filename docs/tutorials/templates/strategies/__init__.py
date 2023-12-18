@@ -1,9 +1,11 @@
 # Import necessary libraries, modules and classes.
 from logging import Logger
 
-from AFAAS.interfaces.prompts.strategy import (AbstractPromptStrategy,
-                                         PromptStrategiesConfiguration,
-                                         PromptStrategy)
+from AFAAS.interfaces.prompts.strategy import (
+    AbstractPromptStrategy,
+    PromptStrategiesConfiguration,
+    PromptStrategy,
+)
 
 # Import your custom strategy class from the respective file.
 from .your_strategy_name import YourStrategyName, YourStrategyNameConfiguration
@@ -37,9 +39,7 @@ class Strategies:
         # Instantiate and return a list of your strategy objects.
         # Use the logger and any necessary configuration from StrategiesConfiguration.
         return [
-            YourStrategyName(
-                **YourStrategyName.default_configuration.dict()
-            ),
+            YourStrategyName(**YourStrategyName.default_configuration.dict()),
             # Instantiate other strategy objects and add them to the list.
         ]
 

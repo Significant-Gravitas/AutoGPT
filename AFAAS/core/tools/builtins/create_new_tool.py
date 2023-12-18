@@ -13,10 +13,10 @@
 #             storage_route="AFAAS.core.tools.builtins.CreateNewTool",
 #         ),
 #     )
-# # 
+# #
 #     def __init__(
 #         self,
-        
+
 #         configuration: ToolConfiguration,
 #     ):
 #         self._configuration = configuration

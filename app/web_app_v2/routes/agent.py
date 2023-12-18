@@ -40,8 +40,7 @@ import yaml
 from fastapi import APIRouter, FastAPI, Request
 
 from AFAAS.core.agents import PlannerAgent
-from app.cli_web_app.server.schema import \
-    AgentMessageRequestBody
+from app.cli_web_app.server.schema import AgentMessageRequestBody
 
 afaas_agent_router = APIRouter()
 agent_router = APIRouter()

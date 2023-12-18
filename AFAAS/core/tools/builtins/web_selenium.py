@@ -25,8 +25,7 @@ from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.core.tools.command_decorator import tool
 from AFAAS.lib.sdk.errors import ToolExecutionError
 from AFAAS.lib.utils.json_schema import JSONSchema
-from AFAAS.lib.utils.processing.html import (
-    extract_hyperlinks, format_hyperlinks)
+from AFAAS.lib.utils.processing.html import extract_hyperlinks, format_hyperlinks
 from AFAAS.lib.utils.processing.text import summarize_text
 from AFAAS.lib.utils.url.validators import validate_url
 

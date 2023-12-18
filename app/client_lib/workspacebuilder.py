@@ -6,16 +6,13 @@ from pathlib import Path
 import click
 import yaml
 
-from AFAAS.core.agents import \
-    PlannerAgent  # ## TODO should work for every Agent
+from AFAAS.core.agents import PlannerAgent  # ## TODO should work for every Agent
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 DEFAULT_SETTINGS_FILE = str(Path("~/auto-gpt/default_agent_settings.yml").expanduser())
 
 
-async def workspace_loader(
-    user_configuration: dict, LOG: Logger, agent_workspace
-):
+async def workspace_loader(user_configuration: dict, LOG: Logger, agent_workspace):
     """Run the Auto-GPT CLI client."""
 
     # Step 1. Collate the user's settings with the default system settings.

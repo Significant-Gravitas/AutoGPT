@@ -11,7 +11,10 @@ if TYPE_CHECKING:
 from AFAAS.interfaces.db_nosql import NoSQLMemory
 
 from AFAAS.lib.sdk.logger import AFAASLogger
+
 LOG = AFAASLogger(name=__name__)
+
+
 class MongoDBMemory(NoSQLMemory):
     """
     DO NOT USE : TEMPLATE UNDER DEVELOPMENT, WOULD HAPPILY TAKE HELP :-)

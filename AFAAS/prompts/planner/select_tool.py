@@ -5,8 +5,7 @@ import uuid
 
 from typing import TYPE_CHECKING, Callable, Optional
 
-from AFAAS.interfaces.agent.agent_directives import \
-    BaseAgentDirectives
+from AFAAS.interfaces.agent.agent_directives import BaseAgentDirectives
 
 if TYPE_CHECKING:
     from AFAAS.core.agents.planner import PlannerAgent
@@ -17,13 +16,23 @@ from AFAAS.lib.action_history import Episode
 
 from AFAAS.interfaces.task import AbstractTask
 from AFAAS.interfaces.prompts.strategy import (
-    AbstractPromptStrategy, DefaultParsedResponse, PromptStrategiesConfiguration)
+    AbstractPromptStrategy,
+    DefaultParsedResponse,
+    PromptStrategiesConfiguration,
+)
 
 from AFAAS.interfaces.prompts.strategy_planning import (
-    PlanningPromptStrategiesConfiguration,AbstractPlanningPromptStrategy)
+    PlanningPromptStrategiesConfiguration,
+    AbstractPlanningPromptStrategy,
+)
 from AFAAS.interfaces.adapters import (
-    AbstractLanguageModelProvider, AbstractPromptConfiguration,
-    AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
+    AbstractLanguageModelProvider,
+    AbstractPromptConfiguration,
+    AssistantChatMessageDict,
+    ChatMessage,
+    ChatPrompt,
+    CompletionModelFunction,
+)
 
 
 class SelectToolFunctionNames(str, enum.Enum):
@@ -35,7 +44,7 @@ class SelectToolFunctionNames(str, enum.Enum):
 ####
 class SelectToolStrategyConfiguration(PlanningPromptStrategiesConfiguration):
     temperature: float = 0.5
-    default_tool_choice : SelectToolFunctionNames = "ask_user"
+    default_tool_choice: SelectToolFunctionNames = "ask_user"
 
 
 ###
@@ -50,11 +59,11 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
     def __init__(
         self,
         default_tool_choice: SelectToolFunctionNames,
-        note_to_agent_length : int,
-        temperature : float , #if coding 0.05,
+        note_to_agent_length: int,
+        temperature: float,  # if coding 0.05,
         count=0,
         exit_token: str = str(uuid.uuid4()),
-        use_message: bool = False
+        use_message: bool = False,
     ):
         self._count = count
         self._config = self.default_configuration
@@ -65,8 +74,8 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
         return self.build_prompt(*_, **kwargs)
 
     def build_prompt(
-        self, 
-        task : AbstractTask ,
+        self,
+        task: AbstractTask,
         agent: "PlannerAgent",
         # instruction: str,
         **kwargs,
@@ -88,10 +97,15 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
             **kwargs,
         )
 
-
-        progress = self.compile_progress(event_history,) if event_history else ''
+        progress = (
+            self.compile_progress(
+                event_history,
+            )
+            if event_history
+            else ""
+        )
         response_format_instr = self.response_format_instruction()
-        extra_messages :list[ChatMessage]= []
+        extra_messages: list[ChatMessage] = []
         extra_messages.append(ChatMessage.system(response_format_instr))
         extra_messages = [msg.content for msg in extra_messages]
 
@@ -103,22 +117,21 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
             "final_instruction_msg": self._config.choose_action_instruction,
         }
 
-
         self._function = agent._tool_registry.dump_tools()
 
-        
         messages = []
         messages.append(
-                        ChatMessage.system(
-                            self._build_jinja_message(task = task, 
-                                            template_name= f'{self.STRATEGY_NAME}.jinja', template_params = context)
-                            )
-                    )
-        messages.append(
             ChatMessage.system(
-                        response_format_instr = self.response_format_instruction()
+                self._build_jinja_message(
+                    task=task,
+                    template_name=f"{self.STRATEGY_NAME}.jinja",
+                    template_params=context,
                 )
             )
+        )
+        messages.append(
+            ChatMessage.system(response_format_instr=self.response_format_instruction())
+        )
 
         # prompt = ChatPrompt(
         #     messages=messages,
@@ -128,19 +141,18 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
         # )
         return self.build_chat_prompt(messages=messages)
 
-
     #
     # response_format_instruction
     #
     def response_format_instruction(self) -> str:
         return super().response_format_instruction()
-    
+
     def get_llm_provider(self) -> AbstractLanguageModelProvider:
         return super().get_llm_provider()
-    
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
         return super().get_prompt_config()
-    
+
     #
     # _generate_intro_prompt
     #

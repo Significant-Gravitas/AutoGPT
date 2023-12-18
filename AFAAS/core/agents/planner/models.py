@@ -7,8 +7,7 @@ from pydantic import Field
 if TYPE_CHECKING:
     pass
 
-from AFAAS.interfaces.agent.models import (
-    BaseAgentConfiguration, BaseAgentSystems)
+from AFAAS.interfaces.agent.models import BaseAgentConfiguration, BaseAgentSystems
 
 
 class PlannerAgentSystems(BaseAgentSystems):

@@ -21,25 +21,30 @@ async def handle_user_message(prompt):
 async def run_cli_demo():
     """Run the AFAAS CLI (Command Line Interface) Demonstration"""
 
-    LOG = AFAASLogger(name = __name__)
+    LOG = AFAASLogger(name=__name__)
     LOG.info("Getting agent settings")
 
     import uuid
 
     #
     # Step 1. Get the user
-    # 
     #
-    LOG.notice("AFAAS Data Structure support multiple users (however since there is no UI to enforce that we will be using a user with ID : a1621e69-970a-4340-86e7-778d82e2137b")
+    #
+    LOG.notice(
+        "AFAAS Data Structure support multiple users (however since there is no UI to enforce that we will be using a user with ID : a1621e69-970a-4340-86e7-778d82e2137b"
+    )
     user_id: str = "A" + str(uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b"))
-    from AFAAS.core.workspace.local import AGPTLocalFileWorkspace, AGPTLocalFileWorkspaceConfiguration
+    from AFAAS.core.workspace.local import (
+        AGPTLocalFileWorkspace,
+        AGPTLocalFileWorkspaceConfiguration,
+    )
     from AFAAS.core.adapters.openai import AFAASChatOpenAI
 
-    #TODO: Simplify this via get_workspace
+    # TODO: Simplify this via get_workspace
     # from AFAAS.core.workspace import get_workspace
     agent_settings: PlannerAgent.SystemSettings = PlannerAgent.SystemSettings(
-        user_id=user_id , 
-        workspace=AGPTLocalFileWorkspace.SystemSettings() #configuration=AGPTLocalFileWorkspaceConfiguration(user_id=user_id, agent_id=agent_id ))
+        user_id=user_id,
+        workspace=AGPTLocalFileWorkspace.SystemSettings(),  # configuration=AGPTLocalFileWorkspaceConfiguration(user_id=user_id, agent_id=agent_id ))
     )
 
     # NOTE : Real world scenario, this user_id will be passed as an argument
@@ -49,37 +54,45 @@ async def run_cli_demo():
         user_id=user_id,
     )
 
-    if len(agent_dict_list) > 0 : 
+    if len(agent_dict_list) > 0:
         LOG.info(f"User {user_id} has {len(agent_dict_list)} agents.")
-        if  LOG.level >= logging.DEBUG:
+        if LOG.level >= logging.DEBUG:
             print("This is the agents thathave been saved :")
             for i, agent_dict in enumerate(agent_dict_list):
-                print(f"{i+1}. {agent_dict.agent_name}({agent_dict.agent_id}) : {agent_dict.agent_goal_sentence}")
+                print(
+                    f"{i+1}. {agent_dict.agent_name}({agent_dict.agent_id}) : {agent_dict.agent_goal_sentence}"
+                )
 
-            selected_agent_index : int = 0 
-            i : int = 0
-            while selected_agent_index < 1 or selected_agent_index > len(agent_dict_list):
-                if i > 0 :
-                    print("Ooops ! The selected agent is not in the list. Please select a valid agent.")
+            selected_agent_index: int = 0
+            i: int = 0
+            while selected_agent_index < 1 or selected_agent_index > len(
+                agent_dict_list
+            ):
+                if i > 0:
+                    print(
+                        "Ooops ! The selected agent is not in the list. Please select a valid agent."
+                    )
                 i += 1
-                selected_agent_index = input("Select an agent to load (Press \"C\" to create a new agent) : ")
+                selected_agent_index = input(
+                    'Select an agent to load (Press "C" to create a new agent) : '
+                )
                 if selected_agent_index.lower() == "c":
                     selected_agent_index = 0
                     break
 
                 if selected_agent_index.isdigit():
                     selected_agent_index = int(selected_agent_index)
-        else :
-            selected_agent_index : int = 1 
-        
+        else:
+            selected_agent_index: int = 1
+
         agent_dict = agent_dict_list[selected_agent_index - 1]
-        #agent_dict["workspace"] = AGPTLocalFileWorkspace()
-        agent_settings = PlannerAgent.SystemSettings(**agent_dict_list[selected_agent_index - 1])
-        agent_id = agent_settings.agent_id
-        LOG.info(
-            f"Loading agent {agent_id} from get_agentsetting_list_from_memory"
+        # agent_dict["workspace"] = AGPTLocalFileWorkspace()
+        agent_settings = PlannerAgent.SystemSettings(
+            **agent_dict_list[selected_agent_index - 1]
         )
-        agent : PlannerAgent = PlannerAgent.get_instance_from_settings(
+        agent_id = agent_settings.agent_id
+        LOG.info(f"Loading agent {agent_id} from get_agentsetting_list_from_memory")
+        agent: PlannerAgent = PlannerAgent.get_instance_from_settings(
             agent_settings=agent_settings,
             workspace=AGPTLocalFileWorkspace(),
             default_llm_provider=AFAASChatOpenAI(),
@@ -94,11 +107,11 @@ async def run_cli_demo():
         #    ,
         #     )
 
-    else :
+    else:
         #
         # New requirement gathering process
         #
-        if LOG.level <= logging.DEBUG :
+        if LOG.level <= logging.DEBUG:
             user_objective = (
                 "Provide a step-by-step guide on how to build a Pizza oven."
             )

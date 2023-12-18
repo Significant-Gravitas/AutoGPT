@@ -6,15 +6,15 @@ import json
 import re
 from typing import Callable, ClassVar, Protocol
 
-from pydantic import BaseModel, Field,  validator
+from pydantic import BaseModel, Field, validator
 
 from AFAAS.configs import SystemConfiguration, UserConfigurable
 from AFAAS.interfaces.adapters.configuration import (
     Embedding,
-    BaseProviderBudget, 
-    BaseProviderCredentials, 
+    BaseProviderBudget,
+    BaseProviderCredentials,
     BaseProviderSettings,
-    BaseProviderUsage, 
+    BaseProviderUsage,
 )
 
 
@@ -199,7 +199,7 @@ class EmbeddingModelProvider(AbstractModelProvider):
         ...
 
 
-class AbstractPromptConfiguration(abc.ABC,SystemConfiguration):
+class AbstractPromptConfiguration(abc.ABC, SystemConfiguration):
     """Struct for model configuration."""
-    pass 
 
+    pass

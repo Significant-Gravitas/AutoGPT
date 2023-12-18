@@ -15,14 +15,18 @@ import boto3
 import botocore.exceptions
 from pydantic import SecretStr
 
-from AFAAS.configs.schema  import UserConfigurable
+from AFAAS.configs.schema import UserConfigurable
 
-from AFAAS.interfaces.workspace import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
+from AFAAS.interfaces.workspace import (
+    AbstractFileWorkspace,
+    AbstractFileWorkspaceConfiguration,
+)
 
 if TYPE_CHECKING:
     import mypy_boto3_s3
 from AFAAS.lib.sdk.logger import AFAASLogger
-LOG =  AFAASLogger(name=__name__)
+
+LOG = AFAASLogger(name=__name__)
 
 
 class S3FileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
@@ -37,11 +41,11 @@ class S3FileWorkspace_AlphaRelease(AbstractFileWorkspace):
 
     class SystemSettings(AbstractFileWorkspace.SystemSettings):
         configuration = S3FileWorkspaceConfiguration
-        
+
     _bucket: mypy_boto3_s3.service_resource.Bucket
 
     def __init__(self, config: S3FileWorkspaceConfiguration):
-        super().__init__(config = config)
+        super().__init__(config=config)
         self._bucket_name = config.bucket
         assert self._agent_workspace.is_absolute()
 

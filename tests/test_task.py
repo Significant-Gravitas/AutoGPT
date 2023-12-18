@@ -8,9 +8,9 @@ from AFAAS.lib.task.plan import Plan
 from AFAAS.interfaces.task.meta import TaskStatusList
 from test_agents_planner import PLANNERAGENT
 
-plan_prepare_dinner = Plan(task_id="100", task_goal="100. Prepare Dinner for Family",
-                            agent = PLANNERAGENT
-                            )
+plan_prepare_dinner = Plan(
+    task_id="100", task_goal="100. Prepare Dinner for Family", agent=PLANNERAGENT
+)
 PLANNERAGENT.plan = plan_prepare_dinner
 plan_prepare_dinner.state = TaskStatusList.READY
 
@@ -23,7 +23,9 @@ task_102_clean_kitchen.state = TaskStatusList.READY
 task_103_choose_music = Task(task_id="103", task_goal="103. Choose Dinner Music")
 task_103_choose_music.state = TaskStatusList.READY
 
-task_104_decorate_dining_room = Task(task_id="104", task_goal="104. Decorate Dining Room")
+task_104_decorate_dining_room = Task(
+    task_id="104", task_goal="104. Decorate Dining Room"
+)
 task_104_decorate_dining_room.state = TaskStatusList.READY
 
 task_105_set_mood = Task(task_id="105", task_goal="105. Set the Mood for Dinner")
@@ -48,11 +50,15 @@ task_201_serve_dinner.add_predecessor(task_108_serve_salad)
 
 task_300_make_banana_bread = Task(task_id="300", task_goal="300. Make Banana Bread")
 
-task_300_1_gather_ingredients = Task(task_id="300.1", task_goal="300.1. Gather Ingredients")
+task_300_1_gather_ingredients = Task(
+    task_id="300.1", task_goal="300.1. Gather Ingredients"
+)
 task_300_1_gather_ingredients.add_predecessor(task_101_buy_groceries)
 task_300_1_gather_ingredients.add_predecessor(task_102_clean_kitchen)
 
-task_300_2_prepare_baking_pan = Task(task_id="300.2", task_goal="300.2. Prepare Baking Pan")
+task_300_2_prepare_baking_pan = Task(
+    task_id="300.2", task_goal="300.2. Prepare Baking Pan"
+)
 
 task_300_3_mix_ingredients = Task(task_id="300.3", task_goal="300.3. Mix Ingredients")
 task_300_3_mix_ingredients.add_predecessor(task_300_1_gather_ingredients)
@@ -75,20 +81,30 @@ task_300_3_1_measure_flour.add_predecessor(task_300_1_gather_ingredients)
 task_300_3_2_mash_bananas = Task(task_id="300.3.2", task_goal="300.3.2. Mash Bananas")
 task_300_3_2_mash_bananas.add_predecessor(task_300_1_gather_ingredients)
 
-task_300_3_3_combine_wet_ingredients = Task(task_id="300.3.3", task_goal="300.3.3. Combine Wet Ingredients")
+task_300_3_3_combine_wet_ingredients = Task(
+    task_id="300.3.3", task_goal="300.3.3. Combine Wet Ingredients"
+)
 task_300_3_3_combine_wet_ingredients.add_predecessor(task_300_3_1_measure_flour)
 task_300_3_3_combine_wet_ingredients.add_predecessor(task_300_3_2_mash_bananas)
 
-task_300_2_1_grease_pan = Task(task_id="300.2.1", task_goal="300.2.1. Grease Baking Pan")
+task_300_2_1_grease_pan = Task(
+    task_id="300.2.1", task_goal="300.2.1. Grease Baking Pan"
+)
 task_300_2_1_grease_pan.add_predecessor(task_300_1_gather_ingredients)
 
-task_300_2_2_line_pan = Task(task_id="300.2.2", task_goal="300.2.2. Line Baking Pan with Parchment Paper")
+task_300_2_2_line_pan = Task(
+    task_id="300.2.2", task_goal="300.2.2. Line Baking Pan with Parchment Paper"
+)
 task_300_2_2_line_pan.add_predecessor(task_300_2_1_grease_pan)
 
-task_300_1_1_find_ingredients_list = Task(task_id="300.1.1", task_goal="300.1.1. Find Ingredients List")
+task_300_1_1_find_ingredients_list = Task(
+    task_id="300.1.1", task_goal="300.1.1. Find Ingredients List"
+)
 task_300_1_1_find_ingredients_list.add_predecessor(task_101_buy_groceries)
 
-task_300_1_2_check_pantry = Task(task_id="300.1.2", task_goal="300.1.2. Check Pantry for Ingredients")
+task_300_1_2_check_pantry = Task(
+    task_id="300.1.2", task_goal="300.1.2. Check Pantry for Ingredients"
+)
 task_300_1_2_check_pantry.add_predecessor(task_300_1_1_find_ingredients_list)
 
 # Adding tasks to plans
@@ -118,58 +134,57 @@ task_200_prepare_main_course.add_task(task_300_5_cool_bread)
 task_200_prepare_main_course.add_task(task_300_6_serve_bread)
 
 
-
 @pytest.fixture
 def plan_step_0():
     # Initial setup with multiple subtasks
     return copy.deepcopy(plan_prepare_dinner)
 
+
 @pytest.fixture
 def plan_step_1():
-    t : Plan = plan_step_0()
+    t: Plan = plan_step_0()
     # Marking initial tasks as done
-    task_id : str
+    task_id: str
     t._all_task_ids.reverse()
-    
-    for task_id in t._all_task_ids :
+
+    for task_id in t._all_task_ids:
         task = t.get_task(task_id=task_id)
-        if task.state == TaskStatusList.READY and task.is_ready() :
+        if task.state == TaskStatusList.READY and task.is_ready():
             task.state = TaskStatusList.DONE
         elif task.is_ready():
             task.state = TaskStatusList.READY
 
     t._all_task_ids.reverse()
 
-    for task_id in t._all_task_ids :
+    for task_id in t._all_task_ids:
         task = t.get_task(task_id=task_id)
         print(f"Task {task.task_goal} is {task.state}")
     return t
-
-
 
 
 @pytest.fixture
 def plan_step_2():
-    t : Plan = plan_step_1()
+    t: Plan = plan_step_1()
     # Marking initial tasks as done
-    task_id : str
+    task_id: str
     t._all_task_ids.reverse()
-    
-    for task_id in t._all_task_ids :
+
+    for task_id in t._all_task_ids:
         task = t.get_task(task_id=task_id)
-        if task.state == TaskStatusList.READY and task.is_ready() :
+        if task.state == TaskStatusList.READY and task.is_ready():
             task.state = TaskStatusList.DONE
         elif task.is_ready():
             task.state = TaskStatusList.READY
-    
+
     t._all_task_ids.reverse()
 
-    for task_id in t._all_task_ids :
+    for task_id in t._all_task_ids:
         task = t.get_task(task_id=task_id)
         print(f"Task {task.task_goal} is {task.state}")
     return t
 
-#plan_step_1()
+
+# plan_step_1()
 plan_step_2()
 
 

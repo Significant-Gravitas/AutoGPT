@@ -3,12 +3,18 @@ import enum
 from typing import Optional
 
 from AFAAS.interfaces.prompts.strategy import (
-    AbstractPromptStrategy, 
-    PromptStrategiesConfiguration)
-from AFAAS.interfaces.prompts.utils import (
-    json_loads, to_numbered_list)
+    AbstractPromptStrategy,
+    PromptStrategiesConfiguration,
+)
+from AFAAS.interfaces.prompts.utils import json_loads, to_numbered_list
 from AFAAS.interfaces.adapters import (
-    AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction, AbstractLanguageModelProvider, AbstractPromptConfiguration)
+    AssistantChatMessageDict,
+    ChatMessage,
+    ChatPrompt,
+    CompletionModelFunction,
+    AbstractLanguageModelProvider,
+    AbstractPromptConfiguration,
+)
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 
@@ -59,7 +65,6 @@ class InitialPlanStrategy(AbstractPromptStrategy):
         default_tool_choice: InitialPlanFunctionNames,
         temperature: float,  # if coding 0.05
     ):
-
         self._system_prompt_template = self.FIRST_SYSTEM_PROMPT_TEMPLATE
         self._system_info = self.DEFAULT_SYSTEM_INFO
         self._user_prompt_template = self.DEFAULT_USER_PROMPT_TEMPLATE
@@ -138,8 +143,7 @@ class InitialPlanStrategy(AbstractPromptStrategy):
         )
         strategy_tools = self._tools
 
-        response_format_instr = ChatMessage.system( self.response_format_instruction()
-        )
+        response_format_instr = ChatMessage.system(self.response_format_instruction())
 
         return ChatPrompt(
             messages=[system_prompt, user_prompt, response_format_instr],
@@ -169,12 +173,11 @@ class InitialPlanStrategy(AbstractPromptStrategy):
         ]
         return parsed_response
 
-
     def response_format_instruction(self) -> str:
         return super().response_format_instruction()
-    
+
     def get_llm_provider(self) -> AbstractLanguageModelProvider:
         return super().get_llm_provider()
-    
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
         return super().get_prompt_config()

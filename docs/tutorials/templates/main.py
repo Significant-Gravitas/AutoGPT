@@ -4,12 +4,15 @@ import uuid
 from typing import Awaitable, Callable
 
 from AFAAS.interfaces.agent import BaseAgent, Configurable
-from AFAAS.core.agents.usercontext.configuration import \
-    MyCustomAgentConfiguration  # Import configuration
-from AFAAS.core.agents.usercontext.loop import \
-    UserContextLoop  # Import the UserContextLoop or your custom loop
-from AFAAS.core.agents.usercontext.system import \
-    MyCustomAgentSystemSettings  # Import system settings
+from AFAAS.core.agents.usercontext.configuration import (
+    MyCustomAgentConfiguration,
+)  # Import configuration
+from AFAAS.core.agents.usercontext.loop import (
+    UserContextLoop,
+)  # Import the UserContextLoop or your custom loop
+from AFAAS.core.agents.usercontext.system import (
+    MyCustomAgentSystemSettings,
+)  # Import system settings
 from AFAAS.core.memory import Memory
 from AFAAS.core.planning import SimplePlanner
 from AFAAS.core.adapters.openai import AFAASChatOpenAI
@@ -29,7 +32,6 @@ class MyCustomAgent(BaseAgent, Configurable):
     def __init__(
         self,
         settings: MyCustomAgentSystemSettings,
-        
         memory: Memory,
         openai_provider: AFAASChatOpenAI,
         workspace: AbstractFileWorkspace,
@@ -114,7 +116,6 @@ class MyCustomAgent(BaseAgent, Configurable):
         cls,
         user_objective: str,
         agent_settings: MyCustomAgentSettings,
-        
     ) -> dict:
         """Determine the agent name and goals based on the user objective and settings.
 

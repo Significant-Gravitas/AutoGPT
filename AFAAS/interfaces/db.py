@@ -11,15 +11,16 @@ from typing import TYPE_CHECKING
 
 from pydantic import Field
 
-from AFAAS.configs import (Configurable,
-                                                         SystemConfiguration,
-                                                         SystemSettings)
+from AFAAS.configs import Configurable, SystemConfiguration, SystemSettings
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.db_table import AbstractTable
 
 from AFAAS.lib.sdk.logger import AFAASLogger
+
 LOG = AFAASLogger(name=__name__)
+
+
 class MemoryAdapterType(Enum):
     SQLLIKE_JSON_FILE = "json_file"
     NOSQL_JSON_FILE = "nosqljson_file"
@@ -142,7 +143,7 @@ class AbstractMemory(Configurable, abc.ABC):
             config = {"memory_adapter": "json_file", "json_file_path": "~/auto-gpt/data/"}
             memory = Memory.get_adapter(config)
         """
-        #FIXME: Move to a dependancy ingestion patern
+        # FIXME: Move to a dependancy ingestion patern
         adapter_type = memory_settings.configuration.memory_adapter
         config_key = base64.b64encode(
             json.dumps(memory_settings.configuration.dict()).encode()
@@ -152,8 +153,7 @@ class AbstractMemory(Configurable, abc.ABC):
             return AbstractMemory._instances[config_key]
 
         if adapter_type == MemoryAdapterType.NOSQL_JSON_FILE:
-            from AFAAS.core.db.nosql.jsonfile import \
-                JSONFileMemory
+            from AFAAS.core.db.nosql.jsonfile import JSONFileMemory
 
             LOG.notice(
                 "Started using a local JSONFile backend. Help us to implement/test DynamoDB & CosmoDB backends !"
@@ -201,7 +201,7 @@ class AbstractMemory(Configurable, abc.ABC):
             messages_table = memory.get_table("messages_history")
             users_table = memory.get_table("users")
         """
-        #FIXME: Move to a dependancy ingestion patern
+        # FIXME: Move to a dependancy ingestion patern
         if self.__class__ == AbstractMemory:
             raise TypeError(
                 "get_table method cannot be called on Memory class directly"
@@ -226,26 +226,22 @@ class AbstractMemory(Configurable, abc.ABC):
             return returnvalue
 
         elif table_name == "message_agent_agent":
-            from AFAAS.core.db.table import \
-                MessagesAgentAgentTable
+            from AFAAS.core.db.table import MessagesAgentAgentTable
 
             return MessagesAgentAgentTable(memory=self)
 
         elif table_name == "message_agent_llm":
-            from AFAAS.core.db.table import \
-                MessagesAgentLLMTable
+            from AFAAS.core.db.table import MessagesAgentLLMTable
 
             return MessagesAgentLLMTable(memory=self)
 
         elif table_name == "message_user_agent":
-            from AFAAS.core.db.table import \
-                MessagesUserAgentTable
+            from AFAAS.core.db.table import MessagesUserAgentTable
 
             return MessagesUserAgentTable(memory=self)
 
         elif table_name == "users_informations":
-            from AFAAS.core.db.table import \
-                UsersInformationsTable
+            from AFAAS.core.db.table import UsersInformationsTable
 
             return UsersInformationsTable(memory=self)
 

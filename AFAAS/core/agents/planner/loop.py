@@ -10,7 +10,10 @@ from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.lib.task.plan import Plan
 from AFAAS.lib.task.task import Task
 from AFAAS.interfaces.agent.exceptions import (
-    AgentException, ToolExecutionError, UnknownToolError)
+    AgentException,
+    ToolExecutionError,
+    UnknownToolError,
+)
 from AFAAS.core.tools import ToolOutput
 
 if TYPE_CHECKING:
@@ -22,6 +25,7 @@ if TYPE_CHECKING:
 from AFAAS.interfaces.agent import BaseLoop, BaseLoopHook
 
 from AFAAS.lib.sdk.logger import AFAASLogger, NOTICE, TRACE
+
 LOG = AFAASLogger(name=__name__)
 
 
@@ -121,7 +125,7 @@ class PlannerLoop(BaseLoop):
         self._loop_count = 0
 
         # _is_running is important because it avoid having two concurent loop in the same agent (cf : Agent.run())
-        current_task =  self._current_task 
+        current_task = self._current_task
         while self._is_running:
             # if _active is false, then the loop is paused
             # FIXME replace _active by self.remaining_cycles > 0:
@@ -157,13 +161,12 @@ class PlannerLoop(BaseLoop):
                     current_task=current_task
                     # user_input = assistant_reply_dict
                 )
-            
 
-            if current_task.is_ready() : 
+            if current_task.is_ready():
                 """If the task still still match readiness criterias at this point, it means that we can close it"""
                 current_task.state = TaskStatusList.DONE
                 LOG.info(f"Terminating Task : {current_task.debug_formated_str()}")
-            else :
+            else:
                 """
                 If the task doesn't match readiness criterias at this point, it means that we can't close it
                 this situation is most likely due to the adition of subbtasks or predecessor during the excecution of the task
@@ -171,58 +174,68 @@ class PlannerLoop(BaseLoop):
                 """
                 self.plan()._ready_task_ids.remove(current_task.task_id)
 
-                
-
-            LOG.debug(self.plan().debug_dump_str(depth= 2))
-            self._current_task = self.plan().get_next_task(task = current_task)
+            LOG.debug(self.plan().debug_dump_str(depth=2))
+            self._current_task = self.plan().get_next_task(task=current_task)
 
             await self.save_plan()
 
-            if (len(self.plan().get_all_tasks_ids()) == len(self.plan().get_all_done_tasks_ids())):
-                LOG.info("All tasks are done 😄") 
+            if len(self.plan().get_all_tasks_ids()) == len(
+                self.plan().get_all_done_tasks_ids()
+            ):
+                LOG.info("All tasks are done 😄")
                 self._is_running = False
-            elif self._current_task is None : 
-                LOG.error("The agent can't find the next task to execute 😱 ! This is an anomaly and we would be working on it.")
-                LOG.info("The software is still in deveopment and  availableas a preview. Such anomaly are a priority and we would be working on it.")
+            elif self._current_task is None:
+                LOG.error(
+                    "The agent can't find the next task to execute 😱 ! This is an anomaly and we would be working on it."
+                )
+                LOG.info(
+                    "The software is still in deveopment and  availableas a preview. Such anomaly are a priority and we would be working on it."
+                )
                 self._is_running = False
-            else : 
+            else:
                 LOG.trace(f"Next task : {self._current_task.debug_formated_str()}")
-                
+
                 LOG.info("Task history : (Max. 10 tasks)")
-                plan_history : list[Task] = self.plan().get_last_achieved_tasks(count=10)
+                plan_history: list[Task] = self.plan().get_last_achieved_tasks(count=10)
                 for i, task in enumerate(plan_history):
-                    LOG.info(f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}")
-                    
-                if(LOG.isEnabledFor(TRACE)):
+                    LOG.info(
+                        f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}"
+                    )
+
+                if LOG.isEnabledFor(TRACE):
                     input("Press Enter to continue...")
 
                 LOG.info(f"Task Path : {self._current_task.get_formated_task_path()}")
-                task_path : list[Task] = self._current_task.get_task_path()
+                task_path: list[Task] = self._current_task.get_task_path()
                 for i, task in enumerate(task_path):
-                    LOG.trace(f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}")
+                    LOG.trace(
+                        f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}"
+                    )
 
-
-                if(LOG.isEnabledFor(TRACE)):
+                if LOG.isEnabledFor(TRACE):
                     input("Press Enter to continue...")
 
                 LOG.trace(f"Task Sibblings :")
-                task_sibblings : list[Task] = self._current_task.get_sibblings()
+                task_sibblings: list[Task] = self._current_task.get_sibblings()
                 for i, task in enumerate(task_sibblings):
-                    LOG.trace(f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}")
+                    LOG.trace(
+                        f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}"
+                    )
 
-                
-                if(LOG.isEnabledFor(TRACE)):
+                if LOG.isEnabledFor(TRACE):
                     input("Press Enter to continue...")
 
                 LOG.trace(f"Task Predecessor :")
-                task_predecessors: list[Task] = self._current_task.task_predecessors.get_all_tasks_from_stack()
+                task_predecessors: list[
+                    Task
+                ] = self._current_task.task_predecessors.get_all_tasks_from_stack()
                 for i, task in enumerate(task_predecessors):
-                    LOG.trace(f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}")
+                    LOG.trace(
+                        f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}"
+                    )
 
-                if(LOG.isEnabledFor(NOTICE)):
+                if LOG.isEnabledFor(NOTICE):
                     input("Press Enter to continue...")
-
-
 
     async def start(
         self,
@@ -242,8 +255,6 @@ class PlannerLoop(BaseLoop):
     #     # TODO: Should probably do a step to evaluate the quality of the generated tasks,
     #     #  and ensure that they have actionable ready and acceptance criteria
 
-   
-
     def __repr__(self):
         return "SimpleLoop()"
 
@@ -253,8 +264,7 @@ class PlannerLoop(BaseLoop):
     ToolArgs = dict[str, str]
     AgentThoughts = dict[str, Any]
     ThoughtProcessOutput = tuple[ToolName, ToolArgs, AgentThoughts]
-    from AFAAS.interfaces.adapters.chatmodel import (
-        ChatMessage, ChatPrompt)
+    from AFAAS.interfaces.adapters.chatmodel import ChatMessage, ChatPrompt
 
     async def select_tool(
         self,
@@ -307,11 +317,10 @@ class PlannerLoop(BaseLoop):
             )
 
         except AgentException as e:
-            #FIXME : Implement retry mechanism if a fail
+            # FIXME : Implement retry mechanism if a fail
             return_value = AgentException(reason=e.message, error=e)
 
         return return_value
-
 
 
 def execute_command(
@@ -333,7 +342,7 @@ def execute_command(
     if tool := agent._tool_registry.get_tool(tool_name=command_name):
         try:
             result = tool(**arguments, task=task, agent=agent)
-            tool.success_check_callback(self = tool , task=task, tool_output=result)
+            tool.success_check_callback(self=tool, task=task, tool_output=result)
             return result
         except AgentException:
             raise

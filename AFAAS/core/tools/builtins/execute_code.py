@@ -1,7 +1,6 @@
 """Tools to execute code"""
 
 
-
 import os
 import subprocess
 from pathlib import Path
@@ -16,7 +15,10 @@ from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.core.tools.command_decorator import tool
 from AFAAS.lib.sdk.errors import (
-    CodeExecutionError, InvalidArgumentError, ToolExecutionError)
+    CodeExecutionError,
+    InvalidArgumentError,
+    ToolExecutionError,
+)
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
@@ -42,9 +44,7 @@ DENYLIST_CONTROL = "denylist"
         ),
     },
 )
-
 def execute_python_code(code: str, task: Task, agent: BaseAgent) -> str:
-
     """
     Create and execute a Python file in a Docker container and return the STDOUT of the
     executed code.
@@ -279,9 +279,7 @@ def execute_shell(command_line: str, task: Task, agent: BaseAgent) -> str:
     if not current_dir.is_relative_to(agent.workspace.root):
         os.chdir(agent.workspace.root)
 
-    LOG.info(
-        f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
-    )
+    LOG.info(f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
 
     result = subprocess.run(command_line, capture_output=True, shell=True)
     output = f"STDOUT:\n{result.stdout.decode()}\nSTDERR:\n{result.stderr.decode()}"
@@ -326,9 +324,7 @@ def execute_shell_popen(command_line: str, task: Task, agent: BaseAgent) -> str:
     if not current_dir.is_relative_to(agent.workspace.root):
         os.chdir(agent.workspace.root)
 
-    LOG.info(
-        f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
-    )
+    LOG.info(f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
 
     do_not_show_output = subprocess.DEVNULL
     process = subprocess.Popen(

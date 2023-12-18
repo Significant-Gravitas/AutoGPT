@@ -51,15 +51,30 @@ Examples:
 
 import abc
 import enum
-from typing import (Any, Callable, Dict, Generic, List, Literal, Optional,
-                    TypedDict, TypeVar, Union, ClassVar)
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    List,
+    Literal,
+    Optional,
+    TypedDict,
+    TypeVar,
+    Union,
+    ClassVar,
+)
 
 from pydantic import BaseModel, Field
 
 from AFAAS.interfaces.adapters.language_model import (
-    AbstractLanguageModelProvider, BaseModelInfo, BaseModelResponse,
-    ModelProviderService)
+    AbstractLanguageModelProvider,
+    BaseModelInfo,
+    BaseModelResponse,
+    ModelProviderService,
+)
 from AFAAS.lib.utils.json_schema import JSONSchema
+
 
 class AbstractRoleLabels(abc.ABC, BaseModel):
     USER: str
@@ -89,7 +104,8 @@ class AbstractChatMessage(abc.ABC, BaseModel):
         d = super().dict(**kwargs)
         d["role"] = self.role
         return d
-    
+
+
 class Role(str, enum.Enum):
 
     """
@@ -550,12 +566,14 @@ class ChatModelResponse(BaseModelResponse, Generic[_T]):
 # Chat Models #
 ###############
 
+
 class ChatModelInfo(BaseModelInfo):
     """Struct for language model information."""
 
     llm_service = ModelProviderService.CHAT
     max_tokens: int
     has_function_call_api: bool = False
+
 
 class BaseChatModelProvider(AbstractLanguageModelProvider):
     @abc.abstractmethod

@@ -115,7 +115,7 @@ class ConsoleFormatter(logging.Formatter):
         """
         rec = record
         levelname = rec.levelname
-        current_color = ''
+        current_color = ""
 
         if self.use_color and levelname in KEYWORD_COLORS:
             current_color = KEYWORD_COLORS[levelname]
@@ -123,13 +123,7 @@ class ConsoleFormatter(logging.Formatter):
             rec.levelname = levelname_color
 
         rec.name = f"{GREY}{os.path.relpath(rec.pathname):<15}{RESET_SEQ}"
-        rec.msg = (
-            current_color
-            + EMOJIS[levelname]
-            + "  "
-            + str(rec.msg)
-            + RESET_SEQ
-        )
+        rec.msg = current_color + EMOJIS[levelname] + "  " + str(rec.msg) + RESET_SEQ
 
         message = logging.Formatter.format(self, rec)
 
@@ -137,7 +131,7 @@ class ConsoleFormatter(logging.Formatter):
         if self.use_color:
             message = message.replace(RESET_SEQ, RESET_SEQ + current_color)
 
-        #if rec.levelno == logging.DEBUG and len(message) > 1000:
+        # if rec.levelno == logging.DEBUG and len(message) > 1000:
         if rec.levelno == TRACE and len(message) > 1000:
             message = (
                 message[:800] + "[...] " + os.path.abspath(AFAASLogger.LOG_FILENAME)
@@ -243,7 +237,6 @@ class AFAASLogger(logging.Logger):
         if self.isEnabledFor(DB_LOG):
             self._log(DB_LOG, msg, args, kwargs, stacklevel=2)
 
-
     @staticmethod
     def bold(msg: str) -> str:
         """
@@ -313,5 +306,5 @@ def setup_logger():
 
 
 LOG = AFAASLogger(name=__name__)
-LOG.warning(f"Console log level is  : {logging.getLevelName(CONSOLE_LOG_LEVEL)}" )
-LOG.warning(f"File log level is  : {logging.getLevelName(FILE_LOG_LEVEL)}" )
+LOG.warning(f"Console log level is  : {logging.getLevelName(CONSOLE_LOG_LEVEL)}")
+LOG.warning(f"File log level is  : {logging.getLevelName(FILE_LOG_LEVEL)}")

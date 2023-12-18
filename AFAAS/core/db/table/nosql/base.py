@@ -9,8 +9,7 @@ from typing import Any, Literal, Optional, TypedDict
 from pydantic import BaseModel
 
 from AFAAS.lib.sdk.logger import AFAASLogger
-from AFAAS.configs import (AFAASModel,
-                                                         SystemSettings)
+from AFAAS.configs import AFAASModel, SystemSettings
 
 from AFAAS.interfaces.db_table import AbstractTable
 
@@ -127,9 +126,7 @@ class BaseNoSQLTable(AbstractTable):
             key["secondary_key"] = str(value[self.secondary_key])
             value[self.secondary_key] = str(value[self.secondary_key])
 
-        LOG.trace(
-            "add new " + str(self.__class__.__name__) + "with keys " + str(key)
-        )
+        LOG.trace("add new " + str(self.__class__.__name__) + "with keys " + str(key))
         LOG.trace(
             "add new " + str(self.__class__.__name__) + "with values " + str(value)
         )
@@ -235,7 +232,7 @@ class BaseNoSQLTable(AbstractTable):
             # Output: [{'name': 'Alice', 'age': 30, 'city': 'Los Angeles'}]
         """
         LOG.trace(f"{self.__class__.__name__}.list()")
-        data_list : dict = self.memory.list(table_name=self.table_name, filter=filter) 
+        data_list: dict = self.memory.list(table_name=self.table_name, filter=filter)
         filtered_data_list: list = []
 
         LOG.notice("May need to be moved to JSONFileMemory")

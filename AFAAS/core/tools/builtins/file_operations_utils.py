@@ -94,16 +94,13 @@ class LaTeXParser(ParserStrategy):
 class FileContext:
     def __init__(self, parser: ParserStrategy):
         self.parser = parser
-        
 
     def set_parser(self, parser: ParserStrategy) -> None:
         LOG.trace(f"Setting Context Parser to {parser}")
         self.parser = parser
 
     def decode_file(self, file: BinaryIO) -> str:
-        LOG.debug(
-            f"Reading {getattr(file, 'name', 'file')} with parser {self.parser}"
-        )
+        LOG.debug(f"Reading {getattr(file, 'name', 'file')} with parser {self.parser}")
         return self.parser.read(file)
 
 
@@ -123,6 +120,7 @@ extension_to_parser = {
     ".xhtml": HTMLParser(),
     ".tex": LaTeXParser(),
 }
+
 
 def is_file_binary_fn(file: BinaryIO):
     """Given a file path load all its content and checks if the null bytes is present

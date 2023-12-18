@@ -1,8 +1,7 @@
 import click
 
 from main import run_cli_demo
-from app.client_lib.utils import (
-    coroutine, handle_exceptions)
+from app.client_lib.utils import coroutine, handle_exceptions
 
 
 @click.group()

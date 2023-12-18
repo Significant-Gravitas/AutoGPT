@@ -10,7 +10,9 @@ if TYPE_CHECKING:
 
 from .strategies import RefineUserContextFunctionNames
 from AFAAS.lib.sdk.logger import AFAASLogger
-LOG = AFAASLogger(name = __name__)
+
+LOG = AFAASLogger(name=__name__)
+
 
 class UserContextLoop(BaseLoop):
     """A loop responsible for managing the user context in an agent.
@@ -21,7 +23,7 @@ class UserContextLoop(BaseLoop):
     Attributes:
         _active (bool): Indicates whether the loop is active or paused.
         loop_count (int): The number of loop iterations performed.
-    
+
     Example:
         ```
         agent = MyCustomAgent()
@@ -34,7 +36,6 @@ class UserContextLoop(BaseLoop):
         )
         ```
     """
-
 
     class LoophooksDict(BaseLoop.LoophooksDict):
         pass
@@ -94,11 +95,9 @@ class UserContextLoop(BaseLoop):
             # if _active is false, then the loop is paused
             if self._active:
                 self.loop_count += 1
-                LOG.info(
-                    f"Starting loop iteration number {self.loop_count}"
-                )
+                LOG.info(f"Starting loop iteration number {self.loop_count}")
 
-                model_response : ChatModelResponse = await self._execute_strategy(
+                model_response: ChatModelResponse = await self._execute_strategy(
                     strategy_name="refine_user_context",
                     interupt_refinement_process=interupt_refinement_process,
                     user_objective=user_objectives,
@@ -137,7 +136,7 @@ class UserContextLoop(BaseLoop):
                 if user_objectives.lower() == "y" and self.loop_count > 1:
                     interupt_refinement_process = True
 
-                await self.save_agent() # TODO : self.save_agent()
+                await self.save_agent()  # TODO : self.save_agent()
 
     def __repr__(self):
         """Return a string representation of the UserContextLoop.

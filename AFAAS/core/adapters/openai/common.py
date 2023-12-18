@@ -12,17 +12,32 @@ from openai.resources import AsyncCompletions, AsyncEmbeddings
 from typing import Any, Callable, Dict, ParamSpec, Tuple, TypeVar, ClassVar
 import tiktoken
 
-from AFAAS.configs import (Configurable,
-                                                         SystemConfiguration,
-                                                         UserConfigurable)
-from AFAAS.interfaces.adapters.chatmodel import (AbstractChatMessage,
-    AssistantChatMessageDict, BaseChatModelProvider,
-    AbstractRoleLabels, ChatMessage, ChatModelInfo, ChatModelResponse, CompletionModelFunction)
+from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
+from AFAAS.interfaces.adapters.chatmodel import (
+    AbstractChatMessage,
+    AssistantChatMessageDict,
+    BaseChatModelProvider,
+    AbstractRoleLabels,
+    ChatMessage,
+    ChatModelInfo,
+    ChatModelResponse,
+    CompletionModelFunction,
+)
 from AFAAS.interfaces.adapters.language_model import (
-    BaseModelProviderBudget, BaseModelProviderConfiguration, BaseModelProviderCredentials,
-    BaseModelProviderSettings, BaseModelProviderUsage, Embedding,
-    EmbeddingModelInfo, EmbeddingModelProvider, EmbeddingModelResponse,
-    ModelProviderName, ModelProviderService, ModelTokenizer, AbstractPromptConfiguration)
+    BaseModelProviderBudget,
+    BaseModelProviderConfiguration,
+    BaseModelProviderCredentials,
+    BaseModelProviderSettings,
+    BaseModelProviderUsage,
+    Embedding,
+    EmbeddingModelInfo,
+    EmbeddingModelProvider,
+    EmbeddingModelResponse,
+    ModelProviderName,
+    ModelProviderService,
+    ModelTokenizer,
+    AbstractPromptConfiguration,
+)
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 LOG = AFAASLogger(name=__name__)
@@ -36,6 +51,7 @@ aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 OpenAIEmbeddingParser = Callable[[Embedding], Embedding]
 OpenAIChatParser = Callable[[str], dict]
 
+
 class OpenAIRoleLabel(AbstractRoleLabels):
     USER = "user"
     SYSTEM = "system"
@@ -44,9 +60,9 @@ class OpenAIRoleLabel(AbstractRoleLabels):
     FUNCTION = "function"
     """May be used for the return value of function calls"""
 
+
 class OpenAIChatMessage(AbstractChatMessage):
     _role_labels: ClassVar[OpenAIRoleLabel] = OpenAIRoleLabel()
-
 
 
 class OpenAIModelName(str, enum.Enum):
@@ -143,6 +159,7 @@ OPEN_AI_MODELS = {
     **OPEN_AI_EMBEDDING_MODELS,
 }
 
+
 class OpenAIProviderConfiguration(BaseModelProviderConfiguration):
     """Configuration for OpenAI.
 
@@ -186,7 +203,7 @@ class OpenAISettings(BaseModelProviderSettings):
     configuration: OpenAIProviderConfiguration = OpenAIProviderConfiguration()
     credentials: BaseModelProviderCredentials = BaseModelProviderCredentials()
     budget: OpenAIModelProviderBudget = OpenAIModelProviderBudget()
-    chat : TypeVar = OpenAIChatMessage
+    chat: TypeVar = OpenAIChatMessage
 
     name = "chat_model_provider"
     description = "Provides access to OpenAI's API."
@@ -210,7 +227,6 @@ class _OpenAIRetryHandler:
 
     def __init__(
         self,
-
         num_retries: int = 10,
         backoff_base: float = 2.0,
         warn_user: bool = True,
@@ -252,29 +268,30 @@ class _OpenAIRetryHandler:
 
         return _wrapped
 
+
 class OpenAIPromptConfiguration(AbstractPromptConfiguration):
     model_name: str = UserConfigurable()
     temperature: float = UserConfigurable()
 
-class OPEN_AI_DEFAULT_CHAT_CONFIGS:
-    FAST_MODEL_4K= OpenAIPromptConfiguration(
-            model_name=OpenAIModelName.GPT3,
-            temperature=0.9,
-        )
-    FAST_MODEL_16K= OpenAIPromptConfiguration(
-            model_name=OpenAIModelName.GPT3_16k,
-            temperature=0.9,
-        )
-    FAST_MODEL_FINE_TUNED_4K= OpenAIPromptConfiguration(
-            model_name=OpenAIModelName.GPT3_FINE_TUNED,
-            temperature=0.9,
-        )
-    MART_MODEL_8K= OpenAIPromptConfiguration(
-            model_name=OpenAIModelName.GPT4,
-            temperature=0.9,
-        )
-    SMART_MODEL_32K= OpenAIPromptConfiguration(
-            model_name=OpenAIModelName.GPT4_32k,
-            temperature=0.9,
-        )
 
+class OPEN_AI_DEFAULT_CHAT_CONFIGS:
+    FAST_MODEL_4K = OpenAIPromptConfiguration(
+        model_name=OpenAIModelName.GPT3,
+        temperature=0.9,
+    )
+    FAST_MODEL_16K = OpenAIPromptConfiguration(
+        model_name=OpenAIModelName.GPT3_16k,
+        temperature=0.9,
+    )
+    FAST_MODEL_FINE_TUNED_4K = OpenAIPromptConfiguration(
+        model_name=OpenAIModelName.GPT3_FINE_TUNED,
+        temperature=0.9,
+    )
+    MART_MODEL_8K = OpenAIPromptConfiguration(
+        model_name=OpenAIModelName.GPT4,
+        temperature=0.9,
+    )
+    SMART_MODEL_32K = OpenAIPromptConfiguration(
+        model_name=OpenAIModelName.GPT4_32k,
+        temperature=0.9,
+    )

@@ -1,15 +1,15 @@
 import abc
 from pydantic import BaseModel, SecretBytes, SecretField, SecretStr
 
-from AFAAS.configs import (SystemConfiguration,
-                                                         SystemSettings,
-                                                         UserConfigurable)
+from AFAAS.configs import SystemConfiguration, SystemSettings, UserConfigurable
+
 
 class BaseProviderUsage(SystemConfiguration, abc.ABC):
     @abc.abstractmethod
     def update_usage(self, *args, **kwargs) -> None:
         """Update the usage of the resource."""
         ...
+
 
 class BaseProviderBudget(SystemConfiguration):
     total_budget: float = UserConfigurable()
@@ -21,6 +21,7 @@ class BaseProviderBudget(SystemConfiguration):
     def update_usage_and_cost(self, *args, **kwargs) -> None:
         """Update the usage and cost of the resource."""
         ...
+
 
 class BaseProviderCredentials(SystemConfiguration):
     """Struct for credentials."""
@@ -44,6 +45,7 @@ class BaseProviderCredentials(SystemConfiguration):
             else:
                 unmasked_fields[field_name] = value
         return unmasked_fields
+
 
 class BaseProviderSettings(SystemSettings):
     credentials: BaseProviderCredentials | None = None

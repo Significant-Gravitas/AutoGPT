@@ -25,7 +25,8 @@ COMMAND_CATEGORY = "text_to_image"
 COMMAND_CATEGORY_TITLE = "Text to Image"
 
 from AFAAS.lib.sdk.logger import AFAASLogger
-LOG =  AFAASLogger(name=__name__)
+
+LOG = AFAASLogger(name=__name__)
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -130,7 +131,7 @@ def generate_image_with_hf(
 
 
 def generate_image_with_dalle(
-    prompt: str, output_file: Path,  size: int, agent: BaseAgent
+    prompt: str, output_file: Path, size: int, agent: BaseAgent
 ) -> str:
     """Generate an image with DALL-E.
 

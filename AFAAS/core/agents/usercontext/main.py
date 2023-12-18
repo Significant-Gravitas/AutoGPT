@@ -4,15 +4,15 @@ import uuid
 from typing import Awaitable, Callable
 
 from AFAAS.interfaces.db import AbstractMemory
-from AFAAS.core.adapters.openai import \
-    AFAASChatOpenAI
+from AFAAS.core.adapters.openai import AFAASChatOpenAI
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
 from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, PromptManager
 from .loop import UserContextLoop
 from .models import UserContextAgentConfiguration, UserContextAgentSystems
 from AFAAS.lib.sdk.logger import AFAASLogger
-LOG =  AFAASLogger(name=__name__)
+
+LOG = AFAASLogger(name=__name__)
 
 
 class UserContextAgent(BaseAgent):
@@ -23,11 +23,10 @@ class UserContextAgent(BaseAgent):
     CLASS_CONFIGURATION = UserContextAgentConfiguration
     CLASS_SYSTEMS = UserContextAgentSystems
 
-
     class SystemSettings(BaseAgent.SystemSettings):
-        configuration : UserContextAgentConfiguration = UserContextAgentConfiguration()
-        name="usercontext_agent"
-        description="An agent that improve the quality of input provided by users."
+        configuration: UserContextAgentConfiguration = UserContextAgentConfiguration()
+        name = "usercontext_agent"
+        description = "An agent that improve the quality of input provided by users."
 
         prompt_manager: PromptManager.SystemSettings = PromptManager.SystemSettings()
 
@@ -41,37 +40,36 @@ class UserContextAgent(BaseAgent):
         chat_model_provider: AFAASChatOpenAI,
         prompt_manager: PromptManager,
         user_id: uuid.UUID,
-        workspace: AbstractFileWorkspace, # = AGPTLocalFileWorkspace.SystemSettings(),
+        workspace: AbstractFileWorkspace,  # = AGPTLocalFileWorkspace.SystemSettings(),
         agent_id: uuid.UUID = None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             settings=settings,
             memory=memory,
             workspace=workspace,
-            prompt_manager = prompt_manager,
+            prompt_manager=prompt_manager,
             user_id=user_id,
             agent_id=agent_id,
         )
 
-        # 
+        #
         # Step 1 : Set the chat model provider
         #
         self.default_llm_provider = chat_model_provider
- 
 
-        # 
+        #
         # Step 2 : Load prompt_settings.yaml (configuration)
         #
         self.prompt_settings = self.load_prompt_settings()
 
-        # 
+        #
         # Step 3 : Set the chat model provider
         #
         # self._prompt_manager = prompt_manager
         # self._prompt_manager.set_agent(agent=self)
 
-        self._loop : UserContextLoop = UserContextLoop()
+        self._loop: UserContextLoop = UserContextLoop()
         self._loop.set_agent(agent=self)
 
     def loophooks(self) -> UserContextLoop.LoophooksDict:
@@ -118,7 +116,8 @@ class UserContextAgent(BaseAgent):
 
     @classmethod
     def _create_agent_custom_treatment(
-        cls, agent_settings: UserContextAgent.SystemSettings, 
+        cls,
+        agent_settings: UserContextAgent.SystemSettings,
     ) -> None:
         pass
 
@@ -128,9 +127,8 @@ class UserContextAgent(BaseAgent):
     #         StrategiesSet
     #     return StrategiesSet.get_strategies()
 
-    def load_prompt_settings(self) :
+    def load_prompt_settings(self):
         LOG.warning("TODO : load prompts via a jinja file")
-
 
     def __repr__(self):
         return "UserContextAgent()"

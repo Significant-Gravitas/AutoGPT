@@ -15,6 +15,7 @@ T = TypeVar("T")
 M = TypeVar("M", bound=BaseModel)
 
 from AFAAS.lib.sdk.logger import AFAASLogger
+
 LOG = AFAASLogger(name=__name__)
 
 
@@ -261,7 +262,8 @@ class AFAASMessageType(str, enum.Enum):
     AGENT_LLM = "agent_llm"
     AGENT_AGENT = "agent_agent"
     AGENT_USER = "agent_user"
-    
+
+
 def _update_user_config_from_env(instance: BaseModel) -> dict[str, Any]:
     """
     Update config fields of a Pydantic model instance from environment variables.

@@ -1,5 +1,5 @@
 # import json
-# 
+#
 
 # from AFAAS.configs import Configurable, SystemConfiguration, SystemSettings
 # from AFAAS.interfaces.db import Memory
@@ -29,7 +29,7 @@
 #     def __init__(
 #         self,
 #         settings: Memory.SystemSettings,
-#         
+#
 #         workspace: Workspace,
 #     ):
 #         self._configuration = settings.configuration

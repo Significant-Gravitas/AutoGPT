@@ -15,7 +15,8 @@ from AFAAS.core.agents.usercontext import UserContextAgent
 from AFAAS.core.tools.command_decorator import tool
 
 from AFAAS.lib.sdk.logger import AFAASLogger
-LOG =  AFAASLogger(name=__name__)
+
+LOG = AFAASLogger(name=__name__)
 
 
 @tool(

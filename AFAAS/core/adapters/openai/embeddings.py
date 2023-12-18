@@ -10,19 +10,34 @@ from openai.resources import AsyncCompletions, AsyncEmbeddings
 
 aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-from AFAAS.configs import (Configurable,
-                                                         SystemConfiguration,
-                                                         UserConfigurable)
-from AFAAS.interfaces.adapters.chatmodel import (CompletionModelFunction)
+from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
+from AFAAS.interfaces.adapters.chatmodel import CompletionModelFunction
 from AFAAS.interfaces.adapters.language_model import (
-    BaseModelProviderBudget, BaseModelProviderConfiguration, BaseModelProviderCredentials,
-    BaseModelProviderSettings, BaseModelProviderUsage, Embedding,
-    EmbeddingModelInfo, EmbeddingModelProvider, EmbeddingModelResponse,
-    ModelProviderName, ModelProviderService, ModelTokenizer)
-from AFAAS.core.adapters.openai.common import _OpenAIRetryHandler, OPEN_AI_CHAT_MODELS, OPEN_AI_EMBEDDING_MODELS, OPEN_AI_MODELS, OpenAIModelName, OpenAISettings
+    BaseModelProviderBudget,
+    BaseModelProviderConfiguration,
+    BaseModelProviderCredentials,
+    BaseModelProviderSettings,
+    BaseModelProviderUsage,
+    Embedding,
+    EmbeddingModelInfo,
+    EmbeddingModelProvider,
+    EmbeddingModelResponse,
+    ModelProviderName,
+    ModelProviderService,
+    ModelTokenizer,
+)
+from AFAAS.core.adapters.openai.common import (
+    _OpenAIRetryHandler,
+    OPEN_AI_CHAT_MODELS,
+    OPEN_AI_EMBEDDING_MODELS,
+    OPEN_AI_MODELS,
+    OpenAIModelName,
+    OpenAISettings,
+)
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 from AFAAS.lib.sdk.logger import AFAASLogger
+
 LOG = AFAASLogger(name=__name__)
 
 _T = TypeVar("_T")
@@ -40,7 +55,6 @@ class EmbeddingsOpenAI(EmbeddingModelProvider):
     Attributes:
         default_settings: The default settings for the OpenAI provider.
     """
-
 
     async def create_embedding(
         self,
@@ -80,7 +94,6 @@ class EmbeddingsOpenAI(EmbeddingModelProvider):
         )
         self._budget.update_usage_and_cost(response)
         return response
-
 
     def _get_embedding_kwargs(
         self,

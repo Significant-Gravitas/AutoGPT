@@ -7,17 +7,16 @@ from pydantic import Field
 
 from AFAAS.lib.task.plan import Plan
 from AFAAS.interfaces.db import AbstractMemory
-from AFAAS.core.adapters.openai import (
-    AFAASChatOpenAI, OpenAISettings)
-from AFAAS.core.tools import (TOOL_CATEGORIES,
-                                                 SimpleToolRegistry)
+from AFAAS.core.adapters.openai import AFAASChatOpenAI, OpenAISettings
+from AFAAS.core.tools import TOOL_CATEGORIES, SimpleToolRegistry
 
 from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, PromptManager, ToolExecutor
 from .loop import PlannerLoop
 from .models import PlannerAgentConfiguration  # PlannerAgentSystemSettings,
 from .models import PlannerAgentSystems
 from AFAAS.lib.sdk.logger import AFAASLogger
-LOG =  AFAASLogger(name=__name__)
+
+LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.workspace import AbstractFileWorkspace
@@ -36,7 +35,6 @@ class PlannerAgent(BaseAgent):
         description: str = "A simple agent."
         configuration: PlannerAgentConfiguration = PlannerAgentConfiguration()
 
-        
         tool_registry: SimpleToolRegistry.SystemSettings = (
             SimpleToolRegistry.SystemSettings()
         )
@@ -62,7 +60,7 @@ class PlannerAgent(BaseAgent):
         memory: AbstractMemory,
         prompt_manager: PromptManager,
         default_llm_provider: AFAASChatOpenAI,
-        workspace: AbstractFileWorkspace, # = AGPTLocalFileWorkspace.SystemSettings(),
+        workspace: AbstractFileWorkspace,  # = AGPTLocalFileWorkspace.SystemSettings(),
         agent_id: uuid.UUID = None,
         **kwargs,
     ):
@@ -70,7 +68,7 @@ class PlannerAgent(BaseAgent):
             settings=settings,
             memory=memory,
             workspace=workspace,
-            prompt_manager = prompt_manager,
+            prompt_manager=prompt_manager,
             user_id=user_id,
             agent_id=agent_id,
         )
@@ -84,7 +82,6 @@ class PlannerAgent(BaseAgent):
         # Step 1 : Set the chat model provider
         #
         self.default_llm_provider = default_llm_provider
- 
 
         #
         # Step 2 : Load prompt_settings.yaml (configuration)
@@ -123,15 +120,17 @@ class PlannerAgent(BaseAgent):
         ### Step 5a : Create the plan
         ###
         # FIXME: Long term : PlannerLoop / Pipeline get all ready tasks & launch them => Parralelle processing of tasks
-        if hasattr( settings, "plan_id" ) and settings.plan_id is not None :
-            self.plan: Plan = Plan.get_plan_from_db(plan_id = settings.plan_id, agent = self) # Plan(user_id=user_id)
+        if hasattr(settings, "plan_id") and settings.plan_id is not None:
+            self.plan: Plan = Plan.get_plan_from_db(
+                plan_id=settings.plan_id, agent=self
+            )  # Plan(user_id=user_id)
             # task = self.plan.find_first_ready_task()
             # self._loop.set_current_task(task = task)
-            self._loop.set_current_task(task = self.plan.get_next_task())
-        else :
-            self.plan: Plan = Plan.create_in_db(agent= self)
-            #self._loop.add_initial_tasks()
-            self._loop.set_current_task(task = self.plan.get_ready_tasks()[0])
+            self._loop.set_current_task(task=self.plan.get_next_task())
+        else:
+            self.plan: Plan = Plan.create_in_db(agent=self)
+            # self._loop.add_initial_tasks()
+            self._loop.set_current_task(task=self.plan.get_ready_tasks()[0])
             self.plan_id = self.plan.plan_id
 
         ###
@@ -195,7 +194,8 @@ class PlannerAgent(BaseAgent):
 
     @classmethod
     def _create_agent_custom_treatment(
-        cls, agent_settings: PlannerAgent.SystemSettings,
+        cls,
+        agent_settings: PlannerAgent.SystemSettings,
     ) -> None:
         return cls._create_workspace(agent_settings=agent_settings)
 
@@ -209,7 +209,7 @@ class PlannerAgent(BaseAgent):
         return agent_settings.workspace.__class__.create_workspace(
             user_id=agent_settings.user_id,
             agent_id=agent_settings.agent_id,
-            settings=agent_settings
+            settings=agent_settings,
         )
 
     def __repr__(self):
