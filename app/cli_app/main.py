@@ -96,7 +96,7 @@ async def run_cli_demo():
             agent_settings=agent_settings,
             workspace=AGPTLocalFileWorkspace(),
             default_llm_provider=AFAASChatOpenAI(),
-            prompt_manager=BasePromptManager(),
+
         )
 
         # agent_from_memory = None

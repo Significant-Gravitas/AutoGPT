@@ -1,4 +1,4 @@
-from AFAAS.core.agents.usercontext.strategies.refine_user_context import (
+from AFAAS.prompts.usercontext import (
     RefineUserContextFunctionNames,
     RefineUserContextStrategy,
     RefineUserContextStrategyConfiguration,

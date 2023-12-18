@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine
-from AFAAS.core.agents.routing.strategies import AutoCorrectionStrategy
+from AFAAS.prompts.common import AutoCorrectionStrategy
 from AFAAS.interfaces.task import AbstractTask
 from AFAAS.interfaces.adapters import AbstractChatModelResponse
 from AFAAS.interfaces.job import JobInterface

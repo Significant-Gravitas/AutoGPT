@@ -30,22 +30,6 @@ class Plan(AbstractPlan):
     _ready_task_ids: list[str] = []
     _done_task_ids: list[str] = []
 
-    # def dict(self, *args, **kwargs):
-    #     exclude = set(kwargs.get("exclude", []))
-    #     exclude.add("agent")
-    #     kwargs["exclude"] = exclude
-    #     data = super().dict(*args, **kwargs)
-    #     data["myagent_id"] = self.agent_id
-    #     return data
-
-    # def json(self, *args, **kwargs):
-    #     exclude = set(kwargs.get("exclude", []))
-    #     exclude.add("agent")
-    #     kwargs["exclude"] = exclude
-    #     data = super().json(*args, **kwargs)
-    #     data = data[:-1] + f', "myagent_id": "{self.agent_id}"' + data[-1:]
-    #     return data
-
     def __init__(self, *args, **kwargs):
         if kwargs["agent"].agent_id in Plan._instance:
             self = Plan._instance[kwargs["agent"].agent_id]

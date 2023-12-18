@@ -28,8 +28,6 @@ class UserContextAgent(BaseAgent):
         name = "usercontext_agent"
         description = "An agent that improve the quality of input provided by users."
 
-        prompt_manager: BasePromptManager.SystemSettings = BasePromptManager.SystemSettings()
-
         class Config(BaseAgent.SystemSettings.Config):
             pass
 
@@ -58,10 +56,7 @@ class UserContextAgent(BaseAgent):
         #
         self.default_llm_provider = chat_model_provider
 
-        #
-        # Step 2 : Load prompt_settings.yaml (configuration)
-        #
-        self.prompt_settings = self.load_prompt_settings()
+
 
         #
         # Step 3 : Set the chat model provider
@@ -120,15 +115,6 @@ class UserContextAgent(BaseAgent):
         agent_settings: UserContextAgent.SystemSettings,
     ) -> None:
         pass
-
-    # @classmethod
-    # def get_strategies(cls)-> list :
-    #     from AFAAS.core.agents.usercontext.strategies import \
-    #         StrategiesSet
-    #     return StrategiesSet.get_strategies()
-
-    def load_prompt_settings(self):
-        LOG.warning("TODO : load prompts via a jinja file")
 
     def __repr__(self):
         return "UserContextAgent()"

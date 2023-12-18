@@ -4,10 +4,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional
 
 from pydantic import Field
 
-
-from AFAAS.lib.context_items import ContextItem
 from AFAAS.interfaces.task.meta import TaskStatusList
-from AFAAS.lib.task.plan import Plan
 from AFAAS.lib.task.task import Task
 from AFAAS.interfaces.agent.exceptions import (
     AgentException,
@@ -112,7 +109,7 @@ class PlannerLoop(BaseLoop):
             )
 
             # Debugging :)
-            LOG.info(Plan.debug_info_parse_task(self._agent.plan))
+            #LOG.info(Plan.debug_info_parse_task(self._agent.plan))
 
             ###
             ### Assign task

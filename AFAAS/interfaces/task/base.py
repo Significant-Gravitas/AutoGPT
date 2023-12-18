@@ -14,6 +14,7 @@ LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from .stack import TaskStack
+    
 
 
 class AbstractBaseTask(abc.ABC, AFAASModel):

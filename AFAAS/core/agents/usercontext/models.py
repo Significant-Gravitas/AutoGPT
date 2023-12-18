@@ -10,8 +10,6 @@ if TYPE_CHECKING:
 
 class UserContextAgentSystems(BaseAgentSystems):
     ability_registry: str = "AFAAS.core.ability.SimpleToolRegistry"
-    chat_model_provider: str = "AFAAS.core.adapters.openai.chatmodel.AFAASChatOpenAI"
-    prompt_manager: str = "AFAAS.interfaces.agent.PromptManager"
 
     class Config(BaseAgentSystems.Config):
         pass

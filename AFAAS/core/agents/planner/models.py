@@ -12,8 +12,6 @@ from AFAAS.interfaces.agent.models import BaseAgentConfiguration, BaseAgentSyste
 
 class PlannerAgentSystems(BaseAgentSystems):
     tool_registry: str = "AFAAS.core.tools.SimpleToolRegistry"
-    chat_model_provider: str = "AFAAS.core.adapters.openai.chatmodel.AFAASChatOpenAI"
-    prompt_manager: str = "AFAAS.interfaces.agent.PromptManager"
 
     class Config(BaseAgentSystems.Config):
         pass
@@ -22,7 +20,6 @@ class PlannerAgentSystems(BaseAgentSystems):
 class PlannerAgentConfiguration(BaseAgentConfiguration):
     systems: PlannerAgentSystems
     agent_name: str = Field(default="New Agent")
-    agent_role: Optional[str] = Field(default=None)
     agent_goals: Optional[list[str]] = Field(default=None)
     agent_goal_sentence: Optional[str] = Field(default=None)
     cycle_count: int = 0
@@ -43,7 +40,6 @@ class PlannerAgentConfiguration(BaseAgentConfiguration):
 #     user_id: Optional[str]
 
 #     agent_name: str = Field(default="New Agent")
-#     agent_role: Optional[str] = Field(default=None)
 #     agent_goals: Optional[list]
 #     agent_goal_sentence: Optional[list]
 #     agent_class: str = Field(default="AFAAS.core.agents.planner.main.PlannerAgent")

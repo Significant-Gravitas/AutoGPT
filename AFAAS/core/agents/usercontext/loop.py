@@ -7,8 +7,8 @@ from AFAAS.interfaces.agent import BaseLoop
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
     from AFAAS.interfaces.adapters import AbstractChatModelResponse
-
-from .strategies import RefineUserContextFunctionNames
+    from AFAAS.prompts.usercontext.refine_user_context import RefineUserContextFunctionNames
+    
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)

@@ -12,7 +12,7 @@ from pydantic import Field, root_validator
 
 from AFAAS.interfaces.agent import BasePromptManager
 from AFAAS.interfaces.agent.models import (
-    BaseAgentConfiguration, BaseAgentDirectives, BaseAgentSystems)
+    BaseAgentConfiguration, BaseAgentSystems)
 from AFAAS.interfaces.agent.loop import (  # Import only where it's needed
     BaseLoop, BaseLoopHook)
 from AFAAS.configs import (Configurable,
@@ -37,7 +37,12 @@ class BaseAgent(Configurable, AbstractAgent):
         configuration: BaseAgentConfiguration = BaseAgentConfiguration()
 
         user_id: str
-        agent_id: str = Field(default_factory=lambda: "A" + str(uuid.uuid4()))
+        #agent_id: str = Field(default_factory=lambda: "A" + str(uuid.uuid4()))
+        agent_id: str = Field(default_factory=lambda: BaseAgent.SystemSettings.generate_uuid())
+
+        @staticmethod
+        def generate_uuid():
+            return "A" + str(uuid.uuid4())
 
         agent_setting_module: Optional[str]
         agent_setting_class: Optional[str]
@@ -94,44 +99,47 @@ class BaseAgent(Configurable, AbstractAgent):
             )
             self.agent_setting_class = self.__class__.__name__
 
-        # NOTE : To be implemented in the future
-        def load_root_values(self, *args, **kwargs):
-            pass  # NOTE : Currently not used
-            self.agent_name = self.agent.configuration.agent_name
-            self.agent_role = self.agent.configuration.agent_role
-            self.agent_goals = self.agent.configuration.agent_goals
-            self.agent_goal_sentence = self.agent.configuration.agent_goal_sentence
-
     def __init__(
         self,
         settings: BaseAgent.SystemSettings,
         memory: AbstractMemory,
         workspace: AbstractFileWorkspace,
         prompt_manager: BasePromptManager,
+        default_llm_provider: AbstractLanguageModelProvider,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
     ) -> Any:
+        LOG.trace(f"{self.__class__.__name__}.__init__() : Entering")
         self._settings = settings
         self._configuration = settings.configuration
         self._memory = memory
         self._workspace = workspace
 
-        self.user_id = user_id
         self.agent_id = agent_id
+        self.user_id = user_id
+        self.agent_name = settings.agent_name
+        self.agent_goals = settings.agent_goals
+        self.agent_goal_sentence = settings.agent_goal_sentence
 
+        #
+        # Step 1 : Set the chat model provider
+        #
+        self.default_llm_provider = default_llm_provider
         self.settings_agent_class_ = settings.settings_agent_class_
         self.settings_agent_module_ = settings.settings_agent_module_
 
         self._prompt_manager = prompt_manager
         self._prompt_manager.set_agent(agent=self)
 
-        for key, value in settings.dict():
+        for key, value in settings.dict().items():
             if key not in self.SystemSettings.Config.default_exclude:
                 if(not hasattr(self, key)):
                     LOG.notice(f"Adding {key} to the agent")
                     setattr(self, key, value)
                 else : 
                     LOG.debug(f"{key} set for agent {self.agent_id}")
+
+        LOG.trace(f"{self.__class__.__name__}.__init__() : Leaving")
 
 
     def add_hook(self, hook: BaseLoopHook, hook_id: uuid.UUID = uuid.uuid4()):
@@ -271,7 +279,6 @@ class BaseAgent(Configurable, AbstractAgent):
         agent_settings: BaseAgent.SystemSettings,
         workspace: AbstractFileWorkspace,
         default_llm_provider: AbstractLanguageModelProvider,
-        prompt_manager : BasePromptManager
     ) -> BaseAgent:
         """
         Retrieve an agent instance based on the provided settings and LOG.
@@ -303,13 +310,14 @@ class BaseAgent(Configurable, AbstractAgent):
         system_dict: dict[Configurable] = {}
         system_dict["settings"] = agent_settings
         system_dict["user_id"] = agent_settings.user_id
-        system_dict["strategies"] = cls.get_strategies()
+        system_dict["agent_id"] = agent_settings.user_id
+        #system_dict["strategies"] = cls.get_strategies()
         system_dict["memory"] = AbstractMemory.get_adapter(
             memory_settings = AbstractMemory.SystemSettings()
         )
 
         for system, setting in items:
-            if system not in ("memory", "tool_registry") and isinstance(
+            if system not in ("memory", "tool_registry", 'prompt_manager') and isinstance(
                 setting, SystemSettings
             ):
                 system_dict[system] = cls._get_system_instance(
@@ -318,9 +326,10 @@ class BaseAgent(Configurable, AbstractAgent):
                     existing_systems=system_dict,
                 )
 
-        agent = agent_class(**system_dict 
-                            , workspace=workspace, 
-                            default_llm_provider=default_llm_provider)
+        agent = agent_class(**system_dict , 
+                            workspace=workspace, 
+                            default_llm_provider=default_llm_provider,
+                            )
 
 
 
@@ -345,16 +354,6 @@ class BaseAgent(Configurable, AbstractAgent):
                 f"No system class found for {new_system_name} in CLASS_SETTINGS"
             )
         
-        if new_system_name == "prompt_manager":
-            system_instance = system_class(
-                system_settings,
-                strategies = existing_systems["strategies"],
-                *args,
-                agent_systems=existing_systems,
-                **kwargs,
-            )
-            return system_instance
-        
         system_instance = system_class(
             system_settings,
             *args,
@@ -362,43 +361,7 @@ class BaseAgent(Configurable, AbstractAgent):
             **kwargs,
         )
         return system_instance
-
-    @classmethod
-    def get_strategies(cls) -> list[AbstractPromptStrategy]:
-
-        module = cls.__module__.rsplit('.', 1)[0]
-        LOG.trace(f"Entering : {module}.get_strategies()")
-
-        strategies : list[AbstractPromptStrategy] = []
-
-        try:
-            # Dynamically import the strategies from the module
-            strategies_module = importlib.import_module(f"{module}.strategies")
-            # Check if StrategiesSet and get_strategies exist
-            if hasattr(strategies_module, 'StrategiesSet') and callable(getattr(strategies_module.StrategiesSet, 'get_strategies', None)):
-                strategies = strategies_module.StrategiesSet.get_strategies()
-            else:
-                LOG.notice(f"{module}.strategies.StrategiesSet or get_strategies method not found")
-                raise ImportError("StrategiesSet or get_strategies method not found in the module")
-
-        except ImportError as e:
-            LOG.notice(f"Failed to import {module}.strategies: {e}")
-
-        from AFAAS.prompts import load_all_strategies
-        strategies += load_all_strategies()
-        
-        from .strategies.autocorrection import AutoCorrectionStrategy
-        from AFAAS.lib.task.rag.afaas_smart_rag import AFAAS_SMART_RAG_Strategy
-        common_strategies = [AutoCorrectionStrategy(
-                **AutoCorrectionStrategy.default_configuration.dict()
-            ),
-        AFAAS_SMART_RAG_Strategy(
-               **AFAAS_SMART_RAG_Strategy.default_configuration.dict()
-        )]
-
-        return  strategies + common_strategies
     
-
     async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse :
         LOG.trace(f"Entering : {self.__class__}.execute_strategy({strategy_name})")
         return await self._prompt_manager._execute_strategy(strategy_name=strategy_name, **kwargs)
@@ -473,10 +436,6 @@ class BaseAgent(Configurable, AbstractAgent):
         agent_settings: BaseAgent.SystemSettings,
     ) -> uuid.UUID:
         # TODO : Remove the user_id argument
-        # NOTE : Monkey Patching
-        # BaseAgent.SystemSettings.Config.extra = "allow"
-        # # BaseAgentSystems.Config.extra = "allow"
-        # BaseAgentConfiguration.Config.extra = "allow"
 
         from AFAAS.interfaces.db import AbstractMemory
 
@@ -489,7 +448,7 @@ class BaseAgent(Configurable, AbstractAgent):
         agent_id = agent_table.add(agent_settings, id=agent_settings.agent_id)
         return agent_id
 
-    def save_agent_in_memory(self) -> uuid.UUID:
+    def save_agent_in_memory(self) -> str:
         LOG.trace(self._memory)
         agent_table = self._memory.get_table("agents")
         agent_id = agent_table.update(
@@ -589,75 +548,29 @@ class BaseAgent(Configurable, AbstractAgent):
         )
         return agent
 
-    @classmethod
-    @abstractmethod
-    def load_prompt_settings(
-        cls, erase=False, file_path: str = ""
-    ) -> BaseAgentDirectives:
-        # Get the directory containing the current class file
-        base_agent_dir = os.path.dirname(__file__)
-        # Construct the path to the YAML file based on __file__
-        current_settings_path = os.path.join(base_agent_dir, "prompt_settings.yaml")
+# def _prune_empty_dicts(d: dict) -> dict:
+#     """
+#     Prune branches from a nested dictionary if the branch only contains empty dictionaries at the leaves.
 
-        settings = {}
-        # Load settings from the current directory (based on __file__)
-        if os.path.exists(current_settings_path):
-            with open(current_settings_path, "r") as file:
-                settings = yaml.load(file, Loader=yaml.FullLoader)
-        else:
-            raise FileNotFoundError(f"Can't locate file {current_settings_path}")
+#     Args:
+#         d (dict): The dictionary to prune.
 
-        agent_directives = BaseAgentDirectives(
-            constraints=settings.get("constraints", []),
-            resources=settings.get("resources", []),
-            best_practices=settings.get("best_practices", []),
-        )
+#     Returns:
+#         dict: The pruned dictionary.
 
-        # Load settings from the specified directory (based on 'file')
-        if file_path:
-            specified_settings_path = os.path.join(
-                os.path.dirname(file_path), "prompt_settings.yaml"
-            )
-
-            if os.path.exists(specified_settings_path):
-                with open(specified_settings_path, "r") as file_path:
-                    specified_settings = yaml.safe_load(file_path)
-                    for key, items in specified_settings.items():
-                        if key not in agent_directives.keys():
-                            agent_directives[key]: list[str] = items
-                        else:
-                            # If the item already exists, update it with specified_settings
-                            if erase:
-                                agent_directives[key] = items
-                            else:
-                                agent_directives[key] += items
-
-        return agent_directives
-
-
-def _prune_empty_dicts(d: dict) -> dict:
-    """
-    Prune branches from a nested dictionary if the branch only contains empty dictionaries at the leaves.
-
-    Args:
-        d (dict): The dictionary to prune.
-
-    Returns:
-        dict: The pruned dictionary.
-
-    Example:
-        input_dict = {"a": {}, "b": {"c": {}, "d": "value"}}
-        pruned_dict = _prune_empty_dicts(input_dict)
-        print(pruned_dict)  # Expected: {"b": {"d": "value"}}
-    """
-    pruned = {}
-    for key, value in d.items():
-        if isinstance(value, dict):
-            pruned_value = _prune_empty_dicts(value)
-            if (
-                pruned_value
-            ):  # if the pruned dictionary is not empty, add it to the result
-                pruned[key] = pruned_value
-        else:
-            pruned[key] = value
-    return pruned
+#     Example:
+#         input_dict = {"a": {}, "b": {"c": {}, "d": "value"}}
+#         pruned_dict = _prune_empty_dicts(input_dict)
+#         print(pruned_dict)  # Expected: {"b": {"d": "value"}}
+#     """
+#     pruned = {}
+#     for key, value in d.items():
+#         if isinstance(value, dict):
+#             pruned_value = _prune_empty_dicts(value)
+#             if (
+#                 pruned_value
+#             ):  # if the pruned dictionary is not empty, add it to the result
+#                 pruned[key] = pruned_value
+#         else:
+#             pruned[key] = value
+#     return pruned

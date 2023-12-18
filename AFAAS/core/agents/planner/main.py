@@ -7,6 +7,8 @@ from pydantic import Field
 
 from AFAAS.lib.task.plan import Plan
 from AFAAS.interfaces.db import AbstractMemory
+from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
+from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
 from AFAAS.core.adapters.openai import AFAASChatOpenAI, OpenAISettings
 from AFAAS.core.tools import TOOL_CATEGORIES, SimpleToolRegistry
 
@@ -38,10 +40,8 @@ class PlannerAgent(BaseAgent):
         tool_registry: SimpleToolRegistry.SystemSettings = (
             SimpleToolRegistry.SystemSettings()
         )
-        prompt_manager: BasePromptManager.SystemSettings = BasePromptManager.SystemSettings()
 
         agent_name: str = Field(default="New Agent")
-        agent_role: Optional[str] = Field(default=None)
         agent_goals: Optional[list]
         agent_goal_sentence: Optional[str]
 
@@ -55,44 +55,24 @@ class PlannerAgent(BaseAgent):
 
     def __init__(
         self,
-        user_id: uuid.UUID,
         settings: PlannerAgent.SystemSettings,
-        memory: AbstractMemory,
-        prompt_manager: BasePromptManager,
-        default_llm_provider: AFAASChatOpenAI,
-        workspace: AbstractFileWorkspace,  # = AGPTLocalFileWorkspace.SystemSettings(),
-        agent_id: uuid.UUID = None,
+        user_id: uuid.UUID,
+        agent_id: uuid.UUID = SystemSettings.generate_uuid(),
+        memory :  AbstractMemory = AbstractMemory.get_adapter(),
+        default_llm_provider: AbstractLanguageModelProvider = AFAASChatOpenAI(),
+        workspace: AbstractFileWorkspace = AGPTLocalFileWorkspace(),
+        prompt_manager: BasePromptManager = BasePromptManager(),
         **kwargs,
     ):
         super().__init__(
             settings=settings,
             memory=memory,
             workspace=workspace,
+            default_llm_provider=default_llm_provider,
             prompt_manager=prompt_manager,
             user_id=user_id,
             agent_id=agent_id,
         )
-        self.agent_id = settings.agent_id
-        self.user_id = settings.user_id
-        self.agent_name = settings.agent_name
-        self.agent_goals = settings.agent_goals
-        self.agent_goal_sentence = settings.agent_goal_sentence
-
-        #
-        # Step 1 : Set the chat model provider
-        #
-        self.default_llm_provider = default_llm_provider
-
-        #
-        # Step 2 : Load prompt_settings.yaml (configuration)
-        #
-        self.prompt_settings = self.load_prompt_settings()
-
-        #
-        # Step 3 : Set the chat model provider
-        #
-        # self._prompt_manager = prompt_manager
-        # self._prompt_manager.set_agent(agent=self)
 
         #
         # Step 4 : Set the ToolRegistry
@@ -214,10 +194,6 @@ class PlannerAgent(BaseAgent):
 
     def __repr__(self):
         return "PlannerAgent()"
-
-    @classmethod
-    def load_prompt_settings(cls):
-        return super().load_prompt_settings(erase=False, file_path=__file__)
 
 
 def test_hook(**kwargs):
