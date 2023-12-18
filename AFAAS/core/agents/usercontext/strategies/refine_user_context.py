@@ -29,9 +29,8 @@ from typing import Optional
 
 from AFAAS.lib.message_agent_user import Questions
 from AFAAS.interfaces.prompts.strategy import (
-    BasePromptStrategy, PromptStrategiesConfiguration)
-from AFAAS.interfaces.prompts.schema import \
-     PromptStrategyLanguageModelClassification
+    AbstractPromptStrategy, PromptStrategiesConfiguration)
+
 from AFAAS.interfaces.prompts.utils import (
     json_loads, to_numbered_list, to_string_list)
 from AFAAS.interfaces.adapters import (
@@ -65,9 +64,6 @@ class RefineUserContextStrategyConfiguration(PromptStrategiesConfiguration):
     """
     A Pydantic model that represents the default configurations for the refine user context strategy.
     """
-    model_classification:  PromptStrategyLanguageModelClassification = (
-         PromptStrategyLanguageModelClassification.FAST_MODEL_4K
-    )
     default_tool_choice: RefineUserContextFunctionNames = (
         RefineUserContextFunctionNames.REFINE_REQUIREMENTS
     )
@@ -77,7 +73,7 @@ class RefineUserContextStrategyConfiguration(PromptStrategiesConfiguration):
     temperature : float =  0.9
 
 
-class RefineUserContextStrategy(BasePromptStrategy):
+class RefineUserContextStrategy(AbstractPromptStrategy):
     """
     A strategy that guides the AI in refining and clarifying user requirements based on the COCE Framework.
 
@@ -164,15 +160,10 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
 
     def __init__(
         self,
-        model_classification:  PromptStrategyLanguageModelClassification,
         default_tool_choice: RefineUserContextFunctionNames,
         context_min_tokens: int,
         context_max_tokens: int,
         temperature : float , #if coding 0.05
-        top_p: Optional[float] ,
-        max_tokens : Optional[int] ,
-        frequency_penalty: Optional[float], # Avoid repeting oneselfif coding 0.3
-        presence_penalty : Optional[float], # Avoid certain subjects
         count=0,
         user_last_goal="",
         exit_token: str = str(uuid.uuid4()),
@@ -203,8 +194,6 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         use_message: bool, optional (default = False)
             Flag to determine whether to use messages.
         """
-        self._model_classification = model_classification
-
         # NOTE : Make a list of Questions ?
         self.context_min_tokens : int = context_min_tokens
         self.context_max_tokens : int = context_max_tokens
@@ -300,7 +289,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             self.function_validate_goal,
         ]
         
-    def build_prompt(
+    def build_message(
         self, interupt_refinement_process: bool, user_objective: str = "", **kwargs
     ) -> ChatPrompt:
         """

@@ -19,15 +19,19 @@ from AFAAS.configs import (Configurable,
                                                          SystemSettings)
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
+from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider
 
 from .abstract import AbstractAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name = __name__)
 
+if TYPE_CHECKING:
+    from AFAAS.interfaces.prompts.strategy import (ChatModelResponse, AbstractPromptStrategy)
+
 
 class BaseAgent(Configurable, AbstractAgent):
     CLASS_CONFIGURATION = BaseAgentConfiguration
-    CLASS_SYSTEMS = BaseAgentSystems  # BaseAgentSystems() = cls.SystemSettings().configuration.systems
+    CLASS_SYSTEMS = BaseAgentSystems
 
     class SystemSettings(AbstractAgent.SystemSettings):
         configuration: BaseAgentConfiguration = BaseAgentConfiguration()
@@ -39,16 +43,9 @@ class BaseAgent(Configurable, AbstractAgent):
         agent_setting_class: Optional[str]
 
         memory: AbstractMemory.SystemSettings = AbstractMemory.SystemSettings()
-        #workspace: AbstractFileWorkspace.SystemSettings
-
-        from AFAAS.core.adapters.openai import \
-            OpenAISettings
-
-        chat_model_provider: OpenAISettings = OpenAISettings()
 
         class Config(SystemSettings.Config):
             pass
-            # json_encoders = SystemSettings.Config.json_encoders + { Task : lambda v: v.dict()}
 
         def dict(self, include_all=False, *args, **kwargs):
             """
@@ -264,6 +261,7 @@ class BaseAgent(Configurable, AbstractAgent):
         cls,
         agent_settings: BaseAgent.SystemSettings,
         workspace: AbstractFileWorkspace,
+        default_llm_provider: AbstractLanguageModelProvider,
     ) -> BaseAgent:
         """
         Retrieve an agent instance based on the provided settings and LOG.
@@ -310,7 +308,7 @@ class BaseAgent(Configurable, AbstractAgent):
                     existing_systems=system_dict,
                 )
 
-        agent = agent_class(**system_dict , workspace=workspace)
+        agent = agent_class(**system_dict , workspace=workspace, default_llm_provider=default_llm_provider)
 
         for key, value in items:
             if key not in agent_class.SystemSettings.Config.default_exclude:
@@ -336,6 +334,17 @@ class BaseAgent(Configurable, AbstractAgent):
             raise ValueError(
                 f"No system class found for {new_system_name} in CLASS_SETTINGS"
             )
+        
+        if new_system_name == "prompt_manager":
+            system_instance = system_class(
+                system_settings,
+                strategies = existing_systems["strategies"],
+                *args,
+                agent_systems=existing_systems,
+                **kwargs,
+            )
+            return system_instance
+        
         system_instance = system_class(
             system_settings,
             *args,
@@ -344,20 +353,17 @@ class BaseAgent(Configurable, AbstractAgent):
         )
         return system_instance
 
-    from AFAAS.interfaces.prompts.strategy import (BasePromptStrategy)
     @classmethod
-    def get_strategies(cls) -> list[BasePromptStrategy]:
+    def get_strategies(cls) -> list[AbstractPromptStrategy]:
 
         module = cls.__module__.rsplit('.', 1)[0]
         LOG.trace(f"Entering : {module}.get_strategies()")
 
-        from AFAAS.interfaces.prompts.strategy import (BasePromptStrategy)
-        stategies : list[BasePromptStrategy] = []
+        strategies : list[AbstractPromptStrategy] = []
 
         try:
             # Dynamically import the strategies from the module
             strategies_module = importlib.import_module(f"{module}.strategies")
-
             # Check if StrategiesSet and get_strategies exist
             if hasattr(strategies_module, 'StrategiesSet') and callable(getattr(strategies_module.StrategiesSet, 'get_strategies', None)):
                 strategies = strategies_module.StrategiesSet.get_strategies()
@@ -368,6 +374,9 @@ class BaseAgent(Configurable, AbstractAgent):
         except ImportError as e:
             LOG.notice(f"Failed to import {module}.strategies: {e}")
 
+        from AFAAS.prompts import load_all_strategies
+        strategies += load_all_strategies()
+        
         from .strategies.autocorrection import AutoCorrectionStrategy
         from AFAAS.lib.task.rag.afaas_smart_rag import AFAAS_SMART_RAG_Strategy
         common_strategies = [AutoCorrectionStrategy(
@@ -377,9 +386,9 @@ class BaseAgent(Configurable, AbstractAgent):
                **AFAAS_SMART_RAG_Strategy.default_configuration.dict()
         )]
 
-        return  stategies + common_strategies
+        return  strategies + common_strategies
     
-    from AFAAS.interfaces.prompts.strategy import (ChatModelResponse)
+
     async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse :
         LOG.trace(f"Entering : {self.__class__}.execute_strategy({strategy_name})")
         return await self._prompt_manager._execute_strategy(strategy_name=strategy_name, **kwargs)
@@ -394,6 +403,7 @@ class BaseAgent(Configurable, AbstractAgent):
         cls,
         agent_settings: BaseAgent.SystemSettings,
         workspace: AbstractFileWorkspace,
+        default_llm_provider: AbstractLanguageModelProvider,
     ) -> AbstractAgent:
         """
         Create and return a new agent based on the provided settings and LOG.
@@ -430,7 +440,8 @@ class BaseAgent(Configurable, AbstractAgent):
 
         agent = cls.get_instance_from_settings(
             agent_settings=agent_settings,
-            workspace=workspace
+            workspace=workspace,
+            default_llm_provider=default_llm_provider,
         )
 
         return agent

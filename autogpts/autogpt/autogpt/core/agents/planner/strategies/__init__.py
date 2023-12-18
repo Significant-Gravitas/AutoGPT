@@ -18,12 +18,12 @@ class StrategiesConfiguration(PromptStrategiesConfiguration):
 
 class StrategiesSet:
     from AFAAS.interfaces.prompts.strategy import (
-        AbstractPromptStrategy, BasePromptStrategy)
+        AbstractPromptStrategy, AbstractPromptStrategy)
 
     @staticmethod
     def get_strategies(
         logger: Logger = Logger(__name__),
-    ) -> list[BasePromptStrategy]:
+    ) -> list[AbstractPromptStrategy]:
         return [
             InitialPlanStrategy(
                 **InitialPlanStrategy.default_configuration.dict()

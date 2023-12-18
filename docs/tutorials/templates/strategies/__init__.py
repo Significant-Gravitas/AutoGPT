@@ -1,7 +1,7 @@
 # Import necessary libraries, modules and classes.
 from logging import Logger
 
-from AFAAS.interfaces.prompts.strategy import (BasePromptStrategy,
+from AFAAS.interfaces.prompts.strategy import (AbstractPromptStrategy,
                                          PromptStrategiesConfiguration,
                                          PromptStrategy)
 
@@ -22,7 +22,7 @@ class StrategiesConfiguration(PromptStrategiesConfiguration):
 class Strategies:
     """Encapsulates all prompt strategies and provides a method to get them."""
 
-    from AFAAS.interfaces.prompts.strategy import BasePromptStrategy, PromptStrategy
+    from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy, PromptStrategy
 
     @staticmethod
     def get_strategies(logger: Logger) -> list[PromptStrategy]:

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import abc
 import enum
+import json
+import re
 from typing import Callable, ClassVar, Protocol
 
-from pydantic import BaseModel, Field, SecretStr, validator
+from pydantic import BaseModel, Field,  validator
 
 from AFAAS.configs import SystemConfiguration, UserConfigurable
 from AFAAS.interfaces.adapters.configuration import (
@@ -14,7 +16,6 @@ from AFAAS.interfaces.adapters.configuration import (
     BaseProviderSettings,
     BaseProviderUsage, 
 )
-from AFAAS.lib.utils.json_schema import JSONSchema
 
 
 class ModelProviderService(str, enum.Enum):
@@ -144,6 +145,10 @@ class AbstractLanguageModelProvider(AbstractModelProvider):
     def has_oa_tool_calls_api(self, model_name: str) -> bool:
         ...
 
+    @abc.abstractmethod
+    def get_default_config(self) -> AbstractPromptConfiguration:
+        ...
+
 
 class ModelTokenizer(Protocol):
     """A ModelTokenizer provides tokenization specific to a model."""
@@ -192,3 +197,9 @@ class EmbeddingModelProvider(AbstractModelProvider):
         **kwargs,
     ) -> EmbeddingModelResponse:
         ...
+
+
+class AbstractPromptConfiguration(abc.ABC,SystemConfiguration):
+    """Struct for model configuration."""
+    pass 
+

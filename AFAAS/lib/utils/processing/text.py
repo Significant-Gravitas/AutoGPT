@@ -8,7 +8,7 @@ import spacy
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.interfaces.adapters import (
     BaseChatModelProvider, ChatMessage, ModelTokenizer)
-from AFAAS.interfaces.adapters.chat_schema import \
+from AFAAS.interfaces.adapters.chatmodel import \
     ChatPrompt
 
 LOG = AFAASLogger(name=__name__)

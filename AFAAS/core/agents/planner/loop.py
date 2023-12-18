@@ -4,10 +4,9 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional
 
 from pydantic import Field
 
-# from AFAAS.lib.action import (ActionErrorResult, ActionResult,
-#                                            ActionSuccessResult)
+
 from AFAAS.lib.context_items import ContextItem
-from AFAAS.lib.task import TaskStatusList
+from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.lib.task.plan import Plan
 from AFAAS.lib.task.task import Task
 from AFAAS.interfaces.agent.exceptions import (
@@ -254,7 +253,7 @@ class PlannerLoop(BaseLoop):
     ToolArgs = dict[str, str]
     AgentThoughts = dict[str, Any]
     ThoughtProcessOutput = tuple[ToolName, ToolArgs, AgentThoughts]
-    from AFAAS.interfaces.adapters.chat_schema import (
+    from AFAAS.interfaces.adapters.chatmodel import (
         ChatMessage, ChatPrompt)
 
     async def select_tool(

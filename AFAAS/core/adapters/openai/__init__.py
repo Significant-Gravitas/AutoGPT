@@ -1,1 +1,1 @@
-from .openai import *
+from .chatmodel import *

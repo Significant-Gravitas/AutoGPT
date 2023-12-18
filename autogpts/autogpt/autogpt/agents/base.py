@@ -10,14 +10,11 @@ from pydantic import Field, validator
 
 if TYPE_CHECKING:
     from autogpt.config import Config
-<<<<<<< HEAD
     from AFAAS.interfaces.prompts.strategy import PromptStrategy
-    from AFAAS.interfaces.adapters.schema import (
-=======
+    from AFAAS.interfaces.adapters.language_model import (
     from autogpt.core.prompting.base import PromptStrategy
     from autogpt.core.resource.model_providers.schema import (
         AssistantChatMessageDict,
->>>>>>> upstream/master
         ChatModelInfo,
         BaseChatModelProvider,
         ChatModelResponse,

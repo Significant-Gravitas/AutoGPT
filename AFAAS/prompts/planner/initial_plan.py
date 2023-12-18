@@ -2,15 +2,13 @@ import enum
 
 from typing import Optional
 
-# from AFAAS.interfaces.task import AbstractTask
-# from AFAAS.core.agents.planner.main import PlannerAgent
 from AFAAS.interfaces.prompts.strategy import (
-    BasePromptStrategy,  PromptStrategyLanguageModelClassification,
+    AbstractPromptStrategy, 
     PromptStrategiesConfiguration)
 from AFAAS.interfaces.prompts.utils import (
     json_loads, to_numbered_list)
 from AFAAS.interfaces.adapters import (
-    AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
+    AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction, AbstractLanguageModelProvider, AbstractPromptConfiguration)
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 
@@ -19,16 +17,13 @@ class InitialPlanFunctionNames(str, enum.Enum):
 
 
 class InitialPlanStrategyConfiguration(PromptStrategiesConfiguration):
-    model_classification:  PromptStrategyLanguageModelClassification = (
-         PromptStrategyLanguageModelClassification.SMART_MODEL_8K
-    )
     default_tool_choice: InitialPlanFunctionNames = (
         InitialPlanFunctionNames.INITIAL_PLAN
     )
     temperature: float = 0.9
 
 
-class InitialPlanStrategy(BasePromptStrategy):
+class InitialPlanStrategy(AbstractPromptStrategy):
     default_configuration = InitialPlanStrategyConfiguration()
     STRATEGY_NAME = "make_initial_plan"
 
@@ -61,23 +56,13 @@ class InitialPlanStrategy(BasePromptStrategy):
 
     def __init__(
         self,
-        model_classification:  PromptStrategyLanguageModelClassification,
         default_tool_choice: InitialPlanFunctionNames,
         temperature: float,  # if coding 0.05
-        top_p: Optional[float],
-        max_tokens: Optional[int],
-        frequency_penalty: Optional[float],  # Avoid repeting oneselfif coding 0.3
-        presence_penalty: Optional[float],  # Avoid certain subjects
     ):
-        self._model_classification = model_classification
 
         self._system_prompt_template = self.FIRST_SYSTEM_PROMPT_TEMPLATE
         self._system_info = self.DEFAULT_SYSTEM_INFO
         self._user_prompt_template = self.DEFAULT_USER_PROMPT_TEMPLATE
-
-    @property
-    def model_classification(self) ->  PromptStrategyLanguageModelClassification:
-        return self._model_classification
 
     def set_tools(self, **kwargs):
         self.DEFAULT_CREATE_PLAN_FUNCTION = CompletionModelFunction(
@@ -116,7 +101,7 @@ class InitialPlanStrategy(BasePromptStrategy):
 
         self._tools = [self.DEFAULT_CREATE_PLAN_FUNCTION]
 
-    def build_prompt(
+    def build_message(
         self,
         agent_name: str,
         agent_role: str,
@@ -153,11 +138,7 @@ class InitialPlanStrategy(BasePromptStrategy):
         )
         strategy_tools = self._tools
 
-        response_format_instr = ChatMessage.system(
-            self.response_format_instruction(
-                agent=self._agent,
-                model_name=kwargs["model_name"],
-            )
+        response_format_instr = ChatMessage.system( self.response_format_instruction()
         )
 
         return ChatPrompt(
@@ -188,8 +169,12 @@ class InitialPlanStrategy(BasePromptStrategy):
         ]
         return parsed_response
 
-    def response_format_instruction(self, model_name: str) -> str:
-        model_provider = self._agent._chat_model_provider
-        return super().response_format_instruction(
-            language_model_provider=model_provider, model_name=model_name
-        )
+
+    def response_format_instruction(self) -> str:
+        return super().response_format_instruction()
+    
+    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+        return super().get_llm_provider()
+    
+    def get_prompt_config(self) -> AbstractPromptConfiguration:
+        return super().get_prompt_config()

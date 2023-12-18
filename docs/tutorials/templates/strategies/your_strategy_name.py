@@ -1,7 +1,7 @@
 # Import necessary libraries and modules from the afaas framework and other packages.
 from AFAAS.core.core.resource.model_providers import ChatModelResponse
 from AFAAS.core.core.resource.model_providers.chat_schema import ChatPrompt
-from AFAAS.interfaces.prompts.strategy import (BasePromptStrategy,
+from AFAAS.interfaces.prompts.strategy import (AbstractPromptStrategy,
                                          PromptStrategiesConfiguration)
 from pydantic import BaseModel
 
@@ -16,7 +16,7 @@ class YourStrategyNameConfiguration(PromptStrategiesConfiguration):
 
 
 # Define your custom strategy class. The class name should reflect its purpose.
-class YourStrategyName(BasePromptStrategy):
+class YourStrategyName(AbstractPromptStrategy):
     """A custom strategy class for handling specific interaction logic with the LLM.
     Inherits from BasePromptStrategy to access essential methods and attributes for building prompts.
     """
@@ -31,7 +31,7 @@ class YourStrategyName(BasePromptStrategy):
         """
         return YourStrategyNameConfiguration()
 
-    def build_prompt(self, **kwargs) -> ChatPrompt:
+    def build_message(self, **kwargs) -> ChatPrompt:
         """Builds the chat prompt based on your strategy's logic.
 
         Args:

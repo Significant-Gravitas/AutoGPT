@@ -1,22 +1,30 @@
 from __future__ import annotations
 
 import abc
+import os
 import re
+import sys
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from typing import TYPE_CHECKING, Optional
 
 from AFAAS.lib.utils.json_schema import JSONSchema
 
-if TYPE_CHECKING:
-    #from AFAAS.core.agents.planner.main import PlannerAgent
+from AFAAS.interfaces.agent.features.agentmixin import \
+    AgentMixin
+
+if  TYPE_CHECKING: 
+    from AFAAS.interfaces.task import AbstractTask
     pass
 
 from AFAAS.configs import SystemConfiguration
-from AFAAS.interfaces.prompts.schema import \
-     PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.prompts.utils.utils import json_loads
+from AFAAS.interfaces.prompts.utils import (to_dotted_list, to_md_quotation,
+                    to_numbered_list, to_string_list, indent)     
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider, AssistantChatMessageDict, ChatModelResponse,
-    ChatPrompt, CompletionModelFunction)
+    ChatPrompt, CompletionModelFunction, ChatMessage,AbstractPromptConfiguration )
+
+
 from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name = __name__)
 RESPONSE_SCHEMA = JSONSchema(
@@ -85,28 +93,19 @@ class DefaultParsedResponse(dict):
 
 
 class PromptStrategiesConfiguration(SystemConfiguration):
-    temperature: float
-    top_p: Optional[float] = None
-    max_tokens: Optional[int] = None
-    frequency_penalty: Optional[float] = None  # Avoid repeting oneselfif coding 0.3
-    presence_penalty: Optional[float] = None  # Avoid certain subjects
-
-
-from AFAAS.interfaces.agent.features.agentmixin import \
-    AgentMixin
-
+    pass
+    # temperature: float
+    # top_p: Optional[float] = None
+    # max_tokens: Optional[int] = None
+    # frequency_penalty: Optional[float] = None  # Avoid repeting oneselfif coding 0.3
+    # presence_penalty: Optional[float] = None  # Avoid certain subjects
 
 class AbstractPromptStrategy(AgentMixin, abc.ABC):
     STRATEGY_NAME: str
     default_configuration: PromptStrategiesConfiguration
 
-    @property
     @abc.abstractmethod
-    def model_classification(self) ->  PromptStrategyLanguageModelClassification:
-        ...
-
-    @abc.abstractmethod
-    def build_prompt(self, *_, **kwargs) -> ChatPrompt:
+    def build_message(self, *_, **kwargs) -> ChatPrompt:
         ...
 
     @abc.abstractmethod
@@ -117,11 +116,18 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     def set_tools(self, **kwargs):
         ...
 
+    @abc.abstractmethod
+    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+        return self._agent.default_llm_provider
+    
+    @abc.abstractmethod
+    def get_prompt_config(self) -> AbstractPromptConfiguration:
+        return self.get_llm_provider().get_default_config()
 
-class BasePromptStrategy(AbstractPromptStrategy):
-    @property
-    def model_classification(self) ->  PromptStrategyLanguageModelClassification:
-        return self._model_classification
+    # @property
+    # def model_classification(self) : ->  PromptStrategyLanguageModelClassification:
+    #     LOG.notice("Deprecated: Use `dependency injection` instead")
+    #     return self._model_classification
 
     # TODO : This implementation is shit :)
     def get_tools(self) -> list[CompletionModelFunction]:
@@ -157,8 +163,10 @@ class BasePromptStrategy(AbstractPromptStrategy):
     # This can be expanded to support multiple types of (inter)actions within an agent
     @abc.abstractmethod
     def response_format_instruction(
-        self, language_model_provider: AbstractLanguageModelProvider, model_name: str
+        self,
     ) -> str:
+        language_model_provider = self.get_llm_provider()
+        model_name = self.get_prompt_config().model_name
         use_oa_tools_api = language_model_provider.has_oa_tool_calls_api(
             model_name=model_name
         )
@@ -235,3 +243,45 @@ class BasePromptStrategy(AbstractPromptStrategy):
     @staticmethod
     def get_autocorrection_response(response: ChatModelResponse):
         return response.parsed_result[0]["command_args"]["note_to_agent"]
+
+
+    def _build_jinja_message(self, task : AbstractTask, template_name : str, template_params : dict) -> str:
+        """Build a message using jinja2 template engine"""
+
+        # Get the module of the calling (child) class
+        class_module = sys.modules[self.__class__.__module__]
+        child_directory = os.path.dirname(os.path.abspath(class_module.__file__))
+        # Check if template exists in child class directory, else use parent directory
+        if os.path.exists(os.path.join(child_directory, template_name)):
+            directory_to_use = child_directory
+        else:
+            directory_to_use = os.path.dirname(os.path.abspath(__file__))
+
+        file_loader = FileSystemLoader(directory_to_use)
+        env = Environment(loader=file_loader,
+            autoescape=select_autoescape(['html', 'xml']),
+            extensions=["jinja2.ext.loopcontrols"]
+            )
+        template = env.get_template(template_name)
+
+        template_params.update({"to_md_quotation": to_md_quotation,
+                                 "to_dotted_list": to_dotted_list, 
+                                 "to_numbered_list": to_numbered_list,
+                                 "to_string_list": to_string_list,
+                                 "indent": indent, 
+                                 "task" : self._task})
+        return template.render(template_params)
+        
+
+    def build_chat_prompt(self, messages: list[ChatMessage])-> ChatPrompt:
+
+        strategy_tools = self.get_tools()
+        prompt = ChatPrompt(
+            messages=messages,
+            tools=strategy_tools,
+            tool_choice="auto",
+            default_tool_choice=self.default_tool_choice,
+            tokens_used=0,
+        )
+
+        return prompt
