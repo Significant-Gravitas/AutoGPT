@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, ParamSpec, Tuple, TypeVar, ClassVar
 from openai import AsyncOpenAI, completions
 from openai.resources import AsyncCompletions, AsyncEmbeddings
 
-from AFAAS.core.adapters.openai.common import _OpenAIRetryHandler, OPEN_AI_CHAT_MODELS, OPEN_AI_EMBEDDING_MODELS, OPEN_AI_MODELS, OpenAIModelName, OpenAISettings, OpenAIConfiguration, OpenAIModelProviderBudget
+from AFAAS.core.adapters.openai.common import _OpenAIRetryHandler, OPEN_AI_CHAT_MODELS, OPEN_AI_EMBEDDING_MODELS, OPEN_AI_MODELS,OPEN_AI_DEFAULT_CHAT_CONFIGS, OpenAIModelName, OpenAISettings, OpenAIProviderConfiguration, OpenAIModelProviderBudget, OpenAIChatMessage, OpenAIPromptConfiguration
 from AFAAS.core.adapters.openai.embeddings import _create_embedding  
 
 aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
@@ -22,7 +22,7 @@ from AFAAS.interfaces.adapters.language_model import (
     BaseModelProviderBudget, BaseModelProviderConfiguration, BaseModelProviderCredentials,
     BaseModelProviderSettings, BaseModelProviderUsage, Embedding,
     EmbeddingModelInfo, EmbeddingModelProvider, EmbeddingModelResponse,
-    ModelProviderName, ModelProviderService, ModelTokenizer)
+    ModelProviderName, ModelProviderService, ModelTokenizer, AbstractPromptConfiguration)
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -33,18 +33,6 @@ _P = ParamSpec("_P")
 
 OpenAIEmbeddingParser = Callable[[Embedding], Embedding]
 OpenAIChatParser = Callable[[str], dict]
-
-
-class OpenAIRoleLabel(AbstractRoleLabels):
-    USER = "user"
-    SYSTEM = "system"
-    ASSISTANT = "assistant"
-
-    FUNCTION = "function"
-    """May be used for the return value of function calls"""
-
-class OpenAIChatMessage(AbstractChatMessage):
-    _role_labels: ClassVar[OpenAIRoleLabel] = OpenAIRoleLabel()
 
 
 class AFAASChatOpenAI(
@@ -58,14 +46,10 @@ class AFAASChatOpenAI(
         default_settings: The default settings for the OpenAI provider.
     """
 
-    default_settings = OpenAISettings()
-    chatas = OpenAIChatMessage
-
     def __init__(
         self,
-        settings: OpenAISettings,
-        
-        agent_systems: list[Configurable],
+        #agent_systems: list[Configurable],
+        settings: OpenAISettings = OpenAISettings(),
     ):
         """
         Initialize the OpenAIProvider.
@@ -76,6 +60,7 @@ class AFAASChatOpenAI(
         super().__init__(settings)
         self._credentials = settings.credentials
         self._budget = settings.budget
+        self._chat= settings.chat
 
         retry_handler = _OpenAIRetryHandler(
             num_retries=self._configuration.retries_per_request,
@@ -482,6 +467,9 @@ class AFAASChatOpenAI(
         # print(self._providers[model_name])
         return OPEN_AI_CHAT_MODELS[model_name].has_function_call_api
 
+    def get_default_config(self) -> OpenAIPromptConfiguration:
+        
+        return OPEN_AI_DEFAULT_CHAT_CONFIGS["SMART_MODEL_32K"]
 
 async def _create_chat_completion(
     messages: list[ChatMessage], *_, **kwargs
@@ -520,3 +508,4 @@ async def _create_chat_completion(
         messages=raw_messages, **kwargs
     )
     return return_value
+

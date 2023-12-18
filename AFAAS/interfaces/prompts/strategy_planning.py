@@ -12,8 +12,7 @@ if TYPE_CHECKING:
 from AFAAS.lib.sdk import AFAASLogger
 from AFAAS.lib.task.plan import Plan
 from AFAAS.configs import UserConfigurable
-from AFAAS.interfaces.prompts.schema import \
-     PromptStrategyLanguageModelClassification
+#from AFAAS.interfaces.prompts.schema import PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.prompts.utils import \
     to_numbered_list
 from AFAAS.interfaces.adapters import (
@@ -73,7 +72,7 @@ class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
 class PlanningPromptStrategy(AbstractPromptStrategy):
     def __init__(
         self,
-        model_classification:  PromptStrategyLanguageModelClassification,
+        #model_classification:  PromptStrategyLanguageModelClassification,
         temperature: float,  # if coding 0.05
         top_p: Optional[float],
         max_tokens: Optional[int],

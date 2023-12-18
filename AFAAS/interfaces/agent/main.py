@@ -19,6 +19,7 @@ from AFAAS.configs import (Configurable,
                                                          SystemSettings)
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
+from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider
 
 from .abstract import AbstractAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -44,7 +45,7 @@ class BaseAgent(Configurable, AbstractAgent):
         from AFAAS.core.adapters.openai import \
             OpenAISettings
 
-        chat_model_provider: OpenAISettings = OpenAISettings()
+        #chat_model_provider: OpenAISettings = OpenAISettings()
 
         class Config(SystemSettings.Config):
             pass
@@ -264,6 +265,7 @@ class BaseAgent(Configurable, AbstractAgent):
         cls,
         agent_settings: BaseAgent.SystemSettings,
         workspace: AbstractFileWorkspace,
+        default_llm_provider: AbstractLanguageModelProvider,
     ) -> BaseAgent:
         """
         Retrieve an agent instance based on the provided settings and LOG.
@@ -310,7 +312,7 @@ class BaseAgent(Configurable, AbstractAgent):
                     existing_systems=system_dict,
                 )
 
-        agent = agent_class(**system_dict , workspace=workspace)
+        agent = agent_class(**system_dict , workspace=workspace, default_llm_provider=default_llm_provider)
 
         for key, value in items:
             if key not in agent_class.SystemSettings.Config.default_exclude:
@@ -336,6 +338,17 @@ class BaseAgent(Configurable, AbstractAgent):
             raise ValueError(
                 f"No system class found for {new_system_name} in CLASS_SETTINGS"
             )
+        
+        if new_system_name == "prompt_manager":
+            system_instance = system_class(
+                system_settings,
+                strategies = existing_systems["strategies"],
+                *args,
+                agent_systems=existing_systems,
+                **kwargs,
+            )
+            return system_instance
+        
         system_instance = system_class(
             system_settings,
             *args,
@@ -394,6 +407,7 @@ class BaseAgent(Configurable, AbstractAgent):
         cls,
         agent_settings: BaseAgent.SystemSettings,
         workspace: AbstractFileWorkspace,
+        default_llm_provider: AbstractLanguageModelProvider,
     ) -> AbstractAgent:
         """
         Create and return a new agent based on the provided settings and LOG.
@@ -430,7 +444,8 @@ class BaseAgent(Configurable, AbstractAgent):
 
         agent = cls.get_instance_from_settings(
             agent_settings=agent_settings,
-            workspace=workspace
+            workspace=workspace,
+            default_llm_provider=default_llm_provider,
         )
 
         return agent

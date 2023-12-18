@@ -22,7 +22,7 @@ from AFAAS.interfaces.adapters.language_model import (
     BaseModelProviderBudget, BaseModelProviderConfiguration, BaseModelProviderCredentials,
     BaseModelProviderSettings, BaseModelProviderUsage, Embedding,
     EmbeddingModelInfo, EmbeddingModelProvider, EmbeddingModelResponse,
-    ModelProviderName, ModelProviderService, ModelTokenizer)
+    ModelProviderName, ModelProviderService, ModelTokenizer, AbstractPromptConfiguration)
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 LOG = AFAASLogger(name=__name__)
@@ -35,6 +35,18 @@ aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 OpenAIEmbeddingParser = Callable[[Embedding], Embedding]
 OpenAIChatParser = Callable[[str], dict]
+
+class OpenAIRoleLabel(AbstractRoleLabels):
+    USER = "user"
+    SYSTEM = "system"
+    ASSISTANT = "assistant"
+
+    FUNCTION = "function"
+    """May be used for the return value of function calls"""
+
+class OpenAIChatMessage(AbstractChatMessage):
+    _role_labels: ClassVar[OpenAIRoleLabel] = OpenAIRoleLabel()
+
 
 
 class OpenAIModelName(str, enum.Enum):
@@ -131,8 +143,7 @@ OPEN_AI_MODELS = {
     **OPEN_AI_EMBEDDING_MODELS,
 }
 
-
-class OpenAIConfiguration(BaseModelProviderConfiguration):
+class OpenAIProviderConfiguration(BaseModelProviderConfiguration):
     """Configuration for OpenAI.
 
     Attributes:
@@ -172,9 +183,10 @@ class OpenAISettings(BaseModelProviderSettings):
         budget: Budget settings for the model provider.
     """
 
-    configuration: OpenAIConfiguration = OpenAIConfiguration()
+    configuration: OpenAIProviderConfiguration = OpenAIProviderConfiguration()
     credentials: BaseModelProviderCredentials = BaseModelProviderCredentials()
     budget: OpenAIModelProviderBudget = OpenAIModelProviderBudget()
+    chat : TypeVar = OpenAIChatMessage
 
     name = "chat_model_provider"
     description = "Provides access to OpenAI's API."
@@ -239,3 +251,31 @@ class _OpenAIRetryHandler:
                 self._backoff(attempt)
 
         return _wrapped
+
+class OpenAIPromptConfiguration(AbstractPromptConfiguration):
+    model_name: str = UserConfigurable()
+    temperature: float = UserConfigurable()
+
+OPEN_AI_DEFAULT_CHAT_CONFIGS : dict[ str, OpenAIPromptConfiguration] = {
+         "FAST_MODEL_4K": OpenAIPromptConfiguration(
+            model_name=OpenAIModelName.GPT3,
+            temperature=0.9,
+        ),
+         "FAST_MODEL_16K": OpenAIPromptConfiguration(
+            model_name=OpenAIModelName.GPT3_16k,
+            temperature=0.9,
+        ),
+         "FAST_MODEL_FINE_TUNED_4K": OpenAIPromptConfiguration(
+            model_name=OpenAIModelName.GPT3_FINE_TUNED,
+            temperature=0.9,
+        ),
+         "SMART_MODEL_8K": OpenAIPromptConfiguration(
+            model_name=OpenAIModelName.GPT4,
+            temperature=0.9,
+        ),
+         "SMART_MODEL_32K": OpenAIPromptConfiguration(
+            model_name=OpenAIModelName.GPT4_32k,
+            temperature=0.9,
+        ),
+    }
+

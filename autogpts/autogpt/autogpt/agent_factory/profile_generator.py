@@ -149,7 +149,7 @@ class AgentProfileGenerator(PromptStrategy):
 
     def __init__(
         self,
-        model_classification:  PromptStrategyLanguageModelClassification,
+        #model_classification:  PromptStrategyLanguageModelClassification,
         system_prompt: str,
         user_prompt_template: str,
         create_agent_function: dict,

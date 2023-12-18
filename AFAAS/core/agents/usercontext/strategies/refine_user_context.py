@@ -30,8 +30,7 @@ from typing import Optional
 from AFAAS.lib.message_agent_user import Questions
 from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy, PromptStrategiesConfiguration)
-from AFAAS.interfaces.prompts.schema import \
-     PromptStrategyLanguageModelClassification
+#from AFAAS.interfaces.prompts.schema import PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.prompts.utils import (
     json_loads, to_numbered_list, to_string_list)
 from AFAAS.interfaces.adapters import (
@@ -65,9 +64,7 @@ class RefineUserContextStrategyConfiguration(PromptStrategiesConfiguration):
     """
     A Pydantic model that represents the default configurations for the refine user context strategy.
     """
-    model_classification:  PromptStrategyLanguageModelClassification = (
-         PromptStrategyLanguageModelClassification.FAST_MODEL_4K
-    )
+    #model_classification:  PromptStrategyLanguageModelClassification = (PromptStrategyLanguageModelClassification.FAST_MODEL_4K)
     default_tool_choice: RefineUserContextFunctionNames = (
         RefineUserContextFunctionNames.REFINE_REQUIREMENTS
     )
@@ -164,7 +161,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
 
     def __init__(
         self,
-        model_classification:  PromptStrategyLanguageModelClassification,
+        #model_classification:  PromptStrategyLanguageModelClassification,
         default_tool_choice: RefineUserContextFunctionNames,
         context_min_tokens: int,
         context_max_tokens: int,

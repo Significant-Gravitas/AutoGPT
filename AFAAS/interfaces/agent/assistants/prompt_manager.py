@@ -5,7 +5,6 @@ import time
 from typing import TYPE_CHECKING
 
 from pydantic import validator
-
 from AFAAS.interfaces.agent.features.agentmixin import \
     AgentMixin
 
@@ -14,12 +13,10 @@ if TYPE_CHECKING:
 
 from AFAAS.configs import (Configurable,
                                                          SystemConfiguration,
-                                                         SystemSettings,
-                                                         UserConfigurable)
+                                                         SystemSettings)
 from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy)
-from AFAAS.interfaces.prompts.schema import \
-     PromptStrategyLanguageModelClassification
+#from AFAAS.interfaces.prompts.schema import PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.adapters import (
     BaseChatModelProvider, ChatModelResponse, ModelProviderName,
 )
@@ -38,55 +35,21 @@ class SystemInfo(dict):
     current_time: str
 
 
-class LanguageModelConfiguration(SystemConfiguration):
-    """Struct for model configuration."""
-
-    model_name: str = UserConfigurable()
-    provider_name: ModelProviderName = UserConfigurable()
-    temperature: float = UserConfigurable()
-
-
 class PromptManagerConfiguration(SystemConfiguration):
     """Configuration for the PromptManager subsystem."""
+    pass
 
-    models: dict[ PromptStrategyLanguageModelClassification, LanguageModelConfiguration] = {
-         PromptStrategyLanguageModelClassification.FAST_MODEL_4K: LanguageModelConfiguration(
-            model_name=OpenAIModelName.GPT3,
-            provider_name=ModelProviderName.OPENAI,
-            temperature=0.9,
-        ),
-         PromptStrategyLanguageModelClassification.FAST_MODEL_16K: LanguageModelConfiguration(
-            model_name=OpenAIModelName.GPT3_16k,
-            provider_name=ModelProviderName.OPENAI,
-            temperature=0.9,
-        ),
-         PromptStrategyLanguageModelClassification.FAST_MODEL_FINE_TUNED_4K: LanguageModelConfiguration(
-            model_name=OpenAIModelName.GPT3_FINE_TUNED,
-            provider_name=ModelProviderName.OPENAI,
-            temperature=0.9,
-        ),
-         PromptStrategyLanguageModelClassification.SMART_MODEL_8K: LanguageModelConfiguration(
-            model_name=OpenAIModelName.GPT4,
-            provider_name=ModelProviderName.OPENAI,
-            temperature=0.9,
-        ),
-         PromptStrategyLanguageModelClassification.SMART_MODEL_32K: LanguageModelConfiguration(
-            model_name=OpenAIModelName.GPT4_32k,
-            provider_name=ModelProviderName.OPENAI,
-            temperature=0.9,
-        ),
-    }
 
-    @validator("models")
-    def validate_models(cls, models):
-        expected_keys = set( PromptStrategyLanguageModelClassification)
-        actual_keys = set(models.keys())
+    # @validator("models")
+    # def validate_models(cls, models):
+    #     expected_keys = set( PromptStrategyLanguageModelClassification)
+    #     actual_keys = set(models.keys())
 
-        if expected_keys != actual_keys:
-            missing_keys = expected_keys - actual_keys
-            raise ValueError(f"Missing keys in 'models': {missing_keys}")
+    #     if expected_keys != actual_keys:
+    #         missing_keys = expected_keys - actual_keys
+    #         raise ValueError(f"Missing keys in 'models': {missing_keys}")
 
-        return models
+    #     return models
 
 class PromptManager(Configurable, AgentMixin):
     """Manages the agent's planning and goal-setting by constructing language model prompts."""
@@ -101,16 +64,17 @@ class PromptManager(Configurable, AgentMixin):
         self,
         settings: PromptManager.SystemSettings,
         agent_systems: list[Configurable],
+        strategies: list[AbstractPromptStrategy],
     ) -> None:
         super().__init__(settings=settings)
-        model_providers: dict[ModelProviderName, BaseChatModelProvider] = {
-            "openai": agent_systems["chat_model_provider"]
-        }
-        strategies: dict[str, AbstractPromptStrategy] = agent_systems["strategies"]
+        # model_providers: dict[ModelProviderName, BaseChatModelProvider] = {
+        #     "openai": agent_systems["chat_model_provider"]
+        # }
+        # strategies: dict[str, AbstractPromptStrategy] = agent_systems["strategies"]
 
-        self._providers: dict[ PromptStrategyLanguageModelClassification, BaseChatModelProvider] = {}
-        for model, model_config in self._configuration.models.items():
-            self._providers[model] = model_providers[model_config.provider_name]
+        # self._providers: dict[PromptStrategyLanguageModelClassification, BaseChatModelProvider] = {}
+        # for model, model_config in self._configuration.models.items():
+        #     self._providers[model] = model_providers[model_config.provider_name]
 
         self._prompt_strategies = {}
         for strategy in strategies:
@@ -149,11 +113,15 @@ class PromptManager(Configurable, AgentMixin):
         prompt_strategy: AbstractPromptStrategy,
         **kwargs,
     ) -> ChatModelResponse:
-        model_classification = prompt_strategy.model_classification
-        model_configuration = self._configuration.models[model_classification].dict()
+        
+        provider : BaseChatModelProvider = prompt_strategy.get_llm_provider()
+        model_configuration = prompt_strategy.get_prompt_config().dict()
+        # model_classification = prompt_strategy.model_classification
+        # model_configuration = self._configuration.models[model_classification].dict()
         LOG.trace(f"Using model configuration: {model_configuration}")
-        del model_configuration["provider_name"]
-        provider = self._providers[model_classification]
+        # del model_configuration["provider_name"]
+        # provider = self._providers[model_classification]
+        
 
         # FIXME : Check if Removable
         template_kwargs = self.get_system_info(prompt_strategy)
@@ -176,10 +144,9 @@ class PromptManager(Configurable, AgentMixin):
         return response
 
     def get_system_info(self, strategy: AbstractPromptStrategy) -> SystemInfo:
-        provider = self._providers[strategy.model_classification]
+        provider = strategy.get_llm_provider()
         template_kwargs = {
             "os_info": get_os_info(),
-            # "provider" :  provider,
             "api_budget": provider.get_remaining_budget(),
             "current_time": time.strftime("%c"),
         }

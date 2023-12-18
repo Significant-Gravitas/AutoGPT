@@ -37,7 +37,7 @@ class PlannerAgent(BaseAgent):
         configuration: PlannerAgentConfiguration = PlannerAgentConfiguration()
 
         # chat_model_provider: OpenAISettings = Field(default=OpenAISettings(), exclude=True)
-        chat_model_provider: OpenAISettings = OpenAISettings()
+        #chat_model_provider: OpenAISettings = OpenAISettings()
         tool_registry: SimpleToolRegistry.SystemSettings = (
             SimpleToolRegistry.SystemSettings()
         )
@@ -61,8 +61,8 @@ class PlannerAgent(BaseAgent):
         user_id: uuid.UUID,
         settings: PlannerAgent.SystemSettings,
         memory: AbstractMemory,
-        chat_model_provider: AFAASChatOpenAI,
         prompt_manager: PromptManager,
+        default_llm_provider: AFAASChatOpenAI,
         workspace: AbstractFileWorkspace, # = AGPTLocalFileWorkspace.SystemSettings(),
         agent_id: uuid.UUID = None,
         **kwargs,
@@ -84,8 +84,8 @@ class PlannerAgent(BaseAgent):
         #
         # Step 1 : Set the chat model provider
         #
-        self._chat_model_provider = chat_model_provider
-        # self._chat_model_provider.set_agent(agent=self)
+        self.default_llm_provider = default_llm_provider
+        # self.default_llm_provider.set_agent(agent=self)
 
         #
         # Step 2 : Load prompt_settings.yaml (configuration)
@@ -106,7 +106,7 @@ class PlannerAgent(BaseAgent):
             agent=self,
             memory=memory,
             workspace=workspace,
-            model_providers=chat_model_provider,
+            model_providers=default_llm_provider,
         )
         # self._tool_registry.set_agent(agent=self)
 

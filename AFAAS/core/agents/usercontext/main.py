@@ -57,8 +57,8 @@ class UserContextAgent(BaseAgent):
         # 
         # Step 1 : Set the chat model provider
         #
-        self._chat_model_provider = chat_model_provider
-        # self._chat_model_provider.set_agent(agent=self)
+        self.default_llm_provider = chat_model_provider
+        # self.default_llm_provider.set_agent(agent=self)
 
         # 
         # Step 2 : Load prompt_settings.yaml (configuration)

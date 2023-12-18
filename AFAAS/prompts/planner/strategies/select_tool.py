@@ -47,7 +47,7 @@ class SelectToolStrategy(PlanningPromptStrategy):
 
     def __init__(
         self,
-        model_classification:  PromptStrategyLanguageModelClassification,
+        #model_classification:  PromptStrategyLanguageModelClassification,
         **kwargs,
     ):
         super().__init__(model_classification=model_classification, **kwargs
@@ -145,7 +145,7 @@ class SelectToolStrategy(PlanningPromptStrategy):
     # response_format_instruction
     #
     def response_format_instruction(self, model_name: str) -> str:
-        model_provider = self._agent._chat_model_provider
+        model_provider = self._agent.default_llm_provider
         return super().response_format_instruction(
             language_model_provider=model_provider, model_name=model_name
         )

@@ -11,10 +11,9 @@ if  TYPE_CHECKING:
 
 from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy, DefaultParsedResponse, PromptStrategiesConfiguration)
-from AFAAS.interfaces.prompts.schema import \
-     PromptStrategyLanguageModelClassification
+#from AFAAS.interfaces.prompts.schema import PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.adapters import (
-    AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
+    AbstractLanguageModelProvider, AbstractPromptConfiguration, AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
 from AFAAS.lib.utils.json_schema import JSONSchema
 from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name = __name__)
@@ -27,9 +26,7 @@ class AFAAS_SMART_RAGStrategyConfiguration(PromptStrategiesConfiguration):
     """
     A Pydantic model that represents the default configurations for the refine user context strategy.
     """
-    model_classification:  PromptStrategyLanguageModelClassification = (
-         PromptStrategyLanguageModelClassification.FAST_MODEL_4K
-    )
+    #model_classification:  PromptStrategyLanguageModelClassification = (PromptStrategyLanguageModelClassification.FAST_MODEL_4K)
     default_tool_choice: AFAAS_SMART_RAGStrategyFunctionNames = (
         AFAAS_SMART_RAGStrategyFunctionNames.MAKE_SMART_RAG
     )
@@ -43,18 +40,18 @@ class AFAAS_SMART_RAG_Strategy(AbstractPromptStrategy):
 
     def __init__(
         self,
-        model_classification:  PromptStrategyLanguageModelClassification,
+        #model_classification:  PromptStrategyLanguageModelClassification,
         default_tool_choice: AFAAS_SMART_RAGStrategyFunctionNames,
         temperature : float , #if coding 0.05
-        top_p: Optional[float] ,
-        max_tokens : Optional[int] ,
-        frequency_penalty: Optional[float], # Avoid repeting oneselfif coding 0.3
-        presence_penalty : Optional[float], # Avoid certain subjects
+        # top_p: Optional[float] ,
+        # max_tokens : Optional[int] ,
+        # frequency_penalty: Optional[float], # Avoid repeting oneselfif coding 0.3
+        # presence_penalty : Optional[float], # Avoid certain subjects
         count=0,
         exit_token: str = str(uuid.uuid4()),
         task_context_length: int = 300,
     ):
-        self._model_classification = model_classification
+        # self._model_classification = model_classification
         self._count = count
         self._config = self.default_configuration
         self.default_tool_choice = default_tool_choice
@@ -141,5 +138,11 @@ class AFAAS_SMART_RAG_Strategy(AbstractPromptStrategy):
         # self._task.task_context = response_content.get("task_context", None)
 
     def response_format_instruction(self, model_name: str) -> str:
-        model_provider = self._agent._chat_model_provider
+        model_provider = self._agent.default_llm_provider
         return super().response_format_instruction(language_model_provider=model_provider, model_name = model_name)
+
+    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+        return super().get_llm_provider()
+    
+    def get_prompt_config(self) -> AbstractPromptConfiguration:
+        return super().get_prompt_config()

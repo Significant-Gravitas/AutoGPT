@@ -33,6 +33,7 @@ async def run_cli_demo():
     LOG.notice("AFAAS Data Structure support multiple users (however since there is no UI to enforce that we will be using a user with ID : a1621e69-970a-4340-86e7-778d82e2137b")
     user_id: str = "A" + str(uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b"))
     from AFAAS.core.workspace.local import AGPTLocalFileWorkspace, AGPTLocalFileWorkspaceConfiguration
+    from AFAAS.core.adapters.openai import AFAASChatOpenAI
 
     #TODO: Simplify this via get_workspace
     # from AFAAS.core.workspace import get_workspace
@@ -80,7 +81,8 @@ async def run_cli_demo():
         )
         agent : PlannerAgent = PlannerAgent.get_instance_from_settings(
             agent_settings=agent_settings,
-            workspace=AGPTLocalFileWorkspace()
+            workspace=AGPTLocalFileWorkspace(),
+            default_llm_provider=AFAASChatOpenAI(),
         )
 
         # agent_from_memory = None

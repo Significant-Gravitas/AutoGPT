@@ -46,7 +46,7 @@ async def afaas_routing(
         # routing_settings.agent_goals=  agent.agent_goals
         # routing_settings.agent_goal_sentence=  agent.agent_goal_sentence
         routing_settings.memory = agent._memory._settings
-        routing_settings.chat_model_provider = agent._chat_model_provider._settings
+        routing_settings.chat_model_provider = agent.default_llm_provider._settings
         routing_settings.note_to_agent_length = note_to_agent_length
 
         # USER CONTEXT AGENT : Save RoutingAgent Settings in DB (for POW / POC)

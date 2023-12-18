@@ -17,14 +17,14 @@ if  TYPE_CHECKING:
     pass
 
 from AFAAS.configs import SystemConfiguration
-from AFAAS.interfaces.prompts.schema import \
-     PromptStrategyLanguageModelClassification
+#from AFAAS.interfaces.prompts.schema import     PromptStrategyLanguageModelClassification
 from AFAAS.interfaces.prompts.utils.utils import json_loads
 from AFAAS.interfaces.prompts.utils import (to_dotted_list, to_md_quotation,
                     to_numbered_list, to_string_list, indent)     
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider, AssistantChatMessageDict, ChatModelResponse,
-    ChatPrompt, CompletionModelFunction, ChatMessage )
+    ChatPrompt, CompletionModelFunction, ChatMessage,AbstractPromptConfiguration )
+
 
 from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name = __name__)
@@ -94,13 +94,12 @@ class DefaultParsedResponse(dict):
 
 
 class PromptStrategiesConfiguration(SystemConfiguration):
-    temperature: float
-    top_p: Optional[float] = None
-    max_tokens: Optional[int] = None
-    frequency_penalty: Optional[float] = None  # Avoid repeting oneselfif coding 0.3
-    presence_penalty: Optional[float] = None  # Avoid certain subjects
-
-
+    pass
+    # temperature: float
+    # top_p: Optional[float] = None
+    # max_tokens: Optional[int] = None
+    # frequency_penalty: Optional[float] = None  # Avoid repeting oneselfif coding 0.3
+    # presence_penalty: Optional[float] = None  # Avoid certain subjects
 
 class AbstractPromptStrategy(AgentMixin, abc.ABC):
     STRATEGY_NAME: str
@@ -118,10 +117,18 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     def set_tools(self, **kwargs):
         ...
 
-    @property
-    def model_classification(self) ->  PromptStrategyLanguageModelClassification:
-        LOG.notice("Deprecated: Use `dependency injection` instead")
-        return self._model_classification
+    @abc.abstractmethod
+    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+        return self._agent.default_llm_provider
+    
+    @abc.abstractmethod
+    def get_prompt_config(self) -> AbstractPromptConfiguration:
+        return self.get_llm_provider().get_default_config()
+
+    # @property
+    # def model_classification(self) : ->  PromptStrategyLanguageModelClassification:
+    #     LOG.notice("Deprecated: Use `dependency injection` instead")
+    #     return self._model_classification
 
     # TODO : This implementation is shit :)
     def get_tools(self) -> list[CompletionModelFunction]:

@@ -8,7 +8,7 @@ from AFAAS.interfaces.adapters.language_model import (
     BaseModelProviderSettings, BaseModelProviderUsage, BaseModelResponse,
     Embedding, EmbeddingModelInfo, EmbeddingModelProvider,
     EmbeddingModelResponse, ModelProviderName, ModelProviderService,
-    ModelTokenizer)
+    ModelTokenizer, AbstractPromptConfiguration)
 
 __all__ = [
     "AssistantChatMessage",

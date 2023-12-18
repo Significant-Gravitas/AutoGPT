@@ -61,7 +61,7 @@ class InitialPlanStrategy(AbstractPromptStrategy):
 
     def __init__(
         self,
-        model_classification:  PromptStrategyLanguageModelClassification,
+        #model_classification:  PromptStrategyLanguageModelClassification,
         default_tool_choice: InitialPlanFunctionNames,
         temperature: float,  # if coding 0.05
         top_p: Optional[float],
@@ -189,7 +189,7 @@ class InitialPlanStrategy(AbstractPromptStrategy):
         return parsed_response
 
     def response_format_instruction(self, model_name: str) -> str:
-        model_provider = self._agent._chat_model_provider
+        model_provider = self._agent.default_llm_provider
         return super().response_format_instruction(
             language_model_provider=model_provider, model_name=model_name
         )

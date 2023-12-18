@@ -7,7 +7,7 @@ from pydantic import Field
 # from AFAAS.lib.action import (ActionErrorResult, ActionResult,
 #                                            ActionSuccessResult)
 from AFAAS.lib.context_items import ContextItem
-from AFAAS.lib.task import TaskStatusList
+from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.lib.task.plan import Plan
 from AFAAS.lib.task.task import Task
 from AFAAS.interfaces.agent.exceptions import (
