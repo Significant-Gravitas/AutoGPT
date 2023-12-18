@@ -12,11 +12,6 @@ from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.meta import TaskStatusList
 from .rag.afaas_smart_rag import AFAAS_SMART_RAG_Strategy
 
-# from AFAAS.configs import AFAASModel
-# from AFAAS.core.tools.schema import ToolResult
-
-
-
 LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:

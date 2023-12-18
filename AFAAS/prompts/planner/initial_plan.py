@@ -2,8 +2,6 @@ import enum
 
 from typing import Optional
 
-# from AFAAS.interfaces.task import AbstractTask
-# from AFAAS.core.agents.planner.main import PlannerAgent
 from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy, 
     PromptStrategiesConfiguration)

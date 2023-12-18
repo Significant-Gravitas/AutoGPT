@@ -4,7 +4,6 @@ import json
 from typing import TYPE_CHECKING, Any, Generator
 from pydantic import Field
 
-#from AFAAS.interfaces.agent import AbstractAgent
 from AFAAS.configs import AFAASModel
 from AFAAS.interfaces.task.base import AbstractBaseTask
 if TYPE_CHECKING:

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 from AFAAS.lib.sdk import AFAASLogger
 from AFAAS.lib.task.plan import Plan
 from AFAAS.configs import UserConfigurable
-#from AFAAS.interfaces.prompts.schema import PromptStrategyLanguageModelClassification
+
 from AFAAS.interfaces.prompts.utils import \
     to_numbered_list
 from AFAAS.interfaces.adapters import (

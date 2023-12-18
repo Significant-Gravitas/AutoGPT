@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 class BaseAgent(Configurable, AbstractAgent):
     CLASS_CONFIGURATION = BaseAgentConfiguration
-    CLASS_SYSTEMS = BaseAgentSystems  # BaseAgentSystems() = cls.SystemSettings().configuration.systems
+    CLASS_SYSTEMS = BaseAgentSystems
 
     class SystemSettings(AbstractAgent.SystemSettings):
         configuration: BaseAgentConfiguration = BaseAgentConfiguration()
@@ -43,16 +43,9 @@ class BaseAgent(Configurable, AbstractAgent):
         agent_setting_class: Optional[str]
 
         memory: AbstractMemory.SystemSettings = AbstractMemory.SystemSettings()
-        #workspace: AbstractFileWorkspace.SystemSettings
-
-        from AFAAS.core.adapters.openai import \
-            OpenAISettings
-
-        #chat_model_provider: OpenAISettings = OpenAISettings()
 
         class Config(SystemSettings.Config):
             pass
-            # json_encoders = SystemSettings.Config.json_encoders + { Task : lambda v: v.dict()}
 
         def dict(self, include_all=False, *args, **kwargs):
             """
@@ -366,7 +359,6 @@ class BaseAgent(Configurable, AbstractAgent):
         module = cls.__module__.rsplit('.', 1)[0]
         LOG.trace(f"Entering : {module}.get_strategies()")
 
-        # from AFAAS.interfaces.prompts.strategy import (AbstractPromptStrategy)
         strategies : list[AbstractPromptStrategy] = []
 
         try:

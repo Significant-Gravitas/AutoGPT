@@ -108,13 +108,9 @@ class PromptManager(Configurable, AgentMixin):
         
         provider : BaseChatModelProvider = prompt_strategy.get_llm_provider()
         model_configuration = prompt_strategy.get_prompt_config().dict()
-        # model_classification = prompt_strategy.model_classification
-        # model_configuration = self._configuration.models[model_classification].dict()
-        LOG.trace(f"Using model configuration: {model_configuration}")
-        # del model_configuration["provider_name"]
-        # provider = self._providers[model_classification]
-        
 
+        LOG.trace(f"Using model configuration: {model_configuration}")
+        
         # FIXME : Check if Removable
         template_kwargs = self.get_system_info(prompt_strategy)
         template_kwargs.update(kwargs)

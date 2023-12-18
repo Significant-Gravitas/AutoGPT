@@ -36,8 +36,7 @@ class PlannerAgent(BaseAgent):
         description: str = "A simple agent."
         configuration: PlannerAgentConfiguration = PlannerAgentConfiguration()
 
-        # chat_model_provider: OpenAISettings = Field(default=OpenAISettings(), exclude=True)
-        #chat_model_provider: OpenAISettings = OpenAISettings()
+        
         tool_registry: SimpleToolRegistry.SystemSettings = (
             SimpleToolRegistry.SystemSettings()
         )
@@ -85,7 +84,7 @@ class PlannerAgent(BaseAgent):
         # Step 1 : Set the chat model provider
         #
         self.default_llm_provider = default_llm_provider
-        # self.default_llm_provider.set_agent(agent=self)
+ 
 
         #
         # Step 2 : Load prompt_settings.yaml (configuration)
@@ -205,7 +204,6 @@ class PlannerAgent(BaseAgent):
         cls,
         agent_settings: PlannerAgent.SystemSettings,
     ):
-        #from AFAAS.interfaces.workspace import FileWorkspaceBackendName, get_workspace
         from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
         return agent_settings.workspace.__class__.create_workspace(
@@ -213,44 +211,6 @@ class PlannerAgent(BaseAgent):
             agent_id=agent_settings.agent_id,
             settings=agent_settings
         )
-
-    # @classmethod
-    # def get_strategies(cls) -> list:
-    #     # TODO: Continue refactorization => move to loop ?
-    #     val = super().get_strategies()
-
-    #     from AFAAS.core.agents.planner.strategies import \
-    #         StrategiesSet
-    #     rv = StrategiesSet.get_strategies()
-    #     print(val == rv)
-    #     return rv
-
-    # @classmethod
-    # async def determine_agent_name_and_goals(
-    #     cls,
-    #     user_objective: str,
-    #     agent_settings: PlannerAgent.SystemSettings,
-    #     
-    # ) -> dict:
-    #     LOG.trace("Loading OpenAI provider.")
-    #     provider: OpenAIProvider = cls._get_system_instance(
-    #         "chat_model_provider",
-    #         agent_settings,
-    #         logger=logger,
-    #     )
-    #     LOG.trace("Loading agent planner.")
-    #     agent_planner: PromptManager = cls._get_system_instance(
-    #         "prompt_manager",
-    #         agent_settings,
-    #         logger=logger,
-    #         model_providers={"openai": provider},
-    #     )
-    #     LOG.trace("determining agent name and goals.")
-    #     model_response = await agent_planner.decide_name_and_goals(
-    #         user_objective,
-    #     )
-
-    #     return model_response.content
 
     def __repr__(self):
         return "PlannerAgent()"

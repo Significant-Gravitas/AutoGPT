@@ -11,7 +11,7 @@ if  TYPE_CHECKING:
 
 from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy, DefaultParsedResponse, PromptStrategiesConfiguration)
-#from AFAAS.interfaces.prompts.schema import PromptStrategyLanguageModelClassification
+
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider, AbstractPromptConfiguration, AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
 from AFAAS.lib.utils.json_schema import JSONSchema
@@ -26,7 +26,6 @@ class AFAAS_SMART_RAGStrategyConfiguration(PromptStrategiesConfiguration):
     """
     A Pydantic model that represents the default configurations for the refine user context strategy.
     """
-    #model_classification:  PromptStrategyLanguageModelClassification = (PromptStrategyLanguageModelClassification.FAST_MODEL_4K)
     default_tool_choice: AFAAS_SMART_RAGStrategyFunctionNames = (
         AFAAS_SMART_RAGStrategyFunctionNames.MAKE_SMART_RAG
     )
