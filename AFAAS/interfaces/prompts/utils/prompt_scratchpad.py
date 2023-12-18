@@ -4,7 +4,7 @@ from typing import Callable
 from pydantic import BaseModel, Field
 
 from AFAAS.lib.sdk.logger import AFAASLogger
-from AFAAS.interfaces.adapters.chat_model import \
+from AFAAS.interfaces.adapters.chatmodel import \
     CompletionModelFunction
 from AFAAS.lib.utils.json_schema import JSONSchema
 

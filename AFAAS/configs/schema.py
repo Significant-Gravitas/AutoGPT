@@ -214,7 +214,7 @@ class SystemSettings(AFAASModel):
             "agent",
             "workspace",
             "prompt_manager",
-            "chat_model_provider",
+            "default_llm_provider",
             "memory",
             "tool_registry",
             "prompt_settings",

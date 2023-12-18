@@ -13,7 +13,7 @@ aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 from AFAAS.configs import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
-from AFAAS.interfaces.adapters.chat_model import (CompletionModelFunction)
+from AFAAS.interfaces.adapters.chatmodel import (CompletionModelFunction)
 from AFAAS.interfaces.adapters.language_model import (
     BaseModelProviderBudget, BaseModelProviderConfiguration, BaseModelProviderCredentials,
     BaseModelProviderSettings, BaseModelProviderUsage, Embedding,

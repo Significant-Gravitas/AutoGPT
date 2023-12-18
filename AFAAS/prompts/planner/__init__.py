@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from AFAAS.lib.sdk.logger import AFAASLogger
-from AFAAS.core.agents.planner.strategies.initial_plan import (
+from AFAAS.prompts.planner.initial_plan import (
     InitialPlanStrategy, InitialPlanStrategyConfiguration)
-from AFAAS.core.agents.planner.strategies.select_tool import (
+from AFAAS.prompts.planner.select_tool import (
     SelectToolStrategy, SelectToolStrategyConfiguration)
 from AFAAS.interfaces.prompts.strategy import \
     PromptStrategiesConfiguration

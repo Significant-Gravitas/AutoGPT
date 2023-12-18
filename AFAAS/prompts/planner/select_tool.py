@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import uuid
 
 from typing import TYPE_CHECKING, Callable, Optional
 
@@ -13,33 +14,34 @@ if TYPE_CHECKING:
 
 # prompting
 from AFAAS.lib.action_history import Episode
+
+from AFAAS.interfaces.task import AbstractTask
 from AFAAS.interfaces.prompts.strategy import (
-    DefaultParsedResponse,  PromptStrategyLanguageModelClassification)
+    AbstractPromptStrategy, DefaultParsedResponse, PromptStrategiesConfiguration)
+
 from AFAAS.interfaces.prompts.strategy_planning import (
-    PlanningPromptStrategiesConfiguration, PlanningPromptStrategy)
-from AFAAS.interfaces.prompts.utils import indent
+    PlanningPromptStrategiesConfiguration,AbstractPlanningPromptStrategy)
 from AFAAS.interfaces.adapters import (
+    AbstractLanguageModelProvider, AbstractPromptConfiguration,
     AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
 
 
-class ThinkStrategyFunctionNames(str, enum.Enum):
-    THINK: str = "select_tool"
+class SelectToolFunctionNames(str, enum.Enum):
+    SELECT_TOOL: str = "select_tool"
 
 
 ###
 ### CONFIGURATION
 ####
 class SelectToolStrategyConfiguration(PlanningPromptStrategiesConfiguration):
-    model_classification:  PromptStrategyLanguageModelClassification = (
-         PromptStrategyLanguageModelClassification.FAST_MODEL_16K
-    )
     temperature: float = 0.5
+    default_tool_choice : SelectToolFunctionNames = "ask_user"
 
 
 ###
 ### STRATEGY
 ####
-class SelectToolStrategy(PlanningPromptStrategy):
+class SelectToolStrategy(AbstractPlanningPromptStrategy):
     default_configuration: SelectToolStrategyConfiguration = (
         SelectToolStrategyConfiguration()
     )
@@ -47,44 +49,37 @@ class SelectToolStrategy(PlanningPromptStrategy):
 
     def __init__(
         self,
-        #model_classification:  PromptStrategyLanguageModelClassification,
-        **kwargs,
+        default_tool_choice: SelectToolFunctionNames,
+        note_to_agent_length : int,
+        temperature : float , #if coding 0.05,
+        count=0,
+        exit_token: str = str(uuid.uuid4()),
+        use_message: bool = False
     ):
-        super().__init__(model_classification=model_classification, **kwargs
-        )
+        self._count = count
+        self._config = self.default_configuration
+        self.note_to_agent_length = note_to_agent_length
+        self.default_tool_choice = default_tool_choice
 
-    @property
-    def model_classification(self) ->  PromptStrategyLanguageModelClassification:
-        return self._model_classification
+    def build_message(self, *_, **kwargs) -> ChatPrompt:
+        return self.build_prompt(*_, **kwargs)
 
-    def build_message(
-        self,
+    def build_prompt(
+        self, 
+        task : AbstractTask ,
         agent: "PlannerAgent",
         # instruction: str,
         **kwargs,
     ) -> ChatPrompt:
-        """Constructs and returns a prompt with the following structure:
-        1. System prompt
-        2. Message history of the agent, truncated & prepended with running summary as needed
-        3. `cycle_instruction`
-
-        Params:
-            cycle_instruction: The final instruction for a select_tooling cycle
-        """
-
-        model_name = kwargs["model_name"]
-        self._tools = agent._tool_registry.dump_tools()
-
         ###
         ### To Facilitate merge with AutoGPT changes
         ###
         event_history = False
         include_os_info = True
-        del kwargs["tools"]
-        tools = self._tools
         agent_directives = BaseAgentDirectives.from_file(agent=agent)
-        extra_messages: list[ChatMessage] = []
-
+        del kwargs["tools"]
+        self._tools = agent._tool_registry.dump_tools()
+        tools = self._tools
         system_prompt = self._construct_system_prompt(
             agent=agent,
             agent_directives=agent_directives,
@@ -92,64 +87,60 @@ class SelectToolStrategy(PlanningPromptStrategy):
             include_os_info=include_os_info,
             **kwargs,
         )
-        # system_prompt_tlength = count_message_tokens(ChatMessage.system(system_prompt))
 
-        response_format_instr = self.response_format_instruction(
-            agent=agent,
-            model_name=model_name,
-        )
+
+        progress = self.compile_progress(event_history,) if event_history else ''
+        response_format_instr = self.response_format_instruction()
+        extra_messages :list[ChatMessage]= []
         extra_messages.append(ChatMessage.system(response_format_instr))
+        extra_messages = [msg.content for msg in extra_messages]
 
-        final_instruction_msg = ChatMessage.user(self._config.choose_action_instruction)
-        # final_instruction_tlength = count_message_tokens(final_instruction_msg)
+        context = {
+            "system_prompt": system_prompt,
+            "progress": progress,
+            "response_format_instr": response_format_instr,
+            "extra_messages": extra_messages,
+            "final_instruction_msg": self._config.choose_action_instruction,
+        }
 
-        if event_history:
-            progress = self.compile_progress(
-                event_history,
-                # count_tokens=count_tokens,
-                # max_tokens=(
-                #     max_prompt_tokens
-                #     - system_prompt_tlength
-                #     - final_instruction_tlength
-                #     - count_message_tokens(extra_messages)
-                # ),
-            )
-            extra_messages.insert(
-                0,
-                ChatMessage.system(f"## Progress\n\n{progress}"),
-            )
 
-        messages = [
-            ChatMessage.system(system_prompt),
-            *extra_messages,
-            final_instruction_msg,
-        ]
-        # messages: list[ChatMessage] = agent._loop.on_before_select_tool(
-        #     messages=messages,
-        # )
-
-        # tools = get_openai_command_specs(
-        #         agent._tool_registry.list_available_tools(self)
-        #     ) ===== agent._tool_registry.dump_tools()
         self._function = agent._tool_registry.dump_tools()
-        prompt = ChatPrompt(
-            messages=messages,
-            tools=self._function,
-            tool_choice="auto",
-            default_tool_choice="ask_user",
-        )
 
-        return prompt
+        
+        messages = []
+        messages.append(
+                        ChatMessage.system(
+                            self._build_jinja_message(task = task, 
+                                            template_name= f'{self.STRATEGY_NAME}.jinja', template_params = context)
+                            )
+                    )
+        messages.append(
+            ChatMessage.system(
+                        response_format_instr = self.response_format_instruction()
+                )
+            )
+
+        # prompt = ChatPrompt(
+        #     messages=messages,
+        #     tools=self._function,
+        #     tool_choice="auto",
+        #     default_tool_choice="ask_user",
+        # )
+        return self.build_chat_prompt(messages=messages)
+
 
     #
     # response_format_instruction
     #
-    def response_format_instruction(self, model_name: str) -> str:
-        model_provider = self._agent.default_llm_provider
-        return super().response_format_instruction(
-            language_model_provider=model_provider, model_name=model_name
-        )
-
+    def response_format_instruction(self) -> str:
+        return super().response_format_instruction()
+    
+    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+        return super().get_llm_provider()
+    
+    def get_prompt_config(self) -> AbstractPromptConfiguration:
+        return super().get_prompt_config()
+    
     #
     # _generate_intro_prompt
     #

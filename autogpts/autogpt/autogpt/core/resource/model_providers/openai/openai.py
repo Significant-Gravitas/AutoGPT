@@ -17,7 +17,7 @@ from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.configs import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
-from AFAAS.interfaces.adapters.chat_model import (
+from AFAAS.interfaces.adapters.chatmodel import (
     AssistantChatMessageDict, AssistantToolCallDict, BaseChatModelProvider,
     ChatMessage, ChatModelInfo, ChatModelResponse, CompletionModelFunction)
 from AFAAS.interfaces.adapters.language_model import (

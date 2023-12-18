@@ -161,15 +161,10 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
 
     def __init__(
         self,
-        #model_classification:  PromptStrategyLanguageModelClassification,
         default_tool_choice: RefineUserContextFunctionNames,
         context_min_tokens: int,
         context_max_tokens: int,
         temperature : float , #if coding 0.05
-        top_p: Optional[float] ,
-        max_tokens : Optional[int] ,
-        frequency_penalty: Optional[float], # Avoid repeting oneselfif coding 0.3
-        presence_penalty : Optional[float], # Avoid certain subjects
         count=0,
         user_last_goal="",
         exit_token: str = str(uuid.uuid4()),

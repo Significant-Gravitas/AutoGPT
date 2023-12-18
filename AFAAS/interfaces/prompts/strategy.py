@@ -164,8 +164,10 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     # This can be expanded to support multiple types of (inter)actions within an agent
     @abc.abstractmethod
     def response_format_instruction(
-        self, language_model_provider: AbstractLanguageModelProvider, model_name: str
+        self,
     ) -> str:
+        language_model_provider = self.get_llm_provider()
+        model_name = self.get_prompt_config().model_name
         use_oa_tools_api = language_model_provider.has_oa_tool_calls_api(
             model_name=model_name
         )

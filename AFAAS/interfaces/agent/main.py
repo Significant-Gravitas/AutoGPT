@@ -25,6 +25,9 @@ from .abstract import AbstractAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name = __name__)
 
+if TYPE_CHECKING:
+    from AFAAS.interfaces.prompts.strategy import (ChatModelResponse, AbstractPromptStrategy)
+
 
 class BaseAgent(Configurable, AbstractAgent):
     CLASS_CONFIGURATION = BaseAgentConfiguration
@@ -357,20 +360,18 @@ class BaseAgent(Configurable, AbstractAgent):
         )
         return system_instance
 
-    from AFAAS.interfaces.prompts.strategy import (AbstractPromptStrategy)
     @classmethod
     def get_strategies(cls) -> list[AbstractPromptStrategy]:
 
         module = cls.__module__.rsplit('.', 1)[0]
         LOG.trace(f"Entering : {module}.get_strategies()")
 
-        from AFAAS.interfaces.prompts.strategy import (AbstractPromptStrategy)
-        stategies : list[AbstractPromptStrategy] = []
+        # from AFAAS.interfaces.prompts.strategy import (AbstractPromptStrategy)
+        strategies : list[AbstractPromptStrategy] = []
 
         try:
             # Dynamically import the strategies from the module
             strategies_module = importlib.import_module(f"{module}.strategies")
-
             # Check if StrategiesSet and get_strategies exist
             if hasattr(strategies_module, 'StrategiesSet') and callable(getattr(strategies_module.StrategiesSet, 'get_strategies', None)):
                 strategies = strategies_module.StrategiesSet.get_strategies()
@@ -381,6 +382,9 @@ class BaseAgent(Configurable, AbstractAgent):
         except ImportError as e:
             LOG.notice(f"Failed to import {module}.strategies: {e}")
 
+        from AFAAS.prompts import load_all_strategies
+        strategies += load_all_strategies()
+        
         from .strategies.autocorrection import AutoCorrectionStrategy
         from AFAAS.lib.task.rag.afaas_smart_rag import AFAAS_SMART_RAG_Strategy
         common_strategies = [AutoCorrectionStrategy(
@@ -390,9 +394,9 @@ class BaseAgent(Configurable, AbstractAgent):
                **AFAAS_SMART_RAG_Strategy.default_configuration.dict()
         )]
 
-        return  stategies + common_strategies
+        return  strategies + common_strategies
     
-    from AFAAS.interfaces.prompts.strategy import (ChatModelResponse)
+
     async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse :
         LOG.trace(f"Entering : {self.__class__}.execute_strategy({strategy_name})")
         return await self._prompt_manager._execute_strategy(strategy_name=strategy_name, **kwargs)

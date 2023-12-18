@@ -69,22 +69,19 @@ class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
     progress_summaries: dict[tuple[int, int], str] = {(0, 0): ""}
 
 
-class PlanningPromptStrategy(AbstractPromptStrategy):
+class AbstractPlanningPromptStrategy(AbstractPromptStrategy):
     def __init__(
         self,
-        #model_classification:  PromptStrategyLanguageModelClassification,
-        temperature: float,  # if coding 0.05
-        top_p: Optional[float],
-        max_tokens: Optional[int],
-        frequency_penalty: Optional[float],  # Avoid repeting oneselfif coding 0.3
-        presence_penalty: Optional[float],  # Avoid certain subjects
+        # temperature: float,  # if coding 0.05
+        # top_p: Optional[float],
+        # max_tokens: Optional[int],
+        # frequency_penalty: Optional[float],  # Avoid repeting oneselfif coding 0.3
+        # presence_penalty: Optional[float],  # Avoid certain subjects
         **kwargs,
     ):
         super().__init__()
         self._prepend_messages: list[ChatMessage] = []
         self._append_messages: list[ChatMessage] = []
-
-        self._model_classification = model_classification
         self._config = self.default_configuration
 
     # def construct_base_prompt(

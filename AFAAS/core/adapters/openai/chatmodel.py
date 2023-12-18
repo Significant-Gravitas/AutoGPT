@@ -15,7 +15,7 @@ aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 from AFAAS.configs import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
-from AFAAS.interfaces.adapters.chat_model import (AbstractChatMessage,
+from AFAAS.interfaces.adapters.chatmodel import (AbstractChatMessage,
     AssistantChatMessageDict, BaseChatModelProvider,
     AbstractRoleLabels, ChatMessage, ChatModelResponse, CompletionModelFunction)
 from AFAAS.interfaces.adapters.language_model import (
@@ -469,7 +469,7 @@ class AFAASChatOpenAI(
 
     def get_default_config(self) -> OpenAIPromptConfiguration:
         
-        return OPEN_AI_DEFAULT_CHAT_CONFIGS["SMART_MODEL_32K"]
+        return OPEN_AI_DEFAULT_CHAT_CONFIGS.SMART_MODEL_32K
 
 async def _create_chat_completion(
     messages: list[ChatMessage], *_, **kwargs

@@ -40,7 +40,6 @@ class AFAAS_SMART_RAG_Strategy(AbstractPromptStrategy):
 
     def __init__(
         self,
-        #model_classification:  PromptStrategyLanguageModelClassification,
         default_tool_choice: AFAAS_SMART_RAGStrategyFunctionNames,
         temperature : float , #if coding 0.05
         # top_p: Optional[float] ,
@@ -118,9 +117,7 @@ class AFAAS_SMART_RAG_Strategy(AbstractPromptStrategy):
                     )
         messages.append(
             ChatMessage.system(
-                self.response_format_instruction(
-                    model_name=self._model_name,
-                    )
+                self.response_format_instruction()
                 )
             )
 
@@ -137,9 +134,8 @@ class AFAAS_SMART_RAG_Strategy(AbstractPromptStrategy):
         # self._task.task_context = response_content.get("task_context", None)
         # self._task.task_context = response_content.get("task_context", None)
 
-    def response_format_instruction(self, model_name: str) -> str:
-        model_provider = self._agent.default_llm_provider
-        return super().response_format_instruction(language_model_provider=model_provider, model_name = model_name)
+    def response_format_instruction(self) -> str:
+        return super().response_format_instruction()
 
     def get_llm_provider(self) -> AbstractLanguageModelProvider:
         return super().get_llm_provider()

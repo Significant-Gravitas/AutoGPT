@@ -9,14 +9,14 @@ from AFAAS.interfaces.agent.features.agentmixin import \
     AgentMixin
 
 if TYPE_CHECKING:
-    pass
+    from AFAAS.interfaces.prompts.strategy import (
+    AbstractPromptStrategy)
 
 from AFAAS.configs import (Configurable,
                                                          SystemConfiguration,
                                                          SystemSettings)
-from AFAAS.interfaces.prompts.strategy import (
-    AbstractPromptStrategy)
-#from AFAAS.interfaces.prompts.schema import PromptStrategyLanguageModelClassification
+
+
 from AFAAS.interfaces.adapters import (
     BaseChatModelProvider, ChatModelResponse, ModelProviderName,
 )
@@ -67,14 +67,6 @@ class PromptManager(Configurable, AgentMixin):
         strategies: list[AbstractPromptStrategy],
     ) -> None:
         super().__init__(settings=settings)
-        # model_providers: dict[ModelProviderName, BaseChatModelProvider] = {
-        #     "openai": agent_systems["chat_model_provider"]
-        # }
-        # strategies: dict[str, AbstractPromptStrategy] = agent_systems["strategies"]
-
-        # self._providers: dict[PromptStrategyLanguageModelClassification, BaseChatModelProvider] = {}
-        # for model, model_config in self._configuration.models.items():
-        #     self._providers[model] = model_providers[model_config.provider_name]
 
         self._prompt_strategies = {}
         for strategy in strategies:
