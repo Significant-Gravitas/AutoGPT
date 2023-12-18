@@ -525,7 +525,7 @@ class ChatPrompt(BaseModel):
 _T = TypeVar("_T")
 
 
-class ChatModelResponse(BaseModelResponse, Generic[_T]):
+class AbstractChatModelResponse(BaseModelResponse, Generic[_T]):
     """
     `ChatModelResponse` extends `BaseModelResponse` to provide a structured representation of a language model's response in a chat-based interaction. It encapsulates the standard response from the language model, along with a parsed result of a generic type `_T`, and additional content as a dictionary.
 
@@ -575,7 +575,7 @@ class ChatModelInfo(BaseModelInfo):
     has_function_call_api: bool = False
 
 
-class BaseChatModelProvider(AbstractLanguageModelProvider):
+class AbstractChatModelProvider(AbstractLanguageModelProvider):
     @abc.abstractmethod
     def count_message_tokens(
         self,
@@ -592,7 +592,7 @@ class BaseChatModelProvider(AbstractLanguageModelProvider):
         tools: list[CompletionModelFunction],
         tool_choice: str,
         **kwargs,
-    ) -> ChatModelResponse:
+    ) -> AbstractChatModelResponse:
         ...
 
     @abc.abstractmethod
@@ -603,5 +603,5 @@ class BaseChatModelProvider(AbstractLanguageModelProvider):
         tools: list[CompletionModelFunction] = [],
         completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
         **kwargs,
-    ) -> ChatModelResponse[_T]:
+    ) -> AbstractChatModelResponse[_T]:
         ...

@@ -10,7 +10,7 @@ from .features.agentmixin import AgentMixin
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.adapters.chatmodel import \
-        ChatModelResponse
+        AbstractChatModelResponse
 
     from . import BaseAgent
 from AFAAS.lib.sdk.logger import AFAASLogger

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 import yaml
 from pydantic import Field, root_validator
 
-from AFAAS.interfaces.agent import PromptManager
+from AFAAS.interfaces.agent import BasePromptManager
 from AFAAS.interfaces.agent.models import (
     BaseAgentConfiguration, BaseAgentDirectives, BaseAgentSystems)
 from AFAAS.interfaces.agent.loop import (  # Import only where it's needed
@@ -26,7 +26,7 @@ from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name = __name__)
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.prompts.strategy import (ChatModelResponse, AbstractPromptStrategy)
+    from AFAAS.interfaces.prompts.strategy import (AbstractChatModelResponse, AbstractPromptStrategy)
 
 
 class BaseAgent(Configurable, AbstractAgent):
@@ -42,7 +42,7 @@ class BaseAgent(Configurable, AbstractAgent):
         agent_setting_module: Optional[str]
         agent_setting_class: Optional[str]
 
-        memory: AbstractMemory.SystemSettings = AbstractMemory.SystemSettings()
+        #memory: AbstractMemory.SystemSettings = AbstractMemory.SystemSettings()
 
         class Config(SystemSettings.Config):
             pass
@@ -107,7 +107,7 @@ class BaseAgent(Configurable, AbstractAgent):
         settings: BaseAgent.SystemSettings,
         memory: AbstractMemory,
         workspace: AbstractFileWorkspace,
-        prompt_manager: PromptManager,
+        prompt_manager: BasePromptManager,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
     ) -> Any:
@@ -124,6 +124,15 @@ class BaseAgent(Configurable, AbstractAgent):
 
         self._prompt_manager = prompt_manager
         self._prompt_manager.set_agent(agent=self)
+
+        for key, value in settings.dict():
+            if key not in self.SystemSettings.Config.default_exclude:
+                if(not hasattr(self, key)):
+                    LOG.notice(f"Adding {key} to the agent")
+                    setattr(self, key, value)
+                else : 
+                    LOG.debug(f"{key} set for agent {self.agent_id}")
+
 
     def add_hook(self, hook: BaseLoopHook, hook_id: uuid.UUID = uuid.uuid4()):
         """
@@ -262,6 +271,7 @@ class BaseAgent(Configurable, AbstractAgent):
         agent_settings: BaseAgent.SystemSettings,
         workspace: AbstractFileWorkspace,
         default_llm_provider: AbstractLanguageModelProvider,
+        prompt_manager : BasePromptManager
     ) -> BaseAgent:
         """
         Retrieve an agent instance based on the provided settings and LOG.
@@ -280,9 +290,9 @@ class BaseAgent(Configurable, AbstractAgent):
         """
         if not isinstance(agent_settings, cls.SystemSettings):
             agent_settings = cls.SystemSettings.parse_obj(agent_settings)
+            LOG.warning("Warning : agent_settings is not an instance of SystemSettings")
 
         from importlib import import_module
-
         module_path, class_name = agent_settings._module_.rsplit(".", 1)
         module = import_module(module_path)
         agent_class: BaseAgent = getattr(module, class_name)
@@ -295,7 +305,7 @@ class BaseAgent(Configurable, AbstractAgent):
         system_dict["user_id"] = agent_settings.user_id
         system_dict["strategies"] = cls.get_strategies()
         system_dict["memory"] = AbstractMemory.get_adapter(
-            memory_settings=agent_settings.memory
+            memory_settings = AbstractMemory.SystemSettings()
         )
 
         for system, setting in items:
@@ -308,11 +318,11 @@ class BaseAgent(Configurable, AbstractAgent):
                     existing_systems=system_dict,
                 )
 
-        agent = agent_class(**system_dict , workspace=workspace, default_llm_provider=default_llm_provider)
+        agent = agent_class(**system_dict 
+                            , workspace=workspace, 
+                            default_llm_provider=default_llm_provider)
 
-        for key, value in items:
-            if key not in agent_class.SystemSettings.Config.default_exclude:
-                setattr(agent, key, value)
+
 
         return agent
 
@@ -389,7 +399,7 @@ class BaseAgent(Configurable, AbstractAgent):
         return  strategies + common_strategies
     
 
-    async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse :
+    async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse :
         LOG.trace(f"Entering : {self.__class__}.execute_strategy({strategy_name})")
         return await self._prompt_manager._execute_strategy(strategy_name=strategy_name, **kwargs)
 

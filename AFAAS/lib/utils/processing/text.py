@@ -6,7 +6,7 @@ from typing import Iterator, Optional, TypeVar
 import spacy
 
 from AFAAS.lib.sdk.logger import AFAASLogger
-from AFAAS.interfaces.adapters import BaseChatModelProvider, ChatMessage, ModelTokenizer
+from AFAAS.interfaces.adapters import AbstractChatModelProvider, ChatMessage, ModelTokenizer
 from AFAAS.interfaces.adapters.chatmodel import ChatPrompt
 
 LOG = AFAASLogger(name=__name__)
@@ -54,7 +54,7 @@ def chunk_content(
 
 async def summarize_text(
     text: str,
-    llm_provider: BaseChatModelProvider,
+    llm_provider: AbstractChatModelProvider,
     instruction: Optional[str] = None,
     question: Optional[str] = None,
 ) -> tuple[str, None | list[tuple[str, str]]]:

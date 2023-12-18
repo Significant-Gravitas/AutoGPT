@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from AFAAS.lib.task.plan import Plan
     from AFAAS.core.db.table import AbstractTable
     from AFAAS.interfaces.adapters import \
-        CompletionModelFunction , ChatModelResponse
+        CompletionModelFunction , AbstractChatModelResponse
     from AFAAS.core.tools.base import BaseToolsRegistry
     from AFAAS.core.tools.tools import Tool
     from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
@@ -69,7 +69,7 @@ class AgentMixin:
 
     async def _execute_strategy(
         self, strategy_name: str, **kwargs
-    ) -> ChatModelResponse:
+    ) -> AbstractChatModelResponse:
         return await self._agent._prompt_manager.execute_strategy(
             strategy_name=strategy_name, **kwargs
         )

@@ -10,7 +10,7 @@ from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.adapters.openai import AFAASChatOpenAI, OpenAISettings
 from AFAAS.core.tools import TOOL_CATEGORIES, SimpleToolRegistry
 
-from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, PromptManager, ToolExecutor
+from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, BasePromptManager, ToolExecutor
 from .loop import PlannerLoop
 from .models import PlannerAgentConfiguration  # PlannerAgentSystemSettings,
 from .models import PlannerAgentSystems
@@ -38,7 +38,7 @@ class PlannerAgent(BaseAgent):
         tool_registry: SimpleToolRegistry.SystemSettings = (
             SimpleToolRegistry.SystemSettings()
         )
-        prompt_manager: PromptManager.SystemSettings = PromptManager.SystemSettings()
+        prompt_manager: BasePromptManager.SystemSettings = BasePromptManager.SystemSettings()
 
         agent_name: str = Field(default="New Agent")
         agent_role: Optional[str] = Field(default=None)
@@ -58,7 +58,7 @@ class PlannerAgent(BaseAgent):
         user_id: uuid.UUID,
         settings: PlannerAgent.SystemSettings,
         memory: AbstractMemory,
-        prompt_manager: PromptManager,
+        prompt_manager: BasePromptManager,
         default_llm_provider: AFAASChatOpenAI,
         workspace: AbstractFileWorkspace,  # = AGPTLocalFileWorkspace.SystemSettings(),
         agent_id: uuid.UUID = None,

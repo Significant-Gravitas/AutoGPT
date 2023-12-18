@@ -19,7 +19,7 @@ from AFAAS.core.tools import ToolOutput
 if TYPE_CHECKING:
     from AFAAS.core.agents.planner import PlannerAgent
     from AFAAS.interfaces.adapters import (
-        ChatModelResponse,
+        AbstractChatModelResponse,
     )
 
 from AFAAS.interfaces.agent import BaseLoop, BaseLoopHook
@@ -277,7 +277,7 @@ class PlannerLoop(BaseLoop):
         Returns:
             The command name and arguments, if any, and the agent's thoughts.
         """
-        raw_response: ChatModelResponse = await self._execute_strategy(
+        raw_response: AbstractChatModelResponse = await self._execute_strategy(
             strategy_name="select_tool",
             agent=self._agent,
             tools=self.get_tool_list(),

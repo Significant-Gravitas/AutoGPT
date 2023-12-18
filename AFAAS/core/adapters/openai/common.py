@@ -16,11 +16,11 @@ from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
 from AFAAS.interfaces.adapters.chatmodel import (
     AbstractChatMessage,
     AssistantChatMessageDict,
-    BaseChatModelProvider,
+    AbstractChatModelProvider,
     AbstractRoleLabels,
     ChatMessage,
     ChatModelInfo,
-    ChatModelResponse,
+    AbstractChatModelResponse,
     CompletionModelFunction,
 )
 from AFAAS.interfaces.adapters.language_model import (
@@ -85,7 +85,6 @@ class OpenAIModelName(str, enum.Enum):
     GPT3 = "gpt-3.5-turbo-1106"
     GPT3_16k = "gpt-3.5-turbo-1106"
     GPT3_FINE_TUNED = "gpt-3.5-turbo-1106" + ""
-    # GPT4 = "gpt-3.5-turbo-1106" # TODO for tests
     GPT4 = "gpt-3.5-turbo-1106"
     GPT4_32k = "gpt-3.5-turbo-1106"
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine
 from AFAAS.core.agents.routing.strategies import AutoCorrectionStrategy
 from AFAAS.interfaces.task import AbstractTask
-from AFAAS.interfaces.adapters import ChatModelResponse
+from AFAAS.interfaces.adapters import AbstractChatModelResponse
 from AFAAS.interfaces.job import JobInterface
 from AFAAS.interfaces.agent import BaseLoop, BaseAgent
 
@@ -65,7 +65,7 @@ class Pipeline(BasePipeline):
 
     async def _execute_job(self, job: JobInterface):
         # Logic to execute a job and parse the response
-        model_response: ChatModelResponse = await self._execute_strategy(
+        model_response: AbstractChatModelResponse = await self._execute_strategy(
             strategy_name=job.strategy.STRATEGY_NAME,
             task=self._task,
             **job.strategy_kwargs,
@@ -95,7 +95,7 @@ class Pipeline(BasePipeline):
             self.jobs.append(new_job)
         return pipeline_response
 
-    def _parse_response(self, strategy_name: str, model_response: ChatModelResponse):
+    def _parse_response(self, strategy_name: str, model_response: AbstractChatModelResponse):
         strategy_tools = self.get_strategy(
             strategy_name=strategy_name
         ).get_tools_names()

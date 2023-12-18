@@ -18,7 +18,7 @@ from AFAAS.configs import (Configurable,
 
 
 from AFAAS.interfaces.adapters import (
-    BaseChatModelProvider, ChatModelResponse, ModelProviderName,
+    AbstractChatModelProvider, AbstractChatModelResponse, ModelProviderName,
 )
 from AFAAS.core.adapters.openai import OpenAIModelName
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -51,7 +51,7 @@ class PromptManagerConfiguration(SystemConfiguration):
 
     #     return models
 
-class PromptManager(Configurable, AgentMixin):
+class BasePromptManager(Configurable, AgentMixin):
     """Manages the agent's planning and goal-setting by constructing language model prompts."""
 
     # default_settings = PromptManager.SystemSettings()
@@ -62,7 +62,7 @@ class PromptManager(Configurable, AgentMixin):
 
     def __init__(
         self,
-        settings: PromptManager.SystemSettings,
+        settings: BasePromptManager.SystemSettings,
         agent_systems: list[Configurable],
         strategies: list[AbstractPromptStrategy],
     ) -> None:
@@ -76,7 +76,7 @@ class PromptManager(Configurable, AgentMixin):
             f"PromptManager created with strategies : {self._prompt_strategies}"
         )
 
-    async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse:
+    async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse:
         """
         await simple_planner.execute_strategy('name_and_goals', user_objective='Learn Python')
         await simple_planner.execute_strategy('initial_plan', agent_name='Alice', agent_role='Student', agent_goals=['Learn Python'], tools=['coding'])
@@ -98,15 +98,29 @@ class PromptManager(Configurable, AgentMixin):
         # MAKE FUNCTION DYNAMICS
         prompt_strategy.set_tools(**kwargs)
 
-        return await self.chat_with_model(prompt_strategy, **kwargs)
+        return await self.send_to_chatmodel(prompt_strategy, **kwargs)
 
-    async def chat_with_model(
+    async def send(self,prompt_strategy : AbstractPromptStrategy, **kwargs):
+        llm_provider = prompt_strategy.get_llm_provider()
+        if (isinstance(llm_provider,AbstractChatModelProvider)):
+            return await self.send_to_chatmodel(prompt_strategy, **kwargs)
+        else :
+            return await self.send_to_languagemodel(prompt_strategy, **kwargs)
+
+    async def send_to_languagemodel(
         self,
         prompt_strategy: AbstractPromptStrategy,
         **kwargs,
-    ) -> ChatModelResponse:
+    ) :
+        raise NotImplementedError("Language Model not implemented")
+            
+    async def send_to_chatmodel(
+        self,
+        prompt_strategy: AbstractPromptStrategy,
+        **kwargs,
+    ) -> AbstractChatModelResponse:
         
-        provider : BaseChatModelProvider = prompt_strategy.get_llm_provider()
+        provider : AbstractChatModelProvider = prompt_strategy.get_llm_provider()
         model_configuration = prompt_strategy.get_prompt_config().dict()
 
         LOG.trace(f"Using model configuration: {model_configuration}")
@@ -118,7 +132,7 @@ class PromptManager(Configurable, AgentMixin):
 
         prompt = prompt_strategy.build_message(**template_kwargs)
 
-        response: ChatModelResponse = await provider.create_chat_completion(
+        response: AbstractChatModelResponse = await provider.create_chat_completion(
             chat_messages=prompt.messages,
             tools=prompt.tools,
             **model_configuration,
@@ -134,18 +148,18 @@ class PromptManager(Configurable, AgentMixin):
     def get_system_info(self, strategy: AbstractPromptStrategy) -> SystemInfo:
         provider = strategy.get_llm_provider()
         template_kwargs = {
-            "os_info": get_os_info(),
+            "os_info": self.get_os_info(),
             "api_budget": provider.get_remaining_budget(),
             "current_time": time.strftime("%c"),
         }
         return template_kwargs
     
+    @staticmethod
+    def get_os_info() -> str:
 
-def get_os_info() -> str:
-
-    os_name = platform.system()
-    if os_name != "Linux" :
-        return platform.platform(terse=True)
-    else :
-        import distro
-        return distro.name(pretty=True)
+        os_name = platform.system()
+        if os_name != "Linux" :
+            return platform.platform(terse=True)
+        else :
+            import distro
+            return distro.name(pretty=True)

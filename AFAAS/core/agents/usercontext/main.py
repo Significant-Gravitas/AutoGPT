@@ -7,7 +7,7 @@ from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.adapters.openai import AFAASChatOpenAI
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
-from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, PromptManager
+from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, BasePromptManager
 from .loop import UserContextLoop
 from .models import UserContextAgentConfiguration, UserContextAgentSystems
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -28,7 +28,7 @@ class UserContextAgent(BaseAgent):
         name = "usercontext_agent"
         description = "An agent that improve the quality of input provided by users."
 
-        prompt_manager: PromptManager.SystemSettings = PromptManager.SystemSettings()
+        prompt_manager: BasePromptManager.SystemSettings = BasePromptManager.SystemSettings()
 
         class Config(BaseAgent.SystemSettings.Config):
             pass
@@ -38,7 +38,7 @@ class UserContextAgent(BaseAgent):
         settings: UserContextAgent.SystemSettings,
         memory: AbstractMemory,
         chat_model_provider: AFAASChatOpenAI,
-        prompt_manager: PromptManager,
+        prompt_manager: BasePromptManager,
         user_id: uuid.UUID,
         workspace: AbstractFileWorkspace,  # = AGPTLocalFileWorkspace.SystemSettings(),
         agent_id: uuid.UUID = None,
