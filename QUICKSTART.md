@@ -38,9 +38,9 @@ This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux
     It can be accessed by running the `run` command by typing `./run` in the terminal.
 
     The first command you need to use is `./run setup` This will guide you through the process of setting up your system.
-    Initially you will get instructions for installing flutter, chrome and setting up your github access token like the following image:
+    Initially you will get instructions for installing flutter, chrome and setting up your GitHub access token like the following image:
 
-    > Note: for advanced users. The github access token is only needed for the ./run arena enter command so the system can automatically create a PR
+    > Note: for advanced users. The GitHub access token is only needed for the ./run arena enter command so the system can automatically create a PR
 
     
     ![Setup the Project](docs/content/imgs/quickstart/005_setup.png)
@@ -118,7 +118,7 @@ This start the agent on `http://localhost:8000/`
 
 ![Start the Agent](docs/content/imgs/quickstart/009_start_agent.png)
 
-The frontend can be accessed from `http://localhost:8000/`, you will first need to login using either a google account or your github account.
+The frontend can be accessed from `http://localhost:8000/`, you will first need to login using either a google account or your GitHub account.
 
 ![Login](docs/content/imgs/quickstart/010_login.png)
 
