@@ -33,7 +33,7 @@ async def run_cli_demo():
     LOG.notice(
         "AFAAS Data Structure support multiple users (however since there is no UI to enforce that we will be using a user with ID : a1621e69-970a-4340-86e7-778d82e2137b"
     )
-    user_id: str = "A" + str(uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b"))
+    user_id: str = "U" + str(uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b"))
     from AFAAS.core.workspace.local import (
         AGPTLocalFileWorkspace,
         AGPTLocalFileWorkspaceConfiguration,

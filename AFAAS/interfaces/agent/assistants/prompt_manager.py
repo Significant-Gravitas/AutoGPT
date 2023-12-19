@@ -51,7 +51,8 @@ class BasePromptManager(AgentMixin):
             self._prompt_strategies[strategy.STRATEGY_NAME] = strategy
 
     def set_agent(self, agent: "BaseAgent"):
-        super().set_agent(agent)
+        if not hasattr(self, "_agent") or self._agent is None:
+            super().set_agent(agent)
         self.load_strategies()
 
     def load_strategies(self) -> list[AbstractPromptStrategy]:
@@ -67,22 +68,20 @@ class BasePromptManager(AgentMixin):
 
         module = self._agent.__class__.__module__.rsplit('.', 1)[0]
         strategies : list[AbstractPromptStrategy] = []
-        try:
-            # Dynamically import the strategies from the module
-            strategies_module = importlib.import_module(f"{module}.strategies")
-            # Check if StrategiesSet and get_strategies exist
-            if hasattr(strategies_module, 'StrategiesSet') and callable(getattr(strategies_module.StrategiesSet, 'get_strategies', None)):
-                strategies = strategies_module.StrategiesSet.get_strategies()
-            else:
-                LOG.notice(f"{module}.strategies.StrategiesSet or get_strategies method not found")
-                raise ImportError("StrategiesSet or get_strategies method not found in the module")
+        # try:
+        #     # Dynamically import the strategies from the module
+        #     strategies_module = importlib.import_module(f"{module}.strategies")
+        #     # Check if StrategiesSet and get_strategies exist
+        #     if hasattr(strategies_module, 'StrategiesSet') and callable(getattr(strategies_module.StrategiesSet, 'get_strategies', None)):
+        #         strategies = strategies_module.StrategiesSet.get_strategies()
+        #     else:
+        #         LOG.notice(f"{module}.strategies.StrategiesSet or get_strategies method not found")
+        #         raise ImportError("StrategiesSet or get_strategies method not found in the module")
 
-        except ImportError as e:
-            LOG.notice(f"Failed to import {module}.strategies: {e}")
-
+        # except ImportError as e:
+        #     LOG.notice(f"Failed to import {module}.strategies: {e}")
 
         strategies += load_all_strategies()
-        
         
         self.add_strategies(strategies = strategies + common_strategies)
 

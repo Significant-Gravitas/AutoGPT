@@ -1,5 +1,6 @@
 from __future__ import annotations
-
+from langchain_core.vectorstores import VectorStore
+from langchain_core.embeddings import Embeddings
 import datetime
 import importlib
 import os
@@ -106,6 +107,8 @@ class BaseAgent(Configurable, AbstractAgent):
         workspace: AbstractFileWorkspace,
         prompt_manager: BasePromptManager,
         default_llm_provider: AbstractLanguageModelProvider,
+        vectorstores: VectorStore,
+        embeddings : Embeddings,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
     ) -> Any:
@@ -118,8 +121,6 @@ class BaseAgent(Configurable, AbstractAgent):
         self.agent_id = agent_id
         self.user_id = user_id
         self.agent_name = settings.agent_name
-        self.agent_goals = settings.agent_goals
-        self.agent_goal_sentence = settings.agent_goal_sentence
 
         #
         # Step 1 : Set the chat model provider
@@ -299,10 +300,11 @@ class BaseAgent(Configurable, AbstractAgent):
             agent_settings = cls.SystemSettings.parse_obj(agent_settings)
             LOG.warning("Warning : agent_settings is not an instance of SystemSettings")
 
-        from importlib import import_module
-        module_path, class_name = agent_settings._module_.rsplit(".", 1)
-        module = import_module(module_path)
-        agent_class: BaseAgent = getattr(module, class_name)
+        # from importlib import import_module
+        # module_path, class_name = agent_settings._module_.rsplit(".", 1)
+        # module = import_module(module_path)
+        # agent_class: BaseAgent = getattr(module, class_name)
+        # agent_class: BaseAgent = cls
 
         settings_dict = agent_settings.__dict__
         items = settings_dict.items()
@@ -310,7 +312,7 @@ class BaseAgent(Configurable, AbstractAgent):
         system_dict: dict[Configurable] = {}
         system_dict["settings"] = agent_settings
         system_dict["user_id"] = agent_settings.user_id
-        system_dict["agent_id"] = agent_settings.user_id
+        system_dict["agent_id"] = agent_settings.agent_id
         #system_dict["strategies"] = cls.get_strategies()
         system_dict["memory"] = AbstractMemory.get_adapter(
             memory_settings = AbstractMemory.SystemSettings()
@@ -326,7 +328,7 @@ class BaseAgent(Configurable, AbstractAgent):
                     existing_systems=system_dict,
                 )
 
-        agent = agent_class(**system_dict , 
+        agent = cls(**system_dict , 
                             workspace=workspace, 
                             default_llm_provider=default_llm_provider,
                             )

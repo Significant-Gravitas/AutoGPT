@@ -101,13 +101,6 @@ class BaseNoSQLTable(AbstractTable):
             if key is not None:
                 parent_dict[key] = serialized_value
 
-            # if (key) :
-            #     print( "key = " , key )
-            # if parent_dict :
-            #     print( "parent_dict = " ,parent_dict )
-            # if curr_obj :
-            #     print( "curr_obj = " , curr_obj  )
-
         return parent_dict
 
     def add(self, value: dict, id: str = str(uuid.uuid4())) -> uuid.UUID:

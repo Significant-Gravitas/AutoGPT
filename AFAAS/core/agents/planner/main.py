@@ -4,6 +4,10 @@ import uuid
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
 from pydantic import Field
+from langchain_core.vectorstores import VectorStore
+from langchain_core.embeddings import Embeddings
+from langchain_community.vectorstores.chroma import Chroma
+from langchain_community.embeddings.openai import OpenAIEmbeddings
 
 from AFAAS.lib.task.plan import Plan
 from AFAAS.interfaces.db import AbstractMemory
@@ -62,6 +66,11 @@ class PlannerAgent(BaseAgent):
         default_llm_provider: AbstractLanguageModelProvider = AFAASChatOpenAI(),
         workspace: AbstractFileWorkspace = AGPTLocalFileWorkspace(),
         prompt_manager: BasePromptManager = BasePromptManager(),
+        loop : PlannerLoop = PlannerLoop(),
+        tool_registry = SimpleToolRegistry,
+        tool_handler : ToolExecutor = ToolExecutor(),
+        vectorstores: VectorStore = Chroma(),
+        embeddings : Embeddings =   OpenAIEmbeddings(),
         **kwargs,
     ):
         super().__init__(
@@ -72,12 +81,17 @@ class PlannerAgent(BaseAgent):
             prompt_manager=prompt_manager,
             user_id=user_id,
             agent_id=agent_id,
+            vectorstores=vectorstores,
+            embeddings = embeddings,
         )
+
+        self.agent_goals = settings.agent_goals #TODO: Remove & make it part of the plan ?
+        self.agent_goal_sentence = settings.agent_goal_sentence
 
         #
         # Step 4 : Set the ToolRegistry
         #
-        self._tool_registry = SimpleToolRegistry.with_tool_modules(
+        self._tool_registry = tool_registry.with_tool_modules(
             modules=TOOL_CATEGORIES,
             agent=self,
             memory=memory,
@@ -89,11 +103,11 @@ class PlannerAgent(BaseAgent):
         ###
         ### Step 5 : Create the Loop
         ###
-        self._loop: PlannerLoop = PlannerLoop()
+        self._loop : PlannerLoop = loop
         self._loop.set_agent(agent=self)
 
         # Set tool Executor
-        self._tool_executor = ToolExecutor()
+        self._tool_executor : ToolExecutor = tool_handler
         self._tool_executor.set_agent(agent=self)
 
         ###

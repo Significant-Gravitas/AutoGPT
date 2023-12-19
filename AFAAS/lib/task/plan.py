@@ -460,9 +460,10 @@ class Plan(AbstractPlan):
         Get a plan from the database
         """
         from AFAAS.interfaces.db import AbstractMemory
+        from AFAAS.core.db.table.nosql.agent import AgentsTable
 
         memory: AbstractMemory = agent._memory
-        plan_table = memory.get_table("plans")
+        plan_table : AgentsTable  = memory.get_table("plans")
         plan_dict = plan_table.get(plan_id=plan_id, agent_id=agent.agent_id)
         return cls(**plan_dict, agent=agent)
 
