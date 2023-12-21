@@ -2,29 +2,27 @@ from __future__ import annotations
 
 import uuid
 from typing import Awaitable, Callable
+from langchain_core.vectorstores import VectorStore
+from langchain_core.embeddings import Embeddings
+from langchain_community.vectorstores.chroma import Chroma
+from langchain_community.embeddings.openai import OpenAIEmbeddings
 
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.adapters.openai import AFAASChatOpenAI
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
+from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
+from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
 
 from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, BasePromptManager
 from .loop import UserContextLoop
-from .models import UserContextAgentConfiguration, UserContextAgentSystems
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
 
 
 class UserContextAgent(BaseAgent):
-    ################################################################################
-    ##################### REFERENCE SETTINGS FOR FACTORY ###########################
-    ################################################################################
-
-    CLASS_CONFIGURATION = UserContextAgentConfiguration
-    CLASS_SYSTEMS = UserContextAgentSystems
 
     class SystemSettings(BaseAgent.SystemSettings):
-        configuration: UserContextAgentConfiguration = UserContextAgentConfiguration()
         name = "usercontext_agent"
         description = "An agent that improve the quality of input provided by users."
 
@@ -34,12 +32,15 @@ class UserContextAgent(BaseAgent):
     def __init__(
         self,
         settings: UserContextAgent.SystemSettings,
-        memory: AbstractMemory,
-        chat_model_provider: AFAASChatOpenAI,
-        prompt_manager: BasePromptManager,
         user_id: uuid.UUID,
-        workspace: AbstractFileWorkspace,  # = AGPTLocalFileWorkspace.SystemSettings(),
-        agent_id: uuid.UUID = None,
+        agent_id: uuid.UUID = SystemSettings.generate_uuid(),
+        memory :  AbstractMemory = AbstractMemory.get_adapter(),
+        default_llm_provider: AbstractLanguageModelProvider = AFAASChatOpenAI(),
+        workspace: AbstractFileWorkspace = AGPTLocalFileWorkspace(),
+        prompt_manager: BasePromptManager = BasePromptManager(),
+        loop : UserContextLoop = UserContextLoop(),
+        vectorstores: VectorStore = Chroma(),
+        embeddings : Embeddings =   OpenAIEmbeddings(),
         **kwargs,
     ):
         super().__init__(
@@ -51,18 +52,7 @@ class UserContextAgent(BaseAgent):
             agent_id=agent_id,
         )
 
-        #
-        # Step 1 : Set the chat model provider
-        #
-        self.default_llm_provider = chat_model_provider
-
-
-
-        #
-        # Step 3 : Set the chat model provider
-        #
-        # self._prompt_manager = prompt_manager
-        # self._prompt_manager.set_agent(agent=self)
+        self.default_llm_provider = default_llm_provider
 
         self._loop: UserContextLoop = UserContextLoop()
         self._loop.set_agent(agent=self)

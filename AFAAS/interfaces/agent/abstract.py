@@ -9,14 +9,13 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Optional
 import yaml
 from pydantic import Field, root_validator
 
+from AFAAS.lib.message_common import AFAASMessage, AFAASMessageStack
 from AFAAS.lib.message_agent_agent import MessageAgentAgent
 from AFAAS.lib.message_agent_llm import MessageAgentLLM
 from AFAAS.lib.message_agent_user import MessageAgentUser
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.interfaces.agent.loop import \
     BaseLoop  # Import only where it's needed
-from AFAAS.interfaces.agent.models import \
-    BaseAgentConfiguration
 from AFAAS.configs import SystemSettings
 
 LOG = AFAASLogger(name=__name__)
@@ -26,15 +25,13 @@ if TYPE_CHECKING:
 
 
 class AbstractAgent(ABC):
+    
+    # _loophooks: Dict[str, BaseLoop.LoophooksDict] = {}
+    _agent_type_: ClassVar[str] = __name__
+    _agent_module_: ClassVar[str] = __module__ + "." + __name__
     class SystemSettings(SystemSettings):
-        configuration: BaseAgentConfiguration = BaseAgentConfiguration()
-
         user_id: str
-        agent_id: str = Field(default_factory=lambda: "A" + str(uuid.uuid4()))
-
-        # TODO: #22 https://github.com/ph-ausseil/afaas/issues/22
         modified_at: datetime.datetime = datetime.datetime.now()
-        # TODO: #21 https://github.com/ph-ausseil/afaas/issues/21
         created_at: datetime.datetime = datetime.datetime.now()
 
         @staticmethod
@@ -70,14 +67,31 @@ class AbstractAgent(ABC):
         message_agent_user: list[MessageAgentUser] = []
         message_agent_agent: list[MessageAgentAgent] = []
         message_agent_llm: list[MessageAgentLLM] = []
+        
+        _message_agent_user: Optional[AFAASMessageStack] = Field(default=[])
+        @property
+        def message_agent_user(self) -> AFAASMessageStack:
+            if self._message_agent_user is None:
+                self._message_agent_user = AFAASMessageStack(
+                    parent_task=self, description="message_agent_user"
+                )
+            return self._message_agent_user
+            
 
-        @root_validator(pre=True)
-        def set_default_messages(cls, values):
-            agent_id = values.get("agent_id", "A" + str(uuid.uuid4()))
-            values["message_agent_user"] = cls._get_message_agent_user(agent_id)
-            values["message_agent_agent"] = cls._get_message_agent_agent(agent_id)
-            values["message_agent_llm"] = cls._get_message_agent_llm(agent_id)
-            return values
+        def __init__(self, **data):
+            super().__init__(**data)
+            for field_name, field_type in self.__annotations__.items():
+                # Check if field_type is a class before calling issubclass
+                if isinstance(field_type, type) and field_name in data and issubclass(field_type, AFAASMessageStack):
+                    setattr(self, field_name, AFAASMessageStack(_stack=data[field_name]))
+
+        # @root_validator(pre=True)
+        # def set_default_messages(cls, values):
+        #     agent_id = values.get("agent_id", "A" + str(uuid.uuid4()))
+        #     values["message_agent_user"] = cls._get_message_agent_user(agent_id)
+        #     values["message_agent_agent"] = cls._get_message_agent_agent(agent_id)
+        #     values["message_agent_llm"] = cls._get_message_agent_llm(agent_id)
+        #     return values
 
         @property
         def _type_(self):
@@ -104,8 +118,6 @@ class AbstractAgent(ABC):
         def settings_agent_module_(cls):
             return cls.__module__ + "." + ".".join(cls.__qualname__.split(".")[:-1])
 
-    _agent_type_: ClassVar[str] = __name__
-    _agent_module_: ClassVar[str] = __module__ + "." + __name__
 
     @abstractmethod
     def __init__(self, *args, **kwargs):
@@ -148,8 +160,6 @@ class AbstractAgent(ABC):
         """
         ...
 
-    _loop: BaseLoop = None
-    # _loophooks: Dict[str, BaseLoop.LoophooksDict] = {}
 
 
 AbstractAgent.SystemSettings.update_forward_refs()

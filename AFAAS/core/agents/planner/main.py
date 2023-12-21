@@ -18,8 +18,6 @@ from AFAAS.core.tools import TOOL_CATEGORIES, SimpleToolRegistry
 
 from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, BasePromptManager, ToolExecutor
 from .loop import PlannerLoop
-from .models import PlannerAgentConfiguration  # PlannerAgentSystemSettings,
-from .models import PlannerAgentSystems
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -29,17 +27,10 @@ if TYPE_CHECKING:
 
 
 class PlannerAgent(BaseAgent):
-    ################################################################################
-    ##################### REFERENCE SETTINGS FOR FACTORY ###########################
-    ################################################################################
-
-    CLASS_CONFIGURATION = PlannerAgentConfiguration
-    CLASS_SYSTEMS = PlannerAgentSystems  # PlannerAgentSystems() = cls.SystemSettings().configuration.systems
 
     class SystemSettings(BaseAgent.SystemSettings):
         name: str = "simple_agent"
         description: str = "A simple agent."
-        configuration: PlannerAgentConfiguration = PlannerAgentConfiguration()
 
         tool_registry: SimpleToolRegistry.SystemSettings = (
             SimpleToolRegistry.SystemSettings()
@@ -126,6 +117,14 @@ class PlannerAgent(BaseAgent):
             # self._loop.add_initial_tasks()
             self._loop.set_current_task(task=self.plan.get_ready_tasks()[0])
             self.plan_id = self.plan.plan_id
+            #TODO: Save the message user => agent in db !
+            from AFAAS.lib.message_agent_user import emiter
+            self.message_agent_user.add(
+                emitter =  emiter.USER.value,
+                user_id = self.user_id,
+                agent_id = self.agent_id,
+                message = self.agent_goal_sentence,
+            )
 
         ###
         ### Step 6 : add hooks/pluggins to the loop

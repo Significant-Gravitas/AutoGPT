@@ -20,11 +20,14 @@ class AgentMixin:
     _agent: BaseAgent
 
     def __init__(self, **kwargs):
+        self._agent = None
         pass
 
     def set_agent(self, agent: BaseAgent):
         if hasattr(self, "_agent") and self._agent is not None:
-            raise Exception("Agent already set")
+            LOG.warning(f"Agent already set")
+        else :
+            LOG.info(f"Setting agent {agent.agent_id} for {self.__class__.__name__}")
 
         self._agent = agent
 

@@ -56,6 +56,7 @@ class BaseLoop(AgentMixin, abc.ABC, metaclass=BaseLoopMeta):
 
     @abc.abstractmethod
     def __init__(self):
+        super().__init__()
         # Step 1 : Setting loop variables
         self._is_running: bool = False
         self._loophooks = self.LoophooksDict()

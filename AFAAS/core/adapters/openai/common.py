@@ -7,12 +7,9 @@ from typing import Any, Callable, Dict, ParamSpec, Tuple, TypeVar, ClassVar
 
 from AFAAS.lib.sdk.logger import AFAASLogger
 
-from openai import AsyncOpenAI, completions, APIError, RateLimitError
-from openai.resources import AsyncCompletions, AsyncEmbeddings
-from typing import Any, Callable, Dict, ParamSpec, Tuple, TypeVar, ClassVar
-import tiktoken
+from openai import AsyncOpenAI, APIError, RateLimitError
 
-from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
+from AFAAS.configs import UserConfigurable
 from AFAAS.interfaces.adapters.chatmodel import (
     AbstractChatMessage,
     AssistantChatMessageDict,

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 RefineUserContextStrategy Module
 
@@ -30,6 +31,7 @@ from typing import Optional
 from AFAAS.lib.message_agent_user import Questions
 from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy,
+    AbstractPromptConfiguration,
     PromptStrategiesConfiguration,
 )
 
@@ -541,3 +543,9 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         self, language_model_provider: AbstractLanguageModelProvider, model_name: str
     ) -> str:
         pass
+  
+    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+        return super().get_llm_provider()
+    
+    def get_prompt_config(self) -> AbstractPromptConfiguration:
+        return super().get_prompt_config()

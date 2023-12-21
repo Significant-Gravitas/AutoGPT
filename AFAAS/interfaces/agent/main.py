@@ -12,8 +12,6 @@ import yaml
 from pydantic import Field, root_validator
 
 from AFAAS.interfaces.agent import BasePromptManager
-from AFAAS.interfaces.agent.models import (
-    BaseAgentConfiguration, BaseAgentSystems)
 from AFAAS.interfaces.agent.loop import (  # Import only where it's needed
     BaseLoop, BaseLoopHook)
 from AFAAS.configs import (Configurable,
@@ -31,14 +29,10 @@ if TYPE_CHECKING:
 
 
 class BaseAgent(Configurable, AbstractAgent):
-    CLASS_CONFIGURATION = BaseAgentConfiguration
-    CLASS_SYSTEMS = BaseAgentSystems
 
     class SystemSettings(AbstractAgent.SystemSettings):
-        configuration: BaseAgentConfiguration = BaseAgentConfiguration()
 
         user_id: str
-        #agent_id: str = Field(default_factory=lambda: "A" + str(uuid.uuid4()))
         agent_id: str = Field(default_factory=lambda: BaseAgent.SystemSettings.generate_uuid())
 
         @staticmethod
@@ -47,8 +41,6 @@ class BaseAgent(Configurable, AbstractAgent):
 
         agent_setting_module: Optional[str]
         agent_setting_class: Optional[str]
-
-        #memory: AbstractMemory.SystemSettings = AbstractMemory.SystemSettings()
 
         class Config(SystemSettings.Config):
             pass
@@ -114,7 +106,6 @@ class BaseAgent(Configurable, AbstractAgent):
     ) -> Any:
         LOG.trace(f"{self.__class__.__name__}.__init__() : Entering")
         self._settings = settings
-        self._configuration = settings.configuration
         self._memory = memory
         self._workspace = workspace
 

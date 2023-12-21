@@ -3,7 +3,7 @@ from __future__ import annotations
 import platform
 import time
 import importlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import validator
 
@@ -68,22 +68,10 @@ class BasePromptManager(AgentMixin):
 
         module = self._agent.__class__.__module__.rsplit('.', 1)[0]
         strategies : list[AbstractPromptStrategy] = []
-        # try:
-        #     # Dynamically import the strategies from the module
-        #     strategies_module = importlib.import_module(f"{module}.strategies")
-        #     # Check if StrategiesSet and get_strategies exist
-        #     if hasattr(strategies_module, 'StrategiesSet') and callable(getattr(strategies_module.StrategiesSet, 'get_strategies', None)):
-        #         strategies = strategies_module.StrategiesSet.get_strategies()
-        #     else:
-        #         LOG.notice(f"{module}.strategies.StrategiesSet or get_strategies method not found")
-        #         raise ImportError("StrategiesSet or get_strategies method not found in the module")
-
-        # except ImportError as e:
-        #     LOG.notice(f"Failed to import {module}.strategies: {e}")
-
         strategies += load_all_strategies()
         
         self.add_strategies(strategies = strategies + common_strategies)
+        return self._prompt_strategies
 
     async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse:
         """
@@ -171,3 +159,6 @@ class BasePromptManager(AgentMixin):
         else :
             import distro
             return distro.name(pretty=True)
+        
+    def __repr__(self) -> str | tuple[Any, ...]:
+        return f"{__class__.__name__}():\nAgent:{self._agent.agent_id}\nStrategies:{self._prompt_strategies}"
