@@ -5,6 +5,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from AFAAS.configs.schema import AFAASMessageType, AFAASModel
+from AFAAS.lib.message_common import AFAASMessage
 
 
 class QuestionTypes(str, enum.Enum):
@@ -53,11 +54,14 @@ class emiter(enum.Enum):
     AGENT = "AGENT"
 
 
-class MessageAgentUser(AFAASModel):
+class MessageAgentUser(AFAASMessage):
     message_id: str = "MUA" + str(uuid.uuid4())
     message_type: str = AFAASMessageType.AGENT_USER.value
     emitter: emiter
     user_id: str
     agent_id: str  # Always PlannerAgent not ProxyAgent
     message: str
-    question: Questions
+    question: Questions = None
+
+    _table_name = "message_agent_user"
+
