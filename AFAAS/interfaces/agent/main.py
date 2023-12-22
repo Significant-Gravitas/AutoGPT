@@ -357,12 +357,6 @@ class BaseAgent(Configurable, AbstractAgent):
             agent_settings = cls.SystemSettings.parse_obj(agent_settings)
             LOG.warning("Warning : agent_settings is not an instance of SystemSettings")
 
-        # from importlib import import_module
-        # module_path, class_name = agent_settings._module_.rsplit(".", 1)
-        # module = import_module(module_path)
-        # agent_class: BaseAgent = getattr(module, class_name)
-        # agent_class: BaseAgent = cls
-
         settings_dict = agent_settings.__dict__
         items = settings_dict.items()
 
@@ -370,20 +364,6 @@ class BaseAgent(Configurable, AbstractAgent):
         system_dict["settings"] = agent_settings
         system_dict["user_id"] = agent_settings.user_id
         system_dict["agent_id"] = agent_settings.agent_id
-        #system_dict["strategies"] = cls.get_strategies()
-        # system_dict["memory"] = AbstractMemory.get_adapter(
-        #     memory_settings = AbstractMemory.SystemSettings()
-        # )
-
-        # for system, setting in items:
-        #     if system not in ("memory", "tool_registry", 'prompt_manager') and isinstance(
-        #         setting, SystemSettings
-        #     ):
-        #         system_dict[system] = cls._get_system_instance(
-        #             new_system_name=system,
-        #             agent_settings=agent_settings,
-        #             existing_systems=system_dict,
-        #         )
 
         agent = cls(**system_dict , 
                             workspace=workspace, 
@@ -395,32 +375,6 @@ class BaseAgent(Configurable, AbstractAgent):
 
         return agent
 
-    # @classmethod
-    # def _get_system_instance(
-    #     cls,
-    #     new_system_name: str,
-    #     agent_settings: BaseAgent.SystemSettings,
-    #     existing_systems: list,
-    #     *args,
-    #     **kwargs,
-    # ):
-    #     system_settings: SystemSettings = getattr(agent_settings, new_system_name)
-    #     system_class: Configurable = cls.CLASS_SYSTEMS.load_from_import_path(
-    #         getattr(cls.CLASS_SYSTEMS(), new_system_name)
-    #     )
-
-    #     if not system_class:
-    #         raise ValueError(
-    #             f"No system class found for {new_system_name} in CLASS_SETTINGS"
-    #         )
-        
-    #     system_instance = system_class(
-    #         system_settings,
-    #         *args,
-    #         agent_systems=existing_systems,
-    #         **kwargs,
-    #     )
-    #     return system_instance
     
     async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse :
         LOG.trace(f"Entering : {self.__class__}.execute_strategy({strategy_name})")
@@ -558,14 +512,7 @@ class BaseAgent(Configurable, AbstractAgent):
 
         agent_list: list[dict] = agent_table.list(filter=filter)
         return agent_list
-        agent_settings_list: list[cls.SystemSettings] = []
 
-        # TODO : Move to Table
-        for agent in agent_list:
-            agent["workspace"] = workspace
-            agent_settings_list.append(cls.SystemSettings(**agent))
-
-        return agent_settings_list
 
     @classmethod
     def get_agent_from_memory(
@@ -595,30 +542,3 @@ class BaseAgent(Configurable, AbstractAgent):
             agent_settings=agent_settings.copy(update=agent_dict_from_db),
         )
         return agent
-
-# def _prune_empty_dicts(d: dict) -> dict:
-#     """
-#     Prune branches from a nested dictionary if the branch only contains empty dictionaries at the leaves.
-
-#     Args:
-#         d (dict): The dictionary to prune.
-
-#     Returns:
-#         dict: The pruned dictionary.
-
-#     Example:
-#         input_dict = {"a": {}, "b": {"c": {}, "d": "value"}}
-#         pruned_dict = _prune_empty_dicts(input_dict)
-#         print(pruned_dict)  # Expected: {"b": {"d": "value"}}
-#     """
-#     pruned = {}
-#     for key, value in d.items():
-#         if isinstance(value, dict):
-#             pruned_value = _prune_empty_dicts(value)
-#             if (
-#                 pruned_value
-#             ):  # if the pruned dictionary is not empty, add it to the result
-#                 pruned[key] = pruned_value
-#         else:
-#             pruned[key] = value
-#     return pruned
