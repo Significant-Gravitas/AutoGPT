@@ -50,7 +50,7 @@ async def afaas_routing(
         new_routing_agent: RoutingAgent = RoutingAgent.create_agent(
             agent_settings=routing_settings,
             workspace=agent._workspace,
-            default_llm_provider=agent.default_llm_provider,
+            default_llm_provider=agent._default_llm_provider,
         )
 
         # # USER CONTEXT AGENT : Get RoutingAgent from DB (for POW / POC)
@@ -59,7 +59,7 @@ async def afaas_routing(
         routing_agent: RoutingAgent = RoutingAgent.get_instance_from_settings(
             agent_settings=routing_settings,
             workspace=agent._workspace,
-            default_llm_provider=agent.default_llm_provider,
+            default_llm_provider=agent._default_llm_provider,
         )
 
         routing_return: dict = await routing_agent.run(

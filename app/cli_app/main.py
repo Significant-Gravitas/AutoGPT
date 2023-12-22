@@ -129,7 +129,6 @@ async def run_cli_demo():
         # Step 3. Create the agent.
         agent: PlannerAgent = PlannerAgent.create_agent(
             agent_settings=agent_settings,
-            LOG=LOG,
         )
 
     await agent.run(

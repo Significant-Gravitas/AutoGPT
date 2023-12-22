@@ -355,7 +355,7 @@ class Plan(AbstractPlan):
 
         """
         LOG.debug(f"Creating plan for agent {agent.agent_id}")
-        memory = agent._memory
+        memory = agent.memory
         plan_table = memory.get_table("plans")
 
         plan = cls(

@@ -53,13 +53,13 @@ class PlannerAgent(BaseAgent):
         settings: PlannerAgent.SystemSettings,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = SystemSettings.generate_uuid(),
-        memory: AbstractMemory = AbstractMemory.get_adapter(),
-        default_llm_provider: AbstractLanguageModelProvider = AFAASChatOpenAI(),
-        workspace: AbstractFileWorkspace = AGPTLocalFileWorkspace(),
         prompt_manager: BasePromptManager = BasePromptManager(),
         loop: PlannerLoop = PlannerLoop(),
         tool_registry=SimpleToolRegistry,
         tool_handler: ToolExecutor = ToolExecutor(),
+        memory: AbstractMemory = None,
+        default_llm_provider: AbstractLanguageModelProvider = None,
+        workspace: AbstractFileWorkspace = None,
         vectorstore: VectorStore = None,  # Optional parameter for custom vectorstore
         embedding_model: Embeddings = None,  # Optional parameter for custom embedding model
         **kwargs,
@@ -118,8 +118,11 @@ class PlannerAgent(BaseAgent):
             self.plan_id = self.plan.plan_id
             
             #TODO: Save the message user => agent in db !
-            from AFAAS.lib.message_agent_user import emiter,MessageAgentUser
-            self.message_agent_user.add(
+            from AFAAS.lib.message_agent_user import emiter, MessageAgentUser
+            from AFAAS.lib.message_common import AFAASMessageStack
+
+            self.message_agent_user : AFAASMessageStack = AFAASMessageStack()
+            self.message_agent_user.add( message =
                 MessageAgentUser(
                 emitter =  emiter.AGENT.value,
                 user_id = self.user_id,
@@ -127,7 +130,7 @@ class PlannerAgent(BaseAgent):
                 message = "What would you like to do ?",
                 )
             )
-            self.message_agent_user.add(
+            self.message_agent_user.add( message =
                 MessageAgentUser(
                 emitter =  emiter.USER.value,
                 user_id = self.user_id,
@@ -194,28 +197,6 @@ class PlannerAgent(BaseAgent):
     ################################################################################
     ################################FACTORY SPECIFIC################################
     ################################################################################
-
-    @classmethod
-    def _create_agent_custom_treatment(
-        cls,
-        agent_settings: PlannerAgent.SystemSettings,
-    ) -> None:
-        LOG.warning("Deprecated method _create_agent_custom_treatment()")
-        return cls._create_workspace(agent_settings=agent_settings)
-
-    @classmethod
-    def _create_workspace(
-        cls,
-        agent_settings: PlannerAgent.SystemSettings,
-    ):
-        LOG.warning("Deprecated method _create_workspace()")
-        from AFAAS.interfaces.workspace import AbstractFileWorkspace
-
-        return agent_settings.workspace.__class__.create_workspace(
-            user_id=agent_settings.user_id,
-            agent_id=agent_settings.agent_id,
-            settings=agent_settings,
-        )
 
     def __repr__(self):
         return "PlannerAgent()"

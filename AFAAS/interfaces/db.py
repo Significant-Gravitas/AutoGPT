@@ -233,7 +233,7 @@ class AbstractMemory(Configurable, abc.ABC):
 
             return MessagesAgentLLMTable(memory=self)
 
-        elif table_name == "message_user_agent":
+        elif table_name == "message_agent_user":
             from AFAAS.core.db.table import MessagesUserAgentTable
 
             return MessagesUserAgentTable(memory=self)

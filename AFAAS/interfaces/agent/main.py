@@ -27,6 +27,8 @@ from langchain_core.vectorstores import VectorStore
 from langchain_core.embeddings import Embeddings
 from langchain_community.vectorstores.chroma import Chroma
 from langchain_community.embeddings.openai import OpenAIEmbeddings
+from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
+from AFAAS.core.adapters.openai import AFAASChatOpenAI
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.prompts.strategy import (AbstractChatModelResponse, AbstractPromptStrategy)
@@ -56,6 +58,36 @@ class BaseAgent(Configurable, AbstractAgent):
     @embedding_model.setter
     def embedding_model(self, value : Embeddings):
         self._embedding_model = value
+
+    @property
+    def memory(self) -> AbstractMemory:
+        if self._memory is None:
+            self._memory = AbstractMemory.get_adapter()
+        return self._memory
+
+    @memory.setter
+    def memory(self, value: AbstractMemory):
+        self._memory = value
+
+    @property
+    def default_llm_provider(self) -> AbstractLanguageModelProvider:
+        if self._default_llm_provider is None:
+            self._default_llm_provider = AFAASChatOpenAI()
+        return self._default_llm_provider
+
+    @default_llm_provider.setter
+    def default_llm_provider(self, value: AbstractLanguageModelProvider):
+        self._default_llm_provider = value
+
+    @property
+    def workspace(self) -> AbstractFileWorkspace:
+        if self._workspace is None:
+            self._workspace = AGPTLocalFileWorkspace(user_id=self.user_id, agent_id=self.agent_id)
+        return self._workspace
+
+    @workspace.setter
+    def workspace(self, value: AbstractFileWorkspace):
+        self._workspace = value
 
     class SystemSettings(AbstractAgent.SystemSettings):
 
@@ -133,8 +165,6 @@ class BaseAgent(Configurable, AbstractAgent):
     ) -> Any:
         LOG.trace(f"{self.__class__.__name__}.__init__() : Entering")
         self._settings = settings
-        self._memory = memory
-        self._workspace = workspace
 
         self.agent_id = agent_id
         self.user_id = user_id
@@ -143,13 +173,16 @@ class BaseAgent(Configurable, AbstractAgent):
         #
         # Step 1 : Set the chat model provider
         #
-        self.default_llm_provider = default_llm_provider
         self.settings_agent_class_ = settings.settings_agent_class_
         self.settings_agent_module_ = settings.settings_agent_module_
 
         self._prompt_manager : BasePromptManager = prompt_manager
         self._prompt_manager.set_agent(agent=self)
 
+        self._memory : AbstractMemory = memory
+        self._workspace : AbstractFileWorkspace = workspace
+        self.workspace.initialize()
+        self._default_llm_provider : AbstractLanguageModelProvider = default_llm_provider
         self._vectorstore : VectorStore = vectorstore
         self._embedding_model : Embeddings = embedding_model
 
@@ -299,8 +332,11 @@ class BaseAgent(Configurable, AbstractAgent):
     def get_instance_from_settings(
         cls,
         agent_settings: BaseAgent.SystemSettings,
-        workspace: AbstractFileWorkspace,
-        default_llm_provider: AbstractLanguageModelProvider,
+        memory: AbstractMemory = None,
+        default_llm_provider: AbstractLanguageModelProvider = None,
+        workspace: AbstractFileWorkspace = None,
+        vectorstore: VectorStore = None,  # Optional parameter for custom vectorstore
+        embedding_model: Embeddings = None,  
     ) -> BaseAgent:
         """
         Retrieve an agent instance based on the provided settings and LOG.
@@ -335,55 +371,56 @@ class BaseAgent(Configurable, AbstractAgent):
         system_dict["user_id"] = agent_settings.user_id
         system_dict["agent_id"] = agent_settings.agent_id
         #system_dict["strategies"] = cls.get_strategies()
-        system_dict["memory"] = AbstractMemory.get_adapter(
-            memory_settings = AbstractMemory.SystemSettings()
-        )
+        # system_dict["memory"] = AbstractMemory.get_adapter(
+        #     memory_settings = AbstractMemory.SystemSettings()
+        # )
 
-        for system, setting in items:
-            if system not in ("memory", "tool_registry", 'prompt_manager') and isinstance(
-                setting, SystemSettings
-            ):
-                system_dict[system] = cls._get_system_instance(
-                    new_system_name=system,
-                    agent_settings=agent_settings,
-                    existing_systems=system_dict,
-                )
+        # for system, setting in items:
+        #     if system not in ("memory", "tool_registry", 'prompt_manager') and isinstance(
+        #         setting, SystemSettings
+        #     ):
+        #         system_dict[system] = cls._get_system_instance(
+        #             new_system_name=system,
+        #             agent_settings=agent_settings,
+        #             existing_systems=system_dict,
+        #         )
 
         agent = cls(**system_dict , 
                             workspace=workspace, 
                             default_llm_provider=default_llm_provider,
+                            vectorstore=vectorstore,
+                            embedding_model=embedding_model,
+                            memory=memory,
                             )
-
-
 
         return agent
 
-    @classmethod
-    def _get_system_instance(
-        cls,
-        new_system_name: str,
-        agent_settings: BaseAgent.SystemSettings,
-        existing_systems: list,
-        *args,
-        **kwargs,
-    ):
-        system_settings: SystemSettings = getattr(agent_settings, new_system_name)
-        system_class: Configurable = cls.CLASS_SYSTEMS.load_from_import_path(
-            getattr(cls.CLASS_SYSTEMS(), new_system_name)
-        )
+    # @classmethod
+    # def _get_system_instance(
+    #     cls,
+    #     new_system_name: str,
+    #     agent_settings: BaseAgent.SystemSettings,
+    #     existing_systems: list,
+    #     *args,
+    #     **kwargs,
+    # ):
+    #     system_settings: SystemSettings = getattr(agent_settings, new_system_name)
+    #     system_class: Configurable = cls.CLASS_SYSTEMS.load_from_import_path(
+    #         getattr(cls.CLASS_SYSTEMS(), new_system_name)
+    #     )
 
-        if not system_class:
-            raise ValueError(
-                f"No system class found for {new_system_name} in CLASS_SETTINGS"
-            )
+    #     if not system_class:
+    #         raise ValueError(
+    #             f"No system class found for {new_system_name} in CLASS_SETTINGS"
+    #         )
         
-        system_instance = system_class(
-            system_settings,
-            *args,
-            agent_systems=existing_systems,
-            **kwargs,
-        )
-        return system_instance
+    #     system_instance = system_class(
+    #         system_settings,
+    #         *args,
+    #         agent_systems=existing_systems,
+    #         **kwargs,
+    #     )
+    #     return system_instance
     
     async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse :
         LOG.trace(f"Entering : {self.__class__}.execute_strategy({strategy_name})")
@@ -398,8 +435,11 @@ class BaseAgent(Configurable, AbstractAgent):
     def create_agent(
         cls,
         agent_settings: BaseAgent.SystemSettings,
-        workspace: AbstractFileWorkspace,
-        default_llm_provider: AbstractLanguageModelProvider,
+        memory: AbstractMemory = None,
+        default_llm_provider: AbstractLanguageModelProvider = None,
+        workspace: AbstractFileWorkspace = None,
+        vectorstore: VectorStore = None,  # Optional parameter for custom vectorstore
+        embedding_model: Embeddings = None,  # Optional parameter for custom embedding model
     ) -> AbstractAgent:
         """
         Create and return a new agent based on the provided settings and LOG.
@@ -422,52 +462,37 @@ class BaseAgent(Configurable, AbstractAgent):
         if not isinstance(agent_settings, cls.SystemSettings):
             agent_settings = cls.SystemSettings.parse_obj(agent_settings)
 
-        agent_id = cls._create_in_db(agent_settings=agent_settings)
+        agent = cls.get_instance_from_settings(
+            agent_settings=agent_settings,
+            memory = memory ,
+            default_llm_provider = default_llm_provider,
+            workspace = workspace,
+            vectorstore = vectorstore,
+            embedding_model = embedding_model, 
+        )
+
+        agent_id = agent._create_in_db(agent_settings=agent_settings)
         LOG.info(
             f"{cls.__name__} id #{agent_id} created in memory. Now, finalizing creation..."
         )
         # Adding agent_id to the settingsagent_id
         agent_settings.agent_id = agent_id
 
-        # Processing to custom treatments
-        cls._create_agent_custom_treatment(agent_settings=agent_settings)
-
-        LOG.info(f"Loaded Agent ({cls.__name__}) with ID {agent_id}")
-
-        agent = cls.get_instance_from_settings(
-            agent_settings=agent_settings,
-            workspace=workspace,
-            default_llm_provider=default_llm_provider,
-        )
+        LOG.info(f"Loaded Agent ({agent.__class__.__name__}) with ID {agent_id}")
 
         return agent
-
-    @classmethod
-    @abstractmethod
-    def _create_agent_custom_treatment(
-        cls, agent_settings: BaseAgent.SystemSettings
-    ) -> None:
-        pass
 
     ################################################################################
     ################################ DB INTERACTIONS ################################
     ################################################################################
 
-    @classmethod
     def _create_in_db(
-        cls,
+        self,
         agent_settings: BaseAgent.SystemSettings,
     ) -> uuid.UUID:
         # TODO : Remove the user_id argument
 
-        from AFAAS.interfaces.db import AbstractMemory
-
-        memory_settings = agent_settings.memory
-
-        memory = AbstractMemory.get_adapter(
-            memory_settings=memory_settings
-        )
-        agent_table = memory.get_table("agents")
+        agent_table = self.memory.get_table("agents")
         agent_id = agent_table.add(agent_settings, id=agent_settings.agent_id)
         return agent_id
 

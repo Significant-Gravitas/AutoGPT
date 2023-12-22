@@ -34,25 +34,26 @@ class UserContextAgent(BaseAgent):
         settings: UserContextAgent.SystemSettings,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = SystemSettings.generate_uuid(),
-        memory :  AbstractMemory = AbstractMemory.get_adapter(),
-        default_llm_provider: AbstractLanguageModelProvider = AFAASChatOpenAI(),
-        workspace: AbstractFileWorkspace = AGPTLocalFileWorkspace(),
-        prompt_manager: BasePromptManager = BasePromptManager(),
         loop : UserContextLoop = UserContextLoop(),
-        vectorstores: VectorStore = Chroma(),
-        embeddings : Embeddings =   OpenAIEmbeddings(),
+        prompt_manager: BasePromptManager = BasePromptManager(),
+        memory :  AbstractMemory = None,
+        default_llm_provider: AbstractLanguageModelProvider = None,
+        workspace: AbstractFileWorkspace = None,
+        vectorstores: VectorStore = None,
+        embeddings : Embeddings =   None,
         **kwargs,
     ):
         super().__init__(
             settings=settings,
             memory=memory,
             workspace=workspace,
+            default_llm_provider=default_llm_provider,
             prompt_manager=prompt_manager,
             user_id=user_id,
             agent_id=agent_id,
+            vectorstore = vectorstores,
+            embedding_model = embeddings,
         )
-
-        self.default_llm_provider = default_llm_provider
 
         self._loop: UserContextLoop = UserContextLoop()
         self._loop.set_agent(agent=self)
@@ -98,13 +99,6 @@ class UserContextAgent(BaseAgent):
     ################################################################################
     ################################FACTORY SPECIFIC################################
     ################################################################################
-
-    @classmethod
-    def _create_agent_custom_treatment(
-        cls,
-        agent_settings: UserContextAgent.SystemSettings,
-    ) -> None:
-        pass
 
     def __repr__(self):
         return "UserContextAgent()"
