@@ -2,6 +2,7 @@
 boto3
 pymongo
 azure-cosmos
+langchain
 
 beautifulsoup4>=4.12.2
 colorama==0.4.6

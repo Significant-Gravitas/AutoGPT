@@ -2,18 +2,15 @@ name: AFAAS Python CI
 
 on:
   push:
-    branches: [ master, afaas-dev, ci-test* ]
     paths:
-      - '.github/workflows/autogpt-ci.yml'
-      - 'AFAAS'
-      - 'autogpts/autogpt/**'
-      - '!autogpts/autogpt/tests/vcr_cassettes'
+      - '.github/workflows/afaas-ci.yml'
+      - 'app/**'
+      - 'AFAAS/**'
   pull_request:
-    branches: [ master, development, release-* ]
     paths:
       - '.github/workflows/autogpt-ci.yml'
-      - 'autogpts/autogpt/**'
-      - '!autogpts/autogpt/tests/vcr_cassettes'
+      - 'app/**'
+      - 'AFAAS/**'
 
 concurrency:
   group: ${{ format('autogpt-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -21,7 +18,7 @@ concurrency:
 
 defaults:
   run:
-    working-directory: autogpts/autogpt
+    working-directory: .
 
 jobs:
   lint:
@@ -129,9 +126,9 @@ jobs:
       - name: Run pytest with coverage
         run: |
           poetry run pytest -vv \
-            --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
+            --cov=afaas --cov-branch --cov-report term-missing --cov-report xml \
             --numprocesses=logical --durations=10 \
-            tests/unit tests/integration
+            tests
         env:
           CI: true
           PLAIN_OUTPUT: True
