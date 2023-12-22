@@ -382,6 +382,7 @@ class Plan(AbstractPlan):
             responsible_agent_id=None,
             task_goal=self.task_goal,
             command=Task.default_command(),
+            long_description="This is the initial task of the plan, no task has been performed yet and this tasks will consist in splitting the goal into subtasks",
             arguments={"note_to_agent_length": 400},
             acceptance_criteria=["A plan has been made to achieve the specific task"],
         )
@@ -406,6 +407,7 @@ class Plan(AbstractPlan):
                     responsible_agent_id=None,
                     task_goal="Refine a user requirements for better exploitation by Agents",
                     command="afaas_refine_user_context",
+                    long_description="This tasks will consists in interacting with the user in order to get a more detailed, precise, complete and exploitable set of requirements",
                     acceptance_criteria=[
                         "The user has clearly and undoubtly stated his willingness to quit the process"
                     ],
