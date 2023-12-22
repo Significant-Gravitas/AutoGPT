@@ -497,8 +497,8 @@ class BaseAgent(Configurable, AbstractAgent):
         return agent_id
 
     def save_agent_in_memory(self) -> str:
-        LOG.trace(self._memory)
-        agent_table = self._memory.get_table("agents")
+        LOG.trace(self.memory)
+        agent_table = self.memory.get_table("agents")
         agent_id = agent_table.update(
             agent_id=self.agent_id, user_id=self.user_id, value=self
         )

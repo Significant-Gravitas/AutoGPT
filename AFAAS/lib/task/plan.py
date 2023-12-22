@@ -45,7 +45,7 @@ class Plan(AbstractPlan):
         from AFAAS.core.db.table import AbstractTable
 
         agent: AbstractAgent = kwargs["agent"]
-        memory: AbstractMemory = agent._memory
+        memory: AbstractMemory = agent.memory
         task_table: AbstractTable = memory.get_table("tasks")
 
         filter = AbstractTable.FilterDict(
@@ -448,7 +448,7 @@ class Plan(AbstractPlan):
         ###
         agent = self.agent
         if agent:
-            memory = agent._memory
+            memory = agent.memory
             plan_table = memory.get_table("plans")
             plan_table.update(
                 plan_id=self.plan_id, agent_id=self.agent.agent_id, value=self
@@ -462,7 +462,7 @@ class Plan(AbstractPlan):
         from AFAAS.interfaces.db import AbstractMemory
         from AFAAS.core.db.table.nosql.agent import AgentsTable
 
-        memory: AbstractMemory = agent._memory
+        memory: AbstractMemory = agent.memory
         plan_table : AgentsTable  = memory.get_table("plans")
         plan_dict = plan_table.get(plan_id=plan_id, agent_id=agent.agent_id)
         return cls(**plan_dict, agent=agent)

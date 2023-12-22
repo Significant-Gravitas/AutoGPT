@@ -131,7 +131,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
 
     @abc.abstractmethod
     def get_llm_provider(self) -> AbstractLanguageModelProvider:
-        return self._agent._default_llm_provider
+        return self._agent.default_llm_provider
 
     @abc.abstractmethod
     def get_prompt_config(self) -> AbstractPromptConfiguration:

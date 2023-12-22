@@ -41,9 +41,9 @@ async def afaas_refine_user_context(task: Task, agent: BaseAgent) -> None:
         )
         usercontext_settings.agent_goals = agent.agent_goals
         usercontext_settings.agent_goal_sentence = agent.agent_goal_sentence
-        usercontext_settings.memory = agent._memory._settings
+        usercontext_settings.memory = agent.memory._settings
         usercontext_settings.workspace = agent._workspace._settings
-        usercontext_settings.chat_model_provider = agent._default_llm_provider._settings
+        usercontext_settings.chat_model_provider = agent.default_llm_provider._settings
 
         # FIXME: REMOVE WHEN WE GO LIVE
         # USER CONTEXT AGENT : Save UserContextAgent Settings in DB (for POW / POC)
