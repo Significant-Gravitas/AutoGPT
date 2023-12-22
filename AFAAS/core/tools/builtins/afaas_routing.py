@@ -21,7 +21,8 @@ LOG = AFAASLogger(name=__name__)
 
 @tool(
     name="afaas_routing",
-    description="Assist user refining it's requirements thus improving LLM responses",
+    description="Divide a task into subtasks",
+    tech_description="Divide a task into subtasks",
     # parameters = ,
     hide=True,
 )

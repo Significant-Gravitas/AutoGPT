@@ -41,6 +41,7 @@ class Tool:
         disabled_reason: Optional[str] = None,
         aliases: list[str] = [],
         available: Literal[True] | Callable[[BaseAgent], bool] = True,
+        tech_description: Optional[str] = None,
         hide=False,
     ):
         self.name = name
@@ -53,6 +54,7 @@ class Tool:
         self.available = available
         self.hide = hide
         self.success_check_callback = success_check_callback
+        self.tech_description = tech_description or description
 
     @property
     def is_async(self) -> bool:
@@ -92,16 +94,18 @@ class Tool:
                                      documents = [])
 
         task.task_text_output = strategy_result.parsed_result[0]['command_args']['text_output']
-        task.task_text_output_as_uml  = strategy_result.parsed_result[0]['command_args']['text_output_as_uml']
+        task.task_text_output_as_uml  = strategy_result.parsed_result[0]['command_args'].get('text_output_as_uml', '')
 
-        task_ouput_embedding = await agent._embeddings_model.aembed_query(text = task.task_text_output)
-        vector = await agent._vectorstore.aadd_texts(
-            task_ouput_embedding, metadatas= [{'task_id' : task.task_id , 'plan_id' : task.plan_id}]
+        # task_ouput_embedding = await agent.embedding_model.aembed_query(text = task.task_text_output)
+        # vector = await agent.vectorstore.aadd_texts(
+        #     task_ouput_embedding, metadatas= [{'task_id' : task.task_id , 'plan_id' : task.plan_id}]
+        #     )
+        vector = await agent.vectorstore.aadd_texts(
+            task.task_text_output, metadatas= [{'task_id' : task.task_id , 'plan_id' : task.plan_id}]
             )
+        
+        LOG.trace(f"Task output embedding added to vector store : {repr(vector)}")
 
-
-        print(vector)
-
-        return self.description 
+        return task.task_text_output
 
         # return summary

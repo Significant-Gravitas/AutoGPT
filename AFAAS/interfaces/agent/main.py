@@ -23,12 +23,39 @@ from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvid
 from .abstract import AbstractAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name = __name__)
+from langchain_core.vectorstores import VectorStore
+from langchain_core.embeddings import Embeddings
+from langchain_community.vectorstores.chroma import Chroma
+from langchain_community.embeddings.openai import OpenAIEmbeddings
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.prompts.strategy import (AbstractChatModelResponse, AbstractPromptStrategy)
 
 
 class BaseAgent(Configurable, AbstractAgent):
+   
+    @property
+    def vectorstore(self) -> VectorStore:
+        if self._vectorstore is None:
+            self._vectorstore = Chroma(
+                persist_directory='data/chroma',
+                embedding_function=self.embedding_model
+            )
+        return self._vectorstore
+
+    @vectorstore.setter
+    def vectorstore(self, value : VectorStore):
+        self._vectorstore = value
+
+    @property
+    def embedding_model(self) -> Embeddings:
+        if self._embedding_model is None:
+            self._embedding_model = OpenAIEmbeddings()
+        return self._embedding_model
+
+    @embedding_model.setter
+    def embedding_model(self, value : Embeddings):
+        self._embedding_model = value
 
     class SystemSettings(AbstractAgent.SystemSettings):
 
@@ -120,11 +147,11 @@ class BaseAgent(Configurable, AbstractAgent):
         self.settings_agent_class_ = settings.settings_agent_class_
         self.settings_agent_module_ = settings.settings_agent_module_
 
-        self._prompt_manager = prompt_manager
+        self._prompt_manager : BasePromptManager = prompt_manager
         self._prompt_manager.set_agent(agent=self)
 
-        self._vectorstore = vectorstore
-        self._embeddings_model = embedding_model
+        self._vectorstore : VectorStore = vectorstore
+        self._embedding_model : Embeddings = embedding_model
 
         for key, value in settings.dict().items():
             if key not in self.SystemSettings.Config.default_exclude:

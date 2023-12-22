@@ -53,15 +53,15 @@ class PlannerAgent(BaseAgent):
         settings: PlannerAgent.SystemSettings,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = SystemSettings.generate_uuid(),
-        memory :  AbstractMemory = AbstractMemory.get_adapter(),
+        memory: AbstractMemory = AbstractMemory.get_adapter(),
         default_llm_provider: AbstractLanguageModelProvider = AFAASChatOpenAI(),
         workspace: AbstractFileWorkspace = AGPTLocalFileWorkspace(),
         prompt_manager: BasePromptManager = BasePromptManager(),
-        loop : PlannerLoop = PlannerLoop(),
-        tool_registry = SimpleToolRegistry,
-        tool_handler : ToolExecutor = ToolExecutor(),
-        vectorstore: VectorStore = Chroma(persist_directory='data/chroma', embedding_function=embedding_model),
-        embedding_model : Embeddings =   OpenAIEmbeddings(),
+        loop: PlannerLoop = PlannerLoop(),
+        tool_registry=SimpleToolRegistry,
+        tool_handler: ToolExecutor = ToolExecutor(),
+        vectorstore: VectorStore = None,  # Optional parameter for custom vectorstore
+        embedding_model: Embeddings = None,  # Optional parameter for custom embedding model
         **kwargs,
     ):
         super().__init__(

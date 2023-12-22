@@ -31,6 +31,7 @@ def tool(
     success_check_callback: Optional[
         Callable[..., Any]
     ] = Tool.default_success_check_callback,  # Add this line
+    tech_description: Optional[str] = None,
 ) -> Callable[[Callable[P, CO]], Callable[P, CO]]:
     """The command decorator is used to create Tool objects from ordinary functions."""
 
@@ -45,6 +46,7 @@ def tool(
         cmd = Tool(
             name=name,
             description=description,
+            tech_description=tech_description,
             exec_function=func,
             parameters=typed_parameters,
             enabled=enabled,

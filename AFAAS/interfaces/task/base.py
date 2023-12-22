@@ -410,6 +410,9 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
     def create_in_db(self, agent: BaseAgent):
         ...
 
+    def __str__(self):
+        return f"{self.task_goal} (id : {self.task_id})"
+
     def debug_formated_str(self, status=False) -> str:
         status = f"({self.state})" if status else ""
         return f"`{LOG.italic(self.task_goal)}` ({LOG.bold(self.task_id)})" + status
