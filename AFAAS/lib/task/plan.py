@@ -186,7 +186,7 @@ class Plan(AbstractPlan):
             f"We are browsing the tree from leaf to root. This use case is not yet supported. This functionality is in alpha version."
         )
 
-        if task.parent_task_id is None:
+        if task._task_parent_id is None:
             if not isinstance(task, Plan):
                 LOG.error(f"Task {task.formated_str()} is not a plan and has no parent")
             return None
