@@ -5,7 +5,6 @@ stores the files in a Google Cloud Storage bucket.
 from __future__ import annotations
 
 import inspect
-
 from io import IOBase
 from pathlib import Path
 
@@ -13,7 +12,6 @@ from google.cloud import storage
 from google.cloud.exceptions import NotFound
 
 from AFAAS.configs.schema import UserConfigurable
-
 from AFAAS.interfaces.workspace import (
     AbstractFileWorkspace,
     AbstractFileWorkspaceConfiguration,

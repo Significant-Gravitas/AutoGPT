@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """
 RefineUserContextStrategy Module
 
@@ -25,17 +26,8 @@ To initialize and use the `RefineUserContextStrategy`:
 """
 import enum
 import uuid
-
 from typing import Optional
 
-from AFAAS.lib.message_agent_user import Questions
-from AFAAS.interfaces.prompts.strategy import (
-    AbstractPromptStrategy,
-    AbstractPromptConfiguration,
-    PromptStrategiesConfiguration,
-)
-
-from AFAAS.interfaces.prompts.utils import json_loads, to_numbered_list, to_string_list
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AssistantChatMessageDict,
@@ -43,10 +35,15 @@ from AFAAS.interfaces.adapters import (
     ChatPrompt,
     CompletionModelFunction,
 )
-from AFAAS.lib.utils.json_schema import JSONSchema
-
-
+from AFAAS.interfaces.prompts.strategy import (
+    AbstractPromptConfiguration,
+    AbstractPromptStrategy,
+    PromptStrategiesConfiguration,
+)
+from AFAAS.interfaces.prompts.utils import json_loads, to_numbered_list, to_string_list
+from AFAAS.lib.message_agent_user import Questions
 from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 LOG = AFAASLogger(name=__name__)
 
@@ -543,9 +540,9 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         self, language_model_provider: AbstractLanguageModelProvider, model_name: str
     ) -> str:
         pass
-  
+
     def get_llm_provider(self) -> AbstractLanguageModelProvider:
         return super().get_llm_provider()
-    
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
         return super().get_prompt_config()

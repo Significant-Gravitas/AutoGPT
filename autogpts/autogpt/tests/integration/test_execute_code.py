@@ -3,11 +3,11 @@ import string
 import tempfile
 from pathlib import Path
 
-import AFAAS.core.tools.builtins.execute_code as sut  # system under testing
 import pytest
 from autogpt.agents.agent import Agent
-from autogpt.agents.lib.sdk.errors import (InvalidArgumentError,
-                                             OperationNotAllowedError)
+from autogpt.agents.lib.sdk.errors import InvalidArgumentError, OperationNotAllowedError
+
+import AFAAS.core.tools.builtins.execute_code as sut  # system under testing
 
 
 @pytest.fixture

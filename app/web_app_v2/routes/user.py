@@ -6,11 +6,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import yaml
+from fastapi import APIRouter, FastAPI, Query, Request, Response, UploadFile
+from fastapi.responses import FileResponse
+
 from AFAAS.lib.sdk.errors import *
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.sdk.schema import *
-from fastapi import APIRouter, FastAPI, Query, Request, Response, UploadFile
-from fastapi.responses import FileResponse
 
 LOG = AFAASLogger(name=__name__)
 

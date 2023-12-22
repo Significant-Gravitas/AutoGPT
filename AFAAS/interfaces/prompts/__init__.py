@@ -1,6 +1,5 @@
 from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
 
-
 from .utils import (
     json_loads,
     to_dotted_list,

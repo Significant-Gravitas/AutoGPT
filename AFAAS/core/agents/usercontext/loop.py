@@ -7,8 +7,10 @@ from AFAAS.interfaces.agent import BaseLoop
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
     from AFAAS.interfaces.adapters import AbstractChatModelResponse
-    from AFAAS.prompts.usercontext.refine_user_context import RefineUserContextFunctionNames
-    
+    from AFAAS.prompts.usercontext.refine_user_context import (
+        RefineUserContextFunctionNames,
+    )
+
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -97,10 +99,12 @@ class UserContextLoop(BaseLoop):
                 self.loop_count += 1
                 LOG.info(f"Starting loop iteration number {self.loop_count}")
 
-                model_response: AbstractChatModelResponse = await self._execute_strategy(
-                    strategy_name="refine_user_context",
-                    interupt_refinement_process=interupt_refinement_process,
-                    user_objective=user_objectives,
+                model_response: AbstractChatModelResponse = (
+                    await self._execute_strategy(
+                        strategy_name="refine_user_context",
+                        interupt_refinement_process=interupt_refinement_process,
+                        user_objective=user_objectives,
+                    )
                 )
 
                 if (

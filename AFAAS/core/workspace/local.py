@@ -29,15 +29,12 @@ class AGPTLocalFileWorkspace(AbstractFileWorkspace):
         )
 
     def __init__(
-        self, 
-        user_id : str,
-        agent_id : str,
-        config: AGPTLocalFileWorkspace = AGPTLocalFileWorkspaceConfiguration()
+        self,
+        user_id: str,
+        agent_id: str,
+        config: AGPTLocalFileWorkspace = AGPTLocalFileWorkspaceConfiguration(),
     ):
-        super().__init__(
-        user_id= user_id ,
-        agent_id= agent_id ,
-        config=config)
+        super().__init__(user_id=user_id, agent_id=agent_id, config=config)
         self._restrict_to_agent_workspace = config.restrict_to_agent_workspace
 
     @property
@@ -89,9 +86,9 @@ class AGPTLocalFileWorkspace(AbstractFileWorkspace):
         full_path = self.get_path(path)
         full_path.unlink()
 
-    #@staticmethod
+    # @staticmethod
     def _sanitize_path(
-            self,
+        self,
         relative_path: str | Path,
         agent_workspace_path: Optional[str | Path] = None,
         restrict_to_agent_workspace: bool = True,
@@ -101,4 +98,3 @@ class AGPTLocalFileWorkspace(AbstractFileWorkspace):
             agent_workspace_path=agent_workspace_path,
             restrict_to_agent_workspace=restrict_to_agent_workspace,
         )
-

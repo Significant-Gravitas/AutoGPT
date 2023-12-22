@@ -6,10 +6,11 @@ from typing import List, Optional
 from openai import OpenAI
 
 client = OpenAI()
-from AFAAS.core.adapters.openai import OPEN_AI_MODELS
-from AFAAS.interfaces.adapters.language_model import ChatModelInfo
 from autogpt.singleton import Singleton
 from openai import Model
+
+from AFAAS.core.adapters.openai import OPEN_AI_MODELS
+from AFAAS.interfaces.adapters.language_model import ChatModelInfo
 
 logger = logging.getLogger(__name__)
 

@@ -26,8 +26,7 @@ import agbenchmark.agent_protocol_client.models
 from agbenchmark.agent_protocol_client import rest
 from agbenchmark.agent_protocol_client.api_response import ApiResponse
 from agbenchmark.agent_protocol_client.configuration import Configuration
-from agbenchmark.agent_protocol_client.exceptions import (ApiException,
-                                                          ApiValueError)
+from agbenchmark.agent_protocol_client.exceptions import ApiException, ApiValueError
 from dateutil.parser import parse
 
 

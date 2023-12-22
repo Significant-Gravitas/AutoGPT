@@ -7,7 +7,6 @@ import time
 
 import click
 import yaml
-
 from fastapi import requests
 
 from app.cli_web_app.server.api import task_handler

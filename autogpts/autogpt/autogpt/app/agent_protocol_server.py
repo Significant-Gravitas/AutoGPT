@@ -6,6 +6,19 @@ from io import BytesIO
 from uuid import uuid4
 
 import orjson
+from autogpt.agent_factory.configurators import configure_agent_with_state
+from autogpt.agent_factory.generators import generate_agent_for_task
+from autogpt.agent_manager import AgentManager
+from autogpt.commands.system import finish
+from autogpt.commands.user_interaction import ask_user
+from autogpt.config import Config
+from autogpt.file_workspace import (
+    AbstractFileWorkspace,
+    AbstractFileWorkspaceBackendName,
+    get_workspace,
+)
+from autogpt.logs.utils import fmt_kwargs
+from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
 from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
@@ -27,20 +40,7 @@ from forge.sdk.routes.agent_protocol import base_router
 from hypercorn.asyncio import serve as hypercorn_serve
 from hypercorn.config import Config as HypercornConfig
 
-from autogpt.agent_factory.configurators import configure_agent_with_state
-from autogpt.agent_factory.generators import generate_agent_for_task
-from autogpt.agent_manager import AgentManager
-from autogpt.commands.system import finish
-from autogpt.commands.user_interaction import ask_user
-from autogpt.config import Config
 from AFAAS.interfaces.adapters import ChatModelProvider
-from autogpt.file_workspace import (
-    AbstractFileWorkspace,
-    AbstractFileWorkspaceBackendName,
-    get_workspace,
-)
-from autogpt.logs.utils import fmt_kwargs
-from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
 
 logger = logging.getLogger(__name__)
 

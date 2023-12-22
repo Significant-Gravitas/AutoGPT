@@ -1,12 +1,13 @@
-import pytest
+import copy
 import json
 import uuid
-import copy
 
-from AFAAS.lib.task.task import Task
-from AFAAS.lib.task.plan import Plan
-from AFAAS.interfaces.task.meta import TaskStatusList
+import pytest
 from test_agents_planner import PLANNERAGENT
+
+from AFAAS.interfaces.task.meta import TaskStatusList
+from AFAAS.lib.task.plan import Plan
+from AFAAS.lib.task.task import Task
 
 plan_prepare_dinner = Plan(
     task_id="100", task_goal="100. Prepare Dinner for Family", agent=PLANNERAGENT

@@ -4,11 +4,10 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from autogpt.file_workspace.gcs import GCSFileWorkspace, GCSFileWorkspaceConfiguration
 from google.auth.exceptions import GoogleAuthError
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
-
-from autogpt.file_workspace.gcs import GCSFileWorkspace, GCSFileWorkspaceConfiguration
 
 try:
     storage.Client()

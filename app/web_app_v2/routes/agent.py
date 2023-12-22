@@ -1,11 +1,12 @@
 import json
 from typing import Optional
 
+from fastapi import APIRouter, Depends, Query, Request, Response, UploadFile
+from fastapi.responses import FileResponse
+
 from AFAAS.lib.sdk.errors import *
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.sdk.schema import *
-from fastapi import APIRouter, Depends, Query, Request, Response, UploadFile
-from fastapi.responses import FileResponse
 
 from .dependencies.agents import get_agent
 

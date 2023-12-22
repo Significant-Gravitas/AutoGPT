@@ -5,8 +5,8 @@ from typing import Optional
 from pydantic import BaseModel
 
 from AFAAS.configs.schema import AFAASMessageType, AFAASModel
-from AFAAS.lib.utils.json_schema import JSONSchema
 from AFAAS.lib.message_common import AFAASMessage
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 
 class MessageAgentLLM(AFAASMessage):

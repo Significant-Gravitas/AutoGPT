@@ -1,7 +1,7 @@
 import pytest
 from autogpt.agents.agent import Agent
-from AFAAS.core.tools.builtins.web_selenium import (BrowsingError,
-                                                      read_webpage)
+
+from AFAAS.core.tools.builtins.web_selenium import BrowsingError, read_webpage
 
 
 @pytest.mark.vcr

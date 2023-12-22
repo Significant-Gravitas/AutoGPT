@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-
 from typing import TYPE_CHECKING, Optional, Union
 
 if TYPE_CHECKING:
@@ -9,24 +8,20 @@ if TYPE_CHECKING:
 
     from AFAAS.interfaces.agent.main import BaseAgent
 
-from AFAAS.lib.sdk import AFAASLogger
 from AFAAS.configs import UserConfigurable
-
-from AFAAS.interfaces.prompts.utils import to_numbered_list
 from AFAAS.interfaces.adapters import ChatMessage, CompletionModelFunction
-
 from AFAAS.interfaces.prompts.strategy import (
     RESPONSE_SCHEMA,
     AbstractPromptStrategy,
     PromptStrategiesConfiguration,
 )
+from AFAAS.interfaces.prompts.utils import to_numbered_list
+from AFAAS.lib.sdk import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
 
 
 class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
- 
-
     DEFAULT_CHOOSE_ACTION_INSTRUCTION: str = (
         "Determine exactly one command to use next based on the given goals "
         "and the progress you have made so far, "
@@ -59,4 +54,3 @@ class AbstractPlanningPromptStrategy(AbstractPromptStrategy):
         **kwargs,
     ):
         super().__init__()
-

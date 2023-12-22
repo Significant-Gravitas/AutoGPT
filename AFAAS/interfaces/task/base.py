@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Optional, Union, get_args
 
 from pydantic import BaseModel, Field, validator
 
-from AFAAS.interfaces.agent import AbstractAgent
 from AFAAS.configs import AFAASModel
+from AFAAS.interfaces.agent import AbstractAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 # from AFAAS.core.tools.schema import ToolResult
@@ -14,7 +14,6 @@ LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from .stack import TaskStack
-    
 
 
 class AbstractBaseTask(abc.ABC, AFAASModel):
@@ -115,32 +114,27 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         LOG.trace(f"{self.__class__.__name__}.__init__()")
         super().__init__(**data)
 
-        #FIXME: Make it dynamic as in AFAAS.lib.message_common
+        # FIXME: Make it dynamic as in AFAAS.lib.message_common
         from AFAAS.interfaces.task.stack import TaskStack
+
         if "_task_predecessors" in data and isinstance(
             data["_task_predecessors"], list
         ):
             self._task_predecessors = TaskStack(
                 parent_task=self, _task_ids=data["_task_predecessors"]
             )
-        else : 
-            self._task_predecessors = TaskStack(
-                parent_task=self, _task_ids=[]
-            )
+        else:
+            self._task_predecessors = TaskStack(parent_task=self, _task_ids=[])
         if "_task_successors" in data and isinstance(data["_task_successors"], list):
             self._task_successors = TaskStack(
                 parent_task=self, _task_ids=data["_task_successors"]
             )
-        else : 
-            self._task_successors  = TaskStack(
-                parent_task=self, _task_ids=[]
-            )
+        else:
+            self._task_successors = TaskStack(parent_task=self, _task_ids=[])
         if "_subtasks" in data and isinstance(data["_subtasks"], list):
             self._subtasks = TaskStack(parent_task=self, _task_ids=data["_subtasks"])
-        else : 
-            self._subtasks  = TaskStack(
-                parent_task=self, _task_ids=[]
-            )
+        else:
+            self._subtasks = TaskStack(parent_task=self, _task_ids=[])
 
     def dict_memory(self, **kwargs) -> dict:
         d = super().dict(**kwargs)

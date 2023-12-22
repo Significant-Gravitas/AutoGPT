@@ -1,19 +1,14 @@
 from __future__ import annotations
-from langchain.tools import DuckDuckGoSearchRun
 
 import enum
 import os
 import uuid
-from typing import Optional, TYPE_CHECKING, Callable, Any
+from typing import TYPE_CHECKING, Any, Callable, Optional
+
+from langchain.tools import DuckDuckGoSearchRun
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.task import AbstractTask
-
-from AFAAS.interfaces.prompts.strategy import (
-    AbstractPromptStrategy,
-    DefaultParsedResponse,
-    PromptStrategiesConfiguration,
-)
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
@@ -23,8 +18,13 @@ from AFAAS.interfaces.adapters import (
     ChatPrompt,
     CompletionModelFunction,
 )
-from AFAAS.lib.utils.json_schema import JSONSchema
+from AFAAS.interfaces.prompts.strategy import (
+    AbstractPromptStrategy,
+    DefaultParsedResponse,
+    PromptStrategiesConfiguration,
+)
 from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 LOG = AFAASLogger(name=__name__)
 
@@ -71,11 +71,10 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
         self.afaas_default_task_summary: CompletionModelFunction = CompletionModelFunction(
             name=BaseTaskSummaryStrategyFunctionNames.DEFAULT_TASK_SUMMARY.value,
             description="Provide detailed information about the task and the context of the task to the Agent responsible or completing the task.",
-            parameters=
-                {
+            parameters={
                 "text_output": JSONSchema(
                     type=JSONSchema.Type.STRING,
-                    description=f'All the information with regards to what have been donne in the task. This note should be {str(self.task_output_lenght * 0.8)} to {str(self.task_output_lenght *  1.25)} words long.',
+                    description=f"All the information with regards to what have been donne in the task. This note should be {str(self.task_output_lenght * 0.8)} to {str(self.task_output_lenght *  1.25)} words long.",
                     required=True,
                 ),
                 "text_output_as_uml": JSONSchema(
@@ -92,7 +91,7 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
                         type=JSONSchema.Type.STRING,
                         description=f"Architectural diagrams in PlantUML notation that may help any one to understand the task",
                         required=False,
-                    ),  
+                    ),
                 ),
                 "gant_diagrams": JSONSchema(
                     type=JSONSchema.Type.ARRAY,
@@ -110,20 +109,22 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
         ]
 
     from AFAAS.core.tools import Tool
-    def build_message(self, task: AbstractTask, tool : Tool, documents : list, **kwargs) -> ChatPrompt:
+
+    def build_message(
+        self, task: AbstractTask, tool: Tool, documents: list, **kwargs
+    ) -> ChatPrompt:
         LOG.debug("Building prompt for task : " + task.debug_dump_str())
         self._task: AbstractTask = task
         self._model_name = kwargs.get("model_name")
 
-        #FIXME: This his a hack for test, please remove it : 
+        # FIXME: This his a hack for test, please remove it :
         task.task_context = "No additional context"
         task.tech_summary_task_context = task.task_context
-
 
         task_summary_param = {
             "tool_output": kwargs.get("tool_output", None),
             "tool": tool,
-            "documents" : documents
+            "documents": documents,
         }
 
         messages = []
@@ -144,7 +145,7 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
         self,
         response_content: AssistantChatMessageDict,
     ) -> DefaultParsedResponse:
-        return self.default_parse_response_content(response_content = response_content)
+        return self.default_parse_response_content(response_content=response_content)
 
     def response_format_instruction(self) -> str:
         return super().response_format_instruction()

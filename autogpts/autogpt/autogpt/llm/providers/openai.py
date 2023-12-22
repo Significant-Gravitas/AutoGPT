@@ -3,12 +3,12 @@ from __future__ import annotations
 import logging
 from typing import Callable, Iterable, TypeVar
 
-from AFAAS.interfaces.adapters import CompletionModelFunction
 from autogpt.models.command import Command
 from colorama import Fore, Style
-from openai.error import (APIError, RateLimitError, ServiceUnavailableError,
-                          Timeout)
+from openai.error import APIError, RateLimitError, ServiceUnavailableError, Timeout
 from openai.openai_object import OpenAIObject
+
+from AFAAS.interfaces.adapters import CompletionModelFunction
 
 logger = logging.getLogger(__name__)
 

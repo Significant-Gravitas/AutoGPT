@@ -10,9 +10,11 @@ from typing import Any, Generator
 
 import pytest
 from agbenchmark.__main__ import TEMP_FOLDER_ABS_PATH
-from agbenchmark.reports.reports import (finalize_reports,
-                                         generate_single_call_report,
-                                         session_finish)
+from agbenchmark.reports.reports import (
+    finalize_reports,
+    generate_single_call_report,
+    session_finish,
+)
 from agbenchmark.utils.data_types import AgentBenchmarkConfig
 
 GLOBAL_TIMEOUT = (

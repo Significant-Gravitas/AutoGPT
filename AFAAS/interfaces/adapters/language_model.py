@@ -10,11 +10,11 @@ from pydantic import BaseModel, Field, validator
 
 from AFAAS.configs import SystemConfiguration, UserConfigurable
 from AFAAS.interfaces.adapters.configuration import (
-    Embedding,
     BaseProviderBudget,
     BaseProviderCredentials,
     BaseProviderSettings,
     BaseProviderUsage,
+    Embedding,
 )
 
 
@@ -201,4 +201,5 @@ class EmbeddingModelProvider(AbstractModelProvider):
 
 class AbstractPromptConfiguration(abc.ABC, SystemConfiguration):
     """Struct for model configuration."""
+
     pass

@@ -1,13 +1,12 @@
 from __future__ import annotations
-from AFAAS.interfaces.prompts import AbstractPromptStrategy
-
-
-from pydantic import BaseModel, Field
-
 
 import abc
 import uuid
 from typing import Callable, Type
+
+from pydantic import BaseModel, Field
+
+from AFAAS.interfaces.prompts import AbstractPromptStrategy
 
 
 class JobInterface(abc.ABC, BaseModel):

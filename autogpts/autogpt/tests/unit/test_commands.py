@@ -11,9 +11,10 @@ import pytest
 if TYPE_CHECKING:
     from autogpt.agents import Agent, BaseAgent
 
-from AFAAS.lib.utils.json_schema import JSONSchema
 from autogpt.models.command import Command, CommandParameter
 from autogpt.models.command_registry import CommandRegistry
+
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 PARAMETERS = [
     CommandParameter(

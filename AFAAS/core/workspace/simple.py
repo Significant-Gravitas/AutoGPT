@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
-
 from AFAAS.interfaces.workspace import (
     AbstractFileWorkspace,
     AbstractFileWorkspaceConfiguration,
@@ -45,7 +44,9 @@ class LocalFileWorkspace(AbstractFileWorkspace):
         # LOG = logger
         # LOG = LOG.getChild("workspace")
         self._root = self._sanitize_path(settings.configuration.root)
-        self._restrict_to_agent_workspace = settings.configuration.restrict_to_agent_workspace
+        self._restrict_to_agent_workspace = (
+            settings.configuration.restrict_to_agent_workspace
+        )
         super().__init__(settings)
 
     @property

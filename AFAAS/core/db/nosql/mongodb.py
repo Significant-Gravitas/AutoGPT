@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 from typing import TYPE_CHECKING, List
 
 from pymongo import MongoClient
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
     from AFAAS.interfaces.db import AbstractMemory
 
 from AFAAS.interfaces.db_nosql import NoSQLMemory
-
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)

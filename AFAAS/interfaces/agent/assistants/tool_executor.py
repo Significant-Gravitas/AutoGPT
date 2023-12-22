@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from AFAAS.interfaces.agent.features.agentmixin import \
-    AgentMixin
+from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 
 
 class ToolExecutor(AgentMixin):

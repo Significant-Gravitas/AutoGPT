@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, Any, Generator
+
 from pydantic import Field
 
 from AFAAS.configs import AFAASModel
@@ -10,6 +11,7 @@ from AFAAS.interfaces.task.base import AbstractBaseTask
 if TYPE_CHECKING:
     from AFAAS.interfaces.task.plan import AbstractPlan
     from AFAAS.interfaces.task.task import AbstractTask
+
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -66,6 +68,7 @@ class TaskStack(AFAASModel):
 
         self._task_ids.append(task.task_id)
         from AFAAS.interfaces.task.plan import AbstractPlan
+
         parent_is_plan: bool = isinstance(self.parent_task, AbstractPlan)
         if parent_is_plan:
             plan: AbstractPlan = self.parent_task

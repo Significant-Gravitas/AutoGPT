@@ -1,18 +1,19 @@
 from AFAAS.interfaces.adapters.chatmodel import (
+    AbstractChatModelProvider,
+    AbstractChatModelResponse,
     AssistantChatMessage,
     AssistantChatMessageDict,
     AssistantFunctionCall,
     AssistantFunctionCallDict,
-    AbstractChatModelProvider,
     ChatMessage,
     ChatModelInfo,
-    AbstractChatModelResponse,
     ChatPrompt,
     CompletionModelFunction,
 )
 from AFAAS.interfaces.adapters.language_model import (
     AbstractLanguageModelProvider,
     AbstractModelProvider,
+    AbstractPromptConfiguration,
     BaseModelInfo,
     BaseModelProviderBudget,
     BaseModelProviderCredentials,
@@ -26,7 +27,6 @@ from AFAAS.interfaces.adapters.language_model import (
     ModelProviderName,
     ModelProviderService,
     ModelTokenizer,
-    AbstractPromptConfiguration,
 )
 
 __all__ = [

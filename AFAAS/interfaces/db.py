@@ -5,7 +5,6 @@ import base64
 import json
 import uuid
 from enum import Enum
-
 from pathlib import Path
 from typing import TYPE_CHECKING
 

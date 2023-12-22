@@ -1,5 +1,6 @@
-from AFAAS.lib.sdk.logger import AFAASLogger
 import uvicorn
+
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
 

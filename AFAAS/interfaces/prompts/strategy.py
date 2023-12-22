@@ -4,12 +4,12 @@ import abc
 import os
 import re
 import sys
-from jinja2 import Environment, FileSystemLoader, select_autoescape
 from typing import TYPE_CHECKING, Optional
 
-from AFAAS.lib.utils.json_schema import JSONSchema
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.task import AbstractTask
@@ -17,25 +17,23 @@ if TYPE_CHECKING:
     pass
 
 from AFAAS.configs import SystemConfiguration
-from AFAAS.interfaces.prompts.utils.utils import json_loads
+from AFAAS.interfaces.adapters import (
+    AbstractChatModelResponse,
+    AbstractLanguageModelProvider,
+    AbstractPromptConfiguration,
+    AssistantChatMessageDict,
+    ChatMessage,
+    ChatPrompt,
+    CompletionModelFunction,
+)
 from AFAAS.interfaces.prompts.utils import (
+    indent,
     to_dotted_list,
     to_md_quotation,
     to_numbered_list,
     to_string_list,
-    indent,
 )
-from AFAAS.interfaces.adapters import (
-    AbstractLanguageModelProvider,
-    AssistantChatMessageDict,
-    AbstractChatModelResponse,
-    ChatPrompt,
-    CompletionModelFunction,
-    ChatMessage,
-    AbstractPromptConfiguration,
-)
-
-
+from AFAAS.interfaces.prompts.utils.utils import json_loads
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)

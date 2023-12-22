@@ -35,21 +35,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
-from webdriver_manager.microsoft import \
-    EdgeChromiumDriverManager as EdgeDriverManager
+from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
 from ..registry import action
-from forge.sdk.errors import *
-import functools
-import re
-from typing import Any, Callable
-from urllib.parse import urljoin, urlparse
-
-from requests.compat import urljoin
-
-
-from bs4 import BeautifulSoup
-from requests.compat import urljoin
 
 
 def extract_hyperlinks(soup: BeautifulSoup, base_url: str) -> list[tuple[str, str]]:

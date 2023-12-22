@@ -9,7 +9,6 @@ class MessagesUserAgentTable(BaseNoSQLTable):
     secondary_key = "agent_id"
     third_key = "user_id"
 
-
     from AFAAS.lib.message_agent_user import MessageAgentUser
 
     def add(self, value: dict, id: str = MessageAgentUser.generate_uuid()) -> str:
@@ -37,4 +36,3 @@ class MessagesUserAgentTable(BaseNoSQLTable):
             secondary_key=str(agent_id),
         )
         return super().get(key=key)
-

@@ -2,21 +2,28 @@ import json
 import logging
 
 from autogpt.config import AIDirectives, AIProfile, Config
+
 from AFAAS.configs import SystemConfiguration, UserConfigurable
-from AFAAS.interfaces.prompts import (ChatPrompt,  PromptStrategyLanguageModelClassification,
-                                    PromptStrategy)
-from AFAAS.interfaces.prompts.utils import json_loads
 from AFAAS.interfaces.adapters.language_model import (
-    AssistantChatMessageDict, ChatMessage, ChatModelProvider,
-    CompletionModelFunction)
+    AssistantChatMessageDict,
+    ChatMessage,
+    ChatModelProvider,
+    CompletionModelFunction,
+)
+from AFAAS.interfaces.prompts import (
+    ChatPrompt,
+    PromptStrategy,
+    PromptStrategyLanguageModelClassification,
+)
+from AFAAS.interfaces.prompts.utils import json_loads
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)
 
 
 class AgentProfileGeneratorConfiguration(SystemConfiguration):
-    model_classification:  PromptStrategyLanguageModelClassification = UserConfigurable(
-        default= PromptStrategyLanguageModelClassification.SMART_MODEL
+    model_classification: PromptStrategyLanguageModelClassification = UserConfigurable(
+        default=PromptStrategyLanguageModelClassification.SMART_MODEL
     )
     _example_call: object = [
         {
@@ -149,7 +156,7 @@ class AgentProfileGenerator(PromptStrategy):
 
     def __init__(
         self,
-        #model_classification:  PromptStrategyLanguageModelClassification,
+        # model_classification:  PromptStrategyLanguageModelClassification,
         system_prompt: str,
         user_prompt_template: str,
         create_agent_function: dict,
@@ -162,7 +169,7 @@ class AgentProfileGenerator(PromptStrategy):
         )
 
     @property
-    def model_classification(self) ->  PromptStrategyLanguageModelClassification:
+    def model_classification(self) -> PromptStrategyLanguageModelClassification:
         return self._model_classification
 
     def build_prompt(self, user_objective: str = "", **kwargs) -> ChatPrompt:

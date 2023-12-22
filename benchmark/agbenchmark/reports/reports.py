@@ -4,8 +4,7 @@ import sys
 from typing import Any, Dict
 
 from agbenchmark.__main__ import CHALLENGES_ALREADY_BEATEN
-from agbenchmark.reports.agent_benchmark_config import \
-    get_agent_benchmark_config
+from agbenchmark.reports.agent_benchmark_config import get_agent_benchmark_config
 from agbenchmark.reports.ReportManager import SingletonReportManager
 from agbenchmark.utils.data_types import DifficultyLevel
 from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone

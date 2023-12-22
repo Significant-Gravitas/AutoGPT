@@ -64,4 +64,3 @@ class MessageAgentUser(AFAASMessage):
     question: Questions = None
 
     _table_name = "message_agent_user"
-

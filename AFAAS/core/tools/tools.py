@@ -8,11 +8,13 @@ if TYPE_CHECKING:
     from AFAAS.configs import *
     from .tool_parameters import ToolParameter
 
-from AFAAS.lib.context_items import ContextItem
-from AFAAS.interfaces.task import AbstractTask
-from AFAAS.lib.sdk.logger import AFAASLogger
 from langchain.tools.base import BaseTool
-#from AFAAS.interfaces.agent import BaseAgent
+
+from AFAAS.interfaces.task import AbstractTask
+from AFAAS.lib.context_items import ContextItem
+from AFAAS.lib.sdk.logger import AFAASLogger
+
+# from AFAAS.interfaces.agent import BaseAgent
 LOG = AFAASLogger(name=__name__)
 
 ToolReturnValue = Any
@@ -80,30 +82,39 @@ class Tool:
         ]
         return f"{self.name}: {self.description.rstrip('.')}. Params: ({', '.join(params)})"
 
-    async def default_success_check_callback(self, task: AbstractTask, tool_output: Any):
+    async def default_success_check_callback(
+        self, task: AbstractTask, tool_output: Any
+    ):
         LOG.trace(f"Tool.default_success_check_callback() called for {self}")
         LOG.debug(f"Task = {task}")
         LOG.debug(f"Tool output = {tool_output}")
 
-        agent : BaseAgent = task.agent
+        agent: BaseAgent = task.agent
 
-        strategy_result = await agent.execute_strategy(strategy_name = "afaas_default_task_summary", 
-                                     task = task, 
-                                     tool_output = tool_output,
-                                     tool = self,
-                                     documents = [])
+        strategy_result = await agent.execute_strategy(
+            strategy_name="afaas_default_task_summary",
+            task=task,
+            tool_output=tool_output,
+            tool=self,
+            documents=[],
+        )
 
-        task.task_text_output = strategy_result.parsed_result[0]['command_args']['text_output']
-        task.task_text_output_as_uml  = strategy_result.parsed_result[0]['command_args'].get('text_output_as_uml', '')
+        task.task_text_output = strategy_result.parsed_result[0]["command_args"][
+            "text_output"
+        ]
+        task.task_text_output_as_uml = strategy_result.parsed_result[0][
+            "command_args"
+        ].get("text_output_as_uml", "")
 
         # task_ouput_embedding = await agent.embedding_model.aembed_query(text = task.task_text_output)
         # vector = await agent.vectorstore.aadd_texts(
         #     task_ouput_embedding, metadatas= [{'task_id' : task.task_id , 'plan_id' : task.plan_id}]
         #     )
         vector = await agent.vectorstore.aadd_texts(
-            task.task_text_output, metadatas= [{'task_id' : task.task_id , 'plan_id' : task.plan_id}]
-            )
-        
+            task.task_text_output,
+            metadatas=[{"task_id": task.task_id, "plan_id": task.plan_id}],
+        )
+
         LOG.trace(f"Task output embedding added to vector store : {repr(vector)}")
 
         return task.task_text_output

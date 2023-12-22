@@ -3,22 +3,27 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
-from pydantic import Field
-from langchain_core.vectorstores import VectorStore
-from langchain_core.embeddings import Embeddings
-from langchain_community.vectorstores.chroma import Chroma
 from langchain_community.embeddings.openai import OpenAIEmbeddings
+from langchain_community.vectorstores.chroma import Chroma
+from langchain_core.embeddings import Embeddings
+from langchain_core.vectorstores import VectorStore
+from pydantic import Field
 
-from AFAAS.lib.task.plan import Plan
-from AFAAS.interfaces.db import AbstractMemory
-from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
-from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
 from AFAAS.core.adapters.openai import AFAASChatOpenAI, OpenAISettings
 from AFAAS.core.tools import TOOL_CATEGORIES, SimpleToolRegistry
-
-from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, BasePromptManager, ToolExecutor
-from .loop import PlannerLoop
+from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
+from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
+from AFAAS.interfaces.agent import (
+    BaseAgent,
+    BaseLoopHook,
+    BasePromptManager,
+    ToolExecutor,
+)
+from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.task.plan import Plan
+
+from .loop import PlannerLoop
 
 LOG = AFAASLogger(name=__name__)
 
@@ -27,7 +32,6 @@ if TYPE_CHECKING:
 
 
 class PlannerAgent(BaseAgent):
-
     class SystemSettings(BaseAgent.SystemSettings):
         name: str = "simple_agent"
         description: str = "A simple agent."
@@ -73,10 +77,12 @@ class PlannerAgent(BaseAgent):
             user_id=user_id,
             agent_id=agent_id,
             vectorstore=vectorstore,
-            embedding_model = embedding_model,
+            embedding_model=embedding_model,
         )
 
-        self.agent_goals = settings.agent_goals #TODO: Remove & make it part of the plan ?
+        self.agent_goals = (
+            settings.agent_goals
+        )  # TODO: Remove & make it part of the plan ?
         self.agent_goal_sentence = settings.agent_goal_sentence
 
         #
@@ -94,11 +100,11 @@ class PlannerAgent(BaseAgent):
         ###
         ### Step 5 : Create the Loop
         ###
-        self._loop : PlannerLoop = loop
+        self._loop: PlannerLoop = loop
         self._loop.set_agent(agent=self)
 
         # Set tool Executor
-        self._tool_executor : ToolExecutor = tool_handler
+        self._tool_executor: ToolExecutor = tool_handler
         self._tool_executor.set_agent(agent=self)
 
         ###
@@ -116,26 +122,26 @@ class PlannerAgent(BaseAgent):
             self.plan: Plan = Plan.create_in_db(agent=self)
             self._loop.set_current_task(task=self.plan.get_ready_tasks()[0])
             self.plan_id = self.plan.plan_id
-            
-            #TODO: Save the message user => agent in db !
-            from AFAAS.lib.message_agent_user import emiter, MessageAgentUser
+
+            # TODO: Save the message user => agent in db !
+            from AFAAS.lib.message_agent_user import MessageAgentUser, emiter
             from AFAAS.lib.message_common import AFAASMessageStack
 
-            self.message_agent_user : AFAASMessageStack = AFAASMessageStack()
-            self.message_agent_user.add( message =
-                MessageAgentUser(
-                emitter =  emiter.AGENT.value,
-                user_id = self.user_id,
-                agent_id = self.agent_id,
-                message = "What would you like to do ?",
+            self.message_agent_user: AFAASMessageStack = AFAASMessageStack()
+            self.message_agent_user.add(
+                message=MessageAgentUser(
+                    emitter=emiter.AGENT.value,
+                    user_id=self.user_id,
+                    agent_id=self.agent_id,
+                    message="What would you like to do ?",
                 )
             )
-            self.message_agent_user.add( message =
-                MessageAgentUser(
-                emitter =  emiter.USER.value,
-                user_id = self.user_id,
-                agent_id = self.agent_id,
-                message = self.agent_goal_sentence,
+            self.message_agent_user.add(
+                message=MessageAgentUser(
+                    emitter=emiter.USER.value,
+                    user_id=self.user_id,
+                    agent_id=self.agent_id,
+                    message=self.agent_goal_sentence,
                 )
             )
 

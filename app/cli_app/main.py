@@ -2,8 +2,8 @@ import logging
 
 import click
 
-from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.core.agents import PlannerAgent
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 
 async def handle_user_input_request(prompt):
@@ -34,11 +34,11 @@ async def run_cli_demo():
         "AFAAS Data Structure support multiple users (however since there is no UI to enforce that we will be using a user with ID : a1621e69-970a-4340-86e7-778d82e2137b"
     )
     user_id: str = "U" + str(uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b"))
+    from AFAAS.core.adapters.openai import AFAASChatOpenAI
     from AFAAS.core.workspace.local import (
         AGPTLocalFileWorkspace,
         AGPTLocalFileWorkspaceConfiguration,
     )
-    from AFAAS.core.adapters.openai import AFAASChatOpenAI
 
     # TODO: Simplify this via get_workspace
     # from AFAAS.core.workspace import get_workspace
@@ -92,11 +92,11 @@ async def run_cli_demo():
         agent_id = agent_settings.agent_id
         LOG.info(f"Loading agent {agent_id} from get_agentsetting_list_from_memory")
         from AFAAS.interfaces.agent.assistants import BasePromptManager
+
         agent: PlannerAgent = PlannerAgent.get_instance_from_settings(
             agent_settings=agent_settings,
             workspace=AGPTLocalFileWorkspace(),
             default_llm_provider=AFAASChatOpenAI(),
-
         )
 
         # agent_from_memory = None

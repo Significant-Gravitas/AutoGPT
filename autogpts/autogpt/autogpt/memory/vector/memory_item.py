@@ -7,13 +7,14 @@ from typing import Literal
 import ftfy
 import numpy as np
 from autogpt.config import Config
+from autogpt.processing.text import chunk_content, split_text, summarize_text
+from pydantic import BaseModel
+
 from AFAAS.interfaces.adapters import (
     ChatMessage,
     ChatModelProvider,
     EmbeddingModelProvider,
 )
-from autogpt.processing.text import chunk_content, split_text, summarize_text
-from pydantic import BaseModel
 
 from .utils import Embedding, get_embedding
 

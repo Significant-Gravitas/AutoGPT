@@ -1,6 +1,5 @@
 import pytest
-from agbenchmark.utils.dependencies.graphs import \
-    extract_subgraph_based_on_category
+from agbenchmark.utils.dependencies.graphs import extract_subgraph_based_on_category
 
 
 @pytest.fixture

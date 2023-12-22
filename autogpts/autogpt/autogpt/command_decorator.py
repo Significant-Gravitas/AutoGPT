@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import functools
 import inspect
-from typing import (TYPE_CHECKING, Any, Callable, Literal, Optional, ParamSpec,
-                    TypeVar)
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, ParamSpec, TypeVar
 
 if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgent
@@ -47,8 +46,9 @@ print(
 print(
     "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((())))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))"
 )
-from AFAAS.lib.utils.json_schema import JSONSchema
 from autogpt.models.command import Command, CommandOutput, CommandParameter
+
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 # Unique identifier for AutoGPT commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"

@@ -1,10 +1,10 @@
 from unittest.mock import patch
 
 import pytest
-from AFAAS.interfaces.adapters import (OPEN_AI_CHAT_MODELS,
-                                                   OPEN_AI_EMBEDDING_MODELS)
 from autogpt.llm.api_manager import ApiManager
 from pytest_mock import MockerFixture
+
+from AFAAS.interfaces.adapters import OPEN_AI_CHAT_MODELS, OPEN_AI_EMBEDDING_MODELS
 
 api_manager = ApiManager()
 

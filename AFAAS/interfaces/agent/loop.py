@@ -13,7 +13,9 @@ if TYPE_CHECKING:
         AbstractChatModelResponse
 
     from . import BaseAgent
+
 from AFAAS.lib.sdk.logger import AFAASLogger
+
 LOG = AFAASLogger(name = __name__)
 
 class BaseLoopMeta(abc.ABCMeta):

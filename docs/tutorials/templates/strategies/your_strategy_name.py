@@ -1,11 +1,12 @@
 # Import necessary libraries and modules from the afaas framework and other packages.
+from pydantic import BaseModel
+
 from AFAAS.core.core.resource.model_providers import ChatModelResponse
 from AFAAS.core.core.resource.model_providers.chat_schema import ChatPrompt
 from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy,
     PromptStrategiesConfiguration,
 )
-from pydantic import BaseModel
 
 
 # Define a configuration class for your strategy. This will hold any custom configuration your strategy needs.

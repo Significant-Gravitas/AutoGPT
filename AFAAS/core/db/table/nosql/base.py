@@ -8,10 +8,9 @@ from typing import Any, Literal, Optional, TypedDict
 
 from pydantic import BaseModel
 
-from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.configs import AFAASModel, SystemSettings
-
 from AFAAS.interfaces.db_table import AbstractTable
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
 

@@ -13,18 +13,30 @@ aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 import tiktoken
 from openai import APIError, RateLimitError, completions  # , OpenAI, Em
 
-from AFAAS.lib.sdk.logger import AFAASLogger
-from AFAAS.configs import (Configurable,
-                                                         SystemConfiguration,
-                                                         UserConfigurable)
+from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
 from AFAAS.interfaces.adapters.chatmodel import (
-    AssistantChatMessageDict, AssistantToolCallDict, AbstractChatModelProvider,
-    ChatMessage, ChatModelInfo, AbstractChatModelResponse, CompletionModelFunction)
+    AbstractChatModelProvider,
+    AbstractChatModelResponse,
+    AssistantChatMessageDict,
+    AssistantToolCallDict,
+    ChatMessage,
+    ChatModelInfo,
+    CompletionModelFunction,
+)
 from AFAAS.interfaces.adapters.language_model import (
-    BaseModelProviderBudget, BaseModelProviderCredentials,
-    BaseModelProviderSettings, BaseModelProviderUsage, Embedding,
-    EmbeddingModelInfo, EmbeddingModelProvider, EmbeddingModelResponse,
-    ModelProviderName, ModelProviderService, ModelTokenizer)
+    BaseModelProviderBudget,
+    BaseModelProviderCredentials,
+    BaseModelProviderSettings,
+    BaseModelProviderUsage,
+    Embedding,
+    EmbeddingModelInfo,
+    EmbeddingModelProvider,
+    EmbeddingModelResponse,
+    ModelProviderName,
+    ModelProviderService,
+    ModelTokenizer,
+)
+from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 LOG = AFAASLogger(name=__name__)
@@ -195,7 +207,6 @@ class OpenAIProvider(
     def __init__(
         self,
         settings: OpenAISettings,
-        
         agent_systems: list[Configurable],
     ):
         """
@@ -752,7 +763,6 @@ class _OpenAIRetryHandler:
 
     def __init__(
         self,
-        
         num_retries: int = 10,
         backoff_base: float = 2.0,
         warn_user: bool = True,

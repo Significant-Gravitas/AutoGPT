@@ -10,13 +10,13 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.lib.task.task import Task
-from AFAAS.lib.sdk.logger import AFAASLogger
-from AFAAS.interfaces.agent.features.context import get_agent_context
 from AFAAS.core.tools.command_decorator import tool
+from AFAAS.interfaces.agent.features.context import get_agent_context
 
 # from AFAAS.lib.sdk.errors import AgentTerminated, InvalidArgumentError
 from AFAAS.lib.sdk.errors import InvalidArgumentError
+from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.task.task import Task
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 LOG = AFAASLogger(name=__name__)

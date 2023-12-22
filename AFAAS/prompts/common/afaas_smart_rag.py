@@ -1,19 +1,14 @@
 from __future__ import annotations
-from langchain.tools import DuckDuckGoSearchRun
 
 import enum
 import os
 import uuid
-from typing import Optional, TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Optional
+
+from langchain.tools import DuckDuckGoSearchRun
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.task import AbstractTask
-
-from AFAAS.interfaces.prompts.strategy import (
-    AbstractPromptStrategy,
-    DefaultParsedResponse,
-    PromptStrategiesConfiguration,
-)
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
@@ -23,8 +18,13 @@ from AFAAS.interfaces.adapters import (
     ChatPrompt,
     CompletionModelFunction,
 )
-from AFAAS.lib.utils.json_schema import JSONSchema
+from AFAAS.interfaces.prompts.strategy import (
+    AbstractPromptStrategy,
+    DefaultParsedResponse,
+    PromptStrategiesConfiguration,
+)
 from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 LOG = AFAASLogger(name=__name__)
 
@@ -135,7 +135,7 @@ class AFAAS_SMART_RAG_Strategy(AbstractPromptStrategy):
         self,
         response_content: AssistantChatMessageDict,
     ) -> DefaultParsedResponse:
-        return self.default_parse_response_content(response_content = response_content)
+        return self.default_parse_response_content(response_content=response_content)
         # parsed_response : DefaultParsedResponse = self.default_parse_response_content(response_content )
         # parsed_response.command_name
         # self._task.task_context = response_content.get("task_context", None)

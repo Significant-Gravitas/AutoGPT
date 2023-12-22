@@ -1,4 +1,5 @@
 import abc
+
 from pydantic import BaseModel, SecretBytes, SecretField, SecretStr
 
 from AFAAS.configs import SystemConfiguration, SystemSettings, UserConfigurable

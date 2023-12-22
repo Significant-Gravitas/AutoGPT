@@ -6,6 +6,7 @@ from AFAAS.interfaces.workspace import (
     AbstractFileWorkspace,
     AbstractFileWorkspaceConfiguration,
 )
+
 from .simple import LocalFileWorkspace
 
 

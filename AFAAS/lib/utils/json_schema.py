@@ -1,11 +1,11 @@
 import enum
 import json
-
 from textwrap import indent
 from typing import Literal, Optional
 
 from jsonschema import Draft7Validator
 from pydantic import BaseModel
+
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)

@@ -4,7 +4,6 @@ import re
 from io import TextIOWrapper
 from pathlib import Path
 
-import AFAAS.core.tools.builtins.file_operations as file_ops
 import pytest
 from autogpt.agents.agent import Agent
 from autogpt.agents.lib.sdk.errors import DuplicateOperationError
@@ -13,6 +12,8 @@ from autogpt.file_workspace import AbstractFileWorkspace
 from autogpt.memory.vector.memory_item import MemoryItem
 from autogpt.memory.vector.utils import Embedding
 from pytest_mock import MockerFixture
+
+import AFAAS.core.tools.builtins.file_operations as file_ops
 
 
 @pytest.fixture()
@@ -295,7 +296,9 @@ def test_append_to_file_uses_checksum_from_appended_file(
     )
 
 
-def test_list_files(workspace: AbstractFileWorkspace, test_directory: Path, agent: Agent):
+def test_list_files(
+    workspace: AbstractFileWorkspace, test_directory: Path, agent: Agent
+):
     # Case 1: Create files A and B, search for A, and ensure we don't return A and B
     file_a = workspace.get_path("file_a.txt")
     file_b = workspace.get_path("file_b.txt")

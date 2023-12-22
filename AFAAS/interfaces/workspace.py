@@ -2,16 +2,17 @@
 The AbstractFileWorkspace class provides an interface for interacting with a file workspace.
 """
 from __future__ import annotations
+
 import inspect
 from abc import ABC, abstractmethod
 from io import IOBase, TextIOBase
 from pathlib import Path
-from pydantic import Field
 from typing import IO, Any, BinaryIO, Callable, Literal, Optional, TextIO, overload
 
-from AFAAS.configs.schema import SystemConfiguration
+from pydantic import Field
 
 from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
+from AFAAS.configs.schema import SystemConfiguration
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -41,12 +42,14 @@ class AbstractFileWorkspace(Configurable, ABC):
         description = "The workspace is the root directory for all agent activity."
         configuration: AbstractFileWorkspaceConfiguration
 
-    def __init__(self, 
-                 user_id : str,
-                 agent_id : str,
-                 config: AbstractFileWorkspaceConfiguration = None,
-                *args, 
-                **kwargs):
+    def __init__(
+        self,
+        user_id: str,
+        agent_id: str,
+        config: AbstractFileWorkspaceConfiguration = None,
+        *args,
+        **kwargs,
+    ):
         self._config = config
         self._restrict_to_agent_workspace = config.restrict_to_agent_workspace
         self._app_workspace = config.app_workspace
@@ -78,9 +81,7 @@ class AbstractFileWorkspace(Configurable, ABC):
         For example, it can create the resource in which files will be stored, if it
         doesn't exist yet. E.g. a folder on disk, or an S3 Bucket.
         """
-        self._agent_workspace = self._sanitize_path(
-            relative_path = self.agent_workspace
-            )
+        self._agent_workspace = self._sanitize_path(relative_path=self.agent_workspace)
         self._initialize()
 
     @abstractmethod
@@ -215,7 +216,9 @@ class AbstractFileWorkspace(Configurable, ABC):
 
         LOG.debug(f"Joined paths as '{full_path}'")
 
-        if restrict_to_agent_workspace and not full_path.is_relative_to(agent_workspace_path):
+        if restrict_to_agent_workspace and not full_path.is_relative_to(
+            agent_workspace_path
+        ):
             raise ValueError(
                 f"Attempted to access path '{full_path}' outside of workspace '{agent_workspace_path}'."
             )

@@ -8,7 +8,6 @@ import yaml
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.app.main import _configure_openai_provider
 from autogpt.config import AIProfile, Config, ConfigBuilder
-from AFAAS.interfaces.adapters import ChatModelProvider, OpenAIProvider
 from autogpt.file_workspace.local import (
     AbstractFileWorkspace,
     AbstractFileWorkspaceConfiguration,
@@ -18,6 +17,8 @@ from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import configure_logging
 from autogpt.models.command_registry import CommandRegistry
 from pytest_mock import MockerFixture
+
+from AFAAS.interfaces.adapters import ChatModelProvider, OpenAIProvider
 
 pytest_plugins = [
     "tests.integration.agent_factory",
@@ -50,7 +51,9 @@ def workspace_root(agent_data_dir: Path) -> Path:
 
 @pytest.fixture()
 def workspace(workspace_root: Path) -> AbstractFileWorkspace:
-    workspace = LocalFileWorkspace(AbstractFileWorkspaceConfiguration(root=workspace_root))
+    workspace = LocalFileWorkspace(
+        AbstractFileWorkspaceConfiguration(root=workspace_root)
+    )
     workspace.initialize()
     return workspace
 

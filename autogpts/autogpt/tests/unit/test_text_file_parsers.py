@@ -8,13 +8,15 @@ from xml.etree import ElementTree
 import docx
 import pytest
 import yaml
-from AFAAS.core.tools.builtins.file_operations_utils import (
-    is_file_binary_fn, read_textual_file)
-from bs4 import BeautifulSoup
-
 from autogpt.commands.file_operations_utils import (
     decode_textual_file,
     is_file_binary_fn,
+)
+from bs4 import BeautifulSoup
+
+from AFAAS.core.tools.builtins.file_operations_utils import (
+    is_file_binary_fn,
+    read_textual_file,
 )
 
 logger = logging.getLogger(__name__)

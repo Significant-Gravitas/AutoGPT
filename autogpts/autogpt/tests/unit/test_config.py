@@ -8,10 +8,9 @@ from unittest import mock
 from unittest.mock import patch
 
 import pytest
-from pydantic import SecretStr
-
 from autogpt.app.configurator import GPT_3_MODEL, GPT_4_MODEL, apply_overrides_to_config
 from autogpt.config import Config, ConfigBuilder
+from pydantic import SecretStr
 
 
 def test_initial_values(config: Config) -> None:

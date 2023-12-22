@@ -3,10 +3,17 @@ import sqlite3
 from datetime import datetime
 
 import pytest
-from forge.sdk.db import (AgentDB, ArtifactModel, StepModel, TaskModel,
-                          convert_to_artifact, convert_to_step,
-                          convert_to_task)
+from forge.sdk.db import (
+    AgentDB,
+    ArtifactModel,
+    StepModel,
+    TaskModel,
+    convert_to_artifact,
+    convert_to_step,
+    convert_to_task,
+)
 from forge.sdk.errors import NotFoundError as DataNotFoundError
+
 from autogpts.forge.forge.sdk.model import *
 
 

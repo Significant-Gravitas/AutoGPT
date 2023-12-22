@@ -6,10 +6,9 @@ from typing import TYPE_CHECKING, Optional
 from pydantic import BaseModel, Field, validator
 
 from AFAAS.interfaces.agent import BaseAgent
-
-from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.meta import TaskStatusList
+from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.prompts.common import AFAAS_SMART_RAG_Strategy
 
 LOG = AFAASLogger(name=__name__)
@@ -66,8 +65,9 @@ class Task(AbstractBaseTask):
             raise ValueError("task_parent must be an instance of Task")
         self._task_parent_id = task.task_id
 
-    _task_predecessors: Optional[TaskStack] #= Field(default=None)
-    _task_successors: Optional[TaskStack] #= Field(default=None)
+    _task_predecessors: Optional[TaskStack]  # = Field(default=None)
+    _task_successors: Optional[TaskStack]  # = Field(default=None)
+
     @property
     def task_predecessors(self) -> TaskStack:
         if self._task_predecessors is None:
@@ -131,7 +131,9 @@ class Task(AbstractBaseTask):
         }
 
     def __init__(self, **data):
-        LOG.trace(f"Entering {self.__class__.__name__}.__init__() : {data['task_goal']}")
+        LOG.trace(
+            f"Entering {self.__class__.__name__}.__init__() : {data['task_goal']}"
+        )
         super().__init__(**data)
         LOG.trace(f"Quitting {self.__class__.__name__}.__init__() : {self.task_goal}")
 

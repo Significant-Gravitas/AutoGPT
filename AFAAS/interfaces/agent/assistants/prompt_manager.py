@@ -1,31 +1,27 @@
 from __future__ import annotations
 
+import importlib
 import platform
 import time
-import importlib
 from typing import TYPE_CHECKING, Any
 
 from pydantic import validator
 
-from AFAAS.interfaces.agent.features.agentmixin import \
-    AgentMixin
+from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy)
     from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.configs import (Configurable,
-                                                         SystemConfiguration,
-                                                         SystemSettings)
-
-
-from AFAAS.interfaces.adapters import (
-    AbstractChatModelProvider, AbstractChatModelResponse, ModelProviderName,
-)
+from AFAAS.configs import Configurable, SystemConfiguration, SystemSettings
 from AFAAS.core.adapters.openai import OpenAIModelName
+from AFAAS.interfaces.adapters import (
+    AbstractChatModelProvider,
+    AbstractChatModelResponse,
+    ModelProviderName,
+)
 from AFAAS.lib.sdk.logger import AFAASLogger
-
 
 LOG = AFAASLogger(name=__name__)
 
@@ -57,7 +53,12 @@ class BasePromptManager(AgentMixin):
 
     def load_strategies(self) -> list[AbstractPromptStrategy]:
         
-        from AFAAS.prompts import load_all_strategies, AutoCorrectionStrategy, AFAAS_SMART_RAG_Strategy, BaseTaskSummary_Strategy
+        from AFAAS.prompts import (
+            AFAAS_SMART_RAG_Strategy,
+            AutoCorrectionStrategy,
+            BaseTaskSummary_Strategy,
+            load_all_strategies,
+        )
         common_strategies = [AutoCorrectionStrategy(
                 **AutoCorrectionStrategy.default_configuration.dict()
             ),

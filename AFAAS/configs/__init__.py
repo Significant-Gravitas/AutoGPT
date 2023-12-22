@@ -7,7 +7,6 @@ from AFAAS.configs.schema import (
     UserConfigurable,
 )
 
-
 __all__ = [
     "Configurable",
     "SystemConfiguration",

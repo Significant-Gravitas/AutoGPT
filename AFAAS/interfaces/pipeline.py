@@ -1,14 +1,13 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine
-from AFAAS.prompts.common import AutoCorrectionStrategy
-from AFAAS.interfaces.task import AbstractTask
-from AFAAS.interfaces.adapters import AbstractChatModelResponse
-from AFAAS.interfaces.job import JobInterface
-from AFAAS.interfaces.agent import BaseLoop, BaseAgent
-
 
 import copy
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine, Optional
+
+from AFAAS.interfaces.adapters import AbstractChatModelResponse
+from AFAAS.interfaces.agent import BaseAgent, BaseLoop
+from AFAAS.interfaces.job import JobInterface
+from AFAAS.interfaces.task import AbstractTask
+from AFAAS.prompts.common import AutoCorrectionStrategy
 
 
 class BasePipeline(BaseLoop):
@@ -95,7 +94,9 @@ class Pipeline(BasePipeline):
             self.jobs.append(new_job)
         return pipeline_response
 
-    def _parse_response(self, strategy_name: str, model_response: AbstractChatModelResponse):
+    def _parse_response(
+        self, strategy_name: str, model_response: AbstractChatModelResponse
+    ):
         strategy_tools = self.get_strategy(
             strategy_name=strategy_name
         ).get_tools_names()

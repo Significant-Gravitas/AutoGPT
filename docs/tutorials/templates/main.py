@@ -3,19 +3,19 @@ import logging
 import uuid
 from typing import Awaitable, Callable
 
-from AFAAS.interfaces.agent import BaseAgent, Configurable
-from AFAAS.core.agents.usercontext.configuration import (
+from AFAAS.core.adapters.openai import AFAASChatOpenAI
+from AFAAS.core.agents.usercontext.configuration import (  # Import configuration
     MyCustomAgentConfiguration,
-)  # Import configuration
-from AFAAS.core.agents.usercontext.loop import (
+)
+from AFAAS.core.agents.usercontext.loop import (  # Import the UserContextLoop or your custom loop
     UserContextLoop,
-)  # Import the UserContextLoop or your custom loop
-from AFAAS.core.agents.usercontext.system import (
+)
+from AFAAS.core.agents.usercontext.system import (  # Import system settings
     MyCustomAgentSystemSettings,
-)  # Import system settings
+)
 from AFAAS.core.memory import Memory
 from AFAAS.core.planning import SimplePlanner
-from AFAAS.core.adapters.openai import AFAASChatOpenAI
+from AFAAS.interfaces.agent import BaseAgent, Configurable
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
 

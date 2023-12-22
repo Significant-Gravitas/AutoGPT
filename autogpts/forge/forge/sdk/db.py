@@ -9,11 +9,17 @@ import math
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, String,
-                        create_engine)
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    String,
+    create_engine,
+)
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import (DeclarativeBase, joinedload, relationship,
-                            sessionmaker)
+from sqlalchemy.orm import DeclarativeBase, joinedload, relationship, sessionmaker
 
 from .errors import NotFoundError
 from .forge_log import ForgeLogger

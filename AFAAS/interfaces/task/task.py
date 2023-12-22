@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 from abc import abstractmethod
 from typing import Optional
-from AFAAS.interfaces.task.base import AbstractBaseTask
+
 from AFAAS.interfaces.agent import BaseAgent
-from AFAAS.interfaces.task.stack import TaskStack
+from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.meta import TaskStatusList
+from AFAAS.interfaces.task.stack import TaskStack
 
 
 class AbstractTask(AbstractBaseTask):
@@ -49,7 +51,7 @@ class AbstractTask(AbstractBaseTask):
         ...
 
     task_text_output: Optional[str]
-    
+
     task_text_output_as_uml: Optional[str]
 
     # Methods
@@ -108,7 +110,7 @@ class AbstractTask(AbstractBaseTask):
 
     def str_with__status__(self):
         return f"{self.task_goal} (id : {self.task_id} / status : {self.state})"
-    
+
     @abstractmethod
     async def prepare_rag(
         self,

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import enum
 import uuid
-
 from typing import TYPE_CHECKING, Callable, Optional
 
 if TYPE_CHECKING:
@@ -10,19 +9,6 @@ if TYPE_CHECKING:
 
 
 # prompting
-from AFAAS.lib.action_history import Episode
-
-from AFAAS.interfaces.task import AbstractTask
-from AFAAS.interfaces.prompts.strategy import (
-    AbstractPromptStrategy,
-    DefaultParsedResponse,
-    PromptStrategiesConfiguration,
-)
-
-from AFAAS.interfaces.prompts.strategy_planning import (
-    PlanningPromptStrategiesConfiguration,
-    AbstractPlanningPromptStrategy,
-)
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,
@@ -31,6 +17,17 @@ from AFAAS.interfaces.adapters import (
     ChatPrompt,
     CompletionModelFunction,
 )
+from AFAAS.interfaces.prompts.strategy import (
+    AbstractPromptStrategy,
+    DefaultParsedResponse,
+    PromptStrategiesConfiguration,
+)
+from AFAAS.interfaces.prompts.strategy_planning import (
+    AbstractPlanningPromptStrategy,
+    PlanningPromptStrategiesConfiguration,
+)
+from AFAAS.interfaces.task import AbstractTask
+from AFAAS.lib.action_history import Episode
 
 
 class SelectToolFunctionNames(str, enum.Enum):
@@ -146,11 +143,10 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
         self,
         response_content: AssistantChatMessageDict,
     ) -> DefaultParsedResponse:
-        return self.default_parse_response_content(response_content = response_content)
+        return self.default_parse_response_content(response_content=response_content)
 
     def save(self):
         pass
-
 
     def compile_progress(
         self,

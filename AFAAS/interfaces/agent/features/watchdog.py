@@ -6,10 +6,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgentConfiguration
 
+from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.lib.action_history import EpisodicActionHistory
 from AFAAS.lib.sdk.logger import AFAASLogger
-
-from AFAAS.interfaces.agent import BaseAgent
 
 LOG = AFAASLogger(name=__name__)
 

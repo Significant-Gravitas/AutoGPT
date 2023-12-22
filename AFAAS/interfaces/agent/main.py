@@ -1,6 +1,5 @@
 from __future__ import annotations
-from langchain_core.vectorstores import VectorStore
-from langchain_core.embeddings import Embeddings
+
 import datetime
 import importlib
 import os
@@ -9,29 +8,37 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
 import yaml
+from langchain_core.embeddings import Embeddings
+from langchain_core.vectorstores import VectorStore
 from pydantic import Field, root_validator
 
+from AFAAS.configs import Configurable, SystemSettings
+from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider
 from AFAAS.interfaces.agent import BasePromptManager
 from AFAAS.interfaces.agent.loop import (  # Import only where it's needed
-    BaseLoop, BaseLoopHook)
-from AFAAS.configs import (Configurable,
-                                                         SystemSettings)
+    BaseLoop,
+    BaseLoopHook,
+)
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
-from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 from .abstract import AbstractAgent
-from AFAAS.lib.sdk.logger import AFAASLogger
+
 LOG = AFAASLogger(name = __name__)
-from langchain_core.vectorstores import VectorStore
-from langchain_core.embeddings import Embeddings
-from langchain_community.vectorstores.chroma import Chroma
 from langchain_community.embeddings.openai import OpenAIEmbeddings
-from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
+from langchain_community.vectorstores.chroma import Chroma
+from langchain_core.embeddings import Embeddings
+from langchain_core.vectorstores import VectorStore
+
 from AFAAS.core.adapters.openai import AFAASChatOpenAI
+from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.prompts.strategy import (AbstractChatModelResponse, AbstractPromptStrategy)
+    from AFAAS.interfaces.prompts.strategy import (
+        AbstractChatModelResponse,
+        AbstractPromptStrategy,
+    )
 
 
 class BaseAgent(Configurable, AbstractAgent):
@@ -483,9 +490,9 @@ class BaseAgent(Configurable, AbstractAgent):
             print(agent_settings_list)
         """
         LOG.trace(f"Entering : {cls.__name__}.list_users_agents_from_memory()")
+        from AFAAS.core.db.table import AgentsTable
         from AFAAS.interfaces.db import AbstractMemory
         from AFAAS.interfaces.db_table import AbstractTable
-        from AFAAS.core.db.table import AgentsTable
 
         memory_settings = AbstractMemory.SystemSettings()
 
@@ -521,8 +528,8 @@ class BaseAgent(Configurable, AbstractAgent):
         agent_id: uuid.UUID,
         user_id: uuid.UUID,
     ) -> BaseAgent:
-        from AFAAS.interfaces.db import AbstractMemory
         from AFAAS.core.db.table import AgentsTable
+        from AFAAS.interfaces.db import AbstractMemory
 
         # memory_settings = Memory.SystemSettings(configuration=agent_settings.memory)
         memory_settings = agent_settings.memory

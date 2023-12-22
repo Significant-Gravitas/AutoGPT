@@ -1,7 +1,8 @@
+from fastapi import APIRouter, Depends, Query, Request, Response, UploadFile
+
 from AFAAS.lib.sdk.errors import *
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.sdk.schema import *
-from fastapi import APIRouter, Depends, Query, Request, Response, UploadFile
 
 LOG = AFAASLogger(name=__name__)
 from fastapi import APIRouter, FastAPI, Request

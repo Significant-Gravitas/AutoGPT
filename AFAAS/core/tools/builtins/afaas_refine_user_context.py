@@ -10,11 +10,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.lib.task.task import Task
 from AFAAS.core.agents.usercontext import UserContextAgent
 from AFAAS.core.tools.command_decorator import tool
-
 from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.task.task import Task
 
 LOG = AFAASLogger(name=__name__)
 

@@ -14,8 +14,12 @@ import pytest
 from agbenchmark.__main__ import OPTIONAL_CATEGORIES, TEMP_FOLDER_ABS_PATH
 from agbenchmark.agent_api_interface import run_api_agent
 from agbenchmark.utils.data_types import ChallengeData, Ground
-from agbenchmark.utils.prompts import (END_PROMPT, FEW_SHOT_EXAMPLES,
-                                       PROMPT_MAP, SCORING_MAP)
+from agbenchmark.utils.prompts import (
+    END_PROMPT,
+    FEW_SHOT_EXAMPLES,
+    PROMPT_MAP,
+    SCORING_MAP,
+)
 from agbenchmark.utils.utils import agent_eligibible_for_optional_categories
 
 

@@ -54,6 +54,7 @@ import enum
 from typing import (
     Any,
     Callable,
+    ClassVar,
     Dict,
     Generic,
     List,
@@ -62,7 +63,6 @@ from typing import (
     TypedDict,
     TypeVar,
     Union,
-    ClassVar,
 )
 
 from pydantic import BaseModel, Field

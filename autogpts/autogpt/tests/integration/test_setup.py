@@ -1,8 +1,10 @@
 from unittest.mock import patch
 
 import pytest
-from autogpt.app.setup import (apply_overrides_to_ai_settings,
-                               interactively_revise_ai_settings)
+from autogpt.app.setup import (
+    apply_overrides_to_ai_settings,
+    interactively_revise_ai_settings,
+)
 from autogpt.config import AIDirectives, Config
 from autogpt.config.ai_profile import AIProfile
 

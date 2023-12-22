@@ -1,20 +1,19 @@
 import enum
-
 from typing import Optional
 
+from AFAAS.interfaces.adapters import (
+    AbstractLanguageModelProvider,
+    AbstractPromptConfiguration,
+    AssistantChatMessageDict,
+    ChatMessage,
+    ChatPrompt,
+    CompletionModelFunction,
+)
 from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy,
     PromptStrategiesConfiguration,
 )
 from AFAAS.interfaces.prompts.utils import json_loads, to_numbered_list
-from AFAAS.interfaces.adapters import (
-    AssistantChatMessageDict,
-    ChatMessage,
-    ChatPrompt,
-    CompletionModelFunction,
-    AbstractLanguageModelProvider,
-    AbstractPromptConfiguration,
-)
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 

@@ -1,16 +1,23 @@
 import enum
 import math
 import os
-import tiktoken
-from typing import Any, Callable, Dict, ParamSpec, Tuple, TypeVar, ClassVar
+from typing import Any, Callable, ClassVar, Dict, ParamSpec, Tuple, TypeVar
 
+import tiktoken
 from openai import AsyncOpenAI, completions
 from openai.resources import AsyncCompletions, AsyncEmbeddings
-
 
 aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
+from AFAAS.core.adapters.openai.common import (
+    OPEN_AI_CHAT_MODELS,
+    OPEN_AI_EMBEDDING_MODELS,
+    OPEN_AI_MODELS,
+    OpenAIModelName,
+    OpenAISettings,
+    _OpenAIRetryHandler,
+)
 from AFAAS.interfaces.adapters.chatmodel import CompletionModelFunction
 from AFAAS.interfaces.adapters.language_model import (
     BaseModelProviderBudget,
@@ -26,17 +33,8 @@ from AFAAS.interfaces.adapters.language_model import (
     ModelProviderService,
     ModelTokenizer,
 )
-from AFAAS.core.adapters.openai.common import (
-    _OpenAIRetryHandler,
-    OPEN_AI_CHAT_MODELS,
-    OPEN_AI_EMBEDDING_MODELS,
-    OPEN_AI_MODELS,
-    OpenAIModelName,
-    OpenAISettings,
-)
-from AFAAS.lib.utils.json_schema import JSONSchema
-
 from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 LOG = AFAASLogger(name=__name__)
 

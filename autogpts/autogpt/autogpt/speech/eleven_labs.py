@@ -5,8 +5,9 @@ import logging
 import os
 
 import requests
-from AFAAS.configs import SystemConfiguration, UserConfigurable
 from playsound import playsound
+
+from AFAAS.configs import SystemConfiguration, UserConfigurable
 
 from .base import VoiceBase
 

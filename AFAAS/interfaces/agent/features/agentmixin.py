@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13,7 +12,9 @@ if TYPE_CHECKING:
     from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
 
     from AFAAS.interfaces.agent import BaseAgent
+
 from AFAAS.lib.sdk.logger import AFAASLogger
+
 LOG = AFAASLogger(name = __name__)
 
 class AgentMixin:

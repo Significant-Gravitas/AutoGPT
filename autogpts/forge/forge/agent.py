@@ -1,19 +1,17 @@
+from forge.actions import ActionRegister
 from forge.sdk import (
     Agent,
     AgentDB,
+    ChromaMemStore,
     ForgeLogger,
+    PromptEngine,
     Step,
     StepRequestBody,
     Task,
     TaskRequestBody,
     Workspace,
+    chat_completion_request,
 )
-from forge.actions import ActionRegister
-
-
-from forge.sdk import (Agent, AgentDB, ChromaMemStore, ForgeLogger,
-                       PromptEngine, Step, StepRequestBody, Task,
-                       TaskRequestBody, Workspace, chat_completion_request)
 
 LOG = ForgeLogger(__name__)
 

@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import uuid
 from abc import ABCMeta
-
 from typing import TYPE_CHECKING, ClassVar
 
 from pydantic import Field
 
 # from AFAAS.core.memory import
 from AFAAS.interfaces.agent import AbstractAgent
-from AFAAS.interfaces.task.plan import AbstractPlan
 from AFAAS.interfaces.task.meta import TaskStatusList
+from AFAAS.interfaces.task.plan import AbstractPlan
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.task import Task
 
@@ -41,8 +40,8 @@ class Plan(AbstractPlan):
         self.agent.plan: Plan = self
 
         # Load the tasks from the database
-        from AFAAS.interfaces.db import AbstractMemory
         from AFAAS.core.db.table import AbstractTable
+        from AFAAS.interfaces.db import AbstractMemory
 
         agent: AbstractAgent = kwargs["agent"]
         memory: AbstractMemory = agent.memory
@@ -461,11 +460,11 @@ class Plan(AbstractPlan):
         """
         Get a plan from the database
         """
-        from AFAAS.interfaces.db import AbstractMemory
         from AFAAS.core.db.table.nosql.agent import AgentsTable
+        from AFAAS.interfaces.db import AbstractMemory
 
         memory: AbstractMemory = agent.memory
-        plan_table : AgentsTable  = memory.get_table("plans")
+        plan_table: AgentsTable = memory.get_table("plans")
         plan_dict = plan_table.get(plan_id=plan_id, agent_id=agent.agent_id)
         return cls(**plan_dict, agent=agent)
 
