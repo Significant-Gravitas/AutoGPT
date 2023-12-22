@@ -47,7 +47,7 @@ class S3FileWorkspace_AlphaRelease(AbstractFileWorkspace):
     def __init__(self, config: S3FileWorkspaceConfiguration):
         super().__init__(config=config)
         self._bucket_name = config.bucket
-        assert self._agent_workspace.is_absolute()
+        assert self.agent_workspace.is_absolute()
 
         # https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html
         self._s3 = boto3.resource(
@@ -60,10 +60,10 @@ class S3FileWorkspace_AlphaRelease(AbstractFileWorkspace):
     @property
     def root(self) -> Path:
         """The root directory of the file workspace."""
-        return self._agent_workspace
+        return self.agent_workspace
 
     @property
-    def restrict_to_root(self):
+    def restrict_to_agent_workspace(self):
         """Whether to restrict generated paths to the root."""
         return True
 
@@ -129,4 +129,4 @@ class S3FileWorkspace_AlphaRelease(AbstractFileWorkspace):
         obj.delete()
 
     def __repr__(self) -> str:
-        return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self._agent_workspace})"
+        return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self.agent_workspace})"
