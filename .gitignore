@@ -3,6 +3,7 @@ whichway/
 routing/
 arena/*
 autocorrection.*
+chroma/
 
 ## Original ignores
 .github_access_token
