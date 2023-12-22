@@ -5,48 +5,112 @@ description = ""
 authors = ["Pierre-Henri AUSSEIL"]
 license = "No license, you are not allowed to read this code, neither execute it, nor copy it, nor modify it, nor distribute it, nor use it in any way, shape or form."
 readme = "README.md"
+packages = [
+    { include = "AFAAS" },
+    { include = "app" },
+    # Add more packages as needed
+]
+
+[tool.poetry.scripts]
+run-server = "app.cli:cli"
+run-app = "app.cli:serve"
+
 
 [tool.poetry.dependencies]
 python = "^3.10"
+auto-gpt-plugin-template = {git = "https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template", rev = "0.1.0"}
+# autogpt-forge = { path = "../forge" }
+autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "autogpts/forge"}
+beautifulsoup4 = "^4.12.2"
+boto3 = "^1.33.6"
+charset-normalizer = "^3.1.0"
+click = "*"
+colorama = "^0.4.6"
+distro = "^1.8.0"
+docker = "*"
+duckduckgo-search = "^4.0.0"
+en-core-web-sm = {url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl"}
+fastapi = "*"
+ftfy = "^6.1.1"
+gitpython = "^3.1.32"
+google-api-python-client = "*"
+gTTS = "^2.3.1"
+hypercorn = "^0.14.4"
+inflection = "*"
+jsonschema = "*"
+numpy = "*"
+openai = "^0.27.10"
+orjson = "^3.8.10"
+Pillow = "*"
+pinecone-client = "^2.2.1"
+playsound = "~1.2.2"
+prompt_toolkit = "^3.0.38"
+pydantic = "*"
+pylatexenc = "*"
+pypdf = "^3.1.0"
+python-docx = "*"
 python-dotenv = "^1.0.0"
-openai = "^0.27.8"
-tenacity = "^8.2.2"
-sqlalchemy = "^2.0.19"
-aiohttp = "^3.8.5"
-colorlog = "^6.7.0"
-chromadb = "^0.4.10"
-agbenchmark = { path = "../../benchmark" }
-python-multipart = "^0.0.6"
-toml = "^0.10.2"
-jinja2 = "^3.1.2"
-uvicorn = "^0.23.2"
-litellm = "^0.1.821"
+pyyaml = "^6.0"
+readability-lxml = "^0.8.1"
+redis = "*"
+requests = "*"
+selenium = "^4.11.2"
+spacy = "^3.0.0"
+tiktoken = "^0.5.0"
+webdriver-manager = "*"
+
+# OpenAI and Generic plugins import
+openapi-python-client = "^0.14.0"
+
+# Benchmarking
+# agbenchmark = { path = "../../benchmark", optional = true }
+agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
+google-cloud-logging = "^3.8.0"
+google-cloud-storage = "^2.13.0"
+psycopg2-binary = "^2.9.9"
+
+[tool.poetry.extras]
+benchmark = ["agbenchmark"]
 
 [tool.poetry.group.dev.dependencies]
-isort = "^5.12.0"
-black = "^23.3.0"
-pre-commit = "^3.3.3"
-mypy = "^1.4.1"
-flake8 = "^6.0.0"
-types-requests = "^2.31.0.2"
-pytest = "^7.4.0"
-pytest-asyncio = "^0.21.1"
-watchdog = "^3.0.0"
-mock = "^5.1.0"
-autoflake = "^2.2.0"
-pydevd-pycharm = "^233.6745.319"
+black = "*"
+boto3-stubs = {extras = ["s3"], version = "^1.33.6"}
+flake8 = "*"
+gitpython = "^3.1.32"
+isort = "*"
+mypy = "*"
+pre-commit = "*"
+types-beautifulsoup4 = "*"
+types-colorama = "*"
+types-Markdown = "*"
+types-Pillow = "*"
+
+# Testing
+asynctest = "*"
+coverage = "*"
+pytest = "*"
+pytest-asyncio = "*"
+pytest-benchmark = "*"
+pytest-cov = "*"
+pytest-integration = "*"
+pytest-mock = "*"
+pytest-recording = "*"
+pytest-xdist = "*"
+vcrpy = {git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master"}
 
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
+
 [tool.black]
 line-length = 88
 target-version = ['py310']
 include = '\.pyi?$'
 packages = ["autogpt"]
-extend-exclude = '(/dist|/.venv|/venv|/build|/agent|agbenchmark/challenges)/'
+extend-exclude = '.+/(dist|.venv|venv|build|data)/.+'
+
 
 [tool.isort]
 profile = "black"
@@ -56,5 +120,38 @@ force_grid_wrap = 0
 use_parentheses = true
 ensure_newline_before_comments = true
 line_length = 88
-sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
-skip_glob = [".tox", "__pycache__", "*.pyc", "venv*/*", "reports", "venv", "env", "node_modules", ".env", ".venv", "dist", "agent/*", "agbenchmark/challenges/*"]
+sections = [
+    "FUTURE",
+    "STDLIB",
+    "THIRDPARTY",
+    "FIRSTPARTY",
+    "LOCALFOLDER"
+]
+extend_skip = [
+    "agbenchmark_config/temp_folder/",
+    "data/",
+]
+
+
+[tool.mypy]
+follow_imports = 'skip'
+check_untyped_defs = true
+disallow_untyped_calls = true
+files = [
+    'autogpt/**/*.py',
+    'tests/**/*.py'
+]
+
+[[tool.mypy.overrides]]
+module = [
+    'requests.*',
+    'yaml.*'
+]
+ignore_missing_imports = true
+
+
+[tool.pytest.ini_options]
+markers = [
+    "requires_openai_api_key",
+    "requires_huggingface_api_key"
+]
