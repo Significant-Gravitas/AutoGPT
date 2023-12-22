@@ -99,8 +99,8 @@ class BaseAgent(Configurable, AbstractAgent):
         workspace: AbstractFileWorkspace,
         prompt_manager: BasePromptManager,
         default_llm_provider: AbstractLanguageModelProvider,
-        vectorstores: VectorStore,
-        embeddings : Embeddings,
+        vectorstore: VectorStore,
+        embedding_model : Embeddings,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
     ) -> Any:
@@ -122,6 +122,9 @@ class BaseAgent(Configurable, AbstractAgent):
 
         self._prompt_manager = prompt_manager
         self._prompt_manager.set_agent(agent=self)
+
+        self._vectorstore = vectorstore
+        self._embeddings_model = embedding_model
 
         for key, value in settings.dict().items():
             if key not in self.SystemSettings.Config.default_exclude:

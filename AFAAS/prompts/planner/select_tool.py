@@ -146,7 +146,7 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
         self,
         response_content: AssistantChatMessageDict,
     ) -> DefaultParsedResponse:
-        return self.default_parse_response_content(response_content)
+        return self.default_parse_response_content(response_content = response_content)
 
     def save(self):
         pass

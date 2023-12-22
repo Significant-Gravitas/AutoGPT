@@ -48,6 +48,10 @@ class AbstractTask(AbstractBaseTask):
     def state(self) -> Optional[TaskStatusList]:
         ...
 
+    task_text_output: Optional[str]
+    
+    task_text_output_as_uml: Optional[str]
+
     # Methods
     @staticmethod
     @abstractmethod

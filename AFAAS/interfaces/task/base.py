@@ -114,10 +114,33 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
     def __init__(self, **data):
         LOG.trace(f"{self.__class__.__name__}.__init__()")
         super().__init__(**data)
-        if "_subtasks" in data and isinstance(data["_subtasks"], list):
-            from AFAAS.interfaces.task.stack import TaskStack
 
+        #FIXME: Make it dynamic as in AFAAS.lib.message_common
+        from AFAAS.interfaces.task.stack import TaskStack
+        if "_task_predecessors" in data and isinstance(
+            data["_task_predecessors"], list
+        ):
+            self._task_predecessors = TaskStack(
+                parent_task=self, _task_ids=data["_task_predecessors"]
+            )
+        else : 
+            self._task_predecessors = TaskStack(
+                parent_task=self, _task_ids=[]
+            )
+        if "_task_successors" in data and isinstance(data["_task_successors"], list):
+            self._task_successors = TaskStack(
+                parent_task=self, _task_ids=data["_task_successors"]
+            )
+        else : 
+            self._task_successors  = TaskStack(
+                parent_task=self, _task_ids=[]
+            )
+        if "_subtasks" in data and isinstance(data["_subtasks"], list):
             self._subtasks = TaskStack(parent_task=self, _task_ids=data["_subtasks"])
+        else : 
+            self._subtasks  = TaskStack(
+                parent_task=self, _task_ids=[]
+            )
 
     def dict_memory(self, **kwargs) -> dict:
         d = super().dict(**kwargs)
@@ -333,7 +356,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
 
             # Check subtasks
             for subtask in task.subtasks:
-                if check_task(subtask, found_ready):
+                if check_task(self.agent.plan.get_task(subtask), found_ready):
                     found_ready = True
 
             return found_ready

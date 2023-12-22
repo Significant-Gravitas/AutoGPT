@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import functools
 import inspect
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, ParamSpec, TypeVar
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
@@ -14,6 +14,9 @@ from AFAAS.lib.utils.json_schema import JSONSchema
 
 # Unique identifier for AutoGPT commands
 AUTO_GPT_TOOL_IDENTIFIER = "auto_gpt_command"
+
+P = ParamSpec("P")
+CO = TypeVar("CO", bound=ToolOutput)
 
 
 def tool(
@@ -28,10 +31,10 @@ def tool(
     success_check_callback: Optional[
         Callable[..., Any]
     ] = Tool.default_success_check_callback,  # Add this line
-) -> Callable[..., ToolOutput]:
+) -> Callable[[Callable[P, CO]], Callable[P, CO]]:
     """The command decorator is used to create Tool objects from ordinary functions."""
 
-    def decorator(func: Callable[..., ToolOutput]):
+    def decorator(func: Callable[P, CO]) -> Callable[P, CO]:
         typed_parameters = [
             ToolParameter(
                 name=param_name,
@@ -55,13 +58,13 @@ def tool(
         if inspect.iscoroutinefunction(func):
 
             @functools.wraps(func)
-            async def wrapper(*args, **kwargs) -> Any:
+            async def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
                 return await func(*args, **kwargs)
 
         else:
 
             @functools.wraps(func)
-            def wrapper(*args, **kwargs) -> Any:
+            def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
                 return func(*args, **kwargs)
 
         setattr(wrapper, "tool", cmd)

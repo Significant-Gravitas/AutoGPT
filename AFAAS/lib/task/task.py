@@ -66,9 +66,8 @@ class Task(AbstractBaseTask):
             raise ValueError("task_parent must be an instance of Task")
         self._task_parent_id = task.task_id
 
-    _task_predecessors: Optional[TaskStack] = Field()
-    _task_successors: Optional[TaskStack] = Field(default=None)
-
+    _task_predecessors: Optional[TaskStack] #= Field(default=None)
+    _task_successors: Optional[TaskStack] #= Field(default=None)
     @property
     def task_predecessors(self) -> TaskStack:
         if self._task_predecessors is None:
@@ -132,22 +131,9 @@ class Task(AbstractBaseTask):
         }
 
     def __init__(self, **data):
-        LOG.trace(f"{self.__class__.__name__}.__init__() : {data['task_goal']}")
+        LOG.trace(f"Entering {self.__class__.__name__}.__init__() : {data['task_goal']}")
         super().__init__(**data)
-        if "_task_predecessors" in data and isinstance(
-            data["_task_predecessors"], list
-        ):
-            from AFAAS.interfaces.task.stack import TaskStack
-
-            self._task_predecessors = TaskStack(
-                parent_task=self, _task_ids=data["_task_predecessors"]
-            )
-        if "_task_successors" in data and isinstance(data["_task_successors"], list):
-            from AFAAS.interfaces.task.stack import TaskStack
-
-            self._task_successors = TaskStack(
-                parent_task=self, _task_ids=data["_task_successors"]
-            )
+        LOG.trace(f"Quitting {self.__class__.__name__}.__init__() : {self.task_goal}")
 
     @property
     def plan_id(self) -> str:
@@ -316,6 +302,7 @@ class Task(AbstractBaseTask):
         similar_tasks: int = 0,
         avoid_redondancy: bool = False,
     ):
+        return
         plan_history: list[Task] = []
         if history > 0:
             plan_history = self.agent.plan.get_last_achieved_tasks(count=history)

@@ -159,6 +159,7 @@ class PlannerLoop(BaseLoop):
                     # user_input = assistant_reply_dict
                 )
 
+            print("result" ,result)
             if current_task.is_ready():
                 """If the task still still match readiness criterias at this point, it means that we can close it"""
                 current_task.state = TaskStatusList.DONE
@@ -196,7 +197,7 @@ class PlannerLoop(BaseLoop):
                 plan_history: list[Task] = self.plan().get_last_achieved_tasks(count=10)
                 for i, task in enumerate(plan_history):
                     LOG.info(
-                        f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}"
+                        f"{i+1}.Task : {task.debug_formated_str()} : {getattr(task, 'task_text_output', '')}"
                     )
 
                 if LOG.isEnabledFor(TRACE):
@@ -206,7 +207,7 @@ class PlannerLoop(BaseLoop):
                 task_path: list[Task] = self._current_task.get_task_path()
                 for i, task in enumerate(task_path):
                     LOG.trace(
-                        f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}"
+                        f"{i+1}.Task : {task.debug_formated_str()} : {getattr(task, 'task_text_output', '')}"
                     )
 
                 if LOG.isEnabledFor(TRACE):
@@ -216,7 +217,7 @@ class PlannerLoop(BaseLoop):
                 task_sibblings: list[Task] = self._current_task.get_sibblings()
                 for i, task in enumerate(task_sibblings):
                     LOG.trace(
-                        f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}"
+                        f"{i+1}.Task : {task.debug_formated_str()} : {getattr(task, 'task_text_output', '')}"
                     )
 
                 if LOG.isEnabledFor(TRACE):
@@ -228,7 +229,7 @@ class PlannerLoop(BaseLoop):
                 ] = self._current_task.task_predecessors.get_all_tasks_from_stack()
                 for i, task in enumerate(task_predecessors):
                     LOG.trace(
-                        f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}"
+                        f"{i+1}.Task : {task.debug_formated_str()} : {getattr(task, 'task_text_output', '')}"
                     )
 
                 if LOG.isEnabledFor(NOTICE):
@@ -320,26 +321,15 @@ class PlannerLoop(BaseLoop):
         return return_value
 
 
-def execute_command(
+async def execute_command(
     command_name: str, arguments: dict[str, str], agent: PlannerAgent, task: Task
 ) -> ToolOutput:
-    """Execute the command and return the result
-
-    Args:
-        command_name (str): The name of the command to execute
-        arguments (dict): The arguments for the command
-        agent (Agent): The agent that is executing the command
-
-    Returns:
-        str: The result of the command
-    """
-    # Execute a native command with the same name or alias, if it exists
     LOG.info(f"Executing command : {command_name}")
     LOG.info(f"with arguments : {arguments}")
     if tool := agent._tool_registry.get_tool(tool_name=command_name):
         try:
-            result = tool(**arguments, task=task, agent=agent)
-            tool.success_check_callback(self=tool, task=task, tool_output=result)
+            result = await tool(**arguments, task=task, agent=agent)
+            await tool.success_check_callback(self=tool, task=task, tool_output=result)
             return result
         except AgentException:
             raise

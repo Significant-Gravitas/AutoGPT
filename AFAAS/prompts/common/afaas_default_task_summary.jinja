@@ -1,0 +1,26 @@
+## Instructions :
+Provide an detailed description of what happened during the processing of the task bellow. This description will be handed to an Autonomous Agent backed by a Large Language Model (LLM) to perform the next task. The Agent is not context aware, therefor it is very imoportant you provide him with all the context he may seek in his future tasks.
+### Task description : 
+{{ to_md_quotation(task.long_description) }}
+
+### Task input : 
+{{ to_md_quotation(task.tech_summary_task_context) }}
+
+### Task output :
+The following {{ tool }}
+With the following arguments :
+{{ tool_output }}
+
+Agent called the function {{ tool.name }} : {{ tool.description }} with arguments : 
+{{ tool.parameters }} 
+
+{% if documents|length > 1 %}
+Following documents have been created/modified :{% for doc in documents %}
+{{ loop.index }}. {{ doc.path }} : 
+{{ doc.content }} 
+
+{% endfor %}{% endif %}
+
+## FINAL WORDS :
+
+You must not assume any information and you must stay true to the facts above. Likewise, you must assume that the agent that will process the next task will have no other informations that the one you are going to share.

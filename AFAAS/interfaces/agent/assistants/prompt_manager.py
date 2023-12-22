@@ -57,13 +57,17 @@ class BasePromptManager(AgentMixin):
 
     def load_strategies(self) -> list[AbstractPromptStrategy]:
         
-        from AFAAS.prompts import load_all_strategies, AutoCorrectionStrategy, AFAAS_SMART_RAG_Strategy
+        from AFAAS.prompts import load_all_strategies, AutoCorrectionStrategy, AFAAS_SMART_RAG_Strategy, BaseTaskSummary_Strategy
         common_strategies = [AutoCorrectionStrategy(
                 **AutoCorrectionStrategy.default_configuration.dict()
             ),
         AFAAS_SMART_RAG_Strategy(
                **AFAAS_SMART_RAG_Strategy.default_configuration.dict()
-        )]
+        ),
+        BaseTaskSummary_Strategy(
+                **BaseTaskSummary_Strategy.default_configuration.dict()
+        )
+        ]
 
 
         module = self._agent.__class__.__module__.rsplit('.', 1)[0]
