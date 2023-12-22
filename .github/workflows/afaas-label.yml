@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Add Contributor label to specific users' issues and PRs
-        uses: actions/github-script@v5
+        uses: actions/github-script@v7
         with:
           script: |
             const context = github.context;

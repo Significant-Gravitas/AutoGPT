@@ -11,10 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Fetch Merged PRs and Update Docs
-        uses: actions/github-script@v5
+        id: fetch-merged-prs  # Assign an ID to this step
+        uses: actions/github-script@v7
         with:
           script: |
             const yesterday = new Date();
