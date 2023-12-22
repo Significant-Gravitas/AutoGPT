@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 class AbstractFileWorkspaceConfiguration(SystemConfiguration):
     root: str = ""
     app_workspace: str = UserConfigurable(default="~/auto-gpt/agents")
-    restrict_to_root: bool = UserConfigurable(default=True)
+    restrict_to_agent_workspace: bool = UserConfigurable(default=True)
 
 
 class LocalFileWorkspace(AbstractFileWorkspace):
@@ -45,7 +45,7 @@ class LocalFileWorkspace(AbstractFileWorkspace):
         # LOG = logger
         # LOG = LOG.getChild("workspace")
         self._root = self._sanitize_path(settings.configuration.root)
-        self._restrict_to_root = settings.configuration.restrict_to_root
+        self._restrict_to_agent_workspace = settings.configuration.restrict_to_agent_workspace
         super().__init__(settings)
 
     @property
@@ -66,9 +66,9 @@ class LocalFileWorkspace(AbstractFileWorkspace):
     #     return self.root / "configuration.yml"
 
     @property
-    def restrict_to_root(self):
+    def restrict_to_agent_workspace(self):
         """Whether to restrict generated paths to the root."""
-        return self._restrict_to_root
+        return self._restrict_to_agent_workspace
 
     def _initialize(self) -> None:
         self.root.mkdir(exist_ok=True, parents=True)

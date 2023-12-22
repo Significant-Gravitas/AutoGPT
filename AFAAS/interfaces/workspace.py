@@ -26,11 +26,11 @@ class AbstractFileWorkspaceConfiguration(SystemConfiguration):
     user_id: str = None
     agent_id: str = None
 
-    @property
-    def agent_workspace(self) -> Path:
-        if not self.user_id or not self.agent_id:
-            raise ValueError("user_id and agent_id must be set")
-        return self.app_workspace / self.user_id / self.agent_id
+    # @property
+    # def agent_workspace(self) -> Path:
+    #     if not self.user_id or not self.agent_id:
+    #         raise ValueError("user_id and agent_id must be set")
+    #     return self.app_workspace / self.user_id / self.agent_id
 
 
 class AbstractFileWorkspace(Configurable, ABC):
@@ -41,8 +41,17 @@ class AbstractFileWorkspace(Configurable, ABC):
         description = "The workspace is the root directory for all agent activity."
         configuration: AbstractFileWorkspaceConfiguration
 
-    def __init__(self, config: AbstractFileWorkspaceConfiguration, *args, **kwargs):
+    def __init__(self, 
+                 user_id : str,
+                 agent_id : str,
+                 config: AbstractFileWorkspaceConfiguration = None,
+                *args, 
+                **kwargs):
         self._config = config
+        self._restrict_to_agent_workspace = config.restrict_to_agent_workspace
+        self._app_workspace = config.app_workspace
+        self._user_id = user_id
+        self._agent_id = agent_id
         pass
 
     on_write_file: Callable[[Path], Any] | None = None
@@ -60,7 +69,7 @@ class AbstractFileWorkspace(Configurable, ABC):
 
     @property
     @abstractmethod
-    def restrict_to_root(self) -> bool:
+    def restrict_to_agent_workspace(self) -> bool:
         """Whether to restrict file access to within the workspace's root path."""
 
     def initialize(self) -> None:
@@ -69,7 +78,9 @@ class AbstractFileWorkspace(Configurable, ABC):
         For example, it can create the resource in which files will be stored, if it
         doesn't exist yet. E.g. a folder on disk, or an S3 Bucket.
         """
-        self._agent_workspace = self._sanitize_path(self._config.agent_workspace)
+        self._agent_workspace = self._sanitize_path(
+            relative_path = self.agent_workspace
+            )
         self._initialize()
 
     @abstractmethod
@@ -148,12 +159,12 @@ class AbstractFileWorkspace(Configurable, ABC):
         """
         return self._sanitize_path(relative_path, self.root)
 
-    @staticmethod
     @abstractmethod
     def _sanitize_path(
+        self,
         relative_path: str | Path,
         agent_workspace_path: Optional[str | Path] = None,
-        restrict_to_root: bool = True,
+        restrict_to_agent_workspace: bool = True,
     ) -> Path:
         """Resolve the relative path within the given root if possible.
 
@@ -192,7 +203,7 @@ class AbstractFileWorkspace(Configurable, ABC):
         # Allow absolute paths if they are contained in the workspace.
         if (
             relative_path.is_absolute()
-            and restrict_to_root
+            and restrict_to_agent_workspace
             and not relative_path.is_relative_to(agent_workspace_path)
         ):
             raise ValueError(
@@ -204,7 +215,7 @@ class AbstractFileWorkspace(Configurable, ABC):
 
         LOG.debug(f"Joined paths as '{full_path}'")
 
-        if restrict_to_root and not full_path.is_relative_to(agent_workspace_path):
+        if restrict_to_agent_workspace and not full_path.is_relative_to(agent_workspace_path):
             raise ValueError(
                 f"Attempted to access path '{full_path}' outside of workspace '{agent_workspace_path}'."
             )
@@ -228,3 +239,9 @@ class AbstractFileWorkspace(Configurable, ABC):
         # (log_path / "cycle.log").touch()
 
         return workspace
+
+    @property
+    def agent_workspace(self) -> Path:
+        if not self._user_id or not self._agent_id:
+            raise ValueError("user_id and agent_id must be set")
+        return self._app_workspace / self._user_id / self._agent_id

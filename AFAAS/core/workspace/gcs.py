@@ -38,17 +38,17 @@ class GCSFileWorkspace_AlphaRealease(AbstractFileWorkspace):
     def __init__(self, config: GCSFileWorkspaceConfiguration):
         super().__init__(config=config)
         self._bucket_name = config.bucket
-        assert self._agent_workspace.is_absolute()
+        assert self.agent_workspace.is_absolute()
 
         self._gcs = storage.Client()
 
     @property
     def root(self) -> Path:
         """The root directory of the file workspace."""
-        return self._agent_workspace
+        return self.agent_workspace
 
     @property
-    def restrict_to_root(self) -> bool:
+    def restrict_to_agent_workspace(self) -> bool:
         """Whether to restrict generated paths to the root."""
         return True
 
@@ -111,4 +111,4 @@ class GCSFileWorkspace_AlphaRealease(AbstractFileWorkspace):
         blob.delete()
 
     def __repr__(self) -> str:
-        return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self._agent_workspace})"
+        return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self.agent_workspace})"
