@@ -6,9 +6,10 @@ from pydantic import BaseModel
 
 from AFAAS.configs.schema import AFAASMessageType, AFAASModel
 from AFAAS.lib.utils.json_schema import JSONSchema
+from AFAAS.lib.message_common import AFAASMessage
 
 
-class MessageAgentLLM(AFAASModel):
+class MessageAgentLLM(AFAASMessage):
     message_id: str = "MAL" + str(uuid.uuid4())
     message_type = AFAASMessageType.AGENT_LLM.value
     agent_sender_id: str

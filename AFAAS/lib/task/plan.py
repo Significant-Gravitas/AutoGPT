@@ -30,22 +30,6 @@ class Plan(AbstractPlan):
     _ready_task_ids: list[str] = []
     _done_task_ids: list[str] = []
 
-    # def dict(self, *args, **kwargs):
-    #     exclude = set(kwargs.get("exclude", []))
-    #     exclude.add("agent")
-    #     kwargs["exclude"] = exclude
-    #     data = super().dict(*args, **kwargs)
-    #     data["myagent_id"] = self.agent_id
-    #     return data
-
-    # def json(self, *args, **kwargs):
-    #     exclude = set(kwargs.get("exclude", []))
-    #     exclude.add("agent")
-    #     kwargs["exclude"] = exclude
-    #     data = super().json(*args, **kwargs)
-    #     data = data[:-1] + f', "myagent_id": "{self.agent_id}"' + data[-1:]
-    #     return data
-
     def __init__(self, *args, **kwargs):
         if kwargs["agent"].agent_id in Plan._instance:
             self = Plan._instance[kwargs["agent"].agent_id]
@@ -61,7 +45,7 @@ class Plan(AbstractPlan):
         from AFAAS.core.db.table import AbstractTable
 
         agent: AbstractAgent = kwargs["agent"]
-        memory: AbstractMemory = agent._memory
+        memory: AbstractMemory = agent.memory
         task_table: AbstractTable = memory.get_table("tasks")
 
         filter = AbstractTable.FilterDict(
@@ -371,7 +355,7 @@ class Plan(AbstractPlan):
 
         """
         LOG.debug(f"Creating plan for agent {agent.agent_id}")
-        memory = agent._memory
+        memory = agent.memory
         plan_table = memory.get_table("plans")
 
         plan = cls(
@@ -398,6 +382,7 @@ class Plan(AbstractPlan):
             responsible_agent_id=None,
             task_goal=self.task_goal,
             command=Task.default_command(),
+            long_description="This is the initial task of the plan, no task has been performed yet and this tasks will consist in splitting the goal into subtasks",
             arguments={"note_to_agent_length": 400},
             acceptance_criteria=["A plan has been made to achieve the specific task"],
         )
@@ -422,6 +407,7 @@ class Plan(AbstractPlan):
                     responsible_agent_id=None,
                     task_goal="Refine a user requirements for better exploitation by Agents",
                     command="afaas_refine_user_context",
+                    long_description="This tasks will consists in interacting with the user in order to get a more detailed, precise, complete and exploitable set of requirements",
                     acceptance_criteria=[
                         "The user has clearly and undoubtly stated his willingness to quit the process"
                     ],
@@ -464,7 +450,7 @@ class Plan(AbstractPlan):
         ###
         agent = self.agent
         if agent:
-            memory = agent._memory
+            memory = agent.memory
             plan_table = memory.get_table("plans")
             plan_table.update(
                 plan_id=self.plan_id, agent_id=self.agent.agent_id, value=self
@@ -476,9 +462,10 @@ class Plan(AbstractPlan):
         Get a plan from the database
         """
         from AFAAS.interfaces.db import AbstractMemory
+        from AFAAS.core.db.table.nosql.agent import AgentsTable
 
-        memory: AbstractMemory = agent._memory
-        plan_table = memory.get_table("plans")
+        memory: AbstractMemory = agent.memory
+        plan_table : AgentsTable  = memory.get_table("plans")
         plan_dict = plan_table.get(plan_id=plan_id, agent_id=agent.agent_id)
         return cls(**plan_dict, agent=agent)
 

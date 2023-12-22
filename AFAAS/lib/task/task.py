@@ -10,7 +10,7 @@ from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.meta import TaskStatusList
-from .rag.afaas_smart_rag import AFAAS_SMART_RAG_Strategy
+from AFAAS.prompts.common import AFAAS_SMART_RAG_Strategy
 
 LOG = AFAASLogger(name=__name__)
 
@@ -66,9 +66,8 @@ class Task(AbstractBaseTask):
             raise ValueError("task_parent must be an instance of Task")
         self._task_parent_id = task.task_id
 
-    _task_predecessors: Optional[TaskStack] = Field()
-    _task_successors: Optional[TaskStack] = Field(default=None)
-
+    _task_predecessors: Optional[TaskStack] #= Field(default=None)
+    _task_successors: Optional[TaskStack] #= Field(default=None)
     @property
     def task_predecessors(self) -> TaskStack:
         if self._task_predecessors is None:
@@ -132,22 +131,9 @@ class Task(AbstractBaseTask):
         }
 
     def __init__(self, **data):
-        LOG.trace(f"{self.__class__.__name__}.__init__() : {data['task_goal']}")
+        LOG.trace(f"Entering {self.__class__.__name__}.__init__() : {data['task_goal']}")
         super().__init__(**data)
-        if "_task_predecessors" in data and isinstance(
-            data["_task_predecessors"], list
-        ):
-            from AFAAS.interfaces.task.stack import TaskStack
-
-            self._task_predecessors = TaskStack(
-                parent_task=self, _task_ids=data["_task_predecessors"]
-            )
-        if "_task_successors" in data and isinstance(data["_task_successors"], list):
-            from AFAAS.interfaces.task.stack import TaskStack
-
-            self._task_successors = TaskStack(
-                parent_task=self, _task_ids=data["_task_successors"]
-            )
+        LOG.trace(f"Quitting {self.__class__.__name__}.__init__() : {self.task_goal}")
 
     @property
     def plan_id(self) -> str:
@@ -232,21 +218,21 @@ class Task(AbstractBaseTask):
 
     @classmethod
     def get_task_from_db(cls, task_id: str, agent: BaseAgent) -> Task:
-        memory = agent._memory
+        memory = agent.memory
         task_table = memory.get_table("tasks")
         task = task_table.get(task_id=task_id, plan_id=agent.plan.plan_id)
         return cls(**task, agent=agent)
 
     @classmethod
     def create_in_db(cls, task: Task, agent: BaseAgent):
-        memory = agent._memory
+        memory = agent.memory
         task_table = memory.get_table("tasks")
         task_table.add(value=task, id=task.task_id)
 
     def save_in_db(self):
         from AFAAS.core.db.table import AbstractTable
 
-        memory = self.agent._memory
+        memory = self.agent.memory
         task_table: AbstractTable = memory.get_table("tasks")
         task_table.update(
             value=self,
@@ -316,6 +302,7 @@ class Task(AbstractBaseTask):
         similar_tasks: int = 0,
         avoid_redondancy: bool = False,
     ):
+        return
         plan_history: list[Task] = []
         if history > 0:
             plan_history = self.agent.plan.get_last_achieved_tasks(count=history)

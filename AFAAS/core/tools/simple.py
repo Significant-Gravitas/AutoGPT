@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 from AFAAS.configs import Configurable, SystemConfiguration
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.interfaces.adapters import (
-    BaseChatModelProvider,
+    AbstractChatModelProvider,
     CompletionModelFunction,
     ModelProviderName,
 )
@@ -90,7 +90,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         settings: SimpleToolRegistry.SystemSettings,
         memory: AbstractMemory,
         workspace: AbstractFileWorkspace,
-        model_providers: dict[ModelProviderName, BaseChatModelProvider],
+        model_providers: dict[ModelProviderName, AbstractChatModelProvider],
     ):
         """
         Initialize the SimpleToolRegistry.
@@ -401,7 +401,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         agent: BaseAgent,
         memory: AbstractMemory,
         workspace: AbstractFileWorkspace,
-        model_providers: dict[ModelProviderName, BaseChatModelProvider],
+        model_providers: dict[ModelProviderName, AbstractChatModelProvider],
     ) -> "SimpleToolRegistry":
         """
         Creates and returns a new SimpleToolRegistry with tools from given modules.

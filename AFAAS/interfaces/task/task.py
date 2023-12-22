@@ -48,6 +48,10 @@ class AbstractTask(AbstractBaseTask):
     def state(self) -> Optional[TaskStatusList]:
         ...
 
+    task_text_output: Optional[str]
+    
+    task_text_output_as_uml: Optional[str]
+
     # Methods
     @staticmethod
     @abstractmethod
@@ -102,6 +106,9 @@ class AbstractTask(AbstractBaseTask):
     def __eq__(self, other):
         ...
 
+    def str_with__status__(self):
+        return f"{self.task_goal} (id : {self.task_id} / status : {self.state})"
+    
     @abstractmethod
     async def prepare_rag(
         self,

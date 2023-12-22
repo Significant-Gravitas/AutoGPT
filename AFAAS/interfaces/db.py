@@ -114,13 +114,11 @@ class AbstractMemory(Configurable, abc.ABC):
     ):
         AbstractMemory._instances = {}
         super().__init__(settings)
-        # self._configuration = settings.configuration
-        # LOG = logger
 
     @classmethod
     def get_adapter(
         cls,
-        memory_settings: AbstractMemory.SystemSettings,
+        memory_settings: AbstractMemory.SystemSettings = SystemSettings(),
         *args,
         **kwargs,
     ) -> "AbstractMemory":
@@ -235,7 +233,7 @@ class AbstractMemory(Configurable, abc.ABC):
 
             return MessagesAgentLLMTable(memory=self)
 
-        elif table_name == "message_user_agent":
+        elif table_name == "message_agent_user":
             from AFAAS.core.db.table import MessagesUserAgentTable
 
             return MessagesUserAgentTable(memory=self)

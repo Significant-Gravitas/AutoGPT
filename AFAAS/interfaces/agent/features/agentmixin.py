@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from AFAAS.lib.task.plan import Plan
     from AFAAS.core.db.table import AbstractTable
     from AFAAS.interfaces.adapters import \
-        CompletionModelFunction , ChatModelResponse
+        CompletionModelFunction , AbstractChatModelResponse
     from AFAAS.core.tools.base import BaseToolsRegistry
     from AFAAS.core.tools.tools import Tool
     from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
@@ -20,11 +20,14 @@ class AgentMixin:
     _agent: BaseAgent
 
     def __init__(self, **kwargs):
+        self._agent = None
         pass
 
     def set_agent(self, agent: BaseAgent):
         if hasattr(self, "_agent") and self._agent is not None:
-            raise Exception("Agent already set")
+            LOG.warning(f"Agent already set")
+        else :
+            LOG.info(f"Setting agent {agent.agent_id} for {self.__class__.__name__}")
 
         self._agent = agent
 
@@ -62,14 +65,14 @@ class AgentMixin:
         return self._agent.plan
 
     def get_table(self, table_name: str) -> AbstractTable:
-        return self._agent._memory.get_table(table_name=table_name)
+        return self._agent.memory.get_table(table_name=table_name)
 
     def get_strategy(self, strategy_name: str) -> AbstractPromptStrategy:
         return self._agent._prompt_manager._prompt_strategies[strategy_name]
 
     async def _execute_strategy(
         self, strategy_name: str, **kwargs
-    ) -> ChatModelResponse:
+    ) -> AbstractChatModelResponse:
         return await self._agent._prompt_manager.execute_strategy(
             strategy_name=strategy_name, **kwargs
         )

@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import platform
 import time
-from typing import TYPE_CHECKING
+import importlib
+from typing import TYPE_CHECKING, Any
 
 from pydantic import validator
+
 from AFAAS.interfaces.agent.features.agentmixin import \
     AgentMixin
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy)
+    from AFAAS.interfaces.agent import BaseAgent
 
 from AFAAS.configs import (Configurable,
                                                          SystemConfiguration,
@@ -18,7 +21,7 @@ from AFAAS.configs import (Configurable,
 
 
 from AFAAS.interfaces.adapters import (
-    BaseChatModelProvider, ChatModelResponse, ModelProviderName,
+    AbstractChatModelProvider, AbstractChatModelResponse, ModelProviderName,
 )
 from AFAAS.core.adapters.openai import OpenAIModelName
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -34,49 +37,47 @@ class SystemInfo(dict):
     api_budget: float
     current_time: str
 
-
-class PromptManagerConfiguration(SystemConfiguration):
-    """Configuration for the PromptManager subsystem."""
-    pass
-
-
-    # @validator("models")
-    # def validate_models(cls, models):
-    #     expected_keys = set( PromptStrategyLanguageModelClassification)
-    #     actual_keys = set(models.keys())
-
-    #     if expected_keys != actual_keys:
-    #         missing_keys = expected_keys - actual_keys
-    #         raise ValueError(f"Missing keys in 'models': {missing_keys}")
-
-    #     return models
-
-class PromptManager(Configurable, AgentMixin):
+class BasePromptManager(AgentMixin):
     """Manages the agent's planning and goal-setting by constructing language model prompts."""
-
-    # default_settings = PromptManager.SystemSettings()
-    class SystemSettings(SystemSettings):
-        configuration: PromptManagerConfiguration = PromptManagerConfiguration()
-        name = "prompt_manager"
-        description = "Manages the agent's planning and goal-setting by constructing language model prompts."
 
     def __init__(
         self,
-        settings: PromptManager.SystemSettings,
-        agent_systems: list[Configurable],
-        strategies: list[AbstractPromptStrategy],
     ) -> None:
-        super().__init__(settings=settings)
 
         self._prompt_strategies = {}
+    
+    def add_strategies(self, strategies :list[AbstractPromptStrategy])->None : 
         for strategy in strategies:
             self._prompt_strategies[strategy.STRATEGY_NAME] = strategy
 
-        LOG.trace(
-            f"PromptManager created with strategies : {self._prompt_strategies}"
-        )
+    def set_agent(self, agent: "BaseAgent"):
+        if not hasattr(self, "_agent") or self._agent is None:
+            super().set_agent(agent)
+        self.load_strategies()
 
-    async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse:
+    def load_strategies(self) -> list[AbstractPromptStrategy]:
+        
+        from AFAAS.prompts import load_all_strategies, AutoCorrectionStrategy, AFAAS_SMART_RAG_Strategy, BaseTaskSummary_Strategy
+        common_strategies = [AutoCorrectionStrategy(
+                **AutoCorrectionStrategy.default_configuration.dict()
+            ),
+        AFAAS_SMART_RAG_Strategy(
+               **AFAAS_SMART_RAG_Strategy.default_configuration.dict()
+        ),
+        BaseTaskSummary_Strategy(
+                **BaseTaskSummary_Strategy.default_configuration.dict()
+        )
+        ]
+
+
+        module = self._agent.__class__.__module__.rsplit('.', 1)[0]
+        strategies : list[AbstractPromptStrategy] = []
+        strategies += load_all_strategies()
+        
+        self.add_strategies(strategies = strategies + common_strategies)
+        return self._prompt_strategies
+
+    async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse:
         """
         await simple_planner.execute_strategy('name_and_goals', user_objective='Learn Python')
         await simple_planner.execute_strategy('initial_plan', agent_name='Alice', agent_role='Student', agent_goals=['Learn Python'], tools=['coding'])
@@ -95,18 +96,31 @@ class PromptManager(Configurable, AgentMixin):
             f"Executing strategy : {prompt_strategy.STRATEGY_NAME}"
         )
 
-        # MAKE FUNCTION DYNAMICS
         prompt_strategy.set_tools(**kwargs)
 
-        return await self.chat_with_model(prompt_strategy, **kwargs)
+        return await self.send_to_chatmodel(prompt_strategy, **kwargs)
 
-    async def chat_with_model(
+    async def send(self,prompt_strategy : AbstractPromptStrategy, **kwargs):
+        llm_provider = prompt_strategy.get_llm_provider()
+        if (isinstance(llm_provider,AbstractChatModelProvider)):
+            return await self.send_to_chatmodel(prompt_strategy, **kwargs)
+        else :
+            return await self.send_to_languagemodel(prompt_strategy, **kwargs)
+
+    async def send_to_languagemodel(
         self,
         prompt_strategy: AbstractPromptStrategy,
         **kwargs,
-    ) -> ChatModelResponse:
+    ) :
+        raise NotImplementedError("Language Model not implemented")
+            
+    async def send_to_chatmodel(
+        self,
+        prompt_strategy: AbstractPromptStrategy,
+        **kwargs,
+    ) -> AbstractChatModelResponse:
         
-        provider : BaseChatModelProvider = prompt_strategy.get_llm_provider()
+        provider : AbstractChatModelProvider = prompt_strategy.get_llm_provider()
         model_configuration = prompt_strategy.get_prompt_config().dict()
 
         LOG.trace(f"Using model configuration: {model_configuration}")
@@ -118,7 +132,7 @@ class PromptManager(Configurable, AgentMixin):
 
         prompt = prompt_strategy.build_message(**template_kwargs)
 
-        response: ChatModelResponse = await provider.create_chat_completion(
+        response: AbstractChatModelResponse = await provider.create_chat_completion(
             chat_messages=prompt.messages,
             tools=prompt.tools,
             **model_configuration,
@@ -134,18 +148,21 @@ class PromptManager(Configurable, AgentMixin):
     def get_system_info(self, strategy: AbstractPromptStrategy) -> SystemInfo:
         provider = strategy.get_llm_provider()
         template_kwargs = {
-            "os_info": get_os_info(),
+            "os_info": self.get_os_info(),
             "api_budget": provider.get_remaining_budget(),
             "current_time": time.strftime("%c"),
         }
         return template_kwargs
     
+    @staticmethod
+    def get_os_info() -> str:
 
-def get_os_info() -> str:
-
-    os_name = platform.system()
-    if os_name != "Linux" :
-        return platform.platform(terse=True)
-    else :
-        import distro
-        return distro.name(pretty=True)
+        os_name = platform.system()
+        if os_name != "Linux" :
+            return platform.platform(terse=True)
+        else :
+            import distro
+            return distro.name(pretty=True)
+        
+    def __repr__(self) -> str | tuple[Any, ...]:
+        return f"{__class__.__name__}():\nAgent:{self._agent.agent_id}\nStrategies:{self._prompt_strategies}"

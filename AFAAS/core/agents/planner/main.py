@@ -4,16 +4,20 @@ import uuid
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
 from pydantic import Field
+from langchain_core.vectorstores import VectorStore
+from langchain_core.embeddings import Embeddings
+from langchain_community.vectorstores.chroma import Chroma
+from langchain_community.embeddings.openai import OpenAIEmbeddings
 
 from AFAAS.lib.task.plan import Plan
 from AFAAS.interfaces.db import AbstractMemory
+from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
+from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
 from AFAAS.core.adapters.openai import AFAASChatOpenAI, OpenAISettings
 from AFAAS.core.tools import TOOL_CATEGORIES, SimpleToolRegistry
 
-from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, PromptManager, ToolExecutor
+from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, BasePromptManager, ToolExecutor
 from .loop import PlannerLoop
-from .models import PlannerAgentConfiguration  # PlannerAgentSystemSettings,
-from .models import PlannerAgentSystems
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -23,25 +27,16 @@ if TYPE_CHECKING:
 
 
 class PlannerAgent(BaseAgent):
-    ################################################################################
-    ##################### REFERENCE SETTINGS FOR FACTORY ###########################
-    ################################################################################
-
-    CLASS_CONFIGURATION = PlannerAgentConfiguration
-    CLASS_SYSTEMS = PlannerAgentSystems  # PlannerAgentSystems() = cls.SystemSettings().configuration.systems
 
     class SystemSettings(BaseAgent.SystemSettings):
         name: str = "simple_agent"
         description: str = "A simple agent."
-        configuration: PlannerAgentConfiguration = PlannerAgentConfiguration()
 
         tool_registry: SimpleToolRegistry.SystemSettings = (
             SimpleToolRegistry.SystemSettings()
         )
-        prompt_manager: PromptManager.SystemSettings = PromptManager.SystemSettings()
 
         agent_name: str = Field(default="New Agent")
-        agent_role: Optional[str] = Field(default=None)
         agent_goals: Optional[list]
         agent_goal_sentence: Optional[str]
 
@@ -55,49 +50,39 @@ class PlannerAgent(BaseAgent):
 
     def __init__(
         self,
-        user_id: uuid.UUID,
         settings: PlannerAgent.SystemSettings,
-        memory: AbstractMemory,
-        prompt_manager: PromptManager,
-        default_llm_provider: AFAASChatOpenAI,
-        workspace: AbstractFileWorkspace,  # = AGPTLocalFileWorkspace.SystemSettings(),
-        agent_id: uuid.UUID = None,
+        user_id: uuid.UUID,
+        agent_id: uuid.UUID = SystemSettings.generate_uuid(),
+        prompt_manager: BasePromptManager = BasePromptManager(),
+        loop: PlannerLoop = PlannerLoop(),
+        tool_registry=SimpleToolRegistry,
+        tool_handler: ToolExecutor = ToolExecutor(),
+        memory: AbstractMemory = None,
+        default_llm_provider: AbstractLanguageModelProvider = None,
+        workspace: AbstractFileWorkspace = None,
+        vectorstore: VectorStore = None,  # Optional parameter for custom vectorstore
+        embedding_model: Embeddings = None,  # Optional parameter for custom embedding model
         **kwargs,
     ):
         super().__init__(
             settings=settings,
             memory=memory,
             workspace=workspace,
+            default_llm_provider=default_llm_provider,
             prompt_manager=prompt_manager,
             user_id=user_id,
             agent_id=agent_id,
+            vectorstore=vectorstore,
+            embedding_model = embedding_model,
         )
-        self.agent_id = settings.agent_id
-        self.user_id = settings.user_id
-        self.agent_name = settings.agent_name
-        self.agent_goals = settings.agent_goals
+
+        self.agent_goals = settings.agent_goals #TODO: Remove & make it part of the plan ?
         self.agent_goal_sentence = settings.agent_goal_sentence
-
-        #
-        # Step 1 : Set the chat model provider
-        #
-        self.default_llm_provider = default_llm_provider
-
-        #
-        # Step 2 : Load prompt_settings.yaml (configuration)
-        #
-        self.prompt_settings = self.load_prompt_settings()
-
-        #
-        # Step 3 : Set the chat model provider
-        #
-        # self._prompt_manager = prompt_manager
-        # self._prompt_manager.set_agent(agent=self)
 
         #
         # Step 4 : Set the ToolRegistry
         #
-        self._tool_registry = SimpleToolRegistry.with_tool_modules(
+        self._tool_registry = tool_registry.with_tool_modules(
             modules=TOOL_CATEGORIES,
             agent=self,
             memory=memory,
@@ -109,11 +94,11 @@ class PlannerAgent(BaseAgent):
         ###
         ### Step 5 : Create the Loop
         ###
-        self._loop: PlannerLoop = PlannerLoop()
+        self._loop : PlannerLoop = loop
         self._loop.set_agent(agent=self)
 
         # Set tool Executor
-        self._tool_executor = ToolExecutor()
+        self._tool_executor : ToolExecutor = tool_handler
         self._tool_executor.set_agent(agent=self)
 
         ###
@@ -129,9 +114,30 @@ class PlannerAgent(BaseAgent):
             self._loop.set_current_task(task=self.plan.get_next_task())
         else:
             self.plan: Plan = Plan.create_in_db(agent=self)
-            # self._loop.add_initial_tasks()
             self._loop.set_current_task(task=self.plan.get_ready_tasks()[0])
             self.plan_id = self.plan.plan_id
+            
+            #TODO: Save the message user => agent in db !
+            from AFAAS.lib.message_agent_user import emiter, MessageAgentUser
+            from AFAAS.lib.message_common import AFAASMessageStack
+
+            self.message_agent_user : AFAASMessageStack = AFAASMessageStack()
+            self.message_agent_user.add( message =
+                MessageAgentUser(
+                emitter =  emiter.AGENT.value,
+                user_id = self.user_id,
+                agent_id = self.agent_id,
+                message = "What would you like to do ?",
+                )
+            )
+            self.message_agent_user.add( message =
+                MessageAgentUser(
+                emitter =  emiter.USER.value,
+                user_id = self.user_id,
+                agent_id = self.agent_id,
+                message = self.agent_goal_sentence,
+                )
+            )
 
         ###
         ### Step 6 : add hooks/pluggins to the loop
@@ -192,32 +198,8 @@ class PlannerAgent(BaseAgent):
     ################################FACTORY SPECIFIC################################
     ################################################################################
 
-    @classmethod
-    def _create_agent_custom_treatment(
-        cls,
-        agent_settings: PlannerAgent.SystemSettings,
-    ) -> None:
-        return cls._create_workspace(agent_settings=agent_settings)
-
-    @classmethod
-    def _create_workspace(
-        cls,
-        agent_settings: PlannerAgent.SystemSettings,
-    ):
-        from AFAAS.interfaces.workspace import AbstractFileWorkspace
-
-        return agent_settings.workspace.__class__.create_workspace(
-            user_id=agent_settings.user_id,
-            agent_id=agent_settings.agent_id,
-            settings=agent_settings,
-        )
-
     def __repr__(self):
         return "PlannerAgent()"
-
-    @classmethod
-    def load_prompt_settings(cls):
-        return super().load_prompt_settings(erase=False, file_path=__file__)
 
 
 def test_hook(**kwargs):

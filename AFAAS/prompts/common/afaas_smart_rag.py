@@ -135,7 +135,7 @@ class AFAAS_SMART_RAG_Strategy(AbstractPromptStrategy):
         self,
         response_content: AssistantChatMessageDict,
     ) -> DefaultParsedResponse:
-        return self.default_parse_response_content(response_content)
+        return self.default_parse_response_content(response_content = response_content)
         # parsed_response : DefaultParsedResponse = self.default_parse_response_content(response_content )
         # parsed_response.command_name
         # self._task.task_context = response_content.get("task_context", None)

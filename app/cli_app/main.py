@@ -33,7 +33,7 @@ async def run_cli_demo():
     LOG.notice(
         "AFAAS Data Structure support multiple users (however since there is no UI to enforce that we will be using a user with ID : a1621e69-970a-4340-86e7-778d82e2137b"
     )
-    user_id: str = "A" + str(uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b"))
+    user_id: str = "U" + str(uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b"))
     from AFAAS.core.workspace.local import (
         AGPTLocalFileWorkspace,
         AGPTLocalFileWorkspaceConfiguration,
@@ -86,16 +86,17 @@ async def run_cli_demo():
             selected_agent_index: int = 1
 
         agent_dict = agent_dict_list[selected_agent_index - 1]
-        # agent_dict["workspace"] = AGPTLocalFileWorkspace()
         agent_settings = PlannerAgent.SystemSettings(
             **agent_dict_list[selected_agent_index - 1]
         )
         agent_id = agent_settings.agent_id
         LOG.info(f"Loading agent {agent_id} from get_agentsetting_list_from_memory")
+        from AFAAS.interfaces.agent.assistants import BasePromptManager
         agent: PlannerAgent = PlannerAgent.get_instance_from_settings(
             agent_settings=agent_settings,
             workspace=AGPTLocalFileWorkspace(),
             default_llm_provider=AFAASChatOpenAI(),
+
         )
 
         # agent_from_memory = None
@@ -117,19 +118,17 @@ async def run_cli_demo():
             )
         else:
             user_objective = handle_user_input_request(
-                "What do you want Auto-GPT to do? (We will make Pancakes for our tests...)"
+                "What do you want to do? (We will make Pancakes for our tests...)"
             )
 
         agent_settings.agent_goal_sentence = user_objective
 
         # agent_settings.agent_class = "PlannerAgent"
         agent_settings._type_ = "AFAAS.core.agents.planner.main.PlannerAgent"
-        # agent_settings.load_root_values()
 
         # Step 3. Create the agent.
         agent: PlannerAgent = PlannerAgent.create_agent(
             agent_settings=agent_settings,
-            LOG=LOG,
         )
 
     await agent.run(

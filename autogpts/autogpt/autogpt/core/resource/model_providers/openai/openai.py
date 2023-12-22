@@ -18,8 +18,8 @@ from AFAAS.configs import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
 from AFAAS.interfaces.adapters.chatmodel import (
-    AssistantChatMessageDict, AssistantToolCallDict, BaseChatModelProvider,
-    ChatMessage, ChatModelInfo, ChatModelResponse, CompletionModelFunction)
+    AssistantChatMessageDict, AssistantToolCallDict, AbstractChatModelProvider,
+    ChatMessage, ChatModelInfo, AbstractChatModelResponse, CompletionModelFunction)
 from AFAAS.interfaces.adapters.language_model import (
     BaseModelProviderBudget, BaseModelProviderCredentials,
     BaseModelProviderSettings, BaseModelProviderUsage, Embedding,
@@ -180,7 +180,7 @@ class OpenAISettings(BaseModelProviderSettings):
 
 
 class OpenAIProvider(
-    Configurable[OpenAISettings], BaseChatModelProvider, EmbeddingModelProvider
+    Configurable[OpenAISettings], AbstractChatModelProvider, EmbeddingModelProvider
 ):
     """A provider for OpenAI's API.
 
@@ -356,7 +356,7 @@ class OpenAIProvider(
         default_tool_choice: str,  # This one would be called after 3 failed attemps(cf : try/catch block)
         completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
         **kwargs,
-    ) -> ChatModelResponse[_T]:
+    ) -> AbstractChatModelResponse[_T]:
         """Create a completion using the OpenAI API.
 
         Args:
@@ -504,7 +504,7 @@ class OpenAIProvider(
         default_tool_choice: str,
         response: AsyncCompletions,
         response_args: Dict[str, Any],
-    ) -> ChatModelResponse[_T]:
+    ) -> AbstractChatModelResponse[_T]:
         completion_kwargs = self._update_function_call_for_retry(
             completion_kwargs=completion_kwargs,
             default_tool_choice=default_tool_choice,
@@ -544,8 +544,8 @@ class OpenAIProvider(
         response_message: Dict[str, Any],
         completion_parser: Callable[[AssistantChatMessageDict], _T],
         response_args: Dict[str, Any],
-    ) -> ChatModelResponse[_T]:
-        response = ChatModelResponse(
+    ) -> AbstractChatModelResponse[_T]:
+        response = AbstractChatModelResponse(
             response=response_message,
             parsed_result=completion_parser(response_message),
             **response_args,

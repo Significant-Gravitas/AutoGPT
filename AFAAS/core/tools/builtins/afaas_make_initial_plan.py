@@ -35,7 +35,6 @@ async def afaas_make_initial_plan(task: Task, agent: BaseAgent) -> None:
     plan = await agent._loop._execute_strategy(
         strategy_name="make_initial_plan",
         agent_name=agent.agent_name,
-        agent_role=agent.agent_role,
         agent_goals=agent.agent_goals,
         agent_goal_sentence=agent.agent_goal_sentence,
         description=agent._loop._current_task_routing_description,
@@ -66,7 +65,6 @@ async def afaas_make_initial_plan(task: Task, agent: BaseAgent) -> None:
 #     plan = await agent._loop.execute_strategy(
 #         strategy_name="make_initial_plan",
 #         agent_name=agent.agent_name,
-#         agent_role=agent.agent_role,
 #         agent_goals=agent.agent_goals,
 #         agent_goal_sentence=agent.agent_goal_sentence,
 #         description=agent._loop._current_task_routing_description,

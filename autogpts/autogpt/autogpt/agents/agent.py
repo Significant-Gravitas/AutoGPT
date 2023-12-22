@@ -13,9 +13,9 @@ if TYPE_CHECKING:
 <<<<<<< HEAD
 from AFAAS.configs import Configurable
 from AFAAS.interfaces.prompts import ChatPrompt
-from AFAAS.interfaces.adapters import (BaseChatModelProvider,
+from AFAAS.interfaces.adapters import (AbstractChatModelProvider,
                                                    ChatMessage,
-                                                   ChatModelResponse)
+                                                   AbstractChatModelResponse)
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.log_cycle import (CURRENT_CONTEXT_FILE_NAME,
                                     NEXT_ACTION_FILE_NAME,
@@ -110,7 +110,7 @@ class Agent(
     def __init__(
         self,
         settings: AgentSettings,
-        llm_provider: BaseChatModelProvider,
+        llm_provider: AbstractChatModelProvider,
         command_registry: CommandRegistry,
         legacy_config: Config,
     ):

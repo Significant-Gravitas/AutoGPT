@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 from AFAAS.lib.task.task import Task
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.core.agents.routing import RoutingAgent
-from AFAAS.core.agents.routing.strategies.routing import RoutingStrategyConfiguration
+from AFAAS.prompts.routing import RoutingStrategyConfiguration
 from AFAAS.core.tools.command_decorator import tool
 
 LOG = AFAASLogger(name=__name__)
@@ -21,7 +21,8 @@ LOG = AFAASLogger(name=__name__)
 
 @tool(
     name="afaas_routing",
-    description="Assist user refining it's requirements thus improving LLM responses",
+    description="Divide a task into subtasks",
+    tech_description="Divide a task into subtasks",
     # parameters = ,
     hide=True,
 )
@@ -42,7 +43,7 @@ async def afaas_routing(
             current_task=task,
             note_to_agent_length=note_to_agent_length,
         )
-        routing_settings.memory = agent._memory._settings
+        routing_settings.memory = agent.memory._settings
         routing_settings.note_to_agent_length = note_to_agent_length
 
         # USER CONTEXT AGENT : Save RoutingAgent Settings in DB (for POW / POC)

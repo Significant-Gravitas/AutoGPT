@@ -65,6 +65,7 @@ class TaskStack(AFAASModel):
         LOG.trace(self._task_ids)
 
         self._task_ids.append(task.task_id)
+        from AFAAS.interfaces.task.plan import AbstractPlan
         parent_is_plan: bool = isinstance(self.parent_task, AbstractPlan)
         if parent_is_plan:
             plan: AbstractPlan = self.parent_task
@@ -81,7 +82,7 @@ class TaskStack(AFAASModel):
             #             + f"- Always add all predecessors of parent task to subtask predecessors\n"
             #             + f"- Smartly/Dynamicaly add all predecessors of parent task to subtask predecessors\n"
             #             + f"- Consider parent predecessor when evaluatin `Task.is_ready()`\n"))
-            from .meta import TaskStatusList
+            from AFAAS.interfaces.task.meta import TaskStatusList
 
             if not parent_is_plan and self.parent_task.state != TaskStatusList.READY:
                 LOG.warning(

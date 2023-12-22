@@ -109,7 +109,6 @@ class InitialPlanStrategy(AbstractPromptStrategy):
     def build_message(
         self,
         agent_name: str,
-        agent_role: str,
         agent_goals: list[str],
         agent_goal_sentence: str,
         tools: list[str],
@@ -120,7 +119,6 @@ class InitialPlanStrategy(AbstractPromptStrategy):
     ) -> ChatPrompt:
         template_kwargs = {
             "agent_name": agent_name,
-            "agent_role": agent_role,
             "os_info": os_info,
             "api_budget": api_budget,
             "current_time": current_time,

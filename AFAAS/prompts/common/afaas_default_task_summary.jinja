@@ -1,0 +1,46 @@
+## Instructions :
+Provide an detailed description of what happened during the processing of the task bellow. This description will be handed to an Autonomous Agent backed by a Large Language Model (LLM) to perform the next task. The Agent is not context aware, therefor it is very imoportant you provide him with all the context he may seek in his future tasks.
+
+### Task description : 
+{{ to_md_quotation(task.long_description) }}
+
+### Task input
+{{ to_md_quotation(task.tech_summary_task_context) }}
+
+### Task processing
+The function {{ tool.name }} "{{ tool.description }}" has been executed.{# 
+
+#}{% if tool.parameters %}
+{{ tool.name }} parameters are : 
+{{ tool.parameters}}
+{% if task.arguments %}
+{{ tool.name }} has been called with the following arguments : 
+{{ task.arguments }}
+{% endif %}
+{% endif %}
+{# 
+{% if tool.name == "afaas_routing" %} 
+With arguments : 
+{{ task.arguments }}
+{% endif %}
+#}
+
+### Task output
+
+{# The following {{ tool }} has been used arguments
+
+#}{% if tool.name == "afaas_routing" %} 
+The following subtasks has been created : {% for subtask in tool_output.values() %}
+{{ loop.index }}. {{ subtask }}{% endfor %}
+{% endif %}{# 
+
+#}{% if documents|length > 1 %}
+Following documents have been created/modified :{% for doc in documents.values() %}
+{{ loop.index }}. {{ doc.path }} : 
+{{ doc.content }} 
+
+{% endfor %}{% endif %}
+
+## FINAL WORDS :
+
+You must not assume any information and you must stay true to the facts above. Likewise, you must assume that the agent that will process the next task will have no other informations that the one you are going to share.

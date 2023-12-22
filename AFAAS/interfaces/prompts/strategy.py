@@ -28,7 +28,7 @@ from AFAAS.interfaces.prompts.utils import (
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AssistantChatMessageDict,
-    ChatModelResponse,
+    AbstractChatModelResponse,
     ChatPrompt,
     CompletionModelFunction,
     ChatMessage,
@@ -254,7 +254,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
         return assistant_return_list
 
     @staticmethod
-    def get_autocorrection_response(response: ChatModelResponse):
+    def get_autocorrection_response(response: AbstractChatModelResponse):
         return response.parsed_result[0]["command_args"]["note_to_agent"]
 
     def _build_jinja_message(

@@ -2,33 +2,29 @@ from __future__ import annotations
 
 import uuid
 from typing import Awaitable, Callable
+from langchain_core.vectorstores import VectorStore
+from langchain_core.embeddings import Embeddings
+from langchain_community.vectorstores.chroma import Chroma
+from langchain_community.embeddings.openai import OpenAIEmbeddings
 
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.core.adapters.openai import AFAASChatOpenAI
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
+from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
+from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
 
-from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, PromptManager
+from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, BasePromptManager
 from .loop import UserContextLoop
-from .models import UserContextAgentConfiguration, UserContextAgentSystems
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
 
 
 class UserContextAgent(BaseAgent):
-    ################################################################################
-    ##################### REFERENCE SETTINGS FOR FACTORY ###########################
-    ################################################################################
-
-    CLASS_CONFIGURATION = UserContextAgentConfiguration
-    CLASS_SYSTEMS = UserContextAgentSystems
 
     class SystemSettings(BaseAgent.SystemSettings):
-        configuration: UserContextAgentConfiguration = UserContextAgentConfiguration()
         name = "usercontext_agent"
         description = "An agent that improve the quality of input provided by users."
-
-        prompt_manager: PromptManager.SystemSettings = PromptManager.SystemSettings()
 
         class Config(BaseAgent.SystemSettings.Config):
             pass
@@ -36,38 +32,28 @@ class UserContextAgent(BaseAgent):
     def __init__(
         self,
         settings: UserContextAgent.SystemSettings,
-        memory: AbstractMemory,
-        chat_model_provider: AFAASChatOpenAI,
-        prompt_manager: PromptManager,
         user_id: uuid.UUID,
-        workspace: AbstractFileWorkspace,  # = AGPTLocalFileWorkspace.SystemSettings(),
-        agent_id: uuid.UUID = None,
+        agent_id: uuid.UUID = SystemSettings.generate_uuid(),
+        loop : UserContextLoop = UserContextLoop(),
+        prompt_manager: BasePromptManager = BasePromptManager(),
+        memory :  AbstractMemory = None,
+        default_llm_provider: AbstractLanguageModelProvider = None,
+        workspace: AbstractFileWorkspace = None,
+        vectorstores: VectorStore = None,
+        embeddings : Embeddings =   None,
         **kwargs,
     ):
         super().__init__(
             settings=settings,
             memory=memory,
             workspace=workspace,
+            default_llm_provider=default_llm_provider,
             prompt_manager=prompt_manager,
             user_id=user_id,
             agent_id=agent_id,
+            vectorstore = vectorstores,
+            embedding_model = embeddings,
         )
-
-        #
-        # Step 1 : Set the chat model provider
-        #
-        self.default_llm_provider = chat_model_provider
-
-        #
-        # Step 2 : Load prompt_settings.yaml (configuration)
-        #
-        self.prompt_settings = self.load_prompt_settings()
-
-        #
-        # Step 3 : Set the chat model provider
-        #
-        # self._prompt_manager = prompt_manager
-        # self._prompt_manager.set_agent(agent=self)
 
         self._loop: UserContextLoop = UserContextLoop()
         self._loop.set_agent(agent=self)
@@ -113,22 +99,6 @@ class UserContextAgent(BaseAgent):
     ################################################################################
     ################################FACTORY SPECIFIC################################
     ################################################################################
-
-    @classmethod
-    def _create_agent_custom_treatment(
-        cls,
-        agent_settings: UserContextAgent.SystemSettings,
-    ) -> None:
-        pass
-
-    # @classmethod
-    # def get_strategies(cls)-> list :
-    #     from AFAAS.core.agents.usercontext.strategies import \
-    #         StrategiesSet
-    #     return StrategiesSet.get_strategies()
-
-    def load_prompt_settings(self):
-        LOG.warning("TODO : load prompts via a jinja file")
 
     def __repr__(self):
         return "UserContextAgent()"
