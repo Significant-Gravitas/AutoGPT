@@ -3,6 +3,8 @@ from __future__ import annotations
 import inspect
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
+from AFAAS.interfaces.tools.tool_output import ToolOutput
+
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
     from AFAAS.configs import *
@@ -11,15 +13,10 @@ if TYPE_CHECKING:
 from langchain.tools.base import BaseTool
 
 from AFAAS.interfaces.task import AbstractTask
-from AFAAS.lib.context_items import ContextItem
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 # from AFAAS.interfaces.agent import BaseAgent
 LOG = AFAASLogger(name=__name__)
-
-ToolReturnValue = Any
-ToolOutput = ToolReturnValue | tuple[ToolReturnValue, ContextItem]
-
 
 class Tool:
     """A class representing a command.

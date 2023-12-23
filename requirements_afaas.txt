@@ -7,7 +7,6 @@ langchain
 beautifulsoup4>=4.12.2
 colorama==0.4.6
 distro==1.8.0
-openai==0.27.8
 playsound==1.2.2
 python-dotenv==0.21
 pyyaml==6.0

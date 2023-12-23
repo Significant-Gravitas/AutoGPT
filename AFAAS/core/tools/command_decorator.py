@@ -3,13 +3,14 @@ from __future__ import annotations
 import functools
 import inspect
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, ParamSpec, TypeVar
+from AFAAS.interfaces.tools.tool_output import ToolOutput
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
     from AFAAS.core.configuration.config import Config
 
 from AFAAS.core.tools.tool_parameters import ToolParameter
-from AFAAS.core.tools.tools import Tool, ToolOutput
+from AFAAS.core.tools.tools import Tool
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 # Unique identifier for AutoGPT commands

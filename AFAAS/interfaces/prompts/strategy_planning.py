@@ -16,7 +16,7 @@ from AFAAS.interfaces.prompts.strategy import (
     PromptStrategiesConfiguration,
 )
 from AFAAS.interfaces.prompts.utils import to_numbered_list
-from AFAAS.lib.sdk import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
 
