@@ -17,12 +17,12 @@ LOG = AFAASLogger(name=__name__)
 AP alias /agent/tasks (GET): Returns a list of all agents.
     => Need Agent (Parent) to define this properties : agent_id, client_facing, status
 
-    
+
 /agent (POST): Create a new agent.
 AP alias /agent/tasks (POST): Create a new agent.
     => TODO : Save an Agent (or PlannerAgent) in the workspace (can't find the method still reading the code)
 
-    
+
 /agent/{agent_id} (GET): Get an agent from its ID & return an agent.
 AP alias /agent/tasks/{agent_id} (GET): Get an agent from its ID & return an agent.
 

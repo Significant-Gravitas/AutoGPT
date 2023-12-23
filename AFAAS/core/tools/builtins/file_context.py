@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
 
 from AFAAS.core.tools.command_decorator import tool
-from AFAAS.lib.context_items import FileContextItem, FolderContextItem
+from AFAAS.interfaces.tools.context_items import FileContextItem, FolderContextItem
 from AFAAS.lib.sdk.errors import ToolExecutionError
 from AFAAS.lib.utils.json_schema import JSONSchema
 

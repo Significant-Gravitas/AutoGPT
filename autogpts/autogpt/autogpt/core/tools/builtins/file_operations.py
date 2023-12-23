@@ -13,19 +13,17 @@ import os.path
 from pathlib import Path
 from typing import Iterator, Literal
 
-from AFAAS.app.lib.task.task import Task
-
+from AFAAS.core.tools.builtins.decorators import sanitize_path_arg
+from AFAAS.core.tools.builtins.file_operations_utils import decode_textual_file
 from AFAAS.core.tools.command_decorator import tool
 from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.interfaces.db import AbstractMemory
-from AFAAS.lib.sdk import logger
+from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.lib.sdk.errors import DuplicateOperationError
+from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.utils.json_schema import JSONSchema
 
-from .decorators import sanitize_path_arg
-from .file_operations_utils import read_textual_file
-
-logger = logger.AFAASLogger(name=__name__)
+logger = AFAASLogger(name=__name__)
 
 Operation = Literal["write", "append", "delete"]
 
@@ -147,7 +145,7 @@ def log_operation(
     },
 )
 @sanitize_path_arg("filename")
-def read_file(filename: Path, task: Task, agent: BaseAgent) -> str:
+def read_file(filename: Path, task: AbstractTask, agent: BaseAgent) -> str:
     """Read a file and return the contents
 
     Args:
@@ -156,7 +154,7 @@ def read_file(filename: Path, task: Task, agent: BaseAgent) -> str:
     Returns:
         str: The contents of the file
     """
-    content = read_textual_file(filename)
+    content = decode_textual_file(filename)
     # TODO: content = agent.workspace.read_file(filename)
 
     # # TODO: invalidate/update memory when file is edited
@@ -213,7 +211,7 @@ def ingest_file(
 )
 @sanitize_path_arg("filename")
 async def write_to_file(
-    filename: Path, contents: str, task: Task, agent: BaseAgent
+    filename: Path, contents: str, task: AbstractTask, agent: BaseAgent
 ) -> str:
     """Write contents to a file
 
@@ -268,7 +266,7 @@ def append_to_file(
     },
 )
 @sanitize_path_arg("folder")
-def list_folder(folder: Path, task: Task, agent: BaseAgent) -> list[str]:
+def list_folder(folder: Path, task: AbstractTask, agent: BaseAgent) -> list[str]:
     """Lists files in a folder recursively
 
     Args:

@@ -4,13 +4,13 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional
 
 from pydantic import Field
 
-from AFAAS.core.tools import ToolOutput
 from AFAAS.interfaces.agent.exceptions import (
     AgentException,
     ToolExecutionError,
     UnknownToolError,
 )
 from AFAAS.interfaces.task.meta import TaskStatusList
+from AFAAS.interfaces.tools.tool_output import ToolOutput
 from AFAAS.lib.task.task import Task
 
 if TYPE_CHECKING:

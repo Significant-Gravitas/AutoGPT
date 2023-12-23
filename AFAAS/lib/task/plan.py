@@ -490,7 +490,7 @@ class Plan(AbstractPlan):
         # CONTEXT
         The high-level plan designed to achieve our goal is: 
         {high_level_plan}
-        
+
         We are working on the task "{task_name}" that consists in: {task_command}. This task is located in:
         {path_structure}
         """.format(

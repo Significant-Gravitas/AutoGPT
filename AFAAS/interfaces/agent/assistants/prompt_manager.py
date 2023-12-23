@@ -41,8 +41,8 @@ class BasePromptManager(AgentMixin):
     ) -> None:
 
         self._prompt_strategies = {}
-    
-    def add_strategies(self, strategies :list[AbstractPromptStrategy])->None : 
+
+    def add_strategies(self, strategies : list[AbstractPromptStrategy])->None : 
         for strategy in strategies:
             self._prompt_strategies[strategy.STRATEGY_NAME] = strategy
 
@@ -52,7 +52,7 @@ class BasePromptManager(AgentMixin):
         self.load_strategies()
 
     def load_strategies(self) -> list[AbstractPromptStrategy]:
-        
+
         from AFAAS.prompts import (
             AFAAS_SMART_RAG_Strategy,
             AutoCorrectionStrategy,
@@ -74,7 +74,7 @@ class BasePromptManager(AgentMixin):
         module = self._agent.__class__.__module__.rsplit('.', 1)[0]
         strategies : list[AbstractPromptStrategy] = []
         strategies += load_all_strategies()
-        
+
         self.add_strategies(strategies = strategies + common_strategies)
         return self._prompt_strategies
 
@@ -101,9 +101,9 @@ class BasePromptManager(AgentMixin):
 
         return await self.send_to_chatmodel(prompt_strategy, **kwargs)
 
-    async def send(self,prompt_strategy : AbstractPromptStrategy, **kwargs):
+    async def send(self, prompt_strategy : AbstractPromptStrategy, **kwargs):
         llm_provider = prompt_strategy.get_llm_provider()
-        if (isinstance(llm_provider,AbstractChatModelProvider)):
+        if (isinstance(llm_provider, AbstractChatModelProvider)):
             return await self.send_to_chatmodel(prompt_strategy, **kwargs)
         else :
             return await self.send_to_languagemodel(prompt_strategy, **kwargs)
@@ -114,18 +114,18 @@ class BasePromptManager(AgentMixin):
         **kwargs,
     ) :
         raise NotImplementedError("Language Model not implemented")
-            
+
     async def send_to_chatmodel(
         self,
         prompt_strategy: AbstractPromptStrategy,
         **kwargs,
     ) -> AbstractChatModelResponse:
-        
+
         provider : AbstractChatModelProvider = prompt_strategy.get_llm_provider()
         model_configuration = prompt_strategy.get_prompt_config().dict()
 
         LOG.trace(f"Using model configuration: {model_configuration}")
-        
+
         # FIXME : Check if Removable
         template_kwargs = self.get_system_info(prompt_strategy)
         template_kwargs.update(kwargs)
@@ -154,7 +154,7 @@ class BasePromptManager(AgentMixin):
             "current_time": time.strftime("%c"),
         }
         return template_kwargs
-    
+
     @staticmethod
     def get_os_info() -> str:
 
@@ -164,6 +164,6 @@ class BasePromptManager(AgentMixin):
         else :
             import distro
             return distro.name(pretty=True)
-        
+
     def __repr__(self) -> str | tuple[Any, ...]:
         return f"{__class__.__name__}():\nAgent:{self._agent.agent_id}\nStrategies:{self._prompt_strategies}"
