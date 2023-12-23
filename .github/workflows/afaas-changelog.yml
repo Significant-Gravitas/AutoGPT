@@ -22,7 +22,7 @@ jobs:
             yesterday.setDate(yesterday.getDate() - 1);
             const formattedDate = yesterday.toISOString().split('T')[0];
 
-            const query = `repo:${context.repo.owner}/${context.repo.repo} is:pr is:merged merged:>${formattedDate}`;
+            const query = `repo:${context.repo.owner}/${context.repo.repo} is:pr is:merged merged:>=${formattedDate}`;
             const prs = await github.rest.search.issuesAndPullRequests({ q: query });
 
             let docsContent = '';
