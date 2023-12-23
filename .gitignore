@@ -4,6 +4,7 @@ routing/
 arena/*
 autocorrection.*
 chroma/
+.github/configuration.json
 
 ## Original ignores
 .github_access_token

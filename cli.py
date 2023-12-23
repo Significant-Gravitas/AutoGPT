@@ -6,19 +6,17 @@ To ensure efficiency, add the imports to the functions so only what is needed is
 """
 try:
     import click
-    import github
+    import sys
 except ImportError:
     import os
-
     os.system("pip3 install click")
-    os.system("pip3 install PyGithub")
     import click
+    import sys
 
 
 @click.group()
 def cli():
     pass
-
 
 @cli.command()
 def setup():
@@ -46,7 +44,6 @@ def setup():
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
     setup_script = os.path.join(script_dir, "setup.sh")
-    install_error = False
     if os.path.exists(setup_script):
         click.echo(click.style("🚀 Setup initiated...\n", fg="green"))
         try:
@@ -55,154 +52,10 @@ def setup():
             click.echo(
                 click.style("❌ There was an issue with the installation.", fg="red")
             )
-            install_error = True
     else:
         click.echo(
             click.style(
                 "❌ Error: setup.sh does not exist in the current directory.", fg="red"
-            )
-        )
-        install_error = True
-
-    try:
-        # Check if git user is configured
-        user_name = (
-            subprocess.check_output(["git", "config", "user.name"])
-            .decode("utf-8")
-            .strip()
-        )
-        user_email = (
-            subprocess.check_output(["git", "config", "user.email"])
-            .decode("utf-8")
-            .strip()
-        )
-
-        if user_name and user_email:
-            click.echo(
-                click.style(
-                    f"✅ Git is configured with name '{user_name}' and email '{user_email}'",
-                    fg="green",
-                )
-            )
-        else:
-            raise subprocess.CalledProcessError(
-                returncode=1, cmd="git config user.name or user.email"
-            )
-
-    except subprocess.CalledProcessError:
-        # If the GitHub account is not configured, print instructions on how to set it up
-        click.echo(click.style("⚠️ Git user is not configured.", fg="red"))
-        click.echo(
-            click.style(
-                "To configure Git with your user info, use the following commands:",
-                fg="red",
-            )
-        )
-        click.echo(
-            click.style('  git config --global user.name "Your (user)name"', fg="red")
-        )
-        click.echo(
-            click.style('  git config --global user.email "Your email"', fg="red")
-        )
-        install_error = True
-
-    print_access_token_instructions = False
-
-    # Check for the existence of the .github_access_token file
-    if os.path.exists(".github_access_token"):
-        with open(".github_access_token", "r") as file:
-            github_access_token = file.read().strip()
-            if github_access_token:
-                click.echo(
-                    click.style(
-                        "✅ GitHub access token loaded successfully.", fg="green"
-                    )
-                )
-                # Check if the token has the required permissions
-                import requests
-
-                headers = {"Authorization": f"token {github_access_token}"}
-                response = requests.get("https://api.github.com/user", headers=headers)
-                if response.status_code == 200:
-                    scopes = response.headers.get("X-OAuth-Scopes")
-                    if "public_repo" in scopes or "repo" in scopes:
-                        click.echo(
-                            click.style(
-                                "✅ GitHub access token has the required permissions.",
-                                fg="green",
-                            )
-                        )
-                    else:
-                        install_error = True
-                        click.echo(
-                            click.style(
-                                "❌ GitHub access token does not have the required permissions. Please ensure it has 'public_repo' or 'repo' scope.",
-                                fg="red",
-                            )
-                        )
-                else:
-                    install_error = True
-                    click.echo(
-                        click.style(
-                            "❌ Failed to validate GitHub access token. Please ensure it is correct.",
-                            fg="red",
-                        )
-                    )
-            else:
-                install_error = True
-                click.echo(
-                    click.style(
-                        "❌ GitHub access token file is empty. Please follow the instructions below to set up your GitHub access token.",
-                        fg="red",
-                    )
-                )
-                print_access_token_instructions = True
-    else:
-        # Create the .github_access_token file if it doesn't exist
-        with open(".github_access_token", "w") as file:
-            file.write("")
-        install_error = True
-        print_access_token_instructions = True
-
-    if print_access_token_instructions:
-        # Instructions to set up GitHub access token
-        click.echo(
-            click.style(
-                "💡 To configure your GitHub access token, follow these steps:", fg="red"
-            )
-        )
-        click.echo(
-            click.style("\t1. Ensure you are logged into your GitHub account", fg="red")
-        )
-        click.echo(
-            click.style("\t2. Navigate to https://github.com/settings/tokens", fg="red")
-        )
-        click.echo(click.style("\t3. Click on 'Generate new token'.", fg="red"))
-        click.echo(
-            click.style("\t4. Click on 'Generate new token (classic)'.", fg="red")
-        )
-        click.echo(
-            click.style(
-                "\t5. Fill out the form to generate a new token. Ensure you select the 'repo' scope.",
-                fg="red",
-            )
-        )
-        click.echo(
-            click.style(
-                "\t6. Open the '.github_access_token' file in the same directory as this script and paste the token into this file.",
-                fg="red",
-            )
-        )
-        click.echo(
-            click.style("\t7. Save the file and run the setup command again.", fg="red")
-        )
-
-    if install_error:
-        click.echo(
-            click.style(
-                "\n\n🔴 If you need help, please raise a ticket on GitHub at https://github.com/Significant-Gravitas/AutoGPT/issues\n\n",
-                fg="magenta",
-                bold=True,
             )
         )
 
@@ -218,7 +71,6 @@ def benchmark():
         ignore_unknown_options=True,
     )
 )
-# @click.argument("agent_name")
 @click.argument("subprocess_args", nargs=-1, type=click.UNPROCESSED)
 def start(subprocess_args):
     """Starts the benchmark command"""
@@ -451,5 +303,109 @@ def benchmark_tests_details(test_name):
                 continue
 
 
+@cli.command()
+@click.option(
+    "--no-setup",
+    is_flag=True,
+    help="Disables running the setup script before starting the agent",
+)
+def start(no_setup):
+    """Start agent command"""
+    import os
+    import subprocess
+
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    agent_dir = os.path.join(script_dir, f"app/")
+    run_command = os.path.join(agent_dir, "run")
+    run_bench_command = os.path.join(agent_dir, "run_benchmark")
+    if os.path.exists(agent_dir) and os.path.isfile(run_command) and os.path.isfile(run_bench_command):
+        os.chdir(agent_dir)
+        if not no_setup:
+            setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
+            setup_process.wait()
+        subprocess.Popen(["./run_benchmark", "serve"], cwd=agent_dir)
+        click.echo(f"Benchmark Server starting please wait...")
+        subprocess.Popen(["./run"], cwd=agent_dir)
+        click.echo(f"Agent starting please wait...")
+    elif not os.path.exists(agent_dir):
+        click.echo(
+            click.style(
+                f"😞 Agent does not exist. Please create the agent first.",
+                fg="red",
+            )
+        )
+    else:
+        click.echo(
+            click.style(
+                f"😞 Run command does not exist in the agent directory.",
+                fg="red",
+            )
+        )
+
+
+@cli.command()
+def stop():
+    """Stop agent command"""
+    import os
+    import signal
+    import subprocess
+
+    try:
+        pids = subprocess.check_output(["lsof", "-t", "-i", ":8000"]).split()
+        if isinstance(pids, int):
+            os.kill(int(pids), signal.SIGTERM)
+        else:
+            for pid in pids:
+                os.kill(int(pid), signal.SIGTERM)
+    except subprocess.CalledProcessError:
+        click.echo("No process is running on port 8000")
+
+    try:
+        pids = int(subprocess.check_output(["lsof", "-t", "-i", ":8080"]))
+        if isinstance(pids, int):
+            os.kill(int(pids), signal.SIGTERM)
+        else:
+            for pid in pids:
+                os.kill(int(pid), signal.SIGTERM)
+    except subprocess.CalledProcessError:
+        click.echo("No process is running on port 8080")
+
+def display_help_message():
+    help_message = """
+    Welcome to AFAAS CLI Tool!
+
+    This tool is designed to help you manage the AFAAS project with ease. Here's how you can use this tool:
+
+    1. OPTIONAL : Install the dependencies
+       - Usage: ./run setup
+
+    2. Start Agent:
+       - Usage: ./run start
+       - Default: run ./run setup command 
+       - Add '--no-setup' to skip setup
+
+    3. Open your navigator and go to http://localhost:8000
+
+    4. Tests the performances using agbenchmark:
+       - Start a benchmark: ./run benchmark start [process_id (PID)]
+       - View benchmark test details: ./run benchmark tests details [test_name]
+       - List benchmark categories: ./run benchmark categories list
+       - List benchmark tests: ./run benchmark tests list
+
+    5. Stop Agent:
+       - Stops the running AFAAS agent.
+       - Usage: ./run stop
+
+    Happy coding and good luck with your AFAAS projects!
+    """
+    print(help_message)
+
+
+
 if __name__ == "__main__":
-    cli()
+    # Check if the script is run without any arguments or with a help argument
+    if len(sys.argv) == 1 or sys.argv[1] in ['-h', '--help', 'help']:
+        display_help_message()
+    else:
+        # Rest of your CLI code comes here
+        cli()
