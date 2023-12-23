@@ -2,7 +2,7 @@ import logging
 
 import click
 
-from AFAAS.core.agents import PlannerAgent
+from AFAAS.core.agents.planner.main import PlannerAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 

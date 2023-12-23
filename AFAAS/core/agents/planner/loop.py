@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional
 
 from pydantic import Field
 
-from AFAAS.core.tools import ToolOutput
+from AFAAS.interfaces.tools.tool_output import ToolOutput
 from AFAAS.interfaces.agent.exceptions import (
     AgentException,
     ToolExecutionError,
