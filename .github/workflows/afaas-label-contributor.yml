@@ -14,28 +14,27 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const context = github.context;
             const exemptLabel = 'Contributor';
             const exemptUsers = ['ph-ausseil'];  // Add usernames here
             
             async function isPreviousContributor(username) {
               const contributors = await github.rest.repos.listContributors({
-                owner: context.repo.owner,
-                repo: context.repo.repo
+                owner: github.context.repo.owner,
+                repo: github.context.repo.repo
               });
 
               return contributors.data.some(contributor => contributor.login === username);
             }
 
             async function run() {
-              const isExemptUser = exemptUsers.includes(context.actor);
-              const isContributor = await isPreviousContributor(context.actor);
+              const isExemptUser = exemptUsers.includes(github.context.actor);
+              const isContributor = await isPreviousContributor(github.context.actor);
 
               if (isExemptUser || isContributor) {
-                const issueOrPrNumber = (context.payload.issue || context.payload.pull_request).number;
+                const issueOrPrNumber = (github.context.payload.issue || github.context.payload.pull_request).number;
                 await github.rest.issues.addLabels({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
+                  owner: github.context.repo.owner,
+                  repo: github.context.repo.repo,
                   issue_number: issueOrPrNumber,
                   labels: [exemptLabel]
                 });
