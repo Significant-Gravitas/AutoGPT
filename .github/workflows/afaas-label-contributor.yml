@@ -27,8 +27,8 @@ jobs:
             }
 
             async function run() {
-              const isExemptUser = exemptUsers.includes(github.context.actor);
-              const isContributor = await isPreviousContributor(github.context.actor);
+              const isExemptUser = exemptUsers.includes(github.actor);
+              const isContributor = await isPreviousContributor(github.actor);
 
               if (isExemptUser || isContributor) {
                 const issueOrPrNumber = (github.context.payload.issue || github.context.payload.pull_request).number;
