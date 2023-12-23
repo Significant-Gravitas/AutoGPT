@@ -8,7 +8,7 @@ on:
       - 'AFAAS/**'
   pull_request:
     paths:
-      - '.github/workflows/autogpt-ci.yml'
+      - '.github/workflows/afaas-ci.yml'
       - 'app/**'
       - 'AFAAS/**'
 
@@ -24,7 +24,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     env:
-      min-python-version: "3.10"
+      min-python-version: "3.11"
 
     steps:
       - name: Checkout repository
@@ -79,7 +79,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        python-version: ["3.10"]
+        python-version: ["3.11"]
 
     services:
       minio:

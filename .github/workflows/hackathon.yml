@@ -53,7 +53,7 @@ jobs:
       name: "${{ needs.matrix-setup.outputs.env-name }}"
     needs: matrix-setup
     env:
-      min-python-version: "3.10"
+      min-python-version: "3.11"
     name: "${{ matrix.agent-name }}"
     runs-on: ubuntu-latest
     services:

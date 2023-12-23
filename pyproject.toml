@@ -17,10 +17,11 @@ run-app = "app.cli:serve"
 
 
 [tool.poetry.dependencies]
-python = "^3.10"
-auto-gpt-plugin-template = {git = "https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template", rev = "0.1.0"}
-# autogpt-forge = { path = "../forge" }
-autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "autogpts/forge"}
+#agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
+google-cloud-logging = "^3.8.0"
+google-cloud-storage = "^2.13.0"
+psycopg2-binary = "^2.9.9"
+python = "^3.11"
 beautifulsoup4 = "^4.12.2"
 boto3 = "^1.33.6"
 charset-normalizer = "^3.1.0"
@@ -39,7 +40,7 @@ hypercorn = "^0.14.4"
 inflection = "*"
 jsonschema = "*"
 numpy = "*"
-openai = "^0.27.10"
+openai = "^1.6.1"
 orjson = "^3.8.10"
 Pillow = "*"
 pinecone-client = "^2.2.1"
@@ -62,15 +63,9 @@ webdriver-manager = "*"
 # OpenAI and Generic plugins import
 openapi-python-client = "^0.14.0"
 
-# Benchmarking
-# agbenchmark = { path = "../../benchmark", optional = true }
-agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
-google-cloud-logging = "^3.8.0"
-google-cloud-storage = "^2.13.0"
-psycopg2-binary = "^2.9.9"
 
 [tool.poetry.extras]
-benchmark = ["agbenchmark"]
+#benchmark = ["agbenchmark"]
 
 [tool.poetry.group.dev.dependencies]
 black = "*"
