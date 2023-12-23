@@ -5,18 +5,22 @@ If you want to contribute, please use only libraries that come as part of Python
 To ensure efficiency, add the imports to the functions so only what is needed is imported.
 """
 try:
-    import click
     import sys
+
+    import click
 except ImportError:
     import os
+
     os.system("pip3 install click")
-    import click
     import sys
+
+    import click
 
 
 @click.group()
 def cli():
     pass
+
 
 @cli.command()
 def setup():
@@ -318,7 +322,11 @@ def start(no_setup):
     agent_dir = os.path.join(script_dir, f"app/")
     run_command = os.path.join(agent_dir, "run")
     run_bench_command = os.path.join(agent_dir, "run_benchmark")
-    if os.path.exists(agent_dir) and os.path.isfile(run_command) and os.path.isfile(run_bench_command):
+    if (
+        os.path.exists(agent_dir)
+        and os.path.isfile(run_command)
+        and os.path.isfile(run_bench_command)
+    ):
         os.chdir(agent_dir)
         if not no_setup:
             setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
@@ -370,6 +378,7 @@ def stop():
     except subprocess.CalledProcessError:
         click.echo("No process is running on port 8080")
 
+
 def display_help_message():
     help_message = """
     Welcome to AFAAS CLI Tool!
@@ -401,10 +410,9 @@ def display_help_message():
     print(help_message)
 
 
-
 if __name__ == "__main__":
     # Check if the script is run without any arguments or with a help argument
-    if len(sys.argv) == 1 or sys.argv[1] in ['-h', '--help', 'help']:
+    if len(sys.argv) == 1 or sys.argv[1] in ["-h", "--help", "help"]:
         display_help_message()
     else:
         # Rest of your CLI code comes here

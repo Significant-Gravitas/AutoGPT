@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 # import copy
 # import json
 # import uuid
@@ -202,7 +201,6 @@ from __future__ import annotations
 #     return t
 
 
-
 # @pytest.fixture
 # def plan_step_2b():
 #     t = plan_step_2a()
@@ -390,7 +388,6 @@ from __future__ import annotations
 #         assert first_ready_task.task_id == expected_task_id
 
 
-
 # def test_dict_memory(plan_step_2b: Plan):
 #     # Test case: Ensure it returns a dictionary representation of the object with custom encoders applied.
 #     dict_memory_output = plan_step_2b.dict_memory()
@@ -436,7 +433,7 @@ from __future__ import annotations
 
 # def test_prepare_values_before_serialization(plan_step_2b: Plan):
 #     # Test case: Check if the method prepares values correctly before serialization.
-#     # This depends on what prepare_values_before_serialization actually does. 
+#     # This depends on what prepare_values_before_serialization actually does.
 #     # Assuming it modifies some values in the object:
 #     original_state = plan_step_2b.dict()
 #     plan_step_2b.prepare_values_before_serialization()

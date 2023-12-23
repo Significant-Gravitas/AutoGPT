@@ -18,6 +18,7 @@ from AFAAS.lib.sdk.logger import AFAASLogger
 # from AFAAS.interfaces.agent import BaseAgent
 LOG = AFAASLogger(name=__name__)
 
+
 class Tool:
     """A class representing a command.
 
