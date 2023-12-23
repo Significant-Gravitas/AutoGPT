@@ -39,6 +39,7 @@ gTTS = "^2.3.1"
 hypercorn = "^0.14.4"
 inflection = "*"
 jsonschema = "*"
+langchain = "^0.0.352"
 numpy = "*"
 openai = "^1.6.1"
 orjson = "^3.8.10"
@@ -92,7 +93,9 @@ pytest-mock = "*"
 pytest-recording = "*"
 pytest-xdist = "*"
 vcrpy = {git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master"}
-
+autoflake = "^2.2.1"
+autopep8 = "^2.0.4"
+pyupgrade = "^3.15.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -101,10 +104,28 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 88
-target-version = ['py310']
+target-version = ['py311']
 include = '\.pyi?$'
-packages = ["autogpt"]
+packages = ["afaas"]
 extend-exclude = '.+/(dist|.venv|venv|build|data)/.+'
+exclude = '''
+(
+  /(
+      benchmark
+    | autogpts
+    | .tox
+    | __pycache__
+    | .env
+    | venv
+    | .venv
+    | reports
+    | dist
+    | agent
+    | code
+    | agbenchmark/challenges
+  )/
+)
+'''
 
 
 [tool.isort]

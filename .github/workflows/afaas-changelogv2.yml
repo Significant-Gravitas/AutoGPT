@@ -9,6 +9,25 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
+        - uses: actions/checkout@v4
+        - name: Set up Python
+          uses: actions/setup-python@v5
+          with:
+            python-version: 3.11 # Specify your Python version here
+
+        - name: Install Dependencies
+          run: |
+            poetry install
+
+        - name: Run autoflake
+          run: |
+            poetry run autoflake --remove-all-unused-imports --remove-unused-variables --in-place --recursive .
+            git config --global user.name 'autoflake-bot'
+            git config --global user.email 'autoflake-bot@example.com'
+            git add -A
+            git commit -m "Apply autoflake fixes" || echo "No changes to commit"
+            git push origin HEAD:${{ github.ref }}
+
         - name: "Build Changelog"
           uses: mikepenz/release-changelog-builder-action@v4.1.0
           with:
