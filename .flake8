@@ -13,3 +13,6 @@ exclude =
     agent/*,
     code,
     agbenchmark/challenges/*
+    autogpts
+    benchmark
+    .vscode

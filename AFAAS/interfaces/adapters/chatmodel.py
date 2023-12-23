@@ -21,7 +21,7 @@ Key Classes:
     - `Property`: Defines the basic structure for a single property within a function parameter specification.
     - `FunctionParameters`: Provides a structured representation of a function's parameters.
     - `CompletionModelFunction`: Encapsulates a function specification that can be invoked by the language model.
-    
+
 
 Module Usage:
     This module is used to define and structure the various elements involved in a chat interaction within the AutoGPT framework. It is imported and utilized in constructing and processing prompts, messages, and function calls within the chat-based interaction model.
