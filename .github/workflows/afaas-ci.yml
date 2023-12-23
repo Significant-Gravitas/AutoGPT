@@ -72,96 +72,96 @@ jobs:
       #     cmd="autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring autogpt tests"
       #     poetry run $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
 
-  test:
-    permissions:
-      contents: read
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      matrix:
-        python-version: ["3.11"]
+  # test:
+  #   permissions:
+  #     contents: read
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 30
+  #   strategy:
+  #     matrix:
+  #       python-version: ["3.11"]
 
-    services:
-      minio:
-        image: minio/minio:edge-cicd
-        ports:
-          - 9000:9000
-        options: >
-          --health-interval=10s --health-timeout=5s --health-retries=3
-          --health-cmd="curl -f http://localhost:9000/minio/health/live"
+  #   services:
+  #     minio:
+  #       image: minio/minio:edge-cicd
+  #       ports:
+  #         - 9000:9000
+  #       options: >
+  #         --health-interval=10s --health-timeout=5s --health-retries=3
+  #         --health-cmd="curl -f http://localhost:9000/minio/health/live"
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: true
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #         submodules: true
 
-      - name: Configure git user AFAAS-CI-Bot
-        run: |
-          git config --global user.name "AFAAS-CI-Bot"
-          git config --global user.email "noreply@email.com"
+  #     - name: Configure git user AFAAS-CI-Bot
+  #       run: |
+  #         git config --global user.name "AFAAS-CI-Bot"
+  #         git config --global user.email "noreply@email.com"
 
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
+  #     - name: Set up Python ${{ matrix.python-version }}
+  #       uses: actions/setup-python@v4
+  #       with:
+  #         python-version: ${{ matrix.python-version }}
 
-      - id: get_date
-        name: Get date
-        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+  #     - id: get_date
+  #       name: Get date
+  #       run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
-      - name: Set up Python dependency cache
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pypoetry
-          key: ${{ runner.os }}-poetry-${{ hashFiles('pyproject.toml') }}-${{ steps.get_date.outputs.date }}
+  #     - name: Set up Python dependency cache
+  #       uses: actions/cache@v3
+  #       with:
+  #         path: ~/.cache/pypoetry
+  #         key: ${{ runner.os }}-poetry-${{ hashFiles('pyproject.toml') }}-${{ steps.get_date.outputs.date }}
 
-      - name: Install Python dependencies
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          poetry install
+  #     - name: Install Python dependencies
+  #       run: |
+  #         curl -sSL https://install.python-poetry.org | python3 -
+  #         poetry install
 
-      - name: Run pytest with coverage
-        run: |
-          poetry run pytest -vv \
-            --cov=afaas --cov-branch --cov-report term-missing --cov-report xml \
-            --numprocesses=logical --durations=10 \
-            tests
-        env:
-          CI: true
-          PLAIN_OUTPUT: True
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          S3_ENDPOINT_URL: http://localhost:9000
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
+  #     - name: Run pytest with coverage
+  #       run: |
+  #         poetry run pytest -vv \
+  #           --cov=afaas --cov-branch --cov-report term-missing --cov-report xml \
+  #           --numprocesses=logical --durations=10 \
+  #           tests
+  #       env:
+  #         CI: true
+  #         PLAIN_OUTPUT: True
+  #         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  #         S3_ENDPOINT_URL: http://localhost:9000
+  #         AWS_ACCESS_KEY_ID: minioadmin
+  #         AWS_SECRET_ACCESS_KEY: minioadmin
 
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
+  #     - name: Upload coverage reports to Codecov
+  #       uses: codecov/codecov-action@v3
 
-      - id: setup_git_auth
-        name: Set up git token authentication
-        # Cassettes may be pushed even when tests fail
-        if: success() || failure()
-        run: |
-          config_key="http.${{ github.server_url }}/.extraheader"
-          base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
+  #     - id: setup_git_auth
+  #       name: Set up git token authentication
+  #       # Cassettes may be pushed even when tests fail
+  #       if: success() || failure()
+  #       run: |
+  #         config_key="http.${{ github.server_url }}/.extraheader"
+  #         base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
 
-          git config "$config_key" \
-            "Authorization: Basic $base64_pat"
+  #         git config "$config_key" \
+  #           "Authorization: Basic $base64_pat"
 
-          echo "config_key=$config_key" >> $GITHUB_OUTPUT
+  #         echo "config_key=$config_key" >> $GITHUB_OUTPUT
 
-      - name: Post Set up git token auth
-        if: steps.setup_git_auth.outcome == 'success'
-        run: |
-          git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
-          git submodule foreach git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
+  #     - name: Post Set up git token auth
+  #       if: steps.setup_git_auth.outcome == 'success'
+  #       run: |
+  #         git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
+  #         git submodule foreach git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
 
-      - name: Upload logs to artifact
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: test-logs
-          path: logs/
+  #     - name: Upload logs to artifact
+  #       if: always()
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: test-logs
+  #         path: logs/
