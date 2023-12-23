@@ -28,5 +28,6 @@ def main(project_directory):
                 version = pkg_resources.get_distribution(imp).version
                 req_file.write(f"{imp}=={version}\n")
 
+
 if __name__ == "__main__":
     main('.')

@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 
 
 class BaseAgent(Configurable, AbstractAgent):
-   
+
     @property
     def vectorstore(self) -> VectorStore:
         if self._vectorstore is None:
@@ -382,7 +382,7 @@ class BaseAgent(Configurable, AbstractAgent):
 
         return agent
 
-    
+
     async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse :
         LOG.trace(f"Entering : {self.__class__}.execute_strategy({strategy_name})")
         return await self._prompt_manager._execute_strategy(strategy_name=strategy_name, **kwargs)

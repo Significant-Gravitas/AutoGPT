@@ -19,6 +19,20 @@ jobs:
           run: |
             poetry install
 
+        - name: Run isort
+          run: |
+            poetry run isort --profile black .
+            git config --global user.name 'isort-bot'
+            git config --global user.email '
+
+        - name: Run autopep8
+          run: |
+            poetry run autopep8 --in-place --recursive .
+
+        - name: Run black
+          run: |
+            poetry run black .
+          
         - name: Run autoflake
           run: |
             poetry run autoflake --remove-all-unused-imports --remove-unused-variables --in-place --recursive .

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 
 class AbstractAgent(ABC):
-    
+
     # _loophooks: Dict[str, BaseLoop.LoophooksDict] = {}
     _agent_type_: ClassVar[str] = __name__
     _agent_module_: ClassVar[str] = __module__ + "." + __name__
@@ -66,7 +66,7 @@ class AbstractAgent(ABC):
         message_agent_user: list[MessageAgentUser] = []
         message_agent_agent: list[MessageAgentAgent] = []
         message_agent_llm: list[MessageAgentLLM] = []
-        
+
         _message_agent_user: Optional[AFAASMessageStack] = Field(default=[])
         @property
         def message_agent_user(self) -> AFAASMessageStack:
@@ -75,7 +75,7 @@ class AbstractAgent(ABC):
                     parent_task=self, description="message_agent_user"
                 )
             return self._message_agent_user
-            
+
 
         def __init__(self, **data):
             super().__init__(**data)
@@ -97,12 +97,12 @@ class AbstractAgent(ABC):
             # == "".join(self.__class__.__qualname__.split(".")[:-1])  
             return self.__class__.__qualname__.split(".")[0]    
 
-        
+
         @property
         def _module_(self):
             # Nested Class
             return self.__module__ + "." + self._type_
-        
+
         class Config(SystemSettings.Config):
             AGENT_CLASS_FIELD_NAME : str = "_type_"
             AGENT_CLASS_MODULE_NAME : str = "_module_"
