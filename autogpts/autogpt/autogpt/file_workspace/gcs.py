@@ -10,6 +10,7 @@ from io import IOBase
 from pathlib import Path
 
 from google.cloud import storage
+from google.cloud.exceptions import NotFound
 
 from autogpt.core.configuration.schema import UserConfigurable
 
@@ -46,7 +47,12 @@ class GCSFileWorkspace(FileWorkspace):
         return True
 
     def initialize(self) -> None:
-        self._bucket = self._gcs.get_bucket(self._bucket_name)
+        logger.debug(f"Initializing {repr(self)}...")
+        try:
+            self._bucket = self._gcs.get_bucket(self._bucket_name)
+        except NotFound:
+            logger.info(f"Bucket '{self._bucket_name}' does not exist; creating it...")
+            self._bucket = self._gcs.create_bucket(self._bucket_name)
 
     def get_path(self, relative_path: str | Path) -> Path:
         return super().get_path(relative_path).relative_to("/")
@@ -85,13 +91,18 @@ class GCSFileWorkspace(FileWorkspace):
     def list(self, path: str | Path = ".") -> list[Path]:
         """List all files (recursively) in a directory in the workspace."""
         path = self.get_path(path)
-        blobs = self._bucket.list_blobs(
-            prefix=f"{path}/" if path != Path(".") else None
-        )
-        return [Path(blob.name).relative_to(path) for blob in blobs]
+        return [
+            Path(blob.name).relative_to(path)
+            for blob in self._bucket.list_blobs(
+                prefix=f"{path}/" if path != Path(".") else None
+            )
+        ]
 
     def delete_file(self, path: str | Path) -> None:
         """Delete a file in the workspace."""
         path = self.get_path(path)
         blob = self._bucket.blob(str(path))
         blob.delete()
+
+    def __repr__(self) -> str:
+        return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self._root})"

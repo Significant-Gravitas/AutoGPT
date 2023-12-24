@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 from abc import ABC, abstractmethod
 from typing import BinaryIO
 
@@ -24,7 +23,10 @@ class ParserStrategy(ABC):
 class TXTParser(ParserStrategy):
     def read(self, file: BinaryIO) -> str:
         charset_match = charset_normalizer.from_bytes(file.read()).best()
-        logger.debug(f"Reading '{file.name}' with encoding '{charset_match.encoding}'")
+        logger.debug(
+            f"Reading {getattr(file, 'name', 'file')} "
+            f"with encoding '{charset_match.encoding}'"
+        )
         return str(charset_match)
 
 
@@ -95,7 +97,9 @@ class FileContext:
         self.parser = parser
 
     def decode_file(self, file: BinaryIO) -> str:
-        self.logger.debug(f"Reading file {file.name} with parser {self.parser}")
+        self.logger.debug(
+            f"Reading {getattr(file, 'name', 'file')} with parser {self.parser}"
+        )
         return self.parser.read(file)
 
 
@@ -133,15 +137,14 @@ def is_file_binary_fn(file: BinaryIO):
     return False
 
 
-def decode_textual_file(file: BinaryIO, logger: logging.Logger) -> str:
+def decode_textual_file(file: BinaryIO, ext: str, logger: logging.Logger) -> str:
     if not file.readable():
-        raise ValueError(f"read_file failed: {file.name} is not a file")
+        raise ValueError(f"{repr(file)} is not readable")
 
-    file_extension = os.path.splitext(file.name)[1].lower()
-    parser = extension_to_parser.get(file_extension)
+    parser = extension_to_parser.get(ext.lower())
     if not parser:
         if is_file_binary_fn(file):
-            raise ValueError(f"Unsupported binary file format: {file_extension}")
+            raise ValueError(f"Unsupported binary file format: {ext}")
         # fallback to txt file parser (to support script and code files loading)
         parser = TXTParser()
     file_context = FileContext(parser, logger)
