@@ -76,3 +76,4 @@ async def read_file(agent, task_id: str, file_path: str) -> bytes:
     Read data from a file
     """
     return agent.workspace.read(task_id=task_id, path=file_path)
+
