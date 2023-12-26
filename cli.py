@@ -5,8 +5,7 @@ If you want to contribute, please use only libraries that come as part of Python
 To ensure efficiency, add the imports to the functions so only what is needed is imported.
 """
 try:
-    import click
-    import github
+    import click   
 except ImportError:
     import os
 
@@ -22,7 +21,9 @@ def cli():
 
 @cli.command()
 def setup():
-    """Installs dependencies needed for your system. Works with Linux, MacOS and Windows WSL."""
+    """Installs dependencies. Works with Linux and WSL."""
+    import subprocess
+    
     import os
     import subprocess
 
