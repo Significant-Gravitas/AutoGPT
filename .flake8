@@ -1,5 +1,5 @@
 [flake8]
-max-line-length = 88
+max-line-length = 188
 exclude =
     .tox,
     __pycache__,

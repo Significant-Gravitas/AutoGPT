@@ -1,4 +1,4 @@
-#!/bin/bash
+ki#!/bin/bash
 
 if [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
     echo "This script cannot be run on Windows."

@@ -1,8 +1,8 @@
-## CLI Documentation
+# CLI Documentation
 
 This document describes how to interact with the project's CLI (Command Line Interface). It includes the types of outputs you can expect from each command. Note that the `agents stop` command will terminate any process running on port 8000.
 
-### 1. Entry Point for the CLI
+## 1. Entry Point for the CLI
 
 Running the `./run` command without any parameters will display the help message, which provides a list of available commands and options. Additionally, you can append `--help` to any command to view help information specific to that command.
 

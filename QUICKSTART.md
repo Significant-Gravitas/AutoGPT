@@ -8,8 +8,8 @@ Welcome to the Quickstart Guide! This guide will walk you through the process of
 
 This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux (WSL). If you are using a Windows system, you will need to install WSL. You can find the installation instructions for WSL [here](https://learn.microsoft.com/en-us/windows/wsl/).
 
-
 ## Getting Setup
+
 1. **Fork the Repository**
    To fork the repository, follow these steps:
    - Navigate to the main page of the repository.
