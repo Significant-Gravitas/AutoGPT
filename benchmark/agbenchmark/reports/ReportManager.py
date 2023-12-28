@@ -16,14 +16,12 @@ class SingletonReportManager:
     instance = None
 
     def __new__(cls):
-        from agbenchmark.reports.agent_benchmark_config import (
-            get_agent_benchmark_config,
-        )
+        from agbenchmark.config import load_agbenchmark_config
 
         if not cls.instance:
             cls.instance = super(SingletonReportManager, cls).__new__(cls)
 
-            agent_benchmark_config = get_agent_benchmark_config()
+            agent_benchmark_config = load_agbenchmark_config()
             benchmark_start_time_dt = datetime.now(
                 timezone.utc
             )  # or any logic to fetch the datetime

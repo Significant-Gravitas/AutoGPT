@@ -11,12 +11,12 @@ from typing import Any, Generator
 import pytest
 
 from agbenchmark.__main__ import TEMP_FOLDER_ABS_PATH
+from agbenchmark.config import load_agbenchmark_config
 from agbenchmark.reports.reports import (
     finalize_reports,
     generate_single_call_report,
     session_finish,
 )
-from agbenchmark.utils.data_types import AgentBenchmarkConfig
 
 GLOBAL_TIMEOUT = (
     1500  # The tests will stop after 25 minutes so we can send the reports.
@@ -27,60 +27,17 @@ collect_ignore = ["challenges"]
 suite_reports: dict[str, list] = {}
 
 
-def load_config_from_request(request: Any) -> AgentBenchmarkConfig:
-    """
-    This function loads the configuration for the agent benchmark from a given request.
-
-    Args:
-        request (Any): The request object from which the agent benchmark configuration is to be loaded.
-
-    Returns:
-        AgentBenchmarkConfig: The loaded agent benchmark configuration.
-
-    Raises:
-        json.JSONDecodeError: If the benchmark configuration file is not a valid JSON file.
-    """
-    agent_benchmark_config_path = Path.cwd() / "agbenchmark_config" / "config.json"
-    try:
-        with open(agent_benchmark_config_path, "r") as f:
-            agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
-            agent_benchmark_config.agent_benchmark_config_path = (
-                agent_benchmark_config_path
-            )
-            return agent_benchmark_config
-    except json.JSONDecodeError:
-        print("Error: benchmark_config.json is not a valid JSON file.")
-        raise
-
-
 @pytest.fixture(scope="module")
-def config(request: Any) -> Any:
+def config() -> dict:
     """
-    This pytest fixture is responsible for loading the agent benchmark configuration from a given request.
-    This fixture is scoped to the module level, meaning it's invoked once per test module.
-
-    Args:
-        request (Any): The request object from which the agent benchmark configuration is to be loaded.
+    Loads the applicable benchmark configuration and returns a config `dict`.
 
     Returns:
-        Any: The loaded configuration dictionary.
-
-    Raises:
-        json.JSONDecodeError: If the benchmark configuration file is not a valid JSON file.
+        dict: A dictionary with the benchmark config at `config["AgentBenchmarkConfig"]`
     """
     config = {}
-    agent_benchmark_config_path = Path.cwd() / "agbenchmark_config" / "config.json"
-    try:
-        with open(agent_benchmark_config_path, "r") as f:
-            agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
-            agent_benchmark_config.agent_benchmark_config_path = (
-                agent_benchmark_config_path
-            )
-    except json.JSONDecodeError:
-        print("Error: benchmark_config.json is not a valid JSON file.")
-        raise
 
-    config["AgentBenchmarkConfig"] = agent_benchmark_config
+    config["AgentBenchmarkConfig"] = load_agbenchmark_config()
 
     return config
 
@@ -158,7 +115,7 @@ def check_regression(request: Any) -> None:
         request (Any): The request object from which the test name and the agent benchmark configuration are retrieved.
     """
     test_name = request.node.parent.name
-    agent_benchmark_config = load_config_from_request(request)
+    agent_benchmark_config = load_agbenchmark_config()
     with contextlib.suppress(Exception):
         test = agent_benchmark_config.get_regression_reports_path()
         data = json.loads(test)
@@ -342,13 +299,7 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
         items (Any): The collected test items to be modified.
         config (Any): The pytest configuration object from which the agent benchmark configuration path is retrieved.
     """
-    agent_benchmark_config_path = str(Path.cwd() / "agbenchmark_config" / "config.json")
-    try:
-        with open(agent_benchmark_config_path) as f:
-            agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
-    except json.JSONDecodeError:
-        print("Error: benchmark_config.json is not a valid JSON file.")
-        raise
+    agent_benchmark_config = load_agbenchmark_config()
 
     regression_file = agent_benchmark_config.get_regression_reports_path()
     data = (

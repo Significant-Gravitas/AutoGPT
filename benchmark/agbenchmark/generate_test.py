@@ -13,8 +13,9 @@ import pytest
 from agbenchmark.__main__ import CHALLENGES_ALREADY_BEATEN
 from agbenchmark.agent_api_interface import append_updates_file
 from agbenchmark.agent_protocol_client.models.step import Step
+from agbenchmark.config import load_agbenchmark_config
 from agbenchmark.utils.challenge import Challenge
-from agbenchmark.utils.data_types import AgentBenchmarkConfig, ChallengeData
+from agbenchmark.utils.data_types import ChallengeData
 
 DATA_CATEGORY = {}
 
@@ -153,16 +154,7 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
     print(f"Found {len(json_files)} challenges.")
     print(f"Sample path: {json_files[0]}")
 
-    agent_benchmark_config_path = str(Path.cwd() / "agbenchmark_config" / "config.json")
-    try:
-        with open(agent_benchmark_config_path, "r") as f:
-            agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
-            agent_benchmark_config.agent_benchmark_config_path = (
-                agent_benchmark_config_path
-            )
-    except json.JSONDecodeError:
-        print("Error: benchmark_config.json is not a valid JSON file.")
-        raise
+    agent_benchmark_config = load_agbenchmark_config()
 
     regression_reports_path = agent_benchmark_config.get_regression_reports_path()
     if regression_reports_path and os.path.exists(regression_reports_path):

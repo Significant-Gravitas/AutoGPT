@@ -13,8 +13,8 @@ from dotenv import load_dotenv
 from helicone.lock import HeliconeLockManager
 
 from agbenchmark.app import app
+from agbenchmark.config import load_agbenchmark_config
 from agbenchmark.reports.ReportManager import SingletonReportManager
-from agbenchmark.utils.data_types import AgentBenchmarkConfig
 
 load_dotenv()
 
@@ -82,16 +82,7 @@ def run_benchmark(
 
     initialize_updates_file()
     SingletonReportManager()
-    agent_benchmark_config_path = str(Path.cwd() / "agbenchmark_config" / "config.json")
-    try:
-        with open(agent_benchmark_config_path, "r") as f:
-            agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
-            agent_benchmark_config.agent_benchmark_config_path = (
-                agent_benchmark_config_path
-            )
-    except json.JSONDecodeError:
-        print("Error: benchmark_config.json is not a valid JSON file.")
-        return 1
+    agent_benchmark_config = load_agbenchmark_config()
 
     if maintain and improve and explore:
         print(
