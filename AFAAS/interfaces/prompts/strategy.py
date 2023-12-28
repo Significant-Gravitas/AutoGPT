@@ -135,10 +135,6 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     def get_prompt_config(self) -> AbstractPromptConfiguration:
         return self.get_llm_provider().get_default_config()
 
-    # @property
-    # def model_classification(self) : ->  PromptStrategyLanguageModelClassification:
-    #     LOG.notice("Deprecated: Use `dependency injection` instead")
-    #     return self._model_classification
 
     # TODO : This implementation is shit :)
     def get_tools(self) -> list[CompletionModelFunction]:
