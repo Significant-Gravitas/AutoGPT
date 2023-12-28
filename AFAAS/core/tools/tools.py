@@ -90,7 +90,7 @@ class Tool:
         agent: BaseAgent = task.agent
 
         strategy_result = await agent.execute_strategy(
-            strategy_name="afaas_default_task_summary",
+            strategy_name="afaas_task_default_summary",
             task=task,
             tool_output=tool_output,
             tool=self,
@@ -109,7 +109,7 @@ class Tool:
         #     task_ouput_embedding, metadatas= [{'task_id' : task.task_id , 'plan_id' : task.plan_id}]
         #     )
         vector = await agent.vectorstore.aadd_texts(
-            task.task_text_output,
+            texts = [task.task_text_output],
             metadatas=[{"task_id": task.task_id, "plan_id": task.plan_id}],
         )
 

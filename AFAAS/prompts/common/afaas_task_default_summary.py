@@ -29,13 +29,11 @@ LOG = AFAASLogger(name=__name__)
 
 
 class BaseTaskSummaryStrategyFunctionNames(str, enum.Enum):
-    DEFAULT_TASK_SUMMARY: str = "afaas_default_task_summary"
+    DEFAULT_TASK_SUMMARY: str = "afaas_task_default_summary"
 
 
 class BaseTaskSummaryStrategyConfiguration(PromptStrategiesConfiguration):
-    """
-    A Pydantic model that represents the default configurations for the refine user context strategy.
-    """
+
 
     default_tool_choice: BaseTaskSummaryStrategyFunctionNames = (
         BaseTaskSummaryStrategyFunctionNames.DEFAULT_TASK_SUMMARY
@@ -46,7 +44,7 @@ class BaseTaskSummaryStrategyConfiguration(PromptStrategiesConfiguration):
 
 class BaseTaskSummary_Strategy(AbstractPromptStrategy):
     default_configuration = BaseTaskSummaryStrategyConfiguration()
-    STRATEGY_NAME = "afaas_default_task_summary"
+    STRATEGY_NAME = "afaas_task_default_summary"
 
     def __init__(
         self,
@@ -56,7 +54,6 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
         exit_token: str = str(uuid.uuid4()),
         task_output_lenght: int = 300,
     ):
-        # self._model_classification = model_classification
         self._count = count
         self._config = self.default_configuration
         self.default_tool_choice = default_tool_choice
@@ -67,7 +64,7 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
         task: AbstractTask,
         **kwargs,
     ):
-        self.afaas_default_task_summary: CompletionModelFunction = CompletionModelFunction(
+        self.afaas_task_default_summary: CompletionModelFunction = CompletionModelFunction(
             name=BaseTaskSummaryStrategyFunctionNames.DEFAULT_TASK_SUMMARY.value,
             description="Provide detailed information about the task and the context of the task to the Agent responsible or completing the task.",
             parameters={
@@ -104,7 +101,7 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
         )
 
         self._tools = [
-            self.afaas_default_task_summary,
+            self.afaas_task_default_summary,
         ]
 
     from AFAAS.core.tools import Tool
