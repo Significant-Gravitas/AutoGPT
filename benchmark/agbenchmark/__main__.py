@@ -10,11 +10,25 @@ import click
 import pytest
 import toml
 from dotenv import load_dotenv
-from helicone.lock import HeliconeLockManager
 
 from agbenchmark.app import app
 from agbenchmark.config import load_agbenchmark_config
 from agbenchmark.reports.ReportManager import SingletonReportManager
+
+try:
+    if os.getenv("HELICONE_API_KEY"):
+        import helicone
+
+        helicone_enabled = True
+    else:
+        helicone_enabled = False
+except ImportError:
+    helicone_enabled = False
+
+
+class InvalidInvocationError(ValueError):
+    pass
+
 
 load_dotenv()
 
@@ -27,7 +41,9 @@ CHALLENGES_ALREADY_BEATEN = (
 UPDATES_JSON_PATH = Path.cwd() / "agbenchmark_config" / "updates.json"
 
 
-if os.environ.get("HELICONE_API_KEY"):
+if helicone_enabled:
+    from helicone.lock import HeliconeLockManager
+
     HeliconeLockManager.write_custom_property(
         "benchmark_start_time", BENCHMARK_START_TIME
     )
@@ -39,8 +55,11 @@ with open(
 
 
 def get_unique_categories() -> set[str]:
-    """Find all data.json files in the directory relative to this file and its subdirectories,
-    read the "category" field from each file, and return a set of unique categories."""
+    """
+    Find all data.json files in the directory relative to this file and its
+    subdirectories, read the "category" field from each file, and return a set of unique
+    categories.
+    """
     categories = set()
 
     # Get the directory of this file
@@ -69,32 +88,32 @@ def run_benchmark(
     explore: bool = False,
     mock: bool = False,
     no_dep: bool = False,
-    nc: bool = False,
+    no_cutoff: bool = False,
     keep_answers: bool = False,
-    category: Optional[tuple[str]] = None,
-    skip_category: Optional[tuple[str]] = None,
+    categories: Optional[list[str]] = None,
+    skip_categories: Optional[list[str]] = None,
     test: Optional[str] = None,
     cutoff: Optional[int] = None,
     server: bool = False,
 ) -> int:
-    """Start the benchmark tests. If a category flag is provided, run the categories with that mark."""
-    # Check if configuration file exists and is not empty
+    """
+    Starts the benchmark. If a category flag is provided, only challenges with the
+    corresponding mark will be run.
+    """
+    validate_args(
+        maintain=maintain,
+        improve=improve,
+        explore=explore,
+        test=test,
+        categories=categories,
+        skip_categories=skip_categories,
+        no_cutoff=no_cutoff,
+        cutoff=cutoff,
+    )
 
     initialize_updates_file()
     SingletonReportManager()
     agent_benchmark_config = load_agbenchmark_config()
-
-    if maintain and improve and explore:
-        print(
-            "Error: You can't use --maintain, --improve or --explore at the same time. Please choose one."
-        )
-        return 1
-
-    if test and (category or skip_category or maintain or improve or explore):
-        print(
-            "Error: If you're running a specific test make sure no other options are selected. Please just pass the --test."
-        )
-        return 1
 
     assert agent_benchmark_config.host, "Error: host needs to be added to the config."
 
@@ -110,22 +129,23 @@ def run_benchmark(
         print("Running specific test:", test)
     else:
         # Categories that are used in the challenges
-        categories = get_unique_categories()
-        if category:
-            invalid_categories = set(category) - categories
-            assert (
-                not invalid_categories
-            ), f"Invalid categories: {invalid_categories}. Valid categories are: {categories}"
+        all_categories = get_unique_categories()
+        if categories:
+            invalid_categories = set(categories) - all_categories
+            assert not invalid_categories, (
+                f"Invalid categories: {invalid_categories}. "
+                f"Valid categories are: {all_categories}"
+            )
 
-        if category:
-            categories_to_run = set(category)
-            if skip_category:
-                categories_to_run = categories_to_run.difference(set(skip_category))
+        if categories:
+            categories_to_run = set(categories)
+            if skip_categories:
+                categories_to_run = categories_to_run.difference(set(skip_categories))
                 assert categories_to_run, "Error: You can't skip all categories"
             pytest_args.extend(["-m", " or ".join(categories_to_run), "--category"])
             print("Running tests of category:", categories_to_run)
-        elif skip_category:
-            categories_to_run = categories - set(skip_category)
+        elif skip_categories:
+            categories_to_run = all_categories - set(skip_categories)
             assert categories_to_run, "Error: You can't skip all categories"
             pytest_args.extend(["-m", " or ".join(categories_to_run), "--category"])
             print("Running tests of category:", categories_to_run)
@@ -151,22 +171,49 @@ def run_benchmark(
     if no_dep:
         pytest_args.append("--no_dep")
 
-    if nc and cutoff:
-        print(
-            "Error: You can't use both --nc and --cutoff at the same time. Please choose one."
-        )
-        return 1
-
-    if nc:
+    if no_cutoff:
         pytest_args.append("--nc")
     if cutoff:
         pytest_args.append("--cutoff")
         print(f"Setting cuttoff override to {cutoff} seconds.")
     current_dir = Path(__file__).resolve().parent
     print(f"Current directory: {current_dir}")
-    pytest_args.extend((str(current_dir), "--cache-clear"))
+    pytest_args.append(str(current_dir))
+
+    pytest_args.append("--cache-clear")
     exit_code = pytest.main(pytest_args)
-    SingletonReportManager().clear_instance()
+
+    SingletonReportManager.clear_instance()
+    return exit_code
+
+
+def validate_args(
+    maintain: bool = False,
+    improve: bool = False,
+    explore: bool = False,
+    test: Optional[str] = None,
+    categories: Optional[list[str]] = None,
+    skip_categories: Optional[list[str]] = None,
+    no_cutoff: bool = False,
+    cutoff: Optional[int] = None,
+) -> None:
+    if (maintain + improve + explore) > 1:
+        raise InvalidInvocationError(
+            "You can't use --maintain, --improve or --explore at the same time. "
+            "Please choose one."
+        )
+
+    if test and (categories or skip_categories or maintain or improve or explore):
+        raise InvalidInvocationError(
+            "If you're running a specific test make sure no other options are "
+            "selected. Please just pass the --test."
+        )
+
+    if no_cutoff and cutoff:
+        raise InvalidInvocationError(
+            "You can't use both --nc and --cutoff at the same time. "
+            "Please choose one."
+        )
 
 
 @click.group(invoke_without_command=True)
@@ -213,9 +260,27 @@ def cli(
 ) -> Any:
     # Redirect stdout if backend is True
     if value == "start":
-        raise ("`agbenchmark start` is removed. Run `agbenchmark` instead.")
+        raise DeprecationWarning(
+            "`agbenchmark start` is removed. Run `agbenchmark` instead."
+        )
     if value == "serve":
         return serve()
+
+    try:
+        validate_args(
+            maintain=maintain,
+            improve=improve,
+            explore=explore,
+            test=test,
+            categories=category,
+            skip_categories=skip_category,
+            no_cutoff=nc,
+            cutoff=cutoff,
+        )
+    except InvalidInvocationError as e:
+        print("Error: " + "\n".join(e.args))
+        sys.exit(1)
+
     original_stdout = sys.stdout  # Save the original standard output
     exit_code = None
 
@@ -228,10 +293,10 @@ def cli(
                 explore=explore,
                 mock=mock,
                 no_dep=no_dep,
-                nc=nc,
+                no_cutoff=nc,
                 keep_answers=keep_answers,
-                category=category,
-                skip_category=skip_category,
+                categories=category,
+                skip_categories=skip_category,
                 test=test,
                 cutoff=cutoff,
             )
@@ -245,10 +310,10 @@ def cli(
             explore=explore,
             mock=mock,
             no_dep=no_dep,
-            nc=nc,
+            no_cutoff=nc,
             keep_answers=keep_answers,
-            category=category,
-            skip_category=skip_category,
+            categories=category,
+            skip_categories=skip_category,
             test=test,
             cutoff=cutoff,
         )
