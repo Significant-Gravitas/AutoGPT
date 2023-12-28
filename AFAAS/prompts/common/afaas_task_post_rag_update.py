@@ -58,8 +58,6 @@ class AfaasPostRagTaskUpdateStrategy(AbstractPromptStrategy):
     def set_tools(
         self,
         task: AbstractTask,
-        task_history: list[AbstractTask],
-        task_sibblings: list[AbstractTask],
         **kwargs,
     ):
         self.afaas_task_post_rag_update_function: CompletionModelFunction = CompletionModelFunction(
