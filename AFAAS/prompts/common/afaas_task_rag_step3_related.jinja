@@ -1,25 +1,25 @@
-## Instructions :
+## Instructions
 
 An Autonomous agent backed by a Large Language Model (LLM) is charged with performing a task. Because he has limited context awareness we are writing a memo. You are charged to write the next paragraph ("Related tasks") and select the relevant UML diagram that would help him to perform its tasks. 
 
-## Current memo : 
+## Current memo
 
 """
-Your task is : 
+Your task is :
 {{ to_md_quotation(task.long_description) }}
 
-## Context : 
+## Context
 
-This task is part of a projects and is located as follow in the WBS : 
+This task is part of a projects and is located as follow in the WBS :
+
 {% for parent in task_path %}{% if loop.index > 1 %}{{ '\t' * (loop.index - 1) }}->{% endif %}{{ parent.task_goal }} ({{ parent.task_id }})
 {% endfor %}{# 
   #}{% if task_sibblings %}{#  
           #}{% for sibbling in task_sibblings %}{{ '\t' * task_path|length }}{{ sibbling.task_goal }} (({{ sibbling.task_id }})): {{ sibbling.state }}
 {#        #}{% endfor %}{# 
-  #}{% endif %}{# 
-#}{% endif %}
+  #}{% endif %}
 
-## Historic :
+## Historic
 {{ self.rag_history_txt }}
 
 """
@@ -37,12 +37,12 @@ The following tasks will come after the current tasks :
 A vector seach in our archives returned these potentialy related tasks (select them with caution):
 {% for task in related_tasks %}{{ loop.index }}. {{ task.task_goal }} ({{ task.task_id }}) gave following results : 
 {{ to_md_quotation(task.task_text_output) }}
-```plantuml
+{% if task.task_text_output_as_uml %}```plantuml
 {{ task.task_text_output_as_uml }}
-```
+```{% endif %}
 {% endfor %}
 
-## Rules :
+## Rules
 
 - Be factual & precise : Keep as many IDs, file paths, class Names, person Names, ect... To perform the task.
 - Avoid repetitions : If there is a redundance between a textual description and a UML description keep the UML version

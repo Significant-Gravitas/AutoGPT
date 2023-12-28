@@ -1,10 +1,10 @@
-## Instructions :
+## Instructions
 Right bellow there is a set of informations given to new an Autonomous Agent backed by a Large Language Model (LLM). Select the relevant UML diagram and make a resume while avoiding duplicated or unrelated information to the execution of his tasks. 
 
 Task description : 
 {{ to_md_quotation(task.long_description) }}
 
-## Rules :
+## Rules
 
 -We will not touch the "situational context" section
 - History and context are very important be sure you remove strictly unrelated information for the excecution of the task
@@ -12,7 +12,8 @@ Task description :
 
 {% if task.task_parent %}
 ### Situational context : 
-This task is part of a projects and is located as follow in the WBS : 
+This task is part of a projects and is located as follow in the WBS :
+
 {% for parent in task_path %}{% if loop.index > 1 %}{{ '\t' * (loop.index - 1) }}->{% endif %}{{ parent.task_goal }} ({{ parent.task_id }})
 {% endfor %}{# 
   #}{% if task_sibblings %}{#  
@@ -24,14 +25,15 @@ This task is part of a projects and is located as follow in the WBS :
 {% if task_history %}
 ### Historical context : 
 These are the last task completed (maximum {{task_history|length}} tasks):
+
 {% for task in task_history %}{{ loop.index }}. {{ task.task_goal }} ({{ task.task_id }}) gave following results : 
 {{ to_md_quotation(task.task_text_output) }}
-```plantuml
+{% if task.task_text_output_as_uml %}```plantuml
 {{ task.task_text_output_as_uml }}
-```
+```{% endif %}
 {% endfor %}
 
-### Context as UML : 
+### Contextas UML : 
 This are the task that have been done previously :{#
 #}{% for task in task_history %}{{ loop.index }}. {{ task.task_goal }} ({{ task.task_id }}) gave following results : 
 ```plantuml{{ task.task_text_output_as_uml }}```

@@ -118,7 +118,7 @@ class RefineUserContextStrategy(AbstractPromptStrategy):
     ###
 
     DEFAULT_SYSTEM_PROMPT_TEMPLATE = (
-        "## Instructions :\n\n"
+        "## Instructions\n\n"
         "You are an AI running on {os_info}. Your are tasked with assisting a user in formulating user requirements through an iterative process."
         """
 ## Iterative Process Flow:
