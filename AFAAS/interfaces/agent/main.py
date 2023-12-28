@@ -20,6 +20,7 @@ from AFAAS.interfaces.agent.loop import (  # Import only where it's needed
     BaseLoopHook,
 )
 from AFAAS.interfaces.db import AbstractMemory
+
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 from AFAAS.lib.sdk.logger import AFAASLogger
 
@@ -39,9 +40,12 @@ if TYPE_CHECKING:
         AbstractChatModelResponse,
         AbstractPromptStrategy,
     )
+    from AFAAS.interfaces.task import AbstractPlan
 
 
 class BaseAgent(Configurable, AbstractAgent):
+
+    plan : Optional[AbstractPlan] = None
 
     @property
     def vectorstore(self) -> VectorStore:
