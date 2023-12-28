@@ -151,14 +151,13 @@ class PlannerLoop(BaseLoop):
                 ##############################################################
                 ### Step 7 : execute_tool() #
                 ##############################################################
-                result = await self.execute_tool(
+                await self.execute_tool(
                     command_name=command_name,
                     command_args=command_args,
                     current_task=current_task
                     # user_input = assistant_reply_dict
                 )
 
-            print("result", result)
             if current_task.is_ready():
                 """If the task still still match readiness criterias at this point, it means that we can close it"""
                 current_task.state = TaskStatusList.DONE

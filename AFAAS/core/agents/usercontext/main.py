@@ -23,9 +23,6 @@ LOG = AFAASLogger(name=__name__)
 
 class UserContextAgent(BaseAgent):
     class SystemSettings(BaseAgent.SystemSettings):
-        name = "usercontext_agent"
-        description = "An agent that improve the quality of input provided by users."
-
         class Config(BaseAgent.SystemSettings.Config):
             pass
 

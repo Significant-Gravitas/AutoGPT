@@ -112,7 +112,7 @@ async def run_cli_demo():
         #
         # New requirement gathering process
         #
-        if LOG.level <= LOG.DEBUG:
+        if LOG.level <= logging.DEBUG:
             user_objective = (
                 "Provide a step-by-step guide on how to build a Pizza oven."
             )

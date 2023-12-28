@@ -448,6 +448,14 @@ class BaseAgent(Configurable, AbstractAgent):
     ################################################################################
     ################################ DB INTERACTIONS ################################
     ################################################################################
+    def create_agentv2(
+        self
+    ) -> str:
+        LOG.info(f"Starting creation of {self.__class__.__name__} agent {self.agent_id}")
+
+        agent_table = self.memory.get_table("agents")
+        agent_id = agent_table.add(self, id=self.agent_id)
+        return agent_id
 
     def _create_in_db(
         self,
@@ -471,7 +479,6 @@ class BaseAgent(Configurable, AbstractAgent):
     def list_users_agents_from_memory(
         cls,
         user_id: uuid.UUID,
-        #workspace: AbstractFileWorkspace,
         page: int = 1,
         page_size: int = 10,
     )  -> list[dict] : #-> list[BaseAgent.SystemSettings]:   
