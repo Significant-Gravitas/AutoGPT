@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from typing import Optional
+from pydantic import Field
+import uuid
 
 from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.interfaces.task.base import AbstractBaseTask
@@ -12,7 +14,7 @@ from AFAAS.interfaces.task.stack import TaskStack
 class AbstractTask(AbstractBaseTask):
     @abstractmethod
     def __init__(self, **data):
-        ...
+        super().__init__(**data)
 
     # Properties
     @property
@@ -20,10 +22,10 @@ class AbstractTask(AbstractBaseTask):
     def task_id(self) -> str:
         ...
 
-    @property
-    @abstractmethod
-    def plan_id(self) -> str:
-        ...
+    # @property
+    # @abstractmethod
+    # def plan_id(self) -> str:
+    #     ...
 
     @property
     @abstractmethod
@@ -45,10 +47,7 @@ class AbstractTask(AbstractBaseTask):
     def task_successors(self) -> TaskStack:
         ...
 
-    @property
-    @abstractmethod
-    def state(self) -> Optional[TaskStatusList]:
-        ...
+    state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG)
 
     task_text_output: Optional[str]
 
@@ -56,9 +55,9 @@ class AbstractTask(AbstractBaseTask):
 
     # Methods
     @staticmethod
-    @abstractmethod
-    def generate_uuid() -> str:
-        ...
+    def generate_uuid():
+        return "T" + str(uuid.uuid4())
+
 
     @abstractmethod
     def is_ready(self) -> bool:

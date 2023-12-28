@@ -5,7 +5,6 @@ import os
 import uuid
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
-from langchain.tools import DuckDuckGoSearchRun
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.task import AbstractTask
@@ -115,7 +114,6 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
     ) -> ChatPrompt:
         LOG.debug("Building prompt for task : " + task.debug_dump_str())
         self._task: AbstractTask = task
-        self._model_name = kwargs.get("model_name")
 
         # FIXME: This his a hack for test, please remove it :
         task.task_context = "No additional context"
