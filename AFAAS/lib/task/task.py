@@ -5,12 +5,15 @@ from typing import TYPE_CHECKING, Optional
 
 from pydantic import BaseModel, Field, validator
 
+from AFAAS.interfaces.adapters import AbstractChatModelResponse
 from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.prompts.common import AFAAS_SMART_RAG_Strategy
+from AFAAS.prompts.common.afaas_task_rag_step2_history import AfaasTaskRagStep2Strategy
+from AFAAS.prompts.common.afaas_task_rag_step3_history import AfaasTaskRagStep3Strategy
 
 LOG = AFAASLogger(name=__name__)
 
@@ -297,18 +300,22 @@ class Task(AbstractTask):
         history: int = 10,
         sibblings=True,
         path=True,
-        similar_tasks: int = 0,
-        avoid_redondancy: bool = False,
+        similar_tasks: int = 100,
+        avoid_sibbling_predecessors_redundancy: bool = False,
     ):
-        # 1. Get the last n achieved tasks
         plan_history: list[Task] = []
         if history > 0:
             plan_history = self.agent.plan.get_last_achieved_tasks(count=history)
 
-        # 2. Get the predecessors of the task
+        # 2a. Get the predecessors of the task
         task_predecessors: list[Task] = []
         if predecessors:
             task_predecessors = self.task_predecessors.get_all_tasks_from_stack()
+
+        # 2b. Get the successors of the task
+        task_successors: list[Task] = []
+        if successors:
+            task_successors = self.task_successors.get_all_tasks_from_stack()
 
         # 3. Remove predecessors from history to avoid redondancy
         history_and_predecessors = set(plan_history) | set(task_predecessors)
@@ -316,15 +323,12 @@ class Task(AbstractTask):
         # 4. Get the path to the task and remove it from history to avoid redondancy
         task_path: list[Task] = []
         if path:
-            if avoid_redondancy:
-                task_path = list(set(self.get_task_path()) - history_and_predecessors)
-            else:
-                task_path = self.get_task_path()
+            task_path = self.get_task_path()
 
         # 5. Get the sibblings of the task and remove them from history to avoid redondancy
         task_sibblings: list[Task] = []
         if sibblings:
-            if avoid_redondancy:
+            if avoid_sibbling_predecessors_redundancy:
                 task_sibblings = list(
                     set(self.get_sibblings()) - history_and_predecessors
                 )
@@ -333,7 +337,7 @@ class Task(AbstractTask):
 
         # 6. Get the similar tasks , if at least n (similar_tasks) have been treated so we only look for similarity in complexe cases
         related_tasks: list[Task] = []
-        if self.agent.plan.get_number_of_achieved_tasks() > similar_tasks or LOG.level <= LOG.DEBUG:
+        if self.agent.plan.get_all_done_tasks_ids() > similar_tasks or LOG.level <= LOG.DEBUG:
             task_embedding = await self.agent.embedding_model.aembed_query(text = self.long_description)
             try :
                 #FIXME: Create an adapter or open a issue on Langchain Github : https://github.com/langchain-ai/langchain to harmonize the AP 
@@ -356,28 +360,65 @@ class Task(AbstractTask):
             ## 1. Make Task Object
             for task in related_tasks_documents:
                 related_tasks.append(self.agent.plan.get_task(task["task_id"]))
+
             ## 2. Make a set of related tasks and remove current tasks, sibblings, history and predecessors
-            
-            related_tasks_documents = set(related_tasks) - set(self.get_sibblings()) - history_and_predecessors
+            related_tasks = list(set(related_tasks) - set(self.get_sibblings()) - history_and_predecessors)
 
             if LOG.level <= LOG.DEBUG:
                 input("Press Enter to continue...")
                 return
-    
-        # TODO: Build it in a Pipeline for Autocorrection
+
+
         task_history = list(history_and_predecessors)
         task_history.sort(key=lambda task: task.modified_at)
-        rv: str = await self.agent.execute_strategy(
-            strategy_name=AFAAS_SMART_RAG_Strategy.STRATEGY_NAME,
-            task=self,
-            task_history=task_history,
-            task_sibblings=task_sibblings,
-            task_path=task_path,
-            related_tasks=None,
-        )
 
-        self.task_context = rv.parsed_result[0]["command_args"]["resume"]
-        self.long_description = rv.parsed_result[0]["command_args"]["long_description"]
+        # # TODO: Build it in a Pipeline for Autocorrection
+        # rv: str = await self.agent.execute_strategy(
+        #     strategy_name=AFAAS_SMART_RAG_Strategy.STRATEGY_NAME,
+        #     task=self,
+        #     task_path=task_path,
+        #     task_history=task_history,
+        #     task_followup=task_successors,
+        #     task_sibblings=task_sibblings,
+        #     related_tasks=related_tasks,
+        # )
+
+        # self.task_context = rv.parsed_result[0]["command_args"]["resume"]
+        # self.long_description = rv.parsed_result[0]["command_args"]["long_description"]
+
+        # NOTE: (Deactivated because Uneccesary ) RAG : 1. Summarize Path => No need as we keep it as is
+        # self.rag_path_txt = task_path  + task_sibblings
+
+        # RAG : 2. Summarize History
+        self.rag_uml = []
+        if len(task_history) > 0:
+            rv : AbstractChatModelResponse = await self.agent.execute_strategy(
+                strategy_name=AfaasTaskRagStep2Strategy.STRATEGY_NAME,
+                task=self,
+                task_path=task_path,
+                task_history=task_history,
+                task_followup=task_successors,
+                task_sibblings=task_sibblings,
+                related_tasks=related_tasks,
+                )
+            self.rag_history_txt = rv.parsed_result[0]["command_args"]["paragraph"]
+            self.rag_uml = rv.parsed_result[0]["command_args"]["uml_diagrams"]
+
+
+            # RAG : 3. Summarize Followup
+            if len(task_successors) > 0 or len(related_tasks) > 0:
+                rv : AbstractChatModelResponse = await self.agent.execute_strategy(
+                    strategy_name=AfaasTaskRagStep3Strategy.STRATEGY_NAME,
+                    task=self,
+                    task_path=task_path,
+                    task_history=task_history,
+                    task_followup=task_successors,
+                    task_sibblings=task_sibblings,
+                    related_tasks=related_tasks,
+                    )
+                self.rag_related_task_txt = rv.parsed_result[0]["command_args"]["paragraph"]
+                self.rag_uml += rv.parsed_result[0]["command_args"]["uml_diagrams"]
+
         return rv
 
 
