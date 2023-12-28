@@ -8,7 +8,8 @@ An Autonomous agent backed by a Large Language Model (LLM) is charged with perfo
 Your task is : 
 {{ to_md_quotation(task.long_description) }}
 
-### Context : 
+## Context : 
+
 This task is part of a projects and is located as follow in the WBS : 
 {% for parent in task_path %}{% if loop.index > 1 %}{{ '\t' * (loop.index - 1) }}->{% endif %}{{ parent.task_goal }} ({{ parent.task_id }})
 {% endfor %}{# 
@@ -21,8 +22,9 @@ This task is part of a projects and is located as follow in the WBS :
  
 {% if task_history %}
 ## Historic :
+
 These are the last task completed (maximum {{task_history|length}} tasks):
-{% for task in task_history %}{{ loop.index }}. {{ task.task_goal }} (({{ task.task_id }})) gave following results : 
+{% for task in task_history %}{{ loop.index }}. {{ task.task_goal }} ({{ task.task_id }}) gave following results : 
 {{ to_md_quotation(task.task_text_output) }}
 ```plantuml
 {{ task.task_text_output_as_uml }}
@@ -31,5 +33,6 @@ These are the last task completed (maximum {{task_history|length}} tasks):
 
 
 ## Rules :
+
 - Be factual & precise : Keep as many IDs, file paths, class Names, person Names, ect... To perform the task.
 - Avoid repetitions : If there is a redundance between a textual description and a UML description keep the UML version

@@ -8,7 +8,8 @@ An Autonomous agent backed by a Large Language Model (LLM) is charged with perfo
 Your task is : 
 {{ to_md_quotation(task.long_description) }}
 
-### Context : 
+## Context : 
+
 This task is part of a projects and is located as follow in the WBS : 
 {% for parent in task_path %}{% if loop.index > 1 %}{{ '\t' * (loop.index - 1) }}->{% endif %}{{ parent.task_goal }} ({{ parent.task_id }})
 {% endfor %}{# 
@@ -25,12 +26,14 @@ This task is part of a projects and is located as follow in the WBS :
  
 {% if task_followup %}
 ## Upcomming tasks
+
 The following tasks will come after the current tasks :
 {% for task in task_followup %}{{ loop.index }}. {{ task.task_goal }} ({{ task.task_id }})
 {% endfor %}
  
 {% if related_tasks %}
-## Related Tasks : 
+## Related Tasks
+
 A vector seach in our archives returned these potentialy related tasks (select them with caution):
 {% for task in related_tasks %}{{ loop.index }}. {{ task.task_goal }} ({{ task.task_id }}) gave following results : 
 {{ to_md_quotation(task.task_text_output) }}
@@ -40,5 +43,6 @@ A vector seach in our archives returned these potentialy related tasks (select t
 {% endfor %}
 
 ## Rules :
+
 - Be factual & precise : Keep as many IDs, file paths, class Names, person Names, ect... To perform the task.
 - Avoid repetitions : If there is a redundance between a textual description and a UML description keep the UML version
