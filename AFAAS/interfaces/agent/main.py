@@ -368,9 +368,7 @@ class BaseAgent(Configurable, AbstractAgent):
             agent_settings = cls.SystemSettings.parse_obj(agent_settings)
             LOG.warning("Warning : agent_settings is not an instance of SystemSettings")
 
-        settings_dict = agent_settings.__dict__
-        items = settings_dict.items()
-
+        # TODO: Just pass **agent_settings.dict() to the constructor
         system_dict: dict[Configurable] = {}
         system_dict["settings"] = agent_settings
         system_dict["user_id"] = agent_settings.user_id
