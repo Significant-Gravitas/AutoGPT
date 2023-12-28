@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, validator
 
 from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.interfaces.task.base import AbstractBaseTask
+from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.prompts.common import AFAAS_SMART_RAG_Strategy
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
     from AFAAS.interfaces.task.stack import TaskStack
 
 
-class Task(AbstractBaseTask):
+class Task(AbstractTask):
     """
     Model representing a task.
 
@@ -88,7 +89,6 @@ class Task(AbstractBaseTask):
             )
         return self._task_successors
 
-    state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG)
 
     @validator("state", pre=True, always=True)
     def set_state(cls, new_state, values):
@@ -135,15 +135,11 @@ class Task(AbstractBaseTask):
             f"Entering {self.__class__.__name__}.__init__() : {data['task_goal']}"
         )
         super().__init__(**data)
-        LOG.trace(f"Quitting {self.__class__.__name__}.__init__() : {self.task_goal}")
+        LOG.trace(f"Quitting {self.__class__.__name__}.__init__() : {data['task_goal']}")
 
     @property
     def plan_id(self) -> str:
         return self.agent.plan.plan_id
-
-    @staticmethod
-    def generate_uuid():
-        return "T" + str(uuid.uuid4())
 
     def is_ready(self) -> bool:
         if (
@@ -304,16 +300,20 @@ class Task(AbstractBaseTask):
         similar_tasks: int = 0,
         avoid_redondancy: bool = False,
     ):
-        return
+        # 1. Get the last n achieved tasks
         plan_history: list[Task] = []
         if history > 0:
             plan_history = self.agent.plan.get_last_achieved_tasks(count=history)
+
+        # 2. Get the predecessors of the task
         task_predecessors: list[Task] = []
         if predecessors:
             task_predecessors = self.task_predecessors.get_all_tasks_from_stack()
 
+        # 3. Remove predecessors from history to avoid redondancy
         history_and_predecessors = set(plan_history) | set(task_predecessors)
 
+        # 4. Get the path to the task and remove it from history to avoid redondancy
         task_path: list[Task] = []
         if path:
             if avoid_redondancy:
@@ -321,6 +321,7 @@ class Task(AbstractBaseTask):
             else:
                 task_path = self.get_task_path()
 
+        # 5. Get the sibblings of the task and remove them from history to avoid redondancy
         task_sibblings: list[Task] = []
         if sibblings:
             if avoid_redondancy:
@@ -330,6 +331,39 @@ class Task(AbstractBaseTask):
             else:
                 task_sibblings = self.get_sibblings()
 
+        # 6. Get the similar tasks , if at least n (similar_tasks) have been treated so we only look for similarity in complexe cases
+        related_tasks: list[Task] = []
+        if self.agent.plan.get_number_of_achieved_tasks() > similar_tasks or LOG.level <= LOG.DEBUG:
+            task_embedding = await self.agent.embedding_model.aembed_query(text = self.long_description)
+            try :
+                #FIXME: Create an adapter or open a issue on Langchain Github : https://github.com/langchain-ai/langchain to harmonize the AP 
+                related_tasks_documents = await self.agent.vectorstore.asimilarity_search_by_vector(
+                    task_embedding,
+                    k=similar_tasks,
+                    include_metadata=True,
+                    filter={"plan_id": {"$eq": self.plan_id}}
+                )
+            except Exception as e:
+                related_tasks_documents = await self.agent.vectorstore.asimilarity_search_by_vector(
+                    task_embedding,
+                    k=10,
+                    include_metadata=True,
+                    filter=[{"metadata.plan_id": {"$eq": self.plan_id}}]
+                )
+
+            print(related_tasks_documents)
+            # FIXME:  : 
+            ## 1. Make Task Object
+            for task in related_tasks_documents:
+                related_tasks.append(self.agent.plan.get_task(task["task_id"]))
+            ## 2. Make a set of related tasks and remove current tasks, sibblings, history and predecessors
+            
+            related_tasks_documents = set(related_tasks) - set(self.get_sibblings()) - history_and_predecessors
+
+            if LOG.level <= LOG.DEBUG:
+                input("Press Enter to continue...")
+                return
+    
         # TODO: Build it in a Pipeline for Autocorrection
         task_history = list(history_and_predecessors)
         task_history.sort(key=lambda task: task.modified_at)

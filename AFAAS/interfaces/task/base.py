@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional, Union, get_args
 from pydantic import BaseModel, Field, validator
 
 from AFAAS.configs import AFAASModel
-from AFAAS.interfaces.agent import AbstractAgent
+from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 # from AFAAS.core.tools.schema import ToolResult
@@ -14,6 +14,7 @@ LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from .stack import TaskStack
+    from .task import AbstractTask
 
 
 class AbstractBaseTask(abc.ABC, AFAASModel):
@@ -46,7 +47,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
     if TYPE_CHECKING:
         from AFAAS.interfaces.agent import BaseAgent
 
-    agent: AbstractAgent = Field(exclude=True)
+    agent: BaseAgent = Field(exclude=True)
 
     @property
     def agent_id(self):
@@ -161,7 +162,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
 
     def add_task(self, task: "AbstractBaseTask"):
         LOG.debug(
-            f"Adding task {self.debug_formated_str()} to {task.debug_formated_str()}"
+            f"Adding task {task.debug_formated_str()} as subtask of {self.debug_formated_str()}"
         )
         self.subtasks.add(task=task)
         self.agent.plan._register_new_task(task=task)
@@ -412,16 +413,14 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         return f"`{LOG.italic(self.task_goal)}` ({LOG.bold(self.task_id)})" + status
 
     @staticmethod
-    def debug_info_parse_task(task: AbstractBaseTask) -> str:
-        from .task import Task
+    def debug_info_parse_task(task: AbstractTask) -> str:
+        from .task import AbstractTask
 
         parsed_response = f"Task {task.debug_formated_str()} :\n"
-        task: Task
+        task: AbstractTask
         for i, task in enumerate(task.subtasks.get_all_tasks_from_stack()):
             parsed_response += f"{i+1}. {task.debug_formated_str()}\n"
             parsed_response += f"Description {task.long_description}\n"
-            # parsed_response += f"Task type: {task.type}  "
-            # parsed_response += f"Priority: {task.priority}\n"
             parsed_response += f"Predecessors:\n"
             for j, predecessor in enumerate(
                 task.task_predecessors.get_all_tasks_from_stack()
