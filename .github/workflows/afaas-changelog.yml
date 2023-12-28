@@ -20,25 +20,42 @@ jobs:
           script: |
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
-            const formattedDate = yesterday.toISOString().split('T')[0];
+            console.log('Yesterday:', yesterday); // Debugging log
 
-            const query = `repo:${context.repo.owner}/${context.repo.repo} is:pr is:merged merged:>=${formattedDate}`;
-            const prs = await github.rest.search.issuesAndPullRequests({ q: query });
+            try {
+                const formattedDate = yesterday.toISOString().split('T')[0];
+                console.log(`Formatted Date: ${formattedDate}`); // Debugging log
+                const query = `repo:${context.repo.owner}/${context.repo.repo} is:pr is:merged merged:>=${formattedDate}`;
+                const prs = await github.rest.search.issuesAndPullRequests({ q: query });
 
-            let docsContent = '';
-            for (const pr of prs.data.items) {
-              const prDate = new Date(pr.merged_at).toISOString().split('T')[0];
-              docsContent += `${prDate} - [PR #${pr.number}](${pr.html_url}) : ${pr.title} [@${pr.user.login}](${pr.user.html_url})\n`;
-            }
+                let docsContent = '';
+                for (const pr of prs.data.items) {
+                  if (pr.merged_at) {
+                    console.log('PR Merged At:', pr.merged_at); // Debugging log
+                    try {
+                        const prDate = new Date(pr.merged_at).toISOString().split('T')[0];
+                        docsContent += `${prDate} - [PR #${pr.number}](${pr.html_url}) : ${pr.title} [@${pr.user.login}](${pr.user.html_url})\n`;
+                    } catch (error) {
+                        console.error('Error processing PR:', pr.number, error);
+                    }
+                  }   
+                  else {
+                    console.log('PR not merged:', pr.number); // Debugging log
+                  }
+                }
 
-            if (docsContent) {
-              const fs = require('fs');
-              // Append to CHANGELOG.md
-              fs.appendFileSync('CHANGELOG.md', docsContent);
-              // Append to README.md
-              fs.appendFileSync('README.md', docsContent);
-              core.setOutput('updated', true);
-            }
+                if (docsContent) {
+                    const fs = require('fs');
+                    // Append to CHANGELOG.md
+                    fs.appendFileSync('CHANGELOG.md', docsContent);
+                    // Append to README.md
+                    fs.appendFileSync('README.md', docsContent);
+                    core.setOutput('updated', true);
+                }
+            } catch (error) {
+                console.error('Error occurred:', error);
+                core.setFailed(`Action failed with error: ${error}`);
+              }
 
       - name: Commit and push if changed
         if: steps.fetch-merged-prs.outputs.updated == 'true'
