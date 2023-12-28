@@ -57,7 +57,7 @@ async def run_cli_demo():
     if len(agent_dict_list) > 0:
         LOG.info(f"User {user_id} has {len(agent_dict_list)} agents.")
         if LOG.level >= logging.DEBUG:
-            print("This is the agents thathave been saved :")
+            print("This is the agents that have been saved :")
             for i, agent_dict in enumerate(agent_dict_list):
                 print(
                     f"{i+1}. {agent_dict.agent_name}({agent_dict.agent_id}) : {agent_dict.agent_goal_sentence}"
@@ -112,7 +112,7 @@ async def run_cli_demo():
         #
         # New requirement gathering process
         #
-        if LOG.level <= logging.DEBUG:
+        if LOG.level <= LOG.DEBUG:
             user_objective = (
                 "Provide a step-by-step guide on how to build a Pizza oven."
             )
