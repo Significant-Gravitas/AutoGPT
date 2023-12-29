@@ -14,7 +14,7 @@ from AFAAS.lib.task.task import Task
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
 
-from AFAAS.core.tools.command_decorator import tool
+from AFAAS.core.tools.tool_decorator import tool
 from AFAAS.interfaces.tools.context_items import FileContextItem, FolderContextItem
 from AFAAS.lib.sdk.errors import ToolExecutionError
 from AFAAS.lib.utils.json_schema import JSONSchema

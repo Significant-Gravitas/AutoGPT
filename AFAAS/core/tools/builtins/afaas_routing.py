@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
 
 from AFAAS.core.agents.routing import RoutingAgent
-from AFAAS.core.tools.command_decorator import tool
+from AFAAS.core.tools.tool_decorator import tool
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.task import Task
 from AFAAS.prompts.routing import RoutingStrategyConfiguration

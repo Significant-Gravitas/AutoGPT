@@ -11,6 +11,9 @@ packages = [
     # Add more packages as needed
 ]
 
+#[tool.poetry.overrides]
+#"aiohttp" = "3.8.3"
+
 [tool.poetry.scripts]
 run-server = "app.cli:cli"
 run-app = "app.cli:serve"
@@ -24,7 +27,7 @@ psycopg2-binary = "^2.9.9"
 python = "^3.11"
 beautifulsoup4 = "^4.12.2"
 boto3 = "^1.33.6"
-charset-normalizer = "^3.1.0"
+charset-normalizer = "^2.0"
 click = "*"
 colorama = "^0.4.6"
 distro = "^1.8.0"
@@ -39,7 +42,8 @@ gTTS = "^2.3.1"
 hypercorn = "^0.14.4"
 inflection = "*"
 jsonschema = "*"
-langchain = "^0.0.352"
+langchain = "^0.0.350"
+llama-index = "*"
 numpy = "*"
 openai = "^1.6.1"
 orjson = "^3.8.10"
@@ -63,6 +67,13 @@ webdriver-manager = "*"
 
 # OpenAI and Generic plugins import
 openapi-python-client = "^0.14.0"
+youtube-search = "^2.1.2"
+wikipedia = "^1.4.0"
+arxiv = "^2.1.0"
+aiohttp = "^3.8.1"
+airbyte-cdk = "^0.58.1"
+google-auth-oauthlib = "^1.2.0"
+googlemaps = "^4.10.0"
 
 
 [tool.poetry.extras]
