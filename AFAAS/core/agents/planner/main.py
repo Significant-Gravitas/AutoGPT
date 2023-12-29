@@ -32,15 +32,14 @@ if TYPE_CHECKING:
 
 
 class PlannerAgent(BaseAgent):
+
+
     class SystemSettings(BaseAgent.SystemSettings):
 
         tool_registry: SimpleToolRegistry.SystemSettings = (
             SimpleToolRegistry.SystemSettings()
         )
 
-        agent_name: str = Field(default="New Agent")
-        agent_goals: Optional[list]
-        agent_goal_sentence: Optional[str]
 
         class Config(BaseAgent.SystemSettings.Config):
             pass
@@ -118,7 +117,7 @@ class PlannerAgent(BaseAgent):
             # self._loop.set_current_task(task = task)
             self._loop.set_current_task(task=self.plan.get_next_task())
         else:
-            id = self.create_agentv2()
+            id = self.create_agent()
             self.plan: Plan = Plan.create_in_db(agent=self)
             self._loop.set_current_task(task=self.plan.get_ready_tasks()[0])
             self.plan_id = self.plan.plan_id

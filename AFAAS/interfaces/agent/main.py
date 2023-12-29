@@ -65,46 +65,46 @@ class BaseAgent(AbstractAgent, Configurable):
     # Factory interface for agent bootstrapping and initialization #
     ################################################################
 
-    @classmethod
-    def create_agent(
-        cls,
-        agent_settings: BaseAgent.SystemSettings,
-        memory: AbstractMemory = None,
-        default_llm_provider: AbstractLanguageModelProvider = None,
-        workspace: AbstractFileWorkspace = None,
-        vectorstore: VectorStore = None,  # Optional parameter for custom vectorstore
-        embedding_model: Embeddings = None,  # Optional parameter for custom embedding model
-    ) -> AbstractAgent:
-        LOG.info(f"Starting creation of {cls.__name__}")
-        LOG.trace(f"Debug : Starting creation of  {cls.__module__}.{cls.__name__}")
+    # @classmethod
+    # def create_agent(
+    #     cls,
+    #     agent_settings: BaseAgent.SystemSettings,
+    #     memory: AbstractMemory = None,
+    #     default_llm_provider: AbstractLanguageModelProvider = None,
+    #     workspace: AbstractFileWorkspace = None,
+    #     vectorstore: VectorStore = None,  # Optional parameter for custom vectorstore
+    #     embedding_model: Embeddings = None,  # Optional parameter for custom embedding model
+    # ) -> AbstractAgent:
+    #     LOG.info(f"Starting creation of {cls.__name__}")
+    #     LOG.trace(f"Debug : Starting creation of  {cls.__module__}.{cls.__name__}")
 
-        if not isinstance(agent_settings, cls.SystemSettings):
-            agent_settings = cls.SystemSettings.parse_obj(agent_settings)
+    #     if not isinstance(agent_settings, cls.SystemSettings):
+    #         agent_settings = cls.SystemSettings.parse_obj(agent_settings)
 
-        agent = cls.get_instance_from_settings(
-            agent_settings=agent_settings,
-            memory = memory ,
-            default_llm_provider = default_llm_provider,
-            workspace = workspace,
-            vectorstore = vectorstore,
-            embedding_model = embedding_model, 
-        )
+    #     agent = cls.get_instance_from_settings(
+    #         agent_settings=agent_settings,
+    #         memory = memory ,
+    #         default_llm_provider = default_llm_provider,
+    #         workspace = workspace,
+    #         vectorstore = vectorstore,
+    #         embedding_model = embedding_model, 
+    #     )
 
-        agent_id = agent._create_in_db(agent_settings=agent_settings)
-        LOG.info(
-            f"{cls.__name__} id #{agent_id} created in memory. Now, finalizing creation..."
-        )
-        # Adding agent_id to the settingsagent_id
-        agent_settings.agent_id = agent_id
+    #     agent_id = agent._create_in_db(agent_settings=agent_settings)
+    #     LOG.info(
+    #         f"{cls.__name__} id #{agent_id} created in memory. Now, finalizing creation..."
+    #     )
+    #     # Adding agent_id to the settingsagent_id
+    #     agent_settings.agent_id = agent_id
 
-        LOG.info(f"Loaded Agent ({agent.__class__.__name__}) with ID {agent_id}")
+    #     LOG.info(f"Loaded Agent ({agent.__class__.__name__}) with ID {agent_id}")
 
-        return agent
+    #     return agent
 
     ################################################################################
     ################################ DB INTERACTIONS ################################
     ################################################################################
-    def create_agentv2(
+    def create_agent(
         self
     ) -> str:
         LOG.info(f"Starting creation of {self.__class__.__name__} agent {self.agent_id}")
@@ -113,23 +113,23 @@ class BaseAgent(AbstractAgent, Configurable):
         agent_id = agent_table.add(self, id=self.agent_id)
         return agent_id
 
-    def _create_in_db(
-        self,
-        agent_settings: BaseAgent.SystemSettings,
-    ) -> uuid.UUID:
-        # TODO : Remove the user_id argument
+    # def _create_in_db(
+    #     self,
+    #     agent_settings: BaseAgent.SystemSettings,
+    # ) -> uuid.UUID:
+    #     # TODO : Remove the user_id argument
 
-        agent_table = self.memory.get_table("agents")
-        agent_id = agent_table.add(agent_settings, id=agent_settings.agent_id)
-        return agent_id
+    #     agent_table = self.memory.get_table("agents")
+    #     agent_id = agent_table.add(agent_settings, id=agent_settings.agent_id)
+    #     return agent_id
 
-    def save_agent_in_memory(self) -> str:
-        LOG.trace(self.memory)
-        agent_table = self.memory.get_table("agents")
-        agent_id = agent_table.update(
-            agent_id=self.agent_id, user_id=self.user_id, value=self
-        )
-        return agent_id
+    # def save_agent_in_memory(self) -> str:
+    #     LOG.trace(self.memory)
+    #     agent_table = self.memory.get_table("agents")
+    #     agent_id = agent_table.update(
+    #         agent_id=self.agent_id, user_id=self.user_id, value=self
+    #     )
+    #     return agent_id
 
     @classmethod
     def list_users_agents_from_memory(
