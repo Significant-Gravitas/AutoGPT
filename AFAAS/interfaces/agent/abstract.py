@@ -186,6 +186,7 @@ class AbstractAgent(ABC):
         embedding_model : Embeddings,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
+        **kwargs,
     ) -> Any:
         LOG.trace(f"{self.__class__.__name__}.__init__() : Entering")
         self._settings = settings

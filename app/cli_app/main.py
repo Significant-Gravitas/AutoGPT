@@ -117,7 +117,7 @@ async def run_cli_demo():
 
         # Step 3. Create the agent.
         agent_settings_dict = agent_settings.dict()
-        agent_settings_dict["settings"] = agent_settings_dict
+        agent_settings_dict["settings"] = agent_settings
         agent: PlannerAgent = PlannerAgent(**agent_settings_dict)
 
     await agent.run(
