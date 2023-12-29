@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, ClassVar
 from pydantic import Field
 
 # from AFAAS.core.memory import
-from AFAAS.interfaces.agent import AbstractAgent
+from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.interfaces.task.plan import AbstractPlan
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -43,7 +43,7 @@ class Plan(AbstractPlan):
         from AFAAS.core.db.table import AbstractTable
         from AFAAS.interfaces.db import AbstractMemory
 
-        agent: AbstractAgent = kwargs["agent"]
+        agent: BaseAgent = kwargs["agent"]
         memory: AbstractMemory = agent.memory
         task_table: AbstractTable = memory.get_table("tasks")
 
@@ -342,12 +342,12 @@ class Plan(AbstractPlan):
     #############################################################################################
 
     @classmethod
-    def create_in_db(cls, agent: AbstractAgent):
+    def create_in_db(cls, agent: BaseAgent):
         """
         Create a plan in the database for the given agent.
 
         Args:
-            agent (AbstractAgent): The agent for which the plan is created.
+            agent (BaseAgent): The agent for which the plan is created.
 
         Returns:
             Plan: The created plan.
@@ -456,7 +456,7 @@ class Plan(AbstractPlan):
             )
 
     @classmethod
-    def get_plan_from_db(cls, plan_id: str, agent: AbstractAgent):
+    def get_plan_from_db(cls, plan_id: str, agent: BaseAgent):
         """
         Get a plan from the database
         """

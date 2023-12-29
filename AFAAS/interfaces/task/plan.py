@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Optional
 
-from AFAAS.interfaces.agent import AbstractAgent
+from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.task import AbstractTask
 
@@ -72,7 +72,7 @@ class AbstractPlan(AbstractBaseTask):
 
     @classmethod
     @abstractmethod
-    def create_in_db(cls, agent: AbstractAgent) -> "AbstractPlan":
+    def create_in_db(cls, agent: BaseAgent) -> "AbstractPlan":
         ...
 
     @abstractmethod
@@ -81,7 +81,7 @@ class AbstractPlan(AbstractBaseTask):
 
     @classmethod
     @abstractmethod
-    def get_plan_from_db(cls, plan_id: str, agent: AbstractAgent) -> "AbstractPlan":
+    def get_plan_from_db(cls, plan_id: str, agent: BaseAgent) -> "AbstractPlan":
         ...
 
     @abstractmethod
