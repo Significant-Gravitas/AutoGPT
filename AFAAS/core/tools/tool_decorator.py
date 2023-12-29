@@ -98,7 +98,7 @@ def tool_from_langchain(arg_converter: Optional[Callable] = None,
                 tool_input = kwargs
 
             # Run the BaseTool's run method and return its result
-            return base_tool.run(tool_input=tool_input)
+            return base_tool.arun(tool_input=tool_input)
 
         # Apply the @tool decorator to the wrapper function
         # We use the properties of base_tool (name, description, etc.) to define the tool
@@ -119,60 +119,9 @@ def tool_from_langchain(arg_converter: Optional[Callable] = None,
     return decorator
 
 
-from langchain_community.tools.arxiv.tool import ArxivQueryRun
-from langchain_community.tools.github.tool import GitHubAction
-from langchain_community.tools.gmail import GmailCreateDraft, GmailGetMessage , GmailSearch, GmailSendMessage, GmailGetThread
-from langchain_community.tools.youtube.search import YouTubeSearchTool
-from langchain_community.tools.wikipedia.tool import WikipediaQueryRun
+# from langchain_community.tools.github.tool import GitHubAction
 
-@tool_from_langchain(arg_converter=None)
-class AdaptedArxivTool(ArxivQueryRun):
-    pass
-
-
-@tool_from_langchain()
-class AdaptedGitHubTool(GitHubAction):
-    pass
-
-
-@tool_from_langchain()
-class AdaptedGmailCreateDraft(GmailCreateDraft):
-    pass
-
-
-@tool_from_langchain()
-class AdaptedGmailGetMessage(GmailGetMessage):
-    pass
-
-
-@tool_from_langchain()
-class AdaptedGmailSendEmail(GmailSendMessage):
-    pass
-
-def gmail_search_arg_converter(args, agent):
-    # Convert args to the format expected by GmailSearch
-    return {
-        'query': args.get('query', ''),
-        'resource': args.get('resource', 'messages'),  # Default to messages
-        'max_results': args.get('max_results', 10)
-    }
-
-
-@tool_from_langchain(arg_converter=gmail_search_arg_converter)
-class AdaptedGmailSearch(GmailSearch):
-    pass
-
-
-@tool_from_langchain()
-class AdaptedGmailGetThread(GmailGetThread):
-    pass
-
-
-@tool_from_langchain()
-class AdaptedYouTubeSearchTool(YouTubeSearchTool):
-    pass
-
-@tool_from_langchain()
-class AdaptedWikipediaTool(WikipediaQueryRun):
-    pass
+# @tool_from_langchain()
+# class AdaptedGitHubTool(GitHubAction):
+#     pass
 
