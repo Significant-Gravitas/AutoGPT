@@ -1,9 +1,18 @@
 import datetime
+import glob
+import json
+import os
+import sys
 import uuid
 from collections import defaultdict, deque
 from pathlib import Path
+from typing import Any, Optional
 
 import httpx
+import psutil
+from fastapi import APIRouter, FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Extra
 
 from agbenchmark.agent_protocol_client import (
     AgentApi,
@@ -11,34 +20,17 @@ from agbenchmark.agent_protocol_client import (
     ApiException,
     Configuration,
 )
+from agbenchmark.agent_protocol_client.models import Task, TaskRequestBody
+from agbenchmark.execute_sub_process import execute_subprocess
 from agbenchmark.reports.processing.report_types_v2 import BenchmarkRun
 from agbenchmark.schema import TaskEvalRequestBody
 from agbenchmark.utils.utils import write_pretty_json
 
+sys.path.append(str(Path(__file__).parent.parent))
+
 configuration = Configuration(host="http://localhost:8000" + "/ap/v1")
 
-import json
-import os
-import sys
-from typing import Any, Optional
-
-import psutil
-from fastapi import APIRouter, FastAPI
-from fastapi import (
-    HTTPException as FastAPIHTTPException,  # Import HTTPException from FastAPI
-)
-from fastapi import Request, Response
-from fastapi.middleware.cors import CORSMiddleware
-
-from agbenchmark.execute_sub_process import execute_subprocess
-from agbenchmark.schema import Task, TaskRequestBody
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from fastapi import FastAPI
-from pydantic import BaseModel, Extra
-
 router = APIRouter()
-import glob
 
 # Change the current working directory to the benchmark path
 # home_path = find_absolute_benchmark_path()
@@ -46,9 +38,7 @@ import glob
 
 general_command = ["poetry", "run", "agbenchmark", "start", "--backend"]
 
-import psutil
-
-challenges_path = os.path.join(os.path.dirname(__file__), "challenges")
+challenges_path = Path(__file__).parent / "challenges"
 
 json_files = deque(
     glob.glob(
@@ -58,7 +48,7 @@ json_files = deque(
 )
 
 CHALLENGES = {}
-task_informations = defaultdict(dict)
+task_informations = defaultdict(dict[str, Any])
 
 while json_files:
     json_file = json_files.popleft()
@@ -68,7 +58,8 @@ while json_files:
 
         if "eval_id" not in data:
             data["eval_id"] = str(uuid.uuid4())
-        # this will sort all the keys of the JSON systematically so that the order is always the same
+        # this will sort all the keys of the JSON systematically
+        # so that the order is always the same
         write_pretty_json(data, json_file)
         # ok
         CHALLENGES[data["eval_id"]] = data
@@ -93,10 +84,10 @@ def find_agbenchmark_without_uvicorn():
     ):
         try:
             # Convert the process.info dictionary values to strings and concatenate them
-            full_info = " ".join([str(v) for k, v in process.info.items()])
+            full_info = " ".join([str(v) for k, v in process.as_dict().items()])
 
             if "agbenchmark" in full_info and "uvicorn" not in full_info:
-                pids.append(process.info["pid"])
+                pids.append(process.pid)
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             pass
     return pids
@@ -113,10 +104,6 @@ class CreateReportRequest(BaseModel):
 
 
 updates_list = []
-
-updates_list = []
-
-import json
 
 origins = [
     "http://localhost:8000",
@@ -154,8 +141,6 @@ def run_single_test(body: CreateReportRequest) -> Any:
         command_options.append("--mock")
 
     execute_subprocess(command_options, 200)
-    import json
-    from pathlib import Path
 
     print("finished running")
     # List all folders in the current working directory
@@ -186,12 +171,6 @@ def run_single_test(body: CreateReportRequest) -> Any:
         status_code=200,
         media_type="application/json",
     )
-
-
-import json
-from typing import Any
-
-from fastapi import FastAPI, Request, Response
 
 
 @router.get("/updates")
