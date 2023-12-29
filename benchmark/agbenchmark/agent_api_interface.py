@@ -104,13 +104,13 @@ async def upload_artifacts(
 ) -> None:
     for file_path in get_list_of_file_paths(artifacts_location, type):
         relative_path: Optional[str] = "/".join(
-            file_path.split(f"{type}/", 1)[-1].split("/")[:-1]
+            str(file_path).split(f"{type}/", 1)[-1].split("/")[:-1]
         )
         if not relative_path:
             relative_path = None
 
         await api_instance.upload_agent_task_artifacts(
-            task_id=task_id, file=file_path, relative_path=relative_path
+            task_id=task_id, file=str(file_path), relative_path=relative_path
         )
 
 
