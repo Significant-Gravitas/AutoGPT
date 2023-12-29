@@ -33,9 +33,7 @@ class AFAAS_SMART_RAGStrategyFunctionNames(str, enum.Enum):
 
 
 class AFAAS_SMART_RAGStrategyConfiguration(PromptStrategiesConfiguration):
-    """
-    A Pydantic model that represents the default configurations for the refine user context strategy.
-    """
+
 
     default_tool_choice: AFAAS_SMART_RAGStrategyFunctionNames = (
         AFAAS_SMART_RAGStrategyFunctionNames.MAKE_SMART_RAG
@@ -60,7 +58,6 @@ class AFAAS_SMART_RAG_Strategy(AbstractPromptStrategy):
         exit_token: str = str(uuid.uuid4()),
         task_context_length: int = 300,
     ):
-        # self._model_classification = model_classification
         self._count = count
         self._config = self.default_configuration
         self.default_tool_choice = default_tool_choice

@@ -1,0 +1,43 @@
+## Instructions
+
+An Autonomous agent backed by a Large Language Model (LLM) is charged with performing a task. You are in charge of updating the task before it is processed.
+
+You will : 
+- Indicate which workflow should be selected
+- Enrich the current description with extra informations
+
+## Current description
+
+{{ to_md_quotation(task.long_description) }}
+
+
+## Extra informations
+
+"""
+### Context
+
+This task is part of a projects and is located as follow in the WBS :
+
+{% for parent in task_path %}{% if loop.index > 1 %}{{ '\t' * (loop.index - 1) }}->{% endif %}{{ parent.task_goal }} ({{ parent.task_id }})
+{% endfor %}{# 
+  #}{% if task_sibblings %}{#  
+          #}{% for sibbling in task_sibblings %}{{ '\t' * task_path|length }}{{ sibbling.task_goal }} (({{ sibbling.task_id }})): {{ sibbling.state }}
+{#        #}{% endfor %}{# 
+  #}{% endif %}
+
+{% if self.rag_related_task_txt %}
+### Historic
+
+self.rag_history_txt
+{% endif %}{% if self.rag_related_task_txt %}
+
+### Related Tasks
+
+self.rag_related_task_txt
+{% endif %}
+"""
+
+## Rules
+
+- Just enrich : Limit yourself to enrich the actual description with revelant facts and keep the description under {{ strategy.task_context_length * 1.25 }} words.
+- Be factual & precise : Keep as many IDs, file paths, class Names, person Names, ect... To perform the task.

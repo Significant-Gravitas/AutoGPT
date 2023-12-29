@@ -281,6 +281,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
                 "to_string_list": to_string_list,
                 "indent": indent,
                 "task": self._task,
+                "strategy" : self,
             }
         )
         return template.render(template_params)
