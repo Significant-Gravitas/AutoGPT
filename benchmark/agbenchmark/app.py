@@ -23,7 +23,7 @@ from agbenchmark.utils.utils import write_pretty_json
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-configuration = Configuration(host="http://localhost:8000" + "/ap/v1")
+configuration = Configuration(host="http://localhost:8000")
 
 router = APIRouter()
 
@@ -290,7 +290,7 @@ async def proxy(request: Request, task_id: str):
     timeout = httpx.Timeout(300.0, read=300.0)  # 5 minutes
     async with httpx.AsyncClient(timeout=timeout) as client:
         # Construct the new URL
-        new_url = f"http://localhost:8000/ap/v1/agent/tasks/{task_id}/steps"
+        new_url = f"{configuration.host}/ap/v1/agent/tasks/{task_id}/steps"
 
         # Forward the request
         response = await client.post(
