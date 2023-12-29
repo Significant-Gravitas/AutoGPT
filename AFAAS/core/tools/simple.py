@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 from AFAAS.configs import Configurable, SystemConfiguration
 from AFAAS.core.tools.base import BaseTool, BaseToolsRegistry, ToolConfiguration
-from AFAAS.core.tools.command_decorator import AUTO_GPT_TOOL_IDENTIFIER
+from AFAAS.core.tools.tool_decorator import AFAAS_TOOL_IDENTIFIER
 
 # from AFAAS.core.tools.builtins import BUILTIN_TOOLS
 from AFAAS.core.tools.schema import ToolResult
@@ -474,7 +474,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
             tool = None
 
             # Register decorated functions
-            if getattr(attr, AUTO_GPT_TOOL_IDENTIFIER, False):
+            if getattr(attr, AFAAS_TOOL_IDENTIFIER, False):
                 tool = attr.tool
 
             # Register tool classes

@@ -5,17 +5,17 @@ import inspect
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, ParamSpec, TypeVar
 
 from AFAAS.interfaces.tools.tool_output import ToolOutput
+from AFAAS.interfaces.tools.tool_parameters import ToolParameter
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
-    from AFAAS.core.configuration.config import Config
+    from AFAAS.configs.config import Config
 
-from AFAAS.core.tools.tool_parameters import ToolParameter
 from AFAAS.core.tools.tools import Tool
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 # Unique identifier for AutoGPT commands
-AUTO_GPT_TOOL_IDENTIFIER = "auto_gpt_command"
+AFAAS_TOOL_IDENTIFIER = "afaas_tool"
 
 P = ParamSpec("P")
 CO = TypeVar("CO", bound=ToolOutput)
@@ -72,7 +72,7 @@ def tool(
                 return func(*args, **kwargs)
 
         setattr(wrapper, "tool", cmd)
-        setattr(wrapper, AUTO_GPT_TOOL_IDENTIFIER, True)
+        setattr(wrapper, AFAAS_TOOL_IDENTIFIER, True)
 
         return wrapper
 

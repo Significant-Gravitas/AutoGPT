@@ -7,7 +7,7 @@ from pathlib import Path
 
 from git.repo import Repo
 
-from AFAAS.core.tools.command_decorator import tool
+from AFAAS.core.tools.tool_decorator import tool
 from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.lib.sdk.errors import ToolExecutionError
 from AFAAS.lib.task.task import Task

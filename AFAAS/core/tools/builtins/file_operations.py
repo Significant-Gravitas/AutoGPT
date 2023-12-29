@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import os.path
 from pathlib import Path
-from typing import Iterator, Literal
+from typing import Generator, Literal
+
+from langchain_community.tools.file_management.file_search import FileSearchTool
+from langchain_core.vectorstores import VectorStore
 
 TOOL_CATEGORY = "file_operations"
 TOOL_CATEGORY_TITLE = "File Operations"
 
-from AFAAS.core.tools.command_decorator import tool
+from AFAAS.core.tools.tool_decorator import tool
+from AFAAS.core.tools.tools import Tool
 from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.lib.sdk.errors import DuplicateOperationError
@@ -33,10 +38,8 @@ def text_checksum(text: str) -> str:
 
 
 def operations_from_log(
-    log_path: str | Path,
-) -> Iterator[
-    tuple[Literal["write", "append"], str, str] | tuple[Literal["delete"], str, None]
-]:
+    log_path: str,
+) -> Generator[tuple[Operation, str, str | None], None, None]:
     """Parse the file operations log and return a tuple containing the log entries"""
     try:
         log = open(log_path, "r", encoding="utf-8")
@@ -50,7 +53,11 @@ def operations_from_log(
         operation, tail = line.split(": ", maxsplit=1)
         operation = operation.strip()
         if operation in ("write", "append"):
-            path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
+            try:
+                path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
+            except ValueError:
+                LOG.warn(f"File log entry lacks checksum: '{line}'")
+                path, checksum = tail.strip(), None
             yield (operation, path, checksum)
         elif operation == "delete":
             yield (operation, tail.strip(), None)
@@ -89,17 +96,21 @@ def is_duplicate_operation(
 
     Args:
         operation: The operation to check for
-        file_path: The name of the file to check for
+        filename: The name of the file to check for
         agent: The agent
         checksum: The checksum of the contents to be written
 
     Returns:
         True if the operation has already been performed on the file
     """
-    state = file_operations_state(agent.file_manager.file_ops_log_path)
-    if operation == "delete" and str(file_path) not in state:
+    # Make the filename into a relative path if possible
+    with contextlib.suppress(ValueError):
+        filename = str(Path(filename).relative_to(agent.workspace.root))
+
+    state = file_operations_state(agent.config.file_logger_path)
+    if operation == "delete" and filename not in state:
         return True
-    if operation == "write" and state.get(str(file_path)) == checksum:
+    if operation == "write" and state.get(filename) == checksum:
         return True
     return False
 
@@ -118,12 +129,16 @@ def log_operation(
         file_path: The name of the file the operation was performed on
         checksum: The checksum of the contents to be written
     """
+    # Make the filename into a relative path if possible
+    with contextlib.suppress(ValueError):
+        file_path = str(Path(file_path).relative_to(agent.workspace.root))
+
     log_entry = f"{operation}: {file_path}"
     if checksum is not None:
         log_entry += f" #{checksum}"
     LOG.trace(f"Logging file operation: {log_entry}")
     append_to_file(
-        agent.file_manager.file_ops_log_path, f"{log_entry}\n", agent, should_log=False
+        agent._setting.Config.file_logger_path, f"{log_entry}\n", agent, should_log=False
     )
 
 
@@ -160,29 +175,30 @@ def read_file(filename: Path, task: Task, agent: BaseAgent) -> str:
 
 def ingest_file(
     filename: str,
-    memory: AbstractMemory,
+    vectorstore: VectorStore,
 ) -> None:
-    raise NotImplementedError("Not Implemented")
-    # """
-    # Ingest a file by reading its content, splitting it into chunks with a specified
-    # maximum length and overlap, and adding the chunks to the memory storage.
+    """
+    Ingest a file by reading its content, splitting it into chunks with a specified
+    maximum length and overlap, and adding the chunks to the memory storage.
 
-    # Args:
-    #     filename: The name of the file to ingest
-    #     memory: An object with an add() method to store the chunks in memory
-    # """
-    # try:
-    #     LOG.info(f"Ingesting file {filename}")
-    #     content = read_file(filename)
+    Args:
+        filename: The name of the file to ingest
+        memory: An object with an add() method to store the chunks in memory
+    """
+    try:
+        LOG.info(f"Ingesting file {filename}")
+        content = read_file(filename)
 
-    # TODO: differentiate between different types of files
-    file_memory = MemoryItemFactory.from_text_file(content, filename)
-    LOG.trace(f"Created memory: {file_memory.dump(True)}")
-    memory.add(file_memory)
+        # TODO: Move to langchain 
+        raise ("Not implemented error")
 
-    #   LOG.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
-    # except Exception as err:
-    #   LOG.warning(f"Error while ingesting file '{filename}': {err}")
+        file_memory = MemoryItemFactory.from_text_file(content, filename)
+        LOG.trace(f"Created memory: {file_memory.dump(True)}")
+        vectorstore.add(file_memory)
+
+        LOG.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
+    except Exception as err:
+        LOG.warn(f"Error while ingesting file '{filename}': {err}")
 
 
 @tool(
@@ -200,7 +216,7 @@ def ingest_file(
             required=True,
         ),
     },
-    aliases=["create_file"],
+    aliases=["write_file", "create_file"],
 )
 async def write_to_file(
     filename: Path, contents: str, task: Task, agent: BaseAgent
@@ -267,3 +283,14 @@ def list_folder(folder: Path, task: Task, agent: BaseAgent) -> list[str]:
         list[str]: A list of files found in the folder
     """
     return [str(p) for p in agent.workspace.list(folder)]
+
+def file_search_args(input_args: dict[str, any], agent: Agent):
+    # Force only searching in the workspace root
+    input_args["dir_path"] = str(agent.workspace.get_path(input_args["dir_path"]))
+
+    return input_args
+
+
+file_search = Tool.generate_from_langchain_tool(
+    tool=FileSearchTool(), arg_converter=file_search_args
+)
