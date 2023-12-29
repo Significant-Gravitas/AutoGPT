@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 import pytest
+from agent_protocol_client.models.step import Step
 
 from agbenchmark.__main__ import CHALLENGES_ALREADY_BEATEN
 from agbenchmark.agent_api_interface import append_updates_file
-from agbenchmark.agent_protocol_client.models.step import Step
 from agbenchmark.config import load_agbenchmark_config
 from agbenchmark.utils.challenge import Challenge
 from agbenchmark.utils.data_types import ChallengeData

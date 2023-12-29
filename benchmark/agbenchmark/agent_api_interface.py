@@ -5,15 +5,11 @@ import pathlib
 import time
 from typing import Any, Dict, Optional
 
+from agent_protocol_client import AgentApi, ApiClient, Configuration, TaskRequestBody
+from agent_protocol_client.models.step import Step
+
 from agbenchmark.__main__ import TEMP_FOLDER_ABS_PATH, UPDATES_JSON_PATH
 from agbenchmark.agent_interface import get_list_of_file_paths
-from agbenchmark.agent_protocol_client import (
-    AgentApi,
-    ApiClient,
-    Configuration,
-    TaskRequestBody,
-)
-from agbenchmark.agent_protocol_client.models.step import Step
 from agbenchmark.utils.data_types import ChallengeData
 
 LOG = logging.getLogger(__name__)
@@ -104,7 +100,7 @@ async def append_updates_file(step: Step):
 
 
 async def upload_artifacts(
-    api_instance: ApiClient, artifacts_location: str, task_id: str, type: str
+    api_instance: AgentApi, artifacts_location: str, task_id: str, type: str
 ) -> None:
     for file_path in get_list_of_file_paths(artifacts_location, type):
         relative_path: Optional[str] = "/".join(

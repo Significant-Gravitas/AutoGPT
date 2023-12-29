@@ -10,17 +10,12 @@ from typing import Any, Optional
 
 import httpx
 import psutil
+from agent_protocol_client import AgentApi, ApiClient, ApiException, Configuration
+from agent_protocol_client.models import Task, TaskRequestBody
 from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Extra
 
-from agbenchmark.agent_protocol_client import (
-    AgentApi,
-    ApiClient,
-    ApiException,
-    Configuration,
-)
-from agbenchmark.agent_protocol_client.models import Task, TaskRequestBody
 from agbenchmark.execute_sub_process import execute_subprocess
 from agbenchmark.reports.processing.report_types_v2 import BenchmarkRun
 from agbenchmark.schema import TaskEvalRequestBody
@@ -243,7 +238,7 @@ async def create_agent_task(task_eval_request: TaskEvalRequestBody) -> Task:
                 "additional_input": "python/code"
             }
 
-        Response (Task defined in schema.py):
+        Response (Task defined in `agent_protocol_client.models`):
             {
                 "task_id": "50da533e-3904-4401-8a07-c49adf88b5eb",
                 "input": "Write the word 'Washington' to a .txt file",
