@@ -102,6 +102,9 @@ class AbstractAgent(ABC):
 
         modified_at: datetime.datetime = datetime.datetime.now()
         created_at: datetime.datetime = datetime.datetime.now()
+        agent_name: str = Field(default="New Agent")
+        agent_goal_sentence: Optional[str]
+        agent_goals: Optional[list]
         user_id: str
 
         agent_id: str = Field(default_factory=lambda: AbstractAgent.SystemSettings.generate_uuid())
@@ -183,6 +186,7 @@ class AbstractAgent(ABC):
         embedding_model : Embeddings,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
+        **kwargs,
     ) -> Any:
         LOG.trace(f"{self.__class__.__name__}.__init__() : Entering")
         self._settings = settings

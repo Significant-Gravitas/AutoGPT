@@ -73,7 +73,7 @@ async def run_cli_demo():
                         "Ooops ! The selected agent is not in the list. Please select a valid agent."
                     )
                 i += 1
-                selected_agent_index = input(
+                selected_agent_index : str = input(
                     'Select an agent to load (Press "C" to create a new agent) : '
                 )
                 if selected_agent_index.lower() == "c":
@@ -97,15 +97,6 @@ async def run_cli_demo():
             agent_settings=agent_settings
         )
 
-        # agent_from_memory = None
-        # LOG.info(f"Loading agent {agent_id} from get_agent_from_memory")
-        # agent_from_memory: PlannerAgent = PlannerAgent.get_agent_from_memory(
-        #     agent_settings=agent_settings,
-        #     agent_id=agent_id,
-        #     user_id=user_id,
-        #    ,
-        #     )
-
     else:
         #
         # New requirement gathering process
@@ -125,9 +116,9 @@ async def run_cli_demo():
         agent_settings._type_ = "AFAAS.core.agents.planner.main.PlannerAgent"
 
         # Step 3. Create the agent.
-        agent: PlannerAgent = PlannerAgent.create_agent(
-            agent_settings=agent_settings,
-        )
+        agent_settings_dict = agent_settings.dict()
+        agent_settings_dict["settings"] = agent_settings
+        agent: PlannerAgent = PlannerAgent(**agent_settings_dict)
 
     await agent.run(
         user_input_handler=handle_user_input_request,
