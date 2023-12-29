@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 def apply_overrides_to_ai_settings(
     ai_profile: AIProfile,
     directives: AIDirectives,
-    override_name: str = "",
-    override_role: str = "",
+    override_name: Optional[str] = "",
+    override_role: Optional[str] = "",
     replace_directives: bool = False,
     resources: Optional[list[str]] = None,
     constraints: Optional[list[str]] = None,
@@ -94,7 +94,8 @@ async def interactively_revise_ai_settings(
             new_constraint = (
                 await clean_input(
                     app_config,
-                    f"Enter new constraint {i+1} (press enter to keep current, or '-' to remove):",
+                    f"Enter new constraint {i+1}"
+                    " (press enter to keep current, or '-' to remove):",
                 )
                 or constraint
             )
@@ -119,7 +120,8 @@ async def interactively_revise_ai_settings(
             new_resource = (
                 await clean_input(
                     app_config,
-                    f"Enter new resource {i+1} (press enter to keep current, or '-' to remove):",
+                    f"Enter new resource {i+1}"
+                    " (press enter to keep current, or '-' to remove):",
                 )
                 or resource
             )
@@ -144,7 +146,8 @@ async def interactively_revise_ai_settings(
             new_best_practice = (
                 await clean_input(
                     app_config,
-                    f"Enter new best practice {i+1} (press enter to keep current, or '-' to remove):",
+                    f"Enter new best practice {i+1}"
+                    " (press enter to keep current, or '-' to remove):",
                 )
                 or best_practice
             )

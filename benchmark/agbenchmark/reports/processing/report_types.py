@@ -51,6 +51,7 @@ class Test(BaseModelBenchmark):
     category: List[str]
     task: str
     reached_cutoff: bool
+    metadata: Any
 
 
 class ReportBase(BaseModelBenchmark):

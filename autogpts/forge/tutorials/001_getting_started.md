@@ -57,17 +57,6 @@ Create your agent template using the command:
 
 ![Create an Agent](../../../docs/content/imgs/quickstart/007_create_agent.png)
 
-### Entering the Arena 
-The Arena is a collection of all AutoGPT agents ranked by performance on our benchmark. Entering the Arena is a required step for participating in AutoGPT hackathons. It's early days, so show us what you've got!
-
-Officially enter the Arena by executing the command:
-
-```bash
-./run arena enter YOUR_AGENT_NAME
-```
-
-![Enter the Arena](../../../docs/content/imgs/quickstart/008_enter_arena.png)
-
 ## Section 4: Running Your Agent
 
 Begin by starting your agent using the command:

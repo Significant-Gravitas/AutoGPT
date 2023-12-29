@@ -1,5 +1,8 @@
 # class Planner(abc.ABC):
-#     """Manages the agent's planning and goal-setting by constructing language model prompts."""
+#     """
+#     Manages the agent's planning and goal-setting
+#     by constructing language model prompts.
+#     """
 #
 #     @staticmethod
 #     @abc.abstractmethod
