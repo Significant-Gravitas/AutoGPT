@@ -1,1 +1,0 @@
-Write the id previously mentioned to a file called result.txt.
