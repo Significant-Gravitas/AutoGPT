@@ -32,17 +32,14 @@ if TYPE_CHECKING:
 
 
 class PlannerAgent(BaseAgent):
+
+
     class SystemSettings(BaseAgent.SystemSettings):
-        name: str = "simple_agent"
-        description: str = "A simple agent."
 
         tool_registry: SimpleToolRegistry.SystemSettings = (
             SimpleToolRegistry.SystemSettings()
         )
 
-        agent_name: str = Field(default="New Agent")
-        agent_goals: Optional[list]
-        agent_goal_sentence: Optional[str]
 
         class Config(BaseAgent.SystemSettings.Config):
             pass
@@ -59,7 +56,7 @@ class PlannerAgent(BaseAgent):
         agent_id: uuid.UUID = SystemSettings.generate_uuid(),
         prompt_manager: BasePromptManager = BasePromptManager(),
         loop: PlannerLoop = PlannerLoop(),
-        tool_registry=SimpleToolRegistry,
+        tool_registry = SimpleToolRegistry,
         tool_handler: ToolExecutor = ToolExecutor(),
         memory: AbstractMemory = None,
         default_llm_provider: AbstractLanguageModelProvider = None,
@@ -78,6 +75,7 @@ class PlannerAgent(BaseAgent):
             agent_id=agent_id,
             vectorstore=vectorstore,
             embedding_model=embedding_model,
+            **kwargs,
         )
 
         self.agent_goals = (
@@ -119,6 +117,7 @@ class PlannerAgent(BaseAgent):
             # self._loop.set_current_task(task = task)
             self._loop.set_current_task(task=self.plan.get_next_task())
         else:
+            id = self.create_agent()
             self.plan: Plan = Plan.create_in_db(agent=self)
             self._loop.set_current_task(task=self.plan.get_ready_tasks()[0])
             self.plan_id = self.plan.plan_id
@@ -145,16 +144,17 @@ class PlannerAgent(BaseAgent):
                 )
             )
 
+        """ #NOTE: This is a remnant of a plugin system on stand-by that have not been implemented yet.
         ###
         ### Step 6 : add hooks/pluggins to the loop
         ###
-        # TODO : Get hook added from configuration files
+        # TODO: Get hook added from configuration files
         # Exemple :
         # self.add_hook( hook: BaseLoopHook, uuid: uuid.UUID)
         self.add_hook(
             hook=BaseLoopHook(
                 name="begin_run",
-                function=test_hook,
+                function=self.test_hook,
                 kwargs=["foo_bar"],
                 expected_return=True,
                 callback_function=None,
@@ -162,20 +162,30 @@ class PlannerAgent(BaseAgent):
             uuid=uuid.uuid4(),
         )
 
+    @staticmethod
+    def test_hook(**kwargs):
+        LOG.notice("Entering test_hook Function")
+        LOG.notice(
+            "Hooks are an experimental plug-in system that may fade away as we are transiting from a Loop logic to a Pipeline logic."
+        )
+        test = "foo_bar"
+        for key, value in kwargs.items():
+            LOG.debug(f"{key}: {value}")
+
     def loophooks(self) -> PlannerLoop.LoophooksDict:
         if not self._loop._loophooks:
             self._loop._loophooks = {}
         return self._loop._loophooks
 
-    def loop(self) -> PlannerLoop:
-        return self._loop
-
     def add_hook(self, hook: BaseLoopHook, uuid: uuid.UUID):
-        super().add_hook(hook, uuid)
+        super().add_hook(hook, uuid)"""
 
     ################################################################################
     ################################ LOOP MANAGEMENT################################
     ################################################################################
+
+    def loop(self) -> PlannerLoop:
+        return self._loop
 
     async def start(
         self,
@@ -200,19 +210,4 @@ class PlannerAgent(BaseAgent):
         )
         return return_var
 
-    ################################################################################
-    ################################FACTORY SPECIFIC################################
-    ################################################################################
 
-    def __repr__(self):
-        return "PlannerAgent()"
-
-
-def test_hook(**kwargs):
-    LOG.notice("Entering test_hook Function")
-    LOG.notice(
-        "Hooks are an experimental plug-in system that may fade away as we are transiting from a Loop logic to a Pipeline logic."
-    )
-    test = "foo_bar"
-    for key, value in kwargs.items():
-        LOG.debug(f"{key}: {value}")

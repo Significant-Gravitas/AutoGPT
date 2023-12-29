@@ -10,10 +10,8 @@ from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.interfaces.task.meta import TaskStatusList
-from AFAAS.lib.sdk.logger import AFAASLogger
-from AFAAS.prompts.common import AFAAS_SMART_RAG_Strategy
-from AFAAS.prompts.common.afaas_task_rag_step2_history import AfaasTaskRagStep2Strategy
-from AFAAS.prompts.common.afaas_task_rag_step3_history import AfaasTaskRagStep3Strategy
+from AFAAS.lib.sdk.logger import AFAASLogger, logging
+from AFAAS.prompts.common import AfaasTaskRagStep2Strategy , AfaasTaskRagStep3Strategy , AfaasPostRagTaskUpdateStrategy
 
 LOG = AFAASLogger(name=__name__)
 
@@ -329,15 +327,14 @@ class Task(AbstractTask):
         task_sibblings: list[Task] = []
         if sibblings:
             if avoid_sibbling_predecessors_redundancy:
-                task_sibblings = list(
-                    set(self.get_sibblings()) - history_and_predecessors
-                )
+                task_sibblings = set(self.get_sibblings()) - history_and_predecessors #- set([self])
             else:
-                task_sibblings = self.get_sibblings()
+                task_sibblings = set(self.get_sibblings()) #- set([self])
+
 
         # 6. Get the similar tasks , if at least n (similar_tasks) have been treated so we only look for similarity in complexe cases
         related_tasks: list[Task] = []
-        if self.agent.plan.get_all_done_tasks_ids() > similar_tasks or LOG.level <= LOG.DEBUG:
+        if len(self.agent.plan.get_all_done_tasks_ids()) > similar_tasks or LOG.level <= logging.DEBUG:
             task_embedding = await self.agent.embedding_model.aembed_query(text = self.long_description)
             try :
                 #FIXME: Create an adapter or open a issue on Langchain Github : https://github.com/langchain-ai/langchain to harmonize the AP 
@@ -355,38 +352,24 @@ class Task(AbstractTask):
                     filter=[{"metadata.plan_id": {"$eq": self.plan_id}}]
                 )
 
-            print(related_tasks_documents)
-            # FIXME:  : 
+            LOG.debug(related_tasks_documents)
             ## 1. Make Task Object
             for task in related_tasks_documents:
-                related_tasks.append(self.agent.plan.get_task(task["task_id"]))
+                related_tasks.append(self.agent.plan.get_task(task.metadata["task_id"]))
 
             ## 2. Make a set of related tasks and remove current tasks, sibblings, history and predecessors
-            related_tasks = list(set(related_tasks) - set(self.get_sibblings()) - history_and_predecessors)
+            related_tasks = list(set(related_tasks) - task_sibblings - history_and_predecessors)
 
-            if LOG.level <= LOG.DEBUG:
+            if LOG.level <= logging.DEBUG:
                 input("Press Enter to continue...")
-                return
 
-
+        task_sibblings = list(task_sibblings)
         task_history = list(history_and_predecessors)
         task_history.sort(key=lambda task: task.modified_at)
 
-        # # TODO: Build it in a Pipeline for Autocorrection
-        # rv: str = await self.agent.execute_strategy(
-        #     strategy_name=AFAAS_SMART_RAG_Strategy.STRATEGY_NAME,
-        #     task=self,
-        #     task_path=task_path,
-        #     task_history=task_history,
-        #     task_followup=task_successors,
-        #     task_sibblings=task_sibblings,
-        #     related_tasks=related_tasks,
-        # )
+        # TODO: Build it in a Pipeline for Autocorrection
 
-        # self.task_context = rv.parsed_result[0]["command_args"]["resume"]
-        # self.long_description = rv.parsed_result[0]["command_args"]["long_description"]
-
-        # NOTE: (Deactivated because Uneccesary ) RAG : 1. Summarize Path => No need as we keep it as is
+        # NOTE: (Deactivated because Unnecessary ) RAG : 1. Summarize Path => No need as we keep it as is
         # self.rag_path_txt = task_path  + task_sibblings
 
         # RAG : 2. Summarize History
@@ -419,7 +402,14 @@ class Task(AbstractTask):
                 self.rag_related_task_txt = rv.parsed_result[0]["command_args"]["paragraph"]
                 self.rag_uml += rv.parsed_result[0]["command_args"]["uml_diagrams"]
 
-        return rv
+            # RAG : 4. Post-Rag task update
+            rv : AbstractChatModelResponse = await self.agent.execute_strategy(
+                    strategy_name=AfaasPostRagTaskUpdateStrategy.STRATEGY_NAME,
+                    task=self,
+                    task_path=task_path,
+                    )
+            self.long_description = rv.parsed_result[0]["command_args"]["long_description"]
+            self.task_workflow = rv.parsed_result[0]["command_args"]["task_workflow"]
 
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.

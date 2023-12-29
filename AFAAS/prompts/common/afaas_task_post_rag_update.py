@@ -27,26 +27,28 @@ from AFAAS.lib.utils.json_schema import JSONSchema
 LOG = AFAASLogger(name=__name__)
 
 
-class BaseTaskRagStrategyFunctionNames(str, enum.Enum):
-    MAKE_SMART_RAG: str = "afaas_smart_rag"
+class PostRagTaskUpdateStrategyFunctionNames(str, enum.Enum):
+    POST_RAG_UPDATE: str = "afaas_task_post_rag_update"
 
 
-class BaseTaskRagStrategyConfiguration(PromptStrategiesConfiguration):
-    default_tool_choice: BaseTaskRagStrategyFunctionNames = (
-        BaseTaskRagStrategyFunctionNames.MAKE_SMART_RAG
+class PostRagTaskUpdateStrategyConfiguration(PromptStrategiesConfiguration):
+    default_tool_choice: PostRagTaskUpdateStrategyFunctionNames = (
+        PostRagTaskUpdateStrategyFunctionNames.POST_RAG_UPDATE
     )
-    task_context_length: int
+    task_context_length: int = 150
     temperature: float = 0.4
 
 
-class BaseTaskRagStrategy(AbstractPromptStrategy):
+class AfaasPostRagTaskUpdateStrategy(AbstractPromptStrategy):
+    STRATEGY_NAME = 'afaas_task_post_rag_update'
+    default_configuration = PostRagTaskUpdateStrategyConfiguration()
 
     def __init__(
         self,
-        default_tool_choice: BaseTaskRagStrategyFunctionNames,
+        default_tool_choice: PostRagTaskUpdateStrategyFunctionNames,
         temperature: float,
+        task_context_length: int,
         count=0,
-        task_context_length: int = 300,
     ):
         self._count = count
         self._config = self.default_configuration
@@ -56,37 +58,31 @@ class BaseTaskRagStrategy(AbstractPromptStrategy):
     def set_tools(
         self,
         task: AbstractTask,
-        task_history: list[AbstractTask],
-        task_sibblings: list[AbstractTask],
         **kwargs,
     ):
-        self.afaas_smart_rag: CompletionModelFunction = CompletionModelFunction(
-            name=BaseTaskRagStrategyFunctionNames.MAKE_SMART_RAG.value,
-            description="Add a new paragraph to the Agent Memo",
+        self.afaas_task_post_rag_update_function: CompletionModelFunction = CompletionModelFunction(
+            name=PostRagTaskUpdateStrategyFunctionNames.POST_RAG_UPDATE.value,
+            description="Update a task before processing",
             parameters={
-                "title": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    description=f"Title of the paragraph",
-                ),
-                "paragraph": JSONSchema(
+                "long_description": JSONSchema(
                     type=JSONSchema.Type.STRING,
                     description=f'New paragraph that should be {str(self.task_context_length * 0.8)} to {str(self.task_context_length *  1.25)} words long.',
                     required=True,
                 ),
-                "uml_diagrams": JSONSchema(
+                "task_workflow": JSONSchema(
                     type=JSONSchema.Type.ARRAY,
                     items=JSONSchema(
                         type=JSONSchema.Type.STRING,
-                        description=f"List of Task that contains UML diagrams that may help the Agent",
+                        description=f"The workflow to be used for the task",
                         required=True,
-                        enum=[task.task_id for task in task_history],
+                        enum=['default' , 'software_developpment', 'fast_tracked'],
                     ),
                 )
             },
         )
 
         self._tools = [
-            self.afaas_smart_rag,
+            self.afaas_task_post_rag_update_function,
         ]
 
     def build_message(self, 
