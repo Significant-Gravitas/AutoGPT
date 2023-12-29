@@ -94,9 +94,7 @@ async def run_cli_demo():
         from AFAAS.interfaces.agent.assistants import BasePromptManager
 
         agent: PlannerAgent = PlannerAgent.get_instance_from_settings(
-            agent_settings=agent_settings,
-            workspace=AGPTLocalFileWorkspace(),
-            default_llm_provider=AFAASChatOpenAI(),
+            agent_settings=agent_settings
         )
 
         # agent_from_memory = None

@@ -519,7 +519,8 @@ class BaseAgent(Configurable, AbstractAgent):
                 ],
                 AbstractAgent.SystemSettings.Config.AGENT_CLASS_FIELD_NAME: [
                     AbstractTable.FilterItem(
-                        value=str(cls.__name__),
+                        #value=str(cls.__name__),
+                        value=str(cls.__module__ + "." + cls.__name__),
                         operator=AbstractTable.Operators.EQUAL_TO,
                     )
                 ],
