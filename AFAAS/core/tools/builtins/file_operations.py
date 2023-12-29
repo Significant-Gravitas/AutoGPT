@@ -284,7 +284,7 @@ def list_folder(folder: Path, task: Task, agent: BaseAgent) -> list[str]:
     """
     return [str(p) for p in agent.workspace.list(folder)]
 
-def file_search_args(input_args: dict[str, any], agent: Agent):
+def file_search_args(input_args: dict[str, any], agent: BaseAgent):
     # Force only searching in the workspace root
     input_args["dir_path"] = str(agent.workspace.get_path(input_args["dir_path"]))
 

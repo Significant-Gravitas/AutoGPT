@@ -98,23 +98,41 @@ class Tool:
 
             return tool.run(tool_input=tool_input)
 
+        typed_parameters = [
+            ToolParameter(
+                name=name,
+                spec=schema,
+            )
+            for name, schema in tool.args.items()
+        ]
+
+        # typed_parameters = [
+        #         ToolParameter(
+        #             name=name,
+        #             type=schema.get("type"),
+        #             description=schema.get("description", schema.get("title")),
+        #             required=bool(
+        #                 tool.args_schema.__fields__[name].required
+        #             )  # gives True if `field.required == pydantic.Undefined``
+        #             if tool.args_schema
+        #             else True,
+        #         )
+        #         for name, schema in tool.args.items()
+        #     ]
+
         command = Tool(
             name=tool.name,
             description=tool.description,
-            method=wrapper,
-            parameters=[
-                ToolParameter(
-                    name=name,
-                    type=schema.get("type"),
-                    description=schema.get("description", schema.get("title")),
-                    required=bool(
-                        tool.args_schema.__fields__[name].required
-                    )  # gives True if `field.required == pydantic.Undefined``
-                    if tool.args_schema
-                    else True,
-                )
-                for name, schema in tool.args.items()
-            ],
+            tech_description=tool.description,  # Added this line
+            exec_function=wrapper,
+            parameters=typed_parameters,
+            enabled=True,  
+            disabled_reason = None,
+            aliases = [],
+            available = True,
+            hide=False,
+            # Add other optional parameters as needed, like disabled_reason, aliases, etc.
+            success_check_callback=Tool.default_success_check_callback,  # Added this line
         )
 
         # Avoid circular import
@@ -123,6 +141,9 @@ class Tool:
         # Set attributes on the command so that our import module scanner will recognize it
         setattr(command, AFAAS_TOOL_IDENTIFIER, True)
         setattr(command, "tool", command)
+
+        return command
+
 
     async def default_success_check_callback(
         self, task: AbstractTask, tool_output: Any
