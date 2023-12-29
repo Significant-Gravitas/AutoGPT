@@ -6,7 +6,7 @@ import sys
 import types
 from collections import deque
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 import pytest
 from agent_protocol_client.models.step import Step
@@ -24,7 +24,7 @@ def create_single_test(
     data: Dict[str, Any] | ChallengeData,
     challenge_location: str,
     file_datum: Optional[list[dict[str, Any]]] = None,
-) -> None:
+) -> type[Challenge]:
     challenge_data = None
     artifacts_location = None
     if isinstance(data, ChallengeData):
@@ -128,7 +128,7 @@ def create_challenge(
     data: Dict[str, Any],
     json_file: str,
     json_files: deque,
-) -> Union[deque, Any]:
+) -> tuple[deque, type[Challenge]]:
     path = Path(json_file).resolve()
     print("Creating challenge for", path)
 

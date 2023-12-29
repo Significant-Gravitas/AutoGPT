@@ -12,12 +12,18 @@ import httpx
 import psutil
 from agent_protocol_client import AgentApi, ApiClient, ApiException, Configuration
 from agent_protocol_client.models import Task, TaskRequestBody
-from fastapi import APIRouter, FastAPI, Request, Response
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Extra
 
 from agbenchmark.execute_sub_process import execute_subprocess
-from agbenchmark.reports.processing.report_types_v2 import BenchmarkRun
+from agbenchmark.reports.processing.report_types_v2 import (
+    BenchmarkRun,
+    Metrics,
+    RepositoryInfo,
+    RunDetails,
+    TaskInfo,
+)
 from agbenchmark.schema import TaskEvalRequestBody
 from agbenchmark.utils.utils import write_pretty_json
 
@@ -122,7 +128,7 @@ def stream_output(pipe):
 
 
 @router.post("/reports")
-def run_single_test(body: CreateReportRequest) -> Any:
+def run_single_test(body: CreateReportRequest) -> dict:
     pids = find_agbenchmark_without_uvicorn()
     print(f"pids already running with agbenchmark: {pids}")
     print(body.dict())
@@ -161,15 +167,11 @@ def run_single_test(body: CreateReportRequest) -> Any:
     else:
         print("No folders found.")
 
-    return Response(
-        content=json.dumps(data),
-        status_code=200,
-        media_type="application/json",
-    )
+    return data
 
 
 @router.get("/updates")
-def get_updates(request: Request) -> Any:
+def get_updates(request: Request) -> list[dict]:
     from agbenchmark.__main__ import UPDATES_JSON_PATH
 
     try:
@@ -183,67 +185,53 @@ def get_updates(request: Request) -> Any:
         if query_param is None:
             # Handle the case when last_update_time is not provided
             print("ERROR: last_update_time parameter is missing")
-            return Response(
-                content=json.dumps({"error": "last_update_time parameter is missing"}),
+            raise HTTPException(
                 status_code=400,
-                media_type="application/json",
-                headers={"Content-Type": "application/json"},
+                detail="last_update_time parameter is missing",
             )
 
         # Convert query_param to a Unix timestamp (assuming it's in seconds as a string)
         query_timestamp = int(query_param)
 
-        # Filter the data based on the timestamp (keep timestamps before query_timestamp)
+        # Filter the data based on the timestamp: keep items newer than query_timestamp
         filtered_data = [item for item in data if item["timestamp"] > query_timestamp]
 
         # Extract only the "content" field from each item
         filtered_data = [item["content"] for item in filtered_data]
 
-        # Convert the filtered data to JSON
-        filtered_json = json.dumps(filtered_data, indent=2)
-
         print("INFO: Returning filtered data to the client")
-        return Response(
-            content=filtered_json,
-            status_code=200,
-            media_type="application/json",
-            headers={"Content-Type": "application/json"},
-        )
+        return filtered_data
     except FileNotFoundError:
         print("ERROR: File not found: updates.json")
-        return Response(
-            content=json.dumps({"error": "File not found"}),
+        raise HTTPException(
             status_code=404,
-            media_type="application/json",
-            headers={"Content-Type": "application/json"},
+            detail="File not found",
         )
 
 
-@router.post("/agent/tasks", tags=["agent"], response_model=Task)
+@router.post("/agent/tasks", tags=["agent"])
 async def create_agent_task(task_eval_request: TaskEvalRequestBody) -> Task:
     """
-    Creates a new task using the provided TaskRequestBody and returns a Task.
+    Creates a new task using the provided TaskEvalRequestBody and returns a Task.
 
     Args:
-        request (Request): FastAPI request object.
-        task (TaskRequestBody): The task request containing input and additional input data.
+        task_eval_request (TaskEvalRequestBody): `TaskRequestBody` including an eval_id.
 
     Returns:
         Task: A new task with task_id, input, additional_input, and empty lists for artifacts and steps.
 
     Example:
-        Request (TaskRequestBody defined in schema.py):
+        Request (TaskEvalRequestBody defined in schema.py):
             {
-                "input": "Write the words you receive to the file 'output.txt'.",
-                "additional_input": "python/code"
+                ...,
+                "eval_id": "50da533e-3904-4401-8a07-c49adf88b5eb"
             }
 
         Response (Task defined in `agent_protocol_client.models`):
             {
                 "task_id": "50da533e-3904-4401-8a07-c49adf88b5eb",
                 "input": "Write the word 'Washington' to a .txt file",
-                "additional_input": "python/code",
-                "artifacts": [],
+                "artifacts": []
             }
     """
     from agbenchmark.agent_api_interface import upload_artifacts
@@ -271,18 +259,10 @@ async def create_agent_task(task_eval_request: TaskEvalRequestBody) -> Task:
                 task_response.task_id,
                 "artifacts_in",
             )
-            return Response(
-                content=task_response.json(),
-                status_code=200,
-                media_type="application/json",
-            )
-    except ApiException as e:
+            return task_response
+    except ApiException:
         print(f"Error whilst trying to create a task: {task_eval_request}")
-        return Response(
-            content=json.dumps({"error": "Internal server error"}),
-            status_code=500,
-            media_type="application/json",
-        )
+        raise HTTPException(500)
 
 
 @router.post("/agent/tasks/{task_id}/steps")
@@ -304,7 +284,7 @@ async def proxy(request: Request, task_id: str):
 
 
 @router.post("/agent/tasks/{task_id}/evaluations")
-async def create_evaluation(task_id: str) -> deque:
+async def create_evaluation(task_id: str) -> BenchmarkRun:
     from agbenchmark.__main__ import TEMP_FOLDER_ABS_PATH
     from agbenchmark.agent_api_interface import copy_agent_artifacts_into_temp_folder
     from agbenchmark.agent_interface import copy_artifacts_into_temp_folder
@@ -315,73 +295,48 @@ async def create_evaluation(task_id: str) -> deque:
             api_instance = AgentApi(api_client)
             await copy_agent_artifacts_into_temp_folder(api_instance, task_id)
         # add custom python
-        data = CHALLENGES[task_informations[task_id]["eval_id"]]
+        challenge_info = CHALLENGES[task_informations[task_id]["eval_id"]]
 
-        artifact_path = str(Path(data["path"]).parent)
+        artifact_path = str(Path(challenge_info["path"]).parent)
         copy_artifacts_into_temp_folder(
             TEMP_FOLDER_ABS_PATH, "custom_python", artifact_path
         )
-        json_file = CHALLENGES[task_informations[task_id]["eval_id"]]["path"]
+        json_file = challenge_info["path"]
         json_files = deque()
 
-        _, challenge_class = create_challenge(data, json_file, json_files)
+        _, challenge_class = create_challenge(challenge_info, json_file, json_files)
         challenge_instance = challenge_class()
         scores = challenge_instance.get_scores(config={})
-        test_name = "Test" + data["name"]
+        test_name = "Test" + challenge_info["name"]
         is_score_100 = 1 in scores["values"]
 
-        info_details = {
-            "repository_info": {
-                "repo_url": None,
-                "team_name": None,
-                "benchmark_git_commit_sha": None,
-                "agent_git_commit_sha": None,
-            },
-            "run_details": {
-                "run_id": None,
-                "command": "agbenchmark" + " --test=" + test_name,
-                "completion_time": None,
-                "benchmark_start_time": task_informations[task_id][
-                    "benchmark_start_time"
-                ],
-                "test_name": data["name"],
-            },
-            "task_info": {
-                "data_path": data["path"].split("benchmark/", 1)[-1],
-                "is_regression": None,
-                "category": data["category"],
-                "task": data["task"],
-                "answer": data["ground"]["answer"],
-                "description": data["info"]["description"],
-            },
-            "metrics": {
-                "difficulty": None,
-                "success": is_score_100,
-                "attempted": True,
-                "success_percentage": None,
-                "cost": None,
-                "run_time": None,
-            },
-            "reached_cutoff": None,
-            "config": {},
-        }
-
-        BenchmarkRun.parse_obj(info_details)
-
-        print(json.dumps(info_details, indent=4))
-        return Response(
-            content=json.dumps(info_details),
-            status_code=200,
-            media_type="application/json",
+        eval_info = BenchmarkRun(
+            repository_info=RepositoryInfo(),
+            run_details=RunDetails(
+                command="agbenchmark" + " --test=" + test_name,
+                benchmark_start_time=task_informations[task_id]["benchmark_start_time"],
+                test_name=challenge_info["name"],
+            ),
+            task_info=TaskInfo(
+                data_path=challenge_info["path"].split("benchmark/", 1)[-1],
+                is_regression=None,
+                category=challenge_info["category"],
+                task=challenge_info["task"],
+                answer=challenge_info["ground"]["answer"],
+                description=challenge_info["info"]["description"],
+            ),
+            metrics=Metrics(
+                success=is_score_100,
+                attempted=True,
+            ),
+            config={},
         )
-    except ApiException as e:
+
+        print(eval_info.json(indent=4))
+        return eval_info
+    except ApiException:
         print(f"Error whilst trying to evaluate the task: {task_id}")
-        return Response(
-            content=json.dumps({"error": "Internal server error"}),
-            status_code=500,
-            media_type="application/json",
-        )
-    # path = Path(json_file).resolve()
+        raise HTTPException(500)
 
 
 app.include_router(router, prefix="/ap/v1")
