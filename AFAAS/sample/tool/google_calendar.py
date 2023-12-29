@@ -25,3 +25,7 @@ for llamatool in tool_list :
 
     LOG.debug(f"Tool : {AdaptedToolClass.__name__} created")
 
+#load_data: Load the upcoming events from your calendar 
+#create_event: Creates a new Google Calendar event 
+#get_date: Utility for the Agent to get todays date
+
