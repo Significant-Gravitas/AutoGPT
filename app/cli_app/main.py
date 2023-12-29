@@ -94,9 +94,7 @@ async def run_cli_demo():
         from AFAAS.interfaces.agent.assistants import BasePromptManager
 
         agent: PlannerAgent = PlannerAgent.get_instance_from_settings(
-            agent_settings=agent_settings,
-            workspace=AGPTLocalFileWorkspace(),
-            default_llm_provider=AFAASChatOpenAI(),
+            agent_settings=agent_settings
         )
 
         # agent_from_memory = None
@@ -112,7 +110,7 @@ async def run_cli_demo():
         #
         # New requirement gathering process
         #
-        if LOG.level <= LOG.DEBUG:
+        if LOG.level <= logging.DEBUG:
             user_objective = (
                 "Provide a step-by-step guide on how to build a Pizza oven."
             )

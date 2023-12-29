@@ -15,6 +15,7 @@ LOG = AFAASLogger(name=__name__)
 class AFAASMessage(AFAASModel):
     message_id: str
     _table_name: ClassVar[str] = "message"
+    task_id: Optional[str]
 
 
 class AFAASMessageStack(AFAASModel):

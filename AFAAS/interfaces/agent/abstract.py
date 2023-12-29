@@ -19,9 +19,6 @@ from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
 
-if TYPE_CHECKING:
-    from .main import BaseAgent
-
 
 class AbstractAgent(ABC):
 
@@ -33,23 +30,23 @@ class AbstractAgent(ABC):
         modified_at: datetime.datetime = datetime.datetime.now()
         created_at: datetime.datetime = datetime.datetime.now()
 
-        @staticmethod
-        def _get_message_agent_user(agent_id):
-            LOG.notice(f"Retriving : Agent - User Message history for {agent_id}")
-            return []
-            # return MessageAgentUser.get_from_db(agent_id)
+        # @staticmethod
+        # def _get_message_agent_user(agent_id):
+        #     LOG.notice(f"Retriving : Agent - User Message history for {agent_id}")
+        #     return []
+        #     # return MessageAgentUser.get_from_db(agent_id)
 
-        @staticmethod
-        def _get_message_agent_agent(agent_id):
-            LOG.notice(f"Retriving : Agent - Agent Message history for {agent_id}")
-            return []
-            # return MessageAgentAgent.get_from_db(agent_id)
+        # @staticmethod
+        # def _get_message_agent_agent(agent_id):
+        #     LOG.notice(f"Retriving : Agent - Agent Message history for {agent_id}")
+        #     return []
+        #     # return MessageAgentAgent.get_from_db(agent_id)
 
-        @staticmethod
-        def _get_message_agent_llm(agent_id):
-            LOG.notice(f"Retriving : Agent - LLM Message history for {agent_id}")
-            return []
-            # return MessageAgentLLM.get_from_db(agent_id)
+        # @staticmethod
+        # def _get_message_agent_llm(agent_id):
+        #     LOG.notice(f"Retriving : Agent - LLM Message history for {agent_id}")
+        #     return []
+        #     # return MessageAgentLLM.get_from_db(agent_id)
 
         # Use lambda functions to pass the agent_id
         # message_agent_user: list[MessageAgentUser] = Field(
@@ -62,10 +59,10 @@ class AbstractAgent(ABC):
         #     default_factory=lambda self: AbstractAgent.SystemSettings._get_message_agent_llm(self.agent_id)
         #     )
 
-        # NOTE: Should we switch to :
-        message_agent_user: list[MessageAgentUser] = []
-        message_agent_agent: list[MessageAgentAgent] = []
-        message_agent_llm: list[MessageAgentLLM] = []
+
+        # message_agent_user: list[MessageAgentUser] = []
+        # message_agent_agent: list[MessageAgentAgent] = []
+        # message_agent_llm: list[MessageAgentLLM] = []
 
         _message_agent_user: Optional[AFAASMessageStack] = Field(default=[])
         @property
@@ -92,20 +89,20 @@ class AbstractAgent(ABC):
         #     values["message_agent_llm"] = cls._get_message_agent_llm(agent_id)
         #     return values
 
+
+        class Config(SystemSettings.Config):
+            AGENT_CLASS_FIELD_NAME : str = "_type_"
+            AGENT_CLASS_MODULE_NAME : str = "_module_"
+
         @property
         def _type_(self):
             # == "".join(self.__class__.__qualname__.split(".")[:-1])  
             return self.__class__.__qualname__.split(".")[0]    
 
-
         @property
         def _module_(self):
             # Nested Class
             return self.__module__ + "." + self._type_
-
-        class Config(SystemSettings.Config):
-            AGENT_CLASS_FIELD_NAME : str = "_type_"
-            AGENT_CLASS_MODULE_NAME : str = "_module_"
 
         @classmethod
         @property
@@ -116,49 +113,6 @@ class AbstractAgent(ABC):
         @property
         def settings_agent_module_(cls):
             return cls.__module__ + "." + ".".join(cls.__qualname__.split(".")[:-1])
-
-
-    @abstractmethod
-    def __init__(self, *args, **kwargs):
-        """
-        Abstract method for the initialization of the agent.
-
-        Note: Implementation required in subclass.
-        """
-        ...
-
-    @classmethod
-    @abstractmethod
-    def get_instance_from_settings(
-        cls,
-        agent_settings: BaseAgent.SystemSettings,
-    ) -> "AbstractAgent":
-        """
-        Abstract method to retrieve an agent instance using provided settings.
-
-        Args:
-            agent_settings (BaseAgent.SystemSettings): The settings for the agent.
-            logger (logging.Logger): Logger instance for logging purposes.
-
-        Returns:
-            BaseAgent: An instance of BaseAgent.
-
-        Note: Implementation required in subclass.
-        """
-        ...
-
-    @abstractmethod
-    def __repr__(self):
-        """
-        Abstract method for the string representation of the agent.
-
-        Returns:
-            str: A string representation of the agent.
-
-        Note: Implementation required in subclass.
-        """
-        ...
-
 
 
 AbstractAgent.SystemSettings.update_forward_refs()

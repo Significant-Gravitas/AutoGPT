@@ -124,7 +124,7 @@ class AFAASModel(BaseModel):
     modified_at: datetime.datetime = datetime.datetime.now()
 
     def dict_memory(self, **dumps_kwargs) -> dict:
-        LOG.trace(f"FIXME: Temporary implementation before a to pydantic 2.0.0")
+        LOG.trace(f"FIXME: Temporary implementation before pydantic 2.0.0")
         dict = self.dict(**dumps_kwargs)
         return self._apply_custom_encoders(data=dict)
 
