@@ -4,11 +4,11 @@ import inspect
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 from AFAAS.interfaces.tools.tool_output import ToolOutput
+from AFAAS.interfaces.tools.tool_parameters import ToolParameter
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
     from AFAAS.configs import *
-    from AFAAS.interfaces.tools.tool_parameters import ToolParameter
 
 from langchain.tools.base import BaseTool
 
