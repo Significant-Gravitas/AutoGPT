@@ -6,10 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-helicone_graphql_logs = os.getenv("HELICONE_GRAPHQL_LOGS")
-HELICONE_GRAPHQL_LOGS = (
-    helicone_graphql_logs.lower() == "true" if helicone_graphql_logs else False
-)
+HELICONE_GRAPHQL_LOGS = os.getenv("HELICONE_GRAPHQL_LOGS", "").lower() == "true"
 
 
 def get_list_of_file_paths(
