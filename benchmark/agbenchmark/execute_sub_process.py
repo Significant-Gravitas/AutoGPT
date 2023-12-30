@@ -5,14 +5,14 @@ import select
 import subprocess
 import time
 from threading import Thread
-from typing import Any
+from typing import Any, Sequence
 
 import psutil
 
 logger = logging.getLogger(__name__)
 
 
-def run_linux_env(process: Any, start_time: float, timeout: float) -> None:
+def run_linux_env(process: subprocess.Popen, start_time: float, timeout: float) -> None:
     while True:
         try:
             # This checks if there's data to be read from stdout without blocking.
@@ -48,7 +48,9 @@ def enqueue_output(out: Any, my_queue: Any) -> None:
     out.close()
 
 
-def run_windows_env(process: Any, start_time: float, timeout: float) -> None:
+def run_windows_env(
+    process: subprocess.Popen, start_time: float, timeout: float
+) -> None:
     my_queue: Any = queue.Queue()
     thread = Thread(target=enqueue_output, args=(process.stdout, my_queue))
     thread.daemon = True
@@ -71,7 +73,7 @@ def run_windows_env(process: Any, start_time: float, timeout: float) -> None:
         process.terminate()
 
 
-def execute_subprocess(command, timeout):
+def execute_subprocess(command: str | Sequence[str], timeout: float):
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
