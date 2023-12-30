@@ -10,7 +10,6 @@ You will :
 
 {{ to_md_quotation(task.long_description) }}
 
-
 ## Extra informations
 
 """
@@ -36,6 +35,13 @@ self.rag_history_txt
 self.rag_related_task_txt
 {% endif %}
 """
+
+## Workflows
+
+{% for workflow in workflows %}{{ loop.index }}. {{ workflow.name }}: {{ workflow.description }}
+  Example:{% for example in workflow.examples %}
+   - {{ example }}
+{% endfor %}
 
 ## Rules
 

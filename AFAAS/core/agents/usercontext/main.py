@@ -13,6 +13,7 @@ from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
 from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
 from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, BasePromptManager
 from AFAAS.interfaces.db import AbstractMemory
+from AFAAS.interfaces.workflow import WorkflowRegistry, BaseWorkflow
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 from AFAAS.lib.sdk.logger import AFAASLogger
 
@@ -38,6 +39,7 @@ class UserContextAgent(BaseAgent):
         workspace: AbstractFileWorkspace = None,
         vectorstores: VectorStore = None,
         embeddings: Embeddings = None,
+        workflow_registry : WorkflowRegistry = None,
         **kwargs,
     ):
         super().__init__(
