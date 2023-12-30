@@ -5,7 +5,7 @@ import subprocess
 import sys
 from abc import ABC
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, ClassVar, Dict, List
 
 import openai
 import pytest
@@ -28,8 +28,9 @@ class Challenge(ABC):
     Defines helper methods for running a challenge"""
 
     _data_cache: Dict[str, ChallengeData] = {}
-    CHALLENGE_LOCATION: str = ""
-    scores: dict[str, Any] = {}  # this is for suites
+    CHALLENGE_LOCATION: ClassVar[str] = ""
+    ARTIFACTS_LOCATION: ClassVar[str] = ""
+    scores: ClassVar[dict[str, Any]] = {}  # this is for suites
 
     @property
     def data(self) -> ChallengeData:
@@ -47,7 +48,7 @@ class Challenge(ABC):
     def dependencies(self) -> list:
         return self.data.dependencies
 
-    async def setup_challenge(self, config: Dict[str, Any], cutoff: int) -> None:
+    async def run_challenge(self, config: Dict[str, Any], cutoff: int) -> None:
         from agbenchmark.agent_interface import copy_artifacts_into_temp_folder
 
         if not self.task:

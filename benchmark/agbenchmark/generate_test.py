@@ -4,10 +4,9 @@ import json
 import logging
 import os
 import sys
-import types
 from collections import deque
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pytest
 from agent_protocol_client.models.step import Step
@@ -24,40 +23,26 @@ logger = logging.getLogger(__name__)
 
 
 def create_single_test(
-    data: Dict[str, Any] | ChallengeData,
-    challenge_location: str,
-    file_datum: Optional[list[dict[str, Any]]] = None,
+    challenge_data: dict[str, Any] | ChallengeData,
+    challenge_location: Path,
 ) -> type[Challenge]:
-    challenge_data = None
-    artifacts_location = None
-    if isinstance(data, ChallengeData):
-        challenge_data = data
-        data = data.get_data()
+    if isinstance(challenge_data, ChallengeData):
+        challenge_data = challenge_data.get_data()
 
-    DATA_CATEGORY[data["name"]] = data["category"][0]
-
-    # Define test class dynamically
-    challenge_class = types.new_class(f"Test{data['name']}", (Challenge,))
-    logger.debug(f"Location of challenge spec: {challenge_location}")
-    # clean_challenge_location = get_test_path(challenge_location)
-    setattr(challenge_class, "CHALLENGE_LOCATION", challenge_location)
-
-    setattr(
-        challenge_class,
-        "ARTIFACTS_LOCATION",
-        artifacts_location or str(Path(challenge_location).resolve().parent),
-    )
+    DATA_CATEGORY[challenge_data["name"]] = challenge_data["category"][0]
 
     # Define test method within the dynamically created class
     @pytest.mark.asyncio
-    async def test_method(self, config: Dict[str, Any], request) -> None:  # type: ignore
+    async def test_method(
+        self: Challenge, config: dict[str, Any], request: pytest.FixtureRequest
+    ) -> None:
         # create a random number between 0 and 1
         test_name = self.data.name
 
         try:
             with open(CHALLENGES_ALREADY_BEATEN, "r") as f:
                 challenges_beaten_in_the_past = json.load(f)
-        except:
+        except FileNotFoundError:
             challenges_beaten_in_the_past = {}
 
         if request.config.getoption("--explore") and challenges_beaten_in_the_past.get(
@@ -68,9 +53,9 @@ def create_single_test(
         # skip optional categories
         self.skip_optional_categories(config)
 
-        from helicone.lock import HeliconeLockManager
-
         if os.environ.get("HELICONE_API_KEY"):
+            from helicone.lock import HeliconeLockManager
+
             HeliconeLockManager.write_custom_property("challenge", self.data.name)
 
         cutoff = self.data.cutoff or 60
@@ -81,7 +66,7 @@ def create_single_test(
         if "--cutoff" in sys.argv:
             timeout = int(sys.argv[sys.argv.index("--cutoff") + 1])
 
-        await self.setup_challenge(config, timeout)
+        await self.run_challenge(config, timeout)
 
         scores = self.get_scores(config)
         request.node.answers = (
@@ -108,34 +93,37 @@ def create_single_test(
 
         assert is_score_100
 
-    # Parametrize the method here
+    # Add challenge_data parameter; this is used later on for report generation
     test_method = pytest.mark.parametrize(
         "challenge_data",
-        [data],
+        [challenge_data],
         indirect=True,
     )(test_method)
 
-    setattr(challenge_class, "test_method", test_method)
+    # Define test class dynamically
+    challenge_class: type[Challenge] = type(
+        f"Test{challenge_data['name']}", (Challenge,), {"test_method": test_method}
+    )
+    logger.debug(f"Location of challenge spec: {challenge_location}")
+    challenge_class.CHALLENGE_LOCATION = str(challenge_location)
+    challenge_class.ARTIFACTS_LOCATION = str(challenge_location.resolve().parent)
 
-    # Attach the new class to a module so it can be discovered by pytest
-    module = importlib.import_module(__name__)
-    setattr(module, f"Test{data['name']}", challenge_class)
     return challenge_class
 
 
 def create_single_suite_challenge(challenge_data: ChallengeData, path: Path) -> None:
-    create_single_test(challenge_data, str(path))
+    create_single_test(challenge_data, path)
 
 
 def create_challenge(
-    data: Dict[str, Any],
+    data: dict[str, Any],
     json_file: str,
     json_files: deque,
 ) -> tuple[deque, type[Challenge]]:
     path = Path(json_file).resolve()
     logger.debug(f"Creating challenge for {path}")
 
-    challenge_class = create_single_test(data, str(path))
+    challenge_class = create_single_test(data, path)
     logger.debug(f"Creation complete for {path}")
 
     return json_files, challenge_class
@@ -167,14 +155,14 @@ def load_challenges() -> None:
         regression_tests = {}
 
     while json_files:
-        json_file = (
-            json_files.popleft()
-        )  # Take and remove the first element from json_files
+        # Take and remove the first element from json_files
+        json_file = json_files.popleft()
         if challenge_should_be_ignored(json_file):
             continue
 
         data = ChallengeData.get_json_from_path(json_file)
 
+        # TODO: move filtering/selection of challenges out of here
         commands = sys.argv
         # --by flag
         if "--category" in commands:
@@ -208,12 +196,22 @@ def load_challenges() -> None:
         json_files, challenge_class = create_challenge(data, json_file, json_files)
 
         logger.debug(f"Generated test for {data['name']}")
+        _add_challenge_to_module(challenge_class)
 
     logger.info("Loading challenges complete.")
 
 
-def challenge_should_be_ignored(json_file):
-    return "challenges/deprecated" in json_file or "challenges/library" in json_file
+def challenge_should_be_ignored(json_file_path: str):
+    return (
+        "challenges/deprecated" in json_file_path
+        or "challenges/library" in json_file_path
+    )
+
+
+def _add_challenge_to_module(challenge: type[Challenge]):
+    # Attach the Challenge class to this module so it can be discovered by pytest
+    module = importlib.import_module(__name__)
+    setattr(module, f"{challenge.__name__}", challenge)
 
 
 load_challenges()
