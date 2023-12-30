@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 
 import openai
 import pytest
+from colorama import Fore, Style
 
 from agbenchmark.__main__ import OPTIONAL_CATEGORIES, TEMP_FOLDER_ABS_PATH
 from agbenchmark.agent_api_interface import run_api_agent
@@ -53,9 +54,11 @@ class Challenge(ABC):
             return
 
         print(
-            f"\033[1;35m============Starting {self.data.name} challenge============\033[0m"
+            f"{Fore.MAGENTA + Style.BRIGHT}{'='*24} "
+            f"Starting {self.data.name} challenge"
+            f" {'='*24}{Style.RESET_ALL}"
         )
-        print(f"\033[1;30mTask: {self.task}\033[0m")
+        print(f"{Fore.BLACK}Task: {self.task}{Fore.RESET}")
 
         await run_api_agent(self.data, config, self.ARTIFACTS_LOCATION, cutoff)
 
@@ -120,14 +123,15 @@ class Challenge(ABC):
         return files_contents
 
     def scoring(self, config: Dict[str, Any], content: str, ground: Ground) -> float:
-        print("\033[1;34mScoring content:\033[0m", content)
+        print(f"{Fore.BLUE}Scoring content:{Style.RESET_ALL}", content)
         if ground.should_contain:
             for should_contain_word in ground.should_contain:
                 if not getattr(ground, "case_sensitive", True):
                     should_contain_word = should_contain_word.lower()
                     content = content.lower()
                 print_content = (
-                    f"\033[1;34mWord that should exist\033[0m - {should_contain_word}:"
+                    f"{Fore.BLUE}Word that should exist{Style.RESET_ALL}"
+                    f" - {should_contain_word}:"
                 )
                 if should_contain_word not in content:
                     print(print_content, "False")
@@ -140,7 +144,10 @@ class Challenge(ABC):
                 if not getattr(ground, "case_sensitive", True):
                     should_not_contain_word = should_not_contain_word.lower()
                     content = content.lower()
-                print_content = f"\033[1;34mWord that should not exist\033[0m - {should_not_contain_word}:"
+                print_content = (
+                    f"{Fore.BLUE}Word that should not exist{Style.RESET_ALL}"
+                    f" - {should_not_contain_word}:"
+                )
                 if should_not_contain_word in content:
                     print(print_content, "False")
                     return 0.0
@@ -188,7 +195,7 @@ class Challenge(ABC):
                 answers = {"answer": files_contents}
                 for file_content in files_contents:
                     score = self.scoring(config, file_content, self.data.ground)
-                    print("\033[1;32mYour score is:\033[0m", score)
+                    print(f"{Fore.GREEN}Your score is:{Style.RESET_ALL}", score)
                     scores.append(score)
 
                 if self.data.ground.eval.type == "llm":
@@ -199,7 +206,7 @@ class Challenge(ABC):
                         scores.append(math.ceil(llm_eval / 100))
                     elif self.data.ground.eval.scoring == "scale":
                         scores.append(math.ceil(llm_eval / 10))
-                    print("\033[1;32mYour score is:\033[0m", llm_eval)
+                    print(f"{Fore.GREEN}Your score is:{Style.RESET_ALL}", llm_eval)
 
                     scores.append(llm_eval)
         except Exception as e:

@@ -1,6 +1,7 @@
 import datetime
 import glob
 import json
+import logging
 import os
 import sys
 import uuid
@@ -30,7 +31,7 @@ from agbenchmark.utils.utils import write_pretty_json
 sys.path.append(str(Path(__file__).parent.parent))
 
 configuration = Configuration(host="http://localhost:8000")
-
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Change the current working directory to the benchmark path
@@ -130,10 +131,12 @@ def stream_output(pipe):
 @router.post("/reports")
 def run_single_test(body: CreateReportRequest) -> dict:
     pids = find_agbenchmark_without_uvicorn()
-    print(f"pids already running with agbenchmark: {pids}")
-    print(body.dict())
+    logger.info(f"pids already running with agbenchmark: {pids}")
+
+    logger.debug(f"Request to /reports: {body.dict()}")
+
     # it's a hack because other parts of the code are using sys.argv
-    print(os.getcwd())
+    logger.debug(f"Current working directory: {os.getcwd()}")
     command_options = ["agbenchmark"]
     # if body.category:
     #     sys.argv.append(f"--category={body.category}")
@@ -141,9 +144,10 @@ def run_single_test(body: CreateReportRequest) -> dict:
     if body.mock:
         command_options.append("--mock")
 
+    logger.debug(f"Running {command_options}")
     execute_subprocess(command_options, 200)
+    logger.debug("Finished running")
 
-    print("finished running")
     # List all folders in the current working directory
     path_reports = Path.cwd() / "agbenchmark_config" / "reports"
     folders = [folder for folder in path_reports.iterdir() if folder.is_dir()]
@@ -152,20 +156,23 @@ def run_single_test(body: CreateReportRequest) -> dict:
     sorted_folders = sorted(folders, key=lambda x: x.name)
 
     # Get the last folder
-    last_folder = sorted_folders[-1] if sorted_folders else None
+    latest_folder = sorted_folders[-1] if sorted_folders else None
 
     # Read report.json from this folder
-    if last_folder:
-        report_path = last_folder / "report.json"
-        print(report_path)
+    if latest_folder:
+        report_path = latest_folder / "report.json"
+        logger.debug(f"Getting latest report from {report_path}")
         if report_path.exists():
             with report_path.open() as file:
                 data = json.load(file)
-            print(data)
+            logger.debug(f"Report data: {data}")
         else:
-            print(f"'report.json' does not exist in '{last_folder}'")
+            logger.error(
+                "Could not get result after running benchmark: "
+                f"'report.json' does not exist in '{latest_folder}'"
+            )
     else:
-        print("No folders found.")
+        logger.error("Could not get result after running benchmark: no reports found")
 
     return data
 
@@ -176,6 +183,7 @@ def get_updates(request: Request) -> list[dict]:
 
     try:
         # Read data from the "update.json" file (provide the correct file path)
+        logger.debug(f"Reading updates from {UPDATES_JSON_PATH}...")
         with open(UPDATES_JSON_PATH, "r") as file:
             data = json.load(file)
 
@@ -184,7 +192,7 @@ def get_updates(request: Request) -> list[dict]:
 
         if query_param is None:
             # Handle the case when last_update_time is not provided
-            print("ERROR: last_update_time parameter is missing")
+            logger.error("last_update_time parameter is missing")
             raise HTTPException(
                 status_code=400,
                 detail="last_update_time parameter is missing",
@@ -199,10 +207,10 @@ def get_updates(request: Request) -> list[dict]:
         # Extract only the "content" field from each item
         filtered_data = [item["content"] for item in filtered_data]
 
-        print("INFO: Returning filtered data to the client")
+        logger.debug("Returning filtered data to the client")
         return filtered_data
     except FileNotFoundError:
-        print("ERROR: File not found: updates.json")
+        logger.error("File not found: updates.json")
         raise HTTPException(
             status_code=404,
             detail="File not found",
@@ -260,8 +268,11 @@ async def create_agent_task(task_eval_request: TaskEvalRequestBody) -> Task:
                 "artifacts_in",
             )
             return task_response
-    except ApiException:
-        print(f"Error whilst trying to create a task: {task_eval_request}")
+    except ApiException as e:
+        logger.error(f"Error whilst trying to create a task:\n{e}")
+        logger.error(
+            f"The above error was caused while processing request: {task_eval_request}"
+        )
         raise HTTPException(500)
 
 
@@ -313,7 +324,7 @@ async def create_evaluation(task_id: str) -> BenchmarkRun:
         eval_info = BenchmarkRun(
             repository_info=RepositoryInfo(),
             run_details=RunDetails(
-                command="agbenchmark" + " --test=" + test_name,
+                command=f"agbenchmark --test={test_name}",
                 benchmark_start_time=task_informations[task_id]["benchmark_start_time"],
                 test_name=challenge_info["name"],
             ),
@@ -332,10 +343,10 @@ async def create_evaluation(task_id: str) -> BenchmarkRun:
             config={},
         )
 
-        print(eval_info.json(indent=4))
+        logger.debug(f"Returning evaluation data:\n{eval_info.json(indent=4)}")
         return eval_info
-    except ApiException:
-        print(f"Error whilst trying to evaluate the task: {task_id}")
+    except ApiException as e:
+        logger.error(f"Error {e} whilst trying to evaluate task: {task_id}")
         raise HTTPException(500)
 
 

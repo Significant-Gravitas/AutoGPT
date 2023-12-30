@@ -1,5 +1,6 @@
 # radio charts, logs, helper functions for tests, anything else relevant.
 import json
+import logging
 import os
 import re
 from pathlib import Path
@@ -7,11 +8,14 @@ from typing import Any, List, Optional
 
 from dotenv import load_dotenv
 
-load_dotenv()
 from agbenchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel
+
+load_dotenv()
 
 AGENT_NAME = os.getenv("AGENT_NAME")
 REPORT_LOCATION = os.getenv("REPORT_LOCATION", None)
+
+logger = logging.getLogger(__name__)
 
 
 def replace_backslash(value: Any) -> Any:
@@ -72,8 +76,9 @@ def get_highest_success_difficulty(
                     highest_difficulty = DifficultyLevel[highest_difficulty_str]
                     highest_difficulty_level = DIFFICULTY_MAP[highest_difficulty]
                 except KeyError:
-                    print(
-                        f"Unexpected difficulty level '{highest_difficulty_str}' in test '{test_name}'"
+                    logger.warning(
+                        f"Unexpected difficulty level '{highest_difficulty_str}' "
+                        f"in test '{test_name}'"
                     )
                     continue
             else:
@@ -88,12 +93,21 @@ def get_highest_success_difficulty(
                             highest_difficulty = difficulty_enum
                             highest_difficulty_level = difficulty_level
                     except KeyError:
-                        print(
-                            f"Unexpected difficulty level '{difficulty_str}' in test '{test_name}'"
+                        logger.warning(
+                            f"Unexpected difficulty level '{difficulty_str}' "
+                            f"in test '{test_name}'"
                         )
                         continue
-        except Exception:
-            print(f"Make sure you selected the right test, no reports were generated.")
+        except Exception as e:
+            logger.warning(
+                "An unexpected error [1] occurred while analyzing report [2]."
+                "Please notify a maintainer.\n"
+                f"Report data [1]: {data}\n"
+                f"Error [2]: {e}"
+            )
+            logger.warning(
+                "Make sure you selected the right test, no reports were generated."
+            )
             break
 
     if highest_difficulty is not None:
@@ -116,10 +130,10 @@ def get_highest_success_difficulty(
 #             remote_url = remote_url[:-4]
 #         git_commit_sha = f"{remote_url}/tree/{repo.head.commit.hexsha}"
 
-#         # print(f"GIT_COMMIT_SHA: {git_commit_sha}")
+#         # logger.debug(f"GIT_COMMIT_SHA: {git_commit_sha}")
 #         return git_commit_sha
 #     except Exception:
-#         # print(f"{directory} is not a git repository!")
+#         # logger.error(f"{directory} is not a git repository!")
 #         return None
 
 

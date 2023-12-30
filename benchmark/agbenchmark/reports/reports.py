@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import sys
 from typing import Any, Dict
@@ -9,6 +10,8 @@ from agbenchmark.reports.ReportManager import SingletonReportManager
 from agbenchmark.utils.data_types import DifficultyLevel
 from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
 from agbenchmark.utils.utils import calculate_success_percentage
+
+logger = logging.getLogger(__name__)
 
 
 def get_previous_test_results(
@@ -126,8 +129,9 @@ def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:
         if run_time is not None:
             cost = None
             if "--mock" not in sys.argv and os.environ.get("HELICONE_API_KEY"):
-                print("Getting cost from Helicone")
+                logger.debug("Getting cost from Helicone")
                 cost = get_data_from_helicone(test_name)
+                logger.debug(f"Cost: {cost}")
 
             info_details["metrics"]["cost"] = cost
 

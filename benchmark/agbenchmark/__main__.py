@@ -1,5 +1,6 @@
 import glob
 import json
+import logging
 import os
 import sys
 from datetime import datetime, timezone
@@ -14,6 +15,7 @@ from dotenv import load_dotenv
 from agbenchmark.app import app
 from agbenchmark.config import load_agbenchmark_config
 from agbenchmark.reports.ReportManager import SingletonReportManager
+from agbenchmark.utils.logging import configure_logging
 
 try:
     if os.getenv("HELICONE_API_KEY"):
@@ -29,6 +31,8 @@ except ImportError:
 class InvalidInvocationError(ValueError):
     pass
 
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -73,10 +77,10 @@ def get_unique_categories() -> set[str]:
                 data = json.load(f)
                 categories.update(data.get("category", []))
             except json.JSONDecodeError:
-                print(f"Error: {data_file} is not a valid JSON file.")
+                logger.error(f"Error: {data_file} is not a valid JSON file.")
                 continue
             except IOError:
-                print(f"IOError: file could not be read: {data_file}")
+                logger.error(f"IOError: file could not be read: {data_file}")
                 continue
 
     return categories
@@ -117,16 +121,15 @@ def run_benchmark(
 
     assert agent_benchmark_config.host, "Error: host needs to be added to the config."
 
-    print("Current configuration:")
     for key, value in vars(agent_benchmark_config).items():
-        print(f"{key}: {value}")
+        logger.debug(f"config.{key} = {repr(value)}")
 
     pytest_args = ["-vs"]
     if keep_answers:
         pytest_args.append("--keep-answers")
 
     if test:
-        print("Running specific test:", test)
+        logger.info("Running specific test:", test)
     else:
         # Categories that are used in the challenges
         all_categories = get_unique_categories()
@@ -143,23 +146,23 @@ def run_benchmark(
                 categories_to_run = categories_to_run.difference(set(skip_categories))
                 assert categories_to_run, "Error: You can't skip all categories"
             pytest_args.extend(["-m", " or ".join(categories_to_run), "--category"])
-            print("Running tests of category:", categories_to_run)
+            logger.info("Running tests of category:", categories_to_run)
         elif skip_categories:
             categories_to_run = all_categories - set(skip_categories)
             assert categories_to_run, "Error: You can't skip all categories"
             pytest_args.extend(["-m", " or ".join(categories_to_run), "--category"])
-            print("Running tests of category:", categories_to_run)
+            logger.info("Running tests of category:", categories_to_run)
         else:
-            print("Running all categories")
+            logger.info("Running all categories")
 
         if maintain:
-            print("Running only regression tests")
+            logger.info("Running only regression tests")
             pytest_args.append("--maintain")
         elif improve:
-            print("Running only non-regression tests")
+            logger.info("Running only non-regression tests")
             pytest_args.append("--improve")
         elif explore:
-            print("Only attempt challenges that have never been beaten")
+            logger.info("Only attempt challenges that have never been beaten")
             pytest_args.append("--explore")
 
     if mock:
@@ -175,9 +178,8 @@ def run_benchmark(
         pytest_args.append("--nc")
     if cutoff:
         pytest_args.append("--cutoff")
-        print(f"Setting cuttoff override to {cutoff} seconds.")
+        logger.debug(f"Setting cuttoff override to {cutoff} seconds.")
     current_dir = Path(__file__).resolve().parent
-    print(f"Current directory: {current_dir}")
     pytest_args.append(str(current_dir))
 
     pytest_args.append("--cache-clear")
@@ -217,6 +219,7 @@ def validate_args(
 
 
 @click.group(invoke_without_command=True)
+@click.option("--debug", is_flag=True, help="Enable debug output")
 @click.option("--backend", is_flag=True, help="If it's being run from the cli")
 @click.option("-c", "--category", multiple=True, help="Specific category to run")
 @click.option(
@@ -244,6 +247,7 @@ def validate_args(
 @click.option("--cutoff", help="Set or override tests cutoff (seconds)")
 @click.argument("value", type=str, required=False)
 def cli(
+    debug: bool,
     maintain: bool,
     improve: bool,
     explore: bool,
@@ -258,6 +262,8 @@ def cli(
     backend: Optional[bool] = False,
     value: Optional[str] = None,
 ) -> Any:
+    configure_logging(logging.DEBUG if debug else logging.INFO)
+
     # Redirect stdout if backend is True
     if value == "start":
         raise DeprecationWarning(
@@ -278,7 +284,7 @@ def cli(
             cutoff=cutoff,
         )
     except InvalidInvocationError as e:
-        print("Error: " + "\n".join(e.args))
+        logger.error("Error: " + "\n".join(e.args))
         sys.exit(1)
 
     original_stdout = sys.stdout  # Save the original standard output
@@ -328,7 +334,7 @@ def version():
     version = toml.load(current_directory / ".." / "pyproject.toml")["tool"]["poetry"][
         "version"
     ]
-    print(f"Benchmark Tool Version {version}")
+    click.echo(f"Benchmark Tool Version {version}")
 
 
 def serve():
@@ -343,12 +349,12 @@ def initialize_updates_file():
         # If the file already exists, overwrite it with an empty list
         with open(UPDATES_JSON_PATH, "w") as file:
             json.dump([], file, indent=2)
-        print("Initialized updates.json by overwriting with an empty array")
+        logger.debug("Initialized updates.json by overwriting with an empty array")
     else:
         # If the file doesn't exist, create it and write an empty list
         with open(UPDATES_JSON_PATH, "w") as file:
             json.dump([], file, indent=2)
-        print("Created updates.json and initialized it with an empty array")
+        logger.debug("Created updates.json and initialized it with an empty array")
 
 
 if __name__ == "__main__":

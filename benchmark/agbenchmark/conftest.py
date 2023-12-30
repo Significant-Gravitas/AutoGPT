@@ -1,5 +1,6 @@
 import contextlib
 import json
+import logging
 import os
 import shutil
 import sys
@@ -21,6 +22,8 @@ from agbenchmark.reports.reports import (
 GLOBAL_TIMEOUT = (
     1500  # The tests will stop after 25 minutes so we can send the reports.
 )
+
+logger = logging.getLogger(__name__)
 
 pytest_plugins = ["agbenchmark.utils.dependencies"]
 collect_ignore = ["challenges"]
@@ -65,7 +68,7 @@ def temp_folder() -> Generator[str, None, None]:
                 elif os.path.isdir(file_path):
                     shutil.rmtree(file_path)
             except Exception as e:
-                print(f"Failed to delete {file_path}. Reason: {e}")
+                logger.warning(f"Failed to delete {file_path}. Reason: {e}")
 
 
 def pytest_addoption(parser: Any) -> None:

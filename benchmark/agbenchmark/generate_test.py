@@ -1,6 +1,7 @@
 import glob
 import importlib
 import json
+import logging
 import os
 import sys
 import types
@@ -19,6 +20,8 @@ from agbenchmark.utils.data_types import ChallengeData
 
 DATA_CATEGORY = {}
 
+logger = logging.getLogger(__name__)
+
 
 def create_single_test(
     data: Dict[str, Any] | ChallengeData,
@@ -35,7 +38,7 @@ def create_single_test(
 
     # Define test class dynamically
     challenge_class = types.new_class(f"Test{data['name']}", (Challenge,))
-    print(challenge_location)
+    logger.debug(f"Location of challenge spec: {challenge_location}")
     # clean_challenge_location = get_test_path(challenge_location)
     setattr(challenge_class, "CHALLENGE_LOCATION", challenge_location)
 
@@ -130,19 +133,19 @@ def create_challenge(
     json_files: deque,
 ) -> tuple[deque, type[Challenge]]:
     path = Path(json_file).resolve()
-    print("Creating challenge for", path)
+    logger.debug(f"Creating challenge for {path}")
 
     challenge_class = create_single_test(data, str(path))
-    print("Creation complete for", path)
+    logger.debug(f"Creation complete for {path}")
 
     return json_files, challenge_class
 
 
-def generate_tests() -> None:  # sourcery skip: invert-any-all
-    print("Generating tests...")
+def load_challenges() -> None:
+    logger.info("Loading challenges...")
 
     challenges_path = os.path.join(os.path.dirname(__file__), "challenges")
-    print(f"Looking for challenges in {challenges_path}...")
+    logger.debug(f"Looking for challenges in {challenges_path}...")
 
     json_files = deque(
         glob.glob(
@@ -151,8 +154,8 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
         )
     )
 
-    print(f"Found {len(json_files)} challenges.")
-    print(f"Sample path: {json_files[0]}")
+    logger.debug(f"Found {len(json_files)} challenges.")
+    logger.debug(f"Sample path: {json_files[0]}")
 
     agent_benchmark_config = load_agbenchmark_config()
 
@@ -204,12 +207,13 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
             continue
         json_files, challenge_class = create_challenge(data, json_file, json_files)
 
-        print(f"Generated test for {data['name']}.")
-    print("Test generation complete.")
+        logger.debug(f"Generated test for {data['name']}")
+
+    logger.info("Loading challenges complete.")
 
 
 def challenge_should_be_ignored(json_file):
     return "challenges/deprecated" in json_file or "challenges/library" in json_file
 
 
-generate_tests()
+load_challenges()

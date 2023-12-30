@@ -1,3 +1,4 @@
+import logging
 import platform
 import queue
 import select
@@ -8,6 +9,8 @@ from typing import Any
 
 import psutil
 
+logger = logging.getLogger(__name__)
+
 
 def run_linux_env(process: Any, start_time: float, timeout: float) -> None:
     while True:
@@ -17,6 +20,9 @@ def run_linux_env(process: Any, start_time: float, timeout: float) -> None:
                 output = process.stdout.readline()
                 print(output.strip())
         except Exception as e:
+            logger.warning(
+                f"Error occurred while waiting for output from subprocess: {e}"
+            )
             continue
 
         # Check if process has ended, has no more output, or exceeded timeout
@@ -24,14 +30,16 @@ def run_linux_env(process: Any, start_time: float, timeout: float) -> None:
             break
 
     if time.time() - start_time > timeout:
-        print("The Python function has exceeded the time limit and was terminated.")
+        logger.warning(
+            f"The child process {process.args} exceeded its timeout and was terminated"
+        )
         parent = psutil.Process(process.pid)
         for child in parent.children(recursive=True):
             child.kill()
         parent.kill()
 
     else:
-        print("The Python function has finished running.")
+        logger.debug("The child process has finished running")
 
 
 def enqueue_output(out: Any, my_queue: Any) -> None:
@@ -57,7 +65,9 @@ def run_windows_env(process: Any, start_time: float, timeout: float) -> None:
             break
 
     if time.time() - start_time > timeout:
-        print("The Python function has exceeded the time limit and was terminated.")
+        logger.warning(
+            f"The child process {process.args} exceeded its timeout and was terminated"
+        )
         process.terminate()
 
 
@@ -75,5 +85,3 @@ def execute_subprocess(command, timeout):
     else:
         run_linux_env(process, start_time, timeout)
     process.wait()
-    if process.returncode != 0:
-        print(f"The agent timed out")
