@@ -18,6 +18,7 @@ from agbenchmark.reports.reports import (
     session_finish,
 )
 from agbenchmark.utils.challenge import Challenge
+from agbenchmark.utils.data_types import Category
 
 GLOBAL_TIMEOUT = (
     1500  # The tests will stop after 25 minutes so we can send the reports.
@@ -100,6 +101,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--maintain", action="store_true")
     parser.addoption("--explore", action="store_true")
     parser.addoption("--keep-answers", action="store_true")
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    # Register category markers to prevent "unknown marker" warnings
+    for category in Category:
+        config.addinivalue_line("markers", f"{category.value}: {category}")
 
 
 @pytest.fixture(autouse=True)
