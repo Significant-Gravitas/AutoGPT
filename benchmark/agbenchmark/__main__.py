@@ -5,16 +5,12 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 import click
-import pytest
-import toml
+from click_default_group import DefaultGroup
 from dotenv import load_dotenv
 
-from agbenchmark.app import app
-from agbenchmark.config import load_agbenchmark_config
-from agbenchmark.reports.ReportManager import SingletonReportManager
 from agbenchmark.utils.logging import configure_logging
 from agbenchmark.utils.path_manager import PATH_MANAGER
 
@@ -86,25 +82,30 @@ def run_benchmark(
     maintain: bool = False,
     improve: bool = False,
     explore: bool = False,
+    tests: tuple[str] = tuple(),
+    categories: tuple[str] = tuple(),
+    skip_categories: tuple[str] = tuple(),
     mock: bool = False,
     no_dep: bool = False,
     no_cutoff: bool = False,
-    keep_answers: bool = False,
-    categories: Optional[list[str]] = None,
-    skip_categories: Optional[list[str]] = None,
-    test: Optional[str] = None,
     cutoff: Optional[int] = None,
+    keep_answers: bool = False,
     server: bool = False,
 ) -> int:
     """
     Starts the benchmark. If a category flag is provided, only challenges with the
     corresponding mark will be run.
     """
+    import pytest
+
+    from agbenchmark.config import load_agbenchmark_config
+    from agbenchmark.reports.ReportManager import SingletonReportManager
+
     validate_args(
         maintain=maintain,
         improve=improve,
         explore=explore,
-        test=test,
+        tests=tests,
         categories=categories,
         skip_categories=skip_categories,
         no_cutoff=no_cutoff,
@@ -124,8 +125,8 @@ def run_benchmark(
     if keep_answers:
         pytest_args.append("--keep-answers")
 
-    if test:
-        logger.info("Running specific test:", test)
+    if tests:
+        logger.info(f"Running specific test(s): {' '.join(tests)}")
     else:
         # Categories that are used in the challenges
         all_categories = get_unique_categories()
@@ -142,12 +143,12 @@ def run_benchmark(
                 categories_to_run = categories_to_run.difference(set(skip_categories))
                 assert categories_to_run, "Error: You can't skip all categories"
             pytest_args.extend(["-m", " or ".join(categories_to_run), "--category"])
-            logger.info("Running tests of category:", categories_to_run)
+            logger.info(f"Running tests of category: {categories_to_run}")
         elif skip_categories:
             categories_to_run = all_categories - set(skip_categories)
             assert categories_to_run, "Error: You can't skip all categories"
             pytest_args.extend(["-m", " or ".join(categories_to_run), "--category"])
-            logger.info("Running tests of category:", categories_to_run)
+            logger.info(f"Running tests of category: {categories_to_run}")
         else:
             logger.info("Running all categories")
 
@@ -168,7 +169,7 @@ def run_benchmark(
         ] = "True"  # ugly hack to make the mock work when calling from API
 
     if no_dep:
-        pytest_args.append("--no_dep")
+        pytest_args.append("--no-dep")
 
     if no_cutoff:
         pytest_args.append("--nc")
@@ -186,14 +187,14 @@ def run_benchmark(
 
 
 def validate_args(
-    maintain: bool = False,
-    improve: bool = False,
-    explore: bool = False,
-    test: Optional[str] = None,
-    categories: Optional[list[str]] = None,
-    skip_categories: Optional[list[str]] = None,
-    no_cutoff: bool = False,
-    cutoff: Optional[int] = None,
+    maintain: bool,
+    improve: bool,
+    explore: bool,
+    tests: Sequence[str],
+    categories: Sequence[str],
+    skip_categories: Sequence[str],
+    no_cutoff: bool,
+    cutoff: Optional[int],
 ) -> None:
     if (maintain + improve + explore) > 1:
         raise InvalidInvocationError(
@@ -201,7 +202,7 @@ def validate_args(
             "Please choose one."
         )
 
-    if test and (categories or skip_categories or maintain or improve or explore):
+    if tests and (categories or skip_categories or maintain or improve or explore):
         raise InvalidInvocationError(
             "If you're running a specific test make sure no other options are "
             "selected. Please just pass the --test."
@@ -214,36 +215,60 @@ def validate_args(
         )
 
 
-@click.group(invoke_without_command=True)
+@click.group(cls=DefaultGroup, default_if_no_args=True)
 @click.option("--debug", is_flag=True, help="Enable debug output")
-@click.option("--backend", is_flag=True, help="If it's being run from the cli")
-@click.option("-c", "--category", multiple=True, help="Specific category to run")
+def cli(
+    debug: bool,
+) -> Any:
+    configure_logging(logging.DEBUG if debug else logging.INFO)
+
+
+@cli.command(hidden=True)
+def start():
+    raise DeprecationWarning(
+        "`agbenchmark start` is deprecated. Use `agbenchmark run` instead."
+    )
+
+
+@cli.command(default=True)
+@click.option(
+    "-c",
+    "--category",
+    multiple=True,
+    help="(+) Select a category to run.",
+)
 @click.option(
     "-s",
     "--skip-category",
     multiple=True,
-    help="Skips preventing the tests from this category from running",
+    help="(+) Exclude a category from running.",
 )
-@click.option("--test", multiple=True, help="Specific test to run")
-@click.option("--maintain", is_flag=True, help="Runs only regression tests")
-@click.option("--improve", is_flag=True, help="Run only non-regression tests")
+@click.option("--test", multiple=True, help="(+) Select a test to run.")
+@click.option("--maintain", is_flag=True, help="Run only regression tests.")
+@click.option("--improve", is_flag=True, help="Run only non-regression tests.")
 @click.option(
     "--explore",
     is_flag=True,
-    help="Only attempt challenges that have never been beaten",
+    help="Run only challenges that have never been beaten.",
 )
-@click.option("--mock", is_flag=True, help="Run with mock")
 @click.option(
-    "--no_dep",
+    "--no-dep",
     is_flag=True,
-    help="Run without dependencies",
+    help="Run all (selected) challenges, regardless of dependency success/failure.",
 )
-@click.option("--nc", is_flag=True, help="Run without cutoff")
+@click.option("--cutoff", type=int, help="Override the challenge time limit (seconds).")
+@click.option("--nc", is_flag=True, help="Disable the challenge time limit.")
+@click.option("--mock", is_flag=True, help="Run with mock")
 @click.option("--keep-answers", is_flag=True, help="Keep answers")
-@click.option("--cutoff", help="Set or override tests cutoff (seconds)")
-@click.argument("value", type=str, required=False)
-def cli(
-    debug: bool,
+@click.option(
+    "--backend",
+    is_flag=True,
+    help="Write log output to a file instead of the terminal.",
+)
+# @click.argument(
+#     "agent_path", type=click.Path(exists=True, file_okay=False), required=False
+# )
+def run(
     maintain: bool,
     improve: bool,
     explore: bool,
@@ -251,29 +276,25 @@ def cli(
     no_dep: bool,
     nc: bool,
     keep_answers: bool,
-    category: Optional[list[str]] = None,
-    skip_category: Optional[list[str]] = None,
-    test: Optional[str] = None,
+    test: tuple[str],
+    category: tuple[str],
+    skip_category: tuple[str],
     cutoff: Optional[int] = None,
     backend: Optional[bool] = False,
-    value: Optional[str] = None,
-) -> Any:
-    configure_logging(logging.DEBUG if debug else logging.INFO)
+    # agent_path: Optional[Path] = None,
+) -> None:
+    """
+    Run the benchmark on the agent in the current directory.
 
-    # Redirect stdout if backend is True
-    if value == "start":
-        raise DeprecationWarning(
-            "`agbenchmark start` is removed. Run `agbenchmark` instead."
-        )
-    if value == "serve":
-        return serve()
-
+    Options marked with (+) can be specified multiple times, to select multiple items.
+    """
+    logger.debug(f"agbenchmark_config: {PATH_MANAGER.base_path}")
     try:
         validate_args(
             maintain=maintain,
             improve=improve,
             explore=explore,
-            test=test,
+            tests=test,
             categories=category,
             skip_categories=skip_category,
             no_cutoff=nc,
@@ -297,9 +318,9 @@ def cli(
                 no_dep=no_dep,
                 no_cutoff=nc,
                 keep_answers=keep_answers,
+                tests=test,
                 categories=category,
                 skip_categories=skip_category,
-                test=test,
                 cutoff=cutoff,
             )
 
@@ -314,9 +335,9 @@ def cli(
             no_dep=no_dep,
             no_cutoff=nc,
             keep_answers=keep_answers,
+            tests=test,
             categories=category,
             skip_categories=skip_category,
-            test=test,
             cutoff=cutoff,
         )
 
@@ -324,20 +345,25 @@ def cli(
 
 
 @cli.command()
-def version():
-    """Print the version of the benchmark tool."""
-    current_directory = Path(__file__).resolve().parent
-    version = toml.load(current_directory / ".." / "pyproject.toml")["tool"]["poetry"][
-        "version"
-    ]
-    click.echo(f"Benchmark Tool Version {version}")
-
-
 def serve():
+    """Serve the benchmark frontend and API on port 8080."""
     import uvicorn
+
+    from agbenchmark.app import app
 
     # Run the FastAPI application using uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
+
+@cli.command()
+def version():
+    """Print version info for the AGBenchmark application."""
+    import toml
+
+    package_root = Path(__file__).resolve().parent.parent
+    pyproject = toml.load(package_root / "pyproject.toml")
+    version = pyproject["tool"]["poetry"]["version"]
+    click.echo(f"AGBenchmark version {version}")
 
 
 def initialize_updates_file():

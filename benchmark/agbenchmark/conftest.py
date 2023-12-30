@@ -84,13 +84,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     * `--maintain` is used to run only the tests that are marked for maintenance.
     * `--explore` is used to run the tests in exploration mode.
     * `--test` is used to run a specific test.
-    * `--no_dep` is used to run the tests without dependencies.
-    * `--keep_answers` is used to keep the answers of the tests.
+    * `--no-dep` is used to run the tests without dependencies.
+    * `--keep-answers` is used to keep the answers of the tests.
 
     Args:
         parser: The Pytest CLI parser to which the command-line options are added.
     """
-    parser.addoption("--no_dep", action="store_true")
+    parser.addoption("--no-dep", action="store_true")
     parser.addoption("--mock", action="store_true")
     parser.addoption("--host", default=None)
     parser.addoption("--nc", action="store_true")
@@ -311,7 +311,7 @@ def pytest_collection_modifyitems(
         #     dependencies = [dep for dep in dependencies if not data.get(dep, None)]
         # if (
         #     config.getoption("--test")
-        #     or config.getoption("--no_dep")
+        #     or config.getoption("--no-dep")
         #     or config.getoption("--maintain")
         # ):
         dependencies = test_class_instance.dependencies
