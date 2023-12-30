@@ -3,10 +3,9 @@ import json
 import logging
 import os
 import shutil
-import sys
 import threading
 import time
-from pathlib import Path  # noqa
+from pathlib import Path
 from typing import Any, Generator
 
 import pytest
@@ -18,6 +17,7 @@ from agbenchmark.reports.reports import (
     generate_single_call_report,
     session_finish,
 )
+from agbenchmark.utils.challenge import Challenge
 
 GLOBAL_TIMEOUT = (
     1500  # The tests will stop after 25 minutes so we can send the reports.
@@ -46,18 +46,17 @@ def config() -> dict:
 
 
 @pytest.fixture(autouse=True)
-def temp_folder() -> Generator[str, None, None]:
+def temp_folder() -> Generator[Path, None, None]:
     """
-    This pytest fixture is responsible for setting up and tearing down the temporary folder for each test.
+    Pytest fixture that sets up and tears down the temporary folder for each test.
     It is automatically used in every test due to the 'autouse=True' parameter.
-    It is used in order to let agbenchmark store files so they can then be evaluated.
     """
 
     # create output directory if it doesn't exist
     if not os.path.exists(TEMP_FOLDER_ABS_PATH):
         os.makedirs(TEMP_FOLDER_ABS_PATH, exist_ok=True)
 
-    yield
+    yield TEMP_FOLDER_ABS_PATH
     # teardown after test function completes
     if not os.getenv("KEEP_TEMP_FOLDER_FILES"):
         for filename in os.listdir(TEMP_FOLDER_ABS_PATH):
@@ -71,51 +70,56 @@ def temp_folder() -> Generator[str, None, None]:
                 logger.warning(f"Failed to delete {file_path}. Reason: {e}")
 
 
-def pytest_addoption(parser: Any) -> None:
+def pytest_addoption(parser: pytest.Parser) -> None:
     """
-    This function is a pytest hook that is called to add command-line options.
-    It is used to add custom command-line options that are specific to the agent benchmark tests.
-    These options can be used to control the behavior of the tests.
-    The "--mock" option is used to run the tests in mock mode.
-    The "--host" option is used to specify the host for the tests.
-    The "--category" option is used to run only tests of a specific category.
-    The "--nc" option is used to run the tests without caching.
-    The "--cutoff" option is used to specify a cutoff time for the tests.
-    The "--improve" option is used to run only the tests that are marked for improvement.
-    The "--maintain" option is used to run only the tests that are marked for maintenance.
-    The "--explore" option is used to run the tests in exploration mode.
-    The "--test" option is used to run a specific test.
-    The "--no_dep" option is used to run the tests without dependencies.
-    The "--keep_answers" option is used to keep the answers of the tests.
+    Pytest hook that adds command-line options to the `pytest` command.
+    The added options are specific to agbenchmark and control its behavior:
+    * `--mock` is used to run the tests in mock mode.
+    * `--host` is used to specify the host for the tests.
+    * `--category` is used to run only tests of a specific category.
+    * `--nc` is used to run the tests without caching.
+    * `--cutoff` is used to specify a cutoff time for the tests.
+    * `--improve` is used to run only the tests that are marked for improvement.
+    * `--maintain` is used to run only the tests that are marked for maintenance.
+    * `--explore` is used to run the tests in exploration mode.
+    * `--test` is used to run a specific test.
+    * `--no_dep` is used to run the tests without dependencies.
+    * `--keep_answers` is used to keep the answers of the tests.
 
     Args:
-        parser (Any): The parser object to which the command-line options are added.
+        parser: The Pytest CLI parser to which the command-line options are added.
     """
-    parser.addoption("--no_dep", action="store_true", default=False)
-    parser.addoption("--mock", action="store_true", default=False)
-    parser.addoption("--host", action="store_true", default=None)
-    parser.addoption("--nc", action="store_true", default=False)
-    parser.addoption("--cutoff", action="store_true", default=False)
-    parser.addoption("--category", action="store_true", default=False)
-    parser.addoption("--test", action="store_true", default=None)
-    parser.addoption("--improve", action="store_true", default=False)
-    parser.addoption("--maintain", action="store_true", default=False)
-    parser.addoption("--explore", action="store_true", default=False)
-    parser.addoption("--keep-answers", action="store_true", default=False)
+    parser.addoption("--no_dep", action="store_true")
+    parser.addoption("--mock", action="store_true")
+    parser.addoption("--host", default=None)
+    parser.addoption("--nc", action="store_true")
+    parser.addoption("--cutoff", action="store_true")
+    parser.addoption("--category", action="append")
+    parser.addoption("--test", default=None)
+    parser.addoption("--improve", action="store_true")
+    parser.addoption("--maintain", action="store_true")
+    parser.addoption("--explore", action="store_true")
+    parser.addoption("--keep-answers", action="store_true")
 
 
 @pytest.fixture(autouse=True)
-def check_regression(request: Any) -> None:
+def check_regression(request: pytest.FixtureRequest) -> None:
     """
-    This pytest fixture is responsible for checking if a test is a regression test.
-    It is automatically used in every test due to the 'autouse=True' parameter.
-    The test name and the agent benchmark configuration are retrieved from the request object.
-    The regression reports are loaded from the path specified in the agent benchmark configuration.
-    If the "--improve" option is used and the test name exists in the regression tests, the test is skipped.
-    If the "--maintain" option is used and the test name does not exist in the regression tests, the test is also skipped.
+    Fixture that checks for every test if it should be treated as a regression test,
+    and whether to skip it based on that.
+
+    The test name is retrieved from the `request` object. Regression reports are loaded
+    from the path specified in the benchmark configuration.
+
+    Effect:
+    * If the `--improve` option is used and the current test is considered a regression
+      test, it is skipped.
+    * If the `--maintain` option is used and the current test  is not considered a
+      regression test, it is also skipped.
 
     Args:
-        request (Any): The request object from which the test name and the agent benchmark configuration are retrieved.
+        request: The request object from which the test name and the benchmark
+            configuration are retrieved.
     """
     test_name = request.node.parent.name
     agent_benchmark_config = load_agbenchmark_config()
@@ -135,53 +139,44 @@ def check_regression(request: Any) -> None:
 
 # this is to get the challenge_data from every test
 @pytest.fixture(autouse=True)
-def challenge_data(request: Any) -> None:
+def challenge_data(request: pytest.FixtureRequest) -> Any:
     """
-    This pytest fixture is responsible for providing the challenge data for each test.
-    It is automatically used in every test due to the 'autouse=True' parameter.
+    Pytest fixture that provides the challenge data for each test.
     The challenge data is retrieved from the request object's parameters.
-    This fixture is essential for the pytest system as it provides the necessary data for each test.
 
     Args:
-        request (Any): The request object from which the challenge data is retrieved.
-
-    Returns:
-        None: The challenge data is directly passed to the test function and does not need to be returned.
+        request: The pytest request object, which should contain challenge data.
     """
     return request.param
 
 
 @pytest.fixture(autouse=True, scope="session")
-def mock(request: Any) -> None:
+def mock(request: pytest.FixtureRequest) -> bool:
     """
-    This pytest fixture is responsible for retrieving the value of the "--mock" command-line option.
-    It is automatically used in every test session due to the 'autouse=True' parameter and 'session' scope.
-    The "--mock" option is used to run the tests in mock mode.
-    This fixture is essential for the pytest system as it provides the necessary command-line option value for each test session.
+    Pytest fixture that retrieves the value of the `--mock` command-line option.
+    The `--mock` option is used to run the tests in mock mode.
 
     Args:
-        request (Any): The request object from which the "--mock" option value is retrieved.
+        request: The `pytest.FixtureRequest` from which the `--mock` option value
+            is retrieved.
 
     Returns:
-        None: The "--mock" option value is directly passed to the test session and does not need to be returned.
+        bool: Whether `--mock` is set for this session.
     """
     return request.config.getoption("--mock")
 
 
 @pytest.fixture(autouse=True, scope="function")
-def timer(request: Any) -> Any:
+def timer(request: pytest.FixtureRequest) -> Generator[None, None, None]:
     """
-    This pytest fixture is responsible for timing the execution of each test.
-    It is automatically used in every test due to the 'autouse=True' parameter and 'function' scope.
+    Pytest fixture that times the execution of each test.
     At the start of each test, it records the current time.
-    After the test function completes, it calculates the run time and appends it to the test node's user properties.
-    This allows the run time of each test to be accessed later for reporting or analysis.
+    After the test function completes, it calculates the run time and adds it to
+    the test node's `user_properties`.
 
     Args:
-        request (Any): The request object from which the test node is retrieved.
-
-    Yields:
-        None: Control is yielded back to the test function.
+        request: The `pytest.FixtureRequest` object through which the run time is stored
+            in the test node's `user_properties`.
     """
     start_time = time.time()
     yield
@@ -189,14 +184,14 @@ def timer(request: Any) -> Any:
     request.node.user_properties.append(("run_time", run_time))
 
 
-def pytest_runtest_makereport(item: Any, call: Any) -> None:
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> None:
     """
-    This function is a pytest hook that is called when a test report is being generated.
+    Pytest hook that is called when a test report is being generated.
     It is used to generate and finalize reports for each test.
 
     Args:
-        item (Any): The test item for which the report is being generated.
-        call (Any): The call object from which the test result is retrieved.
+        item: The test item for which the report is being generated.
+        call: The call object from which the test result is retrieved.
     """
     challenge_data = item.funcargs.get("challenge_data", None)
 
@@ -205,13 +200,6 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
         return
 
     challenge_location: str = getattr(item.cls, "CHALLENGE_LOCATION", "")
-
-    flags = (
-        "--test" in sys.argv
-        or "--maintain" in sys.argv
-        or "--improve" in sys.argv
-        or "--explore" in sys.argv
-    )
 
     if call.when == "call":
         answers = getattr(item, "answers", None)
@@ -229,9 +217,9 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
 
 def timeout_monitor(start_time: int) -> None:
     """
-    This function is responsible for monitoring the total execution time of the test suite.
-    It runs in a separate thread and checks every second if the total execution time has exceeded the global timeout.
-    If the global timeout is exceeded, it terminates the pytest session with a specific return code.
+    Function that limits the total execution time of the test suite.
+    This function is supposed to be run in a separate thread and calls `pytest.exit`
+    if the total execution time has exceeded the global timeout.
 
     Args:
         start_time (int): The start time of the test suite.
@@ -242,14 +230,11 @@ def timeout_monitor(start_time: int) -> None:
     pytest.exit("Test suite exceeded the global timeout", returncode=1)
 
 
-def pytest_sessionstart(session: Any) -> None:
+def pytest_sessionstart(session: pytest.Session) -> None:
     """
-    This function is a pytest hook that is called at the start of the test session.
-    It starts the timeout monitor in a separate thread.
-    The timeout monitor checks if the total execution time of the test suite has exceeded the global timeout.
+    Pytest hook that is called at the start of a test session.
 
-    Args:
-        session (Any): The pytest session object.
+    Sets up and runs a `timeout_monitor` in a separate thread.
     """
     start_time = time.time()
     t = threading.Thread(target=timeout_monitor, args=(start_time,))
@@ -257,63 +242,53 @@ def pytest_sessionstart(session: Any) -> None:
     t.start()
 
 
-def pytest_sessionfinish(session: Any) -> None:
+def pytest_sessionfinish(session: pytest.Session) -> None:
     """
-    This function is a pytest hook that is called at the end of the test session.
-    It is used to finalize and save the test reports.
-    The reports are saved in a specific location defined in the suite reports.
+    Pytest hook that is called at the end of a test session.
 
-    Args:
-        session (Any): The pytest session object.
+    Finalizes and saves the test reports.
     """
     session_finish(suite_reports)
 
 
 @pytest.fixture
-def scores(request: Any) -> None:
+def scores(request: pytest.FixtureRequest) -> None:
     """
-    This pytest fixture is responsible for retrieving the scores of the test class.
-    The scores are retrieved from the test class's 'scores' attribute using the test class name.
-    This fixture is essential for the pytest system as it provides the necessary scores for each test.
+    Pytest fixture that retrieves the scores of the test class.
+    The scores are retrieved from the `Challenge.scores` attribute
+    using the test class name.
 
     Args:
-        request (Any): The request object from which the test class is retrieved.
-
-    Returns:
-        None: The scores are directly passed to the test function and do not need to be returned.
+        request: The request object.
     """
-    test_class_name = request.node.cls.__name__
-    return request.node.cls.scores.get(test_class_name)
+    test_class: type[Challenge] = request.node.cls
+    return test_class.scores.get(test_class.__name__)
 
 
-# this is adding the dependency marker and category markers automatically from the json
-def pytest_collection_modifyitems(items: Any, config: Any) -> None:
+def pytest_collection_modifyitems(
+    items: list[pytest.Item], config: pytest.Config
+) -> None:
     """
-    This function is a pytest hook that is called after the test collection has been performed.
-    It is used to modify the collected test items based on the agent benchmark configuration.
-    The function loads the agent benchmark configuration from the specified path and retrieves the regression reports.
-    For each test item, it checks if the test method exists and retrieves the dependencies and categories from the test class instance.
-    If the "--improve" or "--category" options are used, the dependencies are filtered based on the regression data.
-    If the "--test", "--no_dep", or "--maintain" options are used, the dependencies are cleared.
-    The function then dynamically adds the 'depends' and 'category' markers to the test item.
-    This function is essential for the pytest system as it provides the necessary modification of the test items based on the agent benchmark configuration.
+    Pytest hook that is called after initial test collection has been performed.
+    Modifies the collected test items based on the agent benchmark configuration,
+    adding the dependency marker and category markers.
 
     Args:
-        items (Any): The collected test items to be modified.
-        config (Any): The pytest configuration object from which the agent benchmark configuration path is retrieved.
+        items: The collected test items to be modified.
+        config: The active pytest configuration.
     """
-    agent_benchmark_config = load_agbenchmark_config()
+    # agent_benchmark_config = load_agbenchmark_config()
 
-    regression_file = agent_benchmark_config.get_regression_reports_path()
-    data = (
-        json.loads(open(regression_file, "r").read())
-        if os.path.exists(regression_file)
-        else {}
-    )
+    # regression_file = agent_benchmark_config.get_regression_reports_path()
+    # data = (
+    #     json.loads(open(regression_file, "r").read())
+    #     if os.path.exists(regression_file)
+    #     else {}
+    # )
 
     for item in items:
         # Assuming item.cls is your test class
-        test_class_instance = item.cls()
+        test_class_instance: Challenge = item.cls()
 
         if "test_method" not in item.name:
             continue
@@ -322,7 +297,7 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
         name = item.parent.cls.__name__
         # dependencies = test_class_instance.data.dependencies
 
-        # Filter dependencies if they exist in regression data if its an improvement test
+        # Filter dependencies if they are regression tests and this is an --improve sesh
         # if config.getoption("--improve") or config.getoption(
         #     "--category"
         # ):
@@ -341,4 +316,4 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
 
         # Add category marker dynamically
         for category in categories:
-            item.add_marker(getattr(pytest.mark, category))
+            item.add_marker(category.value)
