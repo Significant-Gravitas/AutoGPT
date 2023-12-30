@@ -52,6 +52,8 @@ class UserContextAgent(BaseAgent):
             agent_id=agent_id,
             vectorstore=vectorstores,
             embedding_model=embeddings,
+            workflow_registry=workflow_registry,
+            **kwargs,
         )
 
         self._loop: UserContextLoop = UserContextLoop()

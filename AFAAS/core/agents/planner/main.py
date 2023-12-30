@@ -77,6 +77,7 @@ class PlannerAgent(BaseAgent):
             agent_id=agent_id,
             vectorstore=vectorstore,
             embedding_model=embedding_model,
+            workflow_registry=workflow_registry,
             **kwargs,
         )
 
