@@ -3,7 +3,7 @@ import logging
 import os
 import pathlib
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from agent_protocol_client import AgentApi, ApiClient, Configuration, TaskRequestBody
 from agent_protocol_client.models.step import Step
@@ -16,10 +16,8 @@ LOG = logging.getLogger(__name__)
 
 
 async def run_api_agent(
-    task: ChallengeData, config: Dict[str, Any], artifacts_location: str, timeout: int
+    task: ChallengeData, config: dict[str, Any], artifacts_location: str, timeout: int
 ) -> None:
-    host_value = None
-
     configuration = Configuration(host=config["AgentBenchmarkConfig"].host)
     async with ApiClient(configuration) as api_client:
         api_instance = AgentApi(api_client)
@@ -50,7 +48,8 @@ async def run_api_agent(
                 raise TimeoutError("Time limit exceeded")
             if not step or step.is_last:
                 steps_remaining = False
-        # if we're calling a mock agent, we "cheat" and give the correct artifacts to pass the tests
+
+        # In "mock" mode, we cheat by giving the correct artifacts to pass the challenge
         if os.getenv("IS_MOCK"):
             await upload_artifacts(
                 api_instance, artifacts_location, task_id, "artifacts_out"
@@ -59,8 +58,10 @@ async def run_api_agent(
         await copy_agent_artifacts_into_temp_folder(api_instance, task_id)
 
 
-async def copy_agent_artifacts_into_temp_folder(api_instance, task_id):
+async def copy_agent_artifacts_into_temp_folder(api_instance: AgentApi, task_id: str):
+    # FIXME: https://github.com/AI-Engineer-Foundation/agent-protocol/issues/91
     artifacts = await api_instance.list_agent_task_artifacts(task_id=task_id)
+
     for artifact in artifacts.artifacts:
         # current absolute path of the directory of the file
         directory_location = pathlib.Path(TEMP_FOLDER_ABS_PATH)
