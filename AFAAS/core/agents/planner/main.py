@@ -20,6 +20,7 @@ from AFAAS.interfaces.agent import (
     ToolExecutor,
 )
 from AFAAS.interfaces.db import AbstractMemory
+from AFAAS.interfaces.workflow import WorkflowRegistry, BaseWorkflow
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.plan import Plan
 
@@ -63,6 +64,7 @@ class PlannerAgent(BaseAgent):
         workspace: AbstractFileWorkspace = None,
         vectorstore: VectorStore = None,  # Optional parameter for custom vectorstore
         embedding_model: Embeddings = None,  # Optional parameter for custom embedding model
+        workflow_registry : WorkflowRegistry = None,
         **kwargs,
     ):
         super().__init__(
@@ -75,6 +77,7 @@ class PlannerAgent(BaseAgent):
             agent_id=agent_id,
             vectorstore=vectorstore,
             embedding_model=embedding_model,
+            workflow_registry=workflow_registry,
             **kwargs,
         )
 
