@@ -16,6 +16,9 @@ from agbenchmark.app import app
 from agbenchmark.config import load_agbenchmark_config
 from agbenchmark.reports.ReportManager import SingletonReportManager
 from agbenchmark.utils.logging import configure_logging
+from agbenchmark.utils.path_manager import PATH_MANAGER
+
+load_dotenv()
 
 try:
     if os.getenv("HELICONE_API_KEY"):
@@ -34,15 +37,8 @@ class InvalidInvocationError(ValueError):
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
-
 BENCHMARK_START_TIME_DT = datetime.now(timezone.utc)
 BENCHMARK_START_TIME = BENCHMARK_START_TIME_DT.strftime("%Y-%m-%dT%H:%M:%S+00:00")
-TEMP_FOLDER_ABS_PATH = Path.cwd() / "agbenchmark_config" / "temp_folder"
-CHALLENGES_ALREADY_BEATEN = (
-    Path.cwd() / "agbenchmark_config" / "challenges_already_beaten.json"
-)
-UPDATES_JSON_PATH = Path.cwd() / "agbenchmark_config" / "updates.json"
 
 
 if helicone_enabled:
@@ -345,14 +341,14 @@ def serve():
 
 
 def initialize_updates_file():
-    if os.path.exists(UPDATES_JSON_PATH):
+    if os.path.exists(PATH_MANAGER.updates_json_file):
         # If the file already exists, overwrite it with an empty list
-        with open(UPDATES_JSON_PATH, "w") as file:
+        with open(PATH_MANAGER.updates_json_file, "w") as file:
             json.dump([], file, indent=2)
         logger.debug("Initialized updates.json by overwriting with an empty array")
     else:
         # If the file doesn't exist, create it and write an empty list
-        with open(UPDATES_JSON_PATH, "w") as file:
+        with open(PATH_MANAGER.updates_json_file, "w") as file:
             json.dump([], file, indent=2)
         logger.debug("Created updates.json and initialized it with an empty array")
 

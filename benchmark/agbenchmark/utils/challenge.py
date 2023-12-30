@@ -11,9 +11,10 @@ import openai
 import pytest
 from colorama import Fore, Style
 
-from agbenchmark.__main__ import OPTIONAL_CATEGORIES, TEMP_FOLDER_ABS_PATH
+from agbenchmark.__main__ import OPTIONAL_CATEGORIES
 from agbenchmark.agent_api_interface import run_api_agent
 from agbenchmark.utils.data_types import ChallengeData, Ground
+from agbenchmark.utils.path_manager import PATH_MANAGER
 from agbenchmark.utils.prompts import (
     END_PROMPT,
     FEW_SHOT_EXAMPLES,
@@ -70,13 +71,15 @@ class Challenge(ABC):
             str(Path(self.CHALLENGE_LOCATION).parent),
         ]
         for path in artifact_paths:
-            copy_artifacts_into_temp_folder(TEMP_FOLDER_ABS_PATH, "custom_python", path)
+            copy_artifacts_into_temp_folder(
+                PATH_MANAGER.temp_folder, "custom_python", path
+            )
 
     def test_method(self, config: Dict[str, Any]) -> None:
         raise NotImplementedError
 
     def get_artifacts_out(
-        self, workspace: str | dict[str, str], ground: Ground
+        self, workspace: str | Path | dict[str, str], ground: Ground
     ) -> List[str]:
         if isinstance(workspace, dict):
             workspace = workspace["output"]
@@ -112,7 +115,7 @@ class Challenge(ABC):
             if ground.eval.type == "pytest":
                 result = subprocess.run(
                     [sys.executable, "-m", "pytest"],
-                    cwd=TEMP_FOLDER_ABS_PATH,
+                    cwd=PATH_MANAGER.temp_folder,
                     capture_output=True,
                     text=True,
                 )
@@ -191,7 +194,7 @@ class Challenge(ABC):
                 answers = {"mock": "This is a mock answer"}
             elif isinstance(self.data.ground, Ground):
                 files_contents = self.get_artifacts_out(
-                    TEMP_FOLDER_ABS_PATH, self.data.ground
+                    PATH_MANAGER.temp_folder, self.data.ground
                 )
                 answers = {"answer": files_contents}
                 for file_content in files_contents:

@@ -10,7 +10,6 @@ from typing import Any, Generator
 
 import pytest
 
-from agbenchmark.__main__ import TEMP_FOLDER_ABS_PATH
 from agbenchmark.config import load_agbenchmark_config
 from agbenchmark.reports.reports import (
     finalize_reports,
@@ -19,6 +18,7 @@ from agbenchmark.reports.reports import (
 )
 from agbenchmark.utils.challenge import Challenge
 from agbenchmark.utils.data_types import Category
+from agbenchmark.utils.path_manager import PATH_MANAGER
 
 GLOBAL_TIMEOUT = (
     1500  # The tests will stop after 25 minutes so we can send the reports.
@@ -54,14 +54,14 @@ def temp_folder() -> Generator[Path, None, None]:
     """
 
     # create output directory if it doesn't exist
-    if not os.path.exists(TEMP_FOLDER_ABS_PATH):
-        os.makedirs(TEMP_FOLDER_ABS_PATH, exist_ok=True)
+    if not os.path.exists(PATH_MANAGER.temp_folder):
+        os.makedirs(PATH_MANAGER.temp_folder, exist_ok=True)
 
-    yield TEMP_FOLDER_ABS_PATH
+    yield PATH_MANAGER.temp_folder
     # teardown after test function completes
     if not os.getenv("KEEP_TEMP_FOLDER_FILES"):
-        for filename in os.listdir(TEMP_FOLDER_ABS_PATH):
-            file_path = os.path.join(TEMP_FOLDER_ABS_PATH, filename)
+        for filename in os.listdir(PATH_MANAGER.temp_folder):
+            file_path = os.path.join(PATH_MANAGER.temp_folder, filename)
             try:
                 if os.path.isfile(file_path) or os.path.islink(file_path):
                     os.unlink(file_path)

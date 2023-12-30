@@ -1,16 +1,15 @@
 import json
 import logging
 import os
-import pathlib
 import time
 from typing import Any, Optional
 
 from agent_protocol_client import AgentApi, ApiClient, Configuration, TaskRequestBody
 from agent_protocol_client.models.step import Step
 
-from agbenchmark.__main__ import TEMP_FOLDER_ABS_PATH, UPDATES_JSON_PATH
 from agbenchmark.agent_interface import get_list_of_file_paths
 from agbenchmark.utils.data_types import ChallengeData
+from agbenchmark.utils.path_manager import PATH_MANAGER
 
 LOG = logging.getLogger(__name__)
 
@@ -64,18 +63,16 @@ async def copy_agent_artifacts_into_temp_folder(api_instance: AgentApi, task_id:
 
     for artifact in artifacts.artifacts:
         # current absolute path of the directory of the file
-        directory_location = pathlib.Path(TEMP_FOLDER_ABS_PATH)
+        directory_location = PATH_MANAGER.temp_folder
         if artifact.relative_path:
-            path = (
+            path: str = (
                 artifact.relative_path
                 if not artifact.relative_path.startswith("/")
                 else artifact.relative_path[1:]
             )
-            directory_location = pathlib.Path(
-                os.path.dirname(directory_location / path)
-            )
-            LOG.info(f"Creating directory {directory_location}")
+            directory_location = (directory_location / path).parent
 
+        LOG.info(f"Creating directory {directory_location}")
         directory_location.mkdir(parents=True, exist_ok=True)
 
         file_path = directory_location / artifact.file_name
@@ -89,14 +86,14 @@ async def copy_agent_artifacts_into_temp_folder(api_instance: AgentApi, task_id:
 
 
 async def append_updates_file(step: Step):
-    with open(UPDATES_JSON_PATH, "r") as file:
+    with open(PATH_MANAGER.updates_json_file, "r") as file:
         existing_data = json.load(file)
     # Append the new update to the existing array
     new_update = create_update_json(step)
 
     existing_data.append(new_update)
     # Write the updated array back to the file
-    with open(UPDATES_JSON_PATH, "w") as file:
+    with open(PATH_MANAGER.updates_json_file, "w") as file:
         file.write(json.dumps(existing_data, indent=2))
 
 

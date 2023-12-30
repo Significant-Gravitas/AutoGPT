@@ -11,11 +11,11 @@ from typing import Any
 import pytest
 from agent_protocol_client.models.step import Step
 
-from agbenchmark.__main__ import CHALLENGES_ALREADY_BEATEN
 from agbenchmark.agent_api_interface import append_updates_file
 from agbenchmark.config import load_agbenchmark_config
 from agbenchmark.utils.challenge import Challenge
 from agbenchmark.utils.data_types import ChallengeData
+from agbenchmark.utils.path_manager import PATH_MANAGER
 
 DATA_CATEGORY = {}
 
@@ -40,7 +40,7 @@ def create_single_test(
         test_name = self.data.name
 
         try:
-            with open(CHALLENGES_ALREADY_BEATEN, "r") as f:
+            with open(PATH_MANAGER.challenges_already_beaten, "r") as f:
                 challenges_beaten_in_the_past = json.load(f)
         except FileNotFoundError:
             challenges_beaten_in_the_past = {}

@@ -4,11 +4,11 @@ import os
 import sys
 from typing import Any, Dict
 
-from agbenchmark.__main__ import CHALLENGES_ALREADY_BEATEN
 from agbenchmark.config import load_agbenchmark_config
 from agbenchmark.reports.ReportManager import SingletonReportManager
 from agbenchmark.utils.data_types import DifficultyLevel
 from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
+from agbenchmark.utils.path_manager import PATH_MANAGER
 from agbenchmark.utils.utils import calculate_success_percentage
 
 logger = logging.getLogger(__name__)
@@ -166,7 +166,7 @@ def update_challenges_already_beaten(
 ) -> None:
     current_run_successful = info_details["metrics"]["success"]
     try:
-        with open(CHALLENGES_ALREADY_BEATEN, "r") as f:
+        with open(PATH_MANAGER.challenges_already_beaten, "r") as f:
             challenge_data = json.load(f)
     except:
         challenge_data = {}
@@ -176,7 +176,7 @@ def update_challenges_already_beaten(
     if challenge_beaten_in_the_past is None and not current_run_successful:
         challenge_data[test_name] = False
 
-    with open(CHALLENGES_ALREADY_BEATEN, "w") as f:
+    with open(PATH_MANAGER.challenges_already_beaten, "w") as f:
         json.dump(challenge_data, f, indent=4)
 
 

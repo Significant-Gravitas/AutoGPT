@@ -26,6 +26,7 @@ from agbenchmark.reports.processing.report_types_v2 import (
     TaskInfo,
 )
 from agbenchmark.schema import TaskEvalRequestBody
+from agbenchmark.utils.path_manager import PATH_MANAGER
 from agbenchmark.utils.utils import write_pretty_json
 
 sys.path.append(str(Path(__file__).parent.parent))
@@ -179,12 +180,10 @@ def run_single_test(body: CreateReportRequest) -> dict:
 
 @router.get("/updates")
 def get_updates(request: Request) -> list[dict]:
-    from agbenchmark.__main__ import UPDATES_JSON_PATH
-
     try:
         # Read data from the "update.json" file (provide the correct file path)
-        logger.debug(f"Reading updates from {UPDATES_JSON_PATH}...")
-        with open(UPDATES_JSON_PATH, "r") as file:
+        logger.debug(f"Reading updates from {PATH_MANAGER.updates_json_file}...")
+        with open(PATH_MANAGER.updates_json_file, "r") as file:
             data = json.load(file)
 
         # Get the last_update_time from the query parameter
@@ -296,7 +295,6 @@ async def proxy(request: Request, task_id: str):
 
 @router.post("/agent/tasks/{task_id}/evaluations")
 async def create_evaluation(task_id: str) -> BenchmarkRun:
-    from agbenchmark.__main__ import TEMP_FOLDER_ABS_PATH
     from agbenchmark.agent_api_interface import copy_agent_artifacts_into_temp_folder
     from agbenchmark.agent_interface import copy_artifacts_into_temp_folder
     from agbenchmark.generate_test import create_challenge
@@ -310,7 +308,7 @@ async def create_evaluation(task_id: str) -> BenchmarkRun:
 
         artifact_path = str(Path(challenge_info["path"]).parent)
         copy_artifacts_into_temp_folder(
-            TEMP_FOLDER_ABS_PATH, "custom_python", artifact_path
+            PATH_MANAGER.temp_folder, "custom_python", artifact_path
         )
         json_file = challenge_info["path"]
         json_files = deque()
