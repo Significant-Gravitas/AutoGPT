@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "AFAAS"
-version = "0.0.1"
+version = "0.0.0"
 description = ""
 authors = ["Pierre-Henri AUSSEIL"]
 license = "No license, you are not allowed to read this code, neither execute it, nor copy it, nor modify it, nor distribute it, nor use it in any way, shape or form."
@@ -15,8 +15,8 @@ packages = [
 #"aiohttp" = "3.8.3"
 
 [tool.poetry.scripts]
-run-server = "app.cli:cli"
-run-app = "app.cli:serve"
+demo = "app.cli_app.cli:run"
+run-server= "app.cli:serve"
 
 
 [tool.poetry.dependencies]
