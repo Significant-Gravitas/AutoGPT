@@ -19,7 +19,6 @@ body:
         ⚠️ Please do not prefix your Title with "Bug" , "Fix" , our CI does it ⚠️
 
         Provide a meanful title that leaves to no ambiguity
-
   - type: textarea
     attributes:
       label: Summary 💡
