@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from AFAAS.interfaces.db import AbstractMemory
+from AFAAS.interfaces.db.db import AbstractMemory
 from AFAAS.interfaces.db_nosql import NoSQLMemory
 from AFAAS.lib.sdk.logger import AFAASLogger
 
@@ -64,7 +64,7 @@ class JSONFileMemory(NoSQLMemory):
         else:
             raise KeyError(f"No such key '{key}' in table {table_name}")
 
-    from AFAAS.interfaces.db_table import AbstractTable
+    from AFAAS.interfaces.db.db_table import AbstractTable
 
     def list(
         self,

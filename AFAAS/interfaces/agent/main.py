@@ -129,8 +129,8 @@ class BaseAgent(AbstractAgent, Configurable):
     )  -> list[dict] : #-> list[BaseAgent.SystemSettings]:   
         LOG.trace(f"Entering : {cls.__name__}.list_users_agents_from_memory()")
         from AFAAS.core.db.table.nosql.agent import AgentsTable
-        from AFAAS.interfaces.db import AbstractMemory
-        from AFAAS.interfaces.db_table import AbstractTable
+        from AFAAS.interfaces.db.db import AbstractMemory
+        from AFAAS.interfaces.db.db_table import AbstractTable
 
         memory_settings = AbstractMemory.SystemSettings()
 
@@ -168,7 +168,7 @@ class BaseAgent(AbstractAgent, Configurable):
         user_id: uuid.UUID,
     ) -> BaseAgent:
         from AFAAS.core.db.table.nosql.agent import AgentsTable
-        from AFAAS.interfaces.db import AbstractMemory
+        from AFAAS.interfaces.db.db import AbstractMemory
 
         # memory_settings = Memory.SystemSettings(configuration=agent_settings.memory)
         memory_settings = agent_settings.memory

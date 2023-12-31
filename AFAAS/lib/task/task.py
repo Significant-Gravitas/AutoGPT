@@ -426,6 +426,7 @@ class Task(AbstractTask):
             self.long_description = rv.parsed_result[0]["command_args"][
                 "long_description"
             ]
+            #FIXME: ONY for ruting & planning ?
             self.task_workflow = rv.parsed_result[0]["command_args"]["task_workflow"]
 
 

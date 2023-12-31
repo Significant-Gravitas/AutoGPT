@@ -13,7 +13,7 @@ from pydantic import Field
 from AFAAS.configs.schema import Configurable, SystemConfiguration, SystemSettings
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.db_table import AbstractTable
+    from AFAAS.interfaces.db.db_table import AbstractTable
 
 from AFAAS.lib.sdk.logger import AFAASLogger
 
@@ -211,29 +211,29 @@ class AbstractMemory(Configurable, abc.ABC):
             return returnvalue
 
         if table_name == "tasks":
-            from AFAAS.core.db.table import TasksTable
+            from AFAAS.core.db.table.nosql.task import TasksTable
 
             returnvalue = TasksTable(memory=self)
             return returnvalue
 
         elif table_name == "plans":
-            from AFAAS.core.db.table import PlansTable
+            from AFAAS.core.db.table.nosql.plan import PlansTable
 
             returnvalue = PlansTable(memory=self)
             return returnvalue
 
         elif table_name == "message_agent_agent":
-            from AFAAS.core.db.table import MessagesAgentAgentTable
+            from AFAAS.core.db.table.nosql.message_agent_agent import MessagesAgentAgentTable
 
             return MessagesAgentAgentTable(memory=self)
 
         elif table_name == "message_agent_llm":
-            from AFAAS.core.db.table import MessagesAgentLLMTable
+            from AFAAS.core.db.table.nosql.message_agent_llm import MessagesAgentLLMTable
 
             return MessagesAgentLLMTable(memory=self)
 
         elif table_name == "message_agent_user":
-            from AFAAS.core.db.table import MessagesUserAgentTable
+            from AFAAS.core.db.table.nosql.message_user_agent import MessagesUserAgentTable
 
             return MessagesUserAgentTable(memory=self)
 

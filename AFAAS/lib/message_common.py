@@ -2,7 +2,7 @@ import json
 from typing import Any, ClassVar, Generator, Optional
 
 from AFAAS.configs.schema import AFAASModel
-from AFAAS.interfaces.db import AbstractMemory
+from AFAAS.interfaces.db.db import AbstractMemory
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)

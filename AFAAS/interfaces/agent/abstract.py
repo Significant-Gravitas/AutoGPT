@@ -11,7 +11,7 @@ from AFAAS.configs.schema import Configurable, SystemSettings
 from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider
 from AFAAS.interfaces.agent.assistants.prompt_manager import BasePromptManager
 from AFAAS.interfaces.agent.loop import BaseLoop  # Import only where it's needed
-from AFAAS.interfaces.db import AbstractMemory
+from AFAAS.interfaces.db.db import AbstractMemory
 from AFAAS.interfaces.workflow import WorkflowRegistry
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 from AFAAS.lib.message_common import AFAASMessageStack

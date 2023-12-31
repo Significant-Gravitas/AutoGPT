@@ -9,7 +9,7 @@ from typing import Any, Literal, Optional, TypedDict
 from pydantic import BaseModel
 
 from AFAAS.configs.schema import AFAASModel
-from AFAAS.interfaces.db_table import AbstractTable
+from AFAAS.interfaces.db.db_table import AbstractTable
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)

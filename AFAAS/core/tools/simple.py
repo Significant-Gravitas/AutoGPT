@@ -24,7 +24,7 @@ from AFAAS.interfaces.adapters import (
     CompletionModelFunction,
     ModelProviderName,
 )
-from AFAAS.interfaces.db import AbstractMemory
+from AFAAS.interfaces.db.db import AbstractMemory
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 
 

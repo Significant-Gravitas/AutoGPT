@@ -12,7 +12,8 @@ from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.agent.assistants.prompt_manager import BasePromptManager
 from AFAAS.interfaces.agent.assistants.tool_executor import ToolExecutor
-from AFAAS.interfaces.db import AbstractMemory
+from AFAAS.interfaces.db.db import AbstractMemory
+from AFAAS.interfaces.tools.base import BaseToolsRegistry
 from AFAAS.interfaces.workflow import WorkflowRegistry
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.plan import Plan

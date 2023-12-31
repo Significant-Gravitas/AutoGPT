@@ -6,7 +6,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, TypedDict, Union
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.db import AbstractMemory
+    from AFAAS.interfaces.db.db import AbstractMemory
 
 
 class AbstractTable(abc.ABC):
