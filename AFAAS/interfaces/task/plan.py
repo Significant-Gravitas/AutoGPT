@@ -96,3 +96,7 @@ class AbstractPlan(AbstractBaseTask):
     @abstractmethod
     def _register_task_as_modified(self, task_id: str) -> None:
         ...
+
+    @abstractmethod
+    def _register_new_task(self, task: AbstractTask) -> None:
+        ...

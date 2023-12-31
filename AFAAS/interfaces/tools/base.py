@@ -13,8 +13,7 @@ from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 from AFAAS.lib.utils.json_schema import JSONSchema
 
-from ..tools.schema import ToolResult
-from .schema import ToolResult
+from AFAAS.interfaces.tools.schema import ToolResult
 
 
 class ToolConfiguration(SystemConfiguration):

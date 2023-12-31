@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from AFAAS.interfaces.db.db_table import AbstractTable
     from AFAAS.interfaces.adapters import \
         CompletionModelFunction , AbstractChatModelResponse
-    from AFAAS.core.tools.base import BaseToolsRegistry
+    from AFAAS.interfaces.tools.base import BaseToolsRegistry
     from AFAAS.core.tools.tools import Tool
     from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
 

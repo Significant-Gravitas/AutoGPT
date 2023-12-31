@@ -211,6 +211,7 @@ class AFAASModel(BaseModel):
 
 class SystemSettings(AFAASModel):
     class Config(AFAASModel.Config):
+        #FIXME: Workaround to not serialize elements that contains unserializable class , proper way is to implement serialization for each class
         default_exclude = {
             "agent",
             "workspace",
@@ -227,6 +228,7 @@ class SystemSettings(AFAASModel):
             "description",
             "parent_agent",
             "current_task",
+            "plan"
         }
 
 

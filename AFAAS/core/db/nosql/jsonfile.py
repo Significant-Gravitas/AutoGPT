@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from AFAAS.interfaces.db.db import AbstractMemory
-from AFAAS.interfaces.db_nosql import NoSQLMemory
+from AFAAS.interfaces.db.db_nosql import NoSQLMemory
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)

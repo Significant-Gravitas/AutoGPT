@@ -47,6 +47,7 @@ async def afaas_routing(
         #FIXME: Define wich dependency to inject
         routing_agent = RoutingAgent(
             settings = routing_settings,
+            **RoutingStrategyConfiguration().dict(),
         )
         #NOTE: We don't save the agent
         #new_user_context_agent = UserContextAgent.create_agent()

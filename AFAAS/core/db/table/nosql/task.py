@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .base import BaseNoSQLTable
+from .....interfaces.db.table.nosql.base import BaseNoSQLTable
 
 
 class TasksTable(BaseNoSQLTable):
