@@ -13,10 +13,13 @@ LOG = AFAASLogger(name=__name__)
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent.main import BaseAgent
 
-from AFAAS.configs.schema import Configurable, SystemConfiguration
 
+from AFAAS.configs.schema import Configurable, SystemConfiguration
 # from AFAAS.core.tools.builtins import BUILTIN_TOOLS
 from AFAAS.core.tools.tool_decorator import AFAAS_TOOL_IDENTIFIER
+
+from AFAAS.interfaces.tools.base import BaseTool, BaseToolsRegistry, ToolConfiguration
+from AFAAS.interfaces.tools.schema import ToolResult
 from AFAAS.interfaces.adapters import (
     AbstractChatModelProvider,
     CompletionModelFunction,
@@ -137,6 +140,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         #     x for x in modules if x not in config.disabled_tool_categories
         # ]
         # enabled_tool_modules = [x for x in module_name]
+        
         enabled_tool_modules = [module_name]
 
         LOG.notice(f"The following tool categories are enabled: {enabled_tool_modules}")
