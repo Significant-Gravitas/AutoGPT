@@ -5,8 +5,8 @@ from typing import Optional
 
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.task.base import AbstractBaseTask
-from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.interfaces.task.meta import TaskStatusList
+from AFAAS.interfaces.task.task import AbstractTask
 
 
 class AbstractPlan(AbstractBaseTask):
@@ -90,7 +90,9 @@ class AbstractPlan(AbstractBaseTask):
         ...
 
     @abstractmethod
-    def _registry_update_task_status_in_list(self, task_id: AbstractTask, status: TaskStatusList) : 
+    def _registry_update_task_status_in_list(
+        self, task_id: AbstractTask, status: TaskStatusList
+    ):
         ...
 
     @abstractmethod

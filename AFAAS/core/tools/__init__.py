@@ -4,4 +4,3 @@ from __future__ import annotations
 
 from AFAAS.core.tools.simple import SimpleToolRegistry
 from AFAAS.core.tools.tools import Tool
-

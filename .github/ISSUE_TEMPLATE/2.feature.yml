@@ -5,15 +5,21 @@ body:
   - type: markdown
     attributes:
       value: |
-        First, check out our [wiki page on Contributing](https://github.com/Significant-Gravitas/Nexus/wiki/Contributing)
-        Please provide a searchable summary of the issue in the title above ⬆️.
-  - type: checkboxes
+        ### ⚠️ Before you continue
+
+        This issues are looking for contributor : https://github.com/users/ph-ausseil/projects/1/views/2?layout=table&filterQuery=status%3A%22Looking+for+a+volunteer%22 
+
+        * **Thoroughly search the [existing issues] before creating a new one**
+        [existing issues]: https://github.com/ph-ausseil/AFAAS/issues?q=is%3Aissue
+
+
+  - type: markdown
     attributes:
-      label: Duplicates
-      description: Please [search the history](https://github.com/Significant-Gravitas/AFAAS/issues) to see if an issue already exists for the same problem.
-      options:
-        - label: I have searched the existing issues
-          required: true
+      value: |
+        ⚠️ Please do not prefix your Title with "Bug" , "Fix" , our CI does it ⚠️
+
+        Provide a meanful title that leaves to no ambiguity
+
   - type: textarea
     attributes:
       label: Summary 💡

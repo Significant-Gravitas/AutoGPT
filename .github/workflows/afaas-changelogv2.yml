@@ -98,7 +98,7 @@ jobs:
           
         - name: Run autoflake
           run: |
-            poetry run autoflake --remove-all-unused-imports --remove-unused-variables --in-place --recursive .
+            poetry run autoflake --remove-all-unused-imports --remove-unused-variables --in-place --recursive --exclude=__init__.py .
             git config --global user.name 'autoflake-bot'
             git config --global user.email 'autoflake-bot@example.com'
             git pull

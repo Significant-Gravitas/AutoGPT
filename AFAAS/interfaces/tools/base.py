@@ -11,9 +11,8 @@ from AFAAS.configs.schema import SystemConfiguration
 from AFAAS.interfaces.adapters import CompletionModelFunction
 from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
-from AFAAS.lib.utils.json_schema import JSONSchema
-
 from AFAAS.interfaces.tools.schema import ToolResult
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 
 class ToolConfiguration(SystemConfiguration):

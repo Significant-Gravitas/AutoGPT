@@ -7,9 +7,9 @@ from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
 
 from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
-from AFAAS.interfaces.agent.main import BaseAgent
+from AFAAS.interfaces.agent.assistants.prompt_manager import BasePromptManager
 from AFAAS.interfaces.agent.loop import BaseLoopHook
-from AFAAS.interfaces.agent.assistants.prompt_manager import  BasePromptManager
+from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.db.db import AbstractMemory
 from AFAAS.interfaces.workflow import WorkflowRegistry
 from AFAAS.interfaces.workspace import AbstractFileWorkspace

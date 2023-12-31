@@ -8,7 +8,7 @@ from pydantic import Field
 # from AFAAS.core.memory import
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.task.meta import TaskStatusList
-from AFAAS.interfaces.task.plan import AbstractPlan, AbstractBaseTask
+from AFAAS.interfaces.task.plan import AbstractBaseTask, AbstractPlan
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.task import Task
 
@@ -39,8 +39,8 @@ class Plan(AbstractPlan):
         self.agent.plan: Plan = self
 
         # Load the tasks from the database
-        from AFAAS.interfaces.db.table.nosql.base import AbstractTable
         from AFAAS.interfaces.db.db import AbstractMemory
+        from AFAAS.interfaces.db.table.nosql.base import AbstractTable
 
         agent: BaseAgent = kwargs["agent"]
         memory: AbstractMemory = agent.memory
@@ -354,7 +354,7 @@ class Plan(AbstractPlan):
         """
         LOG.debug(f"Creating plan for agent {agent.agent_id}")
         memory = agent.memory
-        plan_table = memory.get_table("plans")
+        memory.get_table("plans")
 
         plan = cls(
             agent_id=agent.agent_id,
@@ -365,7 +365,7 @@ class Plan(AbstractPlan):
 
         plan._create_initial_tasks(status=TaskStatusList.READY)
 
-        #plan_table.add(plan, id=plan.plan_id)
+        # plan_table.add(plan, id=plan.plan_id)
         plan.save(creation=True)
         return plan
 
@@ -419,7 +419,7 @@ class Plan(AbstractPlan):
 
         self.add_tasks(tasks=initial_task_list)
 
-    def save(self , creation = False):
+    def save(self, creation=False):
         ###
         # Step 1 : Lazy saving : Update Existing Tasks
         ###
@@ -454,7 +454,7 @@ class Plan(AbstractPlan):
             plan_table = memory.get_table("plans")
             if creation:
                 plan_table.add(value=self, id=self.plan_id)
-            else:    
+            else:
                 plan_table.update(
                     plan_id=self.plan_id, agent_id=self.agent.agent_id, value=self
                 )

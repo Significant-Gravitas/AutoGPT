@@ -223,17 +223,23 @@ class AbstractMemory(Configurable, abc.ABC):
             return returnvalue
 
         elif table_name == "message_agent_agent":
-            from AFAAS.core.db.table.nosql.message_agent_agent import MessagesAgentAgentTable
+            from AFAAS.core.db.table.nosql.message_agent_agent import (
+                MessagesAgentAgentTable,
+            )
 
             return MessagesAgentAgentTable(memory=self)
 
         elif table_name == "message_agent_llm":
-            from AFAAS.core.db.table.nosql.message_agent_llm import MessagesAgentLLMTable
+            from AFAAS.core.db.table.nosql.message_agent_llm import (
+                MessagesAgentLLMTable,
+            )
 
             return MessagesAgentLLMTable(memory=self)
 
         elif table_name == "message_agent_user":
-            from AFAAS.core.db.table.nosql.message_user_agent import MessagesUserAgentTable
+            from AFAAS.core.db.table.nosql.message_user_agent import (
+                MessagesUserAgentTable,
+            )
 
             return MessagesUserAgentTable(memory=self)
 

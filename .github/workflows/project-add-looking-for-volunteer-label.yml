@@ -1,0 +1,32 @@
+name: Milestone Assignment Workflow
+
+on:
+  issues:
+    types: [milestoned]
+  pull_request:
+    types: [milestoned]
+
+jobs:
+  move-to-column:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Move to Project Column
+      uses: actions/github-script@v5
+      with:
+        script: |
+          const token = process.env.GITHUB_TOKEN;
+          const columnId = 'COLUMN_ID'; // Replace with your column ID
+          const issueOrPr = context.payload.issue || context.payload.pull_request;
+          
+          // Function to move Issue or PR to the specified column
+          async function moveToColumn(issueOrPrNumber, columnId) {
+            //... (code to move issue/PR to the column)
+          }
+
+          // Main logic
+          (async () => {
+            await moveToColumn(issueOrPr.number, columnId);
+          })();
+          
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

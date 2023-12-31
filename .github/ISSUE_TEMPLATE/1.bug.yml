@@ -6,27 +6,19 @@ body:
     attributes:
       value: |
         ### ⚠️ Before you continue
-        * Check out our [backlog], [roadmap] and join our [discord] to discuss what's going on
-        * If you need help, you can ask in the [discussions] section or in [#tech-support]
-        * **Thoroughly search the [existing issues] before creating a new one**
-        * Read our [wiki page on Contributing]
-        [backlog]: https://github.com/orgs/Significant-Gravitas/projects/1
-        [roadmap]: https://github.com/orgs/Significant-Gravitas/projects/2  
-        [discord]: https://discord.gg/autogpt
-        [discussions]: https://github.com/Significant-Gravitas/AFAAS/discussions
-        [#tech-support]: https://discord.com/channels/1092243196446249134/1092275629602394184
-        [existing issues]: https://github.com/Significant-Gravitas/AFAAS/issues?q=is%3Aissue
-        [wiki page on Contributing]: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing
 
-  - type: checkboxes
+        This issues are looking for contributor : https://github.com/users/ph-ausseil/projects/1/views/2?layout=table&filterQuery=status%3A%22Looking+for+a+volunteer%22 
+
+        * **Thoroughly search the [existing issues] before creating a new one**
+        [existing issues]: https://github.com/ph-ausseil/AFAAS/issues?q=is%3Aissue
+
+
+  - type: markdown
     attributes:
-      label: ⚠️ Search for existing issues first ⚠️
-      description: >
-        Please [search the history](https://github.com/Significant-Gravitas/AFAAS/issues)
-        to see if an issue already exists for the same problem.
-      options:
-        - label: I have searched the existing issues, and there is no existing issue for my problem
-          required: true
+      value: |
+        ⚠️ Please do not prefix your Title with "Bug" , "Fix" , our CI does it ⚠️
+
+        Provide a meanful title that leaves to no ambiguity
 
   - type: markdown
     attributes:
@@ -44,7 +36,6 @@ body:
         Please help us help you by following these steps:
         - Search for existing issues, adding a comment when you have the same or similar issue is tidier than "new issue" and 
           newer issues will not be reviewed earlier, this is dependent on the current priorities set by our wonderful team
-        - Ask on our Discord if your issue is known when you are unsure (https://discord.gg/autogpt)
         - Provide relevant info:
           - Provide commit-hash (`git rev-parse HEAD` gets it) if possible
           - If it's a pip/packages issue, mention this in the title and provide pip version, python version
@@ -76,8 +67,8 @@ body:
       label: Which version of AFAAS are you using?
       description: |
         Please select which version of AFAAS you were using when this issue occurred.
-        If you downloaded the code from the [releases page](https://github.com/Significant-Gravitas/AFAAS/releases/) make sure you were using the latest code. 
-        **If you weren't please try with the [latest code](https://github.com/Significant-Gravitas/AFAAS/releases/)**.
+        If you downloaded the code from the [releases page](https://github.com/ph-ausseil/AFAAS/releases/) make sure you were using the latest code. 
+        **If you weren't please try with the [latest code](https://github.com/ph-ausseil/AFAAS/releases/)**.
         If installed with git you can run `git branch` to see which version of AFAAS you are running.
       options:
         - Latest Release
@@ -91,7 +82,7 @@ body:
       label: Do you use OpenAI GPT-3 or GPT-4?
       description: >
         If you are using AFAAS with `--gpt3only`, your problems may be caused by
-        the [limitations](https://github.com/Significant-Gravitas/AFAAS/issues?q=is%3Aissue+label%3A%22AI+model+limitation%22) of GPT-3.5.
+        the [limitations](https://github.com/ph-ausseil/AFAAS/issues?q=is%3Aissue+label%3A%22AI+model+limitation%22) of GPT-3.5.
       options:
         - GPT-3.5
         - GPT-4

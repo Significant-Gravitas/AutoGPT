@@ -10,9 +10,11 @@ from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.lib.sdk.logger import AFAASLogger, logging
-from AFAAS.prompts.common.afaas_task_post_rag_update import   AfaasPostRagTaskUpdateStrategy
-from AFAAS.prompts.common.afaas_task_rag_step2_history import   AfaasTaskRagStep2Strategy
-from AFAAS.prompts.common.afaas_task_rag_step3_related import   AfaasTaskRagStep3Strategy
+from AFAAS.prompts.common.afaas_task_post_rag_update import (
+    AfaasPostRagTaskUpdateStrategy,
+)
+from AFAAS.prompts.common.afaas_task_rag_step2_history import AfaasTaskRagStep2Strategy
+from AFAAS.prompts.common.afaas_task_rag_step3_related import AfaasTaskRagStep3Strategy
 
 LOG = AFAASLogger(name=__name__)
 
@@ -97,7 +99,7 @@ class Task(AbstractTask):
         if task_id and new_state:
             LOG.debug(f"Setting state of task {task_id} to {new_state}")
             # Assuming LOG and agent are defined and accessible
-            agent : BaseAgent = values.get("agent")
+            agent: BaseAgent = values.get("agent")
             if agent:
                 agent.plan._registry_update_task_status_in_list(
                     task_id=task_id, status=new_state
@@ -426,7 +428,7 @@ class Task(AbstractTask):
             self.long_description = rv.parsed_result[0]["command_args"][
                 "long_description"
             ]
-            #FIXME: ONY for ruting & planning ?
+            # FIXME: ONY for ruting & planning ?
             self.task_workflow = rv.parsed_result[0]["command_args"]["task_workflow"]
 
 

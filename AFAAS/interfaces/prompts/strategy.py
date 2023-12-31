@@ -14,7 +14,6 @@ from AFAAS.lib.utils.json_schema import JSONSchema
 if TYPE_CHECKING:
     from AFAAS.interfaces.task.task import AbstractTask
 
-
 from AFAAS.configs.schema import SystemConfiguration
 from AFAAS.interfaces.adapters import (
     AbstractChatModelResponse,
@@ -27,12 +26,12 @@ from AFAAS.interfaces.adapters import (
 from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
 from AFAAS.interfaces.prompts.utils.utils import (
     indent,
+    json_loads,
     to_dotted_list,
     to_md_quotation,
     to_numbered_list,
     to_string_list,
 )
-from AFAAS.interfaces.prompts.utils.utils import json_loads
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)

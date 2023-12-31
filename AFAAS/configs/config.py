@@ -1,16 +1,16 @@
 """Configuration class to store the state of bools for different scripts access."""
 from __future__ import annotations
 
-import AFAAS
 import os
-import re
 from pathlib import Path
 from typing import Any, Optional, Union
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
-from colorama import Fore
 from pydantic import Field, validator
+
+import AFAAS
 from AFAAS.configs.schema import Configurable, SystemSettings, UserConfigurable
+
 # # from AFAAS.core.adapters.openai.chatmodel import OPEN_AI_CHAT_MODELS
 # from AFAAS.interfaces.adapters.language_model import BaseModelProviderCredentials
 

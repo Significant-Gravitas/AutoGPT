@@ -44,13 +44,13 @@ async def afaas_routing(
             note_to_agent_length=note_to_agent_length,
         )
 
-        #FIXME: Define wich dependency to inject
+        # FIXME: Define wich dependency to inject
         routing_agent = RoutingAgent(
-            settings = routing_settings,
+            settings=routing_settings,
             **RoutingStrategyConfiguration().dict(),
         )
-        #NOTE: We don't save the agent
-        #new_user_context_agent = UserContextAgent.create_agent()
+        # NOTE: We don't save the agent
+        # new_user_context_agent = UserContextAgent.create_agent()
 
         routing_return: dict = await routing_agent.run(
             user_input_handler=agent._user_input_handler,
