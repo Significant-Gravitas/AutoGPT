@@ -8,7 +8,7 @@ from io import IOBase, TextIOBase
 from pathlib import Path
 from typing import IO, Any, BinaryIO, Callable, Literal, Optional, TextIO, overload
 
-from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
+from AFAAS.configs.schema import Configurable, SystemConfiguration, UserConfigurable
 from AFAAS.configs.schema import SystemConfiguration
 from AFAAS.lib.sdk.logger import AFAASLogger
 

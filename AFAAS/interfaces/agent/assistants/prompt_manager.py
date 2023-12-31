@@ -9,7 +9,7 @@ from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 if TYPE_CHECKING:
     from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy)
-    from AFAAS.interfaces.agent import BaseAgent
+    from AFAAS.interfaces.agent.main import BaseAgent
 
 from AFAAS.interfaces.adapters import (
     AbstractChatModelProvider,

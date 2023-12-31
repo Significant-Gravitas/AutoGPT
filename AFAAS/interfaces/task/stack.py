@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Generator
 
 from pydantic import Field
 
-from AFAAS.configs import AFAASModel
+from AFAAS.configs.schema import AFAASModel
 from AFAAS.interfaces.task.base import AbstractBaseTask
 
 if TYPE_CHECKING:

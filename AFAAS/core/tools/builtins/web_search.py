@@ -12,7 +12,7 @@ from itertools import islice
 from duckduckgo_search import DDGS
 
 from AFAAS.core.tools.tool_decorator import tool
-from AFAAS.interfaces.agent import BaseAgent
+from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.lib.sdk.errors import ConfigurationError
 from AFAAS.lib.utils.json_schema import JSONSchema
 

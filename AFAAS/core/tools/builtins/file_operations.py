@@ -17,7 +17,7 @@ TOOL_CATEGORY_TITLE = "File Operations"
 
 from AFAAS.core.tools.tool_decorator import tool
 from AFAAS.core.tools.tools import Tool
-from AFAAS.interfaces.agent import BaseAgent
+from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.lib.sdk.errors import DuplicateOperationError
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.task import Task

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from AFAAS.configs import Configurable
+from AFAAS.configs.schema import Configurable
 from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider
 
 # from AFAAS.interfaces.agent.loop import (  # Import only where it's needed
@@ -16,7 +16,7 @@ from .abstract import AbstractAgent
 
 LOG = AFAASLogger(name = __name__)
 
-from AFAAS.core.adapters.openai import AFAASChatOpenAI
+from AFAAS.core.adapters.openai.chatmodel import AFAASChatOpenAI
 from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
 
 # if TYPE_CHECKING:
@@ -24,7 +24,7 @@ from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
 #         AbstractChatModelResponse,
 #         AbstractPromptStrategy,
 #     )
-#     from AFAAS.interfaces.task import AbstractPlan
+#     from AFAAS.interfaces.task.plan import AbstractPlan
 
 
 class BaseAgent(AbstractAgent, Configurable):
@@ -128,7 +128,7 @@ class BaseAgent(AbstractAgent, Configurable):
         page_size: int = 10,
     )  -> list[dict] : #-> list[BaseAgent.SystemSettings]:   
         LOG.trace(f"Entering : {cls.__name__}.list_users_agents_from_memory()")
-        from AFAAS.core.db.table import AgentsTable
+        from AFAAS.core.db.table.nosql.agent import AgentsTable
         from AFAAS.interfaces.db import AbstractMemory
         from AFAAS.interfaces.db_table import AbstractTable
 
@@ -167,7 +167,7 @@ class BaseAgent(AbstractAgent, Configurable):
         agent_id: uuid.UUID,
         user_id: uuid.UUID,
     ) -> BaseAgent:
-        from AFAAS.core.db.table import AgentsTable
+        from AFAAS.core.db.table.nosql.agent import AgentsTable
         from AFAAS.interfaces.db import AbstractMemory
 
         # memory_settings = Memory.SystemSettings(configuration=agent_settings.memory)

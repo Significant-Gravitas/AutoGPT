@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Optional
 if TYPE_CHECKING:
     from AFAAS.interfaces.tools.context_items import ContextItem
 
-    from AFAAS.interfaces.agent import BaseAgent
+    from AFAAS.interfaces.agent.main import BaseAgent
 
 from AFAAS.interfaces.adapters import ChatMessage, ChatPrompt
 

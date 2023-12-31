@@ -6,7 +6,7 @@ from typing import ClassVar
 from pydantic import Field
 
 # from AFAAS.core.memory import
-from AFAAS.interfaces.agent import BaseAgent
+from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.interfaces.task.plan import AbstractPlan
 from AFAAS.lib.sdk.logger import AFAASLogger

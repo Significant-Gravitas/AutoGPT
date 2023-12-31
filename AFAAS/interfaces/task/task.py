@@ -6,7 +6,7 @@ from typing import Optional
 
 from pydantic import Field
 
-from AFAAS.interfaces.agent import BaseAgent
+from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.interfaces.task.stack import TaskStack

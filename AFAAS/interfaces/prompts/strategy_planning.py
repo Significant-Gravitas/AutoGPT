@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     pass
 
 
-from AFAAS.configs import UserConfigurable
+from AFAAS.configs.schema import UserConfigurable
 from AFAAS.interfaces.prompts.strategy import (
     RESPONSE_SCHEMA,
     AbstractPromptStrategy,

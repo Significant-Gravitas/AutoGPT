@@ -21,7 +21,7 @@ from AFAAS.interfaces.prompts.strategy_planning import (
     AbstractPlanningPromptStrategy,
     PlanningPromptStrategiesConfiguration,
 )
-from AFAAS.interfaces.task import AbstractTask
+from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.lib.action_history import Episode
 
 

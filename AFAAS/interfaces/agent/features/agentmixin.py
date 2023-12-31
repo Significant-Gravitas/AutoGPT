@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from AFAAS.core.tools.tools import Tool
     from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
 
-    from AFAAS.interfaces.agent import BaseAgent
+    from AFAAS.interfaces.agent.main import BaseAgent
 
 from AFAAS.lib.sdk.logger import AFAASLogger
 

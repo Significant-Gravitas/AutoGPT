@@ -7,7 +7,7 @@ from typing import Any, ClassVar
 import inflection
 from pydantic import Field
 
-from AFAAS.configs import SystemConfiguration
+from AFAAS.configs.schema import SystemConfiguration
 from AFAAS.interfaces.adapters import CompletionModelFunction
 from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin

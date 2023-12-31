@@ -5,7 +5,8 @@ from typing import TYPE_CHECKING, Optional, Union, get_args
 
 from pydantic import Field
 
-from AFAAS.configs import AFAASModel
+from AFAAS.configs.schema import AFAASModel
+from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 # from AFAAS.core.tools.schema import ToolResult
@@ -43,8 +44,6 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
     ###
     ### GENERAL properties
     ###
-    if TYPE_CHECKING:
-        from AFAAS.interfaces.agent import BaseAgent
 
     agent: BaseAgent = Field(exclude=True)
 

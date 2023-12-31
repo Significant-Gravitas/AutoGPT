@@ -7,14 +7,14 @@ from AFAAS.interfaces.tools.tool_output import ToolOutput
 from AFAAS.interfaces.tools.tool_parameters import ToolParameter
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.agent import BaseAgent
+    from AFAAS.interfaces.agent.main import BaseAgent
 
 from langchain.tools.base import BaseTool
 
-from AFAAS.interfaces.task import AbstractTask
+from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.lib.sdk.logger import AFAASLogger
 
-# from AFAAS.interfaces.agent import BaseAgent
+# from AFAAS.interfaces.agent.main import BaseAgent
 LOG = AFAASLogger(name=__name__)
 
 

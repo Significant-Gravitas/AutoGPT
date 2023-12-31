@@ -4,16 +4,16 @@ import enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.task import AbstractTask
+    from AFAAS.interfaces.task.task import AbstractTask
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
-    AbstractPromptConfiguration,
     AssistantChatMessageDict,
     ChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
+from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
 from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy,
     DefaultParsedResponse,

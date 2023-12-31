@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
+from AFAAS.configs.schema import Configurable, SystemConfiguration, UserConfigurable
 from AFAAS.interfaces.workspace import (
     AbstractFileWorkspace,
     AbstractFileWorkspaceConfiguration,

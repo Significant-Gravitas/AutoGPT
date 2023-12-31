@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import Field
 
-from AFAAS.configs import Configurable, SystemConfiguration, SystemSettings
+from AFAAS.configs.schema import Configurable, SystemConfiguration, SystemSettings
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.db_table import AbstractTable
@@ -205,7 +205,7 @@ class AbstractMemory(Configurable, abc.ABC):
             )
 
         if table_name == "agents":
-            from AFAAS.core.db.table import AgentsTable
+            from AFAAS.core.db.table.nosql.agent import AgentsTable
 
             returnvalue = AgentsTable(memory=self)
             return returnvalue

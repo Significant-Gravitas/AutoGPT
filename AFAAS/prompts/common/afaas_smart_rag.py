@@ -5,7 +5,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.task import AbstractTask
+    from AFAAS.interfaces.task.task import AbstractTask
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,

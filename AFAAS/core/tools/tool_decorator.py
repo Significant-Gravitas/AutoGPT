@@ -10,7 +10,7 @@ from AFAAS.interfaces.tools.tool_output import ToolOutput
 from AFAAS.interfaces.tools.tool_parameters import ToolParameter
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.agent import BaseAgent
+    from AFAAS.interfaces.agent.main import BaseAgent
     from AFAAS.configs.config import Config
 
 from AFAAS.core.tools.tools import Tool

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from AFAAS.lib.task.task import Task
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.agent import BaseAgent
+    from AFAAS.interfaces.agent.main import BaseAgent
 
 from AFAAS.core.tools.tool_decorator import tool
 from AFAAS.interfaces.tools.context_items import FileContextItem, FolderContextItem

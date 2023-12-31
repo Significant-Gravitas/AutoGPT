@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Any, Awaitable, Callable, Coroutine, Optional
 
 from AFAAS.interfaces.adapters import AbstractChatModelResponse
-from AFAAS.interfaces.agent import BaseAgent, BaseLoop
+from AFAAS.interfaces.agent.main import BaseAgent, BaseLoop
 from AFAAS.interfaces.job import JobInterface
-from AFAAS.interfaces.task import AbstractTask
+from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.prompts.common import AutoCorrectionStrategy
 
 

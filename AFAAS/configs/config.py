@@ -1,6 +1,7 @@
 """Configuration class to store the state of bools for different scripts access."""
 from __future__ import annotations
 
+import AFAAS
 import os
 import re
 from pathlib import Path
@@ -9,12 +10,12 @@ from typing import Any, Optional, Union
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 from pydantic import Field, validator
-
 from AFAAS.configs.schema import Configurable, SystemSettings, UserConfigurable
-from AFAAS.core.adapters.openai import OPEN_AI_CHAT_MODELS
-from AFAAS.core.adapters.openai.chatmodel import OPEN_AI_CHAT_MODELS, OpenAICredentials
+# # from AFAAS.core.adapters.openai.chatmodel import OPEN_AI_CHAT_MODELS
+# from AFAAS.interfaces.adapters.language_model import BaseModelProviderCredentials
 
-PROJECT_ROOT = Path(autogpt.__file__).parent.parent
+
+PROJECT_ROOT = Path(str(AFAAS.__path__)).parent
 AI_SETTINGS_FILE = Path("ai_settings.yaml")
 AZURE_CONFIG_FILE = Path("azure.yaml")
 PLUGINS_CONFIG_FILE = Path("plugins_config.yaml")
@@ -42,17 +43,17 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         default=True, from_env=lambda: os.getenv("CHAT_MESSAGES_ENABLED") == "True"
     )
 
-    # TTS configuration
-    tts_config: TTSConfig = TTSConfig()
-    logging: LoggingConfig = LoggingConfig()
+    # # TTS configuration
+    # tts_config: TTSConfig = TTSConfig()
+    # logging: LoggingConfig = LoggingConfig()
 
-    # Workspace
-    workspace_backend: AbstractFileWorkspaceBackendName = UserConfigurable(
-        default=FileWorkspaceBackendName.LOCAL,
-        from_env=lambda: AbstractFileWorkspaceBackendName(v)
-        if (v := os.getenv("WORKSPACE_BACKEND"))
-        else None,
-    )
+    # # Workspace
+    # workspace_backend: AbstractFileWorkspaceBackendName = UserConfigurable(
+    #     default=FileWorkspaceBackendName.LOCAL,
+    #     from_env=lambda: AbstractFileWorkspaceBackendName(v)
+    #     if (v := os.getenv("WORKSPACE_BACKEND"))
+    #     else None,
+    # )
 
     ##########################
     # Agent Control Settings #
@@ -186,9 +187,9 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         default=PLUGINS_CONFIG_FILE,
         from_env=lambda: Path(f) if (f := os.getenv("PLUGINS_CONFIG_FILE")) else None,
     )
-    plugins_config: PluginsConfig = Field(
-        default_factory=lambda: PluginsConfig(plugins={})
-    )
+    # plugins_config: PluginsConfig = Field(
+    #     default_factory=lambda: PluginsConfig(plugins={})
+    # )
     plugins: list[AutoGPTPluginTemplate] = Field(default_factory=list, exclude=True)
     plugins_allowlist: list[str] = UserConfigurable(
         default_factory=list,
@@ -206,7 +207,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Credentials #
     ###############
     # OpenAI
-    openai_credentials: Optional[OpenAICredentials] = None
+    # openai_credentials: Optional[BaseModelProviderCredentials] = None
     azure_config_file: Optional[Path] = UserConfigurable(
         default=AZURE_CONFIG_FILE,
         from_env=lambda: Path(f) if (f := os.getenv("AZURE_CONFIG_FILE")) else None,
@@ -240,15 +241,15 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         ), f"Plugins must subclass AutoGPTPluginTemplate; {p} is a template instance"
         return p
 
-    @validator("openai_functions")
-    def validate_openai_functions(cls, v: bool, values: dict[str, Any]):
-        if v:
-            smart_llm = values["smart_llm"]
-            assert OPEN_AI_CHAT_MODELS[smart_llm].has_function_call_api, (
-                f"Model {smart_llm} does not support OpenAI Functions. "
-                "Please disable OPENAI_FUNCTIONS or choose a suitable model."
-            )
-        return v
+    # @validator("openai_functions")
+    # def validate_openai_functions(cls, v: bool, values: dict[str, Any]):
+    #     if v:
+    #         smart_llm = values["smart_llm"]
+    #         assert OPEN_AI_CHAT_MODELS[smart_llm].has_function_call_api, (
+    #             f"Model {smart_llm} does not support OpenAI Functions. "
+    #             "Please disable OPENAI_FUNCTIONS or choose a suitable model."
+    #         )
+    #     return v
 
 
 class ConfigBuilder(Configurable[Config]):
@@ -277,45 +278,45 @@ class ConfigBuilder(Configurable[Config]):
         ):
             config.openai_credentials.load_azure_config(config_file)
 
-        config.plugins_config = PluginsConfig.load_config(
-            config.plugins_config_file,
-            config.plugins_denylist,
-            config.plugins_allowlist,
-        )
+        # config.plugins_config = PluginsConfig.load_config(
+        #     config.plugins_config_file,
+        #     config.plugins_denylist,
+        #     config.plugins_allowlist,
+        # )
 
         return config
 
 
-def assert_config_has_openai_api_key(config: Config) -> None:
-    """Check if the OpenAI API key is set in config.py or as an environment variable."""
-    if not config.openai_credentials:
-        print(
-            Fore.RED
-            + "Please set your OpenAI API key in .env or as an environment variable."
-            + Fore.RESET
-        )
-        print("You can get your key from https://platform.openai.com/account/api-keys")
-        openai_api_key = input(
-            "If you do have the key, please enter your OpenAI API key now:\n"
-        )
-        key_pattern = r"^sk-\w{48}"
-        openai_api_key = openai_api_key.strip()
-        if re.search(key_pattern, openai_api_key):
-            os.environ["OPENAI_API_KEY"] = openai_api_key
-            config.openai_credentials = OpenAICredentials(
-                api_key=SecretStr(openai_api_key)
-            )
-            print(
-                Fore.GREEN
-                + "OpenAI API key successfully set!\n"
-                + Fore.YELLOW
-                + "NOTE: The API key you've set is only temporary.\n"
-                + "For longer sessions, please set it in .env file"
-                + Fore.RESET
-            )
-        else:
-            print("Invalid OpenAI API key!")
-            exit(1)
+# def assert_config_has_openai_api_key(config: Config) -> None:
+#     """Check if the OpenAI API key is set in config.py or as an environment variable."""
+#     if not config.openai_credentials:
+#         print(
+#             Fore.RED
+#             + "Please set your OpenAI API key in .env or as an environment variable."
+#             + Fore.RESET
+#         )
+#         print("You can get your key from https://platform.openai.com/account/api-keys")
+#         openai_api_key = input(
+#             "If you do have the key, please enter your OpenAI API key now:\n"
+#         )
+#         key_pattern = r"^sk-\w{48}"
+#         openai_api_key = openai_api_key.strip()
+#         if re.search(key_pattern, openai_api_key):
+#             os.environ["OPENAI_API_KEY"] = openai_api_key
+#             config.openai_credentials = BaseModelProviderCredentials(
+#                 api_key=SecretStr(openai_api_key)
+#             )
+#             print(
+#                 Fore.GREEN
+#                 + "OpenAI API key successfully set!\n"
+#                 + Fore.YELLOW
+#                 + "NOTE: The API key you've set is only temporary.\n"
+#                 + "For longer sessions, please set it in .env file"
+#                 + Fore.RESET
+#             )
+#         else:
+#             print("Invalid OpenAI API key!")
+#             exit(1)
 
 
 def _safe_split(s: Union[str, None], sep: str = ",") -> list[str]:

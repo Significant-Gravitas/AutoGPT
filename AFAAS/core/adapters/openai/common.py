@@ -7,7 +7,7 @@ from typing import Callable, ClassVar, ParamSpec, TypeVar
 
 from openai import APIError, AsyncOpenAI, RateLimitError
 
-from AFAAS.configs import UserConfigurable
+from AFAAS.configs.schema import UserConfigurable
 from AFAAS.interfaces.adapters.chatmodel import (
     AbstractChatMessage,
     AbstractRoleLabels,

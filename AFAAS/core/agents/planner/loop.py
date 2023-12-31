@@ -12,12 +12,12 @@ from AFAAS.interfaces.tools.tool_output import ToolOutput
 from AFAAS.lib.task.task import Task
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents.planner import PlannerAgent
+    from AFAAS.core.agents.planner.main import PlannerAgent
     from AFAAS.interfaces.adapters import (
         AbstractChatModelResponse,
     )
 
-from AFAAS.interfaces.agent import BaseLoop, BaseLoopHook
+from AFAAS.interfaces.agent.loop import BaseLoop, BaseLoopHook
 from AFAAS.lib.sdk.logger import NOTICE, TRACE, AFAASLogger
 
 LOG = AFAASLogger(name=__name__)

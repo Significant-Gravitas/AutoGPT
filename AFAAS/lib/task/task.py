@@ -5,16 +5,14 @@ from typing import TYPE_CHECKING, Optional
 from pydantic import Field, validator
 
 from AFAAS.interfaces.adapters import AbstractChatModelResponse
-from AFAAS.interfaces.agent import BaseAgent
+from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.lib.sdk.logger import AFAASLogger, logging
-from AFAAS.prompts.common import (
-    AfaasPostRagTaskUpdateStrategy,
-    AfaasTaskRagStep2Strategy,
-    AfaasTaskRagStep3Strategy,
-)
+from AFAAS.prompts.common.afaas_task_post_rag_update import   AfaasPostRagTaskUpdateStrategy
+from AFAAS.prompts.common.afaas_task_rag_step2_history import   AfaasTaskRagStep2Strategy
+from AFAAS.prompts.common.afaas_task_rag_step3_related import   AfaasTaskRagStep3Strategy
 
 LOG = AFAASLogger(name=__name__)
 

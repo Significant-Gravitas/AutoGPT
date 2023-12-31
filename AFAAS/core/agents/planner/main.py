@@ -6,9 +6,13 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
 
-from AFAAS.core.tools import TOOL_CATEGORIES, SimpleToolRegistry
+from AFAAS.core.tools.simple import SimpleToolRegistry
+from AFAAS.core.tools.builtins import TOOL_CATEGORIES #FIXME: This is a temporary fix but shall not be delt here
+from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
 from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
-from AFAAS.interfaces.agent import BaseAgent, BasePromptManager, ToolExecutor
+from AFAAS.interfaces.agent.main import BaseAgent
+from AFAAS.interfaces.agent.assistants.prompt_manager import BasePromptManager
+from AFAAS.interfaces.agent.assistants.tool_executor import ToolExecutor
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.interfaces.workflow import WorkflowRegistry
 from AFAAS.lib.sdk.logger import AFAASLogger

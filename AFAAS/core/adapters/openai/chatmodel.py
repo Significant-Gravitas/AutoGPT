@@ -19,7 +19,7 @@ from AFAAS.core.adapters.openai.embeddings import _create_embedding
 
 aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-from AFAAS.configs import Configurable
+from AFAAS.configs.schema import Configurable
 from AFAAS.interfaces.adapters.chatmodel import (
     AbstractChatModelProvider,
     AbstractChatModelResponse,
