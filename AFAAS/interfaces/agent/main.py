@@ -112,13 +112,13 @@ class BaseAgent(AbstractAgent, Configurable):
     #     agent_id = agent_table.add(agent_settings, id=agent_settings.agent_id)
     #     return agent_id
 
-    # def save_agent_in_memory(self) -> str:
-    #     LOG.trace(self.memory)
-    #     agent_table = self.memory.get_table("agents")
-    #     agent_id = agent_table.update(
-    #         agent_id=self.agent_id, user_id=self.user_id, value=self
-    #     )
-    #     return agent_id
+    def save_agent_in_memory(self) -> str:
+        LOG.trace(self.memory)
+        agent_table = self.memory.get_table("agents")
+        agent_id = agent_table.update(
+            agent_id=self.agent_id, user_id=self.user_id, value=self
+        )
+        return agent_id
 
     @classmethod
     def list_users_agents_from_memory(

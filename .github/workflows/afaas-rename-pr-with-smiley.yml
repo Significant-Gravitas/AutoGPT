@@ -27,4 +27,4 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          python .github/workflow/script/pr_smiley.py
+          python .github/workflows/scripts/pr_smiley.py
