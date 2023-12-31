@@ -20,7 +20,7 @@ logo = """\n\n
 
 
 if __name__ == "__main__":
-    from api import api, port
+    from api import port
 
     print(logo)
     uvicorn.run("api:api", host="localhost", port=port, log_level="error", reload=True)

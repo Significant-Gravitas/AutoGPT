@@ -2,10 +2,7 @@
 from typing import Awaitable, Callable
 
 from AFAAS.interfaces.agent import BaseAgent, BaseLoop
-from AFAAS.interfaces.prompts.strategy import (
-    LoophooksDict,
-    PromptStrategiesConfiguration,
-)
+from AFAAS.interfaces.prompts.strategy import LoophooksDict
 
 
 # Define your custom loop class. The class name should reflect its purpose.
@@ -76,4 +73,3 @@ class MyCustomLoop(BaseLoop):
         This could be implemented to save the agent's state to a file or a database.
         """
         # Your logic to save the agent's state goes here
-        pass

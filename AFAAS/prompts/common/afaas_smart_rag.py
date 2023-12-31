@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import enum
-import os
 import uuid
-from typing import TYPE_CHECKING, Callable, Optional
-
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.task import AbstractTask
@@ -33,8 +31,6 @@ class AFAAS_SMART_RAGStrategyFunctionNames(str, enum.Enum):
 
 
 class AFAAS_SMART_RAGStrategyConfiguration(PromptStrategiesConfiguration):
-
-
     default_tool_choice: AFAAS_SMART_RAGStrategyFunctionNames = (
         AFAAS_SMART_RAGStrategyFunctionNames.MAKE_SMART_RAG
     )

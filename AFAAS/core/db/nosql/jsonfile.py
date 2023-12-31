@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List
 
 from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.interfaces.db_nosql import NoSQLMemory

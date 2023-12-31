@@ -262,7 +262,6 @@ class AbstractMemory(Configurable, abc.ABC):
                 # Implementation for connecting to JSON file memory storage
                 pass
         """
-        pass
 
     @abc.abstractmethod
     def get(self, key: uuid.UUID, table_name: str):

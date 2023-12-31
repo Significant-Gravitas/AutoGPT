@@ -129,6 +129,7 @@ exclude = '''
     | .env
     | venv
     | .venv
+    | .github
     | reports
     | dist
     | agent
@@ -157,6 +158,7 @@ sections = [
 extend_skip = [
     "agbenchmark_config/temp_folder/",
     "data/",
+    ".github/",
 ]
 
 

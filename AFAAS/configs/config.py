@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 from typing import Any, Optional, Union
 
-import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 from pydantic import Field, validator

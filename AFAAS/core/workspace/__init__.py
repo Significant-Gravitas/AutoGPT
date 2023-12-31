@@ -1,13 +1,10 @@
 import enum
 from pathlib import Path
-from typing import Optional
 
 from AFAAS.interfaces.workspace import (
     AbstractFileWorkspace,
     AbstractFileWorkspaceConfiguration,
 )
-
-from .simple import LocalFileWorkspace
 
 
 class FileWorkspaceBackendName(str, enum.Enum):

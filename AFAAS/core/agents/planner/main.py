@@ -1,26 +1,16 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING, Awaitable, Callable
 
-from langchain_community.embeddings.openai import OpenAIEmbeddings
-from langchain_community.vectorstores.chroma import Chroma
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
-from pydantic import Field
 
-from AFAAS.core.adapters.openai import AFAASChatOpenAI, OpenAISettings
 from AFAAS.core.tools import TOOL_CATEGORIES, SimpleToolRegistry
-from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
 from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
-from AFAAS.interfaces.agent import (
-    BaseAgent,
-    BaseLoopHook,
-    BasePromptManager,
-    ToolExecutor,
-)
+from AFAAS.interfaces.agent import BaseAgent, BasePromptManager, ToolExecutor
 from AFAAS.interfaces.db import AbstractMemory
-from AFAAS.interfaces.workflow import WorkflowRegistry, BaseWorkflow
+from AFAAS.interfaces.workflow import WorkflowRegistry
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.plan import Plan
 
@@ -33,14 +23,10 @@ if TYPE_CHECKING:
 
 
 class PlannerAgent(BaseAgent):
-
-
     class SystemSettings(BaseAgent.SystemSettings):
-
         tool_registry: SimpleToolRegistry.SystemSettings = (
             SimpleToolRegistry.SystemSettings()
         )
-
 
         class Config(BaseAgent.SystemSettings.Config):
             pass
@@ -57,14 +43,14 @@ class PlannerAgent(BaseAgent):
         agent_id: uuid.UUID = SystemSettings.generate_uuid(),
         prompt_manager: BasePromptManager = BasePromptManager(),
         loop: PlannerLoop = PlannerLoop(),
-        tool_registry = SimpleToolRegistry,
+        tool_registry=SimpleToolRegistry,
         tool_handler: ToolExecutor = ToolExecutor(),
         memory: AbstractMemory = None,
         default_llm_provider: AbstractLanguageModelProvider = None,
         workspace: AbstractFileWorkspace = None,
         vectorstore: VectorStore = None,  # Optional parameter for custom vectorstore
         embedding_model: Embeddings = None,  # Optional parameter for custom embedding model
-        workflow_registry : WorkflowRegistry = None,
+        workflow_registry: WorkflowRegistry = None,
         **kwargs,
     ):
         super().__init__(
@@ -120,7 +106,7 @@ class PlannerAgent(BaseAgent):
             # self._loop.set_current_task(task = task)
             self._loop.set_current_task(task=self.plan.get_next_task())
         else:
-            id = self.create_agent()
+            self.create_agent()
             self.plan: Plan = Plan.create_in_db(agent=self)
             self._loop.set_current_task(task=self.plan.get_ready_tasks()[0])
             self.plan_id = self.plan.plan_id
@@ -212,5 +198,3 @@ class PlannerAgent(BaseAgent):
             user_message_handler=user_message_handler,
         )
         return return_var
-
-

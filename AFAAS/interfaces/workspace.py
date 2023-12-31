@@ -3,13 +3,10 @@ The AbstractFileWorkspace class provides an interface for interacting with a fil
 """
 from __future__ import annotations
 
-import inspect
 from abc import ABC, abstractmethod
 from io import IOBase, TextIOBase
 from pathlib import Path
 from typing import IO, Any, BinaryIO, Callable, Literal, Optional, TextIO, overload
-
-from pydantic import Field
 
 from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
 from AFAAS.configs.schema import SystemConfiguration
@@ -55,7 +52,6 @@ class AbstractFileWorkspace(Configurable, ABC):
         self._app_workspace = config.app_workspace
         self._user_id = user_id
         self._agent_id = agent_id
-        pass
 
     on_write_file: Callable[[Path], Any] | None = None
     """

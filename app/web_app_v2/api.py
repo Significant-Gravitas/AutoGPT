@@ -1,19 +1,15 @@
-import logging
 import os
 import pathlib
-from io import BytesIO
-from uuid import uuid4
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, Request, UploadFile
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 from .routes import (
-    AgentMiddleware,
     UserIDMiddleware,
     afaas_agent_router,
     afaas_artifact_router,

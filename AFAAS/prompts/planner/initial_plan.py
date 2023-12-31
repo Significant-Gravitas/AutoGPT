@@ -1,5 +1,4 @@
 import enum
-from typing import Optional
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,

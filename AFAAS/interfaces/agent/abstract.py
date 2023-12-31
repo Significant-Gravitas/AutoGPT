@@ -1,25 +1,20 @@
 from __future__ import annotations
 
 import datetime
-import os
 import uuid
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Optional
 
-import yaml
-from pydantic import Field, root_validator
+from pydantic import Field
 
-from AFAAS.configs import SystemSettings, Configurable
+from AFAAS.configs import Configurable, SystemSettings
 from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider
 from AFAAS.interfaces.agent import BasePromptManager
 from AFAAS.interfaces.agent.loop import BaseLoop  # Import only where it's needed
 from AFAAS.interfaces.db import AbstractMemory
-from AFAAS.interfaces.workflow import WorkflowRegistry, BaseWorkflow
+from AFAAS.interfaces.workflow import WorkflowRegistry
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
-from AFAAS.lib.message_agent_agent import MessageAgentAgent
-from AFAAS.lib.message_agent_llm import MessageAgentLLM
-from AFAAS.lib.message_agent_user import MessageAgentUser
-from AFAAS.lib.message_common import AFAASMessage, AFAASMessageStack
+from AFAAS.lib.message_common import AFAASMessageStack
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -29,11 +24,8 @@ from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
 
 if TYPE_CHECKING:
+    from AFAAS.interfaces.prompts.strategy import AbstractChatModelResponse
     from AFAAS.interfaces.task import AbstractPlan
-    from AFAAS.interfaces.prompts.strategy import (
-        AbstractChatModelResponse,
-        AbstractPromptStrategy,
-    )
 
 
 class AbstractAgent(ABC):

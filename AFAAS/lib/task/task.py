@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-import uuid
 from typing import TYPE_CHECKING, Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import Field, validator
 
 from AFAAS.interfaces.adapters import AbstractChatModelResponse
 from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.interfaces.task.base import AbstractBaseTask
-from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.interfaces.task.meta import TaskStatusList
+from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.lib.sdk.logger import AFAASLogger, logging
-from AFAAS.prompts.common import AfaasTaskRagStep2Strategy , AfaasTaskRagStep3Strategy , AfaasPostRagTaskUpdateStrategy
+from AFAAS.prompts.common import (
+    AfaasPostRagTaskUpdateStrategy,
+    AfaasTaskRagStep2Strategy,
+    AfaasTaskRagStep3Strategy,
+)
 
 LOG = AFAASLogger(name=__name__)
 
@@ -90,7 +93,6 @@ class Task(AbstractTask):
             )
         return self._task_successors
 
-
     @validator("state", pre=True, always=True)
     def set_state(cls, new_state, values):
         task_id = values.get("task_id")
@@ -136,7 +138,9 @@ class Task(AbstractTask):
             f"Entering {self.__class__.__name__}.__init__() : {data['task_goal']}"
         )
         super().__init__(**data)
-        LOG.trace(f"Quitting {self.__class__.__name__}.__init__() : {data['task_goal']}")
+        LOG.trace(
+            f"Quitting {self.__class__.__name__}.__init__() : {data['task_goal']}"
+        )
 
     @property
     def plan_id(self) -> str:
@@ -327,29 +331,39 @@ class Task(AbstractTask):
         task_sibblings: list[Task] = []
         if sibblings:
             if avoid_sibbling_predecessors_redundancy:
-                task_sibblings = set(self.get_sibblings()) - history_and_predecessors #- set([self])
+                task_sibblings = (
+                    set(self.get_sibblings()) - history_and_predecessors
+                )  # - set([self])
             else:
-                task_sibblings = set(self.get_sibblings()) #- set([self])
-
+                task_sibblings = set(self.get_sibblings())  # - set([self])
 
         # 6. Get the similar tasks , if at least n (similar_tasks) have been treated so we only look for similarity in complexe cases
         related_tasks: list[Task] = []
-        if len(self.agent.plan.get_all_done_tasks_ids()) > similar_tasks or LOG.level <= logging.DEBUG:
-            task_embedding = await self.agent.embedding_model.aembed_query(text = self.long_description)
-            try :
-                #FIXME: Create an adapter or open a issue on Langchain Github : https://github.com/langchain-ai/langchain to harmonize the AP 
-                related_tasks_documents = await self.agent.vectorstore.asimilarity_search_by_vector(
-                    task_embedding,
-                    k=similar_tasks,
-                    include_metadata=True,
-                    filter={"plan_id": {"$eq": self.plan_id}}
+        if (
+            len(self.agent.plan.get_all_done_tasks_ids()) > similar_tasks
+            or LOG.level <= logging.DEBUG
+        ):
+            task_embedding = await self.agent.embedding_model.aembed_query(
+                text=self.long_description
+            )
+            try:
+                # FIXME: Create an adapter or open a issue on Langchain Github : https://github.com/langchain-ai/langchain to harmonize the AP
+                related_tasks_documents = (
+                    await self.agent.vectorstore.asimilarity_search_by_vector(
+                        task_embedding,
+                        k=similar_tasks,
+                        include_metadata=True,
+                        filter={"plan_id": {"$eq": self.plan_id}},
+                    )
                 )
-            except Exception as e:
-                related_tasks_documents = await self.agent.vectorstore.asimilarity_search_by_vector(
-                    task_embedding,
-                    k=10,
-                    include_metadata=True,
-                    filter=[{"metadata.plan_id": {"$eq": self.plan_id}}]
+            except Exception:
+                related_tasks_documents = (
+                    await self.agent.vectorstore.asimilarity_search_by_vector(
+                        task_embedding,
+                        k=10,
+                        include_metadata=True,
+                        filter=[{"metadata.plan_id": {"$eq": self.plan_id}}],
+                    )
                 )
 
             LOG.debug(related_tasks_documents)
@@ -358,7 +372,9 @@ class Task(AbstractTask):
                 related_tasks.append(self.agent.plan.get_task(task.metadata["task_id"]))
 
             ## 2. Make a set of related tasks and remove current tasks, sibblings, history and predecessors
-            related_tasks = list(set(related_tasks) - task_sibblings - history_and_predecessors)
+            related_tasks = list(
+                set(related_tasks) - task_sibblings - history_and_predecessors
+            )
 
             if LOG.level <= logging.DEBUG:
                 input("Press Enter to continue...")
@@ -375,7 +391,7 @@ class Task(AbstractTask):
         # RAG : 2. Summarize History
         self.rag_uml = []
         if len(task_history) > 0:
-            rv : AbstractChatModelResponse = await self.agent.execute_strategy(
+            rv: AbstractChatModelResponse = await self.agent.execute_strategy(
                 strategy_name=AfaasTaskRagStep2Strategy.STRATEGY_NAME,
                 task=self,
                 task_path=task_path,
@@ -383,14 +399,13 @@ class Task(AbstractTask):
                 task_followup=task_successors,
                 task_sibblings=task_sibblings,
                 related_tasks=related_tasks,
-                )
+            )
             self.rag_history_txt = rv.parsed_result[0]["command_args"]["paragraph"]
             self.rag_uml = rv.parsed_result[0]["command_args"]["uml_diagrams"]
 
-
             # RAG : 3. Summarize Followup
             if len(task_successors) > 0 or len(related_tasks) > 0:
-                rv : AbstractChatModelResponse = await self.agent.execute_strategy(
+                rv: AbstractChatModelResponse = await self.agent.execute_strategy(
                     strategy_name=AfaasTaskRagStep3Strategy.STRATEGY_NAME,
                     task=self,
                     task_path=task_path,
@@ -398,17 +413,21 @@ class Task(AbstractTask):
                     task_followup=task_successors,
                     task_sibblings=task_sibblings,
                     related_tasks=related_tasks,
-                    )
-                self.rag_related_task_txt = rv.parsed_result[0]["command_args"]["paragraph"]
+                )
+                self.rag_related_task_txt = rv.parsed_result[0]["command_args"][
+                    "paragraph"
+                ]
                 self.rag_uml += rv.parsed_result[0]["command_args"]["uml_diagrams"]
 
             # RAG : 4. Post-Rag task update
-            rv : AbstractChatModelResponse = await self.agent.execute_strategy(
-                    strategy_name=AfaasPostRagTaskUpdateStrategy.STRATEGY_NAME,
-                    task=self,
-                    task_path=task_path,
-                    )
-            self.long_description = rv.parsed_result[0]["command_args"]["long_description"]
+            rv: AbstractChatModelResponse = await self.agent.execute_strategy(
+                strategy_name=AfaasPostRagTaskUpdateStrategy.STRATEGY_NAME,
+                task=self,
+                task_path=task_path,
+            )
+            self.long_description = rv.parsed_result[0]["command_args"][
+                "long_description"
+            ]
             self.task_workflow = rv.parsed_result[0]["command_args"]["task_workflow"]
 
 

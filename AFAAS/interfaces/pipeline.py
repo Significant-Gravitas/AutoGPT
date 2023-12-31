@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import copy
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine, Optional
+from typing import Any, Awaitable, Callable, Coroutine, Optional
 
 from AFAAS.interfaces.adapters import AbstractChatModelResponse
 from AFAAS.interfaces.agent import BaseAgent, BaseLoop

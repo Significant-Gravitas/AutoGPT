@@ -8,13 +8,12 @@ import os.path
 from pathlib import Path
 from typing import Generator, Literal
 
-from langchain.tools import FileSearchTool
-
 from autogpt.agents import Agent
 from autogpt.command_decorator import command
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
 from autogpt.models.command import Command
+from langchain.tools import FileSearchTool
 
 from .decorators import sanitize_path_arg
 from .file_operations_utils import read_textual_file

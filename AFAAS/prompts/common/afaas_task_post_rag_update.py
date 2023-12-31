@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import enum
-import uuid
 from typing import TYPE_CHECKING
-
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.task import AbstractTask
@@ -26,6 +24,7 @@ from AFAAS.lib.utils.json_schema import JSONSchema
 
 LOG = AFAASLogger(name=__name__)
 
+
 class PostRagTaskUpdateStrategyFunctionNames(str, enum.Enum):
     POST_RAG_UPDATE: str = "afaas_task_post_rag_update"
 
@@ -39,7 +38,7 @@ class PostRagTaskUpdateStrategyConfiguration(PromptStrategiesConfiguration):
 
 
 class AfaasPostRagTaskUpdateStrategy(AbstractPromptStrategy):
-    STRATEGY_NAME = 'afaas_task_post_rag_update'
+    STRATEGY_NAME = "afaas_task_post_rag_update"
     default_configuration = PostRagTaskUpdateStrategyConfiguration()
 
     def __init__(
@@ -65,7 +64,7 @@ class AfaasPostRagTaskUpdateStrategy(AbstractPromptStrategy):
             parameters={
                 "long_description": JSONSchema(
                     type=JSONSchema.Type.STRING,
-                    description=f'New paragraph that should be {str(self.task_context_length * 0.8)} to {str(self.task_context_length *  1.25)} words long.',
+                    description=f"New paragraph that should be {str(self.task_context_length * 0.8)} to {str(self.task_context_length *  1.25)} words long.",
                     required=True,
                 ),
                 "task_workflow": JSONSchema(
@@ -74,9 +73,12 @@ class AfaasPostRagTaskUpdateStrategy(AbstractPromptStrategy):
                         type=JSONSchema.Type.STRING,
                         description=f"The workflow to be used for the task",
                         required=True,
-                        enum=[workflow.name for workflow in self._agent.workflow_registry.workflows],
+                        enum=[
+                            workflow.name
+                            for workflow in self._agent.workflow_registry.workflows
+                        ],
                     ),
-                )
+                ),
             },
         )
 
@@ -84,14 +86,16 @@ class AfaasPostRagTaskUpdateStrategy(AbstractPromptStrategy):
             self.afaas_task_post_rag_update_function,
         ]
 
-    def build_message(self, 
-                      task: AbstractTask,
-            task_path : list[AbstractTask] = None,
-            task_history : list[AbstractTask] = None,
-            task_followup : list[AbstractTask] = None,
-            task_sibblings : list[AbstractTask] = None,
-            related_tasks : list[AbstractTask] = None,
-            **kwargs) -> ChatPrompt:
+    def build_message(
+        self,
+        task: AbstractTask,
+        task_path: list[AbstractTask] = None,
+        task_history: list[AbstractTask] = None,
+        task_followup: list[AbstractTask] = None,
+        task_sibblings: list[AbstractTask] = None,
+        related_tasks: list[AbstractTask] = None,
+        **kwargs,
+    ) -> ChatPrompt:
         LOG.debug("Building prompt for task : " + task.debug_dump_str())
         self._task: AbstractTask = task
         smart_rag_param = {

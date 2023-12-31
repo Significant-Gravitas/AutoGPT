@@ -22,7 +22,6 @@ class AgentMixin:
 
     def __init__(self, **kwargs):
         self._agent = None
-        pass
 
     def set_agent(self, agent: BaseAgent):
         if hasattr(self, "_agent") and self._agent is not None:

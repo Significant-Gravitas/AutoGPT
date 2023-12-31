@@ -4,7 +4,7 @@ import abc
 import os
 import re
 import sys
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -14,7 +14,6 @@ from AFAAS.lib.utils.json_schema import JSONSchema
 if TYPE_CHECKING:
     from AFAAS.interfaces.task import AbstractTask
 
-    pass
 
 from AFAAS.configs import SystemConfiguration
 from AFAAS.interfaces.adapters import (
@@ -134,7 +133,6 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     @abc.abstractmethod
     def get_prompt_config(self) -> AbstractPromptConfiguration:
         return self.get_llm_provider().get_default_config()
-
 
     # TODO : This implementation is shit :)
     def get_tools(self) -> list[CompletionModelFunction]:
@@ -281,7 +279,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
                 "to_string_list": to_string_list,
                 "indent": indent,
                 "task": self._task,
-                "strategy" : self,
+                "strategy": self,
             }
         )
         return template.render(template_params)

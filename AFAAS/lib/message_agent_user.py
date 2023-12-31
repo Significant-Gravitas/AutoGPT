@@ -2,7 +2,7 @@ import enum
 import uuid
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from AFAAS.configs.schema import AFAASMessageType, AFAASModel
 from AFAAS.lib.message_common import AFAASMessage

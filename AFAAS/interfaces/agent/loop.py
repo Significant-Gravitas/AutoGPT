@@ -9,8 +9,7 @@ from typing_extensions import TypedDict
 from .features.agentmixin import AgentMixin
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.adapters.chatmodel import \
-        AbstractChatModelResponse
+    pass
 
     from . import BaseAgent
 

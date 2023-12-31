@@ -26,7 +26,6 @@ To initialize and use the `RefineUserContextStrategy`:
 """
 import enum
 import uuid
-from typing import Optional
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,

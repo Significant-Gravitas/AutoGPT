@@ -18,7 +18,6 @@ TOOL_CATEGORY_TITLE = "File Operations"
 from AFAAS.core.tools.tool_decorator import tool
 from AFAAS.core.tools.tools import Tool
 from AFAAS.interfaces.agent import BaseAgent
-from AFAAS.interfaces.db import AbstractMemory
 from AFAAS.lib.sdk.errors import DuplicateOperationError
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.task import Task
@@ -138,7 +137,10 @@ def log_operation(
         log_entry += f" #{checksum}"
     LOG.trace(f"Logging file operation: {log_entry}")
     append_to_file(
-        agent._setting.Config.file_logger_path, f"{log_entry}\n", agent, should_log=False
+        agent._setting.Config.file_logger_path,
+        f"{log_entry}\n",
+        agent,
+        should_log=False,
     )
 
 
@@ -189,7 +191,7 @@ def ingest_file(
         LOG.info(f"Ingesting file {filename}")
         content = read_file(filename)
 
-        # TODO: Move to langchain 
+        # TODO: Move to langchain
         raise ("Not implemented error")
 
         file_memory = MemoryItemFactory.from_text_file(content, filename)
@@ -283,6 +285,7 @@ def list_folder(folder: Path, task: Task, agent: BaseAgent) -> list[str]:
         list[str]: A list of files found in the folder
     """
     return [str(p) for p in agent.workspace.list(folder)]
+
 
 def file_search_args(input_args: dict[str, any], agent: BaseAgent):
     # Force only searching in the workspace root

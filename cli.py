@@ -67,7 +67,6 @@ def setup():
 @cli.group()
 def benchmark():
     """Commands to start the benchmark and list tests and categories"""
-    pass
 
 
 @benchmark.command(
@@ -105,7 +104,6 @@ def start(subprocess_args):
 @benchmark.group(name="categories")
 def benchmark_categories():
     """Benchmark categories group command"""
-    pass
 
 
 @benchmark_categories.command(name="list")
@@ -148,7 +146,6 @@ def benchmark_categories_list():
 @benchmark.group(name="tests")
 def benchmark_tests():
     """Benchmark tests group command"""
-    pass
 
 
 @benchmark_tests.command(name="list")

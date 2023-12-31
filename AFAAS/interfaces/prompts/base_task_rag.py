@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import enum
-import uuid
 from typing import TYPE_CHECKING
-
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.task import AbstractTask
@@ -40,7 +38,6 @@ class BaseTaskRagStrategyConfiguration(PromptStrategiesConfiguration):
 
 
 class BaseTaskRagStrategy(AbstractPromptStrategy):
-
     def __init__(
         self,
         default_tool_choice: BaseTaskRagStrategyFunctionNames,
@@ -70,7 +67,7 @@ class BaseTaskRagStrategy(AbstractPromptStrategy):
                 ),
                 "paragraph": JSONSchema(
                     type=JSONSchema.Type.STRING,
-                    description=f'New paragraph that should be {str(self.task_context_length * 0.8)} to {str(self.task_context_length *  1.25)} words long.',
+                    description=f"New paragraph that should be {str(self.task_context_length * 0.8)} to {str(self.task_context_length *  1.25)} words long.",
                     required=True,
                 ),
                 "uml_diagrams": JSONSchema(
@@ -81,7 +78,7 @@ class BaseTaskRagStrategy(AbstractPromptStrategy):
                         required=True,
                         enum=[task.task_id for task in task_history],
                     ),
-                )
+                ),
             },
         )
 
@@ -89,14 +86,16 @@ class BaseTaskRagStrategy(AbstractPromptStrategy):
             self.afaas_smart_rag,
         ]
 
-    def build_message(self, 
-                      task: AbstractTask,
-            task_path : list[AbstractTask] = None,
-            task_history : list[AbstractTask] = None,
-            task_followup : list[AbstractTask] = None,
-            task_sibblings : list[AbstractTask] = None,
-            related_tasks : list[AbstractTask] = None,
-            **kwargs) -> ChatPrompt:
+    def build_message(
+        self,
+        task: AbstractTask,
+        task_path: list[AbstractTask] = None,
+        task_history: list[AbstractTask] = None,
+        task_followup: list[AbstractTask] = None,
+        task_sibblings: list[AbstractTask] = None,
+        related_tasks: list[AbstractTask] = None,
+        **kwargs,
+    ) -> ChatPrompt:
         LOG.debug("Building prompt for task : " + task.debug_dump_str())
         self._task: AbstractTask = task
         smart_rag_param = {

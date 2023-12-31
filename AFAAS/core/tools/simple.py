@@ -15,10 +15,10 @@ if TYPE_CHECKING:
 
 from AFAAS.configs import Configurable, SystemConfiguration
 from AFAAS.core.tools.base import BaseTool, BaseToolsRegistry, ToolConfiguration
-from AFAAS.core.tools.tool_decorator import AFAAS_TOOL_IDENTIFIER
 
 # from AFAAS.core.tools.builtins import BUILTIN_TOOLS
 from AFAAS.core.tools.schema import ToolResult
+from AFAAS.core.tools.tool_decorator import AFAAS_TOOL_IDENTIFIER
 from AFAAS.interfaces.adapters import (
     AbstractChatModelProvider,
     CompletionModelFunction,

@@ -57,7 +57,6 @@ from typing import (
     ClassVar,
     Dict,
     Generic,
-    List,
     Literal,
     Optional,
     TypedDict,

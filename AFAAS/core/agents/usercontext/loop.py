@@ -87,7 +87,6 @@ class UserContextLoop(BaseLoop):
         LOG.info(f"Running UserContextLoop")
 
         self.loop_count = 0
-        user_input = ""
         # _is_running is important because it avoid having two concurent loop in the same agent (cf : Agent.run())
 
         user_objectives: str = self._agent.agent_goal_sentence

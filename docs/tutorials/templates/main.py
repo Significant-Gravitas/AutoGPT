@@ -109,7 +109,6 @@ class MyCustomAgent(BaseAgent, Configurable):
             agent_settings (MyCustomAgentSettings): The settings for creating the agent.
             logger (logging.Logger): The logger instance.
         """
-        pass
 
     @classmethod
     async def determine_agent_name_and_goals(
@@ -128,7 +127,6 @@ class MyCustomAgent(BaseAgent, Configurable):
             dict: A dictionary containing the agent name and goals.
         """
         # ... implementation details
-        pass
 
     def loop(self) -> MyCustomLoop:
         """Get the loop instance associated with this agent.

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional
 
-from pydantic import Field
-
 from AFAAS.interfaces.agent.exceptions import (
     AgentException,
     ToolExecutionError,

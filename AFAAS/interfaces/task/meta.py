@@ -3,7 +3,6 @@ from __future__ import annotations
 import enum
 
 from AFAAS.configs import AFAASModel
-from AFAAS.interfaces.agent import BaseAgent
 
 
 class TaskStatus(AFAASModel):

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from abc import ABCMeta
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 
 from pydantic import Field
 
@@ -394,7 +393,7 @@ class Plan(AbstractPlan):
         # FIXME: DEACTIVATED FOR TEST PURPOSE
         if False:
             try:
-                import AFAAS.core.agents.usercontext
+                pass
 
                 refine_user_context_task = Task(
                     agent=self.agent,

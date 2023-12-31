@@ -1,6 +1,12 @@
-from AFAAS.core.tools.tool_decorator import tool_from_langchain
+from langchain_community.tools.gmail import (
+    GmailCreateDraft,
+    GmailGetMessage,
+    GmailGetThread,
+    GmailSearch,
+    GmailSendMessage,
+)
 
-from langchain_community.tools.gmail import GmailCreateDraft, GmailGetMessage , GmailSearch, GmailSendMessage, GmailGetThread
+from AFAAS.core.tools.tool_decorator import tool_from_langchain
 
 
 @tool_from_langchain()
@@ -17,11 +23,12 @@ class AdaptedGmailGetMessage(GmailGetMessage):
 class AdaptedGmailSendEmail(GmailSendMessage):
     pass
 
+
 def gmail_search_arg_converter(args, agent):
     # Convert args to the format expected by GmailSearch
     return {
-        'resource': args.get('resource', 'messages'),  # Default to messages
-        'max_results': args.get('max_results', 10)
+        "resource": args.get("resource", "messages"),  # Default to messages
+        "max_results": args.get("max_results", 10),
     }
 
 
@@ -33,5 +40,3 @@ class AdaptedGmailSearch(GmailSearch):
 @tool_from_langchain()
 class AdaptedGmailGetThread(GmailGetThread):
     pass
-
-

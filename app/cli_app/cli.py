@@ -1,13 +1,12 @@
 import click
-from app.cli_app.main import run_cli_demo
 
+from app.cli_app.main import run_cli_demo
 from app.client_lib.utils import coroutine, handle_exceptions
 
 
 @click.group()
 def afaas_demo_app():
     """Temporary command group for v2 commands."""
-    pass
 
 
 @afaas_demo_app.command()

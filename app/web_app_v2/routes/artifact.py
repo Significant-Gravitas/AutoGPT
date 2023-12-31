@@ -1,12 +1,11 @@
 import json
 import os
-import pathlib
 from io import BytesIO
 from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Body, Depends, Query, Request, Response, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from AFAAS.core.agents import PlannerAgent
 from AFAAS.lib.sdk.errors import *
@@ -69,7 +68,7 @@ async def list_agent_artifacts(
                 }
             }
     """
-    agent = request["agent"]
+    request["agent"]
     try:
         artifacts: AgentArtifactsListResponse = await list_artifacts(
             agent_id, page, page_size
@@ -133,7 +132,7 @@ async def upload_agentartifacts(
                 "file_name": "main.py"
             }
     """
-    agent = request["agent"]
+    request["agent"]
 
     if file is None:
         return Response(
@@ -191,7 +190,7 @@ async def download_agent_artifact(
         Response:
             <file_content_of_artifact>
     """
-    agent = request["agent"]
+    request["agent"]
     try:
         return await get_artifact(agent_id, artifact_id)
     except NotFoundError:
@@ -230,7 +229,7 @@ async def list_artifacts(
         )
         return AgentArtifactsListResponse(artifacts=artifacts, pagination=pagination)
 
-    except Exception as e:
+    except Exception:
         raise
 
 
@@ -260,7 +259,7 @@ async def create_artifact(
             relative_path=relative_path,
             agent_created=False,
         )
-    except Exception as e:
+    except Exception:
         raise
     return artifact
 
@@ -276,11 +275,11 @@ async def get_artifact(agent, agent_id: str, artifact_id: str) -> Artifact:
         else:
             file_path = artifact.relative_path
         retrieved_artifact = agent.workspace.read(agent_id=agent_id, path=file_path)
-    except NotFoundError as e:
+    except NotFoundError:
         raise
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         raise
-    except Exception as e:
+    except Exception:
         raise
 
     return StreamingResponse(

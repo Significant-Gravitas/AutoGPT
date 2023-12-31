@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import enum
-import os
 import uuid
-from typing import TYPE_CHECKING, Any, Callable, Optional
-
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.task import AbstractTask
@@ -33,8 +31,6 @@ class BaseTaskSummaryStrategyFunctionNames(str, enum.Enum):
 
 
 class BaseTaskSummaryStrategyConfiguration(PromptStrategiesConfiguration):
-
-
     default_tool_choice: BaseTaskSummaryStrategyFunctionNames = (
         BaseTaskSummaryStrategyFunctionNames.DEFAULT_TASK_SUMMARY
     )

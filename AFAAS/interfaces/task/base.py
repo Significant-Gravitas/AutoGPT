@@ -3,10 +3,9 @@ from __future__ import annotations
 import abc
 from typing import TYPE_CHECKING, Optional, Union, get_args
 
-from pydantic import BaseModel, Field, validator
+from pydantic import Field
 
 from AFAAS.configs import AFAASModel
-from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 # from AFAAS.core.tools.schema import ToolResult
@@ -103,7 +102,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
             return cls._default_command
 
         try:
-            import AFAAS.core.agents.routing
+            pass
 
             cls._default_command = "afaas_routing"
         except:

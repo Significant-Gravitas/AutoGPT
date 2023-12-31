@@ -22,7 +22,7 @@ from AFAAS.lib.utils.json_schema import JSONSchema
 from .decorators import sanitize_path_arg
 
 if TYPE_CHECKING:
-    from autogpt.agents import Agent, BaseAgent
+    from autogpt.agents import BaseAgent
 
 
 def agent_implements_context(task: Task, agent: BaseAgent) -> bool:

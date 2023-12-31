@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import abc
 import enum
-import json
-import re
 from typing import Callable, ClassVar, Protocol
 
 from pydantic import BaseModel, Field, validator
@@ -201,5 +199,3 @@ class EmbeddingModelProvider(AbstractModelProvider):
 
 class AbstractPromptConfiguration(abc.ABC, SystemConfiguration):
     """Struct for model configuration."""
-
-    pass

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import functools
 import inspect
-from langchain_core.tools import BaseTool
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, ParamSpec, TypeVar
+
+from langchain_core.tools import BaseTool
 
 from AFAAS.interfaces.tools.tool_output import ToolOutput
 from AFAAS.interfaces.tools.tool_parameters import ToolParameter
@@ -79,13 +80,16 @@ def tool(
 
     return decorator
 
-def tool_from_langchain(arg_converter: Optional[Callable] = None,
-                        enabled: bool = True,
-                        disabled_reason: Optional[str] = None,
-                        aliases: list[str] = [],
-                        available: bool = True,
-                        hide: bool = False,
-                        success_check_callback: Callable = Tool.default_success_check_callback):
+
+def tool_from_langchain(
+    arg_converter: Optional[Callable] = None,
+    enabled: bool = True,
+    disabled_reason: Optional[str] = None,
+    aliases: list[str] = [],
+    available: bool = True,
+    hide: bool = False,
+    success_check_callback: Callable = Tool.default_success_check_callback,
+):
     def decorator(base_tool: BaseTool):
         def wrapper(*args, **kwargs):
             # Extract 'agent' from kwargs if it exists, as it's not used in this context
@@ -107,7 +111,10 @@ def tool_from_langchain(arg_converter: Optional[Callable] = None,
             description=base_tool.description,
             tech_description=base_tool.description,  # Assuming this is intentional
             exec_function=wrapper,
-            parameters=[ToolParameter(name=name, spec=schema) for name, schema in base_tool.args.items()],
+            parameters=[
+                ToolParameter(name=name, spec=schema)
+                for name, schema in base_tool.args.items()
+            ],
             enabled=enabled,
             disabled_reason=disabled_reason,
             aliases=aliases,
@@ -124,4 +131,3 @@ def tool_from_langchain(arg_converter: Optional[Callable] = None,
 # @tool_from_langchain()
 # class AdaptedGitHubTool(GitHubAction):
 #     pass
-

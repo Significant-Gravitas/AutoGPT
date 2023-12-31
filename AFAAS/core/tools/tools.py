@@ -8,7 +8,6 @@ from AFAAS.interfaces.tools.tool_parameters import ToolParameter
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent import BaseAgent
-    from AFAAS.configs import *
 
 from langchain.tools.base import BaseTool
 
@@ -126,10 +125,10 @@ class Tool:
             tech_description=tool.description,  # Added this line
             exec_function=wrapper,
             parameters=typed_parameters,
-            enabled=True,  
-            disabled_reason = None,
-            aliases = [],
-            available = True,
+            enabled=True,
+            disabled_reason=None,
+            aliases=[],
+            available=True,
             hide=False,
             # Add other optional parameters as needed, like disabled_reason, aliases, etc.
             success_check_callback=Tool.default_success_check_callback,  # Added this line
@@ -143,7 +142,6 @@ class Tool:
         setattr(command, "tool", command)
 
         return command
-
 
     async def default_success_check_callback(
         self, task: AbstractTask, tool_output: Any
@@ -174,7 +172,7 @@ class Tool:
         #     task_ouput_embedding, metadatas= [{'task_id' : task.task_id , 'plan_id' : task.plan_id}]
         #     )
         vector = await agent.vectorstore.aadd_texts(
-            texts = [task.task_text_output],
+            texts=[task.task_text_output],
             metadatas=[{"task_id": task.task_id, "plan_id": task.plan_id}],
         )
 

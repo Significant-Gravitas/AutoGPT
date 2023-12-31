@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import uuid
 from abc import abstractmethod
 from typing import Optional
+
 from pydantic import Field
-import uuid
 
 from AFAAS.interfaces.agent import BaseAgent
 from AFAAS.interfaces.task.base import AbstractBaseTask
@@ -57,7 +58,6 @@ class AbstractTask(AbstractBaseTask):
     @staticmethod
     def generate_uuid():
         return "T" + str(uuid.uuid4())
-
 
     @abstractmethod
     def is_ready(self) -> bool:
