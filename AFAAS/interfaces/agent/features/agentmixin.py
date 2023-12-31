@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from AFAAS.lib.task.plan import Plan
-    from AFAAS.core.db.table import AbstractTable
+    from AFAAS.interfaces.db.db_table import AbstractTable
     from AFAAS.interfaces.adapters import \
         CompletionModelFunction , AbstractChatModelResponse
     from AFAAS.core.tools.base import BaseToolsRegistry

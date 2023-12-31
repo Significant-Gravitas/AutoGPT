@@ -38,23 +38,13 @@ async def afaas_refine_user_context(task: Task, agent: BaseAgent) -> None:
                 parent_agent=agent,
             )
         )
-        usercontext_settings.agent_goals = agent.agent_goals
-        usercontext_settings.agent_goal_sentence = agent.agent_goal_sentence
-        usercontext_settings.memory = agent.memory._settings
-        usercontext_settings.workspace = agent._workspace._settings
-        usercontext_settings.chat_model_provider = agent.default_llm_provider._settings
 
-        # FIXME: REMOVE WHEN WE GO LIVE
-        # USER CONTEXT AGENT : Save UserContextAgent Settings in DB (for POW / POC)
-        new_user_context_agent = UserContextAgent.create_agent(
-            agent_settings=usercontext_settings
+        #FIXME: Define wich dependency to inject
+        user_context_agent = UserContextAgent(
+            settings = usercontext_settings,
         )
-        # USER CONTEXT AGENT : Get UserContextAgent from DB (for POW / POC)
-        usercontext_settings.agent_id = new_user_context_agent.agent_id
-
-        user_context_agent = UserContextAgent.get_instance_from_settings(
-            agent_settings=usercontext_settings,
-        )
+        #NOTE: We don't save the agent
+        #new_user_context_agent = UserContextAgent.create_agent()
 
         user_context_return: dict = await user_context_agent.run(
             user_input_handler=agent._user_input_handler,

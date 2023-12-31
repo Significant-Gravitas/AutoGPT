@@ -97,7 +97,7 @@ class Task(AbstractTask):
         if task_id and new_state:
             LOG.debug(f"Setting state of task {task_id} to {new_state}")
             # Assuming LOG and agent are defined and accessible
-            agent = values.get("agent")
+            agent : BaseAgent = values.get("agent")
             if agent:
                 agent.plan._registry_update_task_status_in_list(
                     task_id=task_id, status=new_state
@@ -231,7 +231,7 @@ class Task(AbstractTask):
         task_table.add(value=task, id=task.task_id)
 
     def save_in_db(self):
-        from AFAAS.core.db.table import AbstractTable
+        from AFAAS.interfaces.db.db_table import AbstractTable
 
         memory = self.agent.memory
         task_table: AbstractTable = memory.get_table("tasks")
