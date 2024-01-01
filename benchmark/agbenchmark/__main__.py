@@ -347,7 +347,8 @@ def run(
 
 
 @cli.command()
-def serve():
+@click.option("--port", type=int, help="Port to run the API on.")
+def serve(port: Optional[int] = None):
     """Serve the benchmark frontend and API on port 8080."""
     import uvicorn
 
@@ -357,7 +358,8 @@ def serve():
     app = setup_fastapi_app(config)
 
     # Run the FastAPI application using uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    port = port or int(os.getenv("PORT", 8080))
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
 
 @cli.command()
