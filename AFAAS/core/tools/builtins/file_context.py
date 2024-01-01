@@ -21,14 +21,13 @@ from AFAAS.lib.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
 
-if TYPE_CHECKING:
-    from autogpt.agents import BaseAgent
+
+COMMAND_CATEGORY = "file_operations"
+COMMAND_CATEGORY_TITLE = "File Operations"
 
 
-def agent_implements_context(task: Task, agent: BaseAgent) -> bool:
-    raise NotImplementedError("Not Implemented")
-    return False
-    # return isinstance(agent, ContextMixin)
+def agent_implements_context(agent: BaseAgent) -> bool:
+    return isinstance(agent, ContextMixin)
 
 
 @tool(
@@ -46,9 +45,7 @@ def agent_implements_context(task: Task, agent: BaseAgent) -> bool:
     available=agent_implements_context,
 )
 @sanitize_path_arg("file_path")
-def open_file(
-    file_path: Path, task: Task, agent: BaseAgent
-) -> tuple[str, FileContextItem]:
+def open_file(file_path: Path, task: Task, agent: BaseAgent) -> tuple[str, FileContextItem]:
     """Open a file and return a context item
 
     Args:
@@ -62,8 +59,8 @@ def open_file(
     relative_file_path = None
     with contextlib.suppress(ValueError):
         relative_file_path = file_path.relative_to(agent.workspace.root)
-    print("NOT IMPLEMENTED KOIGUFGIUOIPOYIUFGYHGHOIUIGYU")
-    # assert (agent_context := get_agent_context(agent)) is not None
+
+    assert (agent_context := get_agent_context(agent)) is not None
 
     created = False
     if not file_path.exists():
@@ -78,8 +75,8 @@ def open_file(
         file_path_in_workspace=file_path,
         workspace_path=agent.workspace.root,
     )
-    # if file in agent_context:
-    #     raise DuplicateOperationError(f"The file {file_path} is already open")
+    if file in agent_context:
+        raise DuplicateOperationError(f"The file {file_path} is already open")
 
     return (
         f"File {file_path}{' created,' if created else ''} has been opened"
@@ -118,8 +115,7 @@ def open_folder(
     with contextlib.suppress(ValueError):
         relative_path = path.relative_to(agent.workspace.root)
 
-    print("NOT IMPLEMENT IUGYUFTCDGVHHUOZIGYUFTYC")
-    # assert (agent_context := get_agent_context(agent)) is not None
+    assert (agent_context := get_agent_context(agent)) is not None
 
     if not path.exists():
         raise FileNotFoundError(f"open_folder {path} failed: no such file or directory")
@@ -132,7 +128,7 @@ def open_folder(
         path_in_workspace=path,
         workspace_path=agent.workspace.root,
     )
-    # if folder in agent_context:
-    #     raise DuplicateOperationError(f"The folder {path} is already open")
+    if folder in agent_context:
+        raise DuplicateOperationError(f"The folder {path} is already open")
 
     return f"Folder {path} has been opened and added to the context ✅", folder

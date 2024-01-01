@@ -24,7 +24,9 @@ from AFAAS.lib.task.task import Task
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
-from .file_operations_utils import decode_textual_file
+from .file_operations_utils import decode_textual_file #FIXME: replace with Langchain
+COMMAND_CATEGORY = "file_operations"
+COMMAND_CATEGORY_TITLE = "File Operations"
 
 LOG = AFAASLogger(name=__name__)
 
@@ -37,8 +39,10 @@ def text_checksum(text: str) -> str:
 
 
 def operations_from_log(
-    log_path: str,
-) -> Generator[tuple[Operation, str, str | None], None, None]:
+    log_path: str | Path,
+) -> Iterator[
+    tuple[Literal["write", "append"], str, str] | tuple[Literal["delete"], str, None]
+]:
     """Parse the file operations log and return a tuple containing the log entries"""
     try:
         log = open(log_path, "r", encoding="utf-8")
@@ -95,21 +99,17 @@ def is_duplicate_operation(
 
     Args:
         operation: The operation to check for
-        filename: The name of the file to check for
+        file_path: The name of the file to check for
         agent: The agent
         checksum: The checksum of the contents to be written
 
     Returns:
         True if the operation has already been performed on the file
     """
-    # Make the filename into a relative path if possible
-    with contextlib.suppress(ValueError):
-        filename = str(Path(filename).relative_to(agent.workspace.root))
-
-    state = file_operations_state(agent.config.file_logger_path)
-    if operation == "delete" and filename not in state:
+    state = file_operations_state(agent._setting.Config.file_logger_path)
+    if operation == "delete" and file_path not in state:
         return True
-    if operation == "write" and state.get(filename) == checksum:
+    if operation == "write" and state.get(str(file_path)) == checksum:
         return True
     return False
 
@@ -128,10 +128,6 @@ def log_operation(
         file_path: The name of the file the operation was performed on
         checksum: The checksum of the contents to be written
     """
-    # Make the filename into a relative path if possible
-    with contextlib.suppress(ValueError):
-        file_path = str(Path(file_path).relative_to(agent.workspace.root))
-
     log_entry = f"{operation}: {file_path}"
     if checksum is not None:
         log_entry += f" #{checksum}"
@@ -155,7 +151,7 @@ def log_operation(
         )
     },
 )
-def read_file(filename: Path, task: Task, agent: BaseAgent) -> str:
+def read_file(filename:  str | Path, task: Task, agent: BaseAgent) -> str:
     """Read a file and return the contents
 
     Args:
@@ -167,10 +163,31 @@ def read_file(filename: Path, task: Task, agent: BaseAgent) -> str:
     file = agent.workspace.open_file(filename, binary=True)
     content = decode_textual_file(file, os.path.splitext(filename)[1])
 
-    # # TODO: invalidate/update memory when file is edited
+    # TODO: invalidate/update memory when file is edited
     # file_memory = MemoryItem.from_text_file(content, str(filename), agent.config)
     # if len(file_memory.chunks) > 1:
     #     return file_memory.summary
+
+    #cf : ingest_file
+    agent.vectorstore.adelete(id=str(filename))
+    agent.vectorstore.aadd_texts(texts=[content],
+                                #  ids=[str(filename)],
+                                #  lang="en",
+                                #  title=str(filename),
+                                #  description="",
+                                #  tags=[],
+                                #  metadata={},
+                                #  source="",
+                                #  author="",
+                                #  date="",
+                                #  license="",
+                                #  url="",
+                                #  chunk_size=100,
+                                #  chunk_overlap=0,
+                                #  chunking_strategy="fixed",
+                                #  chunking_strategy_args={},
+                                #  chunking_strategy_kwargs={},
+    )
 
     return content
 
