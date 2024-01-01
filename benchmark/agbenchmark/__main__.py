@@ -363,6 +363,20 @@ def serve(port: Optional[int] = None):
 
 
 @cli.command()
+def config():
+    """Displays info regarding the present AGBenchmark config."""
+    try:
+        config = AgentBenchmarkConfig.load()
+    except FileNotFoundError as e:
+        click.echo(e, err=True)
+        return 1
+
+    k_col_width = max(len(k) for k in config.dict().keys())
+    for k, v in config.dict().items():
+        click.echo(f"{k: <{k_col_width}} = {v}")
+
+
+@cli.command()
 def version():
     """Print version info for the AGBenchmark application."""
     import toml
