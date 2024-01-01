@@ -60,7 +60,8 @@ Follow these simple steps to get started with **afaas**:
 Autonomous Agent are experimental initiative aiming to set inteligent systems with more or less human involvement. We will try to push research and knowledge beyond current boundaries. 
 
 > [!NOTE]
-> The product will come as a web-app to play & a framework anyone can extend.
+> The product will come as a web-app to play with.
+> It will also come as a framework anyone can extend.
 
 ### Currently working on
 
