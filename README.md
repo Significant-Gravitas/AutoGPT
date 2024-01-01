@@ -4,7 +4,8 @@ Welcome to the **afaas: Agent Framework as a Service** project! This project is 
 
 This is a Project Presentation & a product presentation will be released soon.
 
-<p align="center"><b>🚧 Work in progress 🚧 </b></p>
+> [!WARNING]
+> 🚧 This is a preview of a **Work in progress** 🚧
 
 ## Table of Contents
 
@@ -12,7 +13,8 @@ This is a Project Presentation & a product presentation will be released soon.
 - [Status](#status)
 - [Quick Start](#quick-start)
 - [Roadmap](#roadmap)
-<!--- [Contributing](#contributing)
+- [Contributing](#contributing)
+<!--- 
 - [License](#license)-->
 
 ## Quick Start
@@ -26,14 +28,27 @@ Follow these simple steps to get started with **afaas**:
    cd afaas
    ```
 
-2. **Install dependencies:**
+2. **Configure Environment Variables:**
+
+   Rename the .env.template file to .env:
+   ```bash
+   mv .env.template .env
+   ```
+   Open the .env file in a text editor and set your OPENAI_API_KEY:
+   ```dotenv
+   # Add your OpenAI API key here
+   OPENAI_API_KEY=your-openai-api-key
+   Replace your-openai-api-key with your actual OpenAI API key.
+   ```
+
+3. **Install dependencies:**
 
    ```bash
    pip install poetry
    poetry install
    ```
 
-3. **Run the Agent**
+4. **Run the Agent**
 
    ```bash
    poetry run demo
@@ -41,45 +56,41 @@ Follow these simple steps to get started with **afaas**:
 
 ## Status
 
-Autonomous Agent are experimental initiative aiming to set inteligent systems with more or less human involvement. We will try to push research and knowledge beyond what is currently done by AutoGPT, TaskWeaver & AutoGen while providing a service such as ones provided by GPTPilot & Aider.
+Autonomous Agent are experimental initiative aiming to set inteligent systems with more or less human involvement. We will try to push research and knowledge beyond current boundaries. 
 
-The project will come with a Framework anyone can extend, an agent anyone can extend @ an app to play with 
+> [!NOTE]
+> The product will come as a web-app to play & a framework anyone can extend.
 
 ### Currently working on
 
-[v0.0.0](https://github.com/ph-ausseil/afaas/milestone/1) : Milestone to test the build process & provide basic building blocs.
+[v0.0.1](https://github.com/ph-ausseil/afaas/milestone/2) - Basic agent with no coding capacity (Planned on 14/01/2024)
+  - Provide an agent that can operate with a basic set of API (Arxiv, Wikipedia, Google Places,...)
+  - Fix "most urgent" bugs
+  - Improve general thinking & planning performances
 
 ## Roadmap
 
-- [v0.0.0](https://github.com/ph-ausseil/afaas/milestone/1) : Milestone to test the build process & provide basic building blocs (Planned on 31/12/2023)
-  - First Agents
-  - First Prompts System Based on Jinja
-  - First Tools
-  - First LLM adapters
-  - First DB Adapters
-  - First Vector Store adapters
-  - First Agent-User logging system
-- [v0.0.1](https://github.com/ph-ausseil/afaas/milestone/2) - Provide a basic agent with no coding capacity (Planned on 07/01/2024)
-  - Provide an agent that can operate with a basic set of API (Arxiv, Wikipedia, Google Places,...)
-- [v0.0.2](https://github.com/ph-ausseil/afaas/milestone/3)  - Reduce Technical debt (Planned on 14/01/2024)
+- [v0.0.2](https://github.com/ph-ausseil/afaas/milestone/3)  - Reduce Technical debt (Planned on 21/01/2024)
   - Improving & automating tests coverage
   - Extend the set of tool
   - Capacity to create own tools
   - Improve general thinking & planning performances
-- [v0.0.3](https://github.com/ph-ausseil/afaas/milestone/4)  - Provide basic coding capacities (Planned on 21/01/2024)
-  - (Namely implement a first Pipeline/Workflow for code)
-- [v0.0.4](https://github.com/ph-ausseil/afaas/milestone/5)  - Serve the agent via an API (Planned on 28/01/2024)
-  - TBD
+  - Sets a Proxy between the PlannerAgent & the User.
+- [v0.0.3](https://github.com/ph-ausseil/afaas/milestone/4)  - Provide basic coding capacities (Planned on 28/01/2024)
+  - Namely implement a first Pipeline/Workflow for code
+- [v0.0.4](https://github.com/ph-ausseil/afaas/milestone/5)  - Serve the agent via an API (TBD)
+  - Serve the Agent via API
 - [v0.1.0](https://github.com/ph-ausseil/afaas/milestone/6)  - User & Technical documentation, CI/CD Pipeline, GUI (TBD)
   - 80% Test Coverage for API
   - 50% Test Coverage for Core
-  - A Web Interface (If we receive help)
+  - A Web Interface (If we receive help 🪄 )
 
 ## Contributing
 
-We warmly welcome contributions to our project! Pytest expert, React Expert, NodeJS/GitHub Action professional welcomed :smile !
+The project warmly welcome contributions ! We need maintainers & contributor with knowledge in CI/CD (Pytest expert, NodeJS/GitHub Action professional, Docker, AWS... 🧙‍♂️ ) and **React expert** 🥷 , **doctorant/searcher** 🧑‍🔬 to publish papers !
 
-Check out our [issues board](https://github.com/users/ph-ausseil/projects/1/views/2) to find tasks that need your help. We have a variety of issues suitable for different skill levels and areas of interest.
+> [!TIP]
+> Check out our [issues board](https://github.com/users/ph-ausseil/projects/1/views/2) to find tasks that need your help. We have a variety of issues suitable for different skill levels and areas of interest.
 
 ### How to Contribute
 
@@ -102,6 +113,21 @@ Check out our [issues board](https://github.com/users/ph-ausseil/projects/1/view
 9. **Get Merged!**: Once your pull request is approved, it will be merged into the project. Congratulations, you've contributed to the project!
 
 <!--
+
+> [!NOTE]
+> Useful information that users should know, even when skimming content.
+
+> [!TIP]
+> Helpful advice for doing things better or more easily.
+
+> [!IMPORTANT]
+> Key information users need to know to achieve their goal.
+
+> [!WARNING]
+> Urgent info that needs immediate user attention to avoid problems.
+
+> [!CAUTION]
+> Advises about risks or negative outcomes of certain actions.
 and provide additional functionalities, namely : 
 
 1. **Separate Agent Functionalities**: Facilitate teamwork by dividing agent functionalities into four parts:
@@ -173,75 +199,11 @@ Miscellaneous:
 📆 (U+1F4C6) - Date, Schedule
 📊 (U+1F4CA) - Statistics, Data
 
-
-## Tutorials
-
-Adoption is the most important thing, and we have a strong commitment to implement comprehensive tutorials & guides, we also provide templates you can copy to implement you agents. We are in the process of creating a comprehensive tutorial to guide developers.
-
-- **Tutorial Location**: All tutorial files are located in the `./tutorials` directory. 
-- **Templates**: Template files are provided in the `./tutorials/templates` directory **70/100**  (Under Construction) 🚧
-- **How to Use**: Navigate to the `./tutorials` directory to find step-by-step guides. Utilize the templates in the `./tutorials/templates` directory to get a head start in implementing your custom strategies and loop logic.**35/100**  (Under Construction) 🚧
-
-Stay tuned for updates as we continue to build out this tutorial section to assist developers in effectively utilizing the afaas framework.
-
-## Current status
-
-27th of September : 
-The Framework libraries are working, we are currently achieving an example of Agent implemented with the Framework and compatible with the [Agent Protocol](https://github.com/AI-Engineers-Foundation/agent-protocol) & AutoGPT Benchmarks other priorities are the support of more "Abilities" (tools 🔧 ), database-backends ( 📚 ).
-
-## Contributing
-
-Your contributions to this project are immensely valued. Here are currents needs : 
-- **Anyone** with skills in Kubernetes :smile:
-- **Back-End Developer :**
-  - Join us to migrate AutoGPT Commands to Abilities
-  - Join us to achieve the prototyped backends (AWS, Azure, MongoDB).
-- **Front-end Developper**
-  - Join us to develop a GUI
-  - Join us to build a Project Website 
-- Also **Anyone :** 
-  - Join us to manage PR & Discord Server
-  - ✅ ~~Build a User Guide to run our example.~~ => AutoGPT User Guide should
-  - Build a Developper guide to create agents (Exposing only methods required to build Agents)
-  - Build a Technical documentation to documents all the technical intricacies of the Framework
-  - Offer suggestions, report potential issues, or propose new enhancements through GitHub issues.
-
 For more detailed contribution guidelines, please refer to `CONTRIBUTING.md`.
-
-## Roadmap priorities : 
-1. 🔄 Achieve the SimpleAgent example
-2. 🔴 Compatibility with  [Agent Protocol](https://github.com/AI-Engineers-Foundation/agent-protocol) 
-3. 🔴 Migrate AutoGPT Commands to Abilities **Help needed**
-4. 🔴 Get a Developper Guide for easier adoption
 
 ## Setup and Execution
 
 We recommend using AutoGPT guidelines.
-
-## Our modules
-
-As a developper of agents you would only need to focus on `core/agents` & eventualy `core/tools`. Advanced developper may intergrate new memory backends, new machine learning models in `core/resource`.
-
-- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/ability** : Deprecated , alias of `core/tools`
-- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/agents** : **<span style="color:red;">Build your agents in this folder.</span>**
-  - _Team comment : **Mode information in the [tutorial](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/tutorials/)**_
-- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/configuration** : Contains object that serves to configure other components of the Framework.
-  - _Team comment : **Upcomming simplification, help welcomed**_
-- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/memory** : Adapters for memory
-  - _Team comment : **We look for tester / contributor for AWS DynamoDB & Azure CosmoDB**_
-- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/planning** : Orchestrate interactions between agents (`Agents`) & prompts (`PromptStrategy`) 
-  - _Team comment : **Upcomming simplification, will be merged with Agent, help welcomed**_
-- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/prompting** : Orchestrate interactions between agents (`Agents`) & models such as Large Languague Model
-- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/resource** : Manage the interaction with the LLM. 
-  - _Team comment : **We look for tcontributor for lama2 integration (contact us)**_
-- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/runner** : Contains applicative file (Commande Line Interface (CLI) , API, ECT...) 
-  - _Team comment : **Working hard on the API**_
-- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/tools** : Contains `Tools` tools are functions your agent can call, it is the interface between the agent and the word. Example of tool : An tool to edit .jpeg to add a waltermark, A tool to interact with Google Maps API.
-  - _Team comment : **Share your tools with us !**_
-- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/users** : Under construction, this library will manage users for our API.
-  - _Team comment : **Firebase Expert can contact us**_
-- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/utils** : Library that help us achieving simple actions such as Logging or Parsing JSON
-- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/workspace** : Library to store file.
 -->
 
 ## Contact
