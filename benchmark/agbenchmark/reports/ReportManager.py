@@ -4,6 +4,7 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.reports.processing.graphs import save_single_radar_chart
@@ -30,10 +31,8 @@ class SingletonReportManager:
                 benchmark_start_time_dt,
             )
             cls.INFO_MANAGER = ReportManager(
-                str(
-                    agent_benchmark_config.get_reports_path(benchmark_start_time_dt)
-                    / "report.json"
-                ),
+                agent_benchmark_config.get_reports_path(benchmark_start_time_dt)
+                / "report.json",
                 benchmark_start_time_dt,
             )
             cls.INTERNAL_INFO_MANAGER = ReportManager(
@@ -53,21 +52,20 @@ class SingletonReportManager:
 class ReportManager:
     """Abstracts interaction with the regression tests file"""
 
-    def __init__(self, filename: str, benchmark_start_time: str):
-        self.filename = filename
+    def __init__(self, report_file: Path, benchmark_start_time: datetime):
+        self.report_file = report_file
         self.start_time = time.time()
         self.benchmark_start_time = benchmark_start_time
 
         self.load()
 
     def load(self) -> None:
-        if not os.path.exists(self.filename):
-            os.makedirs(os.path.dirname(self.filename), exist_ok=True)
-            with open(self.filename, "w") as f:
-                pass
+        if not self.report_file.exists():
+            self.report_file.parent.mkdir(exist_ok=True)
+            self.report_file.touch()
 
         try:
-            with open(self.filename, "r") as f:
+            with self.report_file.open("r") as f:
                 file_content = (
                     f.read().strip()
                 )  # read the content and remove any leading/trailing whitespace
@@ -83,7 +81,7 @@ class ReportManager:
         self.save()
 
     def save(self) -> None:
-        with open(self.filename, "w") as f:
+        with self.report_file.open("w") as f:
             json.dump(self.tests, f, indent=4)
 
     def add_test(self, test_name: str, test_details: dict | list) -> None:
