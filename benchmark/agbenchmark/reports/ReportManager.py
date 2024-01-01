@@ -5,10 +5,10 @@ import sys
 import time
 from datetime import datetime, timezone
 
+from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.reports.processing.graphs import save_single_radar_chart
 from agbenchmark.reports.processing.process_report import get_agent_category
 from agbenchmark.reports.processing.report_types import Report
-from agbenchmark.utils.data_types import AgentBenchmarkConfig
 from agbenchmark.utils.utils import get_highest_success_difficulty
 
 
@@ -16,19 +16,17 @@ class SingletonReportManager:
     instance = None
 
     def __new__(cls):
-        from agbenchmark.config import load_agbenchmark_config
-
         if not cls.instance:
             cls.instance = super(SingletonReportManager, cls).__new__(cls)
 
-            agent_benchmark_config = load_agbenchmark_config()
+            agent_benchmark_config = AgentBenchmarkConfig.load()
             benchmark_start_time_dt = datetime.now(
                 timezone.utc
             )  # or any logic to fetch the datetime
 
             # Make the Managers class attributes
             cls.REGRESSION_MANAGER = ReportManager(
-                agent_benchmark_config.get_regression_reports_path(),
+                agent_benchmark_config.regression_reports_path,
                 benchmark_start_time_dt,
             )
             cls.INFO_MANAGER = ReportManager(
@@ -39,7 +37,7 @@ class SingletonReportManager:
                 benchmark_start_time_dt,
             )
             cls.INTERNAL_INFO_MANAGER = ReportManager(
-                agent_benchmark_config.get_success_rate_path(), benchmark_start_time_dt
+                agent_benchmark_config.success_rate_path, benchmark_start_time_dt
             )
 
         return cls.instance

@@ -12,7 +12,7 @@ import pytest
 from agent_protocol_client.models.step import Step
 
 from agbenchmark.agent_api_interface import append_updates_file
-from agbenchmark.config import load_agbenchmark_config
+from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.utils.challenge import Challenge
 from agbenchmark.utils.data_types import ChallengeData
 from agbenchmark.utils.path_manager import PATH_MANAGER
@@ -145,9 +145,9 @@ def load_challenges() -> None:
     logger.debug(f"Found {len(json_files)} challenges.")
     logger.debug(f"Sample path: {json_files[0]}")
 
-    agent_benchmark_config = load_agbenchmark_config()
+    agent_benchmark_config = AgentBenchmarkConfig.load()
 
-    regression_reports_path = agent_benchmark_config.get_regression_reports_path()
+    regression_reports_path = agent_benchmark_config.regression_reports_path
     if regression_reports_path and os.path.exists(regression_reports_path):
         with open(regression_reports_path, "r") as f:
             regression_tests = json.load(f)

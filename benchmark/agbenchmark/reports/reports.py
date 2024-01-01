@@ -4,7 +4,7 @@ import os
 import sys
 from typing import Any, Dict
 
-from agbenchmark.config import load_agbenchmark_config
+from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.reports.ReportManager import SingletonReportManager
 from agbenchmark.utils.data_types import DifficultyLevel
 from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
@@ -181,7 +181,7 @@ def update_challenges_already_beaten(
 
 
 def session_finish(suite_reports: dict) -> None:
-    agent_benchmark_config = load_agbenchmark_config()
+    agent_benchmark_config = AgentBenchmarkConfig.load()
 
     SingletonReportManager().INTERNAL_INFO_MANAGER.save()
     SingletonReportManager().INFO_MANAGER.end_info_report(agent_benchmark_config)

@@ -10,7 +10,7 @@ from typing import Any, Generator
 
 import pytest
 
-from agbenchmark.config import load_agbenchmark_config
+from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.reports.reports import (
     finalize_reports,
     generate_single_call_report,
@@ -41,7 +41,7 @@ def config() -> dict:
     """
     config = {}
 
-    config["AgentBenchmarkConfig"] = load_agbenchmark_config()
+    config["AgentBenchmarkConfig"] = AgentBenchmarkConfig.load()
 
     return config
 
@@ -129,10 +129,10 @@ def check_regression(request: pytest.FixtureRequest) -> None:
             configuration are retrieved.
     """
     test_name = request.node.parent.name
-    agent_benchmark_config = load_agbenchmark_config()
-    with contextlib.suppress(Exception):
-        test = agent_benchmark_config.get_regression_reports_path()
-        data = json.loads(test)
+    agent_benchmark_config = AgentBenchmarkConfig.load()
+    with contextlib.suppress(FileNotFoundError):
+        regression_report = agent_benchmark_config.regression_reports_path
+        data = json.loads(regression_report.read_bytes())
         challenge_location = getattr(request.node.parent.cls, "CHALLENGE_LOCATION", "")
 
         skip_string = f"Skipping {test_name} at {challenge_location}"
@@ -284,7 +284,7 @@ def pytest_collection_modifyitems(
         items: The collected test items to be modified.
         config: The active pytest configuration.
     """
-    # agent_benchmark_config = load_agbenchmark_config()
+    # agent_benchmark_config = AgentBenchmarkConfig.load()
 
     # regression_file = agent_benchmark_config.get_regression_reports_path()
     # data = (

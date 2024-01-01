@@ -98,7 +98,7 @@ def run_benchmark(
     """
     import pytest
 
-    from agbenchmark.config import load_agbenchmark_config
+    from agbenchmark.config import AgentBenchmarkConfig
     from agbenchmark.reports.ReportManager import SingletonReportManager
 
     validate_args(
@@ -114,7 +114,7 @@ def run_benchmark(
 
     initialize_updates_file()
     SingletonReportManager()
-    agent_benchmark_config = load_agbenchmark_config()
+    agent_benchmark_config = AgentBenchmarkConfig.load()
 
     assert agent_benchmark_config.host, "Error: host needs to be added to the config."
 
