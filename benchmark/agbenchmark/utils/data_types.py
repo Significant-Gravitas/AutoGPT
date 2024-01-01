@@ -1,6 +1,4 @@
-import json
 from enum import Enum
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, constr, validator
@@ -103,6 +101,7 @@ class Category(str, Enum):
 
 
 class ChallengeData(BaseModel):
+    eval_id: str = ""
     name: str
     category: List[Category]
     task: str
@@ -111,74 +110,3 @@ class ChallengeData(BaseModel):
     ground: Ground | Dict[str, Ground]
     info: Info | Dict[str, Info]
     metadata: Optional[Dict[str, Any]] = None
-
-    def serialize(self, path: str) -> None:
-        with open(path, "w") as file:
-            file.write(self.json())
-
-    def get_data(self) -> dict:
-        return self.dict()
-
-    @staticmethod
-    def get_json_from_path(json_path: Path | str) -> dict:
-        path = Path(json_path).resolve()
-        with open(path, "r") as file:
-            data = json.load(file)
-        return data
-
-    @staticmethod
-    def deserialize(path: str) -> "ChallengeData":
-        # this script is in root/agbenchmark/utils/define_task_types.py
-        script_dir = Path(__file__).resolve().parent.parent.parent
-        json_path = script_dir / Path(path)
-
-        with open(json_path, "r") as file:
-            data = json.load(file)
-        try:
-            return ChallengeData(**data)
-        except:
-            test = "ok"
-
-    def challenge_from_datum(self, file_datum: list[dict[str, Any]]) -> "ChallengeData":
-        same_task_data = {
-            "name": self.prefix,
-            "dependencies": self.dependencies,
-            "category": self.shared_category,
-            "task": self.task,
-            "cutoff": self.cutoff,
-        }
-
-        if not self.info:
-            same_task_data["info"] = {
-                datum["name"]: datum["info"] for datum in file_datum
-            }
-        else:
-            same_task_data["info"] = self.info
-
-        if not self.ground:
-            same_task_data["ground"] = {
-                datum["name"]: datum["ground"] for datum in file_datum
-            }
-        else:
-            same_task_data["ground"] = self.ground
-
-        return ChallengeData(**same_task_data)
-
-    def challenge_from_test_data(self, data: dict[str, Any]) -> "ChallengeData":
-        same_task_data = {
-            "name": data["name"],
-            "dependencies": data["dependencies"],
-            "category": data["category"],
-            "info": data["info"],
-            "ground": data["ground"],
-        }
-
-        if self.same_task:
-            same_task_data["category"].extend(self.shared_category)
-            same_task_data["task"] = self.task
-            same_task_data["cutoff"] = self.cutoff
-        else:
-            same_task_data["task"] = data["task"]
-            same_task_data["cutoff"] = data["cutoff"]
-
-        return ChallengeData(**same_task_data)

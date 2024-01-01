@@ -36,7 +36,7 @@ class Challenge(ABC):
     @property
     def data(self) -> ChallengeData:
         if self.CHALLENGE_LOCATION not in self._data_cache:
-            self._data_cache[self.CHALLENGE_LOCATION] = ChallengeData.deserialize(
+            self._data_cache[self.CHALLENGE_LOCATION] = ChallengeData.parse_file(
                 self.CHALLENGE_LOCATION
             )
         return self._data_cache[self.CHALLENGE_LOCATION]

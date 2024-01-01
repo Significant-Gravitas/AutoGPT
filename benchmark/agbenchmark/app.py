@@ -26,6 +26,7 @@ from agbenchmark.reports.processing.report_types_v2 import (
     TaskInfo,
 )
 from agbenchmark.schema import TaskEvalRequestBody
+from agbenchmark.utils.data_types import ChallengeData
 from agbenchmark.utils.path_manager import PATH_MANAGER
 from agbenchmark.utils.utils import write_pretty_json
 
@@ -43,30 +44,26 @@ general_command = ["poetry", "run", "agbenchmark", "start", "--backend"]
 
 challenges_path = Path(__file__).parent / "challenges"
 
-json_files = deque(
+challenge_spec_files = deque(
     glob.glob(
         f"{challenges_path}/**/data.json",
         recursive=True,
     )
 )
 
-CHALLENGES = {}
+CHALLENGES: dict[str, ChallengeData] = {}
 task_informations = defaultdict(dict[str, Any])
 
-while json_files:
-    json_file = json_files.popleft()
-
-    with open(json_file, "r") as file:
-        data = json.load(file)
-
-        if "eval_id" not in data:
-            data["eval_id"] = str(uuid.uuid4())
+while challenge_spec_files:
+    challenge_spec_file = challenge_spec_files.popleft()
+    challenge_info = ChallengeData.parse_file(challenge_spec_file)
+    if not challenge_info.eval_id:
+        challenge_info.eval_id = str(uuid.uuid4())
         # this will sort all the keys of the JSON systematically
         # so that the order is always the same
-        write_pretty_json(data, json_file)
-        # ok
-        CHALLENGES[data["eval_id"]] = data
-        CHALLENGES[data["eval_id"]]["path"] = json_file
+        write_pretty_json(challenge_info.dict(), challenge_spec_file)
+    challenge_info.path = challenge_spec_file
+    CHALLENGES[challenge_info.eval_id] = challenge_info
 
 
 def find_agbenchmark_without_uvicorn():
@@ -246,7 +243,7 @@ async def create_agent_task(task_eval_request: TaskEvalRequestBody) -> Task:
     try:
         async with ApiClient(configuration) as api_client:
             api_instance = AgentApi(api_client)
-            task_input = CHALLENGES[task_eval_request.eval_id]["task"]
+            task_input = CHALLENGES[task_eval_request.eval_id].task
 
             task_request_body = TaskRequestBody(input=task_input)
             task_response = await api_instance.create_agent_task(
@@ -262,7 +259,7 @@ async def create_agent_task(task_eval_request: TaskEvalRequestBody) -> Task:
             ] = task_eval_request.eval_id
             await upload_artifacts(
                 api_instance,
-                str(Path(CHALLENGES[task_eval_request.eval_id]["path"]).parent),
+                str(Path(CHALLENGES[task_eval_request.eval_id].path).parent),
                 task_response.task_id,
                 "artifacts_in",
             )
@@ -306,33 +303,31 @@ async def create_evaluation(task_id: str) -> BenchmarkRun:
         # add custom python
         challenge_info = CHALLENGES[task_informations[task_id]["eval_id"]]
 
-        artifact_path = str(Path(challenge_info["path"]).parent)
+        artifact_path = str(Path(challenge_info.path).parent)
         copy_artifacts_into_temp_folder(
             PATH_MANAGER.temp_folder, "custom_python", artifact_path
         )
-        json_file = challenge_info["path"]
-        json_files = deque()
+        challenge_spec_file = challenge_info.path
 
-        _, challenge_class = create_challenge(challenge_info, json_file, json_files)
+        challenge_class = create_challenge(challenge_info, challenge_spec_file)
         challenge_instance = challenge_class()
         scores = challenge_instance.get_scores(config={})
-        test_name = "Test" + challenge_info["name"]
         is_score_100 = 1 in scores["values"]
 
         eval_info = BenchmarkRun(
             repository_info=RepositoryInfo(),
             run_details=RunDetails(
-                command=f"agbenchmark --test={test_name}",
+                command=f"agbenchmark --test={challenge_info.name}",
                 benchmark_start_time=task_informations[task_id]["benchmark_start_time"],
-                test_name=challenge_info["name"],
+                test_name=challenge_info.name,
             ),
             task_info=TaskInfo(
-                data_path=challenge_info["path"].split("benchmark/", 1)[-1],
+                data_path=challenge_info.path.split("benchmark/", 1)[-1],
                 is_regression=None,
-                category=challenge_info["category"],
-                task=challenge_info["task"],
-                answer=challenge_info["ground"]["answer"],
-                description=challenge_info["info"]["description"],
+                category=[c.value for c in challenge_info.category],
+                task=challenge_info.task,
+                answer=challenge_info.ground.answer,
+                description=challenge_info.info.description,
             ),
             metrics=Metrics(
                 success=is_score_100,

@@ -4,9 +4,11 @@ import os
 import sys
 from typing import Any, Dict
 
+import pytest
+
 from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.reports.ReportManager import SingletonReportManager
-from agbenchmark.utils.data_types import DifficultyLevel
+from agbenchmark.utils.data_types import ChallengeData, DifficultyLevel
 from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
 from agbenchmark.utils.path_manager import PATH_MANAGER
 from agbenchmark.utils.utils import calculate_success_percentage
@@ -52,17 +54,14 @@ def update_regression_tests(
 
 
 def generate_single_call_report(
-    item: Any,
-    call: Any,
-    challenge_data: dict[str, Any],
+    item: pytest.Item,
+    call: pytest.CallInfo,
+    challenge_data: ChallengeData,
     answers: dict[str, Any],
-    challenge_location,
-    test_name,
+    challenge_location: str,
+    test_name: str,
 ) -> None:
-    try:
-        difficulty = challenge_data["info"]["difficulty"]
-    except KeyError:
-        return None
+    difficulty = challenge_data.info.difficulty
 
     if isinstance(difficulty, DifficultyLevel):
         difficulty = difficulty.value
@@ -80,10 +79,10 @@ def generate_single_call_report(
     info_details: Any = {
         "data_path": challenge_location,
         "is_regression": False,
-        "category": challenge_data["category"],
-        "task": challenge_data["task"],
-        "answer": challenge_data["ground"]["answer"],
-        "description": challenge_data["info"]["description"],
+        "category": challenge_data.category,
+        "task": challenge_data.task,
+        "answer": challenge_data.ground.answer,
+        "description": challenge_data.info.description,
         "metrics": {
             "difficulty": difficulty,
             "success": False,
@@ -94,8 +93,8 @@ def generate_single_call_report(
     if answers:
         info_details["answers"] = answers
 
-    if "metadata" in challenge_data:
-        info_details["metadata"] = challenge_data["metadata"]
+    if challenge_data.metadata:
+        info_details["metadata"] = challenge_data.metadata
 
     mock = os.getenv("IS_MOCK")  # Check if --mock is in sys.argv
     if call:
@@ -119,7 +118,7 @@ def generate_single_call_report(
     return info_details
 
 
-def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:
+def finalize_reports(item: pytest.Item, challenge_data: ChallengeData) -> None:
     run_time = dict(item.user_properties).get("run_time")
 
     info_details = getattr(item, "info_details", {})
@@ -146,7 +145,7 @@ def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:
 
             info_details["metrics"]["run_time"] = f"{str(round(run_time, 3))} seconds"
 
-            info_details["reached_cutoff"] = float(run_time) > challenge_data["cutoff"]
+            info_details["reached_cutoff"] = float(run_time) > challenge_data.cutoff
 
             if "--mock" not in sys.argv:
                 update_challenges_already_beaten(info_details, test_name)
@@ -168,7 +167,7 @@ def update_challenges_already_beaten(
     try:
         with open(PATH_MANAGER.challenges_already_beaten, "r") as f:
             challenge_data = json.load(f)
-    except:
+    except FileNotFoundError:
         challenge_data = {}
     challenge_beaten_in_the_past = challenge_data.get(test_name)
 

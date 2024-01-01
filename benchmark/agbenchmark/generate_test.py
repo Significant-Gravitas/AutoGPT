@@ -23,13 +23,10 @@ logger = logging.getLogger(__name__)
 
 
 def create_single_test(
-    challenge_data: dict[str, Any] | ChallengeData,
+    challenge_data: ChallengeData,
     challenge_location: Path,
 ) -> type[Challenge]:
-    if isinstance(challenge_data, ChallengeData):
-        challenge_data = challenge_data.get_data()
-
-    DATA_CATEGORY[challenge_data["name"]] = challenge_data["category"][0]
+    DATA_CATEGORY[challenge_data.name] = challenge_data.category[0].value
 
     # Define test method within the dynamically created class
     @pytest.mark.asyncio
@@ -93,16 +90,9 @@ def create_single_test(
 
         assert is_score_100
 
-    # Add challenge_data parameter; this is used later on for report generation
-    test_method = pytest.mark.parametrize(
-        "challenge_data",
-        [challenge_data],
-        indirect=True,
-    )(test_method)
-
     # Define test class dynamically
     challenge_class: type[Challenge] = type(
-        f"Test{challenge_data['name']}", (Challenge,), {"test_method": test_method}
+        f"Test{challenge_data.name}", (Challenge,), {"test_method": test_method}
     )
     logger.debug(f"Location of challenge spec: {challenge_location}")
     challenge_class.CHALLENGE_LOCATION = str(challenge_location)
@@ -111,22 +101,17 @@ def create_single_test(
     return challenge_class
 
 
-def create_single_suite_challenge(challenge_data: ChallengeData, path: Path) -> None:
-    create_single_test(challenge_data, path)
-
-
 def create_challenge(
-    data: dict[str, Any],
+    challenge_data: ChallengeData,
     json_file: str,
-    json_files: deque,
-) -> tuple[deque, type[Challenge]]:
+) -> type[Challenge]:
     path = Path(json_file).resolve()
     logger.debug(f"Creating challenge for {path}")
 
-    challenge_class = create_single_test(data, path)
+    challenge_class = create_single_test(challenge_data, path)
     logger.debug(f"Creation complete for {path}")
 
-    return json_files, challenge_class
+    return challenge_class
 
 
 def load_challenges() -> None:
@@ -160,13 +145,13 @@ def load_challenges() -> None:
         if challenge_should_be_ignored(json_file):
             continue
 
-        data = ChallengeData.get_json_from_path(json_file)
+        challenge_info = ChallengeData.parse_file(json_file)
 
         # TODO: move filtering/selection of challenges out of here
         commands = sys.argv
         # --by flag
         if "--category" in commands:
-            categories = data.get("category", [])
+            categories = [c.value for c in challenge_info.category]
             commands_set = set(commands)
 
             # Convert the combined list to a set
@@ -182,20 +167,20 @@ def load_challenges() -> None:
             if command.startswith("--test="):
                 tests.append(command.split("=")[1])
 
-        if tests and data["name"] not in tests:
+        if tests and challenge_info.name not in tests:
             continue
 
         # --maintain and --improve flag
-        in_regression = regression_tests.get(data["name"], None)
+        in_regression = regression_tests.get(challenge_info.name, None)
         improve_flag = in_regression and "--improve" in commands
         maintain_flag = not in_regression and "--maintain" in commands
         if "--maintain" in commands and maintain_flag:
             continue
         elif "--improve" in commands and improve_flag:
             continue
-        json_files, challenge_class = create_challenge(data, json_file, json_files)
+        challenge_class = create_challenge(challenge_info, json_file)
 
-        logger.debug(f"Generated test for {data['name']}")
+        logger.debug(f"Generated test for {challenge_info.name}")
         _add_challenge_to_module(challenge_class)
 
     logger.info("Loading challenges complete.")

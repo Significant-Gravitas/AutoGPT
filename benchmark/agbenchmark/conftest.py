@@ -144,19 +144,6 @@ def check_regression(request: pytest.FixtureRequest) -> None:
             pytest.skip(f"{skip_string} because it's not a regression test")
 
 
-# this is to get the challenge_data from every test
-@pytest.fixture(autouse=True)
-def challenge_data(request: pytest.FixtureRequest) -> Any:
-    """
-    Pytest fixture that provides the challenge data for each test.
-    The challenge data is retrieved from the request object's parameters.
-
-    Args:
-        request: The pytest request object, which should contain challenge data.
-    """
-    return request.param
-
-
 @pytest.fixture(autouse=True, scope="session")
 def mock(request: pytest.FixtureRequest) -> bool:
     """
@@ -200,17 +187,12 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> None:
         item: The test item for which the report is being generated.
         call: The call object from which the test result is retrieved.
     """
-    challenge_data = item.funcargs.get("challenge_data", None)
-
-    if not challenge_data:
-        # this will only happen for dummy dependency setup tests
-        return
-
-    challenge_location: str = getattr(item.cls, "CHALLENGE_LOCATION", "")
+    challenge: type[Challenge] = item.cls  # type: ignore
+    challenge_data = challenge().data
+    challenge_location = challenge.CHALLENGE_LOCATION
 
     if call.when == "call":
         answers = getattr(item, "answers", None)
-        challenge_location: str = getattr(item.cls, "CHALLENGE_LOCATION", "")
         test_name = item.nodeid.split("::")[1]
         item.test_name = test_name
 
@@ -268,8 +250,8 @@ def scores(request: pytest.FixtureRequest) -> None:
     Args:
         request: The request object.
     """
-    test_class: type[Challenge] = request.node.cls
-    return test_class.scores.get(test_class.__name__)
+    challenge: type[Challenge] = request.node.cls
+    return challenge.scores.get(challenge.__name__)
 
 
 def pytest_collection_modifyitems(
