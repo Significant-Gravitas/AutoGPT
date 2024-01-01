@@ -18,12 +18,12 @@ from agbenchmark.reports.reports import (
 )
 from agbenchmark.utils.challenge import Challenge
 from agbenchmark.utils.data_types import Category
-from agbenchmark.utils.path_manager import PATH_MANAGER
 
 GLOBAL_TIMEOUT = (
     1500  # The tests will stop after 25 minutes so we can send the reports.
 )
 
+agbenchmark_config = AgentBenchmarkConfig.load()
 logger = logging.getLogger(__name__)
 
 pytest_plugins = ["agbenchmark.utils.dependencies"]
@@ -32,18 +32,8 @@ suite_reports: dict[str, list] = {}
 
 
 @pytest.fixture(scope="module")
-def config() -> dict:
-    """
-    Loads the applicable benchmark configuration and returns a config `dict`.
-
-    Returns:
-        dict: A dictionary with the benchmark config at `config["AgentBenchmarkConfig"]`
-    """
-    config = {}
-
-    config["AgentBenchmarkConfig"] = AgentBenchmarkConfig.load()
-
-    return config
+def config() -> AgentBenchmarkConfig:
+    return agbenchmark_config
 
 
 @pytest.fixture(autouse=True)
@@ -54,14 +44,14 @@ def temp_folder() -> Generator[Path, None, None]:
     """
 
     # create output directory if it doesn't exist
-    if not os.path.exists(PATH_MANAGER.temp_folder):
-        os.makedirs(PATH_MANAGER.temp_folder, exist_ok=True)
+    if not os.path.exists(agbenchmark_config.temp_folder):
+        os.makedirs(agbenchmark_config.temp_folder, exist_ok=True)
 
-    yield PATH_MANAGER.temp_folder
+    yield agbenchmark_config.temp_folder
     # teardown after test function completes
     if not os.getenv("KEEP_TEMP_FOLDER_FILES"):
-        for filename in os.listdir(PATH_MANAGER.temp_folder):
-            file_path = os.path.join(PATH_MANAGER.temp_folder, filename)
+        for filename in os.listdir(agbenchmark_config.temp_folder):
+            file_path = os.path.join(agbenchmark_config.temp_folder, filename)
             try:
                 if os.path.isfile(file_path) or os.path.islink(file_path):
                     os.unlink(file_path)
@@ -129,9 +119,8 @@ def check_regression(request: pytest.FixtureRequest) -> None:
             configuration are retrieved.
     """
     test_name = request.node.parent.name
-    agent_benchmark_config = AgentBenchmarkConfig.load()
     with contextlib.suppress(FileNotFoundError):
-        regression_report = agent_benchmark_config.regression_reports_path
+        regression_report = agbenchmark_config.regression_reports_path
         data = json.loads(regression_report.read_bytes())
         challenge_location = getattr(request.node.parent.cls, "CHALLENGE_LOCATION", "")
 
@@ -201,7 +190,7 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> None:
         )
 
     if call.when == "teardown":
-        finalize_reports(item, challenge_data)
+        finalize_reports(agbenchmark_config, item, challenge_data)
 
 
 def timeout_monitor(start_time: int) -> None:
@@ -237,7 +226,7 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
 
     Finalizes and saves the test reports.
     """
-    session_finish(suite_reports)
+    session_finish(agbenchmark_config, suite_reports)
 
 
 @pytest.fixture
@@ -266,16 +255,14 @@ def pytest_collection_modifyitems(
         items: The collected test items to be modified.
         config: The active pytest configuration.
     """
-    agent_benchmark_config = AgentBenchmarkConfig.load()
-
-    regression_file = agent_benchmark_config.regression_reports_path
+    regression_file = agbenchmark_config.regression_reports_path
     regression_tests: dict[str, Any] = (
         json.loads(regression_file.read_bytes()) if regression_file.is_file() else {}
     )
 
     try:
         challenges_beaten_in_the_past = json.loads(
-            PATH_MANAGER.challenges_already_beaten.read_bytes()
+            agbenchmark_config.challenges_already_beaten.read_bytes()
         )
     except FileNotFoundError:
         challenges_beaten_in_the_past = {}

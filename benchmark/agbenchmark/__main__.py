@@ -11,8 +11,8 @@ import click
 from click_default_group import DefaultGroup
 from dotenv import load_dotenv
 
+from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.utils.logging import configure_logging
-from agbenchmark.utils.path_manager import PATH_MANAGER
 
 load_dotenv()
 
@@ -79,6 +79,7 @@ def get_unique_categories() -> set[str]:
 
 
 def run_benchmark(
+    config: AgentBenchmarkConfig,
     maintain: bool = False,
     improve: bool = False,
     explore: bool = False,
@@ -98,7 +99,6 @@ def run_benchmark(
     """
     import pytest
 
-    from agbenchmark.config import AgentBenchmarkConfig
     from agbenchmark.reports.ReportManager import SingletonReportManager
 
     validate_args(
@@ -112,13 +112,12 @@ def run_benchmark(
         cutoff=cutoff,
     )
 
-    initialize_updates_file()
+    initialize_updates_file(config)
     SingletonReportManager()
-    agent_benchmark_config = AgentBenchmarkConfig.load()
 
-    assert agent_benchmark_config.host, "Error: host needs to be added to the config."
+    assert config.host, "Error: host needs to be added to the config."
 
-    for key, value in vars(agent_benchmark_config).items():
+    for key, value in vars(config).items():
         logger.debug(f"config.{key} = {repr(value)}")
 
     pytest_args = ["-vs"]
@@ -288,7 +287,8 @@ def run(
 
     Options marked with (+) can be specified multiple times, to select multiple items.
     """
-    logger.debug(f"agbenchmark_config: {PATH_MANAGER.base_path}")
+    agbenchmark_config = AgentBenchmarkConfig.load()
+    logger.debug(f"agbenchmark_config: {agbenchmark_config.agbenchmark_config_path}")
     try:
         validate_args(
             maintain=maintain,
@@ -311,6 +311,7 @@ def run(
         with open("backend/backend_stdout.txt", "w") as f:
             sys.stdout = f
             exit_code = run_benchmark(
+                config=agbenchmark_config,
                 maintain=maintain,
                 improve=improve,
                 explore=explore,
@@ -328,6 +329,7 @@ def run(
 
     else:
         exit_code = run_benchmark(
+            config=agbenchmark_config,
             maintain=maintain,
             improve=improve,
             explore=explore,
@@ -349,7 +351,10 @@ def serve():
     """Serve the benchmark frontend and API on port 8080."""
     import uvicorn
 
-    from agbenchmark.app import app
+    from agbenchmark.app import setup_fastapi_app
+
+    config = AgentBenchmarkConfig.load()
+    app = setup_fastapi_app(config)
 
     # Run the FastAPI application using uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
@@ -366,15 +371,15 @@ def version():
     click.echo(f"AGBenchmark version {version}")
 
 
-def initialize_updates_file():
-    if os.path.exists(PATH_MANAGER.updates_json_file):
+def initialize_updates_file(config: AgentBenchmarkConfig):
+    if os.path.exists(config.updates_json_file):
         # If the file already exists, overwrite it with an empty list
-        with open(PATH_MANAGER.updates_json_file, "w") as file:
+        with open(config.updates_json_file, "w") as file:
             json.dump([], file, indent=2)
         logger.debug("Initialized updates.json by overwriting with an empty array")
     else:
         # If the file doesn't exist, create it and write an empty list
-        with open(PATH_MANAGER.updates_json_file, "w") as file:
+        with open(config.updates_json_file, "w") as file:
             json.dump([], file, indent=2)
         logger.debug("Created updates.json and initialized it with an empty array")
 

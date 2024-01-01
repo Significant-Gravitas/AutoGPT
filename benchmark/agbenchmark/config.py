@@ -2,11 +2,9 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import TypedDict
+from typing import Optional, TypedDict
 
 from pydantic import BaseModel
-
-from agbenchmark.utils.path_manager import PATH_MANAGER
 
 
 def _calculate_info_test_path(base_path: Path, benchmark_start_time: datetime) -> Path:
@@ -57,8 +55,9 @@ class WorkspaceConfig(TypedDict):
 
 class AgentBenchmarkConfig(BaseModel):
     """
-    This class represents the configuration for the Agent agbenchmark.
-    It includes the following attributes:
+    Configuration model and loader for the AGBenchmark.
+
+    Attributes:
     - agbenchmark_config_path: The path to the agbenchmark config that this object was created from.
     - reports_folder: The path to the folder where the benchmark reports will be stored.
     - host: The host where the benchmark is run.
@@ -69,12 +68,37 @@ class AgentBenchmarkConfig(BaseModel):
     host: str
 
     @classmethod
-    def load(cls):
-        with open(PATH_MANAGER.config_file, "r") as f:
+    def load(cls, base_path: Optional[Path] = None) -> "AgentBenchmarkConfig":
+        base_path = base_path or cls.find_config_folder()
+        with (base_path / "config.json").open("r") as f:
             return cls(
-                agbenchmark_config_path=PATH_MANAGER.base_path,
+                agbenchmark_config_path=base_path,
                 **json.load(f),
             )
+
+    @staticmethod
+    def find_config_folder(for_dir: Path = Path.cwd()) -> Path:
+        """
+        Find the closest ancestor folder containing an agbenchmark_config folder,
+        and returns the path of that agbenchmark_config folder.
+        """
+        current_directory = for_dir
+        while current_directory != Path("/"):
+            if (path := current_directory / "agbenchmark_config").exists():
+                if (path / "config.json").is_file():
+                    return path
+            current_directory = current_directory.parent
+        raise FileNotFoundError(
+            "No 'agbenchmark_config' directory found in the path hierarchy."
+        )
+
+    @property
+    def config_file(self) -> Path:
+        return self.agbenchmark_config_path / "config.json"
+
+    @property
+    def agent_home_directory(self) -> Path:
+        return Path(self.agbenchmark_config_path).resolve().parent
 
     @property
     def reports_folder(self) -> Path:
@@ -92,5 +116,13 @@ class AgentBenchmarkConfig(BaseModel):
         return self.reports_folder / "success_rate.json"
 
     @property
-    def agent_home_directory(self) -> Path:
-        return Path(self.agbenchmark_config_path).resolve().parent
+    def challenges_already_beaten(self) -> Path:
+        return self.agbenchmark_config_path / "challenges_already_beaten.json"
+
+    @property
+    def updates_json_file(self) -> Path:
+        return self.agbenchmark_config_path / "updates.json"
+
+    @property
+    def temp_folder(self) -> Path:
+        return self.agbenchmark_config_path / "temp_folder"

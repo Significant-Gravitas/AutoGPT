@@ -6,7 +6,7 @@ import subprocess
 import sys
 from abc import ABC
 from pathlib import Path
-from typing import Any, ClassVar, Dict, List
+from typing import Any, ClassVar, List
 
 import openai
 import pytest
@@ -15,8 +15,8 @@ from colorama import Fore, Style
 
 from agbenchmark.__main__ import OPTIONAL_CATEGORIES
 from agbenchmark.agent_api_interface import append_updates_file, run_api_agent
+from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.utils.data_types import ChallengeData, Ground
-from agbenchmark.utils.path_manager import PATH_MANAGER
 from agbenchmark.utils.prompts import (
     END_PROMPT,
     FEW_SHOT_EXAMPLES,
@@ -56,10 +56,10 @@ class Challenge(ABC):
     # Define test method within the dynamically created class
     @pytest.mark.asyncio
     async def test_method(
-        self, config: dict[str, Any], request: pytest.FixtureRequest
+        self, config: AgentBenchmarkConfig, request: pytest.FixtureRequest
     ) -> None:
-        # skip optional categories
-        self.skip_optional_categories(config)
+        # # skip optional categories
+        # self.skip_optional_categories(config)
 
         if os.environ.get("HELICONE_API_KEY"):
             from helicone.lock import HeliconeLockManager
@@ -75,7 +75,7 @@ class Challenge(ABC):
 
         await self.run_challenge(config, timeout)
 
-        scores = self.get_scores(config)
+        scores = self.get_scores(config.temp_folder)
         request.node.answers = (
             scores["answers"] if request.config.getoption("--keep-answers") else None
         )
@@ -96,11 +96,11 @@ class Challenge(ABC):
             artifacts=[],
             is_last=True,
         )
-        await append_updates_file(eval_step)
+        await append_updates_file(config.updates_json_file, eval_step)
 
         assert is_score_100
 
-    async def run_challenge(self, config: Dict[str, Any], cutoff: int) -> None:
+    async def run_challenge(self, config: AgentBenchmarkConfig, cutoff: int) -> None:
         from agbenchmark.agent_interface import copy_artifacts_into_temp_folder
 
         if not self.data.task:
@@ -122,9 +122,7 @@ class Challenge(ABC):
             str(Path(self.CHALLENGE_LOCATION).parent),
         ]
         for path in artifact_paths:
-            copy_artifacts_into_temp_folder(
-                PATH_MANAGER.temp_folder, "custom_python", path
-            )
+            copy_artifacts_into_temp_folder(config.temp_folder, "custom_python", path)
 
     @staticmethod
     def get_artifacts_out(
@@ -164,7 +162,7 @@ class Challenge(ABC):
             if ground.eval.type == "pytest":
                 result = subprocess.run(
                     [sys.executable, "-m", "pytest"],
-                    cwd=PATH_MANAGER.temp_folder,
+                    cwd=os.path.abspath(workspace),
                     capture_output=True,
                     text=True,
                 )
@@ -176,7 +174,7 @@ class Challenge(ABC):
         return files_contents
 
     @staticmethod
-    def scoring(config: Dict[str, Any], content: str, ground: Ground) -> float:
+    def scoring(content: str, ground: Ground) -> float:
         print(f"{Fore.BLUE}Scoring content:{Style.RESET_ALL}", content)
         if ground.should_contain:
             for should_contain_word in ground.should_contain:
@@ -211,7 +209,7 @@ class Challenge(ABC):
         return 1.0
 
     @classmethod
-    def llm_eval(cls, config: Dict[str, Any], content: str, ground: Ground) -> float:
+    def llm_eval(cls, content: str, ground: Ground) -> float:
         openai.api_key = os.getenv("OPENAI_API_KEY")
         if os.getenv("IS_MOCK"):
             return 1.0
@@ -237,7 +235,7 @@ class Challenge(ABC):
         return float(answer["choices"][0]["message"]["content"])  # type: ignore
 
     @classmethod
-    def get_scores(cls, config: Dict[str, Any]) -> dict[str, Any]:
+    def get_scores(cls, workspace: Path) -> dict[str, Any]:
         scores = []
         scores_dict: Any = {}
         percentage = None
@@ -247,19 +245,15 @@ class Challenge(ABC):
                 scores = [1.0]
                 answers = {"mock": "This is a mock answer"}
             elif isinstance(cls.data.ground, Ground):
-                files_contents = cls.get_artifacts_out(
-                    PATH_MANAGER.temp_folder, cls.data.ground
-                )
+                files_contents = cls.get_artifacts_out(workspace, cls.data.ground)
                 answers = {"answer": files_contents}
                 for file_content in files_contents:
-                    score = cls.scoring(config, file_content, cls.data.ground)
+                    score = cls.scoring(file_content, cls.data.ground)
                     print(f"{Fore.GREEN}Your score is:{Style.RESET_ALL}", score)
                     scores.append(score)
 
                 if cls.data.ground.eval.type == "llm":
-                    llm_eval = cls.llm_eval(
-                        config, "\n".join(files_contents), cls.data.ground
-                    )
+                    llm_eval = cls.llm_eval("\n".join(files_contents), cls.data.ground)
                     if cls.data.ground.eval.scoring == "percentage":
                         scores.append(math.ceil(llm_eval / 100))
                     elif cls.data.ground.eval.scoring == "scale":
@@ -289,14 +283,12 @@ class Challenge(ABC):
         return None
 
     @classmethod
-    def skip_optional_categories(cls, config: Dict[str, Any]) -> None:
+    def skip_optional_categories(cls, config: AgentBenchmarkConfig) -> None:
         challenge_category = cls.data.category
         categories = [
             category
             for category in OPTIONAL_CATEGORIES
             if category in [c.value for c in challenge_category]
         ]
-        if not agent_eligibible_for_optional_categories(
-            categories, config.get("category", [])
-        ):
+        if not agent_eligibible_for_optional_categories(categories, config.categories):
             pytest.skip("Agent is not eligible for this category")

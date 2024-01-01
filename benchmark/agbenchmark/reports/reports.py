@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Any, Dict
 
 import pytest
@@ -10,7 +11,6 @@ from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.reports.ReportManager import SingletonReportManager
 from agbenchmark.utils.data_types import ChallengeData, DifficultyLevel
 from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
-from agbenchmark.utils.path_manager import PATH_MANAGER
 from agbenchmark.utils.utils import calculate_success_percentage
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 def get_previous_test_results(
     test_name: str, info_details: dict[str, Any]
 ) -> list[bool]:
-    agent_tests: dict[str, list[bool]] = {}
     mock = os.getenv("IS_MOCK")  # Check if --mock is in sys.argv
 
     prev_test_results = SingletonReportManager().INTERNAL_INFO_MANAGER.tests.get(
@@ -118,7 +117,9 @@ def generate_single_call_report(
     return info_details
 
 
-def finalize_reports(item: pytest.Item, challenge_data: ChallengeData) -> None:
+def finalize_reports(
+    config: AgentBenchmarkConfig, item: pytest.Item, challenge_data: ChallengeData
+) -> None:
     run_time = dict(item.user_properties).get("run_time")
 
     info_details = getattr(item, "info_details", {})
@@ -148,24 +149,28 @@ def finalize_reports(item: pytest.Item, challenge_data: ChallengeData) -> None:
             info_details["reached_cutoff"] = float(run_time) > challenge_data.cutoff
 
             if "--mock" not in sys.argv:
-                update_challenges_already_beaten(info_details, test_name)
+                update_challenges_already_beaten(
+                    config.challenges_already_beaten, info_details, test_name
+                )
                 if info_details.get("tests") is not None:
                     for nested_test_name, nested_test_info in info_details[
                         "tests"
                     ].items():
                         update_challenges_already_beaten(
-                            nested_test_info, nested_test_name
+                            config.challenges_already_beaten,
+                            nested_test_info,
+                            nested_test_name,
                         )
 
         SingletonReportManager().INFO_MANAGER.add_test(test_name, info_details)
 
 
 def update_challenges_already_beaten(
-    info_details: Dict[str, Any], test_name: str
+    challenges_already_beaten_file: Path, info_details: Dict[str, Any], test_name: str
 ) -> None:
     current_run_successful = info_details["metrics"]["success"]
     try:
-        with open(PATH_MANAGER.challenges_already_beaten, "r") as f:
+        with open(challenges_already_beaten_file, "r") as f:
             challenge_data = json.load(f)
     except FileNotFoundError:
         challenge_data = {}
@@ -175,13 +180,13 @@ def update_challenges_already_beaten(
     if challenge_beaten_in_the_past is None and not current_run_successful:
         challenge_data[test_name] = False
 
-    with open(PATH_MANAGER.challenges_already_beaten, "w") as f:
+    with open(challenges_already_beaten_file, "w") as f:
         json.dump(challenge_data, f, indent=4)
 
 
-def session_finish(suite_reports: dict) -> None:
-    agent_benchmark_config = AgentBenchmarkConfig.load()
-
+def session_finish(
+    agbenchmark_config: AgentBenchmarkConfig, suite_reports: dict
+) -> None:
     SingletonReportManager().INTERNAL_INFO_MANAGER.save()
-    SingletonReportManager().INFO_MANAGER.end_info_report(agent_benchmark_config)
+    SingletonReportManager().INFO_MANAGER.end_info_report(agbenchmark_config)
     SingletonReportManager().REGRESSION_MANAGER.save()
