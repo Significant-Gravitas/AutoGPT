@@ -294,7 +294,7 @@ async def proxy(request: Request, task_id: str):
 async def create_evaluation(task_id: str) -> BenchmarkRun:
     from agbenchmark.agent_api_interface import copy_agent_artifacts_into_temp_folder
     from agbenchmark.agent_interface import copy_artifacts_into_temp_folder
-    from agbenchmark.generate_test import create_challenge
+    from agbenchmark.generate_test import create_challenge_from_spec_file_path
 
     try:
         async with ApiClient(configuration) as api_client:
@@ -309,7 +309,7 @@ async def create_evaluation(task_id: str) -> BenchmarkRun:
         )
         challenge_spec_file = challenge_info.path
 
-        challenge_class = create_challenge(challenge_info, challenge_spec_file)
+        challenge_class = create_challenge_from_spec_file_path(challenge_spec_file)
         challenge_instance = challenge_class()
         scores = challenge_instance.get_scores(config={})
         is_score_100 = 1 in scores["values"]

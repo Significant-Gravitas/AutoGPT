@@ -122,11 +122,10 @@ def run_benchmark(
         logger.debug(f"config.{key} = {repr(value)}")
 
     pytest_args = ["-vs"]
-    if keep_answers:
-        pytest_args.append("--keep-answers")
 
     if tests:
         logger.info(f"Running specific test(s): {' '.join(tests)}")
+        pytest_args += [f"--test={t}" for t in tests]
     else:
         # Categories that are used in the challenges
         all_categories = get_unique_categories()
@@ -137,47 +136,48 @@ def run_benchmark(
                 f"Valid categories are: {all_categories}"
             )
 
-        if categories:
-            categories_to_run = set(categories)
+        if categories or skip_categories:
+            categories_to_run = set(categories) or all_categories
             if skip_categories:
                 categories_to_run = categories_to_run.difference(set(skip_categories))
-                assert categories_to_run, "Error: You can't skip all categories"
-            pytest_args.extend(["-m", " or ".join(categories_to_run), "--category"])
-            logger.info(f"Running tests of category: {categories_to_run}")
-        elif skip_categories:
-            categories_to_run = all_categories - set(skip_categories)
             assert categories_to_run, "Error: You can't skip all categories"
-            pytest_args.extend(["-m", " or ".join(categories_to_run), "--category"])
+            pytest_args += [f"--category={c}" for c in categories_to_run]
             logger.info(f"Running tests of category: {categories_to_run}")
         else:
             logger.info("Running all categories")
 
         if maintain:
             logger.info("Running only regression tests")
-            pytest_args.append("--maintain")
         elif improve:
             logger.info("Running only non-regression tests")
-            pytest_args.append("--improve")
         elif explore:
             logger.info("Only attempt challenges that have never been beaten")
-            pytest_args.append("--explore")
 
     if mock:
-        pytest_args.append("--mock")
+        # TODO: unhack
         os.environ[
             "IS_MOCK"
         ] = "True"  # ugly hack to make the mock work when calling from API
 
-    if no_dep:
-        pytest_args.append("--no-dep")
+    # Pass through flags
+    for flag, active in {
+        "--maintain": maintain,
+        "--improve": improve,
+        "--explore": explore,
+        "--no-dep": no_dep,
+        "--mock": mock,
+        "--nc": no_cutoff,
+        "--keep-answers": keep_answers,
+    }.items():
+        if active:
+            pytest_args.append(flag)
 
-    if no_cutoff:
-        pytest_args.append("--nc")
     if cutoff:
-        pytest_args.append("--cutoff")
+        pytest_args.append(f"--cutoff={cutoff}")
         logger.debug(f"Setting cuttoff override to {cutoff} seconds.")
+
     current_dir = Path(__file__).resolve().parent
-    pytest_args.append(str(current_dir))
+    pytest_args.append(str(current_dir / "generate_test.py"))
 
     pytest_args.append("--cache-clear")
     exit_code = pytest.main(pytest_args)

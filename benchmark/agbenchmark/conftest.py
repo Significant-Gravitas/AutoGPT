@@ -94,9 +94,9 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--mock", action="store_true")
     parser.addoption("--host", default=None)
     parser.addoption("--nc", action="store_true")
-    parser.addoption("--cutoff", action="store_true")
+    parser.addoption("--cutoff", action="store")
     parser.addoption("--category", action="append")
-    parser.addoption("--test", default=None)
+    parser.addoption("--test", action="append")
     parser.addoption("--improve", action="store_true")
     parser.addoption("--maintain", action="store_true")
     parser.addoption("--explore", action="store_true")
@@ -188,7 +188,7 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> None:
         call: The call object from which the test result is retrieved.
     """
     challenge: type[Challenge] = item.cls  # type: ignore
-    challenge_data = challenge().data
+    challenge_data = challenge.data
     challenge_location = challenge.CHALLENGE_LOCATION
 
     if call.when == "call":
@@ -266,43 +266,92 @@ def pytest_collection_modifyitems(
         items: The collected test items to be modified.
         config: The active pytest configuration.
     """
-    # agent_benchmark_config = AgentBenchmarkConfig.load()
+    agent_benchmark_config = AgentBenchmarkConfig.load()
 
-    # regression_file = agent_benchmark_config.get_regression_reports_path()
-    # data = (
-    #     json.loads(open(regression_file, "r").read())
-    #     if os.path.exists(regression_file)
-    #     else {}
-    # )
+    regression_file = agent_benchmark_config.regression_reports_path
+    regression_tests: dict[str, Any] = (
+        json.loads(regression_file.read_bytes()) if regression_file.is_file() else {}
+    )
 
-    for item in items:
-        # Assuming item.cls is your test class
-        test_class_instance: Challenge = item.cls()
+    try:
+        challenges_beaten_in_the_past = json.loads(
+            PATH_MANAGER.challenges_already_beaten.read_bytes()
+        )
+    except FileNotFoundError:
+        challenges_beaten_in_the_past = {}
 
-        if "test_method" not in item.name:
+    selected_tests: tuple[str] = config.getoption("--test")  # type: ignore
+    selected_categories: tuple[str] = config.getoption("--category")  # type: ignore
+
+    # Can't use a for-loop to remove items in-place
+    i = 0
+    while i < len(items):
+        item = items[i]
+        challenge = item.cls
+        challenge_name = item.cls.__name__
+
+        if not issubclass(challenge, Challenge):
+            item.warn(
+                pytest.PytestCollectionWarning(
+                    f"Non-challenge item collected: {challenge}"
+                )
+            )
+            i += 1
             continue
 
-        # Then you can access your properties
-        name = item.parent.cls.__name__
-        # dependencies = test_class_instance.data.dependencies
+        # --test: remove the test from the set if it's not specifically selected
+        if selected_tests and challenge.data.name not in selected_tests:
+            items.remove(item)
+            continue
 
-        # Filter dependencies if they are regression tests and this is an --improve sesh
-        # if config.getoption("--improve") or config.getoption(
-        #     "--category"
-        # ):
-        #     dependencies = [dep for dep in dependencies if not data.get(dep, None)]
-        # if (
-        #     config.getoption("--test")
-        #     or config.getoption("--no-dep")
-        #     or config.getoption("--maintain")
-        # ):
-        dependencies = test_class_instance.dependencies
+        # Filter challenges for --maintain, --improve, and --explore:
+        # --maintain -> only challenges expected to be passed (= regression tests)
+        # --improve -> only challenges that so far are not passed (reliably)
+        # --explore -> only challenges that have never been passed
+        is_regression_test = regression_tests.get(challenge.data.name, None)
+        has_been_passed = challenges_beaten_in_the_past.get(challenge.data.name, False)
+        if (
+            (config.getoption("--maintain") and not is_regression_test)
+            or (config.getoption("--improve") and is_regression_test)
+            or (config.getoption("--explore") and has_been_passed)
+        ):
+            items.remove(item)
+            continue
 
-        # Add depends marker dynamically
-        item.add_marker(pytest.mark.depends(on=dependencies, name=name))
+        dependencies = challenge.data.dependencies
+        if (
+            config.getoption("--test")
+            or config.getoption("--no-dep")
+            or config.getoption("--maintain")
+        ):
+            # Ignore dependencies:
+            # --test -> user selected specific tests to run, don't care about deps
+            # --no-dep -> ignore dependency relations regardless of test selection
+            # --maintain -> all "regression" tests must pass, so run all of them
+            dependencies = []
+        elif config.getoption("--improve"):
+            # Filter dependencies, keep only deps that are not "regression" tests
+            dependencies = [
+                d for d in dependencies if not regression_tests.get(d, None)
+            ]
 
-        categories = test_class_instance.data.category
+        # Set category markers
+        challenge_categories = [c.value for c in challenge.data.category]
+        for category in challenge_categories:
+            item.add_marker(category)
 
-        # Add category marker dynamically
-        for category in categories:
-            item.add_marker(category.value)
+        # Enforce category selection
+        if selected_categories:
+            if not set(challenge_categories).intersection(set(selected_categories)):
+                items.remove(item)
+                continue
+            # # Filter dependencies, keep only deps from selected categories
+            # dependencies = [
+            #     d for d in dependencies
+            #     if not set(d.categories).intersection(set(selected_categories))
+            # ]
+
+        # Add marker for the DependencyManager
+        item.add_marker(pytest.mark.depends(on=dependencies, name=challenge_name))
+
+        i += 1
