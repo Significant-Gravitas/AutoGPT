@@ -1,4 +1,5 @@
 import glob
+import json
 import logging
 import math
 import os
@@ -13,7 +14,6 @@ import pytest
 from agent_protocol_client.models.step import Step
 from colorama import Fore, Style
 
-from agbenchmark.__main__ import OPTIONAL_CATEGORIES
 from agbenchmark.agent_api_interface import append_updates_file, run_api_agent
 from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.utils.data_types import ChallengeData, Ground
@@ -26,6 +26,11 @@ from agbenchmark.utils.prompts import (
 from agbenchmark.utils.utils import agent_eligibible_for_optional_categories
 
 logger = logging.getLogger(__name__)
+
+with open(
+    Path(__file__).parent.parent / "challenges" / "optional_categories.json"
+) as f:
+    OPTIONAL_CATEGORIES: list[str] = json.load(f)["optional_categories"]
 
 
 class Challenge(ABC):

@@ -2,10 +2,11 @@ import datetime
 import glob
 import json
 import logging
-import os
 import sys
+import time
 import uuid
 from collections import defaultdict, deque
+from multiprocessing import Process
 from pathlib import Path
 from typing import Any, Optional
 
@@ -18,7 +19,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Extra, ValidationError
 
 from agbenchmark.config import AgentBenchmarkConfig
-from agbenchmark.execute_sub_process import execute_subprocess
 from agbenchmark.reports.processing.report_types_v2 import (
     BenchmarkRun,
     Metrics,
@@ -130,6 +130,7 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
     )
     from agbenchmark.agent_interface import copy_artifacts_into_temp_folder
     from agbenchmark.generate_test import create_challenge_from_spec_file
+    from agbenchmark.main import run_benchmark
 
     configuration = Configuration(
         host=agbenchmark_config.host or "http://localhost:8000"
@@ -153,18 +154,27 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
 
         _initialize_updates_file(agbenchmark_config)
 
-        # it's a hack because other parts of the code are using sys.argv
-        logger.debug(f"Current working directory: {os.getcwd()}")
-        command_options = ["agbenchmark"]
-        # if body.category:
-        #     sys.argv.append(f"--category={body.category}")
-        command_options.append(f"--test={body.test}")
-        if body.mock:
-            command_options.append("--mock")
+        # Start the benchmark in a separate thread
+        benchmark_process = Process(
+            target=lambda: run_benchmark(
+                config=agbenchmark_config,
+                tests=(body.test,),
+                mock=body.mock or False,
+            )
+        )
+        benchmark_process.start()
 
-        logger.debug(f"Running {command_options}")
-        execute_subprocess(command_options, 200)
-        logger.debug("Finished running")
+        # Wait for the benchmark to finish, with a timeout of 200 seconds
+        timeout = 200
+        start_time = time.time()
+        while benchmark_process.is_alive():
+            if time.time() - start_time > timeout:
+                logger.warning(f"Benchmark run timed out after {timeout} seconds")
+                benchmark_process.terminate()
+                break
+            time.sleep(1)
+        else:
+            logger.debug(f"Benchmark finished running in {time.time() - start_time} s")
 
         # List all folders in the current working directory
         path_reports = agbenchmark_config.reports_folder
