@@ -262,7 +262,7 @@ def pytest_collection_modifyitems(
 
     try:
         challenges_beaten_in_the_past = json.loads(
-            agbenchmark_config.challenges_already_beaten.read_bytes()
+            agbenchmark_config.challenges_already_beaten_file.read_bytes()
         )
     except FileNotFoundError:
         challenges_beaten_in_the_past = {}

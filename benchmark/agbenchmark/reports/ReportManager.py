@@ -36,7 +36,7 @@ class SingletonReportManager:
                 benchmark_start_time_dt,
             )
             cls.INTERNAL_INFO_MANAGER = ReportManager(
-                agent_benchmark_config.success_rate_path, benchmark_start_time_dt
+                agent_benchmark_config.success_rate_file, benchmark_start_time_dt
             )
 
         return cls.instance

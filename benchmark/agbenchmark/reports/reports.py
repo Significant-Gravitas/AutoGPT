@@ -150,14 +150,14 @@ def finalize_reports(
 
             if "--mock" not in sys.argv:
                 update_challenges_already_beaten(
-                    config.challenges_already_beaten, info_details, test_name
+                    config.challenges_already_beaten_file, info_details, test_name
                 )
                 if info_details.get("tests") is not None:
                     for nested_test_name, nested_test_info in info_details[
                         "tests"
                     ].items():
                         update_challenges_already_beaten(
-                            config.challenges_already_beaten,
+                            config.challenges_already_beaten_file,
                             nested_test_info,
                             nested_test_name,
                         )
