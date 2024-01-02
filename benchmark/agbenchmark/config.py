@@ -120,9 +120,5 @@ class AgentBenchmarkConfig(BaseModel):
         return self.agbenchmark_config_path / "challenges_already_beaten.json"
 
     @property
-    def updates_json_file(self) -> Path:
-        return self.agbenchmark_config_path / "updates.json"
-
-    @property
     def temp_folder(self) -> Path:
         return self.agbenchmark_config_path / "temp_folder"

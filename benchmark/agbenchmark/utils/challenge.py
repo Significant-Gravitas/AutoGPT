@@ -11,10 +11,9 @@ from typing import Any, ClassVar, List
 
 import openai
 import pytest
-from agent_protocol_client.models.step import Step
 from colorama import Fore, Style
 
-from agbenchmark.agent_api_interface import append_updates_file, run_api_agent
+from agbenchmark.agent_api_interface import run_api_agent
 from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.utils.data_types import ChallengeData, Ground
 from agbenchmark.utils.prompts import (
@@ -87,21 +86,6 @@ class Challenge(ABC):
         del scores["answers"]  # remove answers from scores
         request.node.scores = scores  # store scores in request.node
         is_score_100 = 1 in scores["values"]
-
-        evaluation = "Correct!" if is_score_100 else "Incorrect."
-        eval_step = Step(
-            input=evaluation,
-            additional_input=None,
-            task_id="irrelevant, this step is a hack",
-            step_id="irrelevant, this step is a hack",
-            name="",
-            status="created",
-            output=None,
-            additional_output=None,
-            artifacts=[],
-            is_last=True,
-        )
-        await append_updates_file(config.updates_json_file, eval_step)
 
         assert is_score_100
 

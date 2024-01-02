@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import time
@@ -6,7 +5,6 @@ from pathlib import Path
 from typing import Optional
 
 from agent_protocol_client import AgentApi, ApiClient, Configuration, TaskRequestBody
-from agent_protocol_client.models.step import Step
 
 from agbenchmark.agent_interface import get_list_of_file_paths
 from agbenchmark.config import AgentBenchmarkConfig
@@ -42,7 +40,6 @@ async def run_api_agent(
             # Read the existing JSON data from the file
 
             step = await api_instance.execute_agent_task_step(task_id=task_id)
-            await append_updates_file(config.updates_json_file, step)
 
             print(f"[{task.name}] - step {step.name} ({i}. request)")
             i += 1
@@ -93,18 +90,6 @@ async def copy_agent_artifacts_into_folder(
             f.write(content)
 
 
-async def append_updates_file(updates_file: Path, step: Step):
-    with open(updates_file, "r") as file:
-        existing_data = json.load(file)
-    # Append the new update to the existing array
-    new_update = create_update_json(step)
-
-    existing_data.append(new_update)
-    # Write the updated array back to the file
-    with open(updates_file, "w") as file:
-        file.write(json.dumps(existing_data, indent=2))
-
-
 async def upload_artifacts(
     api_instance: AgentApi, artifacts_location: str, task_id: str, type: str
 ) -> None:
@@ -118,10 +103,3 @@ async def upload_artifacts(
         await api_instance.upload_agent_task_artifacts(
             task_id=task_id, file=str(file_path), relative_path=relative_path
         )
-
-
-def create_update_json(step: Step):
-    now = int(time.time())
-    content = {"content": step.to_dict(), "timestamp": now}
-
-    return content

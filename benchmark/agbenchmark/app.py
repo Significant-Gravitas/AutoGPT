@@ -152,8 +152,6 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
 
         logger.debug(f"Request to /reports: {body.dict()}")
 
-        _initialize_updates_file(agbenchmark_config)
-
         # Start the benchmark in a separate thread
         benchmark_process = Process(
             target=lambda: run_benchmark(
@@ -205,47 +203,6 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
             )
 
         return data
-
-    @router.get("/updates")
-    def get_updates(request: Request) -> list[dict]:
-        try:
-            # Read data from the "update.json" file (provide the correct file path)
-            logger.debug(
-                f"Reading updates from {agbenchmark_config.updates_json_file}..."
-            )
-            with open(agbenchmark_config.updates_json_file, "r") as file:
-                data = json.load(file)
-
-            # Get the last_update_time from the query parameter
-            query_param = request.query_params.get("last_update_time")
-
-            if query_param is None:
-                # Handle the case when last_update_time is not provided
-                logger.error("last_update_time parameter is missing")
-                raise HTTPException(
-                    status_code=400,
-                    detail="last_update_time parameter is missing",
-                )
-
-            # Parse query_param as a Unix timestamp (seconds)
-            query_timestamp = int(query_param)
-
-            # Filter the data, keep items newer than query_timestamp
-            filtered_data = [
-                item for item in data if item["timestamp"] > query_timestamp
-            ]
-
-            # Extract only the "content" field from each item
-            filtered_data = [item["content"] for item in filtered_data]
-
-            logger.debug("Returning filtered data to the client")
-            return filtered_data
-        except FileNotFoundError:
-            logger.error("File not found: updates.json")
-            raise HTTPException(
-                status_code=404,
-                detail="File not found",
-            )
 
     @router.post("/agent/tasks", tags=["agent"])
     async def create_agent_task(task_eval_request: TaskEvalRequestBody) -> Task:
@@ -373,13 +330,3 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
     app.include_router(router, prefix="/ap/v1")
 
     return app
-
-
-def _initialize_updates_file(config: AgentBenchmarkConfig):
-    if config.updates_json_file.exists():
-        logger.debug("Resetting updates.json to an empty array")
-    else:
-        logger.debug("Creating updates.json with an empty array")
-
-    with open(config.updates_json_file, "w") as file:
-        json.dump([], file, indent=2)
