@@ -15,7 +15,7 @@ from agent_protocol_client import AgentApi, ApiClient, ApiException, Configurati
 from agent_protocol_client.models import Task, TaskRequestBody
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Extra
+from pydantic import BaseModel, Extra, ValidationError
 
 from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.execute_sub_process import execute_subprocess
@@ -43,15 +43,29 @@ challenge_spec_files = deque(
     )
 )
 
+logger.debug("Loading challenges...")
 while challenge_spec_files:
-    challenge_spec_file = challenge_spec_files.popleft()
-    challenge_info = ChallengeData.parse_file(challenge_spec_file)
+    challenge_spec_file = Path(challenge_spec_files.popleft())
+    challenge_relpath = challenge_spec_file.relative_to(challenges_path.parent)
+    if challenge_relpath.is_relative_to("challenges/deprecated"):
+        continue
+
+    logger.debug(f"Loading {challenge_relpath}...")
+    try:
+        challenge_info = ChallengeData.parse_file(challenge_spec_file)
+    except ValidationError as e:
+        if logging.getLogger().level == logging.DEBUG:
+            logger.warning(f"Spec file {challenge_relpath} failed to load:\n{e}")
+        logger.debug(f"Invalid challenge spec: {challenge_spec_file.read_text()}")
+        continue
+    challenge_info.spec_file = challenge_spec_file
+
     if not challenge_info.eval_id:
         challenge_info.eval_id = str(uuid.uuid4())
         # this will sort all the keys of the JSON systematically
         # so that the order is always the same
         write_pretty_json(challenge_info.dict(), challenge_spec_file)
-    challenge_info.path = challenge_spec_file
+
     CHALLENGES[challenge_info.eval_id] = challenge_info
 
 task_informations = defaultdict(dict[str, Any])
@@ -115,7 +129,7 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
         upload_artifacts,
     )
     from agbenchmark.agent_interface import copy_artifacts_into_temp_folder
-    from agbenchmark.generate_test import create_challenge_from_spec_file_path
+    from agbenchmark.generate_test import create_challenge_from_spec_file
 
     configuration = Configuration(
         host=agbenchmark_config.host or "http://localhost:8000"
@@ -136,6 +150,8 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
         logger.info(f"pids already running with agbenchmark: {pids}")
 
         logger.debug(f"Request to /reports: {body.dict()}")
+
+        _initialize_updates_file(agbenchmark_config)
 
         # it's a hack because other parts of the code are using sys.argv
         logger.debug(f"Current working directory: {os.getcwd()}")
@@ -266,7 +282,7 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
                 ] = task_eval_request.eval_id
                 await upload_artifacts(
                     api_instance,
-                    str(Path(CHALLENGES[task_eval_request.eval_id].path).parent),
+                    str(CHALLENGES[task_eval_request.eval_id].spec_file.parent),
                     task_response.task_id,
                     "artifacts_in",
                 )
@@ -298,19 +314,17 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
 
     @router.post("/agent/tasks/{task_id}/evaluations")
     async def create_evaluation(task_id: str) -> BenchmarkRun:
+        challenge_info = CHALLENGES[task_informations[task_id]["eval_id"]]
         workspace = agbenchmark_config.temp_folder
         try:
             async with ApiClient(configuration) as api_client:
                 api_instance = AgentApi(api_client)
                 await copy_agent_artifacts_into_folder(api_instance, task_id, workspace)
-            # add custom python
-            challenge_info = CHALLENGES[task_informations[task_id]["eval_id"]]
 
-            artifact_path = str(Path(challenge_info.path).parent)
+            artifact_path = challenge_info.spec_file.parent
             copy_artifacts_into_temp_folder(workspace, "custom_python", artifact_path)
-            challenge_spec_file = challenge_info.path
 
-            challenge = create_challenge_from_spec_file_path(challenge_spec_file)
+            challenge = create_challenge_from_spec_file(challenge_info.spec_file)
             scores = challenge.get_scores(workspace)
             is_score_100 = 1 in scores["values"]
 
@@ -324,7 +338,9 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
                     test_name=challenge_info.name,
                 ),
                 task_info=TaskInfo(
-                    data_path=challenge_info.path.split("benchmark/", 1)[-1],
+                    data_path=str(
+                        challenge_info.spec_file.relative_to(challenges_path.parent)
+                    ),
                     is_regression=None,
                     category=[c.value for c in challenge_info.category],
                     task=challenge_info.task,
@@ -347,3 +363,13 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
     app.include_router(router, prefix="/ap/v1")
 
     return app
+
+
+def _initialize_updates_file(config: AgentBenchmarkConfig):
+    if config.updates_json_file.exists():
+        logger.debug("Resetting updates.json to an empty array")
+    else:
+        logger.debug("Creating updates.json with an empty array")
+
+    with open(config.updates_json_file, "w") as file:
+        json.dump([], file, indent=2)

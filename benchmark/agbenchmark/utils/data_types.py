@@ -1,7 +1,8 @@
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, constr, validator
+from pydantic import BaseModel, Field, constr, validator
 
 
 class DifficultyLevel(Enum):
@@ -110,3 +111,5 @@ class ChallengeData(BaseModel):
     ground: Ground | Dict[str, Ground]
     info: Info | Dict[str, Info]
     metadata: Optional[Dict[str, Any]] = None
+
+    spec_file: Path | None = Field(None, exclude=True)
