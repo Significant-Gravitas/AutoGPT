@@ -60,6 +60,9 @@ class AgentBenchmarkConfig(BaseSettings, extra="allow"):
     agbenchmark_config_dir: Path
     """Path to the agbenchmark_config folder of the subject agent application."""
 
+    categories: list[str] | None = None
+    """Categories to benchmark the agent for. If omitted, all categories are assumed."""
+
     host: str
     """Host (scheme://address:port) of the subject agent application."""
 

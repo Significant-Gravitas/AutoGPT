@@ -137,15 +137,6 @@ def get_highest_success_difficulty(
 #         return None
 
 
-def agent_eligibible_for_optional_categories(
-    optional_challenge_categories: List, agent_categories: List
-) -> bool:
-    for element in optional_challenge_categories:
-        if element not in agent_categories:
-            return False
-    return True
-
-
 def write_pretty_json(data, json_file):
     sorted_data = deep_sort(data)
     json_graph = json.dumps(sorted_data, indent=4)

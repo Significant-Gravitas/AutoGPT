@@ -22,7 +22,6 @@ from agbenchmark.utils.prompts import (
     PROMPT_MAP,
     SCORING_MAP,
 )
-from agbenchmark.utils.utils import agent_eligibible_for_optional_categories
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +61,8 @@ class Challenge(ABC):
     async def test_method(
         self, config: AgentBenchmarkConfig, request: pytest.FixtureRequest
     ) -> None:
-        # # skip optional categories
-        # self.skip_optional_categories(config)
+        # skip optional categories
+        self.skip_optional_categories(config)
 
         if os.environ.get("HELICONE_API_KEY"):
             from helicone.lock import HeliconeLockManager
@@ -273,11 +272,13 @@ class Challenge(ABC):
 
     @classmethod
     def skip_optional_categories(cls, config: AgentBenchmarkConfig) -> None:
-        challenge_category = cls.data.category
-        categories = [
-            category
-            for category in OPTIONAL_CATEGORIES
-            if category in [c.value for c in challenge_category]
-        ]
-        if not agent_eligibible_for_optional_categories(categories, config.categories):
-            pytest.skip("Agent is not eligible for this category")
+        challenge_categories = set(c.value for c in cls.data.category)
+        challenge_optional_categories = challenge_categories & set(OPTIONAL_CATEGORIES)
+        if challenge_optional_categories and not (
+            config.categories
+            and set(challenge_optional_categories).issubset(set(config.categories))
+        ):
+            pytest.skip(
+                f"Category {', '.join(challenge_optional_categories)} is optional, "
+                "and not explicitly selected in the benchmark config."
+            )
