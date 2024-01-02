@@ -63,7 +63,6 @@ async def run_api_agent(
 async def copy_agent_artifacts_into_folder(
     api_instance: AgentApi, task_id: str, folder: Path
 ):
-    # FIXME: https://github.com/AI-Engineer-Foundation/agent-protocol/issues/91
     artifacts = await api_instance.list_agent_task_artifacts(task_id=task_id)
 
     for artifact in artifacts.artifacts:
