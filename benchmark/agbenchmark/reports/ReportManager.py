@@ -27,11 +27,11 @@ class SingletonReportManager:
 
             # Make the Managers class attributes
             cls.REGRESSION_MANAGER = ReportManager(
-                agent_benchmark_config.regression_reports_path,
+                agent_benchmark_config.regression_tests_file,
                 benchmark_start_time_dt,
             )
             cls.INFO_MANAGER = ReportManager(
-                agent_benchmark_config.get_reports_path(benchmark_start_time_dt)
+                agent_benchmark_config.get_report_dir(benchmark_start_time_dt)
                 / "report.json",
                 benchmark_start_time_dt,
             )
@@ -131,7 +131,7 @@ class ReportManager:
         if len(agent_categories) > 1:
             save_single_radar_chart(
                 agent_categories,
-                config.get_reports_path(self.benchmark_start_time) / "radar_chart.png",
+                config.get_report_dir(self.benchmark_start_time) / "radar_chart.png",
             )
 
         self.save()

@@ -119,7 +119,7 @@ def run(
     from agbenchmark.main import run_benchmark, validate_args
 
     agbenchmark_config = AgentBenchmarkConfig.load()
-    logger.debug(f"agbenchmark_config: {agbenchmark_config.agbenchmark_config_path}")
+    logger.debug(f"agbenchmark_config: {agbenchmark_config.agbenchmark_config_dir}")
     try:
         validate_args(
             maintain=maintain,

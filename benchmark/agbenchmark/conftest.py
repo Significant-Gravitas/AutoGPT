@@ -120,7 +120,7 @@ def check_regression(request: pytest.FixtureRequest) -> None:
     """
     test_name = request.node.parent.name
     with contextlib.suppress(FileNotFoundError):
-        regression_report = agbenchmark_config.regression_reports_path
+        regression_report = agbenchmark_config.regression_tests_file
         data = json.loads(regression_report.read_bytes())
         challenge_location = getattr(request.node.parent.cls, "CHALLENGE_LOCATION", "")
 
@@ -255,7 +255,7 @@ def pytest_collection_modifyitems(
         items: The collected test items to be modified.
         config: The active pytest configuration.
     """
-    regression_file = agbenchmark_config.regression_reports_path
+    regression_file = agbenchmark_config.regression_tests_file
     regression_tests: dict[str, Any] = (
         json.loads(regression_file.read_bytes()) if regression_file.is_file() else {}
     )

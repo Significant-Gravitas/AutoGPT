@@ -2,9 +2,9 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, TypedDict
+from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseSettings
 
 
 def _calculate_info_test_path(base_path: Path, benchmark_start_time: datetime) -> Path:
@@ -48,31 +48,27 @@ def _calculate_info_test_path(base_path: Path, benchmark_start_time: datetime) -
     return report_path
 
 
-class WorkspaceConfig(TypedDict):
-    input: str
-    output: str
-
-
-class AgentBenchmarkConfig(BaseModel):
+class AgentBenchmarkConfig(BaseSettings, extra="allow"):
     """
     Configuration model and loader for the AGBenchmark.
 
-    Attributes:
-    - agbenchmark_config_path: The path to the agbenchmark config that this object was created from.
-    - reports_folder: The path to the folder where the benchmark reports will be stored.
-    - host: The host where the benchmark is run.
+    Projects that want to use AGBenchmark should contain an agbenchmark_config folder
+    with a config.json file that - at minimum - specifies the `host` at which the
+    subject application exposes an Agent Protocol compliant API.
     """
 
-    agbenchmark_config_path: Path
-    workspace: WorkspaceConfig | None = None
+    agbenchmark_config_dir: Path
+    """Path to the agbenchmark_config folder of the subject agent application."""
+
     host: str
+    """Host (scheme://address:port) of the subject agent application."""
 
     @classmethod
-    def load(cls, base_path: Optional[Path] = None) -> "AgentBenchmarkConfig":
-        base_path = base_path or cls.find_config_folder()
-        with (base_path / "config.json").open("r") as f:
+    def load(cls, config_dir: Optional[Path] = None) -> "AgentBenchmarkConfig":
+        config_dir = config_dir or cls.find_config_folder()
+        with (config_dir / "config.json").open("r") as f:
             return cls(
-                agbenchmark_config_path=base_path,
+                agbenchmark_config_dir=config_dir,
                 **json.load(f),
             )
 
@@ -94,31 +90,27 @@ class AgentBenchmarkConfig(BaseModel):
 
     @property
     def config_file(self) -> Path:
-        return self.agbenchmark_config_path / "config.json"
-
-    @property
-    def agent_home_directory(self) -> Path:
-        return Path(self.agbenchmark_config_path).resolve().parent
+        return self.agbenchmark_config_dir / "config.json"
 
     @property
     def reports_folder(self) -> Path:
-        return self.agbenchmark_config_path / "reports"
+        return self.agbenchmark_config_dir / "reports"
 
-    def get_reports_path(self, benchmark_start_time: datetime) -> Path:
+    def get_report_dir(self, benchmark_start_time: datetime) -> Path:
         return _calculate_info_test_path(self.reports_folder, benchmark_start_time)
 
     @property
-    def regression_reports_path(self) -> Path:
+    def regression_tests_file(self) -> Path:
         return self.reports_folder / "regression_tests.json"
 
     @property
-    def success_rate_path(self) -> Path:
+    def success_rate_file(self) -> Path:
         return self.reports_folder / "success_rate.json"
 
     @property
-    def challenges_already_beaten(self) -> Path:
-        return self.agbenchmark_config_path / "challenges_already_beaten.json"
+    def challenges_already_beaten_file(self) -> Path:
+        return self.agbenchmark_config_dir / "challenges_already_beaten.json"
 
     @property
     def temp_folder(self) -> Path:
-        return self.agbenchmark_config_path / "temp_folder"
+        return self.agbenchmark_config_dir / "temp_folder"
