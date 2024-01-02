@@ -1,12 +1,8 @@
-import datetime
-import json
-import sys
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, constr, validator
+from pydantic import BaseModel, Field, constr, validator
 
 
 class DifficultyLevel(Enum):
@@ -31,80 +27,6 @@ DIFFICULTY_MAP = {
 }
 
 STRING_DIFFICULTY_MAP = {e.value: DIFFICULTY_MAP[e] for e in DifficultyLevel}
-
-
-def calculate_info_test_path(base_path: Path, benchmark_start_time: datetime) -> Path:
-    """
-    Calculates the path to the directory where the test report will be saved.
-    """
-    # Ensure the reports path exists
-    base_path.mkdir(parents=True, exist_ok=True)
-
-    # Get current UTC date-time stamp
-    date_stamp = benchmark_start_time.strftime("%Y%m%dT%H%M%S")
-
-    # Default run name
-    run_name = "full_run"
-
-    # Map command-line arguments to their respective labels
-    arg_labels = {
-        "--test": None,
-        "--category": None,
-        "--maintain": "maintain",
-        "--improve": "improve",
-        "--explore": "explore",
-    }
-
-    # Identify the relevant command-line argument
-    for arg, label in arg_labels.items():
-        if arg in sys.argv:
-            test_arg = sys.argv[sys.argv.index(arg) + 1] if label is None else None
-            run_name = arg.strip("--")
-            if test_arg:
-                run_name = f"{run_name}_{test_arg}"
-            break
-
-    # Create the full new directory path with ISO standard UTC date-time stamp
-    report_path = base_path / f"{date_stamp}_{run_name}"
-
-    # Ensure the new directory is created
-    report_path.mkdir(exist_ok=True)
-    return report_path
-
-
-class AgentBenchmarkConfig(BaseModel):
-    """
-    This class represents the configuration for the Agent agbenchmark.
-    It includes the following attributes:
-    - agent_benchmark_config_path: The path to the agent benchmark config that this object was created from.
-    - reports_folder: The path to the folder where the benchmark reports will be stored.
-    - host: The host where the benchmark is run.
-    """
-
-    agent_benchmark_config_path: Path | None = None
-    reports_folder: Path | None = None
-    host: str | None
-
-    def get_reports_location(self) -> Path:
-        # if not self.reports_folder:
-        #     self.reports_folder = (
-        #         Path(self.agent_benchmark_config_path).parent / "reports"
-        #     ).resolve()
-        return Path.cwd() / "agbenchmark_config" / "reports"
-
-    def get_reports_path(self, benchmark_start_time: datetime) -> Path:
-        return calculate_info_test_path(
-            self.get_reports_location(), benchmark_start_time
-        )
-
-    def get_regression_reports_path(self) -> Path:
-        return self.get_reports_location() / "regression_tests.json"
-
-    def get_success_rate_path(self) -> Path:
-        return self.get_reports_location() / "success_rate.json"
-
-    def get_agent_home_directory(self) -> Path:
-        return Path(self.agent_benchmark_config_path).resolve().parent
 
 
 class Info(BaseModel):
@@ -180,6 +102,7 @@ class Category(str, Enum):
 
 
 class ChallengeData(BaseModel):
+    eval_id: str = ""
     name: str
     category: List[Category]
     task: str
@@ -189,73 +112,4 @@ class ChallengeData(BaseModel):
     info: Info | Dict[str, Info]
     metadata: Optional[Dict[str, Any]] = None
 
-    def serialize(self, path: str) -> None:
-        with open(path, "w") as file:
-            file.write(self.json())
-
-    def get_data(self) -> dict:
-        return self.dict()
-
-    @staticmethod
-    def get_json_from_path(json_path: Path | str) -> dict:
-        path = Path(json_path).resolve()
-        with open(path, "r") as file:
-            data = json.load(file)
-        return data
-
-    @staticmethod
-    def deserialize(path: str) -> "ChallengeData":
-        # this script is in root/agbenchmark/utils/define_task_types.py
-        script_dir = Path(__file__).resolve().parent.parent.parent
-        json_path = script_dir / Path(path)
-
-        with open(json_path, "r") as file:
-            data = json.load(file)
-        try:
-            return ChallengeData(**data)
-        except:
-            test = "ok"
-
-    def challenge_from_datum(self, file_datum: list[dict[str, Any]]) -> "ChallengeData":
-        same_task_data = {
-            "name": self.prefix,
-            "dependencies": self.dependencies,
-            "category": self.shared_category,
-            "task": self.task,
-            "cutoff": self.cutoff,
-        }
-
-        if not self.info:
-            same_task_data["info"] = {
-                datum["name"]: datum["info"] for datum in file_datum
-            }
-        else:
-            same_task_data["info"] = self.info
-
-        if not self.ground:
-            same_task_data["ground"] = {
-                datum["name"]: datum["ground"] for datum in file_datum
-            }
-        else:
-            same_task_data["ground"] = self.ground
-
-        return ChallengeData(**same_task_data)
-
-    def challenge_from_test_data(self, data: dict[str, Any]) -> "ChallengeData":
-        same_task_data = {
-            "name": data["name"],
-            "dependencies": data["dependencies"],
-            "category": data["category"],
-            "info": data["info"],
-            "ground": data["ground"],
-        }
-
-        if self.same_task:
-            same_task_data["category"].extend(self.shared_category)
-            same_task_data["task"] = self.task
-            same_task_data["cutoff"] = self.cutoff
-        else:
-            same_task_data["task"] = data["task"]
-            same_task_data["cutoff"] = data["cutoff"]
-
-        return ChallengeData(**same_task_data)
+    spec_file: Path | None = Field(None, exclude=True)

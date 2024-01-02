@@ -1,7 +1,6 @@
-from typing import Dict, List
+from pydantic import BaseModel, constr
 
 datetime_format = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$"
-from pydantic import BaseModel, constr
 
 
 class BaseModelBenchmark(BaseModel):
@@ -14,32 +13,32 @@ class TaskInfo(BaseModelBenchmark):
     is_regression: bool | None
     answer: str
     description: str
-    category: List[str]
+    category: list[str]
     task: str
 
 
 class RepositoryInfo(BaseModelBenchmark):
-    repo_url: str | None
-    team_name: str | None
-    benchmark_git_commit_sha: str | None
-    agent_git_commit_sha: str | None
+    repo_url: str | None = None
+    team_name: str | None = None
+    agent_git_commit_sha: str | None = None
+    benchmark_git_commit_sha: str | None = None
 
 
 class Metrics(BaseModelBenchmark):
-    difficulty: str | None
+    cost: float | None = None
     success: bool
-    success_percentage: float | None
-    run_time: str | None
-    fail_reason: str | None
     attempted: bool
-    cost: float | None
+    difficulty: str | None = None
+    run_time: str | None = None
+    fail_reason: str | None = None
+    success_percentage: float | None = None
 
 
 class RunDetails(BaseModelBenchmark):
     test_name: str
-    run_id: str | None
+    run_id: str | None = None
     command: str
-    completion_time: str | None
+    completion_time: str | None = None
     benchmark_start_time: constr(regex=datetime_format)
 
 
@@ -48,5 +47,5 @@ class BenchmarkRun(BaseModelBenchmark):
     run_details: RunDetails
     task_info: TaskInfo
     metrics: Metrics
-    reached_cutoff: bool | None
-    config: Dict[str, str | dict[str, str]]
+    reached_cutoff: bool | None = None
+    config: dict[str, str | dict[str, str]]
