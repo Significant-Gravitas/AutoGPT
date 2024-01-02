@@ -264,16 +264,16 @@ Extracting clear messages from LLM outputs can be complex. Our method is simple 
 
 Abilities are the gears and levers that enable the agent to interact with tasks at hand. Let's unpack the mechanisms behind these abilities and how you can harness, and even extend, them.
 
-In the SDK, there's a `abilities` folder containing `registry.py`, `finish.py`, and a `file_system` subfolder. You can also add your own abilities here. `registry.py` is the main file for abilities. It contains the `@ability` decorator and the `AbilityRegister` class. This class actively tracks abilities and outlines their function. The base Agent class includes a default ability register available via `self.abilities`. It looks like this:
+In the Forge folder, there's a `actions` folder containing `registry.py`, `finish.py`, and a `file_system` subfolder. You can also add your own abilities here. `registry.py` is the main file for abilities. It contains the `@action` decorator and the `ActionRegister` class. This class actively tracks abilities and outlines their function. The base Agent class includes a default Action register available via `self.abilities`. It looks like this:
 
 ```python
-self.abilities = AbilityRegister(self)
+self.abilities = ActionRegister(self)
 ```
 
-The `AbilityRegister` has two key methods. `list_abilities_for_prompt` prepares abilities for prompts. `run_ability` makes the ability work. An ability is a function with the `@ability` decorator. It must have specific parameters, including the agent and `task_id`.
+The `ActionRegister` has two key methods. `list_abilities_for_prompt` prepares abilities for prompts. `run_action` makes the ability work. An ability is a function with the `@action` decorator. It must have specific parameters, including the agent and `task_id`.
 
 ```python
-@ability(
+@action(
     name="write_file",
     description="Write data to a file",
     parameters=[
@@ -296,14 +296,14 @@ async def write_file(agent, task_id: str, file_path: str, data: bytes) -> None:
     pass
 ```
 
-The `@ability` decorator defines the ability's details, like its identity (name), functionality (description), and operational parameters.
+The `@action` decorator defines the ability's details, like its identity (name), functionality (description), and operational parameters.
 
 ## Example of a Custom Ability: Webpage Fetcher
 
 ```python
 import requests
 
-@ability(
+@action(
   name="fetch_webpage",
   description="Retrieve the content of a webpage",
   parameters=[
@@ -339,7 +339,7 @@ With the ability details, we use it. We call the `run_ability` function:
 ```python
 # Run the ability and get the output
 # We don't actually use the output in this example
-output = await self.abilities.run_ability(
+output = await self.abilities.run_action(
     task_id, ability["name"], **ability["args"]
 )
 ```
@@ -420,7 +420,7 @@ async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Ste
 
     # Run the ability and get the output
     # We don't actually use the output in this example
-    output = await self.abilities.run_ability(
+    output = await self.abilities.run_action(
         task_id, ability["name"], **ability["args"]
     )
 
