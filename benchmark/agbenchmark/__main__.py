@@ -16,7 +16,7 @@ load_dotenv()
 
 try:
     if os.getenv("HELICONE_API_KEY"):
-        import helicone
+        import helicone  # noqa
 
         helicone_enabled = True
     else:

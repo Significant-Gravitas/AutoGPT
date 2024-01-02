@@ -4,7 +4,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 from dotenv import load_dotenv
 
