@@ -1,12 +1,8 @@
-import enum
 import json
-import uuid
 from typing import Any, ClassVar, Generator, Optional
 
-from pydantic import BaseModel, Field
-
-from AFAAS.configs.schema import AFAASMessageType, AFAASModel
-from AFAAS.interfaces.db import AbstractMemory
+from AFAAS.configs.schema import AFAASModel
+from AFAAS.interfaces.db.db import AbstractMemory
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -15,6 +11,7 @@ LOG = AFAASLogger(name=__name__)
 class AFAASMessage(AFAASModel):
     message_id: str
     _table_name: ClassVar[str] = "message"
+    task_id: Optional[str]
 
 
 class AFAASMessageStack(AFAASModel):

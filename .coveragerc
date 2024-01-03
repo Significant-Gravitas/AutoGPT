@@ -1,0 +1,16 @@
+[report]
+exclude_lines =
+    pragma: no cover
+    pragma: no coverage test (do not delete)
+    def __repr__
+    if self\.debug
+    raise AssertionError
+    raise NotImplementedError
+    if 0:
+    if __name__ == ["']__main__["']:
+
+fail_under = 100  
+show_missing = True 
+
+[run]
+relative_files = true

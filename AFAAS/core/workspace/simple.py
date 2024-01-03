@@ -3,12 +3,11 @@ The LocalFileWorkspace class implements a AbstractFileWorkspace that works with 
 """
 from __future__ import annotations
 
-import inspect
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
+from AFAAS.configs.schema import Configurable, SystemConfiguration, UserConfigurable
 from AFAAS.interfaces.workspace import (
     AbstractFileWorkspace,
     AbstractFileWorkspaceConfiguration,
@@ -21,7 +20,7 @@ if TYPE_CHECKING:
 
 class AbstractFileWorkspaceConfiguration(SystemConfiguration):
     root: str = ""
-    app_workspace: str = UserConfigurable(default="~/auto-gpt/agents")
+    app_workspace: str = UserConfigurable(default="~/AFAAS/agents")
     restrict_to_agent_workspace: bool = UserConfigurable(default=True)
 
 

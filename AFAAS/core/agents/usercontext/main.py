@@ -3,16 +3,15 @@ from __future__ import annotations
 import uuid
 from typing import Awaitable, Callable
 
-from langchain_community.embeddings.openai import OpenAIEmbeddings
-from langchain_community.vectorstores.chroma import Chroma
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
 
-from AFAAS.core.adapters.openai import AFAASChatOpenAI
-from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
 from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
-from AFAAS.interfaces.agent import BaseAgent, BaseLoopHook, BasePromptManager
-from AFAAS.interfaces.db import AbstractMemory
+from AFAAS.interfaces.agent.assistants.prompt_manager import BasePromptManager
+from AFAAS.interfaces.agent.loop import BaseLoopHook
+from AFAAS.interfaces.agent.main import BaseAgent
+from AFAAS.interfaces.db.db import AbstractMemory
+from AFAAS.interfaces.workflow import WorkflowRegistry
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 from AFAAS.lib.sdk.logger import AFAASLogger
 
@@ -23,9 +22,6 @@ LOG = AFAASLogger(name=__name__)
 
 class UserContextAgent(BaseAgent):
     class SystemSettings(BaseAgent.SystemSettings):
-        name = "usercontext_agent"
-        description = "An agent that improve the quality of input provided by users."
-
         class Config(BaseAgent.SystemSettings.Config):
             pass
 
@@ -41,6 +37,7 @@ class UserContextAgent(BaseAgent):
         workspace: AbstractFileWorkspace = None,
         vectorstores: VectorStore = None,
         embeddings: Embeddings = None,
+        workflow_registry: WorkflowRegistry = None,
         **kwargs,
     ):
         super().__init__(
@@ -53,6 +50,8 @@ class UserContextAgent(BaseAgent):
             agent_id=agent_id,
             vectorstore=vectorstores,
             embedding_model=embeddings,
+            workflow_registry=workflow_registry,
+            **kwargs,
         )
 
         self._loop: UserContextLoop = UserContextLoop()

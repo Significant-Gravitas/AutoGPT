@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 import boto3
 from botocore.exceptions import NoCredentialsError
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.db import AbstractMemory
+    from AFAAS.interfaces.db.db import AbstractMemory
 
-from AFAAS.interfaces.db_nosql import NoSQLMemory
+from AFAAS.interfaces.db.db_nosql import NoSQLMemory
 
 
 class DynamoDBMemory(NoSQLMemory):

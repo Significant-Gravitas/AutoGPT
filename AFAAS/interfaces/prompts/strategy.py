@@ -4,7 +4,7 @@ import abc
 import os
 import re
 import sys
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -12,28 +12,26 @@ from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.task import AbstractTask
+    from AFAAS.interfaces.task.task import AbstractTask
 
-    pass
-
-from AFAAS.configs import SystemConfiguration
+from AFAAS.configs.schema import SystemConfiguration
 from AFAAS.interfaces.adapters import (
     AbstractChatModelResponse,
     AbstractLanguageModelProvider,
-    AbstractPromptConfiguration,
     AssistantChatMessageDict,
     ChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
-from AFAAS.interfaces.prompts.utils import (
+from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
+from AFAAS.interfaces.prompts.utils.utils import (
     indent,
+    json_loads,
     to_dotted_list,
     to_md_quotation,
     to_numbered_list,
     to_string_list,
 )
-from AFAAS.interfaces.prompts.utils.utils import json_loads
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -134,11 +132,6 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     @abc.abstractmethod
     def get_prompt_config(self) -> AbstractPromptConfiguration:
         return self.get_llm_provider().get_default_config()
-
-    # @property
-    # def model_classification(self) : ->  PromptStrategyLanguageModelClassification:
-    #     LOG.notice("Deprecated: Use `dependency injection` instead")
-    #     return self._model_classification
 
     # TODO : This implementation is shit :)
     def get_tools(self) -> list[CompletionModelFunction]:
@@ -285,6 +278,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
                 "to_string_list": to_string_list,
                 "indent": indent,
                 "task": self._task,
+                "strategy": self,
             }
         )
         return template.render(template_params)

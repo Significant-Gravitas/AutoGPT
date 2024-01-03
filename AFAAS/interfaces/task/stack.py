@@ -5,11 +5,10 @@ from typing import TYPE_CHECKING, Any, Generator
 
 from pydantic import Field
 
-from AFAAS.configs import AFAASModel
+from AFAAS.configs.schema import AFAASModel
 from AFAAS.interfaces.task.base import AbstractBaseTask
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.task.plan import AbstractPlan
     from AFAAS.interfaces.task.task import AbstractTask
 
 from AFAAS.lib.sdk.logger import AFAASLogger

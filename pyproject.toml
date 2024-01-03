@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "AFAAS"
-version = "0.0.1"
+version = "0.0.0"
 description = ""
 authors = ["Pierre-Henri AUSSEIL"]
 license = "No license, you are not allowed to read this code, neither execute it, nor copy it, nor modify it, nor distribute it, nor use it in any way, shape or form."
@@ -11,9 +11,12 @@ packages = [
     # Add more packages as needed
 ]
 
+#[tool.poetry.overrides]
+#"aiohttp" = "3.8.3"
+
 [tool.poetry.scripts]
-run-server = "app.cli:cli"
-run-app = "app.cli:serve"
+demo = "app.cli_app.cli:run"
+run-server= "app.cli:serve"
 
 
 [tool.poetry.dependencies]
@@ -24,7 +27,7 @@ psycopg2-binary = "^2.9.9"
 python = "^3.11"
 beautifulsoup4 = "^4.12.2"
 boto3 = "^1.33.6"
-charset-normalizer = "^3.1.0"
+charset-normalizer = "^2.0"
 click = "*"
 colorama = "^0.4.6"
 distro = "^1.8.0"
@@ -39,7 +42,8 @@ gTTS = "^2.3.1"
 hypercorn = "^0.14.4"
 inflection = "*"
 jsonschema = "*"
-langchain = "^0.0.352"
+langchain = "^0.0.350"
+llama-index = "*"
 numpy = "*"
 openai = "^1.6.1"
 orjson = "^3.8.10"
@@ -63,6 +67,13 @@ webdriver-manager = "*"
 
 # OpenAI and Generic plugins import
 openapi-python-client = "^0.14.0"
+youtube-search = "^2.1.2"
+wikipedia = "^1.4.0"
+arxiv = "^2.1.0"
+aiohttp = "^3.8.1"
+airbyte-cdk = "^0.58.1"
+google-auth-oauthlib = "^1.2.0"
+googlemaps = "^4.10.0"
 
 
 [tool.poetry.extras]
@@ -118,6 +129,7 @@ exclude = '''
     | .env
     | venv
     | .venv
+    | .github
     | reports
     | dist
     | agent
@@ -146,6 +158,7 @@ sections = [
 extend_skip = [
     "agbenchmark_config/temp_folder/",
     "data/",
+    ".github/",
 ]
 
 
@@ -167,7 +180,14 @@ ignore_missing_imports = true
 
 
 [tool.pytest.ini_options]
+addopts = "-vv --cov=AFAAS --cov-branch --cov-report=term-missing --cov-report=xml --durations=10"
 markers = [
     "requires_openai_api_key",
     "requires_huggingface_api_key"
+]
+norecursedirs = ["autogpt_test_to_migrate", "app"]
+log_level = "ERROR"
+asyncio_mode = "auto"
+testpaths = [
+    "tests"
 ]

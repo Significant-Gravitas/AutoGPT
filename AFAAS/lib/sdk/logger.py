@@ -10,9 +10,6 @@ from dotenv import load_dotenv
 # Load the .env file
 load_dotenv()
 
-CONSOLE_LOG_LEVEL = os.getenv("CONSOLE_LOG_LEVEL", "INFO").upper()
-FILE_LOG_LEVEL = os.getenv("FILE_LOG_LEVEL", "DEBUG").upper()
-
 JSON_LOGGING = os.environ.get("JSON_LOGGING", "false").lower() == "true"
 
 CHAT = 29
@@ -23,6 +20,10 @@ logging.addLevelName(CHAT, "CHAT")
 logging.addLevelName(NOTICE, "NOTICE")
 logging.addLevelName(DB_LOG, "DB_LOG")
 logging.addLevelName(TRACE, "TRACE")
+
+
+CONSOLE_LOG_LEVEL = logging.getLevelName(os.getenv("CONSOLE_LOG_LEVEL", "INFO").upper())
+FILE_LOG_LEVEL = logging.getLevelName(os.getenv("FILE_LOG_LEVEL", "DEBUG").upper())
 
 RESET_SEQ: str = "\033[0m"
 COLOR_SEQ: str = "\033[1;%dm"
@@ -117,19 +118,23 @@ class ConsoleFormatter(logging.Formatter):
         levelname = rec.levelname
         current_color = ""
 
+        # HACK: This is a hack to fix the issue with the logging module
+        if levelname == "\x1b[94mINFO\x1b[0m":
+            levelname = "INFO"
+
         if self.use_color and levelname in KEYWORD_COLORS:
             current_color = KEYWORD_COLORS[levelname]
             levelname_color = current_color + levelname + RESET_SEQ
             rec.levelname = levelname_color
 
         rec.name = f"{GREY}{os.path.relpath(rec.pathname):<15}{RESET_SEQ}"
-        rec.msg = current_color + EMOJIS[levelname] + "  " + str(rec.msg) + RESET_SEQ
+        rec.msg = current_color + EMOJIS[levelname] + "  " + str(rec.msg)
 
         message = logging.Formatter.format(self, rec)
 
         # Reinstate color after each reset
         if self.use_color:
-            message = message.replace(RESET_SEQ, RESET_SEQ + current_color)
+            message = message.replace(RESET_SEQ, RESET_SEQ + current_color) + RESET_SEQ
 
         # if rec.levelno == logging.DEBUG and len(message) > 1000:
         if rec.levelno == TRACE and len(message) > 1000:
@@ -164,11 +169,11 @@ class AFAASLogger(logging.Logger):
     #     cls._instance.level = logLevel
     #     return cls._instance
 
-    def __init__(self, name: str, log_folder: str = "./"):
+    def __init__(self, name: str, log_folder: str = "./", logLevel: str = "DEBUG"):
         if hasattr(self, "_initialized"):
             return
 
-        logging.Logger.__init__(self, name)
+        logging.Logger.__init__(self, name, logLevel)
         # self.log_folder = log_folder
 
         # Queue Handler
@@ -188,6 +193,7 @@ class AFAASLogger(logging.Logger):
         file_handler.setFormatter(
             logging.Formatter(self.FORMAT)
         )  # Use a simple format for file logs
+        file_handler.setLevel(FILE_LOG_LEVEL)
         self.addHandler(file_handler)
 
         if JSON_LOGGING:
@@ -196,6 +202,7 @@ class AFAASLogger(logging.Logger):
             console_formatter = ConsoleFormatter(self.COLOR_FORMAT)
         console = logging.StreamHandler()
         console.setFormatter(console_formatter)
+        console.setLevel(CONSOLE_LOG_LEVEL)
         self.addHandler(console)
 
         # self._initialized = True
@@ -286,7 +293,7 @@ logging_config: dict = dict(
     },
     root={
         "handlers": ["h", "file"],
-        "level": CONSOLE_LOG_LEVEL,
+        "level": logging.WARNING,
     },
     loggers={
         "autogpt": {
@@ -306,5 +313,6 @@ def setup_logger():
 
 
 LOG = AFAASLogger(name=__name__)
+setup_logger()
 LOG.warning(f"Console log level is  : {logging.getLevelName(CONSOLE_LOG_LEVEL)}")
 LOG.warning(f"File log level is  : {logging.getLevelName(FILE_LOG_LEVEL)}")

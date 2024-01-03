@@ -1,8 +1,7 @@
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, Request, Response, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, Query, Request, Response
 
 from AFAAS.lib.sdk.errors import *
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -34,11 +33,8 @@ AP alias /agent/tasks/{agent_id} (GET): Get an agent from its ID & return an age
 /agent/{agent_id}/lastmessage (GET): Get the last message for an agent.
     => need PlannerAgent to provide a method 
 """
-import uuid
-from pathlib import Path
 
-import yaml
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, Request
 
 from AFAAS.core.agents import PlannerAgent
 from app.cli_web_app.server.schema import AgentMessageRequestBody
@@ -265,7 +261,7 @@ async def execute_agent_task(
             status_code=404,
             media_type="application/json",
         )
-    except Exception as e:
+    except Exception:
         LOG.exception(f"Error whilst trying to execute a task step: {agent_id}")
         return Response(
             content=json.dumps({"error": "Internal server error"}),

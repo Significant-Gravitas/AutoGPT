@@ -1,22 +1,17 @@
-import enum
-import math
 import os
-from typing import Any, Callable, ClassVar, Dict, ParamSpec, Tuple, TypeVar
+from typing import Any, Callable, Dict, ParamSpec, Tuple, TypeVar
 
 import tiktoken
-from openai import AsyncOpenAI, completions
-from openai.resources import AsyncCompletions, AsyncEmbeddings
+from openai import AsyncOpenAI
+from openai.resources import AsyncCompletions
 
 from AFAAS.core.adapters.openai.common import (
     OPEN_AI_CHAT_MODELS,
     OPEN_AI_DEFAULT_CHAT_CONFIGS,
-    OPEN_AI_EMBEDDING_MODELS,
     OPEN_AI_MODELS,
     OpenAIChatMessage,
     OpenAIModelName,
-    OpenAIModelProviderBudget,
     OpenAIPromptConfiguration,
-    OpenAIProviderConfiguration,
     OpenAISettings,
     _OpenAIRetryHandler,
 )
@@ -24,33 +19,16 @@ from AFAAS.core.adapters.openai.embeddings import _create_embedding
 
 aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
+from AFAAS.configs.schema import Configurable
 from AFAAS.interfaces.adapters.chatmodel import (
-    AbstractChatMessage,
     AbstractChatModelProvider,
     AbstractChatModelResponse,
-    AbstractRoleLabels,
     AssistantChatMessageDict,
     ChatMessage,
     CompletionModelFunction,
 )
-from AFAAS.interfaces.adapters.language_model import (
-    AbstractPromptConfiguration,
-    BaseModelProviderBudget,
-    BaseModelProviderConfiguration,
-    BaseModelProviderCredentials,
-    BaseModelProviderSettings,
-    BaseModelProviderUsage,
-    Embedding,
-    EmbeddingModelInfo,
-    EmbeddingModelProvider,
-    EmbeddingModelResponse,
-    ModelProviderName,
-    ModelProviderService,
-    ModelTokenizer,
-)
+from AFAAS.interfaces.adapters.language_model import Embedding, ModelTokenizer
 from AFAAS.lib.sdk.logger import AFAASLogger
-from AFAAS.lib.utils.json_schema import JSONSchema
 
 LOG = AFAASLogger(name=__name__)
 

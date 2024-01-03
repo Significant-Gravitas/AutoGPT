@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import enum
-import os
 import uuid
-from typing import TYPE_CHECKING, Callable, Optional
-
-from langchain.tools import DuckDuckGoSearchRun
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.task import AbstractTask
+    from AFAAS.interfaces.task.task import AbstractTask
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
@@ -34,10 +31,6 @@ class AFAAS_SMART_RAGStrategyFunctionNames(str, enum.Enum):
 
 
 class AFAAS_SMART_RAGStrategyConfiguration(PromptStrategiesConfiguration):
-    """
-    A Pydantic model that represents the default configurations for the refine user context strategy.
-    """
-
     default_tool_choice: AFAAS_SMART_RAGStrategyFunctionNames = (
         AFAAS_SMART_RAGStrategyFunctionNames.MAKE_SMART_RAG
     )
@@ -61,7 +54,6 @@ class AFAAS_SMART_RAG_Strategy(AbstractPromptStrategy):
         exit_token: str = str(uuid.uuid4()),
         task_context_length: int = 300,
     ):
-        # self._model_classification = model_classification
         self._count = count
         self._config = self.default_configuration
         self.default_tool_choice = default_tool_choice
@@ -107,7 +99,6 @@ class AFAAS_SMART_RAG_Strategy(AbstractPromptStrategy):
     def build_message(self, task: AbstractTask, **kwargs) -> ChatPrompt:
         LOG.debug("Building prompt for task : " + task.debug_dump_str())
         self._task: AbstractTask = task
-        self._model_name = kwargs.get("model_name")
         smart_rag_param = {
             "task_goal": task.task_goal,
             "additional_context_description": str(task.task_context),

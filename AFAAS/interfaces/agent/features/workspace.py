@@ -3,10 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.agent import BaseAgent
+    from AFAAS.interfaces.agent.main import BaseAgent
 
-from autogpt.config import Config
 from autogpt.workspace import Workspace
+
+from AFAAS.config.config import Config
 
 
 class WorkspaceMixin:

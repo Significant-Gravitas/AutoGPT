@@ -93,7 +93,7 @@ class AGPTLocalFileWorkspace(AbstractFileWorkspace):
         agent_workspace_path: Optional[str | Path] = None,
         restrict_to_agent_workspace: bool = True,
     ) -> Path:
-        super()._sanitize_path(
+        return super()._sanitize_path(
             relative_path=relative_path,
             agent_workspace_path=agent_workspace_path,
             restrict_to_agent_workspace=restrict_to_agent_workspace,

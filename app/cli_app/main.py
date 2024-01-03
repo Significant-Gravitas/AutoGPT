@@ -3,7 +3,7 @@ import logging
 import click
 
 from AFAAS.core.agents.planner.main import PlannerAgent
-from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import CONSOLE_LOG_LEVEL, AFAASLogger
 
 
 async def handle_user_input_request(prompt):
@@ -34,11 +34,7 @@ async def run_cli_demo():
         "AFAAS Data Structure support multiple users (however since there is no UI to enforce that we will be using a user with ID : a1621e69-970a-4340-86e7-778d82e2137b"
     )
     user_id: str = "U" + str(uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b"))
-    from AFAAS.core.adapters.openai import AFAASChatOpenAI
-    from AFAAS.core.workspace.local import (
-        AGPTLocalFileWorkspace,
-        AGPTLocalFileWorkspaceConfiguration,
-    )
+    from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
 
     # TODO: Simplify this via get_workspace
     # from AFAAS.core.workspace import get_workspace
@@ -56,11 +52,11 @@ async def run_cli_demo():
 
     if len(agent_dict_list) > 0:
         LOG.info(f"User {user_id} has {len(agent_dict_list)} agents.")
-        if LOG.level >= logging.DEBUG:
+        if CONSOLE_LOG_LEVEL > logging.DEBUG:
             print("This is the agents that have been saved :")
             for i, agent_dict in enumerate(agent_dict_list):
                 print(
-                    f"{i+1}. {agent_dict.agent_name}({agent_dict.agent_id}) : {agent_dict.agent_goal_sentence}"
+                    f"{i+1}. {agent_dict['agent_name']}({agent_dict['agent_id']}) : {agent_dict['agent_goal_sentence']}"
                 )
 
             selected_agent_index: int = 0
@@ -73,7 +69,7 @@ async def run_cli_demo():
                         "Ooops ! The selected agent is not in the list. Please select a valid agent."
                     )
                 i += 1
-                selected_agent_index = input(
+                selected_agent_index: str = input(
                     'Select an agent to load (Press "C" to create a new agent) : '
                 )
                 if selected_agent_index.lower() == "c":
@@ -90,34 +86,22 @@ async def run_cli_demo():
             **agent_dict_list[selected_agent_index - 1]
         )
         agent_id = agent_settings.agent_id
-        LOG.info(f"Loading agent {agent_id} from get_agentsetting_list_from_memory")
-        from AFAAS.interfaces.agent.assistants import BasePromptManager
+        LOG.debug(f"Loading agent {agent_id} from get_agentsetting_list_from_memory")
 
         agent: PlannerAgent = PlannerAgent.get_instance_from_settings(
-            agent_settings=agent_settings,
-            workspace=AGPTLocalFileWorkspace(),
-            default_llm_provider=AFAASChatOpenAI(),
+            agent_settings=agent_settings
         )
-
-        # agent_from_memory = None
-        # LOG.info(f"Loading agent {agent_id} from get_agent_from_memory")
-        # agent_from_memory: PlannerAgent = PlannerAgent.get_agent_from_memory(
-        #     agent_settings=agent_settings,
-        #     agent_id=agent_id,
-        #     user_id=user_id,
-        #    ,
-        #     )
 
     else:
         #
         # New requirement gathering process
         #
-        if LOG.level <= LOG.DEBUG:
+        if CONSOLE_LOG_LEVEL <= logging.DEBUG:
             user_objective = (
                 "Provide a step-by-step guide on how to build a Pizza oven."
             )
         else:
-            user_objective = handle_user_input_request(
+            user_objective = await handle_user_input_request(
                 "What do you want to do? (We will make Pancakes for our tests...)"
             )
 
@@ -127,9 +111,9 @@ async def run_cli_demo():
         agent_settings._type_ = "AFAAS.core.agents.planner.main.PlannerAgent"
 
         # Step 3. Create the agent.
-        agent: PlannerAgent = PlannerAgent.create_agent(
-            agent_settings=agent_settings,
-        )
+        agent_settings_dict = agent_settings.dict()
+        agent_settings_dict["settings"] = agent_settings
+        agent: PlannerAgent = PlannerAgent(**agent_settings_dict)
 
     await agent.run(
         user_input_handler=handle_user_input_request,

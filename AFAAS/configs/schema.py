@@ -124,7 +124,7 @@ class AFAASModel(BaseModel):
     modified_at: datetime.datetime = datetime.datetime.now()
 
     def dict_memory(self, **dumps_kwargs) -> dict:
-        LOG.trace(f"FIXME: Temporary implementation before a to pydantic 2.0.0")
+        LOG.trace(f"FIXME: Temporary implementation before pydantic 2.0.0")
         dict = self.dict(**dumps_kwargs)
         return self._apply_custom_encoders(data=dict)
 
@@ -169,10 +169,8 @@ class AFAASModel(BaseModel):
         Returns:
             dict: A dictionary representation of the object.
         """
-        AFAASLogger(name=__name__).warning(
-            "Warning : Recomended use json_api() or json_memory()"
-        )
-        AFAASLogger(name=__name__).warning("BaseAgent.SystemSettings.json()")
+        LOG.warning("Warning : Recomended use json_api() or json_memory()")
+        LOG.warning("BaseAgent.SystemSettings.json()")
         self.prepare_values_before_serialization()  # Call the custom treatment before .json()
         kwargs["exclude"] = self.Config.default_exclude
         return super().json(*args, **kwargs)
@@ -211,6 +209,7 @@ class AFAASModel(BaseModel):
 
 class SystemSettings(AFAASModel):
     class Config(AFAASModel.Config):
+        # FIXME: Workaround to not serialize elements that contains unserializable class , proper way is to implement serialization for each class
         default_exclude = {
             "agent",
             "workspace",
@@ -227,6 +226,7 @@ class SystemSettings(AFAASModel):
             "description",
             "parent_agent",
             "current_task",
+            "plan",
         }
 
 

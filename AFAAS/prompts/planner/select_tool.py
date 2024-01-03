@@ -15,18 +15,13 @@ from AFAAS.interfaces.adapters import (
     AssistantChatMessageDict,
     ChatMessage,
     ChatPrompt,
-    CompletionModelFunction,
 )
-from AFAAS.interfaces.prompts.strategy import (
-    AbstractPromptStrategy,
-    DefaultParsedResponse,
-    PromptStrategiesConfiguration,
-)
+from AFAAS.interfaces.prompts.strategy import DefaultParsedResponse
 from AFAAS.interfaces.prompts.strategy_planning import (
     AbstractPlanningPromptStrategy,
     PlanningPromptStrategiesConfiguration,
 )
-from AFAAS.interfaces.task import AbstractTask
+from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.lib.action_history import Episode
 
 
@@ -79,7 +74,6 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
         ### To Facilitate merge with AutoGPT changes
         ###
         event_history = False
-        include_os_info = True
         del kwargs["tools"]
         self._tools = agent._tool_registry.dump_tools()
 
@@ -190,6 +184,6 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
 
         # TODO: summarize remaining
 
-        part = slice(0, start)
+        slice(0, start)
 
         return "\n\n".join(steps)

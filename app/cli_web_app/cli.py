@@ -9,7 +9,6 @@ import click
 import yaml
 from fastapi import requests
 
-from app.cli_web_app.server.api import task_handler
 from app.client_lib.shared_click_commands import DEFAULT_SETTINGS_FILE
 from app.client_lib.utils import coroutine
 
@@ -17,7 +16,6 @@ from app.client_lib.utils import coroutine
 @click.group()
 def autogpt():
     """Temporary command group for v2 commands."""
-    pass
 
 
 # autogpt.add_command(make_settings)
@@ -47,9 +45,8 @@ def server(host: str, port: int) -> None:
 async def client(settings_file) -> None:
     """Run the Auto-GPT runner client."""
     settings_file = pathlib.Path(settings_file)
-    settings = {}
     if settings_file.exists():
-        settings = yaml.safe_load(settings_file.read_text())
+        yaml.safe_load(settings_file.read_text())
 
     from app.cli_web_app.client.client import run
 

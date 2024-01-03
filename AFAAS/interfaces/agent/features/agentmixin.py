@@ -4,25 +4,24 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from AFAAS.lib.task.plan import Plan
-    from AFAAS.core.db.table import AbstractTable
+    from AFAAS.interfaces.db.db_table import AbstractTable
     from AFAAS.interfaces.adapters import \
         CompletionModelFunction , AbstractChatModelResponse
-    from AFAAS.core.tools.base import BaseToolsRegistry
+    from AFAAS.interfaces.tools.base import BaseToolsRegistry
     from AFAAS.core.tools.tools import Tool
     from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
 
-    from AFAAS.interfaces.agent import BaseAgent
+    from AFAAS.interfaces.agent.main import BaseAgent
 
 from AFAAS.lib.sdk.logger import AFAASLogger
 
-LOG = AFAASLogger(name = __name__)
+LOG = AFAASLogger(name="autogpt")
 
 class AgentMixin:
     _agent: BaseAgent
 
     def __init__(self, **kwargs):
         self._agent = None
-        pass
 
     def set_agent(self, agent: BaseAgent):
         if hasattr(self, "_agent") and self._agent is not None:
@@ -39,7 +38,7 @@ class AgentMixin:
         return self._agent.save_agent_in_memory()
 
     async def save_plan(self):
-        return await self._agent.plan.save()
+        return self._agent.plan.save()
 
     ###
     ## Messaging

@@ -3,16 +3,12 @@ The AbstractFileWorkspace class provides an interface for interacting with a fil
 """
 from __future__ import annotations
 
-import inspect
 from abc import ABC, abstractmethod
 from io import IOBase, TextIOBase
 from pathlib import Path
 from typing import IO, Any, BinaryIO, Callable, Literal, Optional, TextIO, overload
 
-from pydantic import Field
-
-from AFAAS.configs import Configurable, SystemConfiguration, UserConfigurable
-from AFAAS.configs.schema import SystemConfiguration
+from AFAAS.configs.schema import Configurable, SystemConfiguration, UserConfigurable
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -21,7 +17,7 @@ LOG = AFAASLogger(name=__name__)
 class AbstractFileWorkspaceConfiguration(SystemConfiguration):
     restrict_to_agent_workspace: bool = True
     app_workspace: Path = UserConfigurable(
-        default=Path("~/auto-gpt/agents").expanduser().resolve()
+        default=Path("~/AFAAS/agents").expanduser().resolve()
     )
     agent_workspace: Path = Path("/")
     user_id: str = None
@@ -55,7 +51,6 @@ class AbstractFileWorkspace(Configurable, ABC):
         self._app_workspace = config.app_workspace
         self._user_id = user_id
         self._agent_id = agent_id
-        pass
 
     on_write_file: Callable[[Path], Any] | None = None
     """
@@ -122,21 +117,6 @@ class AbstractFileWorkspace(Configurable, ABC):
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
         """Read a file in the workspace."""
 
-    # async def write_file(self, path: str | Path, content: str | bytes) -> None:
-    #     self._write_file(path, content)
-
-    #     if self.on_write_file:
-    #         path = Path(path)
-    #         if path.is_absolute():
-    #             path = path.relative_to(self.root)
-    #         res = self.on_write_file(path)
-    #         if inspect.isawaitable(res):
-    #             await res
-
-    # @abstractmethod
-    # async def _write_file(self, path: str | Path, content: str | bytes) -> None:
-    #     """Write to a file in the workspace."""
-
     @abstractmethod
     async def write_file(self, path: str | Path, content: str | bytes) -> None:
         """Write to a file in the workspace."""
@@ -158,6 +138,8 @@ class AbstractFileWorkspace(Configurable, ABC):
         Returns:
             Path: The resolved path relative to the workspace.
         """
+        # (relative_path, self.root)
+        # exit()
         return self._sanitize_path(relative_path, self.root)
 
     @abstractmethod

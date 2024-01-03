@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import abc
 import enum
-import json
-import re
 from typing import Callable, ClassVar, Protocol
 
 from pydantic import BaseModel, Field, validator
 
-from AFAAS.configs import SystemConfiguration, UserConfigurable
+from AFAAS.configs.schema import SystemConfiguration, UserConfigurable
 from AFAAS.interfaces.adapters.configuration import (
     BaseProviderBudget,
     BaseProviderCredentials,
@@ -201,5 +199,3 @@ class EmbeddingModelProvider(AbstractModelProvider):
 
 class AbstractPromptConfiguration(abc.ABC, SystemConfiguration):
     """Struct for model configuration."""
-
-    pass

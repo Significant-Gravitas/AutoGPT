@@ -1,7 +1,7 @@
 import pathlib
 
 DEFAULT_SETTINGS_FILE = str(
-    pathlib.Path("~/auto-gpt/default_agent_settings.yml").expanduser()
+    pathlib.Path("~/AFAAS/default_agent_settings.yml").expanduser()
 )
 
 

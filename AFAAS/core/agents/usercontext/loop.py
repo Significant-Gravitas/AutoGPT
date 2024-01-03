@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Awaitable, Callable
 
-from AFAAS.interfaces.agent import BaseLoop
+from AFAAS.interfaces.agent.loop import BaseLoop
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.agent import BaseAgent
+    from AFAAS.interfaces.agent.main import BaseAgent
     from AFAAS.interfaces.adapters import AbstractChatModelResponse
     from AFAAS.prompts.usercontext.refine_user_context import (
         RefineUserContextFunctionNames,
@@ -87,7 +87,6 @@ class UserContextLoop(BaseLoop):
         LOG.info(f"Running UserContextLoop")
 
         self.loop_count = 0
-        user_input = ""
         # _is_running is important because it avoid having two concurent loop in the same agent (cf : Agent.run())
 
         user_objectives: str = self._agent.agent_goal_sentence

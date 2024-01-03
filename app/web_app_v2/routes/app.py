@@ -1,6 +1,3 @@
-import json
-from typing import Optional
-
 from fastapi import APIRouter, Response
 
 app_router = APIRouter()

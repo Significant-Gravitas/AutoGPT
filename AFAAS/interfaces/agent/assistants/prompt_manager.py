@@ -1,25 +1,19 @@
 from __future__ import annotations
 
-import importlib
 import platform
 import time
 from typing import TYPE_CHECKING, Any
-
-from pydantic import validator
 
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy)
-    from AFAAS.interfaces.agent import BaseAgent
+    from AFAAS.interfaces.agent.main import BaseAgent
 
-from AFAAS.configs import Configurable, SystemConfiguration, SystemSettings
-from AFAAS.core.adapters.openai import OpenAIModelName
 from AFAAS.interfaces.adapters import (
     AbstractChatModelProvider,
     AbstractChatModelResponse,
-    ModelProviderName,
 )
 from AFAAS.lib.sdk.logger import AFAASLogger
 
@@ -55,6 +49,9 @@ class BasePromptManager(AgentMixin):
 
         from AFAAS.prompts import (
             AFAAS_SMART_RAG_Strategy,
+            AfaasPostRagTaskUpdateStrategy,
+            AfaasTaskRagStep2Strategy,
+            AfaasTaskRagStep3Strategy,
             AutoCorrectionStrategy,
             BaseTaskSummary_Strategy,
             load_all_strategies,
@@ -67,11 +64,21 @@ class BasePromptManager(AgentMixin):
         ),
         BaseTaskSummary_Strategy(
                 **BaseTaskSummary_Strategy.default_configuration.dict()
-        )
+        ),
+        AfaasTaskRagStep2Strategy(
+                **AfaasTaskRagStep2Strategy.default_configuration.dict()
+        ),
+        AfaasTaskRagStep3Strategy(
+                **AfaasTaskRagStep3Strategy.default_configuration.dict()
+        ),
+        AfaasPostRagTaskUpdateStrategy(
+                **AfaasPostRagTaskUpdateStrategy.default_configuration.dict()
+        ),
+
         ]
 
 
-        module = self._agent.__class__.__module__.rsplit('.', 1)[0]
+        self._agent.__class__.__module__.rsplit('.', 1)[0]
         strategies : list[AbstractPromptStrategy] = []
         strategies += load_all_strategies()
 

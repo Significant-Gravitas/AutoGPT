@@ -1,21 +1,18 @@
 from __future__ import annotations
 
 import copy
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents.planner.main import PlannerAgent
+    pass
 
-    from AFAAS.interfaces.agent.main import BaseAgent
 
-from AFAAS.configs import UserConfigurable
-from AFAAS.interfaces.adapters import ChatMessage, CompletionModelFunction
+from AFAAS.configs.schema import UserConfigurable
 from AFAAS.interfaces.prompts.strategy import (
     RESPONSE_SCHEMA,
     AbstractPromptStrategy,
     PromptStrategiesConfiguration,
 )
-from AFAAS.interfaces.prompts.utils import to_numbered_list
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)

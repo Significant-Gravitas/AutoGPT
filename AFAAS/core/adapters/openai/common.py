@@ -3,20 +3,15 @@ import functools
 import math
 import os
 import time
-from typing import Any, Callable, ClassVar, Dict, ParamSpec, Tuple, TypeVar
+from typing import Callable, ClassVar, ParamSpec, TypeVar
 
 from openai import APIError, AsyncOpenAI, RateLimitError
 
-from AFAAS.configs import UserConfigurable
+from AFAAS.configs.schema import UserConfigurable
 from AFAAS.interfaces.adapters.chatmodel import (
     AbstractChatMessage,
-    AbstractChatModelProvider,
-    AbstractChatModelResponse,
     AbstractRoleLabels,
-    AssistantChatMessageDict,
-    ChatMessage,
     ChatModelInfo,
-    CompletionModelFunction,
 )
 from AFAAS.interfaces.adapters.language_model import (
     AbstractPromptConfiguration,
@@ -27,14 +22,10 @@ from AFAAS.interfaces.adapters.language_model import (
     BaseModelProviderUsage,
     Embedding,
     EmbeddingModelInfo,
-    EmbeddingModelProvider,
-    EmbeddingModelResponse,
     ModelProviderName,
     ModelProviderService,
-    ModelTokenizer,
 )
 from AFAAS.lib.sdk.logger import AFAASLogger
-from AFAAS.lib.utils.json_schema import JSONSchema
 
 LOG = AFAASLogger(name=__name__)
 

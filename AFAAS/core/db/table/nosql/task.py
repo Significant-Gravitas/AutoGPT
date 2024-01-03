@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import uuid
-from typing import TYPE_CHECKING
-
-from .base import BaseNoSQLTable
+from .....interfaces.db.table.nosql.base import BaseNoSQLTable
 
 
 class TasksTable(BaseNoSQLTable):

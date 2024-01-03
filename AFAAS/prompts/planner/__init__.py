@@ -6,10 +6,7 @@ from AFAAS.prompts.planner.initial_plan import (
     InitialPlanStrategy,
     InitialPlanStrategyConfiguration,
 )
-from AFAAS.prompts.planner.select_tool import (
-    SelectToolStrategy,
-    SelectToolStrategyConfiguration,
-)
+from AFAAS.prompts.planner.select_tool import SelectToolStrategyConfiguration
 
 LOG = AFAASLogger(name=__name__)
 

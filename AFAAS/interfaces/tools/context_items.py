@@ -13,7 +13,7 @@ from typing import Optional
 
 from pydantic import Field
 
-from AFAAS.configs import AFAASModel
+from AFAAS.configs.schema import AFAASModel
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)

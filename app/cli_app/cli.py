@@ -1,16 +1,15 @@
 import click
-from main import run_cli_demo
 
+from app.cli_app.main import run_cli_demo
 from app.client_lib.utils import coroutine, handle_exceptions
 
 
 @click.group()
-def autogpt():
+def afaas_demo_app():
     """Temporary command group for v2 commands."""
-    pass
 
 
-@autogpt.command()
+@afaas_demo_app.command()
 @click.option(
     "--pdb",
     is_flag=True,
@@ -25,4 +24,4 @@ async def run(pdb: bool) -> None:
 
 
 if __name__ == "__main__":
-    autogpt()
+    afaas_demo_app()

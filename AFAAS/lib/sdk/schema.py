@@ -11,11 +11,11 @@ from typing import TYPE_CHECKING, List, Optional
 
 from pydantic import Field
 
-from AFAAS.configs import AFAASModel
+from AFAAS.configs.schema import AFAASModel
+from AFAAS.lib.sdk.artifacts import Artifact
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents import PlannerAgent
-    from app.web_app_v2.routes.artifact import list_agent_artifacts, list_artifacts
+    from AFAAS.core.agents.planner.main import PlannerAgent
 
 
 class ArtifactUpload(AFAASModel):
@@ -47,41 +47,6 @@ class Pagination(AFAASModel):
         )
 
 
-class Artifact(AFAASModel):
-    created_at: datetime = Field(
-        ...,
-        description="The creation datetime of the task.",
-        example="2023-01-01T00:00:00Z",
-        json_encoders={datetime: lambda v: v.isoformat()},
-    )
-    modified_at: datetime = Field(
-        ...,
-        description="The modification datetime of the task.",
-        example="2023-01-01T00:00:00Z",
-        json_encoders={datetime: lambda v: v.isoformat()},
-    )
-    artifact_id: str = Field(
-        ...,
-        description="ID of the artifact.",
-        example="b225e278-8b4c-4f99-a696-8facf19f0e56",
-    )
-    agent_created: bool = Field(
-        ...,
-        description="Whether the artifact has been created by the agent.",
-        example=False,
-    )
-    relative_path: str = Field(
-        ...,
-        description="Relative path of the artifact in the agents workspace.",
-        example="/my_folder/my_other_folder/",
-    )
-    file_name: str = Field(
-        ...,
-        description="Filename of the artifact.",
-        example="main.py",
-    )
-
-
 class TaskOutput(AFAASModel):
     pass
 
@@ -101,14 +66,14 @@ class AgentRequestBody(AFAASModel):
     # prompt_manager: PromptManager.SystemSettings = PromptManager.SystemSettings()
 
     # additional_input: = Any ?
-    # additional_input: Optional[AbstractAgent.SystemSettings]
+    # additional_input: Optional[BaseAgent.SystemSettings]
 
     def json(self, *args, **kwargs):
         return super().json(*args, **kwargs)
 
 
 class Agent(AgentRequestBody):
-    # additional_input: Optional[AbstractAgent.SystemSettings]
+    # additional_input: Optional[BaseAgent.SystemSettings]
     created_at: datetime = Field(
         ...,
         description="The creation datetime of the task.",

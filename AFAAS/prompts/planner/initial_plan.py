@@ -1,5 +1,4 @@
 import enum
-from typing import Optional
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
@@ -13,7 +12,7 @@ from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy,
     PromptStrategiesConfiguration,
 )
-from AFAAS.interfaces.prompts.utils import json_loads, to_numbered_list
+from AFAAS.interfaces.prompts.utils.utils import json_loads, to_numbered_list
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 

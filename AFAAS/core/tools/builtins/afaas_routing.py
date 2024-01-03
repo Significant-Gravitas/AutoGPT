@@ -8,10 +8,10 @@ TOOL_CATEGORY_TITLE = "Framework"
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.agent import BaseAgent
+    from AFAAS.interfaces.agent.main import BaseAgent
 
-from AFAAS.core.agents.routing import RoutingAgent
-from AFAAS.core.tools.command_decorator import tool
+from AFAAS.core.agents.routing.main import RoutingAgent
+from AFAAS.core.tools.tool_decorator import tool
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.task import Task
 from AFAAS.prompts.routing import RoutingStrategyConfiguration
@@ -43,24 +43,14 @@ async def afaas_routing(
             current_task=task,
             note_to_agent_length=note_to_agent_length,
         )
-        routing_settings.memory = agent.memory._settings
-        routing_settings.note_to_agent_length = note_to_agent_length
 
-        # USER CONTEXT AGENT : Save RoutingAgent Settings in DB (for POW / POC)
-        new_routing_agent: RoutingAgent = RoutingAgent.create_agent(
-            agent_settings=routing_settings,
-            workspace=agent._workspace,
-            default_llm_provider=agent.default_llm_provider,
+        # FIXME: Define wich dependency to inject
+        routing_agent = RoutingAgent(
+            settings=routing_settings,
+            **routing_settings.dict(),
         )
-
-        # # USER CONTEXT AGENT : Get RoutingAgent from DB (for POW / POC)
-        routing_settings.agent_id = new_routing_agent.agent_id
-
-        routing_agent: RoutingAgent = RoutingAgent.get_instance_from_settings(
-            agent_settings=routing_settings,
-            workspace=agent._workspace,
-            default_llm_provider=agent.default_llm_provider,
-        )
+        # NOTE: We don't save the agent
+        # new_user_context_agent = UserContextAgent.create_agent()
 
         routing_return: dict = await routing_agent.run(
             user_input_handler=agent._user_input_handler,

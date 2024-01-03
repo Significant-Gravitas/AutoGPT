@@ -1,6 +1,5 @@
-from fastapi import FastAPI, Request
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
 
 from AFAAS.lib.sdk.logger import AFAASLogger
 

@@ -101,7 +101,7 @@ def run():
     exit(
         "Demo stops here as a method PlannerAgent.load_from_dict(simple_agent_as_dict) is needed"
     )
-    agent = PlannerAgent.load_from_dict(simple_agent_as_dict)
+    PlannerAgent.load_from_dict(simple_agent_as_dict)
     print("agent is loaded")
 
     response = requests.post(f"{BASE_URL}/agent/{agent_id}/start")

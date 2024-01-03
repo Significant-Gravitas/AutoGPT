@@ -1,0 +1,25 @@
+name: Issue and PR Assignment Workflow
+
+on:
+  issues:
+    types: [assigned]
+  pull_request:
+    types: [assigned]
+
+jobs:
+  add-state:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Add State
+      uses: actions/github-script@v5
+      with:
+        script: |
+          const issueOrPr = context.payload.issue || context.payload.pull_request;
+          const label = 'Assigned'; // Change this to your desired label
+          
+          github.rest.issues.addLabels({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: issueOrPr.number,
+            labels: [label]
+          });

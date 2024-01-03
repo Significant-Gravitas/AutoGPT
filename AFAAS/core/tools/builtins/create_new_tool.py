@@ -3,7 +3,7 @@
 # # from typing import TYPE_CHECKING
 # # if TYPE_CHECKING:
 # from AFAAS.core.tools.base import BaseTool, ToolConfiguration
-# from AFAAS.core.tools.schema import ToolResult
+# from AFAAS.interfaces.tools.schema import ToolResult
 
 
 # class CreateNewTool(BaseTool):

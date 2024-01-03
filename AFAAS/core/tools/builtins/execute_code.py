@@ -10,8 +10,8 @@ import docker
 from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
 
-from AFAAS.core.tools.command_decorator import tool
-from AFAAS.interfaces.agent import BaseAgent
+from AFAAS.core.tools.tool_decorator import tool
+from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.lib.sdk.errors import (
     CodeExecutionError,
     InvalidArgumentError,
@@ -21,7 +21,7 @@ from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.task import Task
 from AFAAS.lib.utils.json_schema import JSONSchema
 
-from .decorators import sanitize_path_arg
+from .file_operations_utils import sanitize_path_arg
 
 LOG = AFAASLogger(name=__name__)
 TOOL_CATEGORY = "execute_code"

@@ -2,9 +2,8 @@
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from AFAAS.configs import SystemConfiguration, SystemSettings
 from AFAAS.core.plugin.simple import PluginLocation

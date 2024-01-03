@@ -1,0 +1,18 @@
+[report]
+exclude_lines =
+    pragma: no cover
+    pragma: no coverage test (do not delete)
+    def __repr__
+    if self\.debug
+    raise AssertionError
+    raise NotImplementedError
+    if 0:
+    if __name__ == .__main__.:
+
+[run]
+source =
+    AFAAS/lib/task/plan  # Specify the module path
+
+[report]
+fail_under = 100  # Fail if coverage is under 100%
+show_missing = True  # Show lines that are missing coverage
