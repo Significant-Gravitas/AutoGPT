@@ -138,6 +138,8 @@ class AbstractFileWorkspace(Configurable, ABC):
         Returns:
             Path: The resolved path relative to the workspace.
         """
+        # (relative_path, self.root)
+        # exit()
         return self._sanitize_path(relative_path, self.root)
 
     @abstractmethod

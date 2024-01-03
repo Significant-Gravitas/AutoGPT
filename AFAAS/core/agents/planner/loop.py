@@ -47,56 +47,6 @@ class PlannerLoop(BaseLoop):
         user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None,
     ) -> None:
 
-        current_task = self._current_task
-
-        # # NOTE : Test tools individually
-        # command_name = "web_search"
-        # command_args= {"query": "instructions for building a Pizza oven"}
-        # return_value = await execute_command(
-        #     command_name=command_name,
-        #     arguments=command_args,
-        #     task=current_task,
-        #     agent=self._agent,
-        # )
-        # print(return_value)
-
-
-        # import AFAAS.core.tools.builtins.file_operations as file_ops
-        # from pathlib import Path
-
-        # #FIXMEv0.0.2 : Set as AgentSetting
-        # LOG_FILE_OPERATION = Path(__file__).parent.parent.parent.parent.parent / 'logs' / "A639f7cda-c88c-44d7-b0b2-a4a4abbd4a6c_file_operation"
-        # file_ops.log_operation("log_test", Path("path/to/test"), agent=agent)
-        # with open(LOG_FILE_OPERATION, "r", encoding="utf-8") as f:
-        #     content = f.read()
-        # assert "log_test: path/to/test\n" in content
-
-        # from  pathlib import Path
-        # # Test the read_file tool
-        # command_name = "read_file"
-        # command_args = {"filename": Path('/Users/pierre/auto-gpt/agents/pytest_U3ba0a1c6-8cdf-4daa-a244-297b2057146a/A639f7cda-c88c-44d7-b0b2-a4a4abbd4a6c/test_file.txt')}
-        # return_value = await execute_command(
-        #     command_name=command_name,
-        #     arguments=command_args,
-        #     task=current_task,
-        #     agent=self._agent,
-        # )
-        # print(return_value)
-
-        # # Test the write_to_file tool
-        # command_name = "write_to_file"
-        # command_args = {
-        #     "filename": "./new_file.txt",
-        #     "contents": "Sample content to write in the file"
-        # }
-        # return_value = await execute_command(
-        #     command_name=command_name,
-        #     arguments=command_args,
-        #     task=current_task,
-        #     agent=self._agent,
-        # )
-        # print(return_value)
-
         if isinstance(user_input_handler, Callable) and user_input_handler is not None:
             self._user_input_handler = user_input_handler
         elif self._user_input_handler is None:

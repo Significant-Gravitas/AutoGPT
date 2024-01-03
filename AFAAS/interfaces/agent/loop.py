@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 from AFAAS.lib.sdk.logger import AFAASLogger
 
-LOG = AFAASLogger(name = __name__)
+LOG = AFAASLogger(name=__name__)
 
 class BaseLoopMeta(abc.ABCMeta):
     def __call__(cls, *args, **kwargs):

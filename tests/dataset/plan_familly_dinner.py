@@ -110,6 +110,7 @@ def plan_familly_dinner():
     task_300_3_3_combine_wet_ingredients.add_predecessor(task_300_3_1_measure_flour)
     task_300_3_3_combine_wet_ingredients.add_predecessor(task_300_3_2_mash_bananas)
 
+
     task_300_2_1_grease_pan = Task(agent = agent, 
         task_id="300.2.1", task_goal="300.2.1. Grease Baking Pan"
     )
@@ -120,10 +121,12 @@ def plan_familly_dinner():
     )
     task_300_2_2_line_pan.add_predecessor(task_300_2_1_grease_pan)
 
+
     task_300_1_1_find_ingredients_list = Task(agent = agent, 
         task_id="300.1.1", task_goal="300.1.1. Find Ingredients List"
     )
     task_300_1_1_find_ingredients_list.add_predecessor(task_101_buy_groceries)
+
 
     task_300_1_2_check_pantry = Task(agent = agent, 
         task_id="300.1.2", task_goal="300.1.2. Check Pantry for Ingredients"

@@ -44,6 +44,7 @@ def test_read_file_not_found(task_ready_no_predecessors_or_subtasks : Task, agen
 async def test_write_to_file_relative_path(task_ready_no_predecessors_or_subtasks : Task, test_file_name: Path, agent: BaseAgent):
     new_content = "This is new content.\n"
     await file_ops.write_to_file(filename = test_file_name, contents=new_content, agent=task_ready_no_predecessors_or_subtasks.agent, task=task_ready_no_predecessors_or_subtasks)
+
     with open(agent.workspace.get_path(test_file_name), "r", encoding="utf-8") as f:
         content = f.read()
     assert content == new_content
@@ -53,6 +54,7 @@ async def test_write_to_file_relative_path(task_ready_no_predecessors_or_subtask
 async def test_write_to_file_absolute_path(test_file_path: Path, agent: BaseAgent, task_ready_no_predecessors_or_subtasks : Task):
     new_content = "This is new content.\n"
     await file_ops.write_to_file(filename=test_file_path, contents=new_content, agent=task_ready_no_predecessors_or_subtasks.agent, task=task_ready_no_predecessors_or_subtasks)
+
     with open(test_file_path, "r", encoding="utf-8") as f:
         content = f.read()
     assert content == new_content

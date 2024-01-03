@@ -341,7 +341,6 @@ class Task(AbstractTask):
         related_tasks: list[Task] = []
         if (
             len(self.agent.plan.get_all_done_tasks_ids()) > similar_tasks
-            or LOG.level <= logging.DEBUG
         ):
             task_embedding = await self.agent.embedding_model.aembed_query(
                 text=self.long_description

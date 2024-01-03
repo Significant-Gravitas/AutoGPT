@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
-
+from AFAAS.lib.sdk.logger import AFAASLogger
+LOG=AFAASLogger(name="autogpt")
 
 class ToolExecutor(AgentMixin):
     def __init__(self, **kwargs):
@@ -9,9 +10,9 @@ class ToolExecutor(AgentMixin):
 
         from AFAAS.lib.sdk.logger import AFAASLogger
 
-        AFAASLogger(name=__name__).trace(
+        LOG.trace(
             "ToolExecutor : Has not been implemented yet"
         )
-        AFAASLogger(name=__name__).trace(
+        LOG.trace(
             "ToolExecutor : Will be part of a @tool wrapper redisign"
         )
