@@ -58,6 +58,7 @@ def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
                 if DDGS_EXCEPTION_RETRY <=0:
                     raise
                 else:
+                    time.sleep(1)
                     continue
 
         if search_results:
