@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 class AbstractFileWorkspaceConfiguration(SystemConfiguration):
     root: str = ""
-    app_workspace: str = UserConfigurable(default="~/auto-gpt/agents")
+    app_workspace: str = UserConfigurable(default="~/AFAAS/agents")
     restrict_to_agent_workspace: bool = UserConfigurable(default=True)
 
 

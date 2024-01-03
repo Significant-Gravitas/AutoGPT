@@ -159,8 +159,13 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         return self._apply_custom_encoders(data=d)
 
     def add_task(self, task: "AbstractBaseTask"):
+        from AFAAS.lib.task.plan import Plan
+        if isinstance(self, Plan):
+            LOG.debug(self, "Adding task to plan")
+
+
         LOG.debug(
-            f"Adding task {task.debug_formated_str()} as subtask of {self.debug_formated_str()}"
+            f"Adding task {task.debug_formated_str()} as subtask of {self.task_id}"
         )
         self.subtasks.add(task=task)
         self.agent.plan._register_new_task(task=task)

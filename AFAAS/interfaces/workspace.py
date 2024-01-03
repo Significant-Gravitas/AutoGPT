@@ -17,7 +17,7 @@ LOG = AFAASLogger(name=__name__)
 class AbstractFileWorkspaceConfiguration(SystemConfiguration):
     restrict_to_agent_workspace: bool = True
     app_workspace: Path = UserConfigurable(
-        default=Path("~/auto-gpt/agents").expanduser().resolve()
+        default=Path("~/AFAAS/agents").expanduser().resolve()
     )
     agent_workspace: Path = Path("/")
     user_id: str = None
@@ -116,21 +116,6 @@ class AbstractFileWorkspace(Configurable, ABC):
     @abstractmethod
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
         """Read a file in the workspace."""
-
-    # async def write_file(self, path: str | Path, content: str | bytes) -> None:
-    #     self._write_file(path, content)
-
-    #     if self.on_write_file:
-    #         path = Path(path)
-    #         if path.is_absolute():
-    #             path = path.relative_to(self.root)
-    #         res = self.on_write_file(path)
-    #         if inspect.isawaitable(res):
-    #             await res
-
-    # @abstractmethod
-    # async def _write_file(self, path: str | Path, content: str | bytes) -> None:
-    #     """Write to a file in the workspace."""
 
     @abstractmethod
     async def write_file(self, path: str | Path, content: str | bytes) -> None:

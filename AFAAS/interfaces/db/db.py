@@ -43,10 +43,10 @@ class MemoryConfig(SystemConfiguration):
         description="The type of memory adapter to use.",
     )
     json_file_path: str = Field(
-        str(Path("~/auto-gpt/data/").expanduser().resolve()),
+        str(Path("~/AFAAS/data/").expanduser().resolve()),
         description="The file path for the JSON file when using the JSONFileMemory adapter.",
     )
-    # sqllikejson_file_path=str(Path("~/auto-gpt/sqlikejsondata/").expanduser().resolve()),
+    # sqllikejson_file_path=str(Path("~/AFAAS/sqlikejsondata/").expanduser().resolve()),
     # cosmos_endpoint=None,
     # cosmos_key=None,
     # cosmos_database_name=None,
@@ -86,7 +86,7 @@ class AbstractMemory(Configurable, abc.ABC):
     memory_adapter. Currently, "json_file" and "redis" adapters are available.
 
     Example:
-        config = {"memory_adapter": "json_file", "json_file_path": "~/auto-gpt/data/"}
+        config = {"memory_adapter": "json_file", "json_file_path": "~/AFAAS/data/"}
         memory = Memory.get_adapter(config)
 
     After getting the memory adapter, you can connect to it using the `connect` method
@@ -137,7 +137,7 @@ class AbstractMemory(Configurable, abc.ABC):
             ValueError: If an invalid memory_adapter type is provided in the configuration.
 
         Example:
-            config = {"memory_adapter": "json_file", "json_file_path": "~/auto-gpt/data/"}
+            config = {"memory_adapter": "json_file", "json_file_path": "~/AFAAS/data/"}
             memory = Memory.get_adapter(config)
         """
         # FIXME: Move to a dependancy ingestion patern
@@ -244,9 +244,14 @@ class AbstractMemory(Configurable, abc.ABC):
             return MessagesUserAgentTable(memory=self)
 
         elif table_name == "users_informations":
-            from AFAAS.core.db.table import UsersInformationsTable
+            from AFAAS.core.db.table.nosql.user import UsersInformationsTable
 
             return UsersInformationsTable(memory=self)
+
+        elif table_name == "artifacts":
+            from AFAAS.core.db.table.nosql.artifacts import ArtifactsTable
+
+            return ArtifactsTable(memory=self)
 
         else:
             raise ValueError(f"Unknown table: {table_name}")

@@ -13,7 +13,8 @@ This is a Project Presentation & a product presentation will be released soon.
 - [Status](#status)
 - [Quick Start](#quick-start)
 - [Roadmap](#roadmap)
-<!--- [Contributing](#contributing)
+- [Contributing](#contributing)
+<!--- 
 - [License](#license)-->
 
 ## Quick Start
@@ -27,14 +28,30 @@ Follow these simple steps to get started with **afaas**:
    cd afaas
    ```
 
-2. **Install dependencies:**
+2. **Configure Environment Variables:**
+
+   Rename the .env.template file to .env:
+
+   ```bash
+   mv .env.template .env
+   ```
+
+   Open the .env file in a text editor and set your OPENAI_API_KEY:
+
+   ```dotenv
+   # Add your OpenAI API key here
+   OPENAI_API_KEY=your-openai-api-key
+   Replace your-openai-api-key with your actual OpenAI API key.
+   ```
+
+3. **Install dependencies:**
 
    ```bash
    pip install poetry
    poetry install
    ```
 
-3. **Run the Agent**
+4. **Run the Agent**
 
    ```bash
    poetry run demo
@@ -42,45 +59,41 @@ Follow these simple steps to get started with **afaas**:
 
 ## Status
 
-Autonomous Agent are experimental initiative aiming to set inteligent systems with more or less human involvement. We will try to push research and knowledge beyond what is currently done by AutoGPT, TaskWeaver & AutoGen while providing a service such as ones provided by GPTPilot & Aider.
+Autonomous Agent are experimental initiative aiming to set inteligent systems with more or less human involvement. We will try to push research and knowledge beyond current boundaries. 
 
-The project will come with a Framework anyone can extend, an agent anyone can extend @ an app to play with 
+> [!NOTE]
+> The product will come as a web-app to play & a framework anyone can extend.
 
 ### Currently working on
 
-[v0.0.0](https://github.com/ph-ausseil/afaas/milestone/1) : Milestone to test the build process & provide basic building blocs.
+[v0.0.1](https://github.com/ph-ausseil/afaas/milestone/2) - Basic agent with no coding capacity (Planned on 14/01/2024)
+  - Provide an agent that can operate with a basic set of API (Arxiv, Wikipedia, Google Places,...)
+  - Fix "most urgent" bugs
+  - Improve general thinking & planning performances
 
 ## Roadmap
 
-- [v0.0.0](https://github.com/ph-ausseil/afaas/milestone/1) : Milestone to test the build process & provide basic building blocs (Planned on 31/12/2023)
-  - First Agents
-  - First Prompts System Based on Jinja
-  - First Tools
-  - First LLM adapters
-  - First DB Adapters
-  - First Vector Store adapters
-  - First Agent-User logging system
-- [v0.0.1](https://github.com/ph-ausseil/afaas/milestone/2) - Provide a basic agent with no coding capacity (Planned on 07/01/2024)
-  - Provide an agent that can operate with a basic set of API (Arxiv, Wikipedia, Google Places,...)
-- [v0.0.2](https://github.com/ph-ausseil/afaas/milestone/3)  - Reduce Technical debt (Planned on 14/01/2024)
+- [v0.0.2](https://github.com/ph-ausseil/afaas/milestone/3)  - Reduce Technical debt (Planned on 21/01/2024)
   - Improving & automating tests coverage
   - Extend the set of tool
   - Capacity to create own tools
   - Improve general thinking & planning performances
-- [v0.0.3](https://github.com/ph-ausseil/afaas/milestone/4)  - Provide basic coding capacities (Planned on 21/01/2024)
-  - (Namely implement a first Pipeline/Workflow for code)
-- [v0.0.4](https://github.com/ph-ausseil/afaas/milestone/5)  - Serve the agent via an API (Planned on 28/01/2024)
-  - TBD
+  - Sets a Proxy between the PlannerAgent & the User.
+- [v0.0.3](https://github.com/ph-ausseil/afaas/milestone/4)  - Provide basic coding capacities (Planned on 28/01/2024)
+  - Namely implement a first Pipeline/Workflow for code
+- [v0.0.4](https://github.com/ph-ausseil/afaas/milestone/5)  - Serve the agent via an API (TBD)
+  - Serve the Agent via API
 - [v0.1.0](https://github.com/ph-ausseil/afaas/milestone/6)  - User & Technical documentation, CI/CD Pipeline, GUI (TBD)
   - 80% Test Coverage for API
   - 50% Test Coverage for Core
-  - A Web Interface (If we receive help)
+  - A Web Interface (If we receive help 🪄 )
 
 ## Contributing
 
-We warmly welcome contributions to our project! Pytest expert, React Expert, NodeJS/GitHub Action professional welcomed :smile !
+The project warmly welcome contributions ! We need maintainers & contributor with knowledge in CI/CD (Pytest expert, NodeJS/GitHub Action professional, Docker, AWS... 🧙‍♂️ ) and **React expert** 🥷 , **doctorant/searcher** 🧑‍🔬 to publish papers !
 
-Check out our [issues board](https://github.com/users/ph-ausseil/projects/1/views/2) to find tasks that need your help. We have a variety of issues suitable for different skill levels and areas of interest.
+> [!TIP]
+> Check out our [issues board](https://github.com/users/ph-ausseil/projects/1/views/2) to find tasks that need your help. We have a variety of issues suitable for different skill levels and areas of interest.
 
 ### How to Contribute
 

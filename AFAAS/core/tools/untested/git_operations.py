@@ -14,7 +14,7 @@ from AFAAS.lib.task.task import Task
 from AFAAS.lib.utils.json_schema import JSONSchema
 from AFAAS.lib.utils.url.validators import validate_url
 
-from .decorators import sanitize_path_arg
+from AFAAS.core.tools.builtins.file_operations_utils import sanitize_path_arg
 
 COMMAND_CATEGORY = "git_operations"
 COMMAND_CATEGORY_TITLE = "Git Operations"

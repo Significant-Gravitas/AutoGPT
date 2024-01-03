@@ -21,7 +21,7 @@ from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.task import Task
 from AFAAS.lib.utils.json_schema import JSONSchema
 
-from .decorators import sanitize_path_arg
+from .file_operations_utils import sanitize_path_arg
 
 LOG = AFAASLogger(name=__name__)
 TOOL_CATEGORY = "execute_code"

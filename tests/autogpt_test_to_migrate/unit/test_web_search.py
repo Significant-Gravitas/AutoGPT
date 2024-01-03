@@ -43,7 +43,7 @@ def test_google_search(
     mock_ddg.return_value = return_value
 
     mocker.patch("AFAAS.core.tools.web_search.DDGS.text", mock_ddg)
-    actual_output = web_search(query, agent=agent, num_results=num_results)
+    actual_output = web_search(query, agent=task_ready_no_predecessors_or_subtasks.agent, num_results=num_results)
     for o in expected_output_parts:
         assert o in actual_output
 
@@ -85,7 +85,7 @@ def test_google_official_search(
     agent: BaseAgent,
 ):
     mock_googleapiclient.return_value = search_results
-    actual_output = google(query, agent=agent, num_results=num_results)
+    actual_output = google(query, agent=task_ready_no_predecessors_or_subtasks.agent, num_results=num_results)
     assert actual_output == safe_google_results(expected_output)
 
 
@@ -133,4 +133,4 @@ def test_google_official_search_errors(
 
     mock_googleapiclient.side_effect = error
     with pytest.raises(expected_error_type):
-        google(query, agent=agent, num_results=num_results)
+        google(query, agent=task_ready_no_predecessors_or_subtasks.agent, num_results=num_results)

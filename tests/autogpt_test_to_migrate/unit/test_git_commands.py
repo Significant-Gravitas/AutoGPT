@@ -22,7 +22,7 @@ def test_clone_auto_gpt_repository(workspace, mock_clone_from, agent: BaseAgent)
 
     expected_output = f"Cloned {url} to {clone_path}"
 
-    clone_result = clone_repository(url=url, clone_path=clone_path, agent=agent)
+    clone_result = clone_repository(url=url, clone_path=clone_path, agent=task_ready_no_predecessors_or_subtasks.agent)
 
     assert clone_result == expected_output
     mock_clone_from.assert_called_once_with(
@@ -40,4 +40,4 @@ def test_clone_repository_error(workspace, mock_clone_from, agent: BaseAgent):
     )
 
     with pytest.raises(CommandExecutionError):
-        clone_repository(url=url, clone_path=clone_path, agent=agent)
+        clone_repository(url=url, clone_path=clone_path, agent=task_ready_no_predecessors_or_subtasks.agent)

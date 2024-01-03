@@ -19,7 +19,7 @@ from AFAAS.interfaces.tools.context_items import FileContextItem, FolderContextI
 from AFAAS.lib.sdk.errors import ToolExecutionError
 from AFAAS.lib.utils.json_schema import JSONSchema
 
-from .decorators import sanitize_path_arg
+from .file_operations_utils import sanitize_path_arg
 
 
 COMMAND_CATEGORY = "file_operations"

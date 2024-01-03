@@ -7,7 +7,8 @@ from uuid import uuid4
 from fastapi import APIRouter, Body, Depends, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
-from AFAAS.core.agents import PlannerAgent
+from AFAAS.core.agents.planner.main import PlannerAgent
+from AFAAS.lib.sdk.artifacts import Artifact
 from AFAAS.lib.sdk.errors import *
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.sdk.schema import *

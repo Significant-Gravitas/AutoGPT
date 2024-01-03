@@ -44,7 +44,7 @@ You'll then need a settings file.  Run
  ```
 
 This will write a file called `default_agent_settings.yaml` with all the user-modifiable 
-configuration keys to `~/auto-gpt/default_agent_settings.yml` and make the `auto-gpt` directory 
+configuration keys to `~/AFAAS/default_agent_settings.yml` and make the `auto-gpt` directory 
 in your user directory if it doesn't exist). Your user directory is located in different places 
 depending on your operating system:
 

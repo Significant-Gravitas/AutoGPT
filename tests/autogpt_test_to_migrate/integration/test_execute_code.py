@@ -44,7 +44,7 @@ def random_string():
 
 
 def test_execute_python_file(python_test_file: Path, random_string: str, agent: PlannerAgent):
-    result: str = sut.execute_python_file(python_test_file, agent=agent)
+    result: str = sut.execute_python_file(python_test_file, agent=task_ready_no_predecessors_or_subtasks.agent)
     assert result.replace("\r", "") == f"Hello {random_string}!\n"
 
 
@@ -54,13 +54,13 @@ def test_execute_python_file_args(
     random_args = [random_string] * 2
     random_args_string = " ".join(random_args)
     result = sut.execute_python_file(
-        python_test_args_file, args=random_args, agent=agent
+        python_test_args_file, args=random_args, agent=task_ready_no_predecessors_or_subtasks.agent
     )
     assert result == f"{random_args_string}\n"
 
 
 def test_execute_python_code(random_code: str, random_string: str, agent: PlannerAgent):
-    result: str = sut.execute_python_code(random_code, agent=agent)
+    result: str = sut.execute_python_code(random_code, agent=task_ready_no_predecessors_or_subtasks.agent)
     assert result.replace("\r", "") == f"Hello {random_string}!\n"
 
 

@@ -180,9 +180,14 @@ ignore_missing_imports = true
 
 
 [tool.pytest.ini_options]
-addopts = "-vv --cov=afaas/core/tools/builtins/fileoperations.py --cov-branch --cov-report=term-missing --cov-report=xml --numprocesses=logical --durations=10"
+addopts = "-vv --cov=AFAAS --cov-branch --cov-report=term-missing --cov-report=xml --durations=10"
 markers = [
     "requires_openai_api_key",
     "requires_huggingface_api_key"
 ]
-norecursedirs = ["autogpt_test_to_migrate"]
+norecursedirs = ["autogpt_test_to_migrate", "app"]
+log_level = "ERROR"
+asyncio_mode = "auto"
+testpaths = [
+    "tests"
+]

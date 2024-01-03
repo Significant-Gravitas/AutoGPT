@@ -10,9 +10,6 @@ from dotenv import load_dotenv
 # Load the .env file
 load_dotenv()
 
-CONSOLE_LOG_LEVEL = os.getenv("CONSOLE_LOG_LEVEL", "INFO").upper()
-FILE_LOG_LEVEL = os.getenv("FILE_LOG_LEVEL", "DEBUG").upper()
-
 JSON_LOGGING = os.environ.get("JSON_LOGGING", "false").lower() == "true"
 
 CHAT = 29
@@ -23,6 +20,10 @@ logging.addLevelName(CHAT, "CHAT")
 logging.addLevelName(NOTICE, "NOTICE")
 logging.addLevelName(DB_LOG, "DB_LOG")
 logging.addLevelName(TRACE, "TRACE")
+
+
+CONSOLE_LOG_LEVEL = logging.getLevelName(os.getenv("CONSOLE_LOG_LEVEL", "INFO").upper())
+FILE_LOG_LEVEL = logging.getLevelName(os.getenv("FILE_LOG_LEVEL", "DEBUG").upper())
 
 RESET_SEQ: str = "\033[0m"
 COLOR_SEQ: str = "\033[1;%dm"
@@ -165,6 +166,7 @@ class AFAASLogger(logging.Logger):
     #     return cls._instance
 
     def __init__(self, name: str, log_folder: str = "./"):
+
         if hasattr(self, "_initialized"):
             return
 
@@ -306,5 +308,6 @@ def setup_logger():
 
 
 LOG = AFAASLogger(name=__name__)
+setup_logger()
 LOG.warning(f"Console log level is  : {logging.getLevelName(CONSOLE_LOG_LEVEL)}")
 LOG.warning(f"File log level is  : {logging.getLevelName(FILE_LOG_LEVEL)}")

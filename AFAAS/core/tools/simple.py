@@ -140,7 +140,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         #     x for x in modules if x not in config.disabled_tool_categories
         # ]
         # enabled_tool_modules = [x for x in module_name]
-        
+
         enabled_tool_modules = [module_name]
 
         LOG.notice(f"The following tool categories are enabled: {enabled_tool_modules}")
@@ -374,7 +374,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         raise KeyError(f"Tool '{tool_name}' not found in registry")
 
     def call(self, command_name: str, agent: BaseAgent, **kwargs) -> Any:
-        if command := self.get_command(command_name):
+        if command := self.get_tool(command_name):
             return command(**kwargs, agent=agent)
         raise KeyError(f"Tool '{command_name}' not found in registry")
 

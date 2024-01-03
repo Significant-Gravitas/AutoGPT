@@ -57,8 +57,12 @@
             "name": "Mac unit-test",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/tests/run.py",
-            "args": ["run"],
+            //"program": "${workspaceFolder}/tests/run.py",
+            //"args": ["run"],
+
+            //"program": "${workspaceFolder}/tests/dataset/plan_familly_dinner.py",
+            "program": "/Library/Frameworks/Python.framework/Versions/3.11/bin/poetry",
+            "args": ["run", "pytest", "${workspaceFolder}/tests"],
             "console": "integratedTerminal",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/autogpts/autogpt/:${env:PYTHONPATH}:${workspaceFolder}/autogpts/AFAAS/"

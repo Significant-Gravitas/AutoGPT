@@ -13,6 +13,7 @@ from duckduckgo_search import DDGS
 
 from AFAAS.core.tools.tool_decorator import tool
 from AFAAS.interfaces.agent.main import BaseAgent
+from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.lib.sdk.errors import ConfigurationError
 from AFAAS.lib.utils.json_schema import JSONSchema
 
@@ -35,7 +36,7 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
     },
     aliases=["search"],
 )
-def web_search(query: str, agent: BaseAgent, num_results: int = 8) -> str:
+def web_search(query: str, agent: BaseAgent, task : AbstractTask, num_results: int = 8) -> str:
     """Return the results of a Google search
 
     Args:
@@ -107,7 +108,7 @@ def web_search(query: str, agent: BaseAgent, num_results: int = 8) -> str:
     "Configure google_api_key and custom_search_engine_id.",
     aliases=["search"],
 )
-def google(query: str, agent: BaseAgent, num_results: int = 8) -> str | list[str]:
+def google(query: str, agent: BaseAgent, task : AbstractTask, num_results: int = 8) -> str | list[str]:
     """Return the results of a Google search using the official Google API
 
     Args:
