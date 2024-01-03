@@ -75,7 +75,7 @@ class AfaasPostRagTaskUpdateStrategy(AbstractPromptStrategy):
                         required=True,
                         enum=[
                             workflow.name
-                            for workflow in self._agent.workflow_registry.workflows
+                            for workflow in self._agent.workflow_registry.workflows.values()
                         ],
                     ),
                 ),

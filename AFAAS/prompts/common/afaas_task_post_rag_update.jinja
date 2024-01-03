@@ -24,15 +24,15 @@ This task is part of a projects and is located as follow in the WBS :
 {#        #}{% endfor %}{# 
   #}{% endif %}
 
-{% if self.rag_related_task_txt %}
+{% if self.rag_history_txt %}
 ### Historic
 
-self.rag_history_txt
+{{self.rag_history_txt}}
 {% endif %}{% if self.rag_related_task_txt %}
 
 ### Related Tasks
 
-self.rag_related_task_txt
+{{self.rag_related_task_txt}}
 {% endif %}
 """
 
@@ -40,7 +40,7 @@ self.rag_related_task_txt
 
 {% for workflow in workflows %}{{ loop.index }}. {{ workflow.name }}: {{ workflow.description }}
   Example:{% for example in workflow.examples %}
-   - {{ example }}
+   - {{ example }}{% endfor %}
 {% endfor %}
 
 ## Rules

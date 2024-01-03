@@ -47,6 +47,26 @@ class PlannerLoop(BaseLoop):
         user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None,
     ) -> None:
 
+
+
+
+
+        import AFAAS.core.tools.builtins.file_operations as file_ops
+        from pathlib import Path
+        #current_task = self._current_task
+        # # NOTE : Test tools individually
+        # command_name = "web_search"
+        # command_args= {"query": "instructions for building a Pizza oven"}
+        # return_value = await execute_command(
+        #     command_name=command_name,
+        #     arguments=command_args,
+        #     task=current_task,
+        #     agent=self._agent,
+        # )
+        # print(return_value)
+
+
+
         if isinstance(user_input_handler, Callable) and user_input_handler is not None:
             self._user_input_handler = user_input_handler
         elif self._user_input_handler is None:

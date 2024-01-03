@@ -101,7 +101,7 @@ async def run_cli_demo():
                 "Provide a step-by-step guide on how to build a Pizza oven."
             )
         else:
-            user_objective = handle_user_input_request(
+            user_objective = await handle_user_input_request(
                 "What do you want to do? (We will make Pancakes for our tests...)"
             )
 

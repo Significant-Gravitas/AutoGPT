@@ -400,7 +400,7 @@ class Task(AbstractTask):
                 related_tasks=related_tasks,
             )
             self.rag_history_txt = rv.parsed_result[0]["command_args"]["paragraph"]
-            self.rag_uml = rv.parsed_result[0]["command_args"]["uml_diagrams"]
+            self.rag_uml = rv.parsed_result[0]["command_args"].get("uml_diagrams" , '')
 
             # RAG : 3. Summarize Followup
             if len(task_successors) > 0 or len(related_tasks) > 0:
