@@ -1,7 +1,6 @@
 import os
 
 import yaml
-
 from autogpt.config.config import Config
 from autogpt.plugins import inspect_zip_for_modules, scan_plugins
 from autogpt.plugins.plugin_config import PluginConfig

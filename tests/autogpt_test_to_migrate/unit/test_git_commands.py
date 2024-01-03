@@ -2,9 +2,9 @@ import pytest
 from git.exc import GitCommandError
 from git.repo.base import Repo
 
+from AFAAS.core.tools.git_operations import clone_repository
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.lib.sdk.errors import CommandExecutionError
-from AFAAS.core.tools.git_operations import clone_repository
 
 
 @pytest.fixture
@@ -22,7 +22,11 @@ def test_clone_auto_gpt_repository(workspace, mock_clone_from, agent: BaseAgent)
 
     expected_output = f"Cloned {url} to {clone_path}"
 
-    clone_result = clone_repository(url=url, clone_path=clone_path, agent=task_ready_no_predecessors_or_subtasks.agent)
+    clone_result = clone_repository(
+        url=url,
+        clone_path=clone_path,
+        agent=task_ready_no_predecessors_or_subtasks.agent,
+    )
 
     assert clone_result == expected_output
     mock_clone_from.assert_called_once_with(
@@ -40,4 +44,8 @@ def test_clone_repository_error(workspace, mock_clone_from, agent: BaseAgent):
     )
 
     with pytest.raises(CommandExecutionError):
-        clone_repository(url=url, clone_path=clone_path, agent=task_ready_no_predecessors_or_subtasks.agent)
+        clone_repository(
+            url=url,
+            clone_path=clone_path,
+            agent=task_ready_no_predecessors_or_subtasks.agent,
+        )

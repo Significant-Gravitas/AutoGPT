@@ -1,6 +1,6 @@
 import pytest
-
 from autogpt.agents.agent import PlannerAgent
+
 from AFAAS.core.tools.web_selenium import BrowsingError, read_webpage
 
 
@@ -14,7 +14,11 @@ async def test_browse_website_nonexistent_url(
     question = "How to execute a barrel roll"
 
     with pytest.raises(BrowsingError, match="NAME_NOT_RESOLVED") as raised:
-        await read_webpage(url=url, question=question, agent=task_ready_no_predecessors_or_subtasks.agent)
+        await read_webpage(
+            url=url,
+            question=question,
+            agent=task_ready_no_predecessors_or_subtasks.agent,
+        )
 
         # Sanity check that the response is not too long
         assert len(raised.exconly()) < 200

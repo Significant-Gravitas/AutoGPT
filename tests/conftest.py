@@ -1,16 +1,20 @@
-from pathlib import Path
 import os
+from pathlib import Path
+
 import pytest
+
 from AFAAS.core.agents.planner.main import PlannerAgent
 from AFAAS.core.workspace import AbstractFileWorkspace
 from AFAAS.interfaces.tools.base import BaseToolsRegistry
 from tests.dataset.agent_planner import agent_dataset
 
+
 @pytest.fixture
 def agent() -> PlannerAgent:
     return agent_dataset()
 
-@pytest.fixture(scope='function', autouse=True)
+
+@pytest.fixture(scope="function", autouse=True)
 def reset_environment_each_test():
     # Code to reset the environment before each test
     setup_environment()
@@ -21,9 +25,11 @@ def reset_environment_each_test():
     # Code to clean up after each test
     delete_logs()
 
+
 def setup_environment():
     # Code to set up your environment for each test
     pass
+
 
 def delete_logs():
     log_dir = Path(__file__).parent.parent / "logs"
@@ -43,9 +49,9 @@ def delete_logs():
 
 
 @pytest.fixture
-def local_workspace(
-) -> AbstractFileWorkspace : 
+def local_workspace() -> AbstractFileWorkspace:
     return agent_dataset().workspace
+
 
 @pytest.fixture
 def empty_tool_registry() -> BaseToolsRegistry:

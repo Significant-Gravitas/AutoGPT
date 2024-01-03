@@ -21,7 +21,6 @@ from AFAAS.lib.utils.json_schema import JSONSchema
 
 from .file_operations_utils import sanitize_path_arg
 
-
 COMMAND_CATEGORY = "file_operations"
 COMMAND_CATEGORY_TITLE = "File Operations"
 
@@ -45,7 +44,9 @@ def agent_implements_context(agent: BaseAgent) -> bool:
     available=agent_implements_context,
 )
 @sanitize_path_arg("file_path")
-def open_file(file_path: Path, task: Task, agent: BaseAgent) -> tuple[str, FileContextItem]:
+def open_file(
+    file_path: Path, task: Task, agent: BaseAgent
+) -> tuple[str, FileContextItem]:
     """Open a file and return a context item
 
     Args:

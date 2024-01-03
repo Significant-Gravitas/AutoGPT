@@ -1,16 +1,17 @@
 from __future__ import annotations
+
 import hashlib
 import os
-from AFAAS.core.tools.builtins.file_operations_utils import sanitize_path_arg
-from AFAAS.lib.sdk.logger import AFAASLogger
 from pathlib import Path
 from typing import Iterator, Literal
 
+from AFAAS.core.tools.builtins.file_operations_utils import sanitize_path_arg
 from AFAAS.interfaces.agent.main import BaseAgent
+from AFAAS.lib.sdk.logger import AFAASLogger
+
 LOG = AFAASLogger(name=__name__)
 
 Operation = Literal["write", "append", "delete"]
-
 
 
 def text_checksum(text: str) -> str:
@@ -86,8 +87,12 @@ def is_duplicate_operation(
     Returns:
         True if the operation has already been performed on the file
     """
-    #FIXMEv0.0.2 : Set as AgentSetting
-    LOG_FILE_OPERATION = Path(__file__).parent.parent.parent.parent.parent / 'logs' / (f"{agent.agent_id}_file_operation")
+    # FIXMEv0.0.2 : Set as AgentSetting
+    LOG_FILE_OPERATION = (
+        Path(__file__).parent.parent.parent.parent.parent
+        / "logs"
+        / (f"{agent.agent_id}_file_operation")
+    )
     print(LOG_FILE_OPERATION)
     state = file_operations_state(LOG_FILE_OPERATION)
     if operation == "delete" and file_path not in state:
@@ -111,8 +116,12 @@ def log_operation(
         file_path: The name of the file the operation was performed on
         checksum: The checksum of the contents to be written
     """
-    #FIXMEv0.0.2 : Set as AgentSetting
-    LOG_FILE_OPERATION = Path(__file__).parent.parent.parent.parent.parent / 'logs' / (f"{agent.agent_id}_file_operation")
+    # FIXMEv0.0.2 : Set as AgentSetting
+    LOG_FILE_OPERATION = (
+        Path(__file__).parent.parent.parent.parent.parent
+        / "logs"
+        / (f"{agent.agent_id}_file_operation")
+    )
 
     log_entry = f"{operation}: {file_path}"
     if checksum is not None:

@@ -160,9 +160,9 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
 
     def add_task(self, task: "AbstractBaseTask"):
         from AFAAS.lib.task.plan import Plan
+
         if isinstance(self, Plan):
             LOG.debug(self, "Adding task to plan")
-
 
         LOG.debug(
             f"Adding task {task.debug_formated_str()} as subtask of {self.task_id}"

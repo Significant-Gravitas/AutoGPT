@@ -4,13 +4,10 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from autogpt.agents.agent import PlannerAgent
 
 import AFAAS.core.tools.execute_code as sut  # system under testing
-from autogpt.agents.agent import PlannerAgent
-from AFAAS.lib.sdk.errors import (
-    InvalidArgumentError,
-    OperationNotAllowedError,
-)
+from AFAAS.lib.sdk.errors import InvalidArgumentError, OperationNotAllowedError
 
 
 @pytest.fixture
@@ -43,8 +40,12 @@ def random_string():
     return "".join(random.choice(string.ascii_lowercase) for _ in range(10))
 
 
-def test_execute_python_file(python_test_file: Path, random_string: str, agent: PlannerAgent):
-    result: str = sut.execute_python_file(python_test_file, agent=task_ready_no_predecessors_or_subtasks.agent)
+def test_execute_python_file(
+    python_test_file: Path, random_string: str, agent: PlannerAgent
+):
+    result: str = sut.execute_python_file(
+        python_test_file, agent=task_ready_no_predecessors_or_subtasks.agent
+    )
     assert result.replace("\r", "") == f"Hello {random_string}!\n"
 
 
@@ -54,13 +55,17 @@ def test_execute_python_file_args(
     random_args = [random_string] * 2
     random_args_string = " ".join(random_args)
     result = sut.execute_python_file(
-        python_test_args_file, args=random_args, agent=task_ready_no_predecessors_or_subtasks.agent
+        python_test_args_file,
+        args=random_args,
+        agent=task_ready_no_predecessors_or_subtasks.agent,
     )
     assert result == f"{random_args_string}\n"
 
 
 def test_execute_python_code(random_code: str, random_string: str, agent: PlannerAgent):
-    result: str = sut.execute_python_code(random_code, agent=task_ready_no_predecessors_or_subtasks.agent)
+    result: str = sut.execute_python_code(
+        random_code, agent=task_ready_no_predecessors_or_subtasks.agent
+    )
     assert result.replace("\r", "") == f"Hello {random_string}!\n"
 
 
@@ -83,7 +88,9 @@ def test_execute_shell(random_string: str, agent: PlannerAgent):
     assert f"Hello {random_string}!" in result
 
 
-def test_execute_shell_local_commands_not_allowed(random_string: str, agent: PlannerAgent):
+def test_execute_shell_local_commands_not_allowed(
+    random_string: str, agent: PlannerAgent
+):
     result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
     assert f"Hello {random_string}!" in result
 

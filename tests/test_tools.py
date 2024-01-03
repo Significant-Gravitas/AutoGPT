@@ -1,20 +1,21 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
-import asyncio
+
 import pytest
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent.main import BaseAgent
 
-from AFAAS.lib.utils.json_schema import JSONSchema
+from AFAAS.core.tools.simple import SimpleToolRegistry
 from AFAAS.core.tools.tools import Tool
 from AFAAS.interfaces.tools.tool_parameters import ToolParameter
-from AFAAS.core.tools.simple import SimpleToolRegistry
+from AFAAS.lib.utils.json_schema import JSONSchema
 
 PARAMETERS = [
     ToolParameter(
@@ -49,7 +50,7 @@ def test_tool_creation():
         description="Example command",
         exec_function=example_tool_exec_function,
         parameters=PARAMETERS,
-        success_check_callback=Tool.default_success_check_callback
+        success_check_callback=Tool.default_success_check_callback,
     )
 
     assert cmd.name == "example"
@@ -68,7 +69,7 @@ def example_tool():
         description="Example command",
         exec_function=example_tool_exec_function,
         parameters=PARAMETERS,
-        success_check_callback=Tool.default_success_check_callback
+        success_check_callback=Tool.default_success_check_callback,
     )
 
 
@@ -109,7 +110,9 @@ def example_tool_with_aliases(example_tool: Tool):
     return example_tool
 
 
-def test_register_tool_aliases(example_tool_with_aliases: Tool, empty_tool_registry: SimpleToolRegistry):
+def test_register_tool_aliases(
+    example_tool_with_aliases: Tool, empty_tool_registry: SimpleToolRegistry
+):
     """Test that a command can be registered to the empty_tool_registry."""
     command = example_tool_with_aliases
 
@@ -122,7 +125,9 @@ def test_register_tool_aliases(example_tool_with_aliases: Tool, empty_tool_regis
     assert len(empty_tool_registry.tools) == 1
 
 
-def test_unregister_tool_aliases(example_tool_with_aliases: Tool, empty_tool_registry: SimpleToolRegistry):
+def test_unregister_tool_aliases(
+    example_tool_with_aliases: Tool, empty_tool_registry: SimpleToolRegistry
+):
     """Test that a command can be unregistered from the empty_tool_registry."""
     command = example_tool_with_aliases
 
@@ -135,7 +140,9 @@ def test_unregister_tool_aliases(example_tool_with_aliases: Tool, empty_tool_reg
         assert alias not in empty_tool_registry
 
 
-def test_tool_in_registry(example_tool_with_aliases: Tool, empty_tool_registry: SimpleToolRegistry):
+def test_tool_in_registry(
+    example_tool_with_aliases: Tool, empty_tool_registry: SimpleToolRegistry
+):
     """Test that `command_name in registry` works."""
     command = example_tool_with_aliases
 
@@ -158,7 +165,8 @@ def test_get_tool(example_tool: Tool, empty_tool_registry: SimpleToolRegistry):
 
     assert retrieved_cmd == example_tool
 
-#FIXME:
+
+# FIXME:
 # def test_get_nonexistent_tool( empty_tool_registry: SimpleToolRegistry):
 #     """Test that attempting to get a nonexistent command raises a KeyError."""
 
@@ -174,13 +182,14 @@ async def test_call_tool(agent: BaseAgent, empty_tool_registry: SimpleToolRegist
         description="Example command",
         exec_function=example_tool_exec_function,
         parameters=PARAMETERS,
-        success_check_callback=Tool.default_success_check_callback
+        success_check_callback=Tool.default_success_check_callback,
     )
 
     empty_tool_registry.register(cmd)
     result = await empty_tool_registry.call("example", arg1=1, arg2="test", agent=agent)
 
     assert result == "1 - test"
+
 
 # FIXME:
 # @pytest.mark.asyncio  # This decorator is necessary for running async tests with pytest
@@ -190,7 +199,7 @@ async def test_call_tool(agent: BaseAgent, empty_tool_registry: SimpleToolRegist
 #     with pytest.raises(KeyError):
 #         await empty_tool_registry.call("nonexistent_command", arg1=1, arg2="test", agent=task_ready_no_predecessors_or_subtasks.agent)
 
-#FIXME:
+# FIXME:
 # def test_import_mock_commands_module( empty_tool_registry: SimpleToolRegistry):
 #     """Test that the registry can import a module with mock command plugins."""
 #     mock_commands_module = "tests.mocks.mock_commands"

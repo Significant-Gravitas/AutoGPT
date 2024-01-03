@@ -1,16 +1,15 @@
 from __future__ import annotations
-from AFAAS.configs.schema import AFAASModel
-
-
-from pydantic import Field
 
 import uuid
 from datetime import datetime
 from typing import Optional
 
+from pydantic import Field
+
+from AFAAS.configs.schema import AFAASModel
+
 
 class Artifact(AFAASModel):
-
     artifact_id: str = Field(default_factory=lambda: Artifact.generate_uuid())
 
     agent_id: str = Field(
@@ -30,7 +29,7 @@ class Artifact(AFAASModel):
     )
     # NOTE: WILL NOT BE SUPPORTED
     agent_created: bool = Field(
-        default= True,
+        default=True,
         description="Whether the artifact has been created by the agent.",
         example=False,
     )
@@ -49,7 +48,11 @@ class Artifact(AFAASModel):
         description="MIME type of the artifact.",
         example="text/plain",
     )
-    license: Optional[str] = Field(default=None, description="Licence; `None` the document is created by the agent or user", example="MIT")
+    license: Optional[str] = Field(
+        default=None,
+        description="Licence; `None` the document is created by the agent or user",
+        example="MIT",
+    )
     checksum: str = Field(default=None, description="Checksum of the artifact")
 
     @staticmethod
@@ -57,8 +60,7 @@ class Artifact(AFAASModel):
         return str("ATF" + str(uuid.uuid4()))
 
     from AFAAS.interfaces.agent.main import BaseAgent
-    async def create_in_db(self, agent : BaseAgent):
 
+    async def create_in_db(self, agent: BaseAgent):
         table = agent.memory.get_table("artifacts")
         return table.add(self)
-

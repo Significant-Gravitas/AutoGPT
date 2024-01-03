@@ -1,19 +1,40 @@
-
-
-import pytest
 import re
 from io import TextIOWrapper
 from pathlib import Path
+
+import pytest
 import pytest_asyncio
+
 import AFAAS.core.tools.builtins.file_operations as file_ops
-from AFAAS.core.tools.builtins.file_operations_helpers import operations_from_log, text_checksum, file_operations_state , append_to_file, log_operation
+from AFAAS.core.tools.builtins.file_operations_helpers import (
+    append_to_file,
+    file_operations_state,
+    log_operation,
+    operations_from_log,
+    text_checksum,
+)
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.lib.sdk.errors import DuplicateOperationError
-from tests.dataset.test_tools_file import test_file_name, test_file_path, test_file_with_content_path, test_nested_file, test_directory, test_file, file_content
-from tests.dataset.plan_familly_dinner import task_ready_no_predecessors_or_subtasks , Task  , plan_step_0 , plan_familly_dinner
+from tests.dataset.plan_familly_dinner import (
+    Task,
+    plan_familly_dinner,
+    plan_step_0,
+    task_ready_no_predecessors_or_subtasks,
+)
+from tests.dataset.test_tools_file import (
+    file_content,
+    test_directory,
+    test_file,
+    test_file_name,
+    test_file_path,
+    test_file_with_content_path,
+    test_nested_file,
+)
 
 
-def test_file_operations_log(task_ready_no_predecessors_or_subtasks : Task, test_file: TextIOWrapper):
+def test_file_operations_log(
+    task_ready_no_predecessors_or_subtasks: Task, test_file: TextIOWrapper
+):
     log_file_content = (
         "File Operation Logger\n"
         "write: path/to/file1.txt #checksum1\n"
@@ -35,7 +56,9 @@ def test_file_operations_log(task_ready_no_predecessors_or_subtasks : Task, test
     assert list(operations_from_log(log_path=test_file.name)) == expected
 
 
-def test_file_operations_state(task_ready_no_predecessors_or_subtasks : Task, test_file: TextIOWrapper):
+def test_file_operations_state(
+    task_ready_no_predecessors_or_subtasks: Task, test_file: TextIOWrapper
+):
     # Prepare a fake log file
     log_file_content = (
         "File Operation Logger\n"
@@ -55,34 +78,55 @@ def test_file_operations_state(task_ready_no_predecessors_or_subtasks : Task, te
     }
     assert file_operations_state(log_path=test_file.name) == expected_state
 
-# FIXME:NOT NotImplementedError
-async def test_append_to_file(task_ready_no_predecessors_or_subtasks : Task, test_nested_file: Path, agent: BaseAgent):
-    append_text = "This is appended text.\n"
-    await file_ops.write_to_file(filename=test_nested_file, contents=append_text, agent=task_ready_no_predecessors_or_subtasks.agent, task=task_ready_no_predecessors_or_subtasks)
 
-    append_to_file(filename=test_nested_file, text= append_text, agent=task_ready_no_predecessors_or_subtasks.agent)
+# FIXME:NOT NotImplementedError
+async def test_append_to_file(
+    task_ready_no_predecessors_or_subtasks: Task,
+    test_nested_file: Path,
+    agent: BaseAgent,
+):
+    append_text = "This is appended text.\n"
+    await file_ops.write_to_file(
+        filename=test_nested_file,
+        contents=append_text,
+        agent=task_ready_no_predecessors_or_subtasks.agent,
+        task=task_ready_no_predecessors_or_subtasks,
+    )
+
+    append_to_file(
+        filename=test_nested_file,
+        text=append_text,
+        agent=task_ready_no_predecessors_or_subtasks.agent,
+    )
 
     with open(test_nested_file, "r") as f:
         content_after = f.read()
 
     assert content_after == append_text + append_text
 
+
 # FIXME:NOT NotImplementedError
 @pytest.mark.asyncio
 async def test_write_file_fails_if_content_exists(
-    task_ready_no_predecessors_or_subtasks : Task, test_file_name: Path, agent: BaseAgent):
+    task_ready_no_predecessors_or_subtasks: Task, test_file_name: Path, agent: BaseAgent
+):
     new_content = "This is new content.\n"
     log_operation(
-         "write",
-         test_file_name,
-         agent=task_ready_no_predecessors_or_subtasks.agent,
-         checksum= text_checksum(new_content)
-     )
+        "write",
+        test_file_name,
+        agent=task_ready_no_predecessors_or_subtasks.agent,
+        checksum=text_checksum(new_content),
+    )
     with pytest.raises(DuplicateOperationError):
-        await file_ops.write_to_file(filename=test_file_name, contents = new_content, agent=task_ready_no_predecessors_or_subtasks.agent, task=task_ready_no_predecessors_or_subtasks)
+        await file_ops.write_to_file(
+            filename=test_file_name,
+            contents=new_content,
+            agent=task_ready_no_predecessors_or_subtasks.agent,
+            task=task_ready_no_predecessors_or_subtasks,
+        )
 
 
-#from autogpt.memory.vector.memory_item import MemoryItem
+# from autogpt.memory.vector.memory_item import MemoryItem
 
 
 # @pytest.fixture()
@@ -150,23 +194,27 @@ async def test_write_file_fails_if_content_exists(
 
 
 # Test logging a file operation
-def test_log_operation(task_ready_no_predecessors_or_subtasks : Task, agent: BaseAgent):
+def test_log_operation(task_ready_no_predecessors_or_subtasks: Task, agent: BaseAgent):
+    # FIXMEv0.0.2 : Set as AgentSetting
+    LOG_FILE_OPERATION = (
+        Path(__file__).parent.parent / "logs" / (f"{agent.agent_id}_file_operation")
+    )
 
-    #FIXMEv0.0.2 : Set as AgentSetting
-    LOG_FILE_OPERATION = Path(__file__).parent.parent / 'logs' / (f"{agent.agent_id}_file_operation")
-
-    file_ops.log_operation("log_test", Path("path/to/test"), agent=task_ready_no_predecessors_or_subtasks.agent)
+    file_ops.log_operation(
+        "log_test",
+        Path("path/to/test"),
+        agent=task_ready_no_predecessors_or_subtasks.agent,
+    )
     with open(LOG_FILE_OPERATION, "r", encoding="utf-8") as f:
         content = f.read()
     assert "log_test: path/to/test\n" in content
 
 
-def test_text_checksum( task_ready_no_predecessors_or_subtasks : Task, file_content: str):
-    checksum = text_checksum(text= file_content)
+def test_text_checksum(task_ready_no_predecessors_or_subtasks: Task, file_content: str):
+    checksum = text_checksum(text=file_content)
     different_checksum = text_checksum(text="other content")
     assert re.match(r"^[a-fA-F0-9]+$", checksum) is not None
     assert checksum != different_checksum
-
 
 
 # FIXME:
@@ -179,7 +227,7 @@ def test_text_checksum( task_ready_no_predecessors_or_subtasks : Task, file_cont
 #         log_entry = f.read()
 #     assert log_entry == f"write: {test_file_name} #{new_checksum}\n"
 
-#FIXME:
+# FIXME:
 # def test_append_to_file_uses_checksum_from_appended_file(
 #     task_ready_no_predecessors_or_subtasks : Task,
 #     test_file_name: Path, agent: BaseAgent

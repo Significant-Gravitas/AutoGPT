@@ -36,7 +36,9 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
     },
     aliases=["search"],
 )
-def web_search(query: str, agent: BaseAgent, task : AbstractTask, num_results: int = 8) -> str:
+def web_search(
+    query: str, agent: BaseAgent, task: AbstractTask, num_results: int = 8
+) -> str:
     """Return the results of a Google search
 
     Args:
@@ -108,7 +110,9 @@ def web_search(query: str, agent: BaseAgent, task : AbstractTask, num_results: i
     "Configure google_api_key and custom_search_engine_id.",
     aliases=["search"],
 )
-def google(query: str, agent: BaseAgent, task : AbstractTask, num_results: int = 8) -> str | list[str]:
+def google(
+    query: str, agent: BaseAgent, task: AbstractTask, num_results: int = 8
+) -> str | list[str]:
     """Return the results of a Google search using the official Google API
 
     Args:

@@ -3,8 +3,6 @@ from unittest.mock import patch
 
 import pytest
 import requests
-from git import InvalidGitRepositoryError
-
 from autogpt.app.utils import (
     get_bulletin_from_web,
     get_current_git_branch,
@@ -12,6 +10,8 @@ from autogpt.app.utils import (
 )
 from autogpt.json_utils.utilities import extract_dict_from_response
 from autogpt.utils import validate_yaml_file
+from git import InvalidGitRepositoryError
+
 from tests.utils import skip_in_ci
 
 

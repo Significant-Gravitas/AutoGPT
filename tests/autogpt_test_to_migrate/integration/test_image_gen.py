@@ -4,9 +4,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from autogpt.agents.agent import PlannerAgent
 from PIL import Image
 
-from autogpt.agents.agent import PlannerAgent
 from AFAAS.core.tools.image_gen import generate_image, generate_image_with_sd_webui
 
 

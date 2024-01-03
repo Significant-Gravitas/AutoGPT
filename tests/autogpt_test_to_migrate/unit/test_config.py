@@ -8,9 +8,9 @@ from unittest import mock
 from unittest.mock import patch
 
 import pytest
+from autogpt.app.configurator import GPT_3_MODEL, GPT_4_MODEL, apply_overrides_to_config
 from pydantic import SecretStr
 
-from autogpt.app.configurator import GPT_3_MODEL, GPT_4_MODEL, apply_overrides_to_config
 from AFAAS.configs.config import Config, ConfigBuilder
 
 

@@ -1,9 +1,9 @@
+import functools
 import json
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import BinaryIO, Callable, Literal
-import functools
 
 import charset_normalizer
 import docx
@@ -11,8 +11,8 @@ import pypdf
 import yaml
 from bs4 import BeautifulSoup
 from pylatexenc.latex2text import LatexNodes2Text
-from AFAAS.interfaces.agent.main import BaseAgent
 
+from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -21,6 +21,7 @@ from typing import Callable, ParamSpec, TypeVar
 
 P = ParamSpec("P")
 T = TypeVar("T")
+
 
 class ParserStrategy(ABC):
     @abstractmethod

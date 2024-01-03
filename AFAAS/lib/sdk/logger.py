@@ -118,9 +118,9 @@ class ConsoleFormatter(logging.Formatter):
         levelname = rec.levelname
         current_color = ""
 
-        #HACK: This is a hack to fix the issue with the logging module
-        if levelname == '\x1b[94mINFO\x1b[0m' :
-            levelname = 'INFO'
+        # HACK: This is a hack to fix the issue with the logging module
+        if levelname == "\x1b[94mINFO\x1b[0m":
+            levelname = "INFO"
 
         if self.use_color and levelname in KEYWORD_COLORS:
             current_color = KEYWORD_COLORS[levelname]
@@ -170,7 +170,6 @@ class AFAASLogger(logging.Logger):
     #     return cls._instance
 
     def __init__(self, name: str, log_folder: str = "./", logLevel: str = "DEBUG"):
-
         if hasattr(self, "_initialized"):
             return
 

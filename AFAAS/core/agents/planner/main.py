@@ -29,9 +29,6 @@ if TYPE_CHECKING:
 
 
 class PlannerAgent(BaseAgent):
-
-
-
     # FIXME: Move to BaseAgent
     @property
     def tool_registry(self) -> BaseToolsRegistry:
@@ -48,7 +45,6 @@ class PlannerAgent(BaseAgent):
     @tool_registry.setter
     def tool_registry(self, value: BaseToolsRegistry):
         self._tool_registry = value
-
 
     class SystemSettings(BaseAgent.SystemSettings):
         class Config(BaseAgent.SystemSettings.Config):
@@ -67,7 +63,7 @@ class PlannerAgent(BaseAgent):
         prompt_manager: BasePromptManager = BasePromptManager(),
         loop: PlannerLoop = PlannerLoop(),
         tool_handler: ToolExecutor = ToolExecutor(),
-        tool_registry= None,
+        tool_registry=None,
         memory: AbstractMemory = None,
         default_llm_provider: AbstractLanguageModelProvider = None,
         workspace: AbstractFileWorkspace = None,

@@ -3,7 +3,7 @@ import logging
 import click
 
 from AFAAS.core.agents.planner.main import PlannerAgent
-from AFAAS.lib.sdk.logger import AFAASLogger, CONSOLE_LOG_LEVEL
+from AFAAS.lib.sdk.logger import CONSOLE_LOG_LEVEL, AFAASLogger
 
 
 async def handle_user_input_request(prompt):
@@ -52,7 +52,7 @@ async def run_cli_demo():
 
     if len(agent_dict_list) > 0:
         LOG.info(f"User {user_id} has {len(agent_dict_list)} agents.")
-        if CONSOLE_LOG_LEVEL > logging.DEBUG: 
+        if CONSOLE_LOG_LEVEL > logging.DEBUG:
             print("This is the agents that have been saved :")
             for i, agent_dict in enumerate(agent_dict_list):
                 print(

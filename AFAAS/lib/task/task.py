@@ -339,9 +339,7 @@ class Task(AbstractTask):
 
         # 6. Get the similar tasks , if at least n (similar_tasks) have been treated so we only look for similarity in complexe cases
         related_tasks: list[Task] = []
-        if (
-            len(self.agent.plan.get_all_done_tasks_ids()) > similar_tasks
-        ):
+        if len(self.agent.plan.get_all_done_tasks_ids()) > similar_tasks:
             task_embedding = await self.agent.embedding_model.aembed_query(
                 text=self.long_description
             )
@@ -400,7 +398,7 @@ class Task(AbstractTask):
                 related_tasks=related_tasks,
             )
             self.rag_history_txt = rv.parsed_result[0]["command_args"]["paragraph"]
-            self.rag_uml = rv.parsed_result[0]["command_args"].get("uml_diagrams" , '')
+            self.rag_uml = rv.parsed_result[0]["command_args"].get("uml_diagrams" , "")
 
             # RAG : 3. Summarize Followup
             if len(task_successors) > 0 or len(related_tasks) > 0:
@@ -416,7 +414,7 @@ class Task(AbstractTask):
                 self.rag_related_task_txt = rv.parsed_result[0]["command_args"][
                     "paragraph"
                 ]
-                self.rag_uml += rv.parsed_result[0]["command_args"]["uml_diagrams"]
+                self.rag_uml += rv.parsed_result[0]["command_args"].get("uml_diagrams", "")
 
             # RAG : 4. Post-Rag task update
             rv: AbstractChatModelResponse = await self.agent.execute_strategy(
