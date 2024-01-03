@@ -44,13 +44,21 @@ def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
     """
     search_results = []
     attempts = 0
-
+    DDGS_EXCEPTION_RETRY=5
     while attempts < DUCKDUCKGO_MAX_ATTEMPTS:
         if not query:
             return json.dumps(search_results)
-
-        results = DDGS().text(query)
-        search_results = list(islice(results, num_results))
+        while True:
+            try:
+                results = DDGS().text(query)
+                search_results = list(islice(results, num_results))
+                break
+            except:
+                DDGS_EXCEPTION_RETRY -= 1
+                if DDGS_EXCEPTION_RETRY <=0:
+                    raise
+                else:
+                    continue
 
         if search_results:
             break
