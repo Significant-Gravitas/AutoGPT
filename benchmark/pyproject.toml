@@ -32,6 +32,8 @@ python-multipart = "^0.0.6"
 toml = "^0.10.2"
 helicone = "^1.0.9"
 httpx = "^0.24.0"
+agent-protocol-client = "^1.1.0"
+click-default-group = "^1.2.4"
 
 [tool.poetry.group.dev.dependencies]
 flake8 = "^3.9.2"

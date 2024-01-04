@@ -1,20 +1,24 @@
 import json
+import logging
 import os
 import sys
+from pathlib import Path
 from typing import Any, Dict
 
-from agbenchmark.__main__ import CHALLENGES_ALREADY_BEATEN
-from agbenchmark.reports.agent_benchmark_config import get_agent_benchmark_config
+import pytest
+
+from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.reports.ReportManager import SingletonReportManager
-from agbenchmark.utils.data_types import DifficultyLevel
+from agbenchmark.utils.data_types import ChallengeData, DifficultyLevel
 from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
 from agbenchmark.utils.utils import calculate_success_percentage
+
+logger = logging.getLogger(__name__)
 
 
 def get_previous_test_results(
     test_name: str, info_details: dict[str, Any]
 ) -> list[bool]:
-    agent_tests: dict[str, list[bool]] = {}
     mock = os.getenv("IS_MOCK")  # Check if --mock is in sys.argv
 
     prev_test_results = SingletonReportManager().INTERNAL_INFO_MANAGER.tests.get(
@@ -49,17 +53,14 @@ def update_regression_tests(
 
 
 def generate_single_call_report(
-    item: Any,
-    call: Any,
-    challenge_data: dict[str, Any],
+    item: pytest.Item,
+    call: pytest.CallInfo,
+    challenge_data: ChallengeData,
     answers: dict[str, Any],
-    challenge_location,
-    test_name,
+    challenge_location: str,
+    test_name: str,
 ) -> None:
-    try:
-        difficulty = challenge_data["info"]["difficulty"]
-    except KeyError:
-        return None
+    difficulty = challenge_data.info.difficulty
 
     if isinstance(difficulty, DifficultyLevel):
         difficulty = difficulty.value
@@ -77,10 +78,10 @@ def generate_single_call_report(
     info_details: Any = {
         "data_path": challenge_location,
         "is_regression": False,
-        "category": challenge_data["category"],
-        "task": challenge_data["task"],
-        "answer": challenge_data["ground"]["answer"],
-        "description": challenge_data["info"]["description"],
+        "category": challenge_data.category,
+        "task": challenge_data.task,
+        "answer": challenge_data.ground.answer,
+        "description": challenge_data.info.description,
         "metrics": {
             "difficulty": difficulty,
             "success": False,
@@ -91,8 +92,8 @@ def generate_single_call_report(
     if answers:
         info_details["answers"] = answers
 
-    if "metadata" in challenge_data:
-        info_details["metadata"] = challenge_data["metadata"]
+    if challenge_data.metadata:
+        info_details["metadata"] = challenge_data.metadata
 
     mock = os.getenv("IS_MOCK")  # Check if --mock is in sys.argv
     if call:
@@ -116,7 +117,9 @@ def generate_single_call_report(
     return info_details
 
 
-def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:
+def finalize_reports(
+    config: AgentBenchmarkConfig, item: pytest.Item, challenge_data: ChallengeData
+) -> None:
     run_time = dict(item.user_properties).get("run_time")
 
     info_details = getattr(item, "info_details", {})
@@ -126,8 +129,9 @@ def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:
         if run_time is not None:
             cost = None
             if "--mock" not in sys.argv and os.environ.get("HELICONE_API_KEY"):
-                print("Getting cost from Helicone")
+                logger.debug("Getting cost from Helicone")
                 cost = get_data_from_helicone(test_name)
+                logger.debug(f"Cost: {cost}")
 
             info_details["metrics"]["cost"] = cost
 
@@ -142,29 +146,33 @@ def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:
 
             info_details["metrics"]["run_time"] = f"{str(round(run_time, 3))} seconds"
 
-            info_details["reached_cutoff"] = float(run_time) > challenge_data["cutoff"]
+            info_details["reached_cutoff"] = float(run_time) > challenge_data.cutoff
 
             if "--mock" not in sys.argv:
-                update_challenges_already_beaten(info_details, test_name)
+                update_challenges_already_beaten(
+                    config.challenges_already_beaten_file, info_details, test_name
+                )
                 if info_details.get("tests") is not None:
                     for nested_test_name, nested_test_info in info_details[
                         "tests"
                     ].items():
                         update_challenges_already_beaten(
-                            nested_test_info, nested_test_name
+                            config.challenges_already_beaten_file,
+                            nested_test_info,
+                            nested_test_name,
                         )
 
         SingletonReportManager().INFO_MANAGER.add_test(test_name, info_details)
 
 
 def update_challenges_already_beaten(
-    info_details: Dict[str, Any], test_name: str
+    challenges_already_beaten_file: Path, info_details: Dict[str, Any], test_name: str
 ) -> None:
     current_run_successful = info_details["metrics"]["success"]
     try:
-        with open(CHALLENGES_ALREADY_BEATEN, "r") as f:
+        with open(challenges_already_beaten_file, "r") as f:
             challenge_data = json.load(f)
-    except:
+    except FileNotFoundError:
         challenge_data = {}
     challenge_beaten_in_the_past = challenge_data.get(test_name)
 
@@ -172,13 +180,13 @@ def update_challenges_already_beaten(
     if challenge_beaten_in_the_past is None and not current_run_successful:
         challenge_data[test_name] = False
 
-    with open(CHALLENGES_ALREADY_BEATEN, "w") as f:
+    with open(challenges_already_beaten_file, "w") as f:
         json.dump(challenge_data, f, indent=4)
 
 
-def session_finish(suite_reports: dict) -> None:
-    agent_benchmark_config = get_agent_benchmark_config()
-
+def session_finish(
+    agbenchmark_config: AgentBenchmarkConfig, suite_reports: dict
+) -> None:
     SingletonReportManager().INTERNAL_INFO_MANAGER.save()
-    SingletonReportManager().INFO_MANAGER.end_info_report(agent_benchmark_config)
+    SingletonReportManager().INFO_MANAGER.end_info_report(agbenchmark_config)
     SingletonReportManager().REGRESSION_MANAGER.save()
