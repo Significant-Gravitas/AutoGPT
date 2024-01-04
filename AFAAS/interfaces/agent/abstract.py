@@ -35,17 +35,23 @@ class AbstractAgent(ABC):
     plan : Optional[AbstractPlan] = None
 
     @property
-    def vectorstore(self) -> VectorStore:
-        if self._vectorstore is None:
-            self._vectorstore = Chroma(
-                persist_directory='data/chroma',
+    def vectorstores(self) -> dict[str , VectorStore]:
+        # Ensure 'tasks' and 'documents' VectorStores are initialized
+        self._ensure_vectorstore_initialized("tasks")
+        self._ensure_vectorstore_initialized("documents")
+        return self._vectorstores
+
+    def _ensure_vectorstore_initialized(self, key: str):
+        if key not in self._vectorstores or self._vectorstores[key] is None:
+            self._vectorstores[key] = Chroma(
+                persist_directory=f'data/chroma/{key}',
                 embedding_function=self.embedding_model
             )
-        return self._vectorstore
 
-    @vectorstore.setter
-    def vectorstore(self, value : VectorStore):
-        self._vectorstore = value
+    @vectorstores.setter
+    def vectorstores(self, value: dict[str , VectorStore]):
+        for key, vectorstore in value.items():
+            self._vectorstores[key] = vectorstore
 
     @property
     def embedding_model(self) -> Embeddings:
@@ -181,7 +187,7 @@ class AbstractAgent(ABC):
         workspace: AbstractFileWorkspace,
         prompt_manager: BasePromptManager,
         default_llm_provider: AbstractLanguageModelProvider,
-        vectorstore: VectorStore,
+        vectorstores: dict[str , VectorStore],
         embedding_model : Embeddings,
         workflow_registry: WorkflowRegistry,
         user_id: uuid.UUID,
@@ -210,8 +216,10 @@ class AbstractAgent(ABC):
         self.workspace.initialize()
 
         self._default_llm_provider : AbstractLanguageModelProvider = default_llm_provider
-        self._vectorstore : VectorStore = vectorstore
         self._embedding_model : Embeddings = embedding_model
+        self._vectorstores : dict[VectorStore] = {}
+        for key, vectorstore in vectorstores.items():
+            self._vectorstores[key] : VectorStore = vectorstore
 
         self._workflow_registry : WorkflowRegistry = workflow_registry
 

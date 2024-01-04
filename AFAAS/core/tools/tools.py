@@ -171,7 +171,7 @@ class Tool:
         # vector = await agent.vectorstore.aadd_texts(
         #     task_ouput_embedding, metadatas= [{'task_id' : task.task_id , 'plan_id' : task.plan_id}]
         #     )
-        vector = await agent.vectorstore.aadd_texts(
+        vector = await agent.vectorstores["tasks"].aadd_texts(
             texts=[task.task_text_output],
             metadatas=[{"task_id": task.task_id, "plan_id": task.plan_id}],
         )
