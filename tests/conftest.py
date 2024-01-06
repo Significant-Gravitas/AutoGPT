@@ -9,6 +9,11 @@ from AFAAS.interfaces.tools.base import BaseToolsRegistry
 from tests.dataset.agent_planner import agent_dataset
 
 
+@pytest.fixture(scope="session")
+def activate_integration_tests():
+    # Use an environment variable to control the activation of integration tests
+    return os.getenv("RUN_INTEGRATION_TESTS", "false").lower() == "true"
+
 @pytest.fixture
 def agent() -> PlannerAgent:
     return agent_dataset()
