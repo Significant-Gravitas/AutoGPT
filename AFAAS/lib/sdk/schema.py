@@ -62,7 +62,7 @@ class AgentRequestBody(AFAASModel):
     # NOTE: Base Agent not planned agent because Pydantic (1.10 (at least)) can't serialize :
     # PlannerAgent
     # chat_model_provider: OpenAISettings =OpenAISettings()
-    # tool_registry: SimpleToolRegistry.SystemSettings = SimpleToolRegistry.SystemSettings()
+    # tool_registry: DefaultToolRegistry.SystemSettings = DefaultToolRegistry.SystemSettings()
     # prompt_manager: PromptManager.SystemSettings = PromptManager.SystemSettings()
 
     # additional_input: = Any ?

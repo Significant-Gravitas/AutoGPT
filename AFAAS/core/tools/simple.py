@@ -42,13 +42,13 @@ class ToolsRegistryConfiguration(SystemConfiguration):
 ToolsRegistryConfiguration.update_forward_refs()
 
 
-class SimpleToolRegistry(Configurable, BaseToolsRegistry):
+class DefaultToolRegistry(Configurable, BaseToolsRegistry):
     """
     A manager for a collection of Tool objects. Supports registration, modification, retrieval, and loading
     of tool plugins from a specified directory.
 
     Attributes:
-        default_settings: Default system settings for the SimpleToolRegistry.
+        default_settings: Default system settings for the DefaultToolRegistry.
     """
 
     class SystemSettings(Configurable.SystemSettings):
@@ -87,14 +87,14 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
 
     def __init__(
         self,
-        settings: SimpleToolRegistry.SystemSettings,
+        settings: DefaultToolRegistry.SystemSettings,
         db: AbstractMemory,
         workspace: AbstractFileWorkspace,
         model_providers: dict[ModelProviderName, AbstractChatModelProvider],
         modules: list[str],
     ):
         """
-        Initialize the SimpleToolRegistry.
+        Initialize the DefaultToolRegistry.
 
         Args:
             settings: Configuration settings for the registry.
@@ -104,10 +104,10 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
             model_providers: A dictionary mapping model provider names to chat model providers.
 
         Example:
-            registry = SimpleToolRegistry(settings, logger, db, workspace, model_providers)
+            registry = DefaultToolRegistry(settings, logger, db, workspace, model_providers)
         """
 
-        LOG.debug("Initializing SimpleToolRegistry...")
+        LOG.debug("Initializing DefaultToolRegistry...")
         LOG.notice(
             "Memory, Workspace and ModelProviders are not used anymore argument are supported"
         )
@@ -184,11 +184,11 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
 
     #     Example:
     #     ```python
-    #     registry = SimpleToolRegistry(...)
+    #     registry = DefaultToolRegistry(...)
     #     registry.register_tool("sample_tool", ToolConfiguration(), aliases=["example"], category="sample_category")
     #     ```
     #     """
-    #     tool_class = SimplePluginService.get_plugin(tool_configuration.location)
+    #     tool_class = DefaultPluginService.get_plugin(tool_configuration.location)
     #     tool_args = {
     #         "logger": LOG.getChild(tool_name),
     #         "configuration": tool_configuration,
@@ -234,7 +234,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
 
         Example:
         ```python
-        registry = SimpleToolRegistry(...)
+        registry = DefaultToolRegistry(...)
         registry.register_tool("sample_tool", ToolConfiguration(), aliases=["example"], category="sample_category")
         ```
         """
@@ -262,7 +262,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
 
         Example:
         ```python
-        registry = SimpleToolRegistry(...)
+        registry = DefaultToolRegistry(...)
         tool_instance = ...
         registry.unregister(tool_instance)
         ```
@@ -283,7 +283,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
 
         Example:
         ```python
-        registry = SimpleToolRegistry(...)
+        registry = DefaultToolRegistry(...)
         registry.reload_tools()
         ```
         """
@@ -321,7 +321,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
 
         Example:
         ```python
-        registry = SimpleToolRegistry(...)
+        registry = DefaultToolRegistry(...)
         tool = registry.get_tool("sample_tool")
         ```
         """
@@ -374,7 +374,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
 
         Example:
         ```python
-        registry = SimpleToolRegistry(...)
+        registry = DefaultToolRegistry(...)
         for tool in registry.list_available_tools():
             print(tool.name())
         ```
@@ -396,7 +396,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
 
         Example:
         ```python
-        registry = SimpleToolRegistry(...)
+        registry = DefaultToolRegistry(...)
         descriptions = registry.list_tools_descriptions()
         for desc in descriptions:
             print(desc)
@@ -422,7 +422,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         This method imports the associated module and registers any functions or
         classes that are decorated with the `AUTO_GPT_TOOL_IDENTIFIER` attribute
         as `Tool` objects. The registered `Tool` objects are then added to the
-        `tools` list of the `SimpleToolRegistry` object.
+        `tools` list of the `DefaultToolRegistry` object.
 
         Args:
             module_name (str): The name of the module to import for tool plugins.
@@ -430,7 +430,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
 
         Example:
         ```python
-        registry = SimpleToolRegistry(...)
+        registry = DefaultToolRegistry(...)
         registry.import_tool_module("sample_module")
         ```
         """
@@ -472,7 +472,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
 
         Example:
         ```python
-        registry = SimpleToolRegistry(...)
+        registry = DefaultToolRegistry(...)
         module = ...
         category = registry.register_module_category(module)
         ```
@@ -481,7 +481,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
             raise ValueError(f"Cannot import invalid tool module {module.__name__}")
 
         if category_name not in self.categories:
-            self.categories[category_name] = SimpleToolRegistry.ToolCategory(
+            self.categories[category_name] = DefaultToolRegistry.ToolCategory(
                 name=category_name,
                 title=getattr(
                     module, "TOOL_CATEGORY_TITLE", category_name.capitalize()

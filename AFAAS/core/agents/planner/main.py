@@ -9,7 +9,7 @@ from langchain_core.vectorstores import VectorStore
 from AFAAS.core.tools.builtins import (
     TOOL_CATEGORIES,  # FIXME: This is a temporary fix but shall not be delt here
 )
-from AFAAS.core.tools.simple import SimpleToolRegistry
+from AFAAS.core.tools.simple import DefaultToolRegistry
 from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
 from AFAAS.interfaces.agent.assistants.prompt_manager import BasePromptManager
 from AFAAS.interfaces.agent.assistants.tool_executor import ToolExecutor
@@ -33,7 +33,7 @@ class PlannerAgent(BaseAgent):
     @property
     def tool_registry(self) -> BaseToolsRegistry:
         if self._tool_registry is None:
-            self._tool_registry = SimpleToolRegistry(
+            self._tool_registry = DefaultToolRegistry(
                 settings=self._settings,
                 db=self.db,
                 workspace=self.workspace,
