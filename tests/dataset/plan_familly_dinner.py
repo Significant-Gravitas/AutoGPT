@@ -201,9 +201,12 @@ def plan_step_0():
     return plan_familly_dinner()
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def plan_step_1() -> Plan:
-    t = plan_step_0()
+    return _plan_step_1()
+
+def _plan_step_1() -> Plan:
+    t = plan_familly_dinner()
     # Marking initial tasks as done
     task_id: str
     t._all_task_ids.reverse()
@@ -246,9 +249,12 @@ def plan_step_1() -> Plan:
 #     return copy.deepcopy(t)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def plan_step_2a() -> Plan:
-    t = plan_step_1()
+    return _plan_step_2a()
+
+def _plan_step_2a() -> Plan:
+    t = _plan_step_1()
 
     # Task 45 completed (Example task, adjust as needed)
     t.get_task(task_id="45").state = TaskStatusList.DONE
@@ -269,9 +275,12 @@ def plan_step_2a() -> Plan:
     return copy.deepcopy(t)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def plan_step_2b() -> Plan:
-    t = plan_step_2a()
+    return _plan_step_2b()
+
+def _plan_step_2b() -> Plan:
+    t = _plan_step_2a()
     t.get_task(task_id="300.1.2").state = TaskStatusList.READY
     t.get_task(task_id="107").state = TaskStatusList.READY
     t.get_task(task_id="200").state = TaskStatusList.READY
@@ -280,9 +289,12 @@ def plan_step_2b() -> Plan:
     return copy.deepcopy(t)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def plan_step_2c() -> Plan:
-    t = plan_step_2b()
+    return _plan_step_2c()
+
+def _plan_step_2c() -> Plan:
+    t = _plan_step_2b()
     t.get_task(task_id="300.1.2").state = TaskStatusList.DONE
     t.get_task(
         task_id="300.1.2"
@@ -305,9 +317,12 @@ def plan_step_2c() -> Plan:
     return copy.deepcopy(t)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def plan_step_2d() -> Plan:
-    t = plan_step_2c()
+    return _plan_step_2d()
+
+def _plan_step_2d() -> Plan:
+    t = _plan_step_2c()
     t.get_task(task_id="107").state = TaskStatusList.DONE
     t.get_task(
         task_id="107"
@@ -352,9 +367,12 @@ def plan_step_2d() -> Plan:
     return copy.deepcopy(t)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def plan_step_3() -> Plan:
-    t = plan_step_2b()
+    return _plan_step_3()
+
+def _plan_step_3() -> Plan:
+    t = _plan_step_2b()
 
     # Completing task 200.4
     t.get_task(task_id="200.4").state = TaskStatusList.DONE
@@ -382,9 +400,12 @@ def plan_step_3() -> Plan:
     return copy.deepcopy(t)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def plan_step_4() -> Plan:
-    t = plan_step_3()
+    return _plan_step_4()
+
+def _plan_step_4() -> Plan:
+    t = _plan_step_3()
 
     # Completing the combination of wet ingredients for the banana bread
     t.get_task(task_id="300.3.3").state = TaskStatusList.DONE
@@ -404,9 +425,12 @@ def plan_step_4() -> Plan:
     return copy.deepcopy(t)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def plan_step_5() -> Plan:
-    t = plan_step_4()
+    return _plan_step_5()
+
+def _plan_step_5() -> Plan:
+    t = _plan_step_4()
 
     # Reiterating completion of the mixing of ingredients
     t.get_task(task_id="300.3").state = TaskStatusList.DONE
@@ -417,9 +441,12 @@ def plan_step_5() -> Plan:
     return copy.deepcopy(t)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def plan_step_6() -> Plan:
-    t = plan_step_5()
+    return _plan_step_6()
+
+def _plan_step_6() -> Plan:
+    t = _plan_step_5()
 
     # Making salad serving task ready
     t.get_task(task_id="108").state = TaskStatusList.READY
@@ -427,9 +454,12 @@ def plan_step_6() -> Plan:
     return copy.deepcopy(t)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def plan_step_7() -> Plan:
-    t = plan_step_6()
+    return _plan_step_7()
+
+def _plan_step_7() -> Plan:
+    t = _plan_step_6()
 
     # Completing the salad serving task
     t.get_task(task_id="108").state = TaskStatusList.DONE
@@ -443,9 +473,12 @@ def plan_step_7() -> Plan:
     return copy.deepcopy(t)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def plan_step_8() -> Plan:
-    t = plan_step_7()
+    return _plan_step_8()
+
+def _plan_step_8() -> Plan:
+    t = _plan_step_7()
 
     # Completing the main course serving task
     t.get_task(task_id="201").state = TaskStatusList.DONE
@@ -456,9 +489,12 @@ def plan_step_8() -> Plan:
     return copy.deepcopy(t)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def plan_step_9() -> Plan:
-    t = plan_step_8()
+    return _plan_step_9()
+
+def _plan_step_9() -> Plan:
+    t = _plan_step_8()
 
     # Completing the baking of banana bread
     t.get_task(task_id="300.4").state = TaskStatusList.DONE
@@ -472,9 +508,12 @@ def plan_step_9() -> Plan:
     return copy.deepcopy(t)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def plan_step_10() -> Plan:
-    t = plan_step_9()
+    return _plan_step_10()
+
+def _plan_step_10() -> Plan:
+    t = _plan_step_9()
 
     # Completing the cooling of banana bread
     t.get_task(task_id="300.5").state = TaskStatusList.DONE
@@ -488,9 +527,12 @@ def plan_step_10() -> Plan:
     return copy.deepcopy(t)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def plan_step_11() -> Plan:
-    t = plan_step_10()
+    return _plan_step_11()
+
+def _plan_step_11() -> Plan:
+    t = _plan_step_10()
 
     # Completing the serving of banana bread
     t.get_task(task_id="300.6").state = TaskStatusList.DONE
