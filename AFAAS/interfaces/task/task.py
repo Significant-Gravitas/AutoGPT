@@ -50,6 +50,15 @@ class AbstractTask(AbstractBaseTask):
 
     state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG)
 
+    rag_history_txt : Optional[str]
+    """description of previous step built by rag"""
+    rag_related_task_txt : Optional[str]
+    """description of related task obtained (most likely from a vector search)"""
+    task_workflow : Optional[str]
+    """Workfrom of the task (cf: class Workflow)"""
+    rag_uml : Optional[list[str]]
+    """Experimental : Attempt to gather UML represenation of previous steps"""
+
     task_text_output: Optional[str]
 
     task_text_output_as_uml: Optional[str]
