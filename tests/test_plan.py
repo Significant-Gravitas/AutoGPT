@@ -92,16 +92,16 @@ from .dataset.plan_familly_dinner import (
 #         assert first_ready_task.task_id == expected_task_id
 
 
-# def test_dict_memory(plan_step_2b: Plan):
+# def test_dict_db(plan_step_2b: Plan):
 #     # Test case: Ensure it returns a dictionary representation of the object with custom encoders applied.
-#     dict_memory_output = plan_step_2b.dict_memory()
-#     assert isinstance(dict_memory_output, dict)
+#     dict_db_output = plan_step_2b.dict_db()
+#     assert isinstance(dict_db_output, dict)
 #     # Add more specific checks if you have custom encoder expectations
 
 #     # Test case: Check behavior with different dumps_kwargs inputs.
-#     # Example: passing 'exclude_none=True' to dict_memory
-#     dict_memory_exclude_none = plan_step_2b.dict_memory(exclude_none=True)
-#     assert isinstance(dict_memory_exclude_none, dict)
+#     # Example: passing 'exclude_none=True' to dict_db
+#     dict_db_exclude_none = plan_step_2b.dict_db(exclude_none=True)
+#     assert isinstance(dict_db_exclude_none, dict)
 #     # Add more specific checks as needed
 
 
