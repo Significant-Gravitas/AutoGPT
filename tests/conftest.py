@@ -9,10 +9,36 @@ from AFAAS.interfaces.tools.base import BaseToolsRegistry
 from tests.dataset.agent_planner import agent_dataset
 
 
+@pytest.fixture(scope="session")
+def activate_integration_tests():
+    # Use an environment variable to control the activation of integration tests
+    return os.getenv("RUN_INTEGRATION_TESTS", "false").lower() == "true"
+
 @pytest.fixture
 def agent() -> PlannerAgent:
     return agent_dataset()
 
+#FIXME: Issue #99 https://github.com/ph-ausseil/afaas/issues/99 is a prerequisite for this
+# # Higher-level fixture to intercept Plan fixtures
+# @pytest.fixture(autouse=True)
+# def intercept_plan_fixtures(request):
+#     # Identify fixtures that are used in the test and start with 'plan_'
+#     plan_fixture_names = [name for name in request.fixturenames if name.startswith('plan_')]
+
+#     for fixture_name in plan_fixture_names:
+#         plan = request.getfixturevalue(fixture_name)
+#         plan.agent.create_in_db()
+#         plan.create_in_db(agent = plan.agent)
+
+# @pytest.fixture(autouse=True)
+# def intercept_plan_fixtures(request):
+#     # Identify fixtures that are used in the test and start with 'plan_'
+#     task_fixture_names = [name for name in request.fixturenames if name.startswith('task_')]
+
+#     for fixture_name in task_fixture_names:
+#         task = request.getfixturevalue(fixture_name)
+#         task.agent.create_in_db()
+#         task.agent.plan.create_in_db(agent = task.agent)
 
 @pytest.fixture(scope="function", autouse=True)
 def reset_environment_each_test():

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import threading
 from typing import ClassVar
 
 from pydantic import Field
@@ -16,7 +17,6 @@ LOG = AFAASLogger(name=__name__)
 
 
 class Plan(AbstractPlan):
-    _instance: ClassVar[dict[Plan]] = {}
 
     # List & Dict for Lazy loading & lazy saving
     _modified_tasks_ids: list[str] = []
@@ -28,53 +28,71 @@ class Plan(AbstractPlan):
     _ready_task_ids: list[str] = []
     _done_task_ids: list[str] = []
 
+    _instance: ClassVar[dict[Plan]] = {}
+    lock : ClassVar[threading.Lock] = threading.Lock()
+    initialized : ClassVar[bool]= False
+
+    def __new__(cls, *args, **kwargs):
+        if kwargs.get('agent', None) is not None : 
+            agent_id = kwargs.get('agent').agent_id
+            with cls.lock:
+                if agent_id in cls._instance:
+                    return cls._instance[agent_id]
+
+                instance = super(Plan, cls).__new__(cls)
+                cls._instance[agent_id] = instance
+                return instance
+        else : 
+            return super(Plan, cls).__new__(cls)
+
     def __init__(self, *args, **kwargs):
-        if kwargs["agent"].agent_id in Plan._instance:
-            self = Plan._instance[kwargs["agent"].agent_id]
-            return None
+        with self.lock:
+            if self.initialized:
+                return
 
-        # Initialize the instance if needed
-        super().__init__(**kwargs)
-        Plan._instance[kwargs["agent"].agent_id] = self
-        self.agent.plan: Plan = self
+            # Initialize the instance if needed
+            super().__init__(**kwargs)
+            Plan._instance[kwargs["agent"].agent_id] = self
+            self.agent.plan: Plan = self
 
-        # Load the tasks from the database
-        from AFAAS.interfaces.db.db import AbstractMemory
-        from AFAAS.interfaces.db.table.nosql.base import AbstractTable
+            # Load the tasks from the database
+            from AFAAS.interfaces.db.db import AbstractMemory
+            from AFAAS.interfaces.db.table.nosql.base import AbstractTable
 
-        agent: BaseAgent = kwargs["agent"]
-        memory: AbstractMemory = agent.memory
-        task_table: AbstractTable = memory.get_table("tasks")
+            agent: BaseAgent = kwargs["agent"]
+            memory: AbstractMemory = agent.memory
+            task_table: AbstractTable = memory.get_table("tasks")
 
-        filter = AbstractTable.FilterDict(
-            {
-                "plan_id": [
-                    AbstractTable.FilterItem(
-                        value=str(self.plan_id),
-                        operator=AbstractTable.Operators.EQUAL_TO,
+            filter = AbstractTable.FilterDict(
+                {
+                    "plan_id": [
+                        AbstractTable.FilterItem(
+                            value=str(self.plan_id),
+                            operator=AbstractTable.Operators.EQUAL_TO,
+                        )
+                    ],
+                }
+            )
+            all_tasks_from_db_dict = task_table.list(filter=filter)
+
+            # Update the static variables
+            for task_as_dict in all_tasks_from_db_dict:
+                task = Task(**task_as_dict, agent=agent)
+                self._register_task(task=task)
+
+                # self._all_task_ids.append(task.task_id)
+                if task.state == TaskStatusList.READY:
+                    LOG.notice("DEBUG : Task is ready may have subtasks...")
+                    self._registry_update_task_status_in_list(
+                        task_id=task.task_id, status=TaskStatusList.READY
                     )
-                ],
-            }
-        )
-        all_tasks_from_db_dict = task_table.list(filter=filter)
+                elif task.state == TaskStatusList.DONE:
+                    self._registry_update_task_status_in_list(
+                        task_id=task.task_id, status=TaskStatusList.DONE
+                    )
+            self.initialized = True
 
-        # Update the static variables
-        for task_as_dict in all_tasks_from_db_dict:
-            task = Task(**task_as_dict, agent=agent)
-            self._register_task(task=task)
-
-            # self._all_task_ids.append(task.task_id)
-            if task.state == TaskStatusList.READY:
-                LOG.notice("DEBUG : Task is ready may have subtasks...")
-                self._registry_update_task_status_in_list(
-                    task_id=task.task_id, status=TaskStatusList.READY
-                )
-            elif task.state == TaskStatusList.DONE:
-                self._registry_update_task_status_in_list(
-                    task_id=task.task_id, status=TaskStatusList.DONE
-                )
-
-    task_id: str = Field(default_factory=lambda: Plan.generate_uuid(), alias="plan_id")
+    task_id: str = Field(default_factory=lambda: Plan.generate_uuid())
 
     @staticmethod
     def generate_uuid():
@@ -419,7 +437,7 @@ class Plan(AbstractPlan):
 
         self.add_tasks(tasks=initial_task_list)
 
-    def save(self, creation=False):
+    async def save(self, creation=False):
         ###
         # Step 1 : Lazy saving : Update Existing Tasks
         ###

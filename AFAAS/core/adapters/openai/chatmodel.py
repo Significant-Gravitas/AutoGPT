@@ -488,10 +488,17 @@ async def _create_chat_completion(
         for message in messages
     ]
 
-    if "tools" in kwargs:
-        # wargs["tools"] = [function.dict() for function in kwargs["tools"]]
-        kwargs["tools"] = [function for function in kwargs["tools"]]
-        if len(kwargs["tools"]) == 1:
+    if not "tools" in kwargs or kwargs["tools"] is None or len(kwargs["tools"]) == 0:
+        if "tools" in kwargs:
+            del kwargs["tools"]
+        kwargs.pop("tool_choice", None)
+
+    else :
+        #kwargs["tools"] = [function for function in kwargs["tools"]]
+        if (len(kwargs["tools"])  == 0): 
+            del kwargs["tools"]
+            kwargs.pop("tool_choice", None)
+        elif len(kwargs["tools"]) == 1:
             kwargs["tool_choice"] = {
                 "type": "function",
                 "function": {"name": kwargs["tools"][0]["function"]["name"]},
@@ -501,6 +508,7 @@ async def _create_chat_completion(
                 "type": "function",
                 "function": {"name": kwargs["tool_choice"]},
             }
+
 
     LOG.trace(raw_messages[0]["content"])
     LOG.trace(kwargs)
