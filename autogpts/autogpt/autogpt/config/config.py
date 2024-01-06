@@ -115,6 +115,10 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         default=6379,
         from_env=lambda: int(v) if (v := os.getenv("REDIS_PORT")) else None,
     )
+    serving_port: int = UserConfigurable(
+        default=8000,
+        from_env=lambda: int(v) if (v := os.getenv("PORT")) else None,
+    )
     redis_password: str = UserConfigurable("", from_env="REDIS_PASSWORD")
     wipe_redis_on_start: bool = UserConfigurable(
         default=True,

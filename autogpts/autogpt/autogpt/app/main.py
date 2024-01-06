@@ -333,7 +333,7 @@ async def run_auto_gpt_server(
 
     # TODO: fill in llm values here
     assert_config_has_openai_api_key(config)
-
+    print(config)
     apply_overrides_to_config(
         config=config,
         prompt_settings_file=prompt_settings,
@@ -368,7 +368,7 @@ async def run_auto_gpt_server(
     server = AgentProtocolServer(
         app_config=config, database=database, llm_provider=llm_provider
     )
-    await server.start()
+    await server.start(port=config.serving_port)
 
 
 def _configure_openai_provider(config: Config) -> OpenAIProvider:
