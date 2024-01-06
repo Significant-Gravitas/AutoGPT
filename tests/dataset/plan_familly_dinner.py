@@ -502,9 +502,16 @@ def plan_step_11() -> Plan:
 
 
 @pytest.fixture
-def task_ready_no_predecessors_or_subtasks(plan_step_0: Plan) -> Task:
+def task_ready_no_predecessors_or_subtasks() -> Task:
+    return _default_task()
+
+@pytest.fixture
+def default_task():
+    return _default_task()
+
+def _default_task():
     # Task 'task_101_buy_groceries' has no predecessors or subtasks and is ready
-    t = plan_step_0.get_task(task_id="101")
+    t = plan_familly_dinner().get_task(task_id="101")
     return t
 
 
