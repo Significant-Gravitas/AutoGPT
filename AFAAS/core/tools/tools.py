@@ -11,6 +11,9 @@ if TYPE_CHECKING:
 
 from langchain.tools.base import BaseTool
 
+from AFAAS.interfaces.adapters import (
+    CompletionModelFunction,
+)
 from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.lib.sdk.logger import AFAASLogger
 
@@ -181,3 +184,12 @@ class Tool:
         return task.task_text_output
 
         # return summary
+
+    def dump(self) -> CompletionModelFunction:
+        param_dict = {parameter.name: parameter.spec for parameter in self.parameters}
+
+        return CompletionModelFunction(
+            name=self.name,
+            description=self.description,
+            parameters=param_dict,
+        )

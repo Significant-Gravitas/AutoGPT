@@ -274,32 +274,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         else:
             raise KeyError(f"Tool '{tool.name}' not found in registry.")
 
-    def dump_tools(self, available=None) -> list[CompletionModelFunction]:
-        if available is not None:
-            LOG.warning("Parameter `available` not implemented")
 
-        param_dict = {}
-        function_list: list[CompletionModelFunction] = []
-
-        for tool in self.tools.values():
-            param_dict = {}  # Reset param_dict for each tool
-            for parameter in tool.parameters:
-                param_dict[parameter.name] = parameter.spec
-
-            name = tool.name
-            description = tool.description
-
-            function_list.append(
-                CompletionModelFunction(
-                    name=name,
-                    description=description,
-                    parameters=param_dict,
-                )
-            )
-
-        return function_list
-
-    # CompletionModelFunction.parse
     def reload_tools(self) -> None:
         """
         Reloads all loaded tool plugins.
@@ -319,6 +294,18 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
             if hasattr(reloaded_module, "register"):
                 reloaded_module.register(self)
 
+    def dump_tools(self, available=None) -> list[CompletionModelFunction]:
+        if available is not None:
+            LOG.warning("Parameter `available` not implemented")
+
+        function_list: list[CompletionModelFunction] = []
+
+        for tool in self.tools.values():
+            function_list.append(tool.dump())
+
+        return function_list
+
+    # CompletionModelFunction.parse
     def get_tool(self, tool_name: str) -> BaseTool | None:
         """
         Retrieve a specific tool by its name.
