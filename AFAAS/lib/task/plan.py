@@ -6,7 +6,7 @@ from typing import ClassVar
 
 from pydantic import Field
 
-# from AFAAS.core.memory import
+# from AFAAS.core.db import
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.interfaces.task.plan import AbstractBaseTask, AbstractPlan
@@ -60,8 +60,8 @@ class Plan(AbstractPlan):
             from AFAAS.interfaces.db.table.nosql.base import AbstractTable
 
             agent: BaseAgent = kwargs["agent"]
-            memory: AbstractMemory = agent.memory
-            task_table: AbstractTable = memory.get_table("tasks")
+            db: AbstractMemory = agent.db
+            task_table: AbstractTable = db.get_table("tasks")
 
             filter = AbstractTable.FilterDict(
                 {
@@ -260,7 +260,7 @@ class Plan(AbstractPlan):
     #############################################################################################
     def unregister_loaded_task(self, task_id: str) -> Task:
         """
-        Remove a task from the Plan._loaded_tasks_dict and free memory
+        Remove a task from the Plan._loaded_tasks_dict and free db
         """
         return self._loaded_tasks_dict.pop(task_id)
 
@@ -371,8 +371,8 @@ class Plan(AbstractPlan):
 
         """
         LOG.debug(f"Creating plan for agent {agent.agent_id}")
-        memory = agent.memory
-        memory.get_table("plans")
+        db = agent.db
+        db.get_table("plans")
 
         plan = cls(
             agent_id=agent.agent_id,
@@ -467,9 +467,9 @@ class Plan(AbstractPlan):
         ###
         agent = self.agent
         if agent:
-            memory = agent.memory
+            db = agent.db
 
-            plan_table = memory.get_table("plans")
+            plan_table = db.get_table("plans")
             if creation:
                 plan_table.add(value=self, id=self.plan_id)
             else:
@@ -485,8 +485,8 @@ class Plan(AbstractPlan):
         from AFAAS.core.db.table.nosql.agent import AgentsTable
         from AFAAS.interfaces.db.db import AbstractMemory
 
-        memory: AbstractMemory = agent.memory
-        plan_table: AgentsTable = memory.get_table("plans")
+        db: AbstractMemory = agent.db
+        plan_table: AgentsTable = db.get_table("plans")
         plan_dict = plan_table.get(plan_id=plan_id, agent_id=agent.agent_id)
 
         if len(plan_dict) == 0:

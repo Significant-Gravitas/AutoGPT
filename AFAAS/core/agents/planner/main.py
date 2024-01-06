@@ -35,7 +35,7 @@ class PlannerAgent(BaseAgent):
         if self._tool_registry is None:
             self._tool_registry = SimpleToolRegistry(
                 settings=self._settings,
-                memory=self.memory,
+                db=self.db,
                 workspace=self.workspace,
                 model_providers=self.default_llm_provider,
                 modules=TOOL_CATEGORIES,
@@ -64,7 +64,7 @@ class PlannerAgent(BaseAgent):
         loop: PlannerLoop = PlannerLoop(),
         tool_handler: ToolExecutor = ToolExecutor(),
         tool_registry=None,
-        memory: AbstractMemory = None,
+        db: AbstractMemory = None,
         default_llm_provider: AbstractLanguageModelProvider = None,
         workspace: AbstractFileWorkspace = None,
         vectorstores: dict[str , VectorStore] = {},  # Optional parameter for custom vectorstore
@@ -74,7 +74,7 @@ class PlannerAgent(BaseAgent):
     ):
         super().__init__(
             settings=settings,
-            memory=memory,
+            db=db,
             workspace=workspace,
             default_llm_provider=default_llm_provider,
             prompt_manager=prompt_manager,

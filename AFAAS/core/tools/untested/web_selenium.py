@@ -271,15 +271,15 @@ async def summarize_memorize_webpage(
     text_length = len(text)
     LOG.info(f"Text length: {text_length} characters")
 
-    # memory = get_memory(agent.legacy_config)
+    # db = get_db(agent.legacy_config)
 
-    # new_memory = MemoryItem.from_webpage(
+    # new_db = MemoryItem.from_webpage(
     #     content=text,
     #     url=url,
     #     config=agent.legacy_config,
     #     question=question,
     # )
-    # memory.add(new_memory)
+    # db.add(new_db)
 
     summary, _ = await summarize_text(
         text,

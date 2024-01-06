@@ -32,7 +32,7 @@ class UserContextAgent(BaseAgent):
         agent_id: uuid.UUID = SystemSettings.generate_uuid(),
         loop: UserContextLoop = UserContextLoop(),
         prompt_manager: BasePromptManager = BasePromptManager(),
-        memory: AbstractMemory = None,
+        db: AbstractMemory = None,
         default_llm_provider: AbstractLanguageModelProvider = None,
         workspace: AbstractFileWorkspace = None,
         vectorstores: dict[str , VectorStore] = {},
@@ -42,7 +42,7 @@ class UserContextAgent(BaseAgent):
     ):
         super().__init__(
             settings=settings,
-            memory=memory,
+            db=db,
             workspace=workspace,
             default_llm_provider=default_llm_provider,
             prompt_manager=prompt_manager,

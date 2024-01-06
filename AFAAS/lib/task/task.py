@@ -221,22 +221,22 @@ class Task(AbstractTask):
 
     @classmethod
     def get_task_from_db(cls, task_id: str, agent: BaseAgent) -> Task:
-        memory = agent.memory
-        task_table = memory.get_table("tasks")
+        db = agent.db
+        task_table = db.get_table("tasks")
         task = task_table.get(task_id=task_id, plan_id=agent.plan.plan_id)
         return cls(**task, agent=agent)
 
     @classmethod
     def create_in_db(cls, task: Task, agent: BaseAgent):
-        memory = agent.memory
-        task_table = memory.get_table("tasks")
+        db = agent.db
+        task_table = db.get_table("tasks")
         task_table.add(value=task, id=task.task_id)
 
     def save_in_db(self):
         from AFAAS.interfaces.db.db_table import AbstractTable
 
-        memory = self.agent.memory
-        task_table: AbstractTable = memory.get_table("tasks")
+        db = self.agent.db
+        task_table: AbstractTable = db.get_table("tasks")
         task_table.update(
             value=self,
             task_id=self.task_id,

@@ -35,7 +35,7 @@ class AgentMixin:
     ## Save agent component
     ###
     async def save_agent(self):
-        return self._agent.save_agent_in_memory()
+        return self._agent.save_agent_in_db()
 
     async def save_plan(self):
         return self._agent.plan.save()
@@ -65,7 +65,7 @@ class AgentMixin:
         return self._agent.plan
 
     def get_table(self, table_name: str) -> AbstractTable:
-        return self._agent.memory.get_table(table_name=table_name)
+        return self._agent.db.get_table(table_name=table_name)
 
     def get_strategy(self, strategy_name: str) -> AbstractPromptStrategy:
         return self._agent._prompt_manager._prompt_strategies[strategy_name]

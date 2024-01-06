@@ -35,11 +35,11 @@ class AbstractTable(abc.ABC):
         pass
 
     table_name: str
-    memory: AbstractMemory
+    db: AbstractMemory
     primary_key: str
 
-    def __init__(self, memory: AbstractMemory) -> None:
-        self.memory = memory
+    def __init__(self, db: AbstractMemory) -> None:
+        self.db = db
 
     @abc.abstractmethod
     def add(self, value: dict) -> uuid.UUID:

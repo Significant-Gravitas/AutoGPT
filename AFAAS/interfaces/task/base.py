@@ -135,7 +135,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         else:
             self._subtasks = TaskStack(parent_task=self, _task_ids=[])
 
-    def dict_memory(self, **kwargs) -> dict:
+    def dict_db(self, **kwargs) -> dict:
         d = super().dict(**kwargs)
 
         # Iterate over each attribute of the dict

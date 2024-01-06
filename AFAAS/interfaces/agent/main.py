@@ -58,7 +58,7 @@ class BaseAgent(AbstractAgent, Configurable):
     # def create_agent(
     #     cls,
     #     agent_settings: BaseAgent.SystemSettings,
-    #     memory: AbstractMemory = None,
+    #     db: AbstractMemory = None,
     #     default_llm_provider: AbstractLanguageModelProvider = None,
     #     workspace: AbstractFileWorkspace = None,
     #     vectorstore: VectorStore = None,  # Optional parameter for custom vectorstore
@@ -72,7 +72,7 @@ class BaseAgent(AbstractAgent, Configurable):
 
     #     agent = cls.get_instance_from_settings(
     #         agent_settings=agent_settings,
-    #         memory = memory ,
+    #         db = db ,
     #         default_llm_provider = default_llm_provider,
     #         workspace = workspace,
     #         vectorstore = vectorstore,
@@ -81,7 +81,7 @@ class BaseAgent(AbstractAgent, Configurable):
 
     #     agent_id = agent._create_in_db(agent_settings=agent_settings)
     #     LOG.info(
-    #         f"{cls.__name__} id #{agent_id} created in memory. Now, finalizing creation..."
+    #         f"{cls.__name__} id #{agent_id} created in db. Now, finalizing creation..."
     #     )
     #     # Adding agent_id to the settingsagent_id
     #     agent_settings.agent_id = agent_id
@@ -98,7 +98,7 @@ class BaseAgent(AbstractAgent, Configurable):
     ) -> str:
         LOG.info(f"Starting creation of {self.__class__.__name__} agent {self.agent_id}")
 
-        agent_table = self.memory.get_table("agents")
+        agent_table = self.db.get_table("agents")
         agent_id = agent_table.add(self, id=self.agent_id)
         return agent_id
 
@@ -108,36 +108,36 @@ class BaseAgent(AbstractAgent, Configurable):
     # ) -> uuid.UUID:
     #     # TODO : Remove the user_id argument
 
-    #     agent_table = self.memory.get_table("agents")
+    #     agent_table = self.db.get_table("agents")
     #     agent_id = agent_table.add(agent_settings, id=agent_settings.agent_id)
     #     return agent_id
 
-    def save_agent_in_memory(self) -> str:
-        LOG.trace(self.memory)
-        agent_table = self.memory.get_table("agents")
+    def save_agent_in_db(self) -> str:
+        LOG.trace(self.db)
+        agent_table = self.db.get_table("agents")
         agent_id = agent_table.update(
             agent_id=self.agent_id, user_id=self.user_id, value=self
         )
         return agent_id
 
     @classmethod
-    def list_users_agents_from_memory(
+    def list_users_agents_from_db(
         cls,
         user_id: uuid.UUID,
         page: int = 1,
         page_size: int = 10,
     )  -> list[dict] : #-> list[BaseAgent.SystemSettings]:   
-        LOG.trace(f"Entering : {cls.__name__}.list_users_agents_from_memory()")
+        LOG.trace(f"Entering : {cls.__name__}.list_users_agents_from_db()")
         from AFAAS.core.db.table.nosql.agent import AgentsTable
         from AFAAS.interfaces.db.db import AbstractMemory
         from AFAAS.interfaces.db.db_table import AbstractTable
 
-        memory_settings = AbstractMemory.SystemSettings()
+        db_settings = AbstractMemory.SystemSettings()
 
-        memory = AbstractMemory.get_adapter(
-            memory_settings=memory_settings
+        db = AbstractMemory.get_adapter(
+            db_settings=db_settings
         )
-        agent_table: AgentsTable = memory.get_table("agents")
+        agent_table: AgentsTable = db.get_table("agents")
 
         filter = AbstractTable.FilterDict(
             {
@@ -161,7 +161,7 @@ class BaseAgent(AbstractAgent, Configurable):
 
 
     @classmethod
-    def get_agent_from_memory(
+    def get_agent_from_db(
         cls,
         agent_settings: BaseAgent.SystemSettings,
         agent_id: uuid.UUID,
@@ -170,13 +170,13 @@ class BaseAgent(AbstractAgent, Configurable):
         from AFAAS.core.db.table.nosql.agent import AgentsTable
         from AFAAS.interfaces.db.db import AbstractMemory
 
-        # memory_settings = Memory.SystemSettings(configuration=agent_settings.memory)
-        memory_settings = agent_settings.memory
+        # db_settings = Memory.SystemSettings(configuration=agent_settings.db)
+        db_settings = agent_settings.db
 
-        memory = AbstractMemory.get_adapter(
-            memory_settings=memory_settings
+        db = AbstractMemory.get_adapter(
+            db_settings=db_settings
         )
-        agent_table: AgentsTable = memory.get_table("agents")
+        agent_table: AgentsTable = db.get_table("agents")
         agent_dict_from_db = agent_table.get(
             agent_id=str(agent_id), user_id=str(user_id)
         )

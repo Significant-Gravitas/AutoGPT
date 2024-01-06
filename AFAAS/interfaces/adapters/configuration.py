@@ -54,5 +54,5 @@ class BaseProviderSettings(SystemSettings):
     budget: BaseProviderBudget | None = None
 
 
-# Used both by model providers and memory providers
+# Used both by model providers and db providers
 Embedding = list[float]

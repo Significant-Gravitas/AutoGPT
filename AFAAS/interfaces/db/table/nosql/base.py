@@ -22,7 +22,7 @@ class BaseSQLTable(AbstractTable):
     def add(self, value: dict) -> uuid.UUID:
         id = uuid.uuid4()
         value["id"] = id
-        self.memory.add(key=id, value=value, table_name=self.table_name)
+        self.db.add(key=id, value=value, table_name=self.table_name)
         return id
 
 
@@ -105,7 +105,7 @@ class BaseNoSQLTable(AbstractTable):
     def add(self, value: dict, id: str = str(uuid.uuid4())) -> uuid.UUID:
         # Serialize non-serializable objects
         if isinstance(value, AFAASModel):
-            value = value.dict_memory()
+            value = value.dict_db()
         else:
             LOG.warning("Class not hinheriting from AFAASModel")
             value = self.__class__.serialize_value(value)
@@ -123,7 +123,7 @@ class BaseNoSQLTable(AbstractTable):
             "add new " + str(self.__class__.__name__) + "with values " + str(value)
         )
 
-        self.memory.add(key=key, value=value, table_name=self.table_name)
+        self.db.add(key=key, value=value, table_name=self.table_name)
         return id
 
     @abc.abstractmethod
@@ -146,18 +146,18 @@ class BaseNoSQLTable(AbstractTable):
             "Update new " + str(self.__class__.__name__) + "with values " + str(value)
         )
 
-        self.memory.update(key=key, value=value, table_name=self.table_name)
+        self.db.update(key=key, value=value, table_name=self.table_name)
 
     @abc.abstractmethod
     def get(self, key: BaseNoSQLTable.Key) -> Any:
-        return self.memory.get(key=key, table_name=self.table_name)
+        return self.db.get(key=key, table_name=self.table_name)
 
     @abc.abstractmethod
     def delete(self, key: BaseNoSQLTable.Key):
         # key = {"primary_key": id}
         # if hasattr(self, "secondary_key") and self.secondary_key:
         #     key["secondary_key"] = self.secondary_key
-        self.memory.delete(key=key, table_name=self.table_name)
+        self.db.delete(key=key, table_name=self.table_name)
 
     def list(
         self,
@@ -190,7 +190,7 @@ class BaseNoSQLTable(AbstractTable):
                                 match the specified conditions.
 
         Example:
-            Suppose we have a BaseTable instance with the following data in the memory:
+            Suppose we have a BaseTable instance with the following data in the db:
 
             data_list = [
                 {'name': 'John', 'age': 25, 'city': 'New York'},
@@ -224,7 +224,7 @@ class BaseNoSQLTable(AbstractTable):
             # Output: [{'name': 'Alice', 'age': 30, 'city': 'Los Angeles'}]
         """
         LOG.trace(f"{self.__class__.__name__}.list()")
-        data_list: dict = self.memory.list(table_name=self.table_name, filter=filter)
+        data_list: dict = self.db.list(table_name=self.table_name, filter=filter)
         filtered_data_list: list = []
 
         LOG.notice("May need to be moved to JSONFileMemory")

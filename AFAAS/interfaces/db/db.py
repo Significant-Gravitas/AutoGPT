@@ -33,14 +33,14 @@ class MemoryConfig(SystemConfiguration):
     Configuration class representing the parameters for creating a Memory adapter.
 
     Attributes:
-        memory_adapter (MemoryAdapterType): The type of memory adapter to use.
+        db_adapter (MemoryAdapterType): The type of db adapter to use.
         json_file_path (str): The file path for the JSON file when using the JSONFileMemory adapter.
-        # Add other parameters for different memory adapters as needed.
+        # Add other parameters for different db adapters as needed.
     """
 
-    memory_adapter: MemoryAdapterType = Field(
+    db_adapter: MemoryAdapterType = Field(
         MemoryAdapterType.NOSQL_JSON_FILE,
-        description="The type of memory adapter to use.",
+        description="The type of db adapter to use.",
     )
     json_file_path: str = Field(
         str(Path("~/AFAAS/data/").expanduser().resolve()),
@@ -62,7 +62,7 @@ class MemoryConfig(SystemConfiguration):
 # class Memory.SystemSettings(SystemSettings):
 #         configuration: MemoryConfig = MemoryConfig()
 #         name: str = "Memory"
-#         description: str = "Memory is an abstract memory adapter"
+#         description: str = "Memory is an abstract db adapter"
 
 #         class Config(SystemSettings.Config):
 #             extra = "allow"
@@ -72,34 +72,34 @@ class AbstractMemory(Configurable, abc.ABC):
     class SystemSettings(Configurable.SystemSettings):
         configuration: MemoryConfig = MemoryConfig()
         name: str = "Memory"
-        description: str = "Memory is an abstract memory adapter"
+        description: str = "Memory is an abstract db adapter"
 
         class Config(SystemSettings.Config):
             extra = "allow"
 
-    _instances = {}
+    _instances : dict[AbstractMemory] = {}
 
     """
-    Abstract class representing a memory storage system for storing and retrieving data.
+    Abstract class representing a db storage system for storing and retrieving data.
 
-    To use a specific memory adapter, create a configuration dict specifying the desired
-    memory_adapter. Currently, "json_file" and "redis" adapters are available.
+    To use a specific db adapter, create a configuration dict specifying the desired
+    db_adapter. Currently, "json_file" and "redis" adapters are available.
 
     Example:
-        config = {"memory_adapter": "json_file", "json_file_path": "~/AFAAS/data/"}
-        memory = Memory.get_adapter(config)
+        config = {"db_adapter": "json_file", "json_file_path": "~/AFAAS/data/"}
+        db = Memory.get_adapter(config)
 
-    After getting the memory adapter, you can connect to it using the `connect` method
+    After getting the db adapter, you can connect to it using the `connect` method
     with any required parameters.
 
     After connecting, you can access individual tables using the `get_table` method,
     passing the desired table name as an argument.
 
     Example:
-        # Assuming we have connected to the memory using `memory` variable
-        agents_table = memory.get_table("agents")
-        messages_table = memory.get_table("messages_history")
-        users_table = memory.get_table("users")
+        # Assuming we have connected to the db using `db` variable
+        agents_table = db.get_table("agents")
+        messages_table = db.get_table("messages_history")
+        users_table = db.get_table("users")
 
     Note:
         The `Memory` class is an abstract class, and you should use one of its concrete
@@ -115,35 +115,44 @@ class AbstractMemory(Configurable, abc.ABC):
         super().__init__(settings)
 
     @classmethod
+    def add_adapter(cls, adapter: AbstractMemory):
+        #TODO:v0.1.0 Implement an add adapter method & a more robust multiton with dependency injection
+        raise NotImplementedError("add_adapter")
+        config_key = base64.b64encode(
+            json.dumps(adapter._settings.configuration.dict()).encode()
+        ).decode()
+        cls._instances[config_key] = adapter
+
+    @classmethod
     def get_adapter(
         cls,
-        memory_settings: AbstractMemory.SystemSettings = SystemSettings(),
+        db_settings: AbstractMemory.SystemSettings = SystemSettings(),
         *args,
         **kwargs,
     ) -> "AbstractMemory":
         """
-        Get an instance of a memory adapter based on the provided configuration.
+        Get an instance of a db adapter based on the provided configuration.
 
         Parameters:
-            config (dict): Configuration dict specifying the memory_adapter type and
+            config (dict): Configuration dict specifying the db_adapter type and
                            any required parameters for that adapter.
             logger (Logger, optional): The logger instance to use for logging messages.
                                        Default: Logger.
 
         Returns:
-            Memory: An instance of the memory adapter based on the provided configuration.
+            Memory: An instance of the db adapter based on the provided configuration.
 
         Raises:
-            ValueError: If an invalid memory_adapter type is provided in the configuration.
+            ValueError: If an invalid db_adapter type is provided in the configuration.
 
         Example:
-            config = {"memory_adapter": "json_file", "json_file_path": "~/AFAAS/data/"}
-            memory = Memory.get_adapter(config)
+            config = {"db_adapter": "json_file", "json_file_path": "~/AFAAS/data/"}
+            db = Memory.get_adapter(config)
         """
         # FIXME: Move to a dependancy ingestion patern
-        adapter_type = memory_settings.configuration.memory_adapter
+        adapter_type = db_settings.configuration.db_adapter
         config_key = base64.b64encode(
-            json.dumps(memory_settings.configuration.dict()).encode()
+            json.dumps(db_settings.configuration.dict()).encode()
         ).decode()
 
         if config_key in AbstractMemory._instances:
@@ -155,7 +164,7 @@ class AbstractMemory(Configurable, abc.ABC):
             LOG.notice(
                 "Started using a local JSONFile backend. Help us to implement/test DynamoDB & CosmoDB backends !"
             )
-            instance = JSONFileMemory(settings=memory_settings)
+            instance = JSONFileMemory(settings=db_settings)
 
         elif adapter_type == MemoryAdapterType.SQLLIKE_JSON_FILE:
             raise NotImplementedError("SQLLikeJSONFileMemory")
@@ -170,7 +179,7 @@ class AbstractMemory(Configurable, abc.ABC):
             raise NotImplementedError("MongoDBMemory")
 
         else:
-            raise ValueError("Invalid memory_adapter type")
+            raise ValueError("Invalid db_adapter type")
 
         AbstractMemory._instances[
             config_key
@@ -193,10 +202,10 @@ class AbstractMemory(Configurable, abc.ABC):
             ValueError: If the provided table_name is not recognized.
 
         Example:
-            # Assuming we have connected to the memory using `memory` variable
-            agents_table = memory.get_table("agents")
-            messages_table = memory.get_table("messages_history")
-            users_table = memory.get_table("users")
+            # Assuming we have connected to the db using `db` variable
+            agents_table = db.get_table("agents")
+            messages_table = db.get_table("messages_history")
+            users_table = db.get_table("users")
         """
         # FIXME: Move to a dependancy ingestion patern
         if self.__class__ == AbstractMemory:
@@ -207,19 +216,19 @@ class AbstractMemory(Configurable, abc.ABC):
         if table_name == "agents":
             from AFAAS.core.db.table.nosql.agent import AgentsTable
 
-            returnvalue = AgentsTable(memory=self)
+            returnvalue = AgentsTable(db=self)
             return returnvalue
 
         if table_name == "tasks":
             from AFAAS.core.db.table.nosql.task import TasksTable
 
-            returnvalue = TasksTable(memory=self)
+            returnvalue = TasksTable(db=self)
             return returnvalue
 
         elif table_name == "plans":
             from AFAAS.core.db.table.nosql.plan import PlansTable
 
-            returnvalue = PlansTable(memory=self)
+            returnvalue = PlansTable(db=self)
             return returnvalue
 
         elif table_name == "message_agent_agent":
@@ -227,31 +236,31 @@ class AbstractMemory(Configurable, abc.ABC):
                 MessagesAgentAgentTable,
             )
 
-            return MessagesAgentAgentTable(memory=self)
+            return MessagesAgentAgentTable(db=self)
 
         elif table_name == "message_agent_llm":
             from AFAAS.core.db.table.nosql.message_agent_llm import (
                 MessagesAgentLLMTable,
             )
 
-            return MessagesAgentLLMTable(memory=self)
+            return MessagesAgentLLMTable(db=self)
 
         elif table_name == "message_agent_user":
             from AFAAS.core.db.table.nosql.message_user_agent import (
                 MessagesUserAgentTable,
             )
 
-            return MessagesUserAgentTable(memory=self)
+            return MessagesUserAgentTable(db=self)
 
         elif table_name == "users_informations":
             from AFAAS.core.db.table.nosql.user import UsersInformationsTable
 
-            return UsersInformationsTable(memory=self)
+            return UsersInformationsTable(db=self)
 
         elif table_name == "artifacts":
             from AFAAS.core.db.table.nosql.artifacts import ArtifactsTable
 
-            return ArtifactsTable(memory=self)
+            return ArtifactsTable(db=self)
 
         else:
             raise ValueError(f"Unknown table: {table_name}")
@@ -259,18 +268,18 @@ class AbstractMemory(Configurable, abc.ABC):
     @abc.abstractmethod
     def connect(self, *args, **kwargs):
         """
-        Connect to the memory storage system.
+        Connect to the db storage system.
 
-        Implement this method to establish a connection to the desired memory storage system
+        Implement this method to establish a connection to the desired db storage system
         using any required parameters.
 
         Parameters:
-            kwarg: Any required parameters for connecting to the memory storage system.
+            kwarg: Any required parameters for connecting to the db storage system.
 
         Example:
             # Example implementation for JSONFileMemory
             def connect(self, json_file_path):
-                # Implementation for connecting to JSON file memory storage
+                # Implementation for connecting to JSON file db storage
                 pass
         """
 

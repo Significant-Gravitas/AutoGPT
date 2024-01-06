@@ -20,7 +20,7 @@ class ToolConfiguration(SystemConfiguration):
 
     packages_required: list[str] = Field(default_factory=list)
     language_model_required: AbstractPromptConfiguration = None
-    memory_provider_required: bool = False
+    db_provider_required: bool = False
     workspace_required: bool = False
 
 

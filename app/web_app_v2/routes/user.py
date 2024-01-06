@@ -72,7 +72,7 @@ async def list_agents(
     try:
         agents: list[
             PlannerAgent.SystemSettings
-        ] = PlannerAgent.list_users_agents_from_memory(
+        ] = PlannerAgent.list_users_agents_from_db(
             user_id=request.state.user_id, page=page, page_size=page_size
         )
 

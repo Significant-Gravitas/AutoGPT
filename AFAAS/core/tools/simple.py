@@ -88,7 +88,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
     def __init__(
         self,
         settings: SimpleToolRegistry.SystemSettings,
-        memory: AbstractMemory,
+        db: AbstractMemory,
         workspace: AbstractFileWorkspace,
         model_providers: dict[ModelProviderName, AbstractChatModelProvider],
         modules: list[str],
@@ -99,12 +99,12 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         Args:
             settings: Configuration settings for the registry.
             logger: Logging instance to use for the registry.
-            memory: Memory instance for the registry.
+            db: Memory instance for the registry.
             workspace: Workspace instance for the registry.
             model_providers: A dictionary mapping model provider names to chat model providers.
 
         Example:
-            registry = SimpleToolRegistry(settings, logger, memory, workspace, model_providers)
+            registry = SimpleToolRegistry(settings, logger, db, workspace, model_providers)
         """
 
         LOG.debug("Initializing SimpleToolRegistry...")
@@ -112,7 +112,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
             "Memory, Workspace and ModelProviders are not used anymore argument are supported"
         )
 
-        # self._memory = memory
+        # self._db = db
         # self._workspace = workspace
         # self._model_providers = model_providers
         # self.tools: list[Tool] = []
@@ -196,8 +196,8 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
     #     if tool_configuration.packages_required:
     #         # TODO: Check packages are installed and maybe install them.
     #         pass
-    #     if tool_configuration.memory_provider_required:
-    #         tool_args["memory"] = self._memory
+    #     if tool_configuration.db_provider_required:
+    #         tool_args["db"] = self._db
     #     if tool_configuration.workspace_required:
     #         tool_args["workspace"] = self._workspace
     #     if tool_configuration.language_model_required:

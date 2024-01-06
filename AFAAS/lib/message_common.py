@@ -16,11 +16,11 @@ class AFAASMessage(AFAASModel):
 
 class AFAASMessageStack(AFAASModel):
     _messages: list[AFAASMessage] = []
-    _memory: AbstractMemory = AbstractMemory.get_adapter()
+    _db: AbstractMemory = AbstractMemory.get_adapter()
 
     def add(self, message: AFAASMessage):
         self._messages.append(message)
-        self._memory.get_table(message._table_name).add(message)
+        self._db.get_table(message._table_name).add(message)
         return message.message_id
 
     def __init__(self, **data: Any):
