@@ -346,7 +346,7 @@ class Task(AbstractTask):
             try:
                 # FIXME: Create an adapter or open a issue on Langchain Github : https://github.com/langchain-ai/langchain to harmonize the AP
                 related_tasks_documents = (
-                    await self.agent.vectorstore.asimilarity_search_by_vector(
+                    await self.agent.vectorstores["tasks"].asimilarity_search_by_vector(
                         task_embedding,
                         k=similar_tasks,
                         include_metadata=True,
@@ -355,7 +355,7 @@ class Task(AbstractTask):
                 )
             except Exception:
                 related_tasks_documents = (
-                    await self.agent.vectorstore.asimilarity_search_by_vector(
+                    await self.agent.vectorstores["tasks"].asimilarity_search_by_vector(
                         task_embedding,
                         k=10,
                         include_metadata=True,

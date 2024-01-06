@@ -115,7 +115,7 @@ async def write_to_file(
     # FIXME:v0.1.0 if file exists, delete it first
     # await agent.vectorstore.adelete(id=str(filename))
 
-    await agent.vectorstore.aadd_texts(
+    await agent.vectorstores["documents"].aadd_texts(
         texts=[contents],
         metadatas=[
             {

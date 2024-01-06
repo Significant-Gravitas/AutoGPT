@@ -67,7 +67,7 @@ class PlannerAgent(BaseAgent):
         memory: AbstractMemory = None,
         default_llm_provider: AbstractLanguageModelProvider = None,
         workspace: AbstractFileWorkspace = None,
-        vectorstore: VectorStore = None,  # Optional parameter for custom vectorstore
+        vectorstores: dict[str , VectorStore] = {},  # Optional parameter for custom vectorstore
         embedding_model: Embeddings = None,  # Optional parameter for custom embedding model
         workflow_registry: WorkflowRegistry = None,
         **kwargs,
@@ -80,7 +80,7 @@ class PlannerAgent(BaseAgent):
             prompt_manager=prompt_manager,
             user_id=user_id,
             agent_id=agent_id,
-            vectorstore=vectorstore,
+            vectorstores=vectorstores,
             embedding_model=embedding_model,
             workflow_registry=workflow_registry,
             **kwargs,
