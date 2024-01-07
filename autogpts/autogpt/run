@@ -1,6 +1,5 @@
 #!/bin/sh
-
-kill $(lsof -t -i :8000)
+kill $(lsof -t -i :${AGENT_PORT:-8080})
 
 if [ ! -f .env ] && [ -z "$OPENAI_API_KEY" ]; then
   cp .env.example .env

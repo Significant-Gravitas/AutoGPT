@@ -1,8 +1,8 @@
 #!/bin/sh
 
 # Kill processes using port 8080 if any.
-if lsof -t -i :8080; then
-    kill $(lsof -t -i :8080)
+if lsof -t -i :${BENCHMARK_PORT:-8000}; then
+    kill $(lsof -t -i :${BENCHMARK_PORT:-8000})
 fi
 # This is the cli entry point for the benchmarking tool.
 # To run this in server mode pass in `serve` as the first argument.
