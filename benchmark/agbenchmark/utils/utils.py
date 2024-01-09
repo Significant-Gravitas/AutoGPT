@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 from dotenv import load_dotenv
 
+from agbenchmark.reports.processing.report_types import Test
 from agbenchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel
 
 load_dotenv()
@@ -63,41 +64,31 @@ def get_test_path(json_file: str | Path) -> str:
 
 
 def get_highest_success_difficulty(
-    data: dict, just_string: Optional[bool] = None
+    data: dict[str, Test], just_string: Optional[bool] = None
 ) -> str:
     highest_difficulty = None
     highest_difficulty_level = 0
 
     for test_name, test_data in data.items():
         try:
-            if test_data.get("tests", None):
-                highest_difficulty_str = test_data["metrics"]["highest_difficulty"]
+            if test_data.metrics.success:
+                difficulty_str = test_data.metrics.difficulty
+                if not difficulty_str:
+                    continue
+
                 try:
-                    highest_difficulty = DifficultyLevel[highest_difficulty_str]
-                    highest_difficulty_level = DIFFICULTY_MAP[highest_difficulty]
+                    difficulty_enum = DifficultyLevel[difficulty_str.lower()]
+                    difficulty_level = DIFFICULTY_MAP[difficulty_enum]
+
+                    if difficulty_level > highest_difficulty_level:
+                        highest_difficulty = difficulty_enum
+                        highest_difficulty_level = difficulty_level
                 except KeyError:
                     logger.warning(
-                        f"Unexpected difficulty level '{highest_difficulty_str}' "
+                        f"Unexpected difficulty level '{difficulty_str}' "
                         f"in test '{test_name}'"
                     )
                     continue
-            else:
-                if test_data["metrics"]["success"]:
-                    difficulty_str = test_data["metrics"]["difficulty"]
-
-                    try:
-                        difficulty_enum = DifficultyLevel[difficulty_str.lower()]
-                        difficulty_level = DIFFICULTY_MAP[difficulty_enum]
-
-                        if difficulty_level > highest_difficulty_level:
-                            highest_difficulty = difficulty_enum
-                            highest_difficulty_level = difficulty_level
-                    except KeyError:
-                        logger.warning(
-                            f"Unexpected difficulty level '{difficulty_str}' "
-                            f"in test '{test_name}'"
-                        )
-                        continue
         except Exception as e:
             logger.warning(
                 "An unexpected error [1] occurred while analyzing report [2]."

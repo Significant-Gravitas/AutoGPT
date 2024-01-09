@@ -108,8 +108,8 @@ class ChallengeData(BaseModel):
     task: str
     dependencies: List[str]
     cutoff: int
-    ground: Ground | Dict[str, Ground]
-    info: Info | Dict[str, Info]
+    ground: Ground
+    info: Info
     metadata: Optional[Dict[str, Any]] = None
 
     spec_file: Path | None = Field(None, exclude=True)

@@ -61,9 +61,6 @@ class Challenge(ABC):
     async def test_method(
         self, config: AgentBenchmarkConfig, request: pytest.FixtureRequest
     ) -> None:
-        # skip optional categories
-        self.skip_optional_categories(config)
-
         if os.environ.get("HELICONE_API_KEY"):
             from helicone.lock import HeliconeLockManager
 
@@ -269,16 +266,3 @@ class Challenge(ABC):
             return 1
 
         return None
-
-    @classmethod
-    def skip_optional_categories(cls, config: AgentBenchmarkConfig) -> None:
-        challenge_categories = set(c.value for c in cls.data.category)
-        challenge_optional_categories = challenge_categories & set(OPTIONAL_CATEGORIES)
-        if challenge_optional_categories and not (
-            config.categories
-            and set(challenge_optional_categories).issubset(set(config.categories))
-        ):
-            pytest.skip(
-                f"Category {', '.join(challenge_optional_categories)} is optional, "
-                "and not explicitly selected in the benchmark config."
-            )
