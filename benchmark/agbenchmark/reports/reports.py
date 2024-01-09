@@ -6,10 +6,11 @@ from pathlib import Path
 
 import pytest
 
+from agbenchmark.challenges import ChallengeInfo
 from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.reports.processing.report_types import Metrics, Test
 from agbenchmark.reports.ReportManager import SingletonReportManager
-from agbenchmark.utils.data_types import ChallengeData, DifficultyLevel
+from agbenchmark.utils.data_types import DifficultyLevel
 from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
 from agbenchmark.utils.utils import calculate_success_percentage
 
@@ -53,10 +54,9 @@ def update_regression_tests(
 
 def initialize_test_report(
     item: pytest.Item,
-    challenge_info: ChallengeData,
+    challenge_info: ChallengeInfo,
 ):
-    difficulty = challenge_info.info.difficulty
-
+    difficulty = challenge_info.difficulty
     if isinstance(difficulty, DifficultyLevel):
         difficulty = difficulty.value
 
@@ -66,14 +66,14 @@ def initialize_test_report(
     # item.test_name = test_name
 
     test_info = dict(item.user_properties).get("info_details") or Test(
-        data_path=str(challenge_info.spec_file),
+        data_path=challenge_info.source_uri,
         is_regression=False,
         category=[c.value for c in challenge_info.category],
         task=challenge_info.task,
-        answer=challenge_info.ground.answer,
-        description=challenge_info.info.description,
+        answer=challenge_info.reference_answer or "",
+        description=challenge_info.description or "",
         metrics=Metrics(
-            difficulty=challenge_info.info.difficulty.value,
+            difficulty=difficulty,
             attempted=False,
         ),
     )
@@ -89,25 +89,24 @@ def finalize_test_report(
     item: pytest.Item, call: pytest.CallInfo, config: AgentBenchmarkConfig
 ) -> None:
     user_properties: dict = dict(item.user_properties)
-    run_time = user_properties.get("run_time")
 
     info_details: Test = user_properties.get("info_details", {})
     test_name: str = user_properties.get("test_name", "")
 
     mock = os.getenv("IS_MOCK")  # Check if --mock is in sys.argv
-    if call:
-        logger.debug(f"Finalizing report with CallInfo: {vars(call)}")
-        if call.excinfo is None:
-            info_details.metrics.success = True
-        else:
-            if not mock:  # don't remove if it's a mock test
-                SingletonReportManager().REGRESSION_MANAGER.remove_test(test_name)
-            info_details.metrics.fail_reason = str(call.excinfo.value)
-            if call.excinfo.typename == "Skipped":
-                info_details.metrics.attempted = False
-        info_details.metrics.attempted = True
-        info_details.metrics.run_time = f"{str(round(call.duration, 3))} seconds"
-        info_details.reached_cutoff = user_properties.get("timed_out", False)
+
+    logger.debug(f"Finalizing report with CallInfo: {vars(call)}")
+    if call.excinfo is None:
+        info_details.metrics.success = True
+    else:
+        if not mock:  # don't remove if it's a mock test
+            SingletonReportManager().REGRESSION_MANAGER.remove_test(test_name)
+        info_details.metrics.fail_reason = str(call.excinfo.value)
+        if call.excinfo.typename == "Skipped":
+            info_details.metrics.attempted = False
+    info_details.metrics.attempted = True
+    info_details.metrics.run_time = f"{str(round(call.duration, 3))} seconds"
+    info_details.reached_cutoff = user_properties.get("timed_out", False)
 
     prev_test_results: list[bool] = get_and_update_success_history(
         test_name, info_details
@@ -116,19 +115,18 @@ def finalize_test_report(
     update_regression_tests(prev_test_results, info_details, test_name)
 
     if info_details and test_name:
-        if run_time is not None:
-            cost = None
-            if "--mock" not in sys.argv and os.environ.get("HELICONE_API_KEY"):
-                logger.debug("Getting cost from Helicone")
-                cost = get_data_from_helicone(test_name)
-                logger.debug(f"Cost: {cost}")
+        cost = None
+        if "--mock" not in sys.argv and os.environ.get("HELICONE_API_KEY"):
+            logger.debug("Getting cost from Helicone")
+            cost = get_data_from_helicone(test_name)
+            logger.debug(f"Cost: {cost}")
 
-            info_details.metrics.cost = cost
+        info_details.metrics.cost = cost
 
-            if "--mock" not in sys.argv:
-                update_challenges_already_beaten(
-                    config.challenges_already_beaten_file, info_details, test_name
-                )
+        if "--mock" not in sys.argv:
+            update_challenges_already_beaten(
+                config.challenges_already_beaten_file, info_details, test_name
+            )
 
         SingletonReportManager().INFO_MANAGER.add_test_report(test_name, info_details)
 

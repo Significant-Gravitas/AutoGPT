@@ -10,6 +10,7 @@ from typing import Generator
 
 import pytest
 
+from agbenchmark.challenges import OPTIONAL_CATEGORIES, BaseChallenge
 from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.reports.ReportManager import RegressionTestsTracker
 from agbenchmark.reports.reports import (
@@ -17,7 +18,6 @@ from agbenchmark.reports.reports import (
     initialize_test_report,
     session_finish,
 )
-from agbenchmark.utils.challenge import OPTIONAL_CATEGORIES, Challenge
 from agbenchmark.utils.data_types import Category
 
 GLOBAL_TIMEOUT = (
@@ -149,24 +149,6 @@ def mock(request: pytest.FixtureRequest) -> bool:
     return request.config.getoption("--mock")
 
 
-@pytest.fixture(autouse=True, scope="function")
-def timer(request: pytest.FixtureRequest) -> Generator[None, None, None]:
-    """
-    Pytest fixture that times the execution of each test.
-    At the start of each test, it records the current time.
-    After the test function completes, it calculates the run time and adds it to
-    the test node's `user_properties`.
-
-    Args:
-        request: The `pytest.FixtureRequest` object through which the run time is stored
-            in the test node's `user_properties`.
-    """
-    start_time = time.time()
-    yield
-    run_time = time.time() - start_time
-    request.node.user_properties.append(("run_time", run_time))
-
-
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> None:
     """
     Pytest hook that is called when a test report is being generated.
@@ -176,12 +158,12 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> None:
         item: The test item for which the report is being generated.
         call: The call object from which the test result is retrieved.
     """
-    challenge: type[Challenge] = item.cls  # type: ignore
+    challenge: type[BaseChallenge] = item.cls  # type: ignore
 
     if call.when == "setup":
         test_name = item.nodeid.split("::")[1]
         item.user_properties.append(("test_name", test_name))
-        initialize_test_report(item, challenge.data)
+        initialize_test_report(item, challenge.info)
 
     if call.when == "call":
         finalize_test_report(item, call, agbenchmark_config)
@@ -254,7 +236,7 @@ def pytest_collection_modifyitems(
         challenge = item.cls
         challenge_name = item.cls.__name__
 
-        if not issubclass(challenge, Challenge):
+        if not issubclass(challenge, BaseChallenge):
             item.warn(
                 pytest.PytestCollectionWarning(
                     f"Non-challenge item collected: {challenge}"
@@ -264,7 +246,7 @@ def pytest_collection_modifyitems(
             continue
 
         # --test: remove the test from the set if it's not specifically selected
-        if selected_tests and challenge.data.name not in selected_tests:
+        if selected_tests and challenge.info.name not in selected_tests:
             items.remove(item)
             continue
 
@@ -272,8 +254,8 @@ def pytest_collection_modifyitems(
         # --maintain -> only challenges expected to be passed (= regression tests)
         # --improve -> only challenges that so far are not passed (reliably)
         # --explore -> only challenges that have never been passed
-        is_regression_test = rt_tracker.has_regression_test(challenge.data.name)
-        has_been_passed = challenges_beaten_in_the_past.get(challenge.data.name, False)
+        is_regression_test = rt_tracker.has_regression_test(challenge.info.name)
+        has_been_passed = challenges_beaten_in_the_past.get(challenge.info.name, False)
         if (
             (config.getoption("--maintain") and not is_regression_test)
             or (config.getoption("--improve") and is_regression_test)
@@ -282,7 +264,7 @@ def pytest_collection_modifyitems(
             items.remove(item)
             continue
 
-        dependencies = challenge.data.dependencies
+        dependencies = challenge.info.dependencies
         if (
             config.getoption("--test")
             or config.getoption("--no-dep")
@@ -300,7 +282,7 @@ def pytest_collection_modifyitems(
             ]
 
         # Set category markers
-        challenge_categories = set(c.value for c in challenge.data.category)
+        challenge_categories = set(c.value for c in challenge.info.category)
         for category in challenge_categories:
             item.add_marker(category)
 

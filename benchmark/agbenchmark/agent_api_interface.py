@@ -2,9 +2,15 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import AsyncIterator, Optional
 
-from agent_protocol_client import AgentApi, ApiClient, Configuration, TaskRequestBody
+from agent_protocol_client import (
+    AgentApi,
+    ApiClient,
+    Configuration,
+    Step,
+    TaskRequestBody,
+)
 
 from agbenchmark.agent_interface import get_list_of_file_paths
 from agbenchmark.config import AgentBenchmarkConfig
@@ -17,7 +23,7 @@ async def run_api_agent(
     config: AgentBenchmarkConfig,
     timeout: int,
     artifacts_location: Optional[Path] = None,
-) -> None:
+) -> AsyncIterator[Step]:
     configuration = Configuration(host=config.host)
     async with ApiClient(configuration) as api_client:
         api_instance = AgentApi(api_client)
@@ -34,12 +40,9 @@ async def run_api_agent(
                 api_instance, artifacts_location, task_id, "artifacts_in"
             )
 
-        i = 1
         while True:
             step = await api_instance.execute_agent_task_step(task_id=task_id)
-
-            print(f"- step {step.name} ({i}. request)")
-            i += 1
+            yield step
 
             if time.time() - start_time > timeout:
                 raise TimeoutError("Time limit exceeded")
