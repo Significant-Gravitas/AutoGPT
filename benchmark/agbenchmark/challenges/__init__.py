@@ -11,11 +11,15 @@ logger = logging.getLogger(__name__)
 
 def get_challenge_from_source_uri(source_uri: str) -> type[BaseChallenge]:
     from .builtin import BuiltinChallenge
+    from .webarena import WebArenaChallenge
 
     provider_prefix = source_uri.split("/", 1)[0]
 
     if provider_prefix == BuiltinChallenge.SOURCE_URI_PREFIX:
         return BuiltinChallenge.from_source_uri(source_uri)
+
+    if provider_prefix == WebArenaChallenge.SOURCE_URI_PREFIX:
+        return WebArenaChallenge.from_source_uri(source_uri)
 
     raise ValueError(f"Cannot resolve source_uri '{source_uri}'")
 
