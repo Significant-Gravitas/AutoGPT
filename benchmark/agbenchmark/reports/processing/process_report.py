@@ -46,7 +46,7 @@ def get_agent_category(report: Report) -> dict[str, Any]:
             ):
                 continue
             categories.setdefault(category, 0)
-            if data.metrics.success:
+            if data.metrics.success and data.metrics.difficulty:
                 num_dif = STRING_DIFFICULTY_MAP[data.metrics.difficulty]
                 if num_dif > categories[category]:
                     categories[category] = num_dif
