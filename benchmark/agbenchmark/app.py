@@ -125,10 +125,10 @@ def stream_output(pipe):
 
 def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
     from agbenchmark.agent_api_interface import (
-        copy_agent_artifacts_into_folder,
+        download_agent_artifacts_into_folder,
         upload_artifacts,
     )
-    from agbenchmark.agent_interface import copy_artifacts_into_temp_folder
+    from agbenchmark.agent_interface import copy_challenge_artifacts_into_workspace
     from agbenchmark.generate_test import create_challenge_from_spec_file
     from agbenchmark.main import run_benchmark
 
@@ -249,7 +249,7 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
                 ] = task_eval_request.eval_id
                 await upload_artifacts(
                     api_instance,
-                    str(CHALLENGES[task_eval_request.eval_id].spec_file.parent),
+                    CHALLENGES[task_eval_request.eval_id].spec_file.parent,
                     task_response.task_id,
                     "artifacts_in",
                 )
@@ -286,10 +286,14 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
         try:
             async with ApiClient(configuration) as api_client:
                 api_instance = AgentApi(api_client)
-                await copy_agent_artifacts_into_folder(api_instance, task_id, workspace)
+                await download_agent_artifacts_into_folder(
+                    api_instance, task_id, workspace
+                )
 
             artifact_path = challenge_info.spec_file.parent
-            copy_artifacts_into_temp_folder(workspace, "custom_python", artifact_path)
+            copy_challenge_artifacts_into_workspace(
+                artifact_path, "custom_python", workspace
+            )
 
             challenge = create_challenge_from_spec_file(challenge_info.spec_file)
             scores = challenge.get_scores(workspace)

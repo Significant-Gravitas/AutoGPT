@@ -86,7 +86,7 @@ class Challenge(ABC):
         assert is_score_100
 
     async def run_challenge(self, config: AgentBenchmarkConfig, cutoff: int) -> None:
-        from agbenchmark.agent_interface import copy_artifacts_into_temp_folder
+        from agbenchmark.agent_interface import copy_challenge_artifacts_into_workspace
 
         if not self.data.task:
             return
@@ -98,7 +98,9 @@ class Challenge(ABC):
         )
         print(f"{Fore.BLACK}Task: {self.data.task}{Fore.RESET}")
 
-        await run_api_agent(self.data, config, self.ARTIFACTS_LOCATION, cutoff)
+        await run_api_agent(
+            self.data.task, config, cutoff, Path(self.ARTIFACTS_LOCATION)
+        )
 
         # hidden files are added after the agent runs. Hidden files can be python test files.
         # We copy them in the temporary folder to make it easy to import the code produced by the agent
@@ -107,7 +109,9 @@ class Challenge(ABC):
             str(Path(self.CHALLENGE_LOCATION).parent),
         ]
         for path in artifact_paths:
-            copy_artifacts_into_temp_folder(config.temp_folder, "custom_python", path)
+            copy_challenge_artifacts_into_workspace(
+                path, "custom_python", config.temp_folder
+            )
 
     @staticmethod
     def get_artifacts_out(
