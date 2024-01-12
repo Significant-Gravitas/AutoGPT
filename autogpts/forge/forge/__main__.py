@@ -41,5 +41,5 @@ if __name__ == "__main__":
     forge.sdk.forge_log.setup_logger()
 
     uvicorn.run(
-        "forge.app:app", host="localhost", port=port, log_level="error", reload=True
+        "forge.app:app", host="localhost", port=int(port), log_level="error", reload=True
     )
