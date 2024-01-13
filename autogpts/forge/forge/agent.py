@@ -20,7 +20,7 @@ class ForgeAgent(Agent):
     agent design.
 
     There is a great paper surveying the agent landscape: https://arxiv.org/abs/2308.11432
-    Which I would highly recommend reading as it will help you understand the possabilities.
+    Which I would highly recommend reading as it will help you understand the possibilities.
 
     Here is a summary of the key components of an agent:
 
@@ -33,7 +33,7 @@ class ForgeAgent(Agent):
     Profile:
 
     Agents typically perform a task by assuming specific roles. For example, a teacher,
-    a coder, a planner etc. In using the profile in the llm prompt it has been shown to
+    a coder, a planner etc. In using the profile in the LLM prompt it has been shown to
     improve the quality of the output. https://arxiv.org/abs/2305.14688
 
     Additionally, based on the profile selected, the agent could be configured to use a
@@ -72,7 +72,7 @@ class ForgeAgent(Agent):
         The database is used to store tasks, steps and artifact metadata. The workspace is used to
         store artifacts. The workspace is a directory on the file system.
 
-        Feel free to create subclasses of the database and workspace to implement your own storage
+        Feel free to create subclasses of the database and workspace for implementing your custom storage.
         """
         super().__init__(database, workspace)
         self.abilities = ActionRegister(self)
@@ -105,7 +105,7 @@ class ForgeAgent(Agent):
         the agent has been asked to solve and additional input, which is a dictionary and
         could contain anything.
 
-        If you want to get the task use:
+        If you need to retrieve the task, use::
 
         ```
         task = await self.db.get_task(task_id)
