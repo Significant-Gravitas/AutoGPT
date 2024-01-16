@@ -242,7 +242,7 @@ try:
     }
     # Get the LLM's response and interpret it
     chat_response = await chat_completion_request(**chat_completion_kwargs)
-    answer = json.loads(chat_response["choices"][0]["message"]["content"])
+    answer = json.loads(chat_response.choices[0].message.content)
 
     # Log the answer for reference
     LOG.info(pprint.pformat(answer))
@@ -403,7 +403,7 @@ async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Ste
         }
         # Make the chat completion request and parse the response
         chat_response = await chat_completion_request(**chat_completion_kwargs)
-        answer = json.loads(chat_response["choices"][0]["message"]["content"])
+        answer = json.loads(chat_response.choices[0].message.content)
 
         # Log the answer for debugging purposes
         LOG.info(pprint.pformat(answer))
