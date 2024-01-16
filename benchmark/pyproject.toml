@@ -11,7 +11,7 @@ packages = [{ include = "agbenchmark" }]
 python = "^3.10"
 pytest = "^7.3.2"
 requests = "^2.31.0"
-openai = "^0.27.8"
+openai = "^1.7.2"
 pydantic = "^1.10.9"
 python-dotenv = "^1.0.0"
 click = "^8.1.3"

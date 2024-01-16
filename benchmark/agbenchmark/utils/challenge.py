@@ -9,9 +9,9 @@ from abc import ABC
 from pathlib import Path
 from typing import Any, ClassVar, List
 
-import openai
 import pytest
 from colorama import Fore, Style
+from openai import OpenAI
 
 from agbenchmark.agent_api_interface import run_api_agent
 from agbenchmark.config import AgentBenchmarkConfig
@@ -198,7 +198,7 @@ class Challenge(ABC):
 
     @classmethod
     def llm_eval(cls, content: str, ground: Ground) -> float:
-        openai.api_key = os.getenv("OPENAI_API_KEY")
+        openai_client = OpenAI()
         if os.getenv("IS_MOCK"):
             return 1.0
 
@@ -213,14 +213,14 @@ class Challenge(ABC):
 
         prompt += END_PROMPT
 
-        answer = openai.ChatCompletion.create(
+        answer = openai_client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": prompt},
             ],
         )
 
-        return float(answer["choices"][0]["message"]["content"])  # type: ignore
+        return float(answer.choices[0].message.content)  # type: ignore
 
     @classmethod
     def get_scores(cls, workspace: Path) -> dict[str, Any]:
