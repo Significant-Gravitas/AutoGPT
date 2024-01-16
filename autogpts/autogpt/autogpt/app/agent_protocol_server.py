@@ -339,7 +339,6 @@ class AgentProtocolServer:
         """
         Create an artifact for the task.
         """
-        data = None
         file_name = file.filename or str(uuid4())
         data = b""
         while contents := file.file.read(1024 * 1024):
