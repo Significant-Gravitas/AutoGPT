@@ -75,10 +75,15 @@ class GCSFileWorkspace(FileWorkspace):
         """Write to a file in the workspace."""
         blob = self._get_blob(path)
 
-        if isinstance(content, str):
-            blob.upload_from_string(content)
-        else:
-            blob.upload_from_file(content)
+        blob.upload_from_string(
+            data=content,
+            content_type=(
+                "text/plain"
+                if type(content) is str
+                # TODO: get MIME type from file extension or binary content
+                else "application/octet-stream"
+            ),
+        )
 
         if self.on_write_file:
             path = Path(path)
