@@ -10,8 +10,9 @@ import pytest
 from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.reports.ReportManager import SingletonReportManager
 from agbenchmark.utils.data_types import ChallengeData, DifficultyLevel
-from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
 from agbenchmark.utils.utils import calculate_success_percentage
+
+# from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
 
 logger = logging.getLogger(__name__)
 
@@ -128,10 +129,10 @@ def finalize_reports(
     if info_details and test_name:
         if run_time is not None:
             cost = None
-            if "--mock" not in sys.argv and os.environ.get("HELICONE_API_KEY"):
-                logger.debug("Getting cost from Helicone")
-                cost = get_data_from_helicone(test_name)
-                logger.debug(f"Cost: {cost}")
+            # if "--mock" not in sys.argv and os.environ.get("HELICONE_API_KEY"):
+            #     logger.debug("Getting cost from Helicone")
+            #     cost = get_data_from_helicone(test_name)
+            #     logger.debug(f"Cost: {cost}")
 
             info_details["metrics"]["cost"] = cost
 
