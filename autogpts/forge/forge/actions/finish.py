@@ -1,4 +1,5 @@
 from sdk.forge_log import ForgeLogger
+
 from .registry import action
 
 logger = ForgeLogger(__name__)

@@ -14,7 +14,13 @@ from forge.sdk.db import (
     convert_to_task,
 )
 from forge.sdk.errors import NotFoundError as DataNotFoundError
-from autogpts.forge.forge.sdk.model import *
+from forge.sdk.model import (
+    Artifact,
+    Status,
+    Step,
+    StepRequestBody,
+    Task,
+)
 
 
 @pytest.mark.asyncio
