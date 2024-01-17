@@ -90,7 +90,7 @@ class AssistantToolCallDict(TypedDict):
 
 
 class AssistantChatMessage(ChatMessage):
-    role: Literal["assistant"]
+    role: Literal["assistant"] = "assistant"
     content: Optional[str]
     tool_calls: Optional[list[AssistantToolCall]]
 
@@ -320,7 +320,7 @@ _T = TypeVar("_T")
 class ChatModelResponse(ModelResponse, Generic[_T]):
     """Standard response struct for a response from a language model."""
 
-    response: AssistantChatMessageDict
+    response: AssistantChatMessage
     parsed_result: _T = None
 
 
@@ -338,7 +338,7 @@ class ChatModelProvider(ModelProvider):
         self,
         model_prompt: list[ChatMessage],
         model_name: str,
-        completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
+        completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
         **kwargs,
     ) -> ChatModelResponse[_T]:

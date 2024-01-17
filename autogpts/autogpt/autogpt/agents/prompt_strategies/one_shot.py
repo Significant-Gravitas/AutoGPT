@@ -21,7 +21,7 @@ from autogpt.core.prompting import (
     PromptStrategy,
 )
 from autogpt.core.resource.model_providers.schema import (
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatMessage,
     CompletionModelFunction,
 )
@@ -386,12 +386,12 @@ class OneShotAgentPromptStrategy(PromptStrategy):
 
     def parse_response_content(
         self,
-        response: AssistantChatMessageDict,
+        response: AssistantChatMessage,
     ) -> Agent.ThoughtProcessOutput:
-        if "content" not in response:
+        if not response.content:
             raise InvalidAgentResponseError("Assistant response has no text content")
 
-        assistant_reply_dict = extract_dict_from_response(response["content"])
+        assistant_reply_dict = extract_dict_from_response(response.content)
 
         _, errors = self.response_schema.validate_object(
             object=assistant_reply_dict,
@@ -417,14 +417,14 @@ class OneShotAgentPromptStrategy(PromptStrategy):
 
 def extract_command(
     assistant_reply_json: dict,
-    assistant_reply: AssistantChatMessageDict,
+    assistant_reply: AssistantChatMessage,
     use_openai_functions_api: bool,
 ) -> tuple[str, dict[str, str]]:
     """Parse the response and return the command name and arguments
 
     Args:
         assistant_reply_json (dict): The response object from the AI
-        assistant_reply (ChatModelResponse): The model response from the AI
+        assistant_reply (AssistantChatMessage): The model response from the AI
         config (Config): The config object
 
     Returns:
@@ -436,13 +436,11 @@ def extract_command(
         Exception: If any other error occurs
     """
     if use_openai_functions_api:
-        if not assistant_reply.get("tool_calls"):
+        if not assistant_reply.tool_calls:
             raise InvalidAgentResponseError("No 'tool_calls' in assistant reply")
         assistant_reply_json["command"] = {
-            "name": assistant_reply["tool_calls"][0]["function"]["name"],
-            "args": json.loads(
-                assistant_reply["tool_calls"][0]["function"]["arguments"]
-            ),
+            "name": assistant_reply.tool_calls[0].function.name,
+            "args": json.loads(assistant_reply.tool_calls[0].function.arguments),
         }
     try:
         if not isinstance(assistant_reply_json, dict):

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from autogpt.config import Config
     from autogpt.core.prompting.base import PromptStrategy
     from autogpt.core.resource.model_providers.schema import (
-        AssistantChatMessageDict,
+        AssistantChatMessage,
         ChatModelInfo,
         ChatModelProvider,
         ChatModelResponse,
@@ -410,7 +410,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
     @abstractmethod
     def parse_and_process_response(
         self,
-        llm_response: AssistantChatMessageDict,
+        llm_response: AssistantChatMessage,
         prompt: ChatPrompt,
         scratchpad: PromptScratchpad,
     ) -> ThoughtProcessOutput:

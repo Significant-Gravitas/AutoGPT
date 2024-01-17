@@ -5,7 +5,7 @@ from autogpt.core.prompting import PromptStrategy
 from autogpt.core.prompting.schema import ChatPrompt, LanguageModelClassification
 from autogpt.core.prompting.utils import json_loads
 from autogpt.core.resource.model_providers import (
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatMessage,
     CompletionModelFunction,
 )
@@ -124,7 +124,7 @@ class NameAndGoals(PromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> dict:
         """Parse the actual text response from the objective model.
 
@@ -136,8 +136,13 @@ class NameAndGoals(PromptStrategy):
 
         """
         try:
+            if not response_content.tool_calls:
+                raise ValueError(
+                    f"LLM did not call {self._create_agent_function} function; "
+                    "agent profile creation failed"
+                )
             parsed_response = json_loads(
-                response_content["tool_calls"][0]["function"]["arguments"]
+                response_content.tool_calls[0].function.arguments
             )
         except KeyError:
             logger.debug(f"Failed to parse this response content: {response_content}")
