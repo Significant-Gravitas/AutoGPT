@@ -1,4 +1,3 @@
-import copy
 import logging
 import os
 import pathlib
@@ -34,6 +33,7 @@ from autogpt.commands.system import finish
 from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
+from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.file_workspace import (
     FileWorkspace,
     FileWorkspaceBackendName,
@@ -414,8 +414,8 @@ class AgentProtocolServer:
         """
         Configures the LLM provider with headers to link outgoing requests to the task.
         """
-        task_llm_provider = copy.deepcopy(self.llm_provider)
-        _extra_request_headers = task_llm_provider._configuration.extra_request_headers
+        task_llm_provider_config = self.llm_provider._configuration.copy(deep=True)
+        _extra_request_headers = task_llm_provider_config.extra_request_headers
 
         _extra_request_headers["AP-TaskID"] = task.task_id
         if step_id:
@@ -423,7 +423,15 @@ class AgentProtocolServer:
         if task.additional_input and (user_id := task.additional_input.get("user_id")):
             _extra_request_headers["AutoGPT-UserID"] = user_id
 
-        return task_llm_provider
+        if isinstance(self.llm_provider, OpenAIProvider):
+            settings = self.llm_provider._settings.copy()
+            settings.configuration = task_llm_provider_config
+            return OpenAIProvider(
+                settings=settings,
+                logger=logger.getChild(f"Task-{task.task_id}_OpenAIProvider"),
+            )
+
+        return self.llm_provider
 
 
 def task_agent_id(task_id: str | int) -> str:

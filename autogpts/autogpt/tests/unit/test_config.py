@@ -8,6 +8,8 @@ from unittest import mock
 from unittest.mock import patch
 
 import pytest
+from openai.pagination import SyncPage
+from openai.types import Model
 from pydantic import SecretStr
 
 from autogpt.app.configurator import GPT_3_MODEL, GPT_4_MODEL, apply_overrides_to_config
@@ -80,8 +82,10 @@ def test_set_smart_llm(config: Config) -> None:
     config.smart_llm = smart_llm
 
 
-@patch("openai.Model.list")
-def test_smart_and_fast_llms_set_to_gpt4(mock_list_models: Any, config: Config) -> None:
+@patch("openai.resources.models.Models.list")
+def test_fallback_to_gpt3_if_gpt4_not_available(
+    mock_list_models: Any, config: Config
+) -> None:
     """
     Test if models update to gpt-3.5-turbo if gpt-4 is not available.
     """
@@ -91,7 +95,10 @@ def test_smart_and_fast_llms_set_to_gpt4(mock_list_models: Any, config: Config) 
     config.fast_llm = "gpt-4"
     config.smart_llm = "gpt-4"
 
-    mock_list_models.return_value = {"data": [{"id": "gpt-3.5-turbo"}]}
+    mock_list_models.return_value = SyncPage(
+        data=[Model(id=GPT_3_MODEL, created=0, object="model", owned_by="AutoGPT")],
+        object="Models",  # no idea what this should be, but irrelevant
+    )
 
     apply_overrides_to_config(
         config=config,
@@ -123,74 +130,80 @@ def test_missing_azure_config(config: Config) -> None:
     assert config.openai_credentials.azure_model_to_deploy_id_map is None
 
 
-def test_azure_config(config: Config) -> None:
+@pytest.fixture
+def config_with_azure(config: Config):
     config_file = config.app_data_dir / "azure_config.yaml"
     config_file.write_text(
         f"""
 azure_api_type: azure
-azure_api_base: https://dummy.openai.azure.com
 azure_api_version: 2023-06-01-preview
+azure_endpoint: https://dummy.openai.azure.com
 azure_model_map:
     {config.fast_llm}: FAST-LLM_ID
     {config.smart_llm}: SMART-LLM_ID
     {config.embedding_model}: embedding-deployment-id-for-azure
 """
     )
-
     os.environ["USE_AZURE"] = "True"
     os.environ["AZURE_CONFIG_FILE"] = str(config_file)
-    config = ConfigBuilder.build_config_from_env(project_root=config.project_root)
-
-    assert (credentials := config.openai_credentials) is not None
-    assert credentials.api_type == "azure"
-    assert credentials.api_base == SecretStr("https://dummy.openai.azure.com")
-    assert credentials.api_version == "2023-06-01-preview"
-    assert credentials.azure_model_to_deploy_id_map == {
-        config.fast_llm: "FAST-LLM_ID",
-        config.smart_llm: "SMART-LLM_ID",
-        config.embedding_model: "embedding-deployment-id-for-azure",
-    }
-
-    fast_llm = config.fast_llm
-    smart_llm = config.smart_llm
-    assert (
-        credentials.get_api_access_kwargs(config.fast_llm)["deployment_id"]
-        == "FAST-LLM_ID"
+    config_with_azure = ConfigBuilder.build_config_from_env(
+        project_root=config.project_root
     )
-    assert (
-        credentials.get_api_access_kwargs(config.smart_llm)["deployment_id"]
-        == "SMART-LLM_ID"
-    )
-
-    # Emulate --gpt4only
-    config.fast_llm = smart_llm
-    assert (
-        credentials.get_api_access_kwargs(config.fast_llm)["deployment_id"]
-        == "SMART-LLM_ID"
-    )
-    assert (
-        credentials.get_api_access_kwargs(config.smart_llm)["deployment_id"]
-        == "SMART-LLM_ID"
-    )
-
-    # Emulate --gpt3only
-    config.fast_llm = config.smart_llm = fast_llm
-    assert (
-        credentials.get_api_access_kwargs(config.fast_llm)["deployment_id"]
-        == "FAST-LLM_ID"
-    )
-    assert (
-        credentials.get_api_access_kwargs(config.smart_llm)["deployment_id"]
-        == "FAST-LLM_ID"
-    )
-
+    yield config_with_azure
     del os.environ["USE_AZURE"]
     del os.environ["AZURE_CONFIG_FILE"]
 
 
+def test_azure_config(config_with_azure: Config) -> None:
+    assert (credentials := config_with_azure.openai_credentials) is not None
+    assert credentials.api_type == "azure"
+    assert credentials.api_version == "2023-06-01-preview"
+    assert credentials.azure_endpoint == SecretStr("https://dummy.openai.azure.com")
+    assert credentials.azure_model_to_deploy_id_map == {
+        config_with_azure.fast_llm: "FAST-LLM_ID",
+        config_with_azure.smart_llm: "SMART-LLM_ID",
+        config_with_azure.embedding_model: "embedding-deployment-id-for-azure",
+    }
+
+    fast_llm = config_with_azure.fast_llm
+    smart_llm = config_with_azure.smart_llm
+    assert (
+        credentials.get_model_access_kwargs(config_with_azure.fast_llm)["model"]
+        == "FAST-LLM_ID"
+    )
+    assert (
+        credentials.get_model_access_kwargs(config_with_azure.smart_llm)["model"]
+        == "SMART-LLM_ID"
+    )
+
+    # Emulate --gpt4only
+    config_with_azure.fast_llm = smart_llm
+    assert (
+        credentials.get_model_access_kwargs(config_with_azure.fast_llm)["model"]
+        == "SMART-LLM_ID"
+    )
+    assert (
+        credentials.get_model_access_kwargs(config_with_azure.smart_llm)["model"]
+        == "SMART-LLM_ID"
+    )
+
+    # Emulate --gpt3only
+    config_with_azure.fast_llm = config_with_azure.smart_llm = fast_llm
+    assert (
+        credentials.get_model_access_kwargs(config_with_azure.fast_llm)["model"]
+        == "FAST-LLM_ID"
+    )
+    assert (
+        credentials.get_model_access_kwargs(config_with_azure.smart_llm)["model"]
+        == "FAST-LLM_ID"
+    )
+
+
 def test_create_config_gpt4only(config: Config) -> None:
     with mock.patch("autogpt.llm.api_manager.ApiManager.get_models") as mock_get_models:
-        mock_get_models.return_value = [{"id": GPT_4_MODEL}]
+        mock_get_models.return_value = [
+            Model(id=GPT_4_MODEL, created=0, object="model", owned_by="AutoGPT")
+        ]
         apply_overrides_to_config(
             config=config,
             gpt4only=True,

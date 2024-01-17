@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
-from openai.util import logger as openai_logger
+from openai._base_client import log as openai_logger
 
 if TYPE_CHECKING:
     from autogpt.config import Config
@@ -184,7 +184,7 @@ def configure_logging(
     json_logger.propagate = False
 
     # Disable debug logging from OpenAI library
-    openai_logger.setLevel(logging.INFO)
+    openai_logger.setLevel(logging.WARNING)
 
 
 def configure_chat_plugins(config: Config) -> None:
