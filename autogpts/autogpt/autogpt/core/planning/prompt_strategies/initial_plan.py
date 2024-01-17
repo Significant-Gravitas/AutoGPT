@@ -6,7 +6,7 @@ from autogpt.core.prompting import PromptStrategy
 from autogpt.core.prompting.schema import ChatPrompt, LanguageModelClassification
 from autogpt.core.prompting.utils import json_loads, to_numbered_list
 from autogpt.core.resource.model_providers import (
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatMessage,
     CompletionModelFunction,
 )
@@ -178,7 +178,7 @@ class InitialPlan(PromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> dict:
         """Parse the actual text response from the objective model.
 
@@ -189,8 +189,13 @@ class InitialPlan(PromptStrategy):
             The parsed response.
         """
         try:
-            parsed_response = json_loads(
-                response_content["tool_calls"][0]["function"]["arguments"]
+            if not response_content.tool_calls:
+                raise ValueError(
+                    f"LLM did not call {self._create_plan_function.name} function; "
+                    "plan creation failed"
+                )
+            parsed_response: object = json_loads(
+                response_content.tool_calls[0].function.arguments
             )
             parsed_response["task_list"] = [
                 Task.parse_obj(task) for task in parsed_response["task_list"]

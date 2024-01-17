@@ -15,7 +15,7 @@ from pydantic import Field
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatMessage,
     ChatModelProvider,
 )
@@ -172,14 +172,12 @@ class Agent(
         return prompt
 
     def parse_and_process_response(
-        self, llm_response: AssistantChatMessageDict, *args, **kwargs
+        self, llm_response: AssistantChatMessage, *args, **kwargs
     ) -> Agent.ThoughtProcessOutput:
         for plugin in self.config.plugins:
             if not plugin.can_handle_post_planning():
                 continue
-            llm_response["content"] = plugin.post_planning(
-                llm_response.get("content", "")
-            )
+            llm_response.content = plugin.post_planning(llm_response.content or "")
 
         (
             command_name,

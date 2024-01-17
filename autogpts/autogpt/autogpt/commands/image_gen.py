@@ -8,8 +8,8 @@ import uuid
 from base64 import b64decode
 from pathlib import Path
 
-import openai
 import requests
+from openai import OpenAI
 from PIL import Image
 
 from autogpt.agents.agent import Agent
@@ -142,17 +142,18 @@ def generate_image_with_dalle(
         )
         size = closest
 
-    response = openai.Image.create(
+    response = OpenAI(
+        api_key=agent.legacy_config.openai_credentials.api_key.get_secret_value()
+    ).images.generate(
         prompt=prompt,
         n=1,
         size=f"{size}x{size}",
         response_format="b64_json",
-        api_key=agent.legacy_config.openai_credentials.api_key.get_secret_value(),
     )
 
     logger.info(f"Image Generated for prompt:{prompt}")
 
-    image_data = b64decode(response["data"][0]["b64_json"])
+    image_data = b64decode(response.data[0].b64_json)
 
     with open(output_file, mode="wb") as png:
         png.write(image_data)
