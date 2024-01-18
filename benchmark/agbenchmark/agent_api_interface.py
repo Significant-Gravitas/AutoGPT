@@ -2,27 +2,32 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import AsyncIterator, Optional
 
-from agent_protocol_client import AgentApi, ApiClient, Configuration, TaskRequestBody
+from agent_protocol_client import (
+    AgentApi,
+    ApiClient,
+    Configuration,
+    Step,
+    TaskRequestBody,
+)
 
 from agbenchmark.agent_interface import get_list_of_file_paths
 from agbenchmark.config import AgentBenchmarkConfig
-from agbenchmark.utils.data_types import ChallengeData
 
-LOG = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 async def run_api_agent(
-    task: ChallengeData,
+    task: str,
     config: AgentBenchmarkConfig,
-    artifacts_location: str,
     timeout: int,
-) -> None:
+    artifacts_location: Optional[Path] = None,
+) -> AsyncIterator[Step]:
     configuration = Configuration(host=config.host)
     async with ApiClient(configuration) as api_client:
         api_instance = AgentApi(api_client)
-        task_request_body = TaskRequestBody(input=task.task)
+        task_request_body = TaskRequestBody(input=task)
 
         start_time = time.time()
         response = await api_instance.create_agent_task(
@@ -30,37 +35,33 @@ async def run_api_agent(
         )
         task_id = response.task_id
 
-        await upload_artifacts(
-            api_instance, artifacts_location, task_id, "artifacts_in"
-        )
+        if artifacts_location:
+            await upload_artifacts(
+                api_instance, artifacts_location, task_id, "artifacts_in"
+            )
 
-        i = 1
-        steps_remaining = True
-        while steps_remaining:
-            # Read the existing JSON data from the file
-
+        while True:
             step = await api_instance.execute_agent_task_step(task_id=task_id)
-
-            print(f"[{task.name}] - step {step.name} ({i}. request)")
-            i += 1
+            yield step
 
             if time.time() - start_time > timeout:
                 raise TimeoutError("Time limit exceeded")
             if not step or step.is_last:
-                steps_remaining = False
+                break
 
-        # In "mock" mode, we cheat by giving the correct artifacts to pass the challenge
-        if os.getenv("IS_MOCK"):
-            await upload_artifacts(
-                api_instance, artifacts_location, task_id, "artifacts_out"
+        if artifacts_location:
+            # In "mock" mode, we cheat by giving the correct artifacts to pass the test
+            if os.getenv("IS_MOCK"):
+                await upload_artifacts(
+                    api_instance, artifacts_location, task_id, "artifacts_out"
+                )
+
+            await download_agent_artifacts_into_folder(
+                api_instance, task_id, config.temp_folder
             )
 
-        await copy_agent_artifacts_into_folder(
-            api_instance, task_id, config.temp_folder
-        )
 
-
-async def copy_agent_artifacts_into_folder(
+async def download_agent_artifacts_into_folder(
     api_instance: AgentApi, task_id: str, folder: Path
 ):
     artifacts = await api_instance.list_agent_task_artifacts(task_id=task_id)
@@ -76,11 +77,10 @@ async def copy_agent_artifacts_into_folder(
             folder = (folder / path).parent
 
         if not folder.exists():
-            LOG.info(f"Creating directory {folder}")
             folder.mkdir(parents=True)
 
         file_path = folder / artifact.file_name
-        LOG.info(f"Writing file {file_path}")
+        logger.debug(f"Downloading agent artifact {artifact.file_name} to {folder}")
         with open(file_path, "wb") as f:
             content = await api_instance.download_agent_task_artifact(
                 task_id=task_id, artifact_id=artifact.artifact_id
@@ -90,7 +90,7 @@ async def copy_agent_artifacts_into_folder(
 
 
 async def upload_artifacts(
-    api_instance: AgentApi, artifacts_location: str, task_id: str, type: str
+    api_instance: AgentApi, artifacts_location: Path, task_id: str, type: str
 ) -> None:
     for file_path in get_list_of_file_paths(artifacts_location, type):
         relative_path: Optional[str] = "/".join(

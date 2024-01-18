@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseSettings
+from pydantic import BaseSettings, Field
 
 
 def _calculate_info_test_path(base_path: Path, benchmark_start_time: datetime) -> Path:
@@ -57,7 +57,7 @@ class AgentBenchmarkConfig(BaseSettings, extra="allow"):
     subject application exposes an Agent Protocol compliant API.
     """
 
-    agbenchmark_config_dir: Path
+    agbenchmark_config_dir: Path = Field(..., exclude=True)
     """Path to the agbenchmark_config folder of the subject agent application."""
 
     categories: list[str] | None = None

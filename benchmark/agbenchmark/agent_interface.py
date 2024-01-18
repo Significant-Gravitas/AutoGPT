@@ -18,8 +18,8 @@ def get_list_of_file_paths(
     return list(source_dir.iterdir())
 
 
-def copy_artifacts_into_temp_folder(
-    workspace: str | Path, artifact_folder_name: str, challenge_dir_path: str | Path
+def copy_challenge_artifacts_into_workspace(
+    challenge_dir_path: str | Path, artifact_folder_name: str, workspace: str | Path
 ) -> None:
     file_paths = get_list_of_file_paths(challenge_dir_path, artifact_folder_name)
     for file_path in file_paths:

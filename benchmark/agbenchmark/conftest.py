@@ -6,17 +6,18 @@ import shutil
 import threading
 import time
 from pathlib import Path
-from typing import Any, Generator
+from typing import Generator
 
 import pytest
 
+from agbenchmark.challenges import OPTIONAL_CATEGORIES, BaseChallenge
 from agbenchmark.config import AgentBenchmarkConfig
+from agbenchmark.reports.ReportManager import RegressionTestsTracker
 from agbenchmark.reports.reports import (
-    finalize_reports,
-    generate_single_call_report,
+    finalize_test_report,
+    initialize_test_report,
     session_finish,
 )
-from agbenchmark.utils.challenge import Challenge
 from agbenchmark.utils.data_types import Category
 
 GLOBAL_TIMEOUT = (
@@ -28,7 +29,6 @@ logger = logging.getLogger(__name__)
 
 pytest_plugins = ["agbenchmark.utils.dependencies"]
 collect_ignore = ["challenges"]
-suite_reports: dict[str, list] = {}
 
 
 @pytest.fixture(scope="module")
@@ -118,18 +118,18 @@ def check_regression(request: pytest.FixtureRequest) -> None:
         request: The request object from which the test name and the benchmark
             configuration are retrieved.
     """
-    test_name = request.node.parent.name
     with contextlib.suppress(FileNotFoundError):
-        regression_report = agbenchmark_config.regression_tests_file
-        data = json.loads(regression_report.read_bytes())
-        challenge_location = getattr(request.node.parent.cls, "CHALLENGE_LOCATION", "")
+        rt_tracker = RegressionTestsTracker(agbenchmark_config.regression_tests_file)
 
+        test_name = request.node.parent.name
+        challenge_location = getattr(request.node.parent.cls, "CHALLENGE_LOCATION", "")
         skip_string = f"Skipping {test_name} at {challenge_location}"
 
         # Check if the test name exists in the regression tests
-        if request.config.getoption("--improve") and data.get(test_name, None):
+        is_regression_test = rt_tracker.has_regression_test(test_name)
+        if request.config.getoption("--improve") and is_regression_test:
             pytest.skip(f"{skip_string} because it's a regression test")
-        elif request.config.getoption("--maintain") and not data.get(test_name, None):
+        elif request.config.getoption("--maintain") and not is_regression_test:
             pytest.skip(f"{skip_string} because it's not a regression test")
 
 
@@ -149,24 +149,6 @@ def mock(request: pytest.FixtureRequest) -> bool:
     return request.config.getoption("--mock")
 
 
-@pytest.fixture(autouse=True, scope="function")
-def timer(request: pytest.FixtureRequest) -> Generator[None, None, None]:
-    """
-    Pytest fixture that times the execution of each test.
-    At the start of each test, it records the current time.
-    After the test function completes, it calculates the run time and adds it to
-    the test node's `user_properties`.
-
-    Args:
-        request: The `pytest.FixtureRequest` object through which the run time is stored
-            in the test node's `user_properties`.
-    """
-    start_time = time.time()
-    yield
-    run_time = time.time() - start_time
-    request.node.user_properties.append(("run_time", run_time))
-
-
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> None:
     """
     Pytest hook that is called when a test report is being generated.
@@ -176,21 +158,15 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> None:
         item: The test item for which the report is being generated.
         call: The call object from which the test result is retrieved.
     """
-    challenge: type[Challenge] = item.cls  # type: ignore
-    challenge_data = challenge.data
-    challenge_location = challenge.CHALLENGE_LOCATION
+    challenge: type[BaseChallenge] = item.cls  # type: ignore
+
+    if call.when == "setup":
+        test_name = item.nodeid.split("::")[1]
+        item.user_properties.append(("test_name", test_name))
+        initialize_test_report(item, challenge.info)
 
     if call.when == "call":
-        answers = getattr(item, "answers", None)
-        test_name = item.nodeid.split("::")[1]
-        item.test_name = test_name
-
-        generate_single_call_report(
-            item, call, challenge_data, answers, challenge_location, test_name
-        )
-
-    if call.when == "teardown":
-        finalize_reports(agbenchmark_config, item, challenge_data)
+        finalize_test_report(item, call, agbenchmark_config)
 
 
 def timeout_monitor(start_time: int) -> None:
@@ -226,21 +202,7 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
 
     Finalizes and saves the test reports.
     """
-    session_finish(agbenchmark_config, suite_reports)
-
-
-@pytest.fixture
-def scores(request: pytest.FixtureRequest) -> None:
-    """
-    Pytest fixture that retrieves the scores of the test class.
-    The scores are retrieved from the `Challenge.scores` attribute
-    using the test class name.
-
-    Args:
-        request: The request object.
-    """
-    challenge: type[Challenge] = request.node.cls
-    return challenge.scores.get(challenge.__name__)
+    session_finish(agbenchmark_config)
 
 
 def pytest_collection_modifyitems(
@@ -255,10 +217,7 @@ def pytest_collection_modifyitems(
         items: The collected test items to be modified.
         config: The active pytest configuration.
     """
-    regression_file = agbenchmark_config.regression_tests_file
-    regression_tests: dict[str, Any] = (
-        json.loads(regression_file.read_bytes()) if regression_file.is_file() else {}
-    )
+    rt_tracker = RegressionTestsTracker(agbenchmark_config.regression_tests_file)
 
     try:
         challenges_beaten_in_the_past = json.loads(
@@ -277,7 +236,7 @@ def pytest_collection_modifyitems(
         challenge = item.cls
         challenge_name = item.cls.__name__
 
-        if not issubclass(challenge, Challenge):
+        if not issubclass(challenge, BaseChallenge):
             item.warn(
                 pytest.PytestCollectionWarning(
                     f"Non-challenge item collected: {challenge}"
@@ -287,7 +246,7 @@ def pytest_collection_modifyitems(
             continue
 
         # --test: remove the test from the set if it's not specifically selected
-        if selected_tests and challenge.data.name not in selected_tests:
+        if selected_tests and challenge.info.name not in selected_tests:
             items.remove(item)
             continue
 
@@ -295,8 +254,8 @@ def pytest_collection_modifyitems(
         # --maintain -> only challenges expected to be passed (= regression tests)
         # --improve -> only challenges that so far are not passed (reliably)
         # --explore -> only challenges that have never been passed
-        is_regression_test = regression_tests.get(challenge.data.name, None)
-        has_been_passed = challenges_beaten_in_the_past.get(challenge.data.name, False)
+        is_regression_test = rt_tracker.has_regression_test(challenge.info.name)
+        has_been_passed = challenges_beaten_in_the_past.get(challenge.info.name, False)
         if (
             (config.getoption("--maintain") and not is_regression_test)
             or (config.getoption("--improve") and is_regression_test)
@@ -305,7 +264,7 @@ def pytest_collection_modifyitems(
             items.remove(item)
             continue
 
-        dependencies = challenge.data.dependencies
+        dependencies = challenge.info.dependencies
         if (
             config.getoption("--test")
             or config.getoption("--no-dep")
@@ -319,17 +278,17 @@ def pytest_collection_modifyitems(
         elif config.getoption("--improve"):
             # Filter dependencies, keep only deps that are not "regression" tests
             dependencies = [
-                d for d in dependencies if not regression_tests.get(d, None)
+                d for d in dependencies if not rt_tracker.has_regression_test(d)
             ]
 
         # Set category markers
-        challenge_categories = [c.value for c in challenge.data.category]
+        challenge_categories = set(c.value for c in challenge.info.category)
         for category in challenge_categories:
             item.add_marker(category)
 
         # Enforce category selection
         if selected_categories:
-            if not set(challenge_categories).intersection(set(selected_categories)):
+            if not challenge_categories.intersection(set(selected_categories)):
                 items.remove(item)
                 continue
             # # Filter dependencies, keep only deps from selected categories
@@ -337,6 +296,22 @@ def pytest_collection_modifyitems(
             #     d for d in dependencies
             #     if not set(d.categories).intersection(set(selected_categories))
             # ]
+
+        # Skip items in optional categories that are not selected for the subject agent
+        challenge_optional_categories = challenge_categories & set(OPTIONAL_CATEGORIES)
+        if challenge_optional_categories and not (
+            agbenchmark_config.categories
+            and challenge_optional_categories.issubset(
+                set(agbenchmark_config.categories)
+            )
+        ):
+            logger.debug(
+                f"Skipping {challenge_name}: "
+                f"category {' and '.join(challenge_optional_categories)} is optional, "
+                "and not explicitly selected in the benchmark config."
+            )
+            items.remove(item)
+            continue
 
         # Add marker for the DependencyManager
         item.add_marker(pytest.mark.depends(on=dependencies, name=challenge_name))
