@@ -5,10 +5,10 @@ import logging
 import sys
 import time
 import uuid
-from collections import defaultdict, deque
+from collections import deque
 from multiprocessing import Process
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 import httpx
 import psutil
@@ -18,6 +18,7 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Extra, ValidationError
 
+from agbenchmark.challenges import ChallengeInfo
 from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.reports.processing.report_types_v2 import (
     BenchmarkRun,
@@ -27,14 +28,13 @@ from agbenchmark.reports.processing.report_types_v2 import (
     TaskInfo,
 )
 from agbenchmark.schema import TaskEvalRequestBody
-from agbenchmark.utils.data_types import ChallengeData
 from agbenchmark.utils.utils import write_pretty_json
 
 sys.path.append(str(Path(__file__).parent.parent))
 
 logger = logging.getLogger(__name__)
 
-CHALLENGES: dict[str, ChallengeData] = {}
+CHALLENGES: dict[str, ChallengeInfo] = {}
 challenges_path = Path(__file__).parent / "challenges"
 challenge_spec_files = deque(
     glob.glob(
@@ -52,7 +52,7 @@ while challenge_spec_files:
 
     logger.debug(f"Loading {challenge_relpath}...")
     try:
-        challenge_info = ChallengeData.parse_file(challenge_spec_file)
+        challenge_info = ChallengeInfo.parse_file(challenge_spec_file)
     except ValidationError as e:
         if logging.getLogger().level == logging.DEBUG:
             logger.warning(f"Spec file {challenge_relpath} failed to load:\n{e}")
@@ -68,7 +68,14 @@ while challenge_spec_files:
 
     CHALLENGES[challenge_info.eval_id] = challenge_info
 
-task_informations = defaultdict(dict[str, Any])
+
+class BenchmarkTaskInfo(BaseModel):
+    task_id: str
+    start_time: datetime.datetime
+    challenge_info: ChallengeInfo
+
+
+task_informations: dict[str, BenchmarkTaskInfo] = {}
 
 
 def find_agbenchmark_without_uvicorn():
@@ -124,12 +131,8 @@ def stream_output(pipe):
 
 
 def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
-    from agbenchmark.agent_api_interface import (
-        copy_agent_artifacts_into_folder,
-        upload_artifacts,
-    )
-    from agbenchmark.agent_interface import copy_artifacts_into_temp_folder
-    from agbenchmark.generate_test import create_challenge_from_spec_file
+    from agbenchmark.agent_api_interface import upload_artifacts
+    from agbenchmark.challenges import get_challenge_from_source_uri
     from agbenchmark.main import run_benchmark
 
     configuration = Configuration(
@@ -231,28 +234,29 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
                 }
         """
         try:
+            challenge_info = CHALLENGES[task_eval_request.eval_id]
             async with ApiClient(configuration) as api_client:
                 api_instance = AgentApi(api_client)
-                task_input = CHALLENGES[task_eval_request.eval_id].task
+                task_input = challenge_info.task
 
                 task_request_body = TaskRequestBody(input=task_input)
                 task_response = await api_instance.create_agent_task(
                     task_request_body=task_request_body
                 )
-                task_informations[task_response.task_id][
-                    "benchmark_start_time"
-                ] = datetime.datetime.now(datetime.timezone.utc).strftime(
-                    "%Y-%m-%dT%H:%M:%S+00:00"
+                task_info = BenchmarkTaskInfo(
+                    task_id=task_response.task_id,
+                    start_time=datetime.datetime.now(datetime.timezone.utc),
+                    challenge_info=challenge_info,
                 )
-                task_informations[task_response.task_id][
-                    "eval_id"
-                ] = task_eval_request.eval_id
-                await upload_artifacts(
-                    api_instance,
-                    str(CHALLENGES[task_eval_request.eval_id].spec_file.parent),
-                    task_response.task_id,
-                    "artifacts_in",
-                )
+                task_informations[task_info.task_id] = task_info
+
+                if input_artifacts_dir := challenge_info.task_artifacts_dir:
+                    await upload_artifacts(
+                        api_instance,
+                        input_artifacts_dir,
+                        task_response.task_id,
+                        "artifacts_in",
+                    )
                 return task_response
         except ApiException as e:
             logger.error(f"Error whilst trying to create a task:\n{e}")
@@ -281,41 +285,39 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
 
     @router.post("/agent/tasks/{task_id}/evaluations")
     async def create_evaluation(task_id: str) -> BenchmarkRun:
-        challenge_info = CHALLENGES[task_informations[task_id]["eval_id"]]
-        workspace = agbenchmark_config.temp_folder
+        task_info = task_informations[task_id]
+        challenge = get_challenge_from_source_uri(task_info.challenge_info.source_uri)
         try:
             async with ApiClient(configuration) as api_client:
                 api_instance = AgentApi(api_client)
-                await copy_agent_artifacts_into_folder(api_instance, task_id, workspace)
-
-            artifact_path = challenge_info.spec_file.parent
-            copy_artifacts_into_temp_folder(workspace, "custom_python", artifact_path)
-
-            challenge = create_challenge_from_spec_file(challenge_info.spec_file)
-            scores = challenge.get_scores(workspace)
-            is_score_100 = 1 in scores["values"]
+                eval_results = await challenge.evaluate_task_state(
+                    api_instance, task_id
+                )
 
             eval_info = BenchmarkRun(
                 repository_info=RepositoryInfo(),
                 run_details=RunDetails(
-                    command=f"agbenchmark --test={challenge_info.name}",
+                    command=f"agbenchmark --test={challenge.info.name}",
                     benchmark_start_time=(
-                        task_informations[task_id]["benchmark_start_time"]
+                        task_info.start_time.strftime("%Y-%m-%dT%H:%M:%S+00:00")
                     ),
-                    test_name=challenge_info.name,
+                    test_name=challenge.info.name,
                 ),
                 task_info=TaskInfo(
-                    data_path=str(
-                        challenge_info.spec_file.relative_to(challenges_path.parent)
-                    ),
+                    data_path=challenge.info.source_uri,
                     is_regression=None,
-                    category=[c.value for c in challenge_info.category],
-                    task=challenge_info.task,
-                    answer=challenge_info.ground.answer,
-                    description=challenge_info.info.description,
+                    category=[c.value for c in challenge.info.category],
+                    task=challenge.info.task,
+                    answer=challenge.info.reference_answer or "",
+                    description=challenge.info.description or "",
                 ),
                 metrics=Metrics(
-                    success=is_score_100,
+                    success=all(e.passed for e in eval_results),
+                    success_percentage=(
+                        100 * sum(e.score for e in eval_results) / len(eval_results)
+                        if eval_results  # avoid division by 0
+                        else 0
+                    ),
                     attempted=True,
                 ),
                 config={},

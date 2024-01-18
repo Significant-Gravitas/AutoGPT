@@ -3,14 +3,26 @@ import json
 import logging
 from pathlib import Path
 
+from .base import BaseChallenge, ChallengeInfo
+from .builtin import OPTIONAL_CATEGORIES
+
 logger = logging.getLogger(__name__)
+
+
+def get_challenge_from_source_uri(source_uri: str) -> type[BaseChallenge]:
+    from .builtin import BuiltinChallenge
+
+    provider_prefix = source_uri.split("/", 1)[0]
+
+    if provider_prefix == BuiltinChallenge.SOURCE_URI_PREFIX:
+        return BuiltinChallenge.from_source_uri(source_uri)
+
+    raise ValueError(f"Cannot resolve source_uri '{source_uri}'")
 
 
 def get_unique_categories() -> set[str]:
     """
-    Find all data.json files in the directory relative to this file and its
-    subdirectories, read the "category" field from each file, and return a set of unique
-    categories.
+    Reads all challenge spec files and returns a set of all their categories.
     """
     categories = set()
 
@@ -30,3 +42,11 @@ def get_unique_categories() -> set[str]:
                 continue
 
     return categories
+
+
+__all__ = [
+    "BaseChallenge",
+    "ChallengeInfo",
+    "get_unique_categories",
+    "OPTIONAL_CATEGORIES",
+]
