@@ -1,1 +1,1 @@
-from .registry import ActionRegister, Action, action, ActionParameter
+from .registry import Action, ActionParameter, ActionRegister, action

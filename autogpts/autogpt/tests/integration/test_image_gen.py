@@ -18,7 +18,7 @@ def image_size(request):
 
 @pytest.mark.requires_openai_api_key
 @pytest.mark.vcr
-def test_dalle(agent: Agent, workspace, image_size, patched_api_requestor):
+def test_dalle(agent: Agent, workspace, image_size, cached_openai_client):
     """Test DALL-E image generation."""
     generate_and_validate(
         agent,

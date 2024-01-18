@@ -7,9 +7,7 @@ from autogpt.commands.web_selenium import BrowsingError, read_webpage
 @pytest.mark.vcr
 @pytest.mark.requires_openai_api_key
 @pytest.mark.asyncio
-async def test_browse_website_nonexistent_url(
-    agent: Agent, patched_api_requestor: None
-):
+async def test_browse_website_nonexistent_url(agent: Agent, cached_openai_client: None):
     url = "https://auto-gpt-thinks-this-website-does-not-exist.com"
     question = "How to execute a barrel roll"
 

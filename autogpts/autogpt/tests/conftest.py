@@ -70,7 +70,7 @@ def temp_plugins_config_file():
     yield config_file
 
 
-@pytest.fixture()
+@pytest.fixture(scope="function")
 def config(
     temp_plugins_config_file: Path,
     tmp_project_root: Path,

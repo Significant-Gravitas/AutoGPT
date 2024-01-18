@@ -9,10 +9,10 @@ import tempfile
 from pathlib import Path
 from typing import Any, ClassVar, Iterator, Literal, Optional
 
-import openai
 import pytest
 from agent_protocol_client import AgentApi, ApiClient, Configuration as ClientConfig
 from colorama import Fore, Style
+from openai import _load_client as get_openai_client
 from pydantic import BaseModel, constr, Field, validator
 
 from agbenchmark.agent_api_interface import download_agent_artifacts_into_folder
@@ -30,9 +30,7 @@ from .base import BaseChallenge, ChallengeInfo
 
 logger = logging.getLogger(__name__)
 
-with open(
-    Path(__file__).parent / "optional_categories.json"
-) as f:
+with open(Path(__file__).parent / "optional_categories.json") as f:
     OPTIONAL_CATEGORIES: list[str] = json.load(f)["optional_categories"]
 
 
@@ -124,7 +122,7 @@ class BuiltinChallenge(BaseChallenge):
             reference_answer=spec.ground.answer,
             source_uri=(
                 f"__BUILTIN__/{spec.spec_file.relative_to(Path(__file__).parent)}"
-            )
+            ),
         )
 
         challenge_class_name = f"Test{challenge_info.name}"
@@ -177,6 +175,9 @@ class BuiltinChallenge(BaseChallenge):
             async for step in self.run_challenge(config, timeout):
                 if not task_id:
                     task_id = step.task_id
+                if request.config.getoption("--mock"):
+                    # Run only one step in mock mode
+                    break
             timed_out = False
         except TimeoutError:
             timed_out = True
@@ -193,17 +194,20 @@ class BuiltinChallenge(BaseChallenge):
             else:
                 raise ValueError("No results to evaluate")
 
-        request.node.user_properties.append((
-            "answers",
-            [r.result for r in eval_results]
-            if request.config.getoption("--keep-answers")
-            else None
-        ))
+        request.node.user_properties.append(
+            (
+                "answers",
+                [r.result for r in eval_results]
+                if request.config.getoption("--keep-answers")
+                else None,
+            )
+        )
         request.node.user_properties.append(("scores", [r.score for r in eval_results]))
 
         # FIXME: this allows partial failure
         assert any(r.passed for r in eval_results), (
-            f"No passed evals: {eval_results}" if not timed_out
+            f"No passed evals: {eval_results}"
+            if not timed_out
             else f"Timed out; no passed evals: {eval_results}"
         )
 
@@ -213,9 +217,7 @@ class BuiltinChallenge(BaseChallenge):
     ) -> list[EvalResult]:
         with tempfile.TemporaryDirectory() as workspace:
             workspace = Path(workspace)
-            await download_agent_artifacts_into_folder(
-                agent, task_id, workspace
-            )
+            await download_agent_artifacts_into_folder(agent, task_id, workspace)
             if cls.info.task_artifacts_dir:
                 copy_challenge_artifacts_into_workspace(
                     cls.info.task_artifacts_dir, "custom_python", workspace
@@ -298,7 +300,7 @@ class BuiltinChallenge(BaseChallenge):
                         assert False, result.stderr
                     yield (
                         Path(file_path).relative_to(workspace),
-                        f"Output: {result.stdout}\n"
+                        f"Output: {result.stdout}\n",
                     )
                 else:
                     with open(file_path, "r") as f:
@@ -317,9 +319,7 @@ class BuiltinChallenge(BaseChallenge):
                 yield "pytest", f"Output: {result.stdout}\n"
 
     @staticmethod
-    def score_result(
-        content: str, ground: BuiltinChallengeSpec.Ground
-    ) -> float | None:
+    def score_result(content: str, ground: BuiltinChallengeSpec.Ground) -> float | None:
         print(f"{Fore.BLUE}Scoring content:{Style.RESET_ALL}", content)
         if ground.should_contain:
             for should_contain_word in ground.should_contain:
@@ -371,14 +371,14 @@ class BuiltinChallenge(BaseChallenge):
 
         prompt += END_PROMPT
 
-        answer = openai.ChatCompletion.create(
+        answer = get_openai_client().chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": prompt},
             ],
         )
 
-        return float(answer["choices"][0]["message"]["content"])  # type: ignore
+        return float(answer.choices[0].message.content)  # type: ignore
 
 
 def load_builtin_challenges() -> Iterator[type[BuiltinChallenge]]:

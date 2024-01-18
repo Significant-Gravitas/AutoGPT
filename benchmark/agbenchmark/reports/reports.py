@@ -11,8 +11,9 @@ from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.reports.processing.report_types import Metrics, Test
 from agbenchmark.reports.ReportManager import SingletonReportManager
 from agbenchmark.utils.data_types import DifficultyLevel
-from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
 from agbenchmark.utils.utils import calculate_success_percentage
+
+# from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
 
 logger = logging.getLogger(__name__)
 
@@ -115,13 +116,10 @@ def finalize_test_report(
     update_regression_tests(prev_test_results, info_details, test_name)
 
     if info_details and test_name:
-        cost = None
-        if "--mock" not in sys.argv and os.environ.get("HELICONE_API_KEY"):
-            logger.debug("Getting cost from Helicone")
-            cost = get_data_from_helicone(test_name)
-            logger.debug(f"Cost: {cost}")
-
-        info_details.metrics.cost = cost
+        # if "--mock" not in sys.argv and os.environ.get("HELICONE_API_KEY"):
+        #     logger.debug("Getting cost from Helicone")
+        #     info_details.metrics.cost = get_data_from_helicone(test_name)
+        #     logger.debug(f"Cost: {cost}")
 
         if "--mock" not in sys.argv:
             update_challenges_already_beaten(

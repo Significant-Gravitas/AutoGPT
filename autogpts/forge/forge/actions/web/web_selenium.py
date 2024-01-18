@@ -5,13 +5,16 @@ from __future__ import annotations
 COMMAND_CATEGORY = "web_browse"
 COMMAND_CATEGORY_TITLE = "Web Browsing"
 
+import functools
 import logging
 import re
 from pathlib import Path
 from sys import platform
-from typing import TYPE_CHECKING, Optional, Type, List, Tuple
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, Type
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
+from requests.compat import urljoin
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeDriverService
@@ -33,19 +36,9 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
+from forge.sdk.errors import CommandExecutionError
 
 from ..registry import action
-from forge.sdk.errors import *
-import functools
-import re
-from typing import Any, Callable
-from urllib.parse import urljoin, urlparse
-
-from requests.compat import urljoin
-
-
-from bs4 import BeautifulSoup
-from requests.compat import urljoin
 
 
 def extract_hyperlinks(soup: BeautifulSoup, base_url: str) -> list[tuple[str, str]]:

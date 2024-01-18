@@ -1,8 +1,9 @@
-from .memstore import MemStore
+import hashlib
 
 import chromadb
 from chromadb.config import Settings
-import hashlib
+
+from .memstore import MemStore
 
 
 class ChromaMemStore:
