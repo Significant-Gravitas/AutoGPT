@@ -85,7 +85,9 @@ class BaseChallenge(ABC):
         print()
         logger.debug(f"Starting {cls.info.name} challenge run")
         i = 0
-        async for step in run_api_agent(cls.info.task, config, timeout):
+        async for step in run_api_agent(
+            cls.info.task, config, timeout, cls.info.task_artifacts_dir
+        ):
             i += 1
             print(f"[{cls.info.name}] - step {step.name} ({i}. request)")
             yield step
