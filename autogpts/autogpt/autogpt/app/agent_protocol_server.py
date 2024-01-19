@@ -34,6 +34,7 @@ from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
+from autogpt.core.resource.model_providers.schema import ModelProviderBudget
 from autogpt.file_workspace import (
     FileWorkspace,
     FileWorkspaceBackendName,
@@ -46,6 +47,8 @@ logger = logging.getLogger(__name__)
 
 
 class AgentProtocolServer:
+    _task_budgets: dict[str, ModelProviderBudget]
+
     def __init__(
         self,
         app_config: Config,
@@ -56,6 +59,7 @@ class AgentProtocolServer:
         self.db = database
         self.llm_provider = llm_provider
         self.agent_manager = AgentManager(app_data_dir=app_config.app_data_dir)
+        self._task_budgets = {}
 
     async def start(self, port: int = 8000, router: APIRouter = base_router):
         """Start the agent server."""
@@ -127,10 +131,13 @@ class AgentProtocolServer:
             app_config=self.app_config,
             llm_provider=self._get_task_llm_provider(task),
         )
+
+        # Assign an ID and a folder to the Agent and persist it
         agent_id = task_agent.state.agent_id = task_agent_id(task.task_id)
         logger.debug(f"New agent ID: {agent_id}")
         task_agent.attach_fs(self.app_config.app_data_dir / "agents" / agent_id)
         task_agent.state.save_to_json_file(task_agent.file_manager.state_file_path)
+
         return task
 
     async def list_tasks(self, page: int = 1, pageSize: int = 10) -> TaskListResponse:
@@ -224,6 +231,10 @@ class AgentProtocolServer:
                     step_id=step.step_id,
                     output=execute_command_args["reason"],
                 )
+                logger.info(
+                    f"Total LLM cost for task {task_id}: "
+                    f"${round(agent.llm_provider.get_incurred_cost(), 2)}"
+                )
                 return step
 
             if execute_command == ask_user.__name__:  # HACK
@@ -310,6 +321,10 @@ class AgentProtocolServer:
             additional_output=additional_output,
         )
 
+        logger.debug(
+            f"Running total LLM cost for task {task_id}: "
+            f"${round(agent.llm_provider.get_incurred_cost(), 2)}"
+        )
         agent.state.save_to_json_file(agent.file_manager.state_file_path)
         return step
 
@@ -437,6 +452,12 @@ class AgentProtocolServer:
         task_llm_provider_config = self.llm_provider._configuration.copy(deep=True)
         _extra_request_headers = task_llm_provider_config.extra_request_headers
 
+        task_llm_budget = self._task_budgets.get(
+            task.task_id, self.llm_provider.default_settings.budget.copy(deep=True)
+        )
+        if task.task_id not in self._task_budgets:
+            self._task_budgets[task.task_id] = task_llm_budget
+
         _extra_request_headers["AP-TaskID"] = task.task_id
         if step_id:
             _extra_request_headers["AP-StepID"] = step_id
@@ -445,7 +466,8 @@ class AgentProtocolServer:
 
         if isinstance(self.llm_provider, OpenAIProvider):
             settings = self.llm_provider._settings.copy()
-            settings.configuration = task_llm_provider_config
+            settings.budget = task_llm_budget
+            settings.configuration = task_llm_provider_config  # type: ignore
             return OpenAIProvider(
                 settings=settings,
                 logger=logger.getChild(f"Task-{task.task_id}_OpenAIProvider"),

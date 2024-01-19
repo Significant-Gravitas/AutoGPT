@@ -371,6 +371,11 @@ async def run_auto_gpt_server(
     )
     await server.start(port=port)
 
+    logging.getLogger().info(
+        f"Total OpenAI session cost: "
+        f"${round(sum(b.total_cost for b in server._task_budgets.values()), 2)}"
+    )
+
 
 def _configure_openai_provider(config: Config) -> OpenAIProvider:
     """Create a configured OpenAIProvider object.
