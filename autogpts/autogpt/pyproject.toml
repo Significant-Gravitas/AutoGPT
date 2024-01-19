@@ -24,7 +24,7 @@ serve = "autogpt.app.cli:serve"
 python = "^3.10"
 auto-gpt-plugin-template = {git = "https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template", rev = "0.1.0"}
 # autogpt-forge = { path = "../forge" }
-autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "autogpts/forge"}
+autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", rev = "b238aba", subdirectory = "autogpts/forge"}
 beautifulsoup4 = "^4.12.2"
 boto3 = "^1.33.6"
 charset-normalizer = "^3.1.0"
