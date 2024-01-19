@@ -31,8 +31,12 @@ class ProviderBudget(SystemConfiguration):
     usage: ProviderUsage
 
     @abc.abstractmethod
-    def update_usage_and_cost(self, *args, **kwargs) -> None:
-        """Update the usage and cost of the resource."""
+    def update_usage_and_cost(self, *args, **kwargs) -> float:
+        """Update the usage and cost of the provider.
+
+        Returns:
+            float: The (calculated) cost of the given model response.
+        """
         ...
 
 
