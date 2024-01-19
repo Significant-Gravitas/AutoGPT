@@ -241,15 +241,10 @@ class OpenAICredentials(ModelProviderCredentials):
         return {"model": deployment_id}
 
 
-class OpenAIModelProviderBudget(ModelProviderBudget):
-    graceful_shutdown_threshold: float = UserConfigurable()
-    warning_threshold: float = UserConfigurable()
-
-
 class OpenAISettings(ModelProviderSettings):
     configuration: OpenAIConfiguration
     credentials: Optional[OpenAICredentials]
-    budget: OpenAIModelProviderBudget
+    budget: ModelProviderBudget
 
 
 class OpenAIProvider(
@@ -262,7 +257,7 @@ class OpenAIProvider(
             retries_per_request=10,
         ),
         credentials=None,
-        budget=OpenAIModelProviderBudget(
+        budget=ModelProviderBudget(
             total_budget=math.inf,
             total_cost=0.0,
             remaining_budget=math.inf,
@@ -271,11 +266,10 @@ class OpenAIProvider(
                 completion_tokens=0,
                 total_tokens=0,
             ),
-            graceful_shutdown_threshold=0.005,
-            warning_threshold=0.01,
         ),
     )
 
+    _budget: ModelProviderBudget
     _configuration: OpenAIConfiguration
 
     def __init__(
@@ -306,10 +300,6 @@ class OpenAIProvider(
     def get_token_limit(self, model_name: str) -> int:
         """Get the token limit for a given model."""
         return OPEN_AI_MODELS[model_name].max_tokens
-
-    def get_remaining_budget(self) -> float:
-        """Get the remaining budget."""
-        return self._budget.remaining_budget
 
     @classmethod
     def get_tokenizer(cls, model_name: OpenAIModelName) -> ModelTokenizer:
@@ -379,45 +369,60 @@ class OpenAIProvider(
             model_prompt += completion_kwargs["messages"]
             del completion_kwargs["messages"]
 
+        cost = 0.0
         attempts = 0
         while True:
-            response = await self._create_chat_completion(
+            _response = await self._create_chat_completion(
                 messages=model_prompt,
                 **completion_kwargs,
             )
 
-            response_message = response.choices[0].message
+            _response_msg = _response.choices[0].message
             if (
                 tool_calls_compat_mode
-                and response_message.content
-                and not response_message.tool_calls
+                and _response_msg.content
+                and not _response_msg.tool_calls
             ):
                 tool_calls = list(
-                    _tool_calls_compat_extract_calls(response_message.content)
+                    _tool_calls_compat_extract_calls(_response_msg.content)
                 )
-            elif response_message.tool_calls:
+            elif _response_msg.tool_calls:
                 tool_calls = [
-                    AssistantToolCall(**tc.dict()) for tc in response_message.tool_calls
+                    AssistantToolCall(**tc.dict()) for tc in _response_msg.tool_calls
                 ]
             else:
                 tool_calls = None
 
             assistant_message = AssistantChatMessage(
-                content=response_message.content,
+                content=_response_msg.content,
                 tool_calls=tool_calls,
+            )
+
+            response = ChatModelResponse(
+                response=assistant_message,
+                model_info=OPEN_AI_CHAT_MODELS[model_name],
+                prompt_tokens_used=(
+                    _response.usage.prompt_tokens if _response.usage else 0
+                ),
+                completion_tokens_used=(
+                    _response.usage.completion_tokens if _response.usage else 0
+                ),
+            )
+            cost += self._budget.update_usage_and_cost(response)
+            self._logger.debug(
+                f"Completion usage: {response.prompt_tokens_used} input, "
+                f"{response.completion_tokens_used} output - ${round(cost, 2)}"
             )
 
             # If parsing the response fails, append the error to the prompt, and let the
             # LLM fix its mistake(s).
             try:
                 attempts += 1
-                parsed_response = completion_parser(assistant_message)
+                response.parsed_result = completion_parser(assistant_message)
                 break
             except Exception as e:
                 self._logger.warning(f"Parsing attempt #{attempts} failed: {e}")
-                self._logger.debug(
-                    f"Parsing failed on response: '''{response_message}'''"
-                )
+                self._logger.debug(f"Parsing failed on response: '''{_response_msg}'''")
                 if attempts < self._configuration.fix_failed_parse_tries:
                     model_prompt.append(
                         ChatMessage.system(f"ERROR PARSING YOUR RESPONSE:\n\n{e}")
@@ -425,16 +430,9 @@ class OpenAIProvider(
                 else:
                     raise
 
-        response = ChatModelResponse(
-            response=assistant_message,
-            parsed_result=parsed_response,
-            model_info=OPEN_AI_CHAT_MODELS[model_name],
-            prompt_tokens_used=response.usage.prompt_tokens if response.usage else 0,
-            completion_tokens_used=(
-                response.usage.completion_tokens if response.usage else 0
-            ),
-        )
-        self._budget.update_usage_and_cost(response)
+        if attempts > 1:
+            self._logger.debug(f"Total cost for {attempts} attempts: {round(cost, 2)}")
+
         return response
 
     async def create_embedding(
