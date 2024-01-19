@@ -1,5 +1,6 @@
 import abc
 import enum
+import math
 from typing import (
     Callable,
     ClassVar,
@@ -208,8 +209,12 @@ class ModelProviderBudget(ProviderBudget):
     def update_usage_and_cost(
         self,
         model_response: ModelResponse,
-    ) -> None:
-        """Update the usage and cost of the provider."""
+    ) -> float:
+        """Update the usage and cost of the provider.
+
+        Returns:
+            float: The (calculated) cost of the given model response.
+        """
         model_info = model_response.model_info
         self.usage.update_usage(model_response)
         incurred_cost = (
@@ -218,6 +223,7 @@ class ModelProviderBudget(ProviderBudget):
         )
         self.total_cost += incurred_cost
         self.remaining_budget -= incurred_cost
+        return incurred_cost
 
 
 class ModelProviderSettings(ProviderSettings):
@@ -232,6 +238,7 @@ class ModelProvider(abc.ABC):
 
     default_settings: ClassVar[ModelProviderSettings]
 
+    _budget: Optional[ModelProviderBudget]
     _configuration: ModelProviderConfiguration
 
     @abc.abstractmethod
@@ -246,9 +253,15 @@ class ModelProvider(abc.ABC):
     def get_token_limit(self, model_name: str) -> int:
         ...
 
-    @abc.abstractmethod
+    def get_incurred_cost(self) -> float:
+        if self._budget:
+            return self._budget.total_cost
+        return 0
+
     def get_remaining_budget(self) -> float:
-        ...
+        if self._budget:
+            return self._budget.remaining_budget
+        return math.inf
 
 
 class ModelTokenizer(Protocol):
