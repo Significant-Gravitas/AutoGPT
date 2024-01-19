@@ -43,7 +43,7 @@ site_info_map: dict[WebArenaSite, WebArenaSiteInfo] = {
             "WEBARENA_GIT_CREDENTIALS not set (correctly): "
             f"'{os.getenv('WEBARENA_GIT_CREDENTIALS', '')}', "
             "should be USERNAME:PASSWORD."
-        )
+        ),
     ),
     "map": WebArenaSiteInfo(
         base_url="http://ec2-3-131-244-37.us-east-2.compute.amazonaws.com:3000/"
@@ -163,7 +163,6 @@ _Eval = StringEval | UrlMatchEval | ProgramHtmlEval
 
 
 class WebArenaChallengeSpec(BaseModel):
-
     task_id: int
     sites: list[WebArenaSite]
     """The sites needed to complete the task"""
@@ -181,7 +180,6 @@ class WebArenaChallengeSpec(BaseModel):
     instantiation_dict: dict[str, str | list[str]]
 
     class EvalSet(BaseModel):
-
         class StringMatchEvalSet(BaseModel):
             exact_match: str | None
             fuzzy_match: list[str] | None
@@ -284,7 +282,10 @@ class WebArenaChallenge(BaseChallenge):
             eval_id=f"junglegym-webarena-{spec.task_id}",
             name=f"WebArenaTask_{spec.task_id}",
             task=spec.assignment_for_agent,
-            category=[Category.GENERALIST, Category.WEB],  # TODO: make categories more specific
+            category=[
+                Category.GENERALIST,
+                Category.WEB,
+            ],  # TODO: make categories more specific
             reference_answer=spec.eval.reference_answer_raw_annotation,
             source_uri=cls.SOURCE_URI_TEMPLATE.format(task_id=spec.task_id),
         )
@@ -294,7 +295,7 @@ class WebArenaChallenge(BaseChallenge):
             {
                 "info": challenge_info,
                 "_spec": spec,
-            }
+            },
         )
 
     @classmethod
@@ -302,15 +303,17 @@ class WebArenaChallenge(BaseChallenge):
         results: list[tuple[_Eval, EvalResult]] = []
         for evaluator in cls._spec.eval.evaluators:
             if isinstance(evaluator, StringEval):  # string_match
-                results.append((
-                    evaluator,
-                    EvalResult(
-                        result=answer,
-                        result_source="step_output",
-                        score=evaluator.evaluate(answer),
-                        passed=evaluator.evaluate(answer),
+                results.append(
+                    (
+                        evaluator,
+                        EvalResult(
+                            result=answer,
+                            result_source="step_output",
+                            score=evaluator.evaluate(answer),
+                            passed=evaluator.evaluate(answer),
+                        ),
                     )
-                ))
+                )
         return results
 
     @classmethod
@@ -320,15 +323,17 @@ class WebArenaChallenge(BaseChallenge):
         for eval in cls._spec.eval.evaluators:
             if isinstance(eval, UrlMatchEval):
                 passed = resolve_uri(eval.url) in step.output  # HACK: url_match bodge
-                eval_results.append((
-                    eval,
-                    EvalResult(
-                        result=step.output,
-                        result_source="step_output",
-                        score=1.0 if passed else 0.0,
-                        passed=passed,
+                eval_results.append(
+                    (
+                        eval,
+                        EvalResult(
+                            result=step.output,
+                            result_source="step_output",
+                            score=1.0 if passed else 0.0,
+                            passed=passed,
+                        ),
                     )
-                ))
+                )
             # TODO: add support for program_html evals
         return eval_results
 
@@ -372,11 +377,14 @@ class WebArenaChallenge(BaseChallenge):
                 logger.debug(f"Intermediary results: {step_eval_results}")
                 eval_results_per_step.append(step_eval_results)
                 if step.is_last:
-                    request.node.user_properties.append((
-                        "answers",
-                        step.output if request.config.getoption("--keep-answers")
-                        else None
-                    ))
+                    request.node.user_properties.append(
+                        (
+                            "answers",
+                            step.output
+                            if request.config.getoption("--keep-answers")
+                            else None,
+                        )
+                    )
             timed_out = False
         except TimeoutError:
             timed_out = True
@@ -395,17 +403,16 @@ class WebArenaChallenge(BaseChallenge):
             else:
                 raise ValueError("No results to evaluate")
 
-        request.node.user_properties.append((
-            "scores", [r[1].score for r in evals_results]
-        ))
+        request.node.user_properties.append(
+            ("scores", [r[1].score for r in evals_results])
+        )
 
         # FIXME: arbitrary threshold
         assert all(r[1].score > 0.9 for r in evals_results), (
-            (
-                "Scores insufficient:\n\n" if not timed_out
-                else "Timed out; scores insufficient:\n\n"
-            ) + "\n".join(f"{repr(r[0])}\n  -> {repr(r[1])}" for r in evals_results)
-        )
+            "Scores insufficient:\n\n"
+            if not timed_out
+            else "Timed out; scores insufficient:\n\n"
+        ) + "\n".join(f"{repr(r[0])}\n  -> {repr(r[1])}" for r in evals_results)
 
 
 def load_webarena_challenges() -> Iterator[type[WebArenaChallenge]]:
@@ -418,8 +425,16 @@ def load_webarena_challenges() -> Iterator[type[WebArenaChallenge]]:
                 "Skipping all challenges which use this site."
             )
 
-    response = requests.get("https://api.junglegym.ai/get_full_webarena_dataset")
-    challenge_dicts = response.json()["data"]
+    # response = requests.get("https://api.junglegym.ai/get_full_webarena_dataset")
+    # challenge_dicts = response.json()["data"]
+
+    # Until the full WebArena challenge set is supported, use a hand-picked selection
+    import json
+    from pathlib import Path
+
+    challenge_dicts = json.loads(
+        (Path(__file__).parent / "webarena_selection.json").read_bytes()
+    )
 
     logger.debug(
         "Fetched WebArena dataset. "
