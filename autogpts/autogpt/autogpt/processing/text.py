@@ -119,7 +119,7 @@ async def summarize_text(
                 temperature=0,
                 max_tokens=500,
             )
-        ).response["content"]
+        ).response.content
 
         logger.debug(f"\n{'-'*16} SUMMARY {'-'*17}\n{summary}\n{'-'*42}\n")
         return summary.strip(), None
