@@ -7,15 +7,17 @@ classes in the module that conform to the `Test*` pattern are collected.
 
 import importlib
 import logging
+from itertools import chain
 
 from agbenchmark.challenges.builtin import load_builtin_challenges
+from agbenchmark.challenges.webarena import load_webarena_challenges
 
 logger = logging.getLogger(__name__)
 
 DATA_CATEGORY = {}
 
 # Load challenges and attach them to this module
-for challenge in load_builtin_challenges():
+for challenge in chain(load_builtin_challenges(), load_webarena_challenges()):
     # Attach the Challenge class to this module so it can be discovered by pytest
     module = importlib.import_module(__name__)
     setattr(module, challenge.__name__, challenge)
