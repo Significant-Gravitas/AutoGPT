@@ -96,7 +96,6 @@ def finalize_test_report(
 
     mock = os.getenv("IS_MOCK")  # Check if --mock is in sys.argv
 
-    logger.debug(f"Finalizing report with CallInfo: {vars(call)}")
     if call.excinfo is None:
         info_details.metrics.success = True
     else:
@@ -135,17 +134,15 @@ def update_challenges_already_beaten(
     current_run_successful = info_details.metrics.success
     try:
         with open(challenges_already_beaten_file, "r") as f:
-            challenge_data = json.load(f)
+            challenges_beaten_before = json.load(f)
     except FileNotFoundError:
-        challenge_data = {}
-    challenge_beaten_in_the_past = challenge_data.get(test_name)
+        challenges_beaten_before = {}
 
-    challenge_data[test_name] = True
-    if challenge_beaten_in_the_past is None and not current_run_successful:
-        challenge_data[test_name] = False
+    has_ever_been_beaten = challenges_beaten_before.get(test_name)
+    challenges_beaten_before[test_name] = has_ever_been_beaten or current_run_successful
 
     with open(challenges_already_beaten_file, "w") as f:
-        json.dump(challenge_data, f, indent=4)
+        json.dump(challenges_beaten_before, f, indent=4)
 
 
 def session_finish(agbenchmark_config: AgentBenchmarkConfig) -> None:
