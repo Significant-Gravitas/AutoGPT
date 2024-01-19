@@ -411,7 +411,7 @@ class OpenAIProvider(
             cost += self._budget.update_usage_and_cost(response)
             self._logger.debug(
                 f"Completion usage: {response.prompt_tokens_used} input, "
-                f"{response.completion_tokens_used} output - ${round(cost, 2)}"
+                f"{response.completion_tokens_used} output - ${round(cost, 5)}"
             )
 
             # If parsing the response fails, append the error to the prompt, and let the
@@ -431,7 +431,7 @@ class OpenAIProvider(
                     raise
 
         if attempts > 1:
-            self._logger.debug(f"Total cost for {attempts} attempts: {round(cost, 2)}")
+            self._logger.debug(f"Total cost for {attempts} attempts: ${round(cost, 5)}")
 
         return response
 
