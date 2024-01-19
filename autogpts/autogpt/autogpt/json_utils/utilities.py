@@ -18,7 +18,7 @@ def extract_dict_from_response(response_content: str) -> dict[str, Any]:
         response_content = response_content.lstrip("json")
     else:
         # The string may contain JSON.
-        json_pattern = r"{.*}"
+        json_pattern = r"{[\s\S]*}"
         match = re.search(json_pattern, response_content)
 
         if match:

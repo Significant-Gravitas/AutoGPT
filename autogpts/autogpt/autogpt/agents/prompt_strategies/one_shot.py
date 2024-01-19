@@ -391,7 +391,19 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         if not response.content:
             raise InvalidAgentResponseError("Assistant response has no text content")
 
+        self.logger.debug(
+            "LLM response content:"
+            + (
+                f"\n{response.content}"
+                if "\n" in response.content
+                else f" '{response.content}'"
+            )
+        )
         assistant_reply_dict = extract_dict_from_response(response.content)
+        self.logger.debug(
+            "Validating object extracted from LLM response:\n"
+            f"{json.dumps(assistant_reply_dict, indent=4)}"
+        )
 
         _, errors = self.response_schema.validate_object(
             object=assistant_reply_dict,
