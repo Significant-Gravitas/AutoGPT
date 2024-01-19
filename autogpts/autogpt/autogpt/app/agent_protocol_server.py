@@ -323,7 +323,7 @@ class AgentProtocolServer:
 
         logger.debug(
             f"Running total LLM cost for task {task_id}: "
-            f"${round(agent.llm_provider.get_incurred_cost(), 2)}"
+            f"${round(agent.llm_provider.get_incurred_cost(), 3)}"
         )
         agent.state.save_to_json_file(agent.file_manager.state_file_path)
         return step
@@ -449,31 +449,32 @@ class AgentProtocolServer:
         """
         Configures the LLM provider with headers to link outgoing requests to the task.
         """
-        task_llm_provider_config = self.llm_provider._configuration.copy(deep=True)
-        _extra_request_headers = task_llm_provider_config.extra_request_headers
-
         task_llm_budget = self._task_budgets.get(
             task.task_id, self.llm_provider.default_settings.budget.copy(deep=True)
         )
-        if task.task_id not in self._task_budgets:
-            self._task_budgets[task.task_id] = task_llm_budget
 
+        task_llm_provider_config = self.llm_provider._configuration.copy(deep=True)
+        _extra_request_headers = task_llm_provider_config.extra_request_headers
         _extra_request_headers["AP-TaskID"] = task.task_id
         if step_id:
             _extra_request_headers["AP-StepID"] = step_id
         if task.additional_input and (user_id := task.additional_input.get("user_id")):
             _extra_request_headers["AutoGPT-UserID"] = user_id
 
+        task_llm_provider = None
         if isinstance(self.llm_provider, OpenAIProvider):
             settings = self.llm_provider._settings.copy()
             settings.budget = task_llm_budget
             settings.configuration = task_llm_provider_config  # type: ignore
-            return OpenAIProvider(
+            task_llm_provider = OpenAIProvider(
                 settings=settings,
                 logger=logger.getChild(f"Task-{task.task_id}_OpenAIProvider"),
             )
 
-        return self.llm_provider
+        if task_llm_provider and task_llm_provider._budget:
+            self._task_budgets[task.task_id] = task_llm_provider._budget
+
+        return task_llm_provider or self.llm_provider
 
 
 def task_agent_id(task_id: str | int) -> str:
