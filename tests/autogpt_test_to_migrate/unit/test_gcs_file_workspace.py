@@ -4,10 +4,15 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from autogpt.file_workspace.gcs import GCSFileWorkspace, GCSFileWorkspaceConfiguration
 from google.auth.exceptions import GoogleAuthError
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
+
+from AFAAS.core.workspace.gcs import (
+    GCSFileWorkspace_AlphaRealease,
+    GCSFileWorkspaceConfiguration,
+)
+from AFAAS.lib.task.task import Task
 
 try:
     storage.Client()
@@ -21,17 +26,17 @@ def gcs_bucket_name() -> str:
 
 
 @pytest.fixture
-def gcs_workspace_uninitialized(gcs_bucket_name: str) -> GCSFileWorkspace:
+def gcs_workspace_uninitialized(gcs_bucket_name: str) -> GCSFileWorkspace_AlphaRealease:
     os.environ["WORKSPACE_STORAGE_BUCKET"] = gcs_bucket_name
     ws_config = GCSFileWorkspaceConfiguration.from_env()
     ws_config.root = Path("/workspaces/AutoGPT-some-unique-task-id")
-    workspace = GCSFileWorkspace(ws_config)
+    workspace = GCSFileWorkspace_AlphaRealease(ws_config)
     yield workspace  # type: ignore
     del os.environ["WORKSPACE_STORAGE_BUCKET"]
 
 
 def test_initialize(
-    gcs_bucket_name: str, gcs_workspace_uninitialized: GCSFileWorkspace
+    gcs_bucket_name: str, gcs_workspace_uninitialized: GCSFileWorkspace_AlphaRealease
 ):
     gcs = gcs_workspace_uninitialized._gcs
 
@@ -49,7 +54,9 @@ def test_initialize(
 
 
 @pytest.fixture
-def gcs_workspace(gcs_workspace_uninitialized: GCSFileWorkspace) -> GCSFileWorkspace:
+def gcs_workspace(
+    gcs_workspace_uninitialized: GCSFileWorkspace_AlphaRealease,
+) -> GCSFileWorkspace_AlphaRealease:
     (gcs_workspace := gcs_workspace_uninitialized).initialize()
     yield gcs_workspace  # type: ignore
 
@@ -58,7 +65,7 @@ def gcs_workspace(gcs_workspace_uninitialized: GCSFileWorkspace) -> GCSFileWorks
 
 
 def test_workspace_bucket_name(
-    gcs_workspace: GCSFileWorkspace,
+    gcs_workspace: GCSFileWorkspace_AlphaRealease,
     gcs_bucket_name: str,
 ):
     assert gcs_workspace._bucket.name == gcs_bucket_name
@@ -74,7 +81,9 @@ TEST_FILES: list[tuple[str | Path, str]] = [
 
 
 @pytest_asyncio.fixture
-async def gcs_workspace_with_files(gcs_workspace: GCSFileWorkspace) -> GCSFileWorkspace:
+async def gcs_workspace_with_files(
+    gcs_workspace: GCSFileWorkspace_AlphaRealease,
+) -> GCSFileWorkspace_AlphaRealease:
     for file_name, file_content in TEST_FILES:
         gcs_workspace._bucket.blob(
             str(gcs_workspace.get_path(file_name))
@@ -83,7 +92,7 @@ async def gcs_workspace_with_files(gcs_workspace: GCSFileWorkspace) -> GCSFileWo
 
 
 @pytest.mark.asyncio
-async def test_read_file(gcs_workspace_with_files: GCSFileWorkspace):
+async def test_read_file(gcs_workspace_with_files: GCSFileWorkspace_AlphaRealease):
     for file_name, file_content in TEST_FILES:
         content = gcs_workspace_with_files.read_file(file_name)
         assert content == file_content
@@ -92,7 +101,7 @@ async def test_read_file(gcs_workspace_with_files: GCSFileWorkspace):
         gcs_workspace_with_files.read_file("non_existent_file")
 
 
-def test_list_files(gcs_workspace_with_files: GCSFileWorkspace):
+def test_list_files(gcs_workspace_with_files: GCSFileWorkspace_AlphaRealease):
     # List at root level
     assert (files := gcs_workspace_with_files.list()) == gcs_workspace_with_files.list()
     assert len(files) > 0
@@ -111,19 +120,19 @@ def test_list_files(gcs_workspace_with_files: GCSFileWorkspace):
 
 
 @pytest.mark.asyncio
-async def test_write_read_file(gcs_workspace: GCSFileWorkspace):
+async def test_write_read_file(gcs_workspace: GCSFileWorkspace_AlphaRealease):
     await gcs_workspace.write_file("test_file", "test_content")
     assert gcs_workspace.read_file("test_file") == "test_content"
 
 
 @pytest.mark.asyncio
-async def test_overwrite_file(gcs_workspace_with_files: GCSFileWorkspace):
+async def test_overwrite_file(gcs_workspace_with_files: GCSFileWorkspace_AlphaRealease):
     for file_name, _ in TEST_FILES:
         await gcs_workspace_with_files.write_file(file_name, "new content")
         assert gcs_workspace_with_files.read_file(file_name) == "new content"
 
 
-def test_delete_file(gcs_workspace_with_files: GCSFileWorkspace):
+def test_delete_file(gcs_workspace_with_files: GCSFileWorkspace_AlphaRealease):
     for file_to_delete, _ in TEST_FILES:
         gcs_workspace_with_files.delete_file(file_to_delete)
         with pytest.raises(NotFound):

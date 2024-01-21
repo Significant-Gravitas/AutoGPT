@@ -45,7 +45,7 @@ class ContextMixin:
 
         super(ContextMixin, self).__init__(**kwargs)
 
-    def build_prompt(
+    async def build_prompt(
         self,
         *args: Any,
         extra_messages: Optional[list[ChatMessage]] = None,

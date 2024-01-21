@@ -9,9 +9,10 @@ from AFAAS.core.workspace import AbstractFileWorkspace
 from AFAAS.interfaces.agent.main import BaseAgent
 from tests.dataset.plan_familly_dinner import (
     Task,
-    plan_familly_dinner,
+    _plan_familly_dinner,
+    default_task,
+    plan_familly_dinner_with_tasks_saved_in_db,
     plan_step_0,
-    task_ready_no_predecessors_or_subtasks,
 )
 
 
@@ -45,7 +46,7 @@ def test_nested_file(local_workspace: AbstractFileWorkspace):
 
 @pytest.fixture()
 def test_file_with_content_path(
-    task_ready_no_predecessors_or_subtasks: Task,
+    default_task: Task,
     test_file: TextIOWrapper,
     file_content,
     agent: BaseAgent,

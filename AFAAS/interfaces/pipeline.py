@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from typing import Any, Awaitable, Callable, Coroutine, Optional
 
 from AFAAS.interfaces.adapters import AbstractChatModelResponse
@@ -73,12 +74,21 @@ class Pipeline(BasePipeline):
             strategy_name=job.strategy.STRATEGY_NAME, model_response=model_response
         )
 
-        pipeline_response = job.response_post_process(
-            pipeline=self,
-            command_name=command_name,
-            command_args=command_args,
-            assistant_reply_dict=assistant_reply_dict,
-        )
+        if inspect.iscoroutinefunction(job.response_post_process):
+            pipeline_response = await job.response_post_process(
+                pipeline=self,
+                command_name=command_name,
+                command_args=command_args,
+                assistant_reply_dict=assistant_reply_dict,
+            )
+        else:
+            pipeline_response = job.response_post_process(
+                pipeline=self,
+                command_name=command_name,
+                command_args=command_args,
+                assistant_reply_dict=assistant_reply_dict,
+            )
+
         if job.autocorrection:
             import copy
 

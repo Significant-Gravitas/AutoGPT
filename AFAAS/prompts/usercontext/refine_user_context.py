@@ -293,7 +293,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             self.function_validate_goal,
         ]
 
-    def build_message(
+    async def build_message(
         self, interupt_refinement_process: bool, user_objective: str = "", **kwargs
     ) -> ChatPrompt:
         """

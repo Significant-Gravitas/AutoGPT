@@ -114,7 +114,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     default_configuration: PromptStrategiesConfiguration
 
     @abc.abstractmethod
-    def build_message(self, *_, **kwargs) -> ChatPrompt:
+    async def build_message(self, *_, **kwargs) -> ChatPrompt:
         ...
 
     @abc.abstractmethod
@@ -248,7 +248,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     def get_autocorrection_response(response: AbstractChatModelResponse):
         return response.parsed_result[0]["command_args"]["note_to_agent"]
 
-    def _build_jinja_message(
+    async def _build_jinja_message(
         self, task: AbstractTask, template_name: str, template_params: dict
     ) -> str:
         """Build a message using jinja2 template engine"""

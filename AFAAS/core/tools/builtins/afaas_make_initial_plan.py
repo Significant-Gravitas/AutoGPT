@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-from AFAAS.interfaces.task.meta import TaskStatusList
-
-TOOL_CATEGORY = "framework"
-TOOL_CATEGORY_TITLE = "Framework"
-
 from typing import TYPE_CHECKING
+
+from AFAAS.interfaces.task.meta import TaskStatusList
+from AFAAS.interfaces.tools.base import AbstractTool
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent.main import BaseAgent
 
-from AFAAS.core.tools.tool_decorator import tool
+from AFAAS.core.tools.tool_decorator import SAFE_MODE, tool
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.plan import Plan
 from AFAAS.lib.task.task import Task
@@ -25,6 +23,7 @@ LOG = AFAASLogger(name=__name__)
     description="Make a plan to tacle a tasks",
     # parameters = ,
     hide=True,
+    categories=[AbstractTool.FRAMEWORK_CATEGORY, "planning"],
 )
 async def afaas_make_initial_plan(task: Task, agent: BaseAgent) -> None:
     # plan =  self.execute_strategy(
@@ -45,13 +44,13 @@ async def afaas_make_initial_plan(task: Task, agent: BaseAgent) -> None:
     # TODO: Should probably do a step to evaluate the quality of the generated tasks,
     #  and ensure that they have actionable ready and acceptance criteria
 
-    agent.plan = Plan(
+    agent.plan = Plan.db_create(
         subtask=[Task.parse_obj(task) for task in plan.parsed_result["task_list"]],
         agent=agent,
     )
     agent.plan.subtasks.sort(key=lambda t: t.priority, reverse=True)
     agent._loop._current_task = agent.plan[-1]
-    agent._loop._current_task.context.status = TaskStatusList.READY
+    agent._loop._current_task.context.state = TaskStatusList.READY
     return plan
 
 
@@ -75,10 +74,10 @@ async def afaas_make_initial_plan(task: Task, agent: BaseAgent) -> None:
 #     # TODO: Should probably do a step to evaluate the quality of the generated tasks,
 #     #  and ensure that they have actionable ready and acceptance criteria
 
-#     agent.plan = Plan(
+#     agent.plan = Plan.create_in_db(
 #         tasks=[Task.parse_obj(task) for task in plan.parsed_result["task_list"]]
 #     )
 #     agent.plan.tasks.sort(key=lambda t: t.priority, reverse=True)
 #     agent._loop._current_task = agent.plan[-1]
-#     agent._loop._current_task.context.status = TaskStatusList.READY
+#     agent._loop._current_task.context.state = TaskStatusList.READY
 #     return plan

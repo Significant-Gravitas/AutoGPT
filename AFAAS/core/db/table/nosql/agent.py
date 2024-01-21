@@ -15,28 +15,28 @@ class AgentsTable(BaseNoSQLTable):
     if TYPE_CHECKING:
         from AFAAS.interfaces.agent.main import BaseAgent
 
-    def add(self, value: dict, id: str = "A" + str(uuid.uuid4())) -> str:
-        return super().add(value, id)
+    async def add(self, value: dict, id: str = "A" + str(uuid.uuid4())) -> str:
+        return await super().add(value, id)
 
     # NOTE : overwrite parent update
     # Perform any custom logic needed for updating an agent
-    def update(self, agent_id: str, user_id: str, value: dict):
+    async def update(self, agent_id: str, user_id: str, value: dict):
         key = AgentsTable.Key(
             primary_key=str(agent_id),
             secondary_key=str(user_id),
         )
-        return super().update(key=key, value=value)
+        return await super().update(key=key, value=value)
 
-    def delete(self, agent_id: str, user_id: str):
+    async def delete(self, agent_id: str, user_id: str):
         key = AgentsTable.Key(
             primary_key=str(agent_id),
             secondary_key=str(user_id),
         )
-        return super().delete(key=key)
+        return await super().delete(key=key)
 
-    def get(self, agent_id: str, user_id: str) -> BaseAgent:
+    async def get(self, agent_id: str, user_id: str) -> BaseAgent:
         key = AgentsTable.Key(
             primary_key=str(agent_id),
             secondary_key=str(user_id),
         )
-        return super().get(key=key)
+        return await super().get(key=key)

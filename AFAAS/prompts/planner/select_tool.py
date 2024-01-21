@@ -5,7 +5,7 @@ import uuid
 from typing import TYPE_CHECKING, Callable, Optional
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents.planner import PlannerAgent
+    from AFAAS.core.agents.planner.main import PlannerAgent
 
 
 # prompting
@@ -20,6 +20,14 @@ from AFAAS.interfaces.prompts.strategy import DefaultParsedResponse
 from AFAAS.interfaces.prompts.strategy_planning import (
     AbstractPlanningPromptStrategy,
     PlanningPromptStrategiesConfiguration,
+)
+from AFAAS.interfaces.prompts.utils.utils import (
+    indent,
+    json_loads,
+    to_dotted_list,
+    to_md_quotation,
+    to_numbered_list,
+    to_string_list,
 )
 from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.lib.action_history import Episode
@@ -60,10 +68,10 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
         self.note_to_agent_length = note_to_agent_length
         self.default_tool_choice = default_tool_choice
 
-    def build_message(self, *_, **kwargs) -> ChatPrompt:
+    async def build_message(self, *_, **kwargs) -> ChatPrompt:
         return self.build_prompt(*_, **kwargs)
 
-    def build_prompt(
+    async def build_prompt(
         self,
         task: AbstractTask,
         agent: "PlannerAgent",
@@ -102,7 +110,7 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
         messages = []
         messages.append(
             ChatMessage.system(
-                self._build_jinja_message(
+                await self._build_jinja_message(
                     task=task,
                     template_name=f"{self.STRATEGY_NAME}.jinja",
                     template_params=context,

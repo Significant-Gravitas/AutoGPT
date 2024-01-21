@@ -35,30 +35,30 @@ class AbstractTable(abc.ABC):
         pass
 
     table_name: str
-    memory: AbstractMemory
+    db: AbstractMemory
     primary_key: str
 
-    def __init__(self, memory: AbstractMemory) -> None:
-        self.memory = memory
+    def __init__(self, db: AbstractMemory) -> None:
+        self.db = db
 
     @abc.abstractmethod
-    def add(self, value: dict) -> uuid.UUID:
+    async def add(self, value: dict) -> str:
         ...
 
     @abc.abstractmethod
-    def get(self, key: Any) -> Any:
+    async def get(self, key: Any) -> Any:
         ...
 
     @abc.abstractmethod
-    def update(self, id: uuid, value: dict):
+    async def update(self, id: uuid, value: dict):
         ...
 
     @abc.abstractmethod
-    def delete(self, id: uuid):
+    async def delete(self, id: uuid):
         ...
 
     @abc.abstractmethod
-    def list(
+    async def list(
         self,
         filter: AbstractTable.FilterDict = {},
         order_column: Optional[str] = "modified_at",

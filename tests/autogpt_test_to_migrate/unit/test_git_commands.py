@@ -2,9 +2,10 @@ import pytest
 from git.exc import GitCommandError
 from git.repo.base import Repo
 
-from AFAAS.core.tools.git_operations import clone_repository
+from AFAAS.core.tools.untested.git_operations import clone_repository
 from AFAAS.interfaces.agent.main import BaseAgent
-from AFAAS.lib.sdk.errors import CommandExecutionError
+from AFAAS.lib.sdk.errors import ToolExecutionError
+from AFAAS.lib.task.task import Task
 
 
 @pytest.fixture
@@ -25,7 +26,7 @@ def test_clone_auto_gpt_repository(workspace, mock_clone_from, agent: BaseAgent)
     clone_result = clone_repository(
         url=url,
         clone_path=clone_path,
-        agent=task_ready_no_predecessors_or_subtasks.agent,
+        agent=default_task.agent,
     )
 
     assert clone_result == expected_output
@@ -43,9 +44,9 @@ def test_clone_repository_error(workspace, mock_clone_from, agent: BaseAgent):
         "clone", "fatal: repository not found", ""
     )
 
-    with pytest.raises(CommandExecutionError):
+    with pytest.raises(ToolExecutionError):
         clone_repository(
             url=url,
             clone_path=clone_path,
-            agent=task_ready_no_predecessors_or_subtasks.agent,
+            agent=default_task.agent,
         )

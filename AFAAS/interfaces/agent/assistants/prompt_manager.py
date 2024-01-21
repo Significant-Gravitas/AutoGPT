@@ -54,6 +54,8 @@ class BasePromptManager(AgentMixin):
             AfaasTaskRagStep3Strategy,
             AutoCorrectionStrategy,
             BaseTaskSummary_Strategy,
+            QueryLLMStrategy,
+            SearchInfo_Strategy,
             load_all_strategies,
         )
         common_strategies = [AutoCorrectionStrategy(
@@ -74,6 +76,12 @@ class BasePromptManager(AgentMixin):
         AfaasPostRagTaskUpdateStrategy(
                 **AfaasPostRagTaskUpdateStrategy.default_configuration.dict()
         ),
+        SearchInfo_Strategy(
+                **SearchInfo_Strategy.default_configuration.dict()
+        ),
+        QueryLLMStrategy(
+                **QueryLLMStrategy.default_configuration.dict()
+        )
 
         ]
 
@@ -138,7 +146,7 @@ class BasePromptManager(AgentMixin):
         template_kwargs.update(kwargs)
         template_kwargs.update(model_configuration)
 
-        prompt = prompt_strategy.build_message(**template_kwargs)
+        prompt = await prompt_strategy.build_message(**template_kwargs)
 
         response: AbstractChatModelResponse = await provider.create_chat_completion(
             chat_messages=prompt.messages,

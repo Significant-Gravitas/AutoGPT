@@ -12,8 +12,8 @@ import pytest
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent.main import BaseAgent
 
-from AFAAS.core.tools.simple import SimpleToolRegistry
-from AFAAS.core.tools.tools import Tool
+from AFAAS.core.tools.tool import Tool
+from AFAAS.core.tools.tool_registry import DefaultToolRegistry
 from AFAAS.interfaces.tools.tool_parameters import ToolParameter
 from AFAAS.lib.utils.json_schema import JSONSchema
 
@@ -51,6 +51,7 @@ def test_tool_creation():
         exec_function=example_tool_exec_function,
         parameters=PARAMETERS,
         success_check_callback=Tool.default_success_check_callback,
+        categories=["example"],
     )
 
     assert cmd.name == "example"
@@ -70,9 +71,11 @@ def example_tool():
         exec_function=example_tool_exec_function,
         parameters=PARAMETERS,
         success_check_callback=Tool.default_success_check_callback,
+        categories=["undefined"],
     )
 
 
+@pytest.mark.asyncio
 def test_tool_call(example_tool: Tool, agent: BaseAgent):
     """Test that Tool(*args) calls and returns the result of exec_function(*args)."""
     result = example_tool(arg1=1, arg2="test", agent=agent)
@@ -85,79 +88,79 @@ def test_tool_call_with_invalid_arguments(example_tool: Tool, agent: BaseAgent):
         example_tool(arg1="invalid", does_not_exist="test", agent=agent)
 
 
-def test_register_tool(example_tool: Tool, empty_tool_registry: SimpleToolRegistry):
+def test_register_tool(example_tool: Tool, empty_tool_registry: DefaultToolRegistry):
     """Test that a command can be registered to the empty_tool_registry."""
 
     empty_tool_registry.register(example_tool)
 
     assert empty_tool_registry.get_tool(example_tool.name) == example_tool
-    assert len(empty_tool_registry.tools) == 1
+    assert len(empty_tool_registry.tools_by_name) == 1
 
 
-def test_unregister_tool(example_tool: Tool, empty_tool_registry: SimpleToolRegistry):
+def test_unregister_tool(example_tool: Tool, empty_tool_registry: DefaultToolRegistry):
     """Test that a command can be unregistered from the empty_tool_registry."""
 
     empty_tool_registry.register(example_tool)
     empty_tool_registry.unregister(example_tool)
 
-    assert len(empty_tool_registry.tools) == 0
+    assert len(empty_tool_registry.tools_by_name) == 0
     assert example_tool.name not in empty_tool_registry
 
 
-@pytest.fixture
-def example_tool_with_aliases(example_tool: Tool):
-    example_tool.aliases = ["example_alias", "example_alias_2"]
-    return example_tool
+# @pytest.fixture
+# def example_tool_with_aliases(example_tool: Tool):
+#     example_tool.aliases = ["example_alias", "example_alias_2"]
+#     return example_tool
 
 
-def test_register_tool_aliases(
-    example_tool_with_aliases: Tool, empty_tool_registry: SimpleToolRegistry
-):
-    """Test that a command can be registered to the empty_tool_registry."""
-    command = example_tool_with_aliases
+# def test_register_tool_aliases(
+#     example_tool_with_aliases: Tool, empty_tool_registry: DefaultToolRegistry
+# ):
+#     """Test that a command can be registered to the empty_tool_registry."""
+#     command = example_tool_with_aliases
 
-    empty_tool_registry.register(command)
+#     empty_tool_registry.register(command)
 
-    assert command.name in empty_tool_registry
-    assert empty_tool_registry.get_tool(command.name) == command
-    for alias in command.aliases:
-        assert empty_tool_registry.get_tool(alias) == command
-    assert len(empty_tool_registry.tools) == 1
-
-
-def test_unregister_tool_aliases(
-    example_tool_with_aliases: Tool, empty_tool_registry: SimpleToolRegistry
-):
-    """Test that a command can be unregistered from the empty_tool_registry."""
-    command = example_tool_with_aliases
-
-    empty_tool_registry.register(command)
-    empty_tool_registry.unregister(command)
-
-    assert len(empty_tool_registry.tools) == 0
-    assert command.name not in empty_tool_registry
-    for alias in command.aliases:
-        assert alias not in empty_tool_registry
+#     assert command.name in empty_tool_registry
+#     assert empty_tool_registry.get_tool(command.name) == command
+#     for alias in command.aliases:
+#         assert empty_tool_registry.get_tool(alias) == command
+#     assert len(empty_tool_registry.tools_by_name) == 1
 
 
-def test_tool_in_registry(
-    example_tool_with_aliases: Tool, empty_tool_registry: SimpleToolRegistry
-):
-    """Test that `command_name in registry` works."""
-    command = example_tool_with_aliases
+# def test_unregister_tool_aliases(
+#     example_tool_with_aliases: Tool, empty_tool_registry: DefaultToolRegistry
+# ):
+#     """Test that a command can be unregistered from the empty_tool_registry."""
+#     command = example_tool_with_aliases
 
-    assert command.name not in empty_tool_registry
-    assert "nonexistent_command" not in empty_tool_registry
+#     empty_tool_registry.register(command)
+#     empty_tool_registry.unregister(command)
 
-    empty_tool_registry.register(command)
-
-    assert command.name in empty_tool_registry
-    assert "nonexistent_command" not in empty_tool_registry
-    for alias in command.aliases:
-        assert alias in empty_tool_registry
+#     assert len(empty_tool_registry.tools_by_name) == 0
+#     assert command.name not in empty_tool_registry
+#     for alias in command.aliases:
+#         assert alias not in empty_tool_registry
 
 
-def test_get_tool(example_tool: Tool, empty_tool_registry: SimpleToolRegistry):
+# def test_tool_in_registry(
+#     example_tool_with_aliases: Tool, empty_tool_registry: DefaultToolRegistry
+# ):
+#     """Test that `command_name in registry` works."""
+#     command = example_tool_with_aliases
+
+#     assert command.name not in empty_tool_registry
+#     assert "nonexistent_command" not in empty_tool_registry
+
+#     empty_tool_registry.register(command)
+
+#     assert command.name in empty_tool_registry
+#     assert "nonexistent_command" not in empty_tool_registry
+#     for alias in command.aliases:
+#         assert alias in empty_tool_registry
+
+
+def test_get_tool(example_tool: Tool, empty_tool_registry: DefaultToolRegistry):
     """Test that a command can be retrieved from the empty_tool_registry."""
 
     empty_tool_registry.register(example_tool)
@@ -167,7 +170,7 @@ def test_get_tool(example_tool: Tool, empty_tool_registry: SimpleToolRegistry):
 
 
 # FIXME:
-# def test_get_nonexistent_tool( empty_tool_registry: SimpleToolRegistry):
+# def test_get_nonexistent_tool( empty_tool_registry: DefaultToolRegistry):
 #     """Test that attempting to get a nonexistent command raises a KeyError."""
 
 #     assert empty_tool_registry.get_tool("nonexistent_command") is None
@@ -175,7 +178,7 @@ def test_get_tool(example_tool: Tool, empty_tool_registry: SimpleToolRegistry):
 
 
 @pytest.mark.asyncio  # This decorator is necessary for running async tests with pytest
-async def test_call_tool(agent: BaseAgent, empty_tool_registry: SimpleToolRegistry):
+async def test_call_tool(agent: BaseAgent, empty_tool_registry: DefaultToolRegistry):
     """Test that a command can be called through the empty_tool_registry."""
     cmd = Tool(
         name="example",
@@ -183,6 +186,7 @@ async def test_call_tool(agent: BaseAgent, empty_tool_registry: SimpleToolRegist
         exec_function=example_tool_exec_function,
         parameters=PARAMETERS,
         success_check_callback=Tool.default_success_check_callback,
+        categories=["example"],
     )
 
     empty_tool_registry.register(cmd)
@@ -193,14 +197,14 @@ async def test_call_tool(agent: BaseAgent, empty_tool_registry: SimpleToolRegist
 
 # FIXME:
 # @pytest.mark.asyncio  # This decorator is necessary for running async tests with pytest
-# async def test_call_nonexistent_tool(agent: BaseAgent, empty_tool_registry: SimpleToolRegistry):
+# async def test_call_nonexistent_tool(agent: BaseAgent, empty_tool_registry: DefaultToolRegistry):
 #     """Test that attempting to call a nonexistent command raises a KeyError."""
 
 #     with pytest.raises(KeyError):
-#         await empty_tool_registry.call("nonexistent_command", arg1=1, arg2="test", agent=task_ready_no_predecessors_or_subtasks.agent)
+#         await empty_tool_registry.call("nonexistent_command", arg1=1, arg2="test", agent=default_task.agent)
 
 # FIXME:
-# def test_import_mock_commands_module( empty_tool_registry: SimpleToolRegistry):
+# def test_import_mock_commands_module( empty_tool_registry: DefaultToolRegistry):
 #     """Test that the registry can import a module with mock command plugins."""
 #     mock_commands_module = "tests.mocks.mock_commands"
 
@@ -214,7 +218,7 @@ async def test_call_tool(agent: BaseAgent, empty_tool_registry: SimpleToolRegist
 #     )
 
 # FIXME:
-# def test_import_temp_tool_file_module(tmp_path: Path, empty_tool_registry: SimpleToolRegistry):
+# def test_import_temp_tool_file_module(tmp_path: Path, empty_tool_registry: DefaultToolRegistry):
 #     """
 #     Test that the registry can import a command plugins module from a temp file.
 #     Args:

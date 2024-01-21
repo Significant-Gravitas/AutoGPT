@@ -4,9 +4,10 @@ import numpy
 import pytest
 from autogpt.config.config import Config
 from autogpt.core.resource.model_providers import OPEN_AI_EMBEDDING_MODELS
-from autogpt.memory.vector import get_memory
 from langchain import Embeddings
 from pytest_mock import MockerFixture
+
+from AFAAS.lib.task.task import Task
 
 
 @pytest.fixture

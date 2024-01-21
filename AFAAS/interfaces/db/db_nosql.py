@@ -9,9 +9,9 @@ if TYPE_CHECKING:
 
 
 class NoSQLMemory(AbstractMemory):
-    def get_table(self, table_name: str) -> AbstractTable:
+    async def get_table(self, table_name: str) -> AbstractTable:
         if self.__class__ == NoSQLMemory:
             raise TypeError(
                 "get_table method cannot be called on NoSQLMemory class directly"
             )
-        return super().get_table(table_name)
+        return await super().get_table(table_name)

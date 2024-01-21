@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-TOOL_CATEGORY = "framework"
-TOOL_CATEGORY_TITLE = "Framework"
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent.main import BaseAgent
 
 from AFAAS.core.agents.routing.main import RoutingAgent
-from AFAAS.core.tools.tool_decorator import tool
+from AFAAS.core.tools.tool_decorator import SAFE_MODE, tool
+from AFAAS.interfaces.tools.base import AbstractTool
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.task import Task
 from AFAAS.prompts.routing import RoutingStrategyConfiguration
@@ -25,6 +23,7 @@ LOG = AFAASLogger(name=__name__)
     tech_description="Divide a task into subtasks",
     # parameters = ,
     hide=True,
+    categories=[AbstractTool.FRAMEWORK_CATEGORY, "planning"],
 )
 async def afaas_routing(
     task: Task,
@@ -50,7 +49,7 @@ async def afaas_routing(
             **routing_settings.dict(),
         )
         # NOTE: We don't save the agent
-        # new_user_context_agent = UserContextAgent.create_agent()
+        # new_user_context_agent = await UserContextAgent.create_agent()
 
         routing_return: dict = await routing_agent.run(
             user_input_handler=agent._user_input_handler,

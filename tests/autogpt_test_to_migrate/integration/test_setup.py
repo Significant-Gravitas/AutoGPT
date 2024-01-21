@@ -8,6 +8,7 @@ from autogpt.app.setup import (
 from autogpt.config.ai_profile import AIProfile
 
 from AFAAS.configs.config import AIDirectives, Config
+from AFAAS.lib.task.task import Task
 
 
 @pytest.mark.asyncio

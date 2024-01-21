@@ -62,5 +62,5 @@ class Artifact(AFAASModel):
     from AFAAS.interfaces.agent.main import BaseAgent
 
     async def create_in_db(self, agent: BaseAgent):
-        table = agent.memory.get_table("artifacts")
-        return table.add(self)
+        table = await agent.db.get_table("artifacts")
+        return await table.add(self)

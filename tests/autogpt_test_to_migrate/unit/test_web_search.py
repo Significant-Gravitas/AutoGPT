@@ -3,9 +3,10 @@ import json
 import pytest
 from googleapiclient.errors import HttpError
 
-from AFAAS.core.tools.web_search import google, safe_google_results, web_search
+from AFAAS.core.tools.untested.web_search import google, safe_google_results, web_search
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.lib.sdk.errors import ConfigurationError
+from AFAAS.lib.task.task import Task
 
 
 @pytest.mark.parametrize(
@@ -37,7 +38,13 @@ def test_safe_google_results_invalid_input():
     ],
 )
 def test_google_search(
-    query, num_results, expected_output_parts, return_value, mocker, agent: BaseAgent
+    default_task: Task,
+    query,
+    num_results,
+    expected_output_parts,
+    return_value,
+    mocker,
+    agent: BaseAgent,
 ):
     mock_ddg = mocker.Mock()
     mock_ddg.return_value = return_value
@@ -45,7 +52,7 @@ def test_google_search(
     mocker.patch("AFAAS.core.tools.web_search.DDGS.text", mock_ddg)
     actual_output = web_search(
         query,
-        agent=task_ready_no_predecessors_or_subtasks.agent,
+        agent=default_task.agent,
         num_results=num_results,
     )
     for o in expected_output_parts:
@@ -81,6 +88,7 @@ def mock_googleapiclient(mocker):
     ],
 )
 def test_google_official_search(
+    default_task: Task,
     query,
     num_results,
     expected_output,
@@ -91,7 +99,7 @@ def test_google_official_search(
     mock_googleapiclient.return_value = search_results
     actual_output = google(
         query,
-        agent=task_ready_no_predecessors_or_subtasks.agent,
+        agent=default_task.agent,
         num_results=num_results,
     )
     assert actual_output == safe_google_results(expected_output)
@@ -117,6 +125,7 @@ def test_google_official_search(
     ],
 )
 def test_google_official_search_errors(
+    default_task: Task,
     query,
     num_results,
     expected_error_type,
@@ -143,6 +152,6 @@ def test_google_official_search_errors(
     with pytest.raises(expected_error_type):
         google(
             query,
-            agent=task_ready_no_predecessors_or_subtasks.agent,
+            agent=default_task.agent,
             num_results=num_results,
         )

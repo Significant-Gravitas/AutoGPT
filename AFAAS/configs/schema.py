@@ -92,6 +92,8 @@ class SystemConfiguration(BaseModel):
             "configuration",
             "name",
             "description",
+            "message_agent_user",
+            "db",
         }
         allow_inf_nan = False
         validate_assignment = True
@@ -123,7 +125,7 @@ class AFAASModel(BaseModel):
     created_at: datetime.datetime = datetime.datetime.now()
     modified_at: datetime.datetime = datetime.datetime.now()
 
-    def dict_memory(self, **dumps_kwargs) -> dict:
+    def dict_db(self, **dumps_kwargs) -> dict:
         LOG.trace(f"FIXME: Temporary implementation before pydantic 2.0.0")
         dict = self.dict(**dumps_kwargs)
         return self._apply_custom_encoders(data=dict)
@@ -137,18 +139,6 @@ class AFAASModel(BaseModel):
         return data
 
     def dict(self, include_all=False, *args, **kwargs):
-        """
-        Serialize the object to a dictionary representation.
-
-        Args:
-            remove_technical_values (bool, optional): Whether to exclude technical values. Default is True.
-            *args: Additional positional arguments to pass to the base class's dict method.
-            **kwargs: Additional keyword arguments to pass to the base class's dict method.
-            kwargs['exclude'] excludes the fields from the serialization
-
-        Returns:
-            dict: A dictionary representation of the object.
-        """
         # TODO: Move to System settings ?
         self.prepare_values_before_serialization()  # Call the custom treatment before .dict()
         if not include_all:
@@ -157,18 +147,6 @@ class AFAASModel(BaseModel):
         return super().dict(*args, **kwargs)
 
     def json(self, *args, **kwargs):
-        """
-        Serialize the object to a dictionary representation.
-
-        Args:
-            remove_technical_values (bool, optional): Whether to exclude technical values. Default is True.
-            *args: Additional positional arguments to pass to the base class's dict method.
-            **kwargs: Additional keyword arguments to pass to the base class's dict method.
-            kwargs['exclude'] excludes the fields from the serialization
-
-        Returns:
-            dict: A dictionary representation of the object.
-        """
         LOG.warning("Warning : Recomended use json_api() or json_memory()")
         LOG.warning("BaseAgent.SystemSettings.json()")
         self.prepare_values_before_serialization()  # Call the custom treatment before .json()
@@ -183,9 +161,12 @@ class AFAASModel(BaseModel):
         return self.__repr__()
 
     def __repr__(self):
-        lines = [f"{self.__class__.__name__}("]
+        lines = [f"repr:{self.__class__.__name__}("]
 
-        for field_name, field_value in self.dict().items():
+        for (
+            field_name,
+            field_value,
+        ) in self.__dict__.items():  # Use __dict__ to access object's attributes
             formatted_field_name = field_name.replace("_", " ").capitalize()
             if field_value is None:
                 value_str = "Not provided"
@@ -226,6 +207,8 @@ class SystemSettings(AFAASModel):
             "description",
             "parent_agent",
             "current_task",
+            "message_agent_user",
+            "db",
             "plan",
         }
 
@@ -253,9 +236,8 @@ class Configurable(abc.ABC, Generic[S]):
         LOG.warning(f"{__qualname__}.json()")
         return super().json(**dumps_kwargs)
 
-    def __init__(self, settings: S):
+    def __init__(self, settings: S, **kwargs):
         self._settings = settings
-        self._configuration = settings.configuration
 
 
 class AFAASMessageType(str, enum.Enum):

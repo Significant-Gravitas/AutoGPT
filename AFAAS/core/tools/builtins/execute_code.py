@@ -10,8 +10,9 @@ import docker
 from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
 
-from AFAAS.core.tools.tool_decorator import tool
+from AFAAS.core.tools.tool_decorator import SAFE_MODE, tool
 from AFAAS.interfaces.agent.main import BaseAgent
+from AFAAS.interfaces.tools.base import AbstractTool
 from AFAAS.lib.sdk.errors import (
     CodeExecutionError,
     InvalidArgumentError,
@@ -25,7 +26,6 @@ from .file_operations_utils import sanitize_path_arg
 
 LOG = AFAASLogger(name=__name__)
 TOOL_CATEGORY = "execute_code"
-TOOL_CATEGORY_TITLE = "Execute Code"
 
 
 ALLOWLIST_CONTROL = "allowlist"
@@ -33,16 +33,17 @@ DENYLIST_CONTROL = "denylist"
 
 
 @tool(
-    "execute_python_code",
-    "Executes the given Python code inside a single-use Docker container"
+    name="execute_python_code",
+    description="Executes the given Python code inside a single-use Docker container"
     " with access to your workspace folder",
-    {
+    parameters={
         "code": JSONSchema(
             type=JSONSchema.Type.STRING,
             description="The Python code to run",
             required=True,
         ),
     },
+    categories=[AbstractTool.FRAMEWORK_CATEGORY, TOOL_CATEGORY],
 )
 def execute_python_code(code: str, task: Task, agent: BaseAgent) -> str:
     """

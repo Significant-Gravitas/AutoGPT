@@ -54,7 +54,7 @@ Implement the `build_prompt` method to construct the chat prompt based on your s
 ```python
 class MyStrategy(BasePromptStrategy):
     ...
-    def build_prompt(self, **kwargs) -> ChatPrompt:
+    async def build_prompt(self, **kwargs) -> ChatPrompt:
         ...
 ```
 

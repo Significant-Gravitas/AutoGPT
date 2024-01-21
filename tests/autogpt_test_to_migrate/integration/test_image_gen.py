@@ -8,6 +8,7 @@ from autogpt.agents.agent import PlannerAgent
 from PIL import Image
 
 from AFAAS.core.tools.image_gen import generate_image, generate_image_with_sd_webui
+from AFAAS.lib.task.task import Task
 
 
 @pytest.fixture(params=[256, 512, 1024])
@@ -64,7 +65,7 @@ def test_sd_webui_negative_prompt(agent: PlannerAgent, workspace, image_size):
     gen_image = functools.partial(
         generate_image_with_sd_webui,
         prompt="astronaut riding a horse",
-        agent=task_ready_no_predecessors_or_subtasks.agent,
+        agent=default_task.agent,
         size=image_size,
         extra={"seed": 123},
     )

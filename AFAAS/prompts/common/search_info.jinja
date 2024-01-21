@@ -1,0 +1,22 @@
+## Instructions
+
+You are in charge of performing the following tasks : 
+{{ to_md_quotation(task.long_description) }}
+
+You need to perfom the task in this context : 
+{{ to_md_quotation(task.task_context) }}
+
+This are the previous operations : 
+{{ to_md_quotation(task.rag_history_txt) }}
+
+This are related operations : 
+{{ task.rag_related_task_txt }}
+
+## You have decided to search for : 
+
+{{ query}}
+
+## You have made this decision because : 
+{{ reasoning }}
+
+Select the appopriate tool to get this information

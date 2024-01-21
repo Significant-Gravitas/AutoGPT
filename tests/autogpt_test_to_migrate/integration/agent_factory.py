@@ -4,10 +4,10 @@ from autogpt.agents.agent import (
     PlannerAgentConfiguration,
     PlannerAgentSettings,
 )
-from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 
 from AFAAS.configs.config import AIProfile, Config
+from AFAAS.lib.task.task import Task
 
 
 @pytest.fixture

@@ -17,28 +17,6 @@ LOG = AFAASLogger(name=__name__)
 
 
 class UserContextLoop(BaseLoop):
-    """A loop responsible for managing the user context in an agent.
-
-    Args:
-        agent (BaseAgent): The agent to which this loop is attached.
-
-    Attributes:
-        _active (bool): Indicates whether the loop is active or paused.
-        loop_count (int): The number of loop iterations performed.
-
-    Example:
-        ```
-        agent = MyCustomAgent()
-        user_loop = UserContextLoop(agent)
-        user_loop.run(
-            agent,
-            hooks,
-            user_input_handler,
-            user_message_handler
-        )
-        ```
-    """
-
     class LoophooksDict(BaseLoop.LoophooksDict):
         pass
 
@@ -139,7 +117,7 @@ class UserContextLoop(BaseLoop):
                 if user_objectives.lower() == "y" and self.loop_count > 1:
                     interupt_refinement_process = True
 
-                await self.save_agent()  # TODO : self.save_agent()
+                await self.save_agent()
 
     def __repr__(self):
         """Return a string representation of the UserContextLoop.

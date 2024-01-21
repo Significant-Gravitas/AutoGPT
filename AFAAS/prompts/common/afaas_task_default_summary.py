@@ -102,10 +102,10 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
 
     from AFAAS.core.tools import Tool
 
-    def build_message(
+    async def build_message(
         self, task: AbstractTask, tool: Tool, documents: list, **kwargs
     ) -> ChatPrompt:
-        LOG.debug("Building prompt for task : " + task.debug_dump_str())
+        LOG.debug("Building prompt for task : " + await task.debug_dump_str())
         self._task: AbstractTask = task
 
         # FIXME: This his a hack for test, please remove it :
@@ -121,7 +121,7 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
         messages = []
         messages.append(
             ChatMessage.system(
-                self._build_jinja_message(
+                await self._build_jinja_message(
                     task=task,
                     template_name=f"{self.STRATEGY_NAME}.jinja",
                     template_params=task_summary_param,

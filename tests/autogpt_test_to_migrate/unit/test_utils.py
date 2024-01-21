@@ -12,6 +12,7 @@ from autogpt.json_utils.utilities import extract_dict_from_response
 from autogpt.utils import validate_yaml_file
 from git import InvalidGitRepositoryError
 
+from AFAAS.lib.task.task import Task
 from tests.utils import skip_in_ci
 
 

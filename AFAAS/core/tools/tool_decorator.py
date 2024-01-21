@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 import functools
 import inspect
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, ParamSpec, TypeVar
+import os
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Literal,
+    Optional,
+    ParamSpec,
+    Type,
+    TypeVar,
+)
 
 from langchain_core.tools import BaseTool
 
@@ -13,20 +24,29 @@ if TYPE_CHECKING:
     from AFAAS.interfaces.agent.main import BaseAgent
     from AFAAS.configs.config import Config
 
-from AFAAS.core.tools.tools import Tool
+from dotenv import load_dotenv
+
+from AFAAS.core.tools.tool import Tool
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 # Unique identifier for AutoGPT commands
-AFAAS_TOOL_IDENTIFIER = "afaas_tool"
+TOOL_WRAPPER_MARKER = "afaas_tool"
 
 P = ParamSpec("P")
 CO = TypeVar("CO", bound=ToolOutput)
+
+
+# Load the .env file
+load_dotenv()
+# TODO: Allow tool to define if they are safe or not (safe mode is not implemented yet)
+SAFE_MODE = os.environ.get("SAFE_MODE", "true").lower() == "true"
 
 
 def tool(
     name: str,
     description: str,
     parameters: dict[str, JSONSchema] = {},
+    categories: list[str] = ["uncategorized"],
     enabled: Literal[True] | Callable[[Config], bool] = True,
     disabled_reason: Optional[str] = None,
     aliases: list[str] = [],
@@ -53,6 +73,7 @@ def tool(
             tech_description=tech_description,
             exec_function=func,
             parameters=typed_parameters,
+            categories=categories,
             enabled=enabled,
             disabled_reason=disabled_reason,
             aliases=aliases,
@@ -61,27 +82,37 @@ def tool(
             success_check_callback=success_check_callback,
         )
 
+        from AFAAS.core.tools.builtins.not_implemented_tool import not_implemented_tool
+
         if inspect.iscoroutinefunction(func):
 
             @functools.wraps(func)
             async def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
-                return await func(*args, **kwargs)
+                try:
+                    return await func(*args, **kwargs)
+                except NotImplementedError as e:
+                    return await not_implemented_tool(*args, **kwargs)
 
         else:
 
             @functools.wraps(func)
             def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
-                return func(*args, **kwargs)
+                try:
+                    return func(*args, **kwargs)
+                except NotImplementedError as e:
+                    return asyncio.run(not_implemented_tool(*args, **kwargs))
 
         setattr(wrapper, "tool", cmd)
-        setattr(wrapper, AFAAS_TOOL_IDENTIFIER, True)
+        setattr(wrapper, TOOL_WRAPPER_MARKER, True)
 
         return wrapper
 
     return decorator
 
 
+## TO REMOVE
 def tool_from_langchain(
+    categories: list[str] = ["uncategorized"],
     arg_converter: Optional[Callable] = None,
     enabled: bool = True,
     disabled_reason: Optional[str] = None,
@@ -90,7 +121,9 @@ def tool_from_langchain(
     hide: bool = False,
     success_check_callback: Callable = Tool.default_success_check_callback,
 ):
-    def decorator(base_tool: BaseTool):
+    def decorator(base_tool: Type[BaseTool]):
+        base_tool_instance = base_tool()
+
         def wrapper(*args, **kwargs):
             # Extract 'agent' from kwargs if it exists, as it's not used in this context
             agent = kwargs.pop("agent", None)
@@ -102,19 +135,21 @@ def tool_from_langchain(
                 tool_input = kwargs
 
             # Run the BaseTool's run method and return its result
-            return base_tool.arun(tool_input=tool_input)
+            return base_tool_instance.arun(tool_input=tool_input)
 
         # Apply the @tool decorator to the wrapper function
-        # We use the properties of base_tool (name, description, etc.) to define the tool
+        # We use the properties of base_tool_instance (name, description, etc.) to define the tool
         return tool(
-            name=base_tool.name,
-            description=base_tool.description,
-            tech_description=base_tool.description,  # Assuming this is intentional
-            exec_function=wrapper,
-            parameters=[
-                ToolParameter(name=name, spec=schema)
-                for name, schema in base_tool.args.items()
-            ],
+            name=base_tool_instance.name,
+            description=base_tool_instance.description,
+            tech_description=base_tool_instance.description,  # Assuming this is intentional
+            categories=categories,
+            # exec_function=wrapper,
+            # parameters=[
+            #     ToolParameter(name=name, spec=schema)
+            #     for name, schema in base_tool_instance.args.items()
+            # ],
+            parameters=base_tool_instance.args,
             enabled=enabled,
             disabled_reason=disabled_reason,
             aliases=aliases,
@@ -126,8 +161,6 @@ def tool_from_langchain(
     return decorator
 
 
-# from langchain_community.tools.github.tool import GitHubAction
-
-# @tool_from_langchain()
-# class AdaptedGitHubTool(GitHubAction):
-#     pass
+# TODO/FIXME:
+# Huging face Tools :
+# https://github.com/huggingface/transformers/blob/main/src/transformers/tools/base.py#L471

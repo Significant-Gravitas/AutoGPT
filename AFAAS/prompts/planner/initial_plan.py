@@ -104,7 +104,7 @@ class InitialPlanStrategy(AbstractPromptStrategy):
 
         self._tools = [self.DEFAULT_CREATE_PLAN_FUNCTION]
 
-    def build_message(
+    async def build_message(
         self,
         agent_name: str,
         agent_goals: list[str],

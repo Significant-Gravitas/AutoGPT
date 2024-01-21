@@ -26,7 +26,7 @@ class DynamoDBMemory(NoSQLMemory):
         super().__init__(settings)
         self._dynamodb = None
 
-    def connect(
+    async def connect(
         self,
         dynamodb_region_name=None,
         aws_access_key_id=None,
@@ -61,17 +61,17 @@ class DynamoDBMemory(NoSQLMemory):
         else:
             LOG.info("Successfully connected to DynamoDB.")
 
-    def get(self, key: dict, table_name: str):
+    async def get(self, key: dict, table_name: str):
         table = self._dynamodb.Table(table_name)
         response = table.get_item(Key=key)
         return response["Item"]
 
-    def add(self, key: dict, value: dict, table_name: str):
+    async def add(self, key: dict, value: dict, table_name: str):
         table = self._dynamodb.Table(table_name)
         item = {**key, **value}
         table.put_item(Item=item)
 
-    def update(self, key: dict, value: dict, table_name: str):
+    async def update(self, key: dict, value: dict, table_name: str):
         table = self._dynamodb.Table(table_name)
         # Building update expression
         update_expression = "SET " + ", ".join(f"{k}=:{k}" for k in value)
@@ -83,11 +83,11 @@ class DynamoDBMemory(NoSQLMemory):
             ExpressionAttributeValues=expression_attribute_values,
         )
 
-    def delete(self, key: dict, table_name: str):
+    async def delete(self, key: dict, table_name: str):
         table = self._dynamodb.Table(table_name)
         table.delete_item(Key=key)
 
-    def list(self, table_name: str) -> list[dict]:
+    async def list(self, table_name: str) -> list[dict]:
         table = self._dynamodb.Table(table_name)
         response = table.scan()
         return response["Items"]

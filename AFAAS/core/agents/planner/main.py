@@ -1,24 +1,26 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine
 
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
 
 from AFAAS.core.tools.builtins import (
-    TOOL_CATEGORIES,  # FIXME: This is a temporary fix but shall not be delt here
+    BUILTIN_MODULES,  # FIXME: This is a temporary fix but shall not be delt here
 )
-from AFAAS.core.tools.simple import SimpleToolRegistry
+from AFAAS.core.tools.tool_registry import DefaultToolRegistry
 from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
 from AFAAS.interfaces.agent.assistants.prompt_manager import BasePromptManager
 from AFAAS.interfaces.agent.assistants.tool_executor import ToolExecutor
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.db.db import AbstractMemory
-from AFAAS.interfaces.tools.base import BaseToolsRegistry
+from AFAAS.interfaces.tools.base import AbstractTool, AbstractToolRegistry
 from AFAAS.interfaces.workflow import WorkflowRegistry
+from AFAAS.lib.message_agent_user import Emiter, MessageAgentUser
+from AFAAS.lib.message_common import AFAASMessageStack
 from AFAAS.lib.sdk.logger import AFAASLogger
-from AFAAS.lib.task.plan import Plan
+from AFAAS.lib.task.plan import Plan, TaskStatusList
 
 from .loop import PlannerLoop
 
@@ -31,19 +33,21 @@ if TYPE_CHECKING:
 class PlannerAgent(BaseAgent):
     # FIXME: Move to BaseAgent
     @property
-    def tool_registry(self) -> BaseToolsRegistry:
+    def tool_registry(self) -> AbstractToolRegistry:
         if self._tool_registry is None:
-            self._tool_registry = SimpleToolRegistry(
+            self._tool_registry = DefaultToolRegistry(
                 settings=self._settings,
-                memory=self.memory,
+                db=self.db,
                 workspace=self.workspace,
                 model_providers=self.default_llm_provider,
-                modules=TOOL_CATEGORIES,
+            )
+            self._tool_registry.add_tool_category(
+                category=AbstractTool.FRAMEWORK_CATEGORY
             )
         return self._tool_registry
 
     @tool_registry.setter
-    def tool_registry(self, value: BaseToolsRegistry):
+    def tool_registry(self, value: AbstractToolRegistry):
         self._tool_registry = value
 
     class SystemSettings(BaseAgent.SystemSettings):
@@ -58,29 +62,42 @@ class PlannerAgent(BaseAgent):
     def __init__(
         self,
         settings: PlannerAgent.SystemSettings,
-        user_id: uuid.UUID,
-        agent_id: uuid.UUID = SystemSettings.generate_uuid(),
+        user_id: str,
+        agent_id: str = SystemSettings.generate_uuid(),
         prompt_manager: BasePromptManager = BasePromptManager(),
         loop: PlannerLoop = PlannerLoop(),
         tool_handler: ToolExecutor = ToolExecutor(),
         tool_registry=None,
-        memory: AbstractMemory = None,
+        db: AbstractMemory = None,
         default_llm_provider: AbstractLanguageModelProvider = None,
         workspace: AbstractFileWorkspace = None,
-        vectorstore: VectorStore = None,  # Optional parameter for custom vectorstore
+        vectorstores: dict[
+            str, VectorStore
+        ] = {},  # Optional parameter for custom vectorstore
         embedding_model: Embeddings = None,  # Optional parameter for custom embedding model
         workflow_registry: WorkflowRegistry = None,
         **kwargs,
     ):
+        # FIXME:
+        ## Workarround for attribute where dependancy injection remain to implement
+        if agent_id is None:
+            agent_id: str = self.SystemSettings.generate_uuid()
+        if prompt_manager is None:
+            prompt_manager: BasePromptManager = BasePromptManager()
+        if loop is None:
+            loop: PlannerLoop = PlannerLoop()
+        if tool_handler is None:
+            tool_handler: ToolExecutor = ToolExecutor()
+
         super().__init__(
             settings=settings,
-            memory=memory,
+            db=db,
             workspace=workspace,
             default_llm_provider=default_llm_provider,
             prompt_manager=prompt_manager,
             user_id=user_id,
             agent_id=agent_id,
-            vectorstore=vectorstore,
+            vectorstores=vectorstores,
             embedding_model=embedding_model,
             workflow_registry=workflow_registry,
             **kwargs,
@@ -107,47 +124,98 @@ class PlannerAgent(BaseAgent):
         self._tool_executor: ToolExecutor = tool_handler
         self._tool_executor.set_agent(agent=self)
 
+    @classmethod
+    async def load(
+        cls,
+        settings: PlannerAgent.SystemSettings,
+        user_id: str,
         ###
-        ### Step 5a : Create the plan
+        agent_id: uuid.UUID = None,
+        prompt_manager: BasePromptManager = None,
+        loop: PlannerLoop = None,
+        tool_handler: ToolExecutor = None,
         ###
-        # FIXME: Long term : PlannerLoop / Pipeline get all ready tasks & launch them => Parralelle processing of tasks
-        if hasattr(self, "plan_id") and self.plan_id is not None:
-            self.plan: Plan = Plan.get_plan_from_db(
-                plan_id=settings.plan_id, agent=self
-            )  # Plan(user_id=user_id)
-            # task = self.plan.find_first_ready_task()
-            # self._loop.set_current_task(task = task)
-            self._loop.set_current_task(task=self.plan.get_next_task())
+        tool_registry=None,
+        db: AbstractMemory = None,
+        default_llm_provider: AbstractLanguageModelProvider = None,
+        workspace: AbstractFileWorkspace = None,
+        vectorstores: dict[str, VectorStore] = {},
+        embedding_model: Embeddings = None,
+        workflow_registry: WorkflowRegistry = None,
+        **kwargs,
+    ):
+        agent = cls(
+            settings=settings,
+            user_id=user_id,
+            agent_id=agent_id,
+            prompt_manager=prompt_manager,
+            loop=loop,
+            tool_handler=tool_handler,
+            tool_registry=tool_registry,
+            db=db,
+            default_llm_provider=default_llm_provider,
+            workspace=workspace,
+            vectorstores=vectorstores,
+            embedding_model=embedding_model,
+            workflow_registry=workflow_registry,
+            **kwargs,
+        )
+
+        # Creating or getting the plan
+        if hasattr(agent, "plan_id") and agent.plan_id is not None:
+            agent.plan = await Plan.get_plan_from_db(plan_id=agent.plan_id, agent=agent)
+
+            current_task = await agent.plan.get_next_task()
+            agent._loop.set_current_task(task=current_task)
+
+            message_agent_user = AFAASMessageStack(db=agent.db)
+            agent.message_agent_user = await message_agent_user.load(
+                agent=agent, cls=MessageAgentUser
+            )
         else:
-            self.plan: Plan = Plan.create_in_db(agent=self)
-            self.plan_id = self.plan.plan_id
+            await agent._create_with_plan_and_message()
 
-            self._loop.set_current_task(task=self.plan.get_ready_tasks()[0])
-            self.create_agent()
+        return agent
 
-            from AFAAS.lib.message_agent_user import MessageAgentUser, emiter
-            from AFAAS.lib.message_common import AFAASMessageStack
+    async def _create_with_plan_and_message(self):
+        # TODO: Make it a method not a classmethod
+        self.plan = Plan(
+            agent_id=self.agent_id,
+            task_goal=self.agent_goal_sentence,
+            tasks=[],
+            agent=self,
+        )
+        await self.plan.db_create()
+        self.plan.create_initial_tasks(status=TaskStatusList.READY)
+        self.plan_id = self.plan.plan_id
+        await self.plan.db_save()
 
-            # FIXME:v.0.0.1 : The first message seem not to be saved in the DB
-            self.message_agent_user: AFAASMessageStack = AFAASMessageStack()
-            self.message_agent_user.add(
-                message=MessageAgentUser(
-                    emitter=emiter.AGENT.value,
-                    user_id=self.user_id,
-                    agent_id=self.agent_id,
-                    message="What would you like to do ?",
-                )
+        ready_task = await self.plan.get_ready_tasks()
+        self._loop.set_current_task(task=ready_task[0])
+
+        await self.db_create()
+
+        # Message agent user initialization
+        self.message_agent_user = AFAASMessageStack(db=self.db)
+        # FIXME:v.0.0.1 : The first message seem not to be saved in the DB #91 https://github.com/ph-ausseil/afaas/issues/91
+        await self.message_agent_user.db_create(
+            message=MessageAgentUser(
+                emitter=Emiter.AGENT.value,
+                user_id=self.user_id,
+                agent_id=self.agent_id,
+                message="What would you like to do ?",
             )
-            self.message_agent_user.add(
-                message=MessageAgentUser(
-                    emitter=emiter.USER.value,
-                    user_id=self.user_id,
-                    agent_id=self.agent_id,
-                    message=self.agent_goal_sentence,
-                )
+        )
+        await self.message_agent_user.db_create(
+            message=MessageAgentUser(
+                emitter=Emiter.USER.value,
+                user_id=self.user_id,
+                agent_id=self.agent_id,
+                message=self.agent_goal_sentence,
             )
+        )
 
-        """ #NOTE: This is a remnant of a plugin system on stand-by that have not been implemented yet.
+    """ #NOTE: This is a remnant of a plugin system on stand-by that have not been implemented yet.
         ###
         ### Step 6 : add hooks/pluggins to the loop
         ###
@@ -179,9 +247,7 @@ class PlannerAgent(BaseAgent):
         if not self._loop._loophooks:
             self._loop._loophooks = {}
         return self._loop._loophooks
-
-    def add_hook(self, hook: BaseLoopHook, uuid: uuid.UUID):
-        super().add_hook(hook, uuid)"""
+    """
 
     ################################################################################
     ################################ LOOP MANAGEMENT################################

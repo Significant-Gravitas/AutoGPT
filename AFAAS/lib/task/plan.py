@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import threading
 import uuid
 from typing import ClassVar
 
 from pydantic import Field
 
-# from AFAAS.core.memory import
+# from AFAAS.core.db import
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.interfaces.task.plan import AbstractBaseTask, AbstractPlan
@@ -16,65 +18,111 @@ LOG = AFAASLogger(name=__name__)
 
 
 class Plan(AbstractPlan):
+    class Config(AbstractPlan.Config):
+        # This is a list of Field to Exclude during serialization
+        default_exclude = set(AbstractPlan.Config.default_exclude) | {
+            "initialized",
+            "lock",
+            "_loaded_tasks_dict",
+        }
+        json_encoders = AbstractPlan.Config.json_encoders | {}
+
     _instance: ClassVar[dict[Plan]] = {}
+    lock: ClassVar[threading.Lock] = threading.Lock()
+    initialized: ClassVar[bool] = False
 
-    # List & Dict for Lazy loading & lazy saving
-    _modified_tasks_ids: list[str] = []
-    _new_tasks_ids: list[str] = []
-    _loaded_tasks_dict: dict[Task] = {}
+    def __new__(cls, *args, **kwargs):
+        if kwargs.get("agent", None) is not None:
+            agent_id = kwargs.get("agent").agent_id
+            with cls.lock:
+                if agent_id in cls._instance:
+                    return cls._instance[agent_id]
 
-    # List for easier task Management
-    _all_task_ids: list[str] = []
-    _ready_task_ids: list[str] = []
-    _done_task_ids: list[str] = []
+                instance = super(Plan, cls).__new__(cls)
+                cls._instance[agent_id] = instance
+                return instance
+        else:
+            return super(Plan, cls).__new__(cls)
 
     def __init__(self, *args, **kwargs):
-        if kwargs["agent"].agent_id in Plan._instance:
-            self = Plan._instance[kwargs["agent"].agent_id]
-            return None
+        with self.lock:
+            if self.initialized:
+                return
 
-        # Initialize the instance if needed
-        super().__init__(**kwargs)
-        Plan._instance[kwargs["agent"].agent_id] = self
-        self.agent.plan: Plan = self
+            # Initialize the instance if needed
+            super().__init__(**kwargs)
+            Plan._instance[kwargs["agent"].agent_id] = self
+            self.agent.plan: Plan = self
+            self.initialized = True
+            # self.reset_instance()
+            self._modified_tasks_ids = []
+            self._new_tasks_ids = []
+            self._loaded_tasks_dict = {}
+            self._all_task_ids = kwargs.get("_all_task_ids", [])
+            self._ready_task_ids = kwargs.get("_ready_task_ids", [])
+            self._done_task_ids = kwargs.get("_done_task_ids", [])
+            # self.task_goal = kwargs.get('task_goal' , self.agent.agent_goal)
 
-        # Load the tasks from the database
+    @classmethod
+    async def _load(cls, plan_id: str, agent: BaseAgent, **kwargs):
+        instance = cls(plan_id=plan_id, agent=agent, **kwargs)
+
+        # db = agent.db
+        # task_table = await db.get_table("tasks")
+
+        # from AFAAS.interfaces.db.table.nosql.base import AbstractTable
+        # filter = AbstractTable.FilterDict(
+        #     {
+        #         "plan_id": [
+        #             AbstractTable.FilterItem(
+        #                 value=str(instance.plan_id),
+        #                 operator=AbstractTable.Operators.EQUAL_TO,
+        #             )
+        #         ],
+        #     }
+        # )
+        # all_tasks_from_db_dict = await task_table.list(filter=filter)
+
+        # # Process tasks
+        # all_tasks_ids = []
+        # for task_as_dict in all_tasks_from_db_dict:
+        #     #NOTE: Safegard as Pytest as create unexpected situation
+        #     if task_as_dict['task_id'] in instance._all_task_ids :
+        #         raise Exception(f"Error {task_as_dict['task_id']} already exist in {instance._all_task_ids}")
+
+        #     task = Task(**task_as_dict, agent=agent)
+        #     instance._register_task(task=task)
+
+        #     if task.state == TaskStatusList.READY:
+        #         instance._registry_update_task_status_in_list(
+        #             task_id=task.task_id, status=TaskStatusList.READY
+        #         )
+        #     elif task.state == TaskStatusList.DONE:
+        #         instance._registry_update_task_status_in_list(
+        #             task_id=task.task_id, status=TaskStatusList.DONE
+        #         )
+        #     all_tasks_ids.append(
+        #         task_as_dict['task_id']
+        #         )
+
+        return instance
+
+    @classmethod
+    async def get_plan_from_db(cls, plan_id: str, agent: BaseAgent) -> Plan:
+        from AFAAS.core.db.table.nosql.agent import AgentsTable
         from AFAAS.interfaces.db.db import AbstractMemory
-        from AFAAS.interfaces.db.table.nosql.base import AbstractTable
 
-        agent: BaseAgent = kwargs["agent"]
-        memory: AbstractMemory = agent.memory
-        task_table: AbstractTable = memory.get_table("tasks")
+        plan_table: AgentsTable = await agent.db.get_table("plans")
+        plan_dict = await plan_table.get(plan_id=plan_id, agent_id=agent.agent_id)
 
-        filter = AbstractTable.FilterDict(
-            {
-                "plan_id": [
-                    AbstractTable.FilterItem(
-                        value=str(self.plan_id),
-                        operator=AbstractTable.Operators.EQUAL_TO,
-                    )
-                ],
-            }
-        )
-        all_tasks_from_db_dict = task_table.list(filter=filter)
+        if len(plan_dict) == 0:
+            raise Exception(
+                f"Plan {plan_id} not found in the database for agent {agent.agent_id}"
+            )
+        # TODO:v0.0.x : get_plan_from_db & load
+        return await cls._load(**plan_dict, agent=agent)
 
-        # Update the static variables
-        for task_as_dict in all_tasks_from_db_dict:
-            task = Task(**task_as_dict, agent=agent)
-            self._register_task(task=task)
-
-            # self._all_task_ids.append(task.task_id)
-            if task.state == TaskStatusList.READY:
-                LOG.notice("DEBUG : Task is ready may have subtasks...")
-                self._registry_update_task_status_in_list(
-                    task_id=task.task_id, status=TaskStatusList.READY
-                )
-            elif task.state == TaskStatusList.DONE:
-                self._registry_update_task_status_in_list(
-                    task_id=task.task_id, status=TaskStatusList.DONE
-                )
-
-    task_id: str = Field(default_factory=lambda: Plan.generate_uuid(), alias="plan_id")
+    task_id: str = Field(default_factory=lambda: Plan.generate_uuid())
 
     @staticmethod
     def generate_uuid():
@@ -91,19 +139,8 @@ class Plan(AbstractPlan):
     #############################################################################################
     #############################################################################################
     #############################################################################################
-    def get_all_tasks_ids(self) -> list[str]:
-        """
-        Get all the tasks ids from the plan
-        """
-        return self._all_task_ids
 
-    def get_all_done_tasks_ids(self) -> list[str]:
-        """
-        Get all the tasks ids from the plan
-        """
-        return self._done_task_ids
-
-    def get_task(self, task_id: str) -> AbstractBaseTask:
+    async def get_task(self, task_id: str) -> AbstractBaseTask:
         """
         Get a task from the plan
         """
@@ -113,101 +150,173 @@ class Plan(AbstractPlan):
         if task_id in self._all_task_ids:
             task = self._loaded_tasks_dict.get(task_id)
             if task is None:
-                task = Task.get_task_from_db(task_id=task_id, agent=self.agent)
+                task = await Task.get_task_from_db(task_id=task_id, agent=self.agent)
                 self._loaded_tasks_dict[task_id] = task
             return task
         else:
-            raise Exception(f"Task {task_id} not found in plan {self.plan_id}")
+            raise Exception(
+                f"Task {task_id} not found in plan {self.plan_id} [{str(self._all_task_ids)}]"
+            )
 
-    def get_next_task(self, task: Task = None) -> Task:
-        """
-        Retrieves the next task in the plan based on the given task.
+    async def _check_subtasks_or_successors(self, task: Task) -> Task:
+        if task is None:
+            return None
 
-        Args:
-            task (Task): The current task.
+        rv: list[Task] = []
+        subtask_ids = task.subtasks.get_all_task_ids_from_stack()
+        successor_ids = task.task_successors.get_all_task_ids_from_stack()
+        for subtask_id in subtask_ids + successor_ids:
+            subtask = await self.get_task(subtask_id)
+            if await subtask.is_ready():
+                rv.append(subtask)
 
-        Returns:
-            Task: The next task in the plan.
+        if len(rv) > 0:
+            return rv[0]
+        return None
 
-        """
+    async def _check_siblings(
+        self, task: Task, _origin_task: Task, visited_tasks: set
+    ) -> Task:
+        siblings = await task.get_siblings()
+        for sibling in siblings:
+            if sibling.task_id not in visited_tasks:
+                ready_sibling = await self.get_next_task(
+                    sibling,
+                    _origin_task,
+                    check_outer=False,
+                    visited_tasks=visited_tasks,
+                )
+                if ready_sibling:
+                    return ready_sibling
+
+        return None
+
+    async def get_next_task(
+        self,
+        task: Task = None,
+        _origin_task: Task = None,
+        check_outer: bool = True,
+        visited_tasks: set = None,
+    ) -> Task:
         LOG.trace(
             f"get_next_task() : Current tasks that are ready are  Task : {self._ready_task_ids}"
         )
         LOG.debug(f"Getting next task from plan {self.debug_formated_str()}")
 
+        if visited_tasks is None:
+            visited_tasks = set()
         if task is not None:
-            # Get the subtask task, check if it is ready (the check operation will update the status in the index of ready Task (Plan._ready_task_ids)
-            for subtask_id in task.subtasks:
-                subtask = self.get_task(subtask_id)
-                subtask.is_ready()
-
-            if len(self._ready_task_ids) > 0:
-                rv = self.get_task(self._ready_task_ids[0])
-                LOG.trace(
-                    f"{self.debug_formated_str()} : Returning the first ready subtask {rv.debug_formated_str()}"
-                )
-                return rv
-
-            for successor_id in task.task_successors:
-                # Get the successor task, check if it is ready (the check operation will update the status in the  index of ready Task (Plan._ready_task_ids)
-                self.get_task(task_id=successor_id).is_ready()
-                # sucessor_task = self.get_task(task_id = successor_id)
-                # if sucessor_task.is_ready():
-                #     #FIXME: Possibly calling twice _registry_update_task_status_in_list
-                #     LOG.debug(f"Note : Possibly calling twice _registry_update_task_status_in_list ")
-                #     self._registry_update_task_status_in_list(task_id = sucessor_task.task_id, status = TaskStatusList.READY)
+            visited_tasks.add(task.task_id)
 
         if len(self._ready_task_ids) > 0:
-            rv = self.get_task(self._ready_task_ids[0])
-            LOG.trace(
-                f"{self.debug_formated_str()} : Returning the next ready successor {rv.debug_formated_str()}"
-            )
-            return rv
+            return await self.get_task(self._ready_task_ids[0])
 
         if task is None:
             LOG.notice(
                 f"No Task has been provided, we will try to find the first ready task"
             )
-            tasks = self.find_ready_subbranch()
-            if len(tasks) > 0:
+            tasks = await self.find_ready_subbranch()
+            if tasks:
                 return tasks[0]
-            else:
+
+        if task is not None:
+            if _origin_task == task:
                 return None
-        else:
-            return self._find_outer_next_task(task=task)
+            if _origin_task is not None and await task.is_ready():
+                return await self.get_task(self._ready_task_ids[0])
 
-    def _find_outer_next_task(self, task: Task, origin_task: Task = None) -> Task:
-        if task == origin_task:
-            return None
+            # Check for ready subtasks or successors
+            ready_task = await self._check_subtasks_or_successors(task)
+            if ready_task:
+                return ready_task
 
+            ready_sibling = await self._check_siblings(
+                task=task, _origin_task=_origin_task, visited_tasks=visited_tasks
+            )
+            if ready_sibling:
+                return ready_sibling
+
+        # Recursively check parent task
+        if check_outer:
+            return await self._find_outer_next_task(
+                task=task, _origin_task=_origin_task
+            )
+
+        return None
+
+    async def _find_outer_next_task(
+        self, task: Task, _origin_task: Task = None
+    ) -> Task:
         LOG.warning(
             f"We are browsing the tree from leaf to root. This use case is not yet supported. This functionality is in alpha version."
         )
 
-        if task._task_parent_id is None:
+        if hasattr(task, "_task_parent_id") and task._task_parent_id is None:
             if not isinstance(task, Plan):
                 LOG.error(f"Task {task.formated_str()} is not a plan and has no parent")
             return None
-        elif task.task_parent is not None:
-            t = task.task_parent.find_ready_subbranch()
-            if len(t) > 0:
-                return t[0]
-            else:
-                return self._find_outer_next_task(
-                    task=task.task_parent, origin_task=task
-                )
-        else:
-            LOG.critical(f"Task {task.debug_formated_str(status=True)} has no parent")
+        elif not hasattr(task, "_task_parent_id"):
             return None
 
-    def get_ready_tasks(self, task_ids_set: list[str] = None) -> list[Task]:
+        parent_task = await task.task_parent() if task else None
+        if parent_task is None or task == _origin_task:
+            if parent_task is None:
+                LOG.critical(
+                    f"Task {task.debug_formated_str(status=True)} has no parent"
+                )
+            return None
+
+        # Check ready tasks in the parent's subbranch
+        ready_tasks = await parent_task.find_ready_subbranch(origin=task)
+        if ready_tasks:
+            return ready_tasks[0]
+
+        # Recursively check the parent's siblings and ancestors
+        return await self._find_outer_next_task(
+            task=parent_task, _origin_task=_origin_task
+        )
+
+    async def get_first_ready_tasks(self, task_ids_set: list[str] = None) -> Task:
+        """
+        Get the first ready tasks from Plan._ready_task_ids
+        """
+        LOG.debug(f"Getting first ready tasks from plan {self.plan_id}")
+        return await self.get_task(self._ready_task_ids[0])
+
+    async def get_last_achieved_tasks(self, count: int = 1) -> list[Task]:
+        """
+        Get the n last achieved tasks from Plan._done_task_ids
+        """
+        LOG.debug(f"Getting last achieved tasks from plan {self.plan_id}")
+        return [
+            await self.get_task(task_id) for task_id in self._done_task_ids[-count:]
+        ]
+
+    def get_all_tasks_ids(self) -> list[str]:
+        """
+        Get all the tasks ids from the plan
+        """
+        return self._all_task_ids
+
+    def get_ready_tasks_ids(self, task_ids_set: list[str] = None) -> list[Task]:
         """
         Get the all ready tasks from Plan._ready_task_ids
         """
         LOG.debug(f"Getting ready tasks from plan {self.plan_id}")
-        return [self.get_task(task_id=task_id) for task_id in self._ready_task_ids]
 
-    def get_active_tasks(self, task_ids_set: list[str] = None) -> list[Task]:
+        ready_task_ids = set(self._ready_task_ids)
+        if (task_ids_set is not None) and (len(task_ids_set) > 0):
+            ready_task_ids = list(ready_task_ids.intersection(set(task_ids_set)))
+
+        return ready_task_ids
+
+    async def get_ready_tasks(self, task_ids_set: list[str] = None) -> list[Task]:
+        return [
+            await self.get_task(task_id=task_id)
+            for task_id in self.get_ready_tasks_ids(task_ids_set=task_ids_set)
+        ]
+
+    def get_active_tasks_ids(self, task_ids_set: list[str] = None) -> list[Task]:
         """
         Active tasks are tasks not in Plan._done_task_ids but in Plan._all_task_ids
         """
@@ -216,21 +325,28 @@ class Plan(AbstractPlan):
         done_task_ids_set = set(self._done_task_ids)
         active_task_ids = all_task_ids_set - done_task_ids_set  # Set difference
 
-        return [self.get_task(task_id) for task_id in active_task_ids]
+        if (task_ids_set is not None) and (len(task_ids_set) > 0):
+            active_task_ids = active_task_ids.intersection(set(task_ids_set))
 
-    def get_first_ready_tasks(self, task_ids_set: list[str] = None) -> Task:
-        """
-        Get the first ready tasks from Plan._ready_task_ids
-        """
-        LOG.debug(f"Getting first ready tasks from plan {self.plan_id}")
-        return self.get_task(self._ready_task_ids[0])
+        return active_task_ids
 
-    def get_last_achieved_tasks(self, count: int = 1) -> list[Task]:
+    async def get_active_tasks(self, task_ids_set: list[str] = None) -> list[Task]:
+        return [
+            await self.get_task(task_id)
+            for task_id in self.get_active_tasks_ids(task_ids_set=task_ids_set)
+        ]
+
+    def get_all_done_tasks_ids(self) -> list[str]:
         """
-        Get the n last achieved tasks from Plan._done_task_ids
+        Get all the tasks ids from the plan
         """
-        LOG.debug(f"Getting last achieved tasks from plan {self.plan_id}")
-        return [self.get_task(task_id) for task_id in self._done_task_ids[-count:]]
+        return self._done_task_ids
+
+    async def get_all_done_tasks(self) -> list[Task]:
+        """
+        Get all the tasks ids from the plan
+        """
+        return [await self.get_task(task_id) for task_id in self._done_task_ids]
 
     #############################################################################################
     #############################################################################################
@@ -242,12 +358,12 @@ class Plan(AbstractPlan):
     #############################################################################################
     def unregister_loaded_task(self, task_id: str) -> Task:
         """
-        Remove a task from the Plan._loaded_tasks_dict and free memory
+        Remove a task from the Plan._loaded_tasks_dict and free db
         """
         return self._loaded_tasks_dict.pop(task_id)
 
     def _registry_update_task_status_in_list(
-        self, task_id: Task, status: TaskStatusList
+        self, status: TaskStatusList, task_id: str
     ):
         """
         Update the status of a task in the task list.
@@ -260,13 +376,26 @@ class Plan(AbstractPlan):
             ValueError: If the status is not a valid TaskStatusList value.
 
         """
+
         LOG.debug(f"Updating task {task_id} status to {status}")
         if status == TaskStatusList.READY:
-            self._ready_task_ids.append(task_id)
+            if task_id not in self._ready_task_ids:
+                self._ready_task_ids.append(task_id)
+        elif status == TaskStatusList.IN_PROGRESS_WITH_SUBTASKS:
+            if task_id in self._ready_task_ids:
+                self._ready_task_ids.remove(task_id)
         elif status == TaskStatusList.DONE:
             if task_id in self._ready_task_ids:
                 self._ready_task_ids.remove(task_id)
-            self._done_task_ids.append(task_id)
+            if task_id not in self._done_task_ids:
+                self._done_task_ids.append(task_id)
+
+            # if len(set(task.get_siblings_ids()) - set(task.agent.plan.get_all_done_tasks_ids())) == 0 :
+            #     loop = asyncio.get_event_loop()
+            #     parent = loop.run_until_complete(task.task_parent())
+            #     if (not isinstance(parent, Plan)):
+            #         #FIXME:  Make resumé of Parent
+            #         parent.state = TaskStatusList.DONE
 
     def _register_new_task(self, task: Task):
         """
@@ -340,47 +469,17 @@ class Plan(AbstractPlan):
     #############################################################################################
     #############################################################################################
 
-    @classmethod
-    def create_in_db(cls, agent: BaseAgent):
-        """
-        Create a plan in the database for the given agent.
-
-        Args:
-            agent (BaseAgent): The agent for which the plan is created.
-
-        Returns:
-            Plan: The created plan.
-
-        """
-        LOG.debug(f"Creating plan for agent {agent.agent_id}")
-        memory = agent.memory
-        memory.get_table("plans")
-
-        plan = cls(
-            agent_id=agent.agent_id,
-            task_goal=agent.agent_goal_sentence,
-            tasks=[],
-            agent=agent,
-        )
-
-        plan._create_initial_tasks(status=TaskStatusList.READY)
-
-        # plan_table.add(plan, id=plan.plan_id)
-        plan.save(creation=True)
-        return plan
-
-    def _create_initial_tasks(self, status: TaskStatusList):
+    def create_initial_tasks(self, status: TaskStatusList):
         LOG.debug(f"Creating initial task for plan {self.plan_id}")
         initial_task = Task(
             agent=self.agent,
             plan_id=self.plan_id,
-            task_parent=self,
+            # task_parent=self,
             state=status,
             _task_parent_id=self.plan_id,
-            _task_predecessors_id=None,
             responsible_agent_id=None,
             task_goal=self.task_goal,
-            command=Task.default_command(),
+            command=Task.default_tool(),
             long_description="This is the initial task of the plan, no task has been performed yet and this tasks will consist in splitting the goal into subtasks",
             arguments={"note_to_agent_length": 400},
             acceptance_criteria=["A plan has been made to achieve the specific task"],
@@ -400,9 +499,8 @@ class Plan(AbstractPlan):
                     agent=self.agent,
                     plan_id=self.plan_id,
                     _task_parent_id=self.plan_id,
-                    task_parent=self,
+                    # task_parent=self,
                     state=status,
-                    _task_predecessors_id=None,
                     responsible_agent_id=None,
                     task_goal="Refine a user requirements for better exploitation by Agents",
                     command="afaas_refine_user_context",
@@ -419,7 +517,15 @@ class Plan(AbstractPlan):
 
         self.add_tasks(tasks=initial_task_list)
 
-    def save(self, creation=False):
+    async def db_create(self):
+        agent = self.agent
+        if agent:
+            db = agent.db
+            self.agent_id = agent.agent_id
+            plan_table = await db.get_table("plans")
+            await plan_table.add(value=self, id=self.plan_id)
+
+    async def db_save(self):
         ###
         # Step 1 : Lazy saving : Update Existing Tasks
         ###
@@ -429,7 +535,7 @@ class Plan(AbstractPlan):
                 task: Task = self._loaded_tasks_dict.get(task_id)
                 if task:
                     LOG.db_log(f"Saving task {task.task_goal}")
-                    task.save_in_db()  # Save the task
+                    await task.db_save()  # Save the task
 
         ###
         # Step 2 : Lazy saving : Create New Tasks
@@ -438,7 +544,7 @@ class Plan(AbstractPlan):
             task: Task = self._loaded_tasks_dict.get(task_id)
             if task:
                 LOG.db_log(f"Creating task {task.task_goal}")
-                task.create_in_db(task=task, agent=self.agent)  # Save the task
+                await task.db_create(task=task, agent=self.agent)  # Save the task
 
         # Reinitalize the lists
         self._modified_tasks_ids = []
@@ -449,75 +555,52 @@ class Plan(AbstractPlan):
         ###
         agent = self.agent
         if agent:
-            memory = agent.memory
-
-            plan_table = memory.get_table("plans")
-            if creation:
-                plan_table.add(value=self, id=self.plan_id)
-            else:
-                plan_table.update(
-                    plan_id=self.plan_id, agent_id=self.agent.agent_id, value=self
-                )
-
-    @classmethod
-    def get_plan_from_db(cls, plan_id: str, agent: BaseAgent):
-        """
-        Get a plan from the database
-        """
-        from AFAAS.core.db.table.nosql.agent import AgentsTable
-        from AFAAS.interfaces.db.db import AbstractMemory
-
-        memory: AbstractMemory = agent.memory
-        plan_table: AgentsTable = memory.get_table("plans")
-        plan_dict = plan_table.get(plan_id=plan_id, agent_id=agent.agent_id)
-
-        if len(plan_dict) == 0:
-            raise Exception(
-                f"Plan {plan_id} not found in the database for agent {agent.agent_id}"
+            db = agent.db
+            plan_table = await db.get_table("plans")
+            await plan_table.update(
+                plan_id=self.plan_id, agent_id=self.agent.agent_id, value=self
             )
-
-        return cls(**plan_dict, agent=agent)
 
     # endregion
 
-    def generate_pitch(self, task: Task = None):
-        if task is None:
-            task = self.find_first_ready_task()
+    # def generate_pitch(self, task: Task = None):
+    #     if task is None:
+    #         task = self.find_first_ready_task()
 
-        # Extract the task's siblings and path
-        siblings: list[Task] = [
-            sib
-            for sib in self.subtasks
-            if sib.task_parent_id == task.task_parent_id and sib != task
-        ]
-        path_to_task = task.get_task_path()
+    #     # Extract the task's siblings and path
+    #     siblings: list[Task] = [
+    #         sib
+    #         for sib in self.subtasks
+    #         if sib._task_parent_id == task._task_parent_id and sib != task
+    #     ]
+    #     path_to_task = await task.get_task_path()
 
-        # Build the pitch
-        pitch = """
-        # INSTRUCTION
-        Your goal is to find the best-suited command in order to achieve the following task: {task_description}
+    #     # Build the pitch
+    #     pitch = """
+    #     # INSTRUCTION
+    #     Your goal is to find the best-suited command in order to achieve the following task: {task_description}
 
-        # CONTEXT
-        The high-level plan designed to achieve our goal is: 
-        {high_level_plan}
+    #     # CONTEXT
+    #     The high-level plan designed to achieve our goal is:
+    #     {high_level_plan}
 
-        We are working on the task "{task_name}" that consists in: {task_command}. This task is located in:
-        {path_structure}
-        """.format(
-            task_description=task.description,
-            high_level_plan="\n".join(
-                [
-                    "{}: {}".format(t.task_goal, t.description)
-                    for t in self.subtasks
-                    if not t.task_parent_id
-                ]
-            ),
-            task_name=task.task_goal,
-            task_command=task.command,  # assuming each task has a 'command' attribute
-            path_structure="\n".join(["->".join(p.task_goal for p in path_to_task)]),
-        )
+    #     We are working on the task "{task_name}" that consists in: {task_command}. This task is located in:
+    #     {path_structure}
+    #     """.format(
+    #         task_description=task.description,
+    #         high_level_plan="\n".join(
+    #             [
+    #                 "{}: {}".format(t.task_goal, t.description)
+    #                 for t in self.subtasks
+    #                 if not t._task_parent_id
+    #             ]
+    #         ),
+    #         task_name=task.task_goal,
+    #         task_command=task.command,  # assuming each task has a 'command' attribute
+    #         path_structure="\n".join(["->".join(p.task_goal for p in path_to_task)]),
+    #     )
 
-        return pitch
+    #     return pitch
 
     def __hash__(self):
         return hash(self.plan_id)

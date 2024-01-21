@@ -225,9 +225,7 @@ async def list_artifacts(
     List the artifacts that the task has created.
     """
     try:
-        artifacts, pagination = await agent.memory.list_artifacts(
-            agent_id, page, pageSize
-        )
+        artifacts, pagination = await agent.db.list_artifacts(agent_id, page, pageSize)
         return AgentArtifactsListResponse(artifacts=artifacts, pagination=pagination)
 
     except Exception:
@@ -254,7 +252,7 @@ async def create_artifact(
 
         agent.workspace.write(agent_id, file_path, data)
 
-        artifact = await agent.memory.create_artifact(
+        artifact = await agent.db.create_artifact(
             agent_id=agent_id,
             file_name=file_name,
             relative_path=relative_path,
@@ -270,7 +268,7 @@ async def get_artifact(agent, agent_id: str, artifact_id: str) -> Artifact:
     Get an artifact by ID.
     """
     try:
-        artifact = await agent.memory.get_artifact(artifact_id)
+        artifact = await agent.db.get_artifact(artifact_id)
         if artifact.file_name not in artifact.relative_path:
             file_path = os.path.join(artifact.relative_path, artifact.file_name)
         else:

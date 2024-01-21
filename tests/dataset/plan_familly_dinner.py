@@ -10,15 +10,15 @@ from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.lib.task.plan import Plan
 from AFAAS.lib.task.task import Task
 from tests.dataset.agent_planner import agent_dataset
+from tests.utils.ascii_tree import make_tree
 
 
-def plan_familly_dinner():
-    agent = agent_dataset()
+async def _plan_familly_dinner():
+    agent = await agent_dataset()
     plan_dict = {
         "created_at": "2023-12-31T15:38:45.666346",
         "modified_at": "2023-12-31T15:38:45.666355",
         "task_context": None,
-        "long_description": None,
         "task_history": None,
         "acceptance_criteria": [],
         "tasks": [],
@@ -33,138 +33,117 @@ def plan_familly_dinner():
     plan_prepare_dinner = Plan(
         plan_id="pytest_P" + str(uuid.uuid4()),
         task_goal="100. Prepare Dinner for Family",
+        long_description="Coordinate and execute all necessary activities to prepare a dinner for the family, including grocery shopping, kitchen preparation, cooking, and setting the mood.",
         agent=agent,
         **plan_dict,
     )
     agent.plan = plan_prepare_dinner
-    # plan_prepare_dinner.state = TaskStatusList.READY
+    plan_prepare_dinner._subtasks = None
+    plan_prepare_dinner._all_task_ids = []
+    plan_prepare_dinner._ready_task_ids = []
+    plan_prepare_dinner._done_task_ids = []
+    plan_prepare_dinner._loaded_tasks_dict = {}
+    plan_prepare_dinner._modified_tasks_ids = []
+    plan_prepare_dinner._new_tasks_ids = []
+    return plan_prepare_dinner
 
+
+async def plan_familly_dinner_with_tasks():
+    plan_prepare_dinner = await _plan_familly_dinner()
+    agent = plan_prepare_dinner.agent
     task_101_buy_groceries = Task(
-        agent=agent, task_id="101", task_goal="101. Buy Groceries"
+        agent=agent,
+        plan_id=agent.plan.plan_id,
+        task_id="101",
+        task_goal="101. Buy Groceries",
+        long_description="Procure all necessary ingredients and items from a grocery store required for preparing the dinner.",
     )
-    task_101_buy_groceries.state = TaskStatusList.READY
-
     task_102_clean_kitchen = Task(
-        agent=agent, task_id="102", task_goal="102. Clean Kitchen"
+        agent=agent,
+        plan_id=agent.plan.plan_id,
+        task_id="102",
+        task_goal="102. Clean Kitchen",
+        long_description="Thoroughly clean and organize the kitchen area to create a hygienic and efficient cooking environment.",
     )
-    task_102_clean_kitchen.state = TaskStatusList.READY
-
     task_103_choose_music = Task(
-        agent=agent, task_id="103", task_goal="103. Choose Dinner Music"
+        agent=agent,
+        plan_id=agent.plan.plan_id,
+        task_id="103",
+        task_goal="103. Choose Dinner Music",
+        long_description="Select and arrange a playlist of music that will create a pleasant and relaxing atmosphere during the dinner.",
     )
-    task_103_choose_music.state = TaskStatusList.READY
-
     task_104_decorate_dining_room = Task(
-        agent=agent, task_id="104", task_goal="104. Decorate Dining Room"
+        agent=agent,
+        plan_id=agent.plan.plan_id,
+        task_id="104",
+        task_goal="104. Decorate Dining Room",
+        long_description="Enhance the dining room's ambiance by arranging decorations, setting appropriate lighting, and ensuring a visually pleasing and comfortable dining environment.",
     )
-    task_104_decorate_dining_room.state = TaskStatusList.READY
 
     task_105_set_mood = Task(
-        agent=agent, task_id="105", task_goal="105. Set the Mood for Dinner"
+        agent=agent,
+        plan_id=agent.plan.plan_id,
+        task_id="105",
+        task_goal="105. Set the Mood for Dinner",
+        long_description="Create a welcoming and enjoyable dinner atmosphere by adjusting the lighting, music, and room temperature, and ensuring all elements contribute to a pleasant dining experience.",
     )
+    task_101_buy_groceries.state = TaskStatusList.READY
+    task_102_clean_kitchen.state = TaskStatusList.READY
+    task_103_choose_music.state = TaskStatusList.READY
+    task_104_decorate_dining_room.state = TaskStatusList.READY
     task_105_set_mood.add_predecessor(task_103_choose_music)
     task_105_set_mood.add_predecessor(task_104_decorate_dining_room)
 
     task_106_set_table = Task(
-        agent=agent, task_id="106", task_goal="106. Set the Table"
+        agent=agent,
+        plan_id=agent.plan.plan_id,
+        task_id="106",
+        task_goal="106. Set the Table",
+        long_description="Arrange the dining table with necessary cutlery, plates, glasses, and napkins, ensuring it's elegantly set and ready for the meal.",
     )
     task_106_set_table.add_predecessor(task_105_set_mood)
 
-    task_107_make_salad = Task(agent=agent, task_id="107", task_goal="107. Make Salad")
+    task_107_make_salad = Task(
+        agent=agent,
+        plan_id=agent.plan.plan_id,
+        task_id="107",
+        task_goal="107. Make Salad",
+        long_description="Prepare a fresh salad by selecting and combining a variety of ingredients, dressing it appropriately, and presenting it in an appealing manner.",
+    )
     task_107_make_salad.add_predecessor(task_106_set_table)
 
     task_108_serve_salad = Task(
-        agent=agent, task_id="108", task_goal="108. Serve Salad"
+        agent=agent,
+        task_id="108",
+        task_goal="108. Serve Salad",
+        long_description="Present the prepared salad to the diners, ensuring it's served at the right temperature and in an appealing way, as a starter for the dinner.",
     )
     task_108_serve_salad.add_predecessor(task_107_make_salad)
 
     task_200_prepare_main_course = Task(
-        agent=agent, task_id="200", task_goal="200. Prepare Main Course"
+        agent=agent,
+        task_id="200",
+        task_goal="200. Prepare Main Course",
+        long_description="Cook the main course of the dinner, focusing on flavor, presentation, and ensuring it meets the dietary preferences and needs of the family.",
     )
     task_200_prepare_main_course.add_predecessor(task_106_set_table)
 
     task_201_serve_dinner = Task(
-        agent=agent, task_id="201", task_goal="201. Serve Main Course"
+        agent=agent,
+        task_id="201",
+        task_goal="201. Serve Main Course",
+        long_description="Gracefully serve the prepared main course to the diners, ensuring each person receives their portion with appropriate accompaniments.",
     )
     task_201_serve_dinner.add_predecessor(task_200_prepare_main_course)
     task_201_serve_dinner.add_predecessor(task_108_serve_salad)
 
     task_300_make_banana_bread = Task(
-        agent=agent, task_id="300", task_goal="300. Make Banana Bread"
-    )
-
-    task_300_1_gather_ingredients = Task(
-        agent=agent, task_id="300.1", task_goal="300.1. Gather Ingredients"
-    )
-    task_300_1_gather_ingredients.add_predecessor(task_101_buy_groceries)
-    task_300_1_gather_ingredients.add_predecessor(task_102_clean_kitchen)
-
-    task_300_2_prepare_baking_pan = Task(
-        agent=agent, task_id="300.2", task_goal="300.2. Prepare Baking Pan"
-    )
-
-    task_300_3_mix_ingredients = Task(
-        agent=agent, task_id="300.3", task_goal="300.3. Mix Ingredients"
-    )
-    task_300_3_mix_ingredients.add_predecessor(task_300_1_gather_ingredients)
-
-    task_300_4_bake_bread = Task(
-        agent=agent, task_id="300.4", task_goal="300.4. Bake the Bread"
-    )
-    task_300_4_bake_bread.add_predecessor(task_201_serve_dinner)
-    task_300_4_bake_bread.add_predecessor(task_300_3_mix_ingredients)
-
-    task_300_5_cool_bread = Task(
-        agent=agent, task_id="300.5", task_goal="300.5. Cool the Bread"
-    )
-    task_300_5_cool_bread.add_predecessor(task_300_4_bake_bread)
-
-    task_300_6_serve_bread = Task(
-        agent=agent, task_id="300.6", task_goal="300.6. Serve Banana Bread"
-    )
-    task_300_6_serve_bread.add_predecessor(task_300_5_cool_bread)
-    task_300_6_serve_bread.add_predecessor(task_201_serve_dinner)
-
-    # Subtasks for 'Mix Ingredients'
-    task_300_3_1_measure_flour = Task(
-        agent=agent, task_id="300.3.1", task_goal="300.3.1. Measure Flour"
-    )
-    task_300_3_1_measure_flour.add_predecessor(task_300_1_gather_ingredients)
-
-    task_300_3_2_mash_bananas = Task(
-        agent=agent, task_id="300.3.2", task_goal="300.3.2. Mash Bananas"
-    )
-    task_300_3_2_mash_bananas.add_predecessor(task_300_1_gather_ingredients)
-
-    task_300_3_3_combine_wet_ingredients = Task(
-        agent=agent, task_id="300.3.3", task_goal="300.3.3. Combine Wet Ingredients"
-    )
-    task_300_3_3_combine_wet_ingredients.add_predecessor(task_300_3_1_measure_flour)
-    task_300_3_3_combine_wet_ingredients.add_predecessor(task_300_3_2_mash_bananas)
-
-    task_300_2_1_grease_pan = Task(
-        agent=agent, task_id="300.2.1", task_goal="300.2.1. Grease Baking Pan"
-    )
-    task_300_2_1_grease_pan.add_predecessor(task_300_1_gather_ingredients)
-
-    task_300_2_2_line_pan = Task(
         agent=agent,
-        task_id="300.2.2",
-        task_goal="300.2.2. Line Baking Pan with Parchment Paper",
+        plan_id=agent.plan.plan_id,
+        task_id="300",
+        task_goal="300. Make Banana Bread",
+        long_description="Bake a banana bread by following a specific recipe, focusing on achieving the right texture and flavor, and ensuring it's enjoyable for all diners.",
     )
-    task_300_2_2_line_pan.add_predecessor(task_300_2_1_grease_pan)
-
-    task_300_1_1_find_ingredients_list = Task(
-        agent=agent, task_id="300.1.1", task_goal="300.1.1. Find Ingredients List"
-    )
-    task_300_1_1_find_ingredients_list.add_predecessor(task_101_buy_groceries)
-
-    task_300_1_2_check_pantry = Task(
-        agent=agent,
-        task_id="300.1.2",
-        task_goal="300.1.2. Check Pantry for Ingredients",
-    )
-    task_300_1_2_check_pantry.add_predecessor(task_300_1_1_find_ingredients_list)
 
     plan_prepare_dinner.add_task(task_101_buy_groceries)
 
@@ -178,373 +157,813 @@ def plan_familly_dinner():
     plan_prepare_dinner.add_task(task_200_prepare_main_course)
     plan_prepare_dinner.add_task(task_201_serve_dinner)
     plan_prepare_dinner.add_task(task_300_make_banana_bread)
-    task_200_prepare_main_course.add_task(task_300_1_gather_ingredients)
-    task_300_1_gather_ingredients.add_task(task_300_1_1_find_ingredients_list)
-    task_300_1_gather_ingredients.add_task(task_300_1_2_check_pantry)
-    task_200_prepare_main_course.add_task(task_300_2_prepare_baking_pan)
-    task_300_2_prepare_baking_pan.add_task(task_300_2_1_grease_pan)
-    task_300_2_prepare_baking_pan.add_task(task_300_2_2_line_pan)
-    task_200_prepare_main_course.add_task(task_300_3_mix_ingredients)
-    task_300_3_mix_ingredients.add_task(task_300_3_1_measure_flour)
-    task_300_3_mix_ingredients.add_task(task_300_3_2_mash_bananas)
-    task_300_3_mix_ingredients.add_task(task_300_3_3_combine_wet_ingredients)
-    task_200_prepare_main_course.add_task(task_300_4_bake_bread)
-    task_200_prepare_main_course.add_task(task_300_5_cool_bread)
-    task_200_prepare_main_course.add_task(task_300_6_serve_bread)
-
     return plan_prepare_dinner
 
 
-@pytest.fixture
-def plan_step_0():
-    # Initial setup with multiple subtasks
-    return plan_familly_dinner()
+async def plan_familly_dinner_with_tasks_saved_in_db():
+    plan_prepare_dinner = await plan_familly_dinner_with_tasks()
+    await plan_prepare_dinner.db_create()
+    await plan_prepare_dinner.db_save()
+    return plan_prepare_dinner
 
 
-@pytest.fixture(scope="function")
-def plan_step_1() -> Plan:
-    t = plan_step_0()
-    # Marking initial tasks as done
+async def move_to_next(plan: Plan, only_once=True):
     task_id: str
-    t._all_task_ids.reverse()
+    # plan._all_task_ids.reverse()
+    return_flag = False
 
-    for task_id in t._all_task_ids:
-        task = t.get_task(task_id=task_id)
-        if task.state == TaskStatusList.READY and task.is_ready():
-            task.state = TaskStatusList.DONE
+    for task_id in plan._all_task_ids:
+        task = await plan.get_task(task_id=task_id)
+        #
+        # raise Exception(task.debug_formated_str() + await make_tree(plan))
+        if (
+            not return_flag
+            and task.state == TaskStatusList.READY
+            and await task.is_ready()
+        ):
+            await task.close_task()
             task.task_text_output = f"Completed '{task.task_goal}' successfully."
-        elif task.is_ready():
-            task.state = TaskStatusList.READY
+            if only_once:
+                return_flag = True
 
-    t._all_task_ids.reverse()
+        if task.state == TaskStatusList.BACKLOG:
+            if await task.is_ready():
+                task.state = TaskStatusList.READY
+                if return_flag:
+                    return plan
 
-    for task_id in t._all_task_ids:
-        task = t.get_task(task_id=task_id)
-        print(f"Task {task.task_goal} is {task.state}")
-    return copy.deepcopy(t)
+    # plan._all_task_ids.reverse()
 
-
-# @pytest.fixture(scope='function')
-# def plan_step_2():
-#     t: Plan = plan_step_1()
-#     # Marking initial tasks as done
-#     task_id: str
-#     t._all_task_ids.reverse()
-
-#     for task_id in t._all_task_ids:
-#         task = t.get_task(task_id=task_id)
-#         if task.state == TaskStatusList.READY and task.is_ready():
-#             task.state = TaskStatusList.DONE
-#         elif task.is_ready():
-#             task.state = TaskStatusList.READY
-
-#     t._all_task_ids.reverse()
-
-#     for task_id in t._all_task_ids:
-#         task = t.get_task(task_id=task_id)
-#         print(f"Task {task.task_goal} is {task.state}")
-#     return copy.deepcopy(t)
+    return plan
 
 
-@pytest.fixture(scope="function")
-def plan_step_2a() -> Plan:
-    t = plan_step_1()
+async def reorder_list(plan: Plan, task=Task):
+    lst = plan._all_task_ids
+    item = task.task_id
+    num_last_items = len(task.subtasks.get_all_task_ids_from_stack())
+    # Check if item is in the list and num_last_items is valid
+    if item not in lst or num_last_items > len(lst) or num_last_items < 0:
+        raise ValueError(f"Invalid item or number of last items {num_last_items}")
 
-    # Task 45 completed (Example task, adjust as needed)
-    t.get_task(task_id="45").state = TaskStatusList.DONE
-    t.get_task(task_id="45").task_text_output = "Completed task 45 successfully."
+    # Find the index of the specified item
+    item_index = lst.index(item)
 
-    # Task 300.1.1: Find Ingredients List
-    t.get_task(task_id="300.1.1").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="300.1.1"
-    ).task_text_output = "Found the complete ingredients list for banana bread."
+    # Rearrange the list
+    # Extract the last 'num_last_items' elements
+    last_elements = lst[-num_last_items:]
 
-    # Task 106: Set the Table
-    t.get_task(task_id="106").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="106"
-    ).task_text_output = "Set the table for dinner, including plates, cutlery, and glasses for all guests."
+    # Remove these elements from their original position
+    lst = lst[:-num_last_items]
 
-    return copy.deepcopy(t)
+    # Update the state of tasks after the specified item
+    for x in lst[item_index + 1 :]:
+        parent_sibling = await plan.get_task(x)
+        parent_sibling.state = TaskStatusList.BACKLOG
+
+    # Insert them after the specified item
+    lst[item_index + 1 : item_index + 1] = last_elements
+
+    plan._all_task_ids = lst
 
 
 @pytest.fixture(scope="function")
-def plan_step_2b() -> Plan:
-    t = plan_step_2a()
-    t.get_task(task_id="300.1.2").state = TaskStatusList.READY
-    t.get_task(task_id="107").state = TaskStatusList.READY
-    t.get_task(task_id="200").state = TaskStatusList.READY
-    t.get_task(task_id="200.1").state = TaskStatusList.READY
-    t.get_task(task_id="200.3").state = TaskStatusList.READY
-    return copy.deepcopy(t)
+async def plan_with_no_task():
+    plan = await _plan_familly_dinner()
+    yield plan
 
 
 @pytest.fixture(scope="function")
-def plan_step_2c() -> Plan:
-    t = plan_step_2b()
-    t.get_task(task_id="300.1.2").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="300.1.2"
-    ).task_text_output = "Checked the pantry and gathered all necessary ingredients for the banana bread."
+async def plan_step_0() -> Plan:
+    # Initial setup with multiple subtasks
+    return await plan_familly_dinner_with_tasks_saved_in_db()
 
-    # Task 300.1 can now be marked as done, as its subtasks are done
-    t.get_task(task_id="300.1").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="300.1"
-    ).task_text_output = (
-        "Successfully gathered all ingredients required for making banana bread."
+
+@pytest.fixture(scope="function")
+async def plan_step_1():
+    plan = await _plan_step_1()
+    yield plan
+
+
+async def _plan_step_1() -> Plan:
+    t = await plan_familly_dinner_with_tasks_saved_in_db()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_2():
+    plan = await _plan_step_2()
+    yield plan
+
+
+async def _plan_step_2() -> Plan:
+    t = await _plan_step_1()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_3():
+    plan = await _plan_step_3()
+    yield plan
+
+
+async def _plan_step_3() -> Plan:
+    t = await _plan_step_2()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_4():
+    plan = await _plan_step_4()
+    yield plan
+
+
+async def _plan_step_4() -> Plan:
+    t = await _plan_step_3()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_5():
+    plan = await _plan_step_5()
+    yield plan
+
+
+async def _plan_step_5() -> Plan:
+    t = await _plan_step_4()
+    plan = await move_to_next(t)
+
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_6():
+    plan = await _plan_step_6()
+    yield plan
+
+
+async def _plan_step_6() -> Plan:
+    t = await _plan_step_5()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_7():
+    plan = await _plan_step_7()
+    yield plan
+
+
+async def _plan_step_7() -> Plan:
+    t = await _plan_step_6()
+    plan = await move_to_next(t)
+    # raise Exception(str(plan._all_task_ids) + "\n\n\n" +  await make_tree(plan))
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_8():
+    plan = await _plan_step_8()
+    yield plan
+
+
+async def _plan_step_8() -> Plan:
+    t = await _plan_step_7()
+    plan = await move_to_next(t)
+    agent = plan.agent
+
+    task_200_prepare_main_course = await plan.get_task("200")
+    task_300_1_gather_ingredients = Task(
+        agent=agent,
+        plan_id=agent.plan.plan_id,
+        task_id="300.1",
+        task_goal="300.1. Gather Ingredients",
+        long_description="Collect all necessary ingredients for baking banana bread, ensuring they are fresh and of good quality.",
     )
+    task_300_1_gather_ingredients.add_predecessor(await plan.get_task("101"))
+    task_300_1_gather_ingredients.add_predecessor(await plan.get_task("102"))
 
-    # Task 300.2 is not yet ready since its subtasks are not done
-    t.get_task(task_id="300.2").state = TaskStatusList.READY
-    t.get_task(task_id="300.2.1").state = TaskStatusList.READY
-    t.get_task(task_id="300.3").state = TaskStatusList.READY
-    t.get_task(task_id="300.3.1").state = TaskStatusList.READY
-    t.get_task(task_id="300.3.2").state = TaskStatusList.READY
-    return copy.deepcopy(t)
-
-
-@pytest.fixture(scope="function")
-def plan_step_2d() -> Plan:
-    t = plan_step_2c()
-    t.get_task(task_id="107").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="107"
-    ).task_text_output = (
-        "Prepared a fresh and healthy salad with a variety of greens and dressing."
+    task_300_2_prepare_baking_pan = Task(
+        agent=agent,
+        plan_id=agent.plan.plan_id,
+        task_id="300.2",
+        task_goal="300.2. Prepare Baking Pan",
+        long_description="Ready the baking pan for the banana bread by properly greasing it or lining it with parchment paper, ensuring the bread will not stick and will bake evenly.",
     )
-
-    t.get_task(task_id="200.1").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="200.1"
-    ).task_text_output = "Completed the initial preparations for the main course."
-
-    t.get_task(task_id="200.3").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="200.3"
-    ).task_text_output = (
-        "Finalized cooking the main course, ensuring it's delicious and well-seasoned."
+    task_300_3_mix_ingredients = Task(
+        agent=agent,
+        plan_id=agent.plan.plan_id,
+        task_id="300.3",
+        task_goal="300.3. Mix Ingredients",
+        long_description="Combine the banana bread ingredients in the correct sequence and method, ensuring a consistent and well-mixed batter.",
     )
+    task_300_3_mix_ingredients.add_predecessor(task_300_1_gather_ingredients)
 
-    t.get_task(task_id="300.2.1").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="300.2.1"
-    ).task_text_output = (
-        "Greased the baking pan for the banana bread, making it ready for the batter."
+    task_300_4_bake_bread = Task(
+        agent=agent,
+        task_id="300.4",
+        task_goal="300.4. Bake the Bread",
+        long_description="Bake the banana bread in a preheated oven, monitoring it to achieve the perfect bake, both in terms of texture and color.",
     )
+    task_300_4_bake_bread.add_predecessor(task_300_1_gather_ingredients)
+    task_300_4_bake_bread.add_predecessor(task_300_3_mix_ingredients)
 
-    t.get_task(task_id="300.3.1").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="300.3.1"
-    ).task_text_output = (
-        "Measured the required amount of flour for the banana bread accurately."
+    task_300_5_cool_bread = Task(
+        agent=agent,
+        task_id="300.5",
+        task_goal="300.5. Cool the Bread",
+        long_description="Allow the baked banana bread to cool down to an appropriate temperature before serving, ensuring it retains its texture and flavor.",
     )
+    task_300_5_cool_bread.add_predecessor(task_300_4_bake_bread)
 
-    t.get_task(task_id="300.3.2").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="300.3.2"
-    ).task_text_output = (
-        "Mashed bananas to the right consistency for the banana bread mixture."
+    task_300_6_serve_bread = Task(
+        agent=agent,
+        task_id="300.6",
+        task_goal="300.6. Serve Banana Bread",
+        long_description="Serve the cooled banana bread, slicing it neatly and presenting it in an appetizing manner, potentially with accompaniments like butter or cream.",
     )
-
-    t.get_task(task_id="300.3.3").state = TaskStatusList.READY
-    return copy.deepcopy(t)
-
-
-@pytest.fixture(scope="function")
-def plan_step_3() -> Plan:
-    t = plan_step_2b()
-
-    # Completing task 200.4
-    t.get_task(task_id="200.4").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="200.4"
-    ).task_text_output = "Successfully finished the intricate preparation of the dessert, carefully arranging and garnishing each component to create a visually stunning and delicious finale to the meal."
-
-    # Marking the main course task as done
-    t.get_task(task_id="200").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="200"
-    ).task_text_output = "The main course has been masterfully prepared, combining a balance of flavors and textures, ensuring each ingredient complements the others to create a harmonious and satisfying dish."
-
-    # Completing task 300.2.2 and marking 300.2 as done
-    t.get_task(task_id="300.2.2").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="300.2.2"
-    ).task_text_output = "The baking pan has been lined with parchment paper, ensuring a non-stick surface which will aid in the seamless removal of the banana bread once baked, contributing to a perfect presentation."
-
-    t.get_task(task_id="300.2").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="300.2"
-    ).task_text_output = "All preparatory steps for baking the banana bread are complete. The pan is well-prepared and the oven preheated, setting the stage for a delicious and aromatic baking experience."
-
-    return copy.deepcopy(t)
+    task_300_6_serve_bread.add_predecessor(task_300_5_cool_bread)
+    task_300_6_serve_bread.add_predecessor(task_300_1_gather_ingredients)
+    # raise Exception(str(plan._all_task_ids) + "\n\n\n" +  await make_tree(plan))
+    task_200_prepare_main_course.add_task(task_300_1_gather_ingredients)
+    task_200_prepare_main_course.add_task(task_300_2_prepare_baking_pan)
+    task_200_prepare_main_course.add_task(task_300_3_mix_ingredients)
+    task_200_prepare_main_course.add_task(task_300_4_bake_bread)
+    task_200_prepare_main_course.add_task(task_300_5_cool_bread)
+    task_200_prepare_main_course.add_task(task_300_6_serve_bread)
+    await reorder_list(plan, task_200_prepare_main_course)
+    return plan
 
 
 @pytest.fixture(scope="function")
-def plan_step_4() -> Plan:
-    t = plan_step_3()
-
-    # Completing the combination of wet ingredients for the banana bread
-    t.get_task(task_id="300.3.3").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="300.3.3"
-    ).task_text_output = "Successfully combined the wet ingredients, including the mashed bananas, eggs, and butter, ensuring a smooth and well-integrated mixture that will contribute to the moist and rich texture of the banana bread."
-
-    # Marking the mixing of ingredients as done
-    t.get_task(task_id="300.3").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="300.3"
-    ).task_text_output = "All ingredients for the banana bread have been meticulously mixed, achieving a perfect balance of flavors. The consistency of the batter is ideal, promising a delightful texture and taste upon baking."
-
-    # Preparing to bake the bread
-    t.get_task(task_id="300.4").state = TaskStatusList.READY
-
-    return copy.deepcopy(t)
+async def plan_step_9():
+    plan = await _plan_step_9()
+    yield plan
 
 
-@pytest.fixture(scope="function")
-def plan_step_5() -> Plan:
-    t = plan_step_4()
+async def _plan_step_9() -> Plan:
+    t = await _plan_step_8()
+    plan = await move_to_next(t)
+    agent = plan.agent
+    task_300_1_gather_ingredients = await plan.get_task("300.1")
 
-    # Reiterating completion of the mixing of ingredients
-    t.get_task(task_id="300.3").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="300.3"
-    ).task_text_output = "The final mix of the banana bread ingredients is ready, with each component blended harmoniously. The aroma of the batter hints at the delicious baked good to come, setting high expectations for the finished product."
+    task_300_1_1_find_ingredients_list = Task(
+        agent=agent,
+        plan_id=agent.plan.plan_id,
+        task_id="300.1.1",
+        task_goal="300.1.1. Find Ingredients List",
+    )
+    task_300_1_1_find_ingredients_list.add_predecessor(await plan.get_task("101"))
 
-    return copy.deepcopy(t)
+    task_300_1_2_check_pantry = Task(
+        agent=agent,
+        task_id="300.1.2",
+        task_goal="300.1.2. Check Pantry for Ingredients",
+    )
+    # raise Exception(str(plan._all_task_ids) + "\n\n\n" +  await make_tree(plan))
+    task_300_1_gather_ingredients.add_task(task_300_1_1_find_ingredients_list)
+    task_300_1_gather_ingredients.add_task(task_300_1_2_check_pantry)
+    task_300_1_2_check_pantry.add_predecessor(task_300_1_1_find_ingredients_list)
+    await reorder_list(plan, task_300_1_gather_ingredients)
+    return plan
 
 
 @pytest.fixture(scope="function")
-def plan_step_6() -> Plan:
-    t = plan_step_5()
-
-    # Making salad serving task ready
-    t.get_task(task_id="108").state = TaskStatusList.READY
-
-    return copy.deepcopy(t)
+async def plan_step_10():
+    plan = await _plan_step_10()
+    yield plan
 
 
-@pytest.fixture(scope="function")
-def plan_step_7() -> Plan:
-    t = plan_step_6()
+async def _plan_step_10() -> Plan:
+    t = await _plan_step_9()
+    plan = await move_to_next(t)
+    agent = plan.agent
 
-    # Completing the salad serving task
-    t.get_task(task_id="108").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="108"
-    ).task_text_output = "The salad, a symphony of fresh greens and vibrant vegetables, was elegantly served in a large, ornate bowl. Each portion was carefully dressed with a homemade vinaigrette, ensuring a perfect blend of acidity and sweetness that complemented the fresh produce. The presentation was as delightful as the taste, with a sprinkle of herbs and edible flowers adding a touch of sophistication and color."
+    task_300_2_1_grease_pan = Task(
+        agent=agent,
+        plan_id=agent.plan.plan_id,
+        task_id="300.2.1",
+        task_goal="300.2.1. Grease Baking Pan",
+    )
+    task_300_2_1_grease_pan.add_predecessor(await plan.get_task("300.1"))
 
-    # Setting the main course serving task as ready
-    t.get_task(task_id="201").state = TaskStatusList.READY
-
-    return copy.deepcopy(t)
-
-
-@pytest.fixture(scope="function")
-def plan_step_8() -> Plan:
-    t = plan_step_7()
-
-    # Completing the main course serving task
-    t.get_task(task_id="201").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="201"
-    ).task_text_output = "The main course, a masterpiece of culinary expertise, was served with precision and grace. Each plate was a canvas showcasing the chef's skill, with the main dish taking center stage, surrounded by a medley of side dishes that enhanced its flavors. The aroma wafting from the plates promised a savory experience, and the first bite did not disappoint, offering a burst of flavors that danced on the palate. The combination of textures, colors, and tastes made for a memorable dining experience, leaving the guests eagerly anticipating the next course."
-
-    return copy.deepcopy(t)
+    task_300_2_2_line_pan = Task(
+        agent=agent,
+        task_id="300.2.2",
+        task_goal="300.2.2. Line Baking Pan with Parchment Paper",
+    )
+    task_300_2_2_line_pan.add_predecessor(task_300_2_1_grease_pan)
+    task_300_2_prepare_baking_pan = await plan.get_task("300.2")
+    # raise Exception(str(plan._all_task_ids) + "\n\n\n" +  await make_tree(plan))
+    task_300_2_prepare_baking_pan.add_task(task_300_2_1_grease_pan)
+    task_300_2_prepare_baking_pan.add_task(task_300_2_2_line_pan)
+    await reorder_list(plan, task_300_2_prepare_baking_pan)
+    return plan
 
 
 @pytest.fixture(scope="function")
-def plan_step_9() -> Plan:
-    t = plan_step_8()
+async def plan_step_11():
+    plan = await _plan_step_11()
+    yield plan
 
-    # Completing the baking of banana bread
-    t.get_task(task_id="300.4").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="300.4"
-    ).task_text_output = "The aroma of freshly baked banana bread filled the air, a testament to the perfect blend of ripe bananas, sugar, and spices. As the bread cooled on the wire rack, its golden-brown crust and moist interior were a promise of the delightful taste to come. The kitchen was imbued with a sense of warmth and homeliness, with the banana bread's comforting aroma invoking fond memories and a sense of anticipation for the treat ahead."
 
-    # Setting the task of cooling the banana bread as ready
-    t.get_task(task_id="300.5").state = TaskStatusList.READY
-
-    return copy.deepcopy(t)
+async def _plan_step_11() -> Plan:
+    t = await _plan_step_10()
+    plan = await move_to_next(t)
+    return plan
 
 
 @pytest.fixture(scope="function")
-def plan_step_10() -> Plan:
-    t = plan_step_9()
+async def plan_step_12():
+    plan = await _plan_step_12()
+    yield plan
 
-    # Completing the cooling of banana bread
-    t.get_task(task_id="300.5").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="300.5"
-    ).task_text_output = "The banana bread, having cooled to the perfect temperature, sat majestically on its serving platter. The cooling process had allowed the flavors to meld together beautifully, enhancing the bread's rich, sweet taste. The crust had settled into a delightful texture, slightly crisp on the outside while preserving the bread's tender, moist crumb. It was now the ideal time to serve this homemade delicacy, a sweet ending to an exquisite meal."
 
-    # Setting the task of serving the banana bread as ready
-    t.get_task(task_id="300.6").state = TaskStatusList.READY
-
-    return copy.deepcopy(t)
+async def _plan_step_12() -> Plan:
+    t = await _plan_step_11()
+    plan = await move_to_next(t)
+    return plan
 
 
 @pytest.fixture(scope="function")
-def plan_step_11() -> Plan:
-    t = plan_step_10()
-
-    # Completing the serving of banana bread
-    t.get_task(task_id="300.6").state = TaskStatusList.DONE
-    t.get_task(
-        task_id="300.6"
-    ).task_text_output = "The moment of serving the banana bread was a culmination of anticipation and delight. Each slice was carefully cut, revealing the moist, tender texture interspersed with the subtle sweetness of bananas and a hint of cinnamon. As the bread was served, the guests expressed their admiration for its perfect texture and exquisite flavor. The banana bread was not just a dessert; it was a celebration of homemade baking, bringing a sweet and satisfying conclusion to the family dinner."
-
-    return copy.deepcopy(t)
+async def plan_step_13():
+    plan = await _plan_step_13()
+    yield plan
 
 
-@pytest.fixture
-def task_ready_no_predecessors_or_subtasks(plan_step_0: Plan) -> Task:
-    # Task 'task_101_buy_groceries' has no predecessors or subtasks and is ready
-    t = plan_step_0.get_task(task_id="101")
-    return t
+async def _plan_step_13() -> Plan:
+    t = await _plan_step_12()
+    plan = await move_to_next(t)
+    return plan
 
 
 @pytest.fixture(scope="function")
-def task_ready_all_predecessors_done(plan_step_2b: Plan) -> Task:
-    # Task 'task_300_2_2_line_pan' with all predecessors done
-    t = plan_step_2b.get_task(task_id="300.2.2")
-    return copy.deepcopy(t)
+async def plan_step_14():
+    plan = await _plan_step_14()
+    yield plan
+
+
+async def _plan_step_14() -> Plan:
+    t = await _plan_step_13()
+    plan = await move_to_next(t)
+    agent = plan.agent
+    task_300_3_mix_ingredients = await plan.get_task("300.3")
+
+    # Subtasks for 'Mix Ingredients'
+    task_300_3_1_measure_flour = Task(
+        agent=agent,
+        plan_id=agent.plan.plan_id,
+        task_id="300.3.1",
+        task_goal="300.3.1. Measure Flour",
+    )
+    task_300_3_1_measure_flour.add_predecessor(await plan.get_task("300.1"))
+
+    task_300_3_2_mash_bananas = Task(
+        agent=agent,
+        plan_id=agent.plan.plan_id,
+        task_id="300.3.2",
+        task_goal="300.3.2. Mash Bananas",
+    )
+    task_300_3_2_mash_bananas.add_predecessor(await plan.get_task("300.1"))
+
+    task_300_3_3_combine_wet_ingredients = Task(
+        agent=agent,
+        plan_id=agent.plan.plan_id,
+        task_id="300.3.3",
+        task_goal="300.3.3. Combine Wet Ingredients",
+    )
+    task_300_3_3_combine_wet_ingredients.add_predecessor(task_300_3_1_measure_flour)
+    task_300_3_3_combine_wet_ingredients.add_predecessor(task_300_3_2_mash_bananas)
+    # raise Exception(str(plan._all_task_ids) + "\n\n\n" +  await make_tree(plan))
+    task_300_3_mix_ingredients.add_task(task_300_3_1_measure_flour)
+    task_300_3_mix_ingredients.add_task(task_300_3_2_mash_bananas)
+    task_300_3_mix_ingredients.add_task(task_300_3_3_combine_wet_ingredients)
+    await reorder_list(plan, task_300_3_mix_ingredients)
+    # fix_201 = await plan.get_task("201")
+    # if not await fix_201.is_ready() :
+
+    #     raise Exception(
+    #                      "plan : " + str(plan._all_task_ids) + "\n" ,
+    #                      "predecessors : " + str( fix_201._task_predecessors.get_all_task_ids_from_stack()) + "\n" ,
+    #                      await make_tree(plan)
+    #                     )
+
+    return plan
 
 
 @pytest.fixture(scope="function")
-def task_ready_all_subtasks_done(plan_step_8: Plan) -> Task:
-    # Task 'task_300_1_gather_ingredients' with all subtasks done
-    t = plan_step_8.get_task(task_id="300.1")
-    return copy.deepcopy(t)
+async def plan_step_15():
+    plan = await _plan_step_15()
+    yield plan
+
+
+async def _plan_step_15() -> Plan:
+    t = await _plan_step_14()
+    plan = await move_to_next(t)
+    return plan
 
 
 @pytest.fixture(scope="function")
-def task_with_mixed_predecessors(plan_step_7: Plan) -> Task:
-    # Task 'task_300_6_serve_bread' with some predecessors done and some not
-    t = plan_step_7.get_task(task_id="300.6")
-    return copy.deepcopy(t)
+async def plan_step_16():
+    plan = await _plan_step_16()
+    yield plan
+
+
+async def _plan_step_16() -> Plan:
+    t = await _plan_step_15()
+    plan = await move_to_next(t)
+    return plan
 
 
 @pytest.fixture(scope="function")
-def task_with_unmet_predecessors(plan_step_0: Plan) -> Task:
-    # Task '300.3.3' has unmet predecessors at plan_step_0
-    t = plan_step_0.get_task(task_id="300.3.3")
-    return copy.deepcopy(t)
+async def plan_step_17():
+    plan = await _plan_step_17()
+    yield plan
+
+
+async def _plan_step_17() -> Plan:
+    t = await _plan_step_16()
+    plan = await move_to_next(t)
+    return plan
 
 
 @pytest.fixture(scope="function")
-def task_with_ongoing_subtasks(plan_step_0: Plan) -> Task:
-    # Task '200' has ongoing subtasks at plan_step_0
-    t = plan_step_0.get_task(task_id="200")
-    return copy.deepcopy(t)
+async def plan_step_18():
+    plan = await _plan_step_18()
+    yield plan
+
+
+async def _plan_step_18() -> Plan:
+    t = await _plan_step_17()
+    plan = await move_to_next(t)
+    return plan
 
 
 @pytest.fixture(scope="function")
-def task_awaiting_preparation(plan_step_0: Plan) -> Task:
-    # Task '300.4' is not ready yet at plan_step_0
-    t = plan_step_0.get_task(task_id="300.4")
-    return copy.deepcopy(t)
+async def plan_step_19():
+    plan = await _plan_step_19()
+    yield plan
+
+
+async def _plan_step_19() -> Plan:
+    t = await _plan_step_18()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_20():
+    plan = await _plan_step_20()
+    yield plan
+
+
+async def _plan_step_20() -> Plan:
+    t = await _plan_step_19()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_21():
+    plan = await _plan_step_21()
+    yield plan
+
+
+async def _plan_step_21() -> Plan:
+    t = await _plan_step_20()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_22():
+    plan = await _plan_step_22()
+    yield plan
+
+
+async def _plan_step_22() -> Plan:
+    t = await _plan_step_21()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_23():
+    plan = await _plan_step_23()
+    yield plan
+
+
+async def _plan_step_23() -> Plan:
+    t = await _plan_step_22()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_24():
+    plan = await _plan_step_24()
+    yield plan
+
+
+async def _plan_step_24() -> Plan:
+    t = await _plan_step_23()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_25():
+    plan = await _plan_step_25()
+    yield plan
+
+
+async def _plan_step_25() -> Plan:
+    t = await _plan_step_24()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_26():
+    plan = await _plan_step_26()
+    yield plan
+
+
+async def _plan_step_26() -> Plan:
+    t = await _plan_step_25()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_27():
+    plan = await _plan_step_27()
+    yield plan
+
+
+async def _plan_step_27() -> Plan:
+    t = await _plan_step_26()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_28():
+    plan = await _plan_step_28()
+    yield plan
+
+
+async def _plan_step_28() -> Plan:
+    t = await _plan_step_27()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_29():
+    plan = await _plan_step_29()
+    yield plan
+
+
+async def _plan_step_29() -> Plan:
+    t = await _plan_step_28()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_30():
+    plan = await _plan_step_30()
+    yield plan
+
+
+async def _plan_step_30() -> Plan:
+    t = await _plan_step_29()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_31():
+    plan = await _plan_step_31()
+    yield plan
+
+
+async def _plan_step_31() -> Plan:
+    t = await _plan_step_30()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_32():
+    plan = await _plan_step_32()
+    yield plan
+
+
+async def _plan_step_32() -> Plan:
+    t = await _plan_step_31()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def plan_step_33():
+    plan = await _plan_step_33()
+    yield plan
+
+
+async def _plan_step_33() -> Plan:
+    t = await _plan_step_32()
+    plan = await move_to_next(t)
+    return plan
+
+
+@pytest.fixture(scope="function")
+async def task_ready_no_predecessors_or_subtasks() -> Task:
+    return await _default_task()
+
+
+@pytest.fixture(scope="function")
+async def default_task():
+    return await _default_task()
+
+
+async def _default_task():
+    """
+    Ensures task 'task_101_buy_groceries' has no active predecessors or subtasks.
+    Raises an exception if conditions are not met.
+    """
+    plan = await plan_familly_dinner_with_tasks_saved_in_db()
+    task = await plan.get_task(task_id="101")
+    active_predecessors = await task._task_predecessors.get_active_tasks_from_stack()
+    active_subtasks = await task.subtasks.get_active_tasks_from_stack()
+
+    if active_predecessors or active_subtasks:
+        error_message = (
+            "Error: Fixture task_awaiting_no_active_predecessors_or_subtasks needs update\n"
+            f"Active predecessors: {len(active_predecessors)}, active subtasks: {len(active_subtasks)}.\n\n\n"
+            f"{await make_tree(plan)}"
+        )
+        raise Exception(error_message)
+    if task.state != TaskStatusList.READY:
+        raise Exception(
+            f"Error: Fixture _default_task should be ready\n\n\n {await make_tree(plan)}"
+        )
+    await plan.db_save()
+    return task
+
+
+@pytest.fixture(scope="function")
+async def task_with_unmet_predecessors(plan_step_14: Plan) -> Task:
+    plan = plan_step_14  # Added line
+    task = await plan.get_task(task_id="300.3.3")
+    active_predecessors = await task._task_predecessors.get_active_tasks_from_stack()
+
+    if not active_predecessors:
+        error_message = (
+            "Error: Fixture task_with_unmet_predecessors needs update. "
+            f"There are {len(active_predecessors)} active predecessors."
+            f"{await make_tree(plan)}"
+        )
+        raise Exception(error_message)
+
+    if task.state != TaskStatusList.BACKLOG:
+        error_message = (
+            "Error: Fixture task_awaiting_preparation needs update. "
+            f"Current state: {task.state}, expected: {TaskStatusList.BACKLOG}."
+            f"{await make_tree(plan)}"
+        )
+        raise Exception(error_message)
+
+    await plan.db_save()
+    return task
+
+
+@pytest.fixture(scope="function")
+async def task_awaiting_preparation(plan_step_0: Plan) -> Task:
+    """
+    Returns a task '300.4' awaiting preparation at plan_step_0.
+    Raises an exception with detailed information if conditions are not met.
+    """
+    plan = plan_step_0  # Added line
+    task = await plan.get_task(task_id="300.4")
+
+    if task.state != TaskStatusList.BACKLOG:
+        error_message = (
+            "Error: Fixture task_awaiting_preparation needs update. "
+            f"Current state: {task.state}, expected: {TaskStatusList.BACKLOG}."
+            f"{await make_tree(plan)}"
+        )
+        raise Exception(error_message)
+    await plan.db_save()
+    return task
+
+
+@pytest.fixture(scope="function")
+async def task_with_ongoing_subtasks(plan_step_10: Plan) -> Task:
+    plan = plan_step_10  # Added line
+    task = await plan.get_task(task_id="300.1")
+    predecessors = await task._task_predecessors.get_all_tasks_from_stack()
+    done_predecessors = await task._task_predecessors.get_done_tasks_from_stack()
+    active_subtasks = await task.subtasks.get_active_tasks_from_stack()
+
+    if len(predecessors) != len(done_predecessors):
+        error_message = (
+            "Error: Fixture task_with_ongoing_subtasks needs update\n"
+            f"Total predecessors: {len(predecessors)}, done predecessors: {len(done_predecessors)}.\n\n\n"
+            f"{await make_tree(plan)}"
+        )
+        raise Exception(error_message)
+
+    if len(active_subtasks) == 0:
+        error_message = (
+            "Error: Fixture task_with_ongoing_subtasks needs update\n"
+            f"Active subtasks: {len(active_subtasks)}.\n\n\n"
+            f"plan._all_task_ids: {plan._all_task_ids}.\n\n\n"
+            f"plan._ready_task_ids: {plan._ready_task_ids}.\n\n\n"
+            f"plan._done_task_ids: {plan._done_task_ids}.\n\n\n"
+            f"{await make_tree(plan)}"
+        )
+        raise Exception(error_message)
+
+    if task.state != TaskStatusList.IN_PROGRESS_WITH_SUBTASKS:
+        error_message = (
+            "Error: Fixture task_with_ongoing_subtasks needs update. "
+            f"Current state: {task.state}, expected: {TaskStatusList.IN_PROGRESS_WITH_SUBTASKS}."
+            f"{await make_tree(plan)}"
+        )
+        raise Exception(error_message)
+    await plan.db_save()
+    return task
+
+
+@pytest.fixture(scope="function")
+async def task_ready_all_subtasks_done(plan_step_11: Plan) -> Task:
+    """
+    Returns a task 'task_300_1_gather_ingredients' with all subtasks done.
+    Raises an exception if conditions are not met.
+    """
+    plan = plan_step_11  # Added line
+    task = await plan.get_task(task_id="300.1")
+    all_subtasks = await task.subtasks.get_all_tasks_from_stack()
+    done_subtasks = await task.subtasks.get_done_tasks_from_stack()
+    predecessors = await task._task_predecessors.get_all_tasks_from_stack()
+    done_predecessors = await task._task_predecessors.get_done_tasks_from_stack()
+
+    if len(all_subtasks) != len(done_subtasks):
+        raise Exception(
+            f"Error: Fixture task_ready_all_subtasks_done needs update\n\n\n {await make_tree(plan)}"
+        )
+
+    if len(predecessors) != len(done_predecessors):
+        raise Exception(
+            f"Error : This situation should never occur \n\n\n {await make_tree(plan)}"
+        )
+
+    await plan.db_save()
+    return task
+
+
+@pytest.fixture(scope="function")
+async def task_with_mixed_predecessors(plan_step_19: Plan) -> Task:
+    """
+    Returns a task with mixed predecessor statuses.
+    Raises an exception if conditions are not met.
+    """
+    plan = plan_step_19  # Added line
+    task = await plan.get_task(task_id="300.6")
+    active_tasks = await task._task_predecessors.get_active_tasks_from_stack()
+    ready_tasks = await task._task_predecessors.get_ready_tasks_from_stack()
+    all_tasks = await task._task_predecessors.get_all_tasks_from_stack()
+    done_tasks = await task._task_predecessors.get_done_tasks_from_stack()
+
+    if not (active_tasks and len(active_tasks) < len(all_tasks)):
+        error_message = (
+            f"Error: Fixture task_with_mixed_predecessors needs update\n"
+            f"There are {len(active_tasks)} active tasks, \n"
+            f"{len(ready_tasks)} ready tasks, \n"
+            f"{len(done_tasks)} done tasks, \n"
+            f"plan.get_active_tasks_ids()): {plan.get_active_tasks_ids()}.\n"
+            f"plan._all_task_ids: {plan._all_task_ids}.\n"
+            f"task._task_predecessors._task_ids: {task._task_predecessors._task_ids}.\n"
+            f"for a total of {len(all_tasks)} tasks\n\n\n"
+            f"{await make_tree(plan)}"
+        )
+        raise Exception(error_message)
+
+    # NOTE : Occune sous tache ne dois démarée tant que il y a dé précécesseur sur la tache actuelle
+    done_subtasks = await task.subtasks.get_done_tasks_from_stack()
+    if len(done_subtasks) > 0:
+        error_message = (
+            f"Error: This situation should not occur \n"
+            f"There are {len(done_subtasks)} done_subtasks tasks, "
+            f"{await make_tree(plan)}"
+        )
+        raise Exception(error_message)
+
+    await plan.db_save()
+    return task

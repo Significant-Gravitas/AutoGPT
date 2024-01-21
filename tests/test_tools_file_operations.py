@@ -13,9 +13,10 @@ from AFAAS.core.workspace import AbstractFileWorkspace
 from AFAAS.interfaces.agent.main import BaseAgent
 from tests.dataset.plan_familly_dinner import (
     Task,
-    plan_familly_dinner,
+    _plan_familly_dinner,
+    default_task,
+    plan_familly_dinner_with_tasks_saved_in_db,
     plan_step_0,
-    task_ready_no_predecessors_or_subtasks,
 )
 from tests.dataset.test_tools_file import (
     file_content,
@@ -30,7 +31,7 @@ from tests.dataset.test_tools_file import (
 # FIXME:
 # def test_log_operation_with_checksum(agent: BaseAgent):
 #     file_ops.log_operation(
-#         "log_test", Path("path/to/test"), agent=task_ready_no_predecessors_or_subtasks.agent, checksum="ABCDEF"
+#         "log_test", Path("path/to/test"), agent=default_task.agent, checksum="ABCDEF"
 #     )
 #     with open(agent.file_manager.file_ops_log_path, "r", encoding="utf-8") as f:
 #         content = f.read()
@@ -38,43 +39,41 @@ from tests.dataset.test_tools_file import (
 
 
 def test_read_file(
-    task_ready_no_predecessors_or_subtasks: Task,
+    default_task: Task,
     test_file_with_content_path: Path,
     file_content,
     agent: BaseAgent,
 ):
     content = file_ops.read_file(
         filename=test_file_with_content_path,
-        agent=task_ready_no_predecessors_or_subtasks.agent,
-        task=task_ready_no_predecessors_or_subtasks,
+        agent=default_task.agent,
+        task=default_task,
     )
 
     assert content.replace("\r", "") == file_content
 
 
-def test_read_file_not_found(
-    task_ready_no_predecessors_or_subtasks: Task, agent: BaseAgent
-):
+def test_read_file_not_found(default_task: Task, agent: BaseAgent):
     filename = "does_not_exist.txt"
     with pytest.raises(FileNotFoundError):
         file_ops.read_file(
             filename=filename,
-            agent=task_ready_no_predecessors_or_subtasks.agent,
-            task=task_ready_no_predecessors_or_subtasks,
+            agent=default_task.agent,
+            task=default_task,
         )
 
 
 # FIXME:NOT NotImplementedError
 @pytest.mark.asyncio
 async def test_write_to_file_relative_path(
-    task_ready_no_predecessors_or_subtasks: Task, test_file_name: Path, agent: BaseAgent
+    default_task: Task, test_file_name: Path, agent: BaseAgent
 ):
     new_content = "This is new content.\n"
     await file_ops.write_to_file(
         filename=test_file_name,
         contents=new_content,
-        agent=task_ready_no_predecessors_or_subtasks.agent,
-        task=task_ready_no_predecessors_or_subtasks,
+        agent=default_task.agent,
+        task=default_task,
     )
 
     with open(agent.workspace.get_path(test_file_name), "r", encoding="utf-8") as f:
@@ -85,14 +84,14 @@ async def test_write_to_file_relative_path(
 # FIXME:NOT NotImplementedError
 @pytest.mark.asyncio
 async def test_write_to_file_absolute_path(
-    test_file_path: Path, agent: BaseAgent, task_ready_no_predecessors_or_subtasks: Task
+    test_file_path: Path, agent: BaseAgent, default_task: Task
 ):
     new_content = "This is new content.\n"
     await file_ops.write_to_file(
         filename=test_file_path,
         contents=new_content,
-        agent=task_ready_no_predecessors_or_subtasks.agent,
-        task=task_ready_no_predecessors_or_subtasks,
+        agent=default_task.agent,
+        task=default_task,
     )
 
     with open(test_file_path, "r", encoding="utf-8") as f:
@@ -103,7 +102,7 @@ async def test_write_to_file_absolute_path(
 # FIXME:NOT NotImplementedError
 @pytest.mark.asyncio
 async def test_write_file_succeeds_if_content_different(
-    task_ready_no_predecessors_or_subtasks: Task,
+    default_task: Task,
     test_file_with_content_path: Path,
     agent: BaseAgent,
 ):
@@ -111,13 +110,13 @@ async def test_write_file_succeeds_if_content_different(
     await file_ops.write_to_file(
         test_file_with_content_path,
         new_content,
-        agent=task_ready_no_predecessors_or_subtasks.agent,
-        task=task_ready_no_predecessors_or_subtasks,
+        agent=default_task.agent,
+        task=default_task,
     )
 
 
 def test_list_files(
-    task_ready_no_predecessors_or_subtasks: Task,
+    default_task: Task,
     local_workspace: AbstractFileWorkspace,
     test_directory: Path,
     agent: BaseAgent,
@@ -141,8 +140,8 @@ def test_list_files(
 
     files = file_ops.list_folder(
         folder=str(local_workspace.root),
-        agent=task_ready_no_predecessors_or_subtasks.agent,
-        task=task_ready_no_predecessors_or_subtasks,
+        agent=default_task.agent,
+        task=default_task,
     )
     assert file_a.name in files
     assert file_b.name in files
@@ -158,7 +157,7 @@ def test_list_files(
     non_existent_file = "non_existent_file.txt"
     files = file_ops.list_folder(
         folder="",
-        agent=task_ready_no_predecessors_or_subtasks.agent,
-        task=task_ready_no_predecessors_or_subtasks,
+        agent=default_task.agent,
+        task=default_task,
     )
     assert non_existent_file not in files

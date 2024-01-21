@@ -9,6 +9,8 @@ from AFAAS.configs.schema import AFAASModel
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
 
+from .meta import TaskStatusList
+
 # from AFAAS.interfaces.tools.schema import ToolResult
 LOG = AFAASLogger(name=__name__)
 
@@ -38,7 +40,11 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
 
     class Config(AFAASModel.Config):
         # This is a list of Field to Exclude during serialization
-        default_exclude = set(AFAASModel.Config.default_exclude) | {"subtasks", "agent"}
+        default_exclude = set(AFAASModel.Config.default_exclude) | {
+            "subtasks",
+            "agent",
+            "_loaded_tasks_dict",
+        }
         json_encoders = AFAASModel.Config.json_encoders | {}
 
     ###
@@ -96,7 +102,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
     _default_command: str = None
 
     @classmethod
-    def default_command(cls) -> str:
+    def default_tool(cls) -> str:
         if cls._default_command is not None:
             return cls._default_command
 
@@ -135,7 +141,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         else:
             self._subtasks = TaskStack(parent_task=self, _task_ids=[])
 
-    def dict_memory(self, **kwargs) -> dict:
+    def dict_db(self, **kwargs) -> dict:
         d = super().dict(**kwargs)
 
         # Iterate over each attribute of the dict
@@ -162,11 +168,21 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         from AFAAS.lib.task.plan import Plan
 
         if isinstance(self, Plan):
-            LOG.debug(self, "Adding task to plan")
+            LOG.debug(repr(self), "Adding task to plan")
+        elif self.state not in (
+            TaskStatusList.READY,
+            TaskStatusList.IN_PROGRESS_WITH_SUBTASKS,
+        ):
+            from tests.utils.ascii_tree import make_tree
 
+            raise Exception(
+                f"Can't add task {task.debug_formated_str(status=True)} to {self.debug_formated_str(status=True)}."
+            )
         LOG.debug(
             f"Adding task {task.debug_formated_str()} as subtask of {self.task_id}"
         )
+        task._task_parent_id = self.task_id
+        task._task_parent = self
         self.subtasks.add(task=task)
         self.agent.plan._register_new_task(task=task)
 
@@ -176,49 +192,9 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
             self.add_task(task=task)
 
     def __getitem__(self, index: Union[int, str]):
-        """
-        Get a task from the plan by index or slice notation. This method is an alias for `get_task`.
-
-        Args:
-            index (Union[int, str]): The index or slice notation to retrieve a task.
-
-        Returns:
-            Task or List [BaseTask]: The task or list of tasks specified by the index or slice.
-
-        Examples:
-            >>> plan = Plan([Task("Task 1"), Task("Task 2")])
-            >>> plan[0]
-            Task(task_goal='Task 1')
-            >>> plan[1:]
-            [Task(task_goal='Task 2')]
-
-        Raises:
-            IndexError: If the index is out of range.
-            ValueError: If the index type is invalid.
-        """
         return self.get_task_with_index(index)
 
     def get_task_with_index(self, index: Union[int, str]):
-        """
-        Get a task from the plan by index or slice notation.
-
-        Args:
-            index (Union[int, str]): The index or slice notation to retrieve a task.
-
-        Returns:
-            Task or List [BaseTask]: The task or list of tasks specified by the index or slice.
-
-        Examples:
-            >>> plan = Plan([Task("Task 1"), Task("Task 2")])
-            >>> plan.get_task(0)
-            Task(task_goal='Task 1')
-            >>> plan.get_task(':')
-            [Task(task_goal='Task 1'), Task(task_goal='Task 2')]
-
-        Raises:
-            IndexError: If the index is out of range.
-            ValueError: If the index type is invalid.
-        """
         if isinstance(index, int):
             # Handle positive integers and negative integers
             if -len(self.subtasks) <= index < len(self.subtasks):
@@ -235,7 +211,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
     ###
     ### FIXME : To test
     ###
-    def remove_task(self, task_id: str):
+    async def remove_task(self, task_id: str):
         LOG.error(
             """FUNCTION NOT WORKING :
                      1. We now manage multiple predecessor
@@ -243,25 +219,25 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         )
 
         # 1. Set all task_predecessors_id to null if they reference the task to be removed
-        def clear_predecessors(task: AbstractBaseTask):
+        async def clear_predecessors(task: AbstractBaseTask):
             if task_id in task.task_predecessors_id:
                 task.task_predecessors_id.remove(task_id)
-            for subtask in task.subtasks.get_all_tasks_from_stack() or []:
-                clear_predecessors(task=subtask)
+            for subtask in await task.subtasks.get_all_tasks_from_stack() or []:
+                await clear_predecessors(task=subtask)
 
         # 2. Remove leaves with status "DONE" if ALL their siblings have this status
-        def should_remove_siblings(
+        async def should_remove_siblings(
             task: AbstractBaseTask, task_parent: Optional[AbstractBaseTask] = None
         ) -> bool:
             # If it's a leaf and has a parent
             if not task.subtasks and task_parent:
                 all_done = all(
-                    st.status == "DONE"
-                    for st in task_parent.subtasks.get_done_tasks_from_stack()
+                    st.state == TaskStatusList.DONE
+                    for st in await task_parent.subtasks.get_done_tasks_from_stack()
                 )
                 if all_done:
                     # Delete the Task objects
-                    for st in task_parent.subtasks.get_all_tasks_from_stack():
+                    for st in await task_parent.subtasks.get_all_tasks_from_stack():
                         del st
                     task_parent.subtasks = None  # or []
                 return all_done
@@ -270,11 +246,11 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
             #         should_remove_siblings(st, task)
             return False
 
-        for task in self.subtasks.get_all_tasks_from_stack():
-            should_remove_siblings(task=task)
-            clear_predecessors(task=task)
+        for task in await self.subtasks.get_all_tasks_from_stack():
+            await should_remove_siblings(task=task)
+            await clear_predecessors(task=task)
 
-    def find_ready_tasks(self) -> list[AbstractBaseTask]:
+    async def find_ready_tasks(self) -> list[AbstractBaseTask]:
         """
         Get tasks that have status "READY", no subtasks, and no task_predecessors_id.
 
@@ -289,21 +265,24 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         )
         ready_tasks = []
 
-        def check_task(task: AbstractBaseTask):
-            if task.is_ready():
+        async def check_task(task: AbstractTask):
+            if await task.is_ready():
                 ready_tasks.append(task)
 
+            if task.state != TaskStatusList.IN_PROGRESS_WITH_SUBTASKS:
+                return
+
             # Check subtasks recursively
-            for subtask in task.subtasks.get_all_tasks_from_stack():
-                check_task(task=subtask)
+            for subtask in await task.subtasks.get_all_tasks_from_stack():
+                await check_task(task=subtask)
 
         # Start checking from the root tasks in the plan
-        for task in self.subtasks.get_all_tasks_from_stack():
-            check_task(task=task)
+        for task in await self.subtasks.get_all_tasks_from_stack():
+            await check_task(task=task)
 
         return ready_tasks
 
-    def find_first_ready_task(self) -> Optional[AbstractBaseTask]:
+    async def find_first_ready_task(self) -> Optional[AbstractBaseTask]:
         """
         Get the first task that has status "READY", no subtasks, and no task_predecessors_id.
 
@@ -318,13 +297,16 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
             + "- Plan.get_next_task()\n"
         )
 
-        def check_task(task: AbstractBaseTask) -> Optional[AbstractBaseTask]:
-            if task.is_ready():
+        async def check_task(task: AbstractTask) -> Optional[AbstractTask]:
+            if await task.is_ready():
                 return task
 
+            if task.state != TaskStatusList.IN_PROGRESS_WITH_SUBTASKS:
+                return None
+
             # Check subtasks recursively
-            for subtask in task.subtasks.get_all_tasks_from_stack() or []:
-                found_task = check_task(task=subtask)
+            for subtask in await task.subtasks.get_all_tasks_from_stack() or []:
+                found_task = await check_task(task=subtask)
                 if (
                     found_task is not None
                 ):  # If a task is found in the subtasks, return it immediately
@@ -332,80 +314,77 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
             return None
 
         # Start checking from the root tasks in the plan
-        for task in self.subtasks.get_all_tasks_from_stack():
-            found_task = check_task(task=task)
+        for task in await self.subtasks.get_all_tasks_from_stack():
+            found_task = await check_task(task=task)
             if found_task:
                 return found_task
 
         return None
 
-    def find_ready_subbranch(self) -> list[AbstractBaseTask]:
+    async def find_ready_subbranch(
+        self, origin: AbstractTask = None
+    ) -> list[AbstractBaseTask]:
         ready_tasks = []
+        found_ready = False
 
-        def check_task(task: AbstractTask, found_ready: bool) -> bool:
-            nonlocal ready_tasks
-            if task.is_ready():
+        async def check_task(task: AbstractTask) -> None:
+            nonlocal ready_tasks, found_ready
+
+            if await task.is_ready():
                 ready_tasks.append(task)
-                return True
+                found_ready = True
 
-            # If a ready task has already been found in this branch, check only siblings
-            if found_ready:
-                return False
-
-            # Check subtasks
-            for subtask_id in task.subtasks:
-                if check_task(self.agent.plan.get_task(subtask_id), found_ready):
-                    found_ready = True
-
-            return found_ready
+            # If a ready task has already been found in this branch, stop diving into subtasks
+            if not found_ready:
+                for subtask_id in task.subtasks:
+                    await check_task(await self.agent.plan.get_task(subtask_id))
 
         # Start checking from the root tasks in the plan
         for task_id in self.subtasks:
-            if check_task(self.agent.plan.get_task(task_id), False):
-                break  # Break after finding the first ready task and its siblings
-
+            if task_id != origin.task_id:
+                await check_task(await self.agent.plan.get_task(task_id))
         return ready_tasks
 
-    def find_task(self, task_id: str):
-        """
-        Recursively searches for a task with the given task_id in the tree of tasks.
-        """
-        LOG.warning("Deprecated : Recommended function is Plan.get_task()")
-        # Check current task
-        if self.task_id == task_id:
-            return self
+    # def find_task(self, task_id: str):
+    #     """
+    #     Recursively searches for a task with the given task_id in the tree of tasks.
+    #     """
+    #     LOG.warning("Deprecated : Recommended function is Plan.get_task()")
+    #     # Check current task
+    #     if self.task_id == task_id:
+    #         return self
 
-        # If there are subtasks, recursively check them
-        if self.subtasks:
-            for subtask in self.subtasks:
-                found_task = subtask.find_task(task_id=task_id)
-                if found_task:
-                    return found_task
-        return None
+    #     # If there are subtasks, recursively check them
+    #     if self.subtasks:
+    #         for subtask in self.subtasks:
+    #             found_task = subtask.find_task(task_id=task_id)
+    #             if found_task:
+    #                 return found_task
+    #     return None
 
-    def find_task_path_with_id(self, search_task_id: str):
-        """
-        Recursively searches for a task with the given task_id and its parent tasks.
-        Returns the parent task and all child tasks on the path to the desired task.
-        """
+    # def find_task_path_with_id(self, search_task_id: str):
+    #     """
+    #     Recursively searches for a task with the given task_id and its parent tasks.
+    #     Returns the parent task and all child tasks on the path to the desired task.
+    #     """
 
-        LOG.warning("Deprecated : Recommended function is Task.get_task_path()")
+    #     LOG.warning("Deprecated : Recommended function is Task.get_task_path()")
 
-        if self.task_id == search_task_id:
-            return self
+    #     if self.task_id == search_task_id:
+    #         return self
 
-        if self.subtasks:
-            for subtask in self.subtasks:
-                found_task = subtask.find_task_path_with_id(
-                    search_task_id=search_task_id
-                )
-                if found_task:
-                    return [self] + [found_task]
-        return None
+    #     if self.subtasks:
+    #         for subtask in self.subtasks:
+    #             found_task = subtask.find_task_path_with_id(
+    #                 search_task_id=search_task_id
+    #             )
+    #             if found_task:
+    #                 return [self] + [found_task]
+    #     return None
 
     #
     @abc.abstractmethod
-    def create_in_db(self, agent: BaseAgent):
+    async def db_create(self, agent: BaseAgent):
         ...
 
     def __str__(self):
@@ -416,22 +395,22 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         return f"`{LOG.italic(self.task_goal)}` ({LOG.bold(self.task_id)})" + status
 
     @staticmethod
-    def debug_info_parse_task(task: AbstractTask) -> str:
+    async def debug_info_parse_task(task: AbstractTask) -> str:
         from .task import AbstractTask
 
         parsed_response = f"Task {task.debug_formated_str()} :\n"
         task: AbstractTask
-        for i, task in enumerate(task.subtasks.get_all_tasks_from_stack()):
+        for i, task in enumerate(await task.subtasks.get_all_tasks_from_stack()):
             parsed_response += f"{i+1}. {task.debug_formated_str()}\n"
             parsed_response += f"Description {task.long_description}\n"
             parsed_response += f"Predecessors:\n"
             for j, predecessor in enumerate(
-                task.task_predecessors.get_all_tasks_from_stack()
+                await task.task_predecessors.get_all_tasks_from_stack()
             ):
                 parsed_response += f"    {j+1}. {predecessor}\n"
             parsed_response += f"Successors:\n"
             for j, succesors in enumerate(
-                task.task_successors.get_all_tasks_from_stack()
+                await task.task_successors.get_all_tasks_from_stack()
             ):
                 parsed_response += f"    {j+1}. {succesors}\n"
             parsed_response += f"Acceptance Criteria:\n"
@@ -446,7 +425,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
 
         return parsed_response
 
-    def debug_dump(self, depth=0) -> dict:
+    async def debug_dump(self, depth=0) -> dict:
         if depth < 0:
             raise ValueError("Depth must be a non-negative integer.")
 
@@ -457,12 +436,12 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         if depth > 0 and self.subtasks:
             return_dict["subtasks"] = [
                 subtask.dump(depth=depth - 1)
-                for subtask in self.subtasks.get_all_tasks_from_stack()
+                for subtask in await self.subtasks.get_all_tasks_from_stack()
             ]
 
         return return_dict
 
-    def debug_dump_str(self, depth: int = 0, iteration: int = 0) -> str:
+    async def debug_dump_str(self, depth: int = 0, iteration: int = 0) -> str:
         if depth < 0:
             raise ValueError("Depth must be a non-negative integer.")
 
@@ -471,11 +450,13 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
 
         # Recursively process subtasks up to the specified depth
         if depth > 0 and len(self.subtasks) > 0:
-            for i, subtask in enumerate(self.subtasks.get_all_tasks_from_stack()):
+            for i, subtask in enumerate(await self.subtasks.get_all_tasks_from_stack()):
                 return_str += (
                     "  " * iteration
                     + f"{i+1}."
-                    + subtask.debug_dump_str(depth=depth - 1, iteration=iteration + 1)
+                    + await subtask.debug_dump_str(
+                        depth=depth - 1, iteration=iteration + 1
+                    )
                     + "\n"
                 )
 

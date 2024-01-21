@@ -6,7 +6,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, SecretStr
 
-USE_DICTIONARY = False  # Change to True to use in-memory dictionary
+USE_DICTIONARY = False  # Change to True to use in-db dictionary
 
 # Initialize Firebase
 if not USE_DICTIONARY:

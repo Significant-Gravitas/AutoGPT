@@ -17,6 +17,7 @@ packages = [
 [tool.poetry.scripts]
 demo = "app.cli_app.cli:run"
 run-server= "app.cli:serve"
+test-debug = "pytest -s --pdb"
 
 
 [tool.poetry.dependencies]
@@ -24,7 +25,7 @@ run-server= "app.cli:serve"
 google-cloud-logging = "^3.8.0"
 google-cloud-storage = "^2.13.0"
 psycopg2-binary = "^2.9.9"
-python = "^3.11"
+python = ">=3.11,<3.12"
 beautifulsoup4 = "^4.12.2"
 boto3 = "^1.33.6"
 charset-normalizer = "^2.0"
@@ -74,6 +75,11 @@ aiohttp = "^3.8.1"
 airbyte-cdk = "^0.58.1"
 google-auth-oauthlib = "^1.2.0"
 googlemaps = "^4.10.0"
+dirsync = "^2.2.5"
+google-search-results = "^2.4.2"
+youtube-transcript-api = "^0.6.2"
+llama-hub = "0.0.71"
+langchain-openai = "^0.0.3"
 
 
 [tool.poetry.extras]

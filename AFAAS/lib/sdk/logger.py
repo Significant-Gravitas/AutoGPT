@@ -21,9 +21,18 @@ logging.addLevelName(NOTICE, "NOTICE")
 logging.addLevelName(DB_LOG, "DB_LOG")
 logging.addLevelName(TRACE, "TRACE")
 
-
-CONSOLE_LOG_LEVEL = logging.getLevelName(os.getenv("CONSOLE_LOG_LEVEL", "INFO").upper())
-FILE_LOG_LEVEL = logging.getLevelName(os.getenv("FILE_LOG_LEVEL", "DEBUG").upper())
+if os.environ.get("PYTEST_RUN", "false").lower() == "true":
+    CONSOLE_LOG_LEVEL = logging.getLevelName(
+        os.getenv("PYTEST_CONSOLE_LOG_LEVEL", "ERROR").upper()
+    )
+    FILE_LOG_LEVEL = logging.getLevelName(
+        os.getenv("PYTEST_FILE_LOG_LEVEL", "ERROR").upper()
+    )
+else:
+    CONSOLE_LOG_LEVEL = logging.getLevelName(
+        os.getenv("CONSOLE_LOG_LEVEL", "INFO").upper()
+    )
+    FILE_LOG_LEVEL = logging.getLevelName(os.getenv("FILE_LOG_LEVEL", "DEBUG").upper())
 
 RESET_SEQ: str = "\033[0m"
 COLOR_SEQ: str = "\033[1;%dm"

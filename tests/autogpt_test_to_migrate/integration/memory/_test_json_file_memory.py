@@ -6,6 +6,7 @@ from autogpt.memory.vector import JSONFileMemory, MemoryItem
 
 from AFAAS.configs.config import Config
 from AFAAS.core.workspace import AbstractFileWorkspace
+from AFAAS.lib.task.task import Task
 
 
 def test_json_memory_init_without_backing_file(

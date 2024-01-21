@@ -53,21 +53,76 @@
             }
             
         },
+        // {
+        //     "name": "Poetry unit-test",
+        //     "type": "python",
+        //     "request": "launch",
+        //     //"program": "${workspaceFolder}/tests/run.py",
+        //     //"args": ["run"],
+
+        //     //"program": "${workspaceFolder}/tests/dataset/plan_familly_dinner.py",
+        //     "program": "/Library/Frameworks/Python.framework/Versions/3.11/bin/poetry",
+        //     "args": ["run", "pytest", "${workspaceFolder}/tests","-x", // stops on first failure
+        //         "--pdb" // drops into debugger on failure
+        //     ],
+        //     "console": "integratedTerminal",
+        //     "env": {
+        //         "PYTHONPATH": "${workspaceFolder}/autogpts/autogpt/:${env:PYTHONPATH}:${workspaceFolder}/autogpts/AFAAS/"
+        //     }
+            
+        // },
         {
-            "name": "Mac unit-test",
+            "name": "Module unit-test",
             "type": "python",
             "request": "launch",
-            //"program": "${workspaceFolder}/tests/run.py",
-            //"args": ["run"],
-
-            //"program": "${workspaceFolder}/tests/dataset/plan_familly_dinner.py",
-            "program": "/Library/Frameworks/Python.framework/Versions/3.11/bin/poetry",
-            "args": ["run", "pytest", "${workspaceFolder}/tests"],
+            "module" : "poetry",
+            "args": ["run", "pytest", "${workspaceFolder}/tests",  "--pdb" ],
             "console": "integratedTerminal",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/autogpts/autogpt/:${env:PYTHONPATH}:${workspaceFolder}/autogpts/AFAAS/"
             }
             
         },
+        // {
+        //     "name": "Python: Pytest",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "module": "pytest",
+        //     "args": ["${workspaceFolder}/tests"],
+        //     "console": "integratedTerminal",
+        //     "env": {
+        //         "PYTHONPATH": "${workspaceFolder}/autogpts/autogpt/:${env:PYTHONPATH}:${workspaceFolder}/autogpts/AFAAS/"
+        //     }
+            
+        // },
+        // {
+        //     "name": "Python: Pytest v2",
+        //     "type": "python",
+        //     "request": "launch",
+        //     // "program":"${file}",
+        //     "module":"pytest",
+        //     "purpose": ["debug-test"],
+        //     "args": ["${workspaceFolder}/tests"],
+        //     "console": "integratedTerminal",
+        //     // "justMyCode": false,            
+        //     "env": {
+        //         "PYTHONPATH": "${workspaceFolder}:${env:PYTHONPATH}",
+        //         "_PYTEST_RAISE": "1"
+        //     }
+            
+        // },
+        // {
+        //     "name": "Python: PyTest",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "module": "pytest",
+        //     "args": [
+        //         "-x", // Stops on first failure
+        //         "${workspaceFolder}/tests" // Path to your tests
+        //     ],
+        //     "console": "integratedTerminal",
+        //     "justMyCode": true,
+        //     "stopOnEntry": false
+        // }
     ]
 }

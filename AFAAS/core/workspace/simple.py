@@ -39,7 +39,7 @@ class LocalFileWorkspace(AbstractFileWorkspace):
         settings: LocalFileWorkspace.SystemSettings,
         agent_systems: list[Configurable],
     ):
-        # self._configuration = settings.configuration
+        # self._settings.configuration = settings.configuration
         # LOG = logger
         # LOG = LOG.getChild("workspace")
         self._root = self._sanitize_path(settings.configuration.root)
@@ -105,8 +105,8 @@ class LocalFileWorkspace(AbstractFileWorkspace):
     @classmethod
     def create_workspace(
         cls,
-        user_id: uuid.UUID,
-        agent_id: uuid.UUID,
+        user_id: str,
+        agent_id: str,
         settings: LocalFileWorkspace.SystemSettings,
     ) -> Path:
         workspace_root = cls.SystemSettings().configuration.app_workspace

@@ -17,9 +17,10 @@ from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.lib.sdk.errors import DuplicateOperationError
 from tests.dataset.plan_familly_dinner import (
     Task,
-    plan_familly_dinner,
+    _plan_familly_dinner,
+    default_task,
+    plan_familly_dinner_with_tasks_saved_in_db,
     plan_step_0,
-    task_ready_no_predecessors_or_subtasks,
 )
 from tests.dataset.test_tools_file import (
     file_content,
@@ -32,9 +33,7 @@ from tests.dataset.test_tools_file import (
 )
 
 
-def test_file_operations_log(
-    task_ready_no_predecessors_or_subtasks: Task, test_file: TextIOWrapper
-):
+def test_file_operations_log(default_task: Task, test_file: TextIOWrapper):
     log_file_content = (
         "File Operation Logger\n"
         "write: path/to/file1.txt #checksum1\n"
@@ -56,9 +55,7 @@ def test_file_operations_log(
     assert list(operations_from_log(log_path=test_file.name)) == expected
 
 
-def test_file_operations_state(
-    task_ready_no_predecessors_or_subtasks: Task, test_file: TextIOWrapper
-):
+def test_file_operations_state(default_task: Task, test_file: TextIOWrapper):
     # Prepare a fake log file
     log_file_content = (
         "File Operation Logger\n"
@@ -81,7 +78,7 @@ def test_file_operations_state(
 
 # FIXME:NOT NotImplementedError
 async def test_append_to_file(
-    task_ready_no_predecessors_or_subtasks: Task,
+    default_task: Task,
     test_nested_file: Path,
     agent: BaseAgent,
 ):
@@ -89,14 +86,14 @@ async def test_append_to_file(
     await file_ops.write_to_file(
         filename=test_nested_file,
         contents=append_text,
-        agent=task_ready_no_predecessors_or_subtasks.agent,
-        task=task_ready_no_predecessors_or_subtasks,
+        agent=default_task.agent,
+        task=default_task,
     )
 
     append_to_file(
         filename=test_nested_file,
         text=append_text,
-        agent=task_ready_no_predecessors_or_subtasks.agent,
+        agent=default_task.agent,
     )
 
     with open(test_nested_file, "r") as f:
@@ -108,21 +105,21 @@ async def test_append_to_file(
 # FIXME:NOT NotImplementedError
 @pytest.mark.asyncio
 async def test_write_file_fails_if_content_exists(
-    task_ready_no_predecessors_or_subtasks: Task, test_file_name: Path, agent: BaseAgent
+    default_task: Task, test_file_name: Path, agent: BaseAgent
 ):
     new_content = "This is new content.\n"
     log_operation(
         "write",
         test_file_name,
-        agent=task_ready_no_predecessors_or_subtasks.agent,
+        agent=default_task.agent,
         checksum=text_checksum(new_content),
     )
     with pytest.raises(DuplicateOperationError):
         await file_ops.write_to_file(
             filename=test_file_name,
             contents=new_content,
-            agent=task_ready_no_predecessors_or_subtasks.agent,
-            task=task_ready_no_predecessors_or_subtasks,
+            agent=default_task.agent,
+            task=default_task,
         )
 
 
@@ -148,7 +145,7 @@ async def test_write_file_fails_if_content_exists(
 #     )
 
 
-# def test_is_duplicate_operation(task_ready_no_predecessors_or_subtasks : Task , agent: BaseAgent, mocker: MockerFixture):
+# def test_is_duplicate_operation(default_task : Task , agent: BaseAgent, mocker: MockerFixture):
 #     # Prepare a fake state dictionary for the function to use
 #     state = {
 #         "path/to/file1.txt": "checksum1",
@@ -159,42 +156,42 @@ async def test_write_file_fails_if_content_exists(
 #     # Test cases with write operations
 #     assert (
 #         file_ops.is_duplicate_operation(
-#             "write", Path("path/to/file1.txt"),  "checksum1", agent=task_ready_no_predecessors_or_subtasks.agent)
+#             "write", Path("path/to/file1.txt"),  "checksum1", agent=default_task.agent)
 #         )
 #         is True
 #     )
 #     assert (
 #         file_ops.is_duplicate_operation(
-#             "write", Path("path/to/file1.txt"), "checksum2", agent=task_ready_no_predecessors_or_subtasks.agent)
+#             "write", Path("path/to/file1.txt"), "checksum2", agent=default_task.agent)
 #         )
 #         is False
 #     )
 #     assert (
 #         file_ops.is_duplicate_operation(
-#             "write", Path("path/to/file3.txt"), "checksum3", agent=task_ready_no_predecessors_or_subtasks.agent)
+#             "write", Path("path/to/file3.txt"), "checksum3", agent=default_task.agent)
 #         )
 #         is False
 #     )
 #     # Test cases with append operations
 #     assert (
 #         file_ops.is_duplicate_operation(
-#             "append", Path("path/to/file1.txt"),  "checksum1", agent=task_ready_no_predecessors_or_subtasks.agent)
+#             "append", Path("path/to/file1.txt"),  "checksum1", agent=default_task.agent)
 #         )
 #         is False
 #     )
 #     # Test cases with delete operations
 #     assert (
-#         file_ops.is_duplicate_operation("delete", Path("path/to/file1.txt"), agent=task_ready_no_predecessors_or_subtasks.agent)
+#         file_ops.is_duplicate_operation("delete", Path("path/to/file1.txt"), agent=default_task.agent)
 #         is False
 #     )
 #     assert (
-#         file_ops.is_duplicate_operation("delete", Path("path/to/file3.txt"), agent=task_ready_no_predecessors_or_subtasks.agent)
+#         file_ops.is_duplicate_operation("delete", Path("path/to/file3.txt"), agent=default_task.agent)
 #         is True
 #     )
 
 
 # Test logging a file operation
-def test_log_operation(task_ready_no_predecessors_or_subtasks: Task, agent: BaseAgent):
+def test_log_operation(default_task: Task, agent: BaseAgent):
     # FIXMEv0.0.2 : Set as AgentSetting
     LOG_FILE_OPERATION = (
         Path(__file__).parent.parent / "logs" / (f"{agent.agent_id}_file_operation")
@@ -203,14 +200,14 @@ def test_log_operation(task_ready_no_predecessors_or_subtasks: Task, agent: Base
     file_ops.log_operation(
         "log_test",
         Path("path/to/test"),
-        agent=task_ready_no_predecessors_or_subtasks.agent,
+        agent=default_task.agent,
     )
     with open(LOG_FILE_OPERATION, "r", encoding="utf-8") as f:
         content = f.read()
     assert "log_test: path/to/test\n" in content
 
 
-def test_text_checksum(task_ready_no_predecessors_or_subtasks: Task, file_content: str):
+def test_text_checksum(default_task: Task, file_content: str):
     checksum = text_checksum(text=file_content)
     different_checksum = text_checksum(text="other content")
     assert re.match(r"^[a-fA-F0-9]+$", checksum) is not None
@@ -222,25 +219,25 @@ def test_text_checksum(task_ready_no_predecessors_or_subtasks: Task, file_conten
 # async def test_write_file_logs_checksum(test_file_name: Path, agent: BaseAgent):
 #     new_content = "This is new content.\n"
 #     new_checksum = file_ops.text_checksum(new_content)
-#     await file_ops.write_to_file(test_file_name, new_content, agent=task_ready_no_predecessors_or_subtasks.agent)
+#     await file_ops.write_to_file(test_file_name, new_content, agent=default_task.agent)
 #     with open(agent.file_manager.file_ops_log_path, "r", encoding="utf-8") as f:
 #         log_entry = f.read()
 #     assert log_entry == f"write: {test_file_name} #{new_checksum}\n"
 
 # FIXME:
 # def test_append_to_file_uses_checksum_from_appended_file(
-#     task_ready_no_predecessors_or_subtasks : Task,
+#     default_task : Task,
 #     test_file_name: Path, agent: BaseAgent
 # ):
 #     append_text = "This is appended text.\n"
 #     file_ops.append_to_file(
 #         agent.workspace.get_path(test_file_name),
 #         append_text,
-#         agent=task_ready_no_predecessors_or_subtasks.agent)
+#         agent=default_task.agent)
 #     file_ops.append_to_file(
 #         agent.workspace.get_path(test_file_name),
 #         append_text,
-#         agent=task_ready_no_predecessors_or_subtasks.agent,)
+#         agent=default_task.agent,)
 #     with open(agent.file_manager.file_ops_log_path, "r", encoding="utf-8") as f:
 #         log_contents = f.read()
 

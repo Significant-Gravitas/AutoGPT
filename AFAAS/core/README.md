@@ -4,7 +4,7 @@ This subpackage contains the ongoing work for the
 [Auto-GPT Re-arch](https://github.com/Significant-Gravitas/Auto-GPT/issues/4770). It is 
 a work in progress and is not yet feature complete.  In particular, it does not yet
 have many of the Auto-GPT commands implemented and is pending ongoing work to 
-[re-incorporate vector-based memory and knowledge retrieval](https://github.com/Significant-Gravitas/Auto-GPT/issues/3536).
+[re-incorporate vector-based db and knowledge retrieval](https://github.com/Significant-Gravitas/Auto-GPT/issues/3536).
 
 ## [Overview](ARCHITECTURE_NOTES.md)
 

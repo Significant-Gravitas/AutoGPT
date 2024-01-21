@@ -31,7 +31,7 @@ def get_workspace(
             workspace_class = GCSFileWorkspace_AlphaRealease
         case _:
             raise ValueError(f"Unknown workspace backend {backend}")
-        
+    
     config : AbstractFileWorkspaceConfiguration =  workspace_class.SystemSettings.configuration.from_env()
     config.root = root_path
     return workspace_class(config)

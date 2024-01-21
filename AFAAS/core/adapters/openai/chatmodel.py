@@ -65,7 +65,7 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         self._chat = settings.chat
 
         retry_handler = _OpenAIRetryHandler(
-            num_retries=self._configuration.retries_per_request,
+            num_retries=self._settings.configuration.retries_per_request,
         )
 
         self._create_chat_completion = retry_handler(_create_chat_completion)
@@ -188,7 +188,7 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         try:
             encoding = tiktoken.encoding_for_model(encoding_model)
         except KeyError:
-            LOG.warn(
+            LOG.warning(
                 f"Model {model_name} not found. Defaulting to cl100k_base encoding."
             )
             encoding = tiktoken.get_encoding("cl100k_base")
@@ -261,7 +261,10 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         if self._should_retry_function_call(
             tools=tools, response_message=response_message
         ):
-            if self._func_call_fails_count <= self._configuration.maximum_retry:
+            if (
+                self._func_call_fails_count
+                <= self._settings.configuration.maximum_retry
+            ):
                 return await self._retry_chat_completion(
                     model_prompt=chat_messages,
                     tools=tools,
@@ -380,7 +383,7 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
     ) -> Dict[str, Any]:
         if (
             self._func_call_fails_count
-            >= self._configuration.maximum_retry_before_default_function
+            >= self._settings.configuration.maximum_retry_before_default_function
         ):
             completion_kwargs["tool_calls"] = default_tool_choice
         else:
@@ -488,10 +491,17 @@ async def _create_chat_completion(
         for message in messages
     ]
 
-    if "tools" in kwargs:
-        # wargs["tools"] = [function.dict() for function in kwargs["tools"]]
-        kwargs["tools"] = [function for function in kwargs["tools"]]
-        if len(kwargs["tools"]) == 1:
+    if not "tools" in kwargs or kwargs["tools"] is None or len(kwargs["tools"]) == 0:
+        if "tools" in kwargs:
+            del kwargs["tools"]
+        kwargs.pop("tool_choice", None)
+
+    else:
+        # kwargs["tools"] = [function for function in kwargs["tools"]]
+        if len(kwargs["tools"]) == 0:
+            del kwargs["tools"]
+            kwargs.pop("tool_choice", None)
+        elif len(kwargs["tools"]) == 1:
             kwargs["tool_choice"] = {
                 "type": "function",
                 "function": {"name": kwargs["tools"][0]["function"]["name"]},
