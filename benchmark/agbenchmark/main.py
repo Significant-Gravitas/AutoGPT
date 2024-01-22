@@ -21,6 +21,7 @@ def run_benchmark(
     tests: tuple[str] = tuple(),
     categories: tuple[str] = tuple(),
     skip_categories: tuple[str] = tuple(),
+    attempts_per_challenge: int = 1,
     mock: bool = False,
     no_dep: bool = False,
     no_cutoff: bool = False,
@@ -96,6 +97,9 @@ def run_benchmark(
         if active:
             pytest_args.append(flag)
 
+    if attempts_per_challenge > 1:
+        pytest_args.append(f"--attempts={attempts_per_challenge}")
+
     if cutoff:
         pytest_args.append(f"--cutoff={cutoff}")
         logger.debug(f"Setting cuttoff override to {cutoff} seconds.")
@@ -104,6 +108,7 @@ def run_benchmark(
     pytest_args.append(str(current_dir / "generate_test.py"))
 
     pytest_args.append("--cache-clear")
+    logger.debug(f"Running Pytest with args: {pytest_args}")
     exit_code = pytest.main(pytest_args)
 
     SingletonReportManager.clear_instance()
