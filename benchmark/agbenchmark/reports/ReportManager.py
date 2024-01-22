@@ -10,7 +10,9 @@ from typing import Any
 
 from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.reports.processing.graphs import save_single_radar_chart
-from agbenchmark.reports.processing.process_report import get_agent_category
+from agbenchmark.reports.processing.process_report import (
+    get_highest_achieved_difficulty_per_category,
+)
 from agbenchmark.reports.processing.report_types import MetricsOverall, Report, Test
 from agbenchmark.utils.utils import get_highest_success_difficulty
 
@@ -79,7 +81,6 @@ class BaseReportManager:
         except json.decoder.JSONDecodeError as e:
             logger.warning(f"Could not parse {self.report_file}: {e}")
             self.tests = {}
-        self.save()
 
     def save(self) -> None:
         with self.report_file.open("w") as f:
@@ -112,6 +113,13 @@ class SessionReportManager(BaseReportManager):
                 f.write(self.tests.json(indent=4))
             else:
                 json.dump({k: v.dict() for k, v in self.tests.items()}, f, indent=4)
+
+    def load(self) -> None:
+        super().load()
+        if "tests" in self.tests:  # type: ignore
+            self.tests = Report.parse_obj(self.tests)
+        else:
+            self.tests = {n: Test.parse_obj(d) for n, d in self.tests.items()}
 
     def add_test_report(self, test_name: str, test_report: Test) -> None:
         if isinstance(self.tests, Report):
@@ -148,7 +156,7 @@ class SessionReportManager(BaseReportManager):
             config=config.dict(exclude_none=True),
         )
 
-        agent_categories = get_agent_category(self.tests)
+        agent_categories = get_highest_achieved_difficulty_per_category(self.tests)
         if len(agent_categories) > 1:
             save_single_radar_chart(
                 agent_categories,
@@ -166,7 +174,7 @@ class SessionReportManager(BaseReportManager):
         total_cost = 0
         all_costs_none = True
         for test_data in tests.values():
-            cost = test_data.metrics.cost or 0.0
+            cost = sum(r.cost or 0 for r in test_data.results)
 
             if cost is not None:  # check if cost is not None
                 all_costs_none = False
@@ -184,8 +192,8 @@ class RegressionTestsTracker(BaseReportManager):
     def add_test(self, test_name: str, test_details: dict) -> None:
         if test_name.startswith("Test"):
             test_name = test_name[4:]
-        self.tests[test_name] = test_details
 
+        self.tests[test_name] = test_details
         self.save()
 
     def has_regression_test(self, test_name: str) -> bool:
@@ -195,11 +203,11 @@ class RegressionTestsTracker(BaseReportManager):
 class SuccessRatesTracker(BaseReportManager):
     """Abstracts interaction with the regression tests file"""
 
-    tests: dict[str, list[bool]]
+    tests: dict[str, list[bool | None]]
 
-    def update(self, test_name: str, success_history: list[bool]) -> None:
+    def update(self, test_name: str, success_history: list[bool | None]) -> None:
         if test_name.startswith("Test"):
             test_name = test_name[4:]
-        self.tests[test_name] = success_history
 
+        self.tests[test_name] = success_history
         self.save()

@@ -60,6 +60,9 @@ def start():
 
 @cli.command(default=True)
 @click.option(
+    "-N", "--attempts", default=1, help="Number of times to run each challenge."
+)
+@click.option(
     "-c",
     "--category",
     multiple=True,
@@ -107,6 +110,7 @@ def run(
     test: tuple[str],
     category: tuple[str],
     skip_category: tuple[str],
+    attempts: int,
     cutoff: Optional[int] = None,
     backend: Optional[bool] = False,
     # agent_path: Optional[Path] = None,
@@ -153,6 +157,7 @@ def run(
                 tests=test,
                 categories=category,
                 skip_categories=skip_category,
+                attempts_per_challenge=attempts,
                 cutoff=cutoff,
             )
 
@@ -171,6 +176,7 @@ def run(
             tests=test,
             categories=category,
             skip_categories=skip_category,
+            attempts_per_challenge=attempts,
             cutoff=cutoff,
         )
 
