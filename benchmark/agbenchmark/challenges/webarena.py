@@ -353,7 +353,10 @@ class WebArenaChallenge(BaseChallenge):
 
     @pytest.mark.asyncio
     async def test_method(
-        self, config: AgentBenchmarkConfig, request: pytest.FixtureRequest
+        self,
+        config: AgentBenchmarkConfig,
+        request: pytest.FixtureRequest,
+        i_attempt: int,
     ) -> None:
         if os.environ.get("HELICONE_API_KEY"):
             from helicone.lock import HeliconeLockManager
