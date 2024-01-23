@@ -39,7 +39,7 @@ for llamatool in tool_list:
     # Apply the tool_from_langchain decorator to the dynamically created class
     # AdaptedToolClass = tool_from_langchain()(AdaptedToolClass)
     generated_tool = Tool.generate_from_langchain_tool(
-        tool=langchaintool, categories=["google", "calendar"]
+        langchain_tool=langchaintool, categories=["google", "calendar"]
     )
 
     # Create a dynamic function

@@ -21,7 +21,7 @@ except ImportError:
     LOG.info("youtube_search package has been installed.")
 
 search_youtube = Tool.generate_from_langchain_tool(
-    tool=YouTubeSearchTool(),
+    langchain_tool=YouTubeSearchTool(),
     # arg_converter=file_search_args,
     categories=["youtube", "search"],
 )

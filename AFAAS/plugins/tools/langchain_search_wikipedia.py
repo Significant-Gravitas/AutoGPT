@@ -29,7 +29,7 @@ except ImportError:
     LOG.info("wikipedia package has been installed.")
 
 query_wikipedia = Tool.generate_from_langchain_tool(
-    tool=WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper()),
+    langchain_tool=WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper()),
     # arg_converter=file_search_args,
     categories=["search", "wikipedia"],
 )

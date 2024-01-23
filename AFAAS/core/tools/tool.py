@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import asyncio
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 from AFAAS.interfaces.tools.tool_output import ToolOutput
@@ -86,7 +87,7 @@ class Tool:
     @classmethod
     def generate_from_langchain_tool(
         cls,
-        tool: BaseTool,
+        langchain_tool: BaseTool,
         arg_converter: Optional[Callable] = None,
         categories: list[str] = ["undefined"],
         success_check_callback=None,
@@ -95,27 +96,23 @@ class Tool:
             success_check_callback or cls.default_success_check_callback
         )
 
-        def wrapper(*args, **kwargs):
-            # a Tool's run function doesn't take an agent as an arg, so just remove that
-            agent = kwargs.pop("agent")
+        async def wrapper(*args, **kwargs):
+            # Remove 'agent' from kwargs if present
+            agent = kwargs["agent"]
+            # Convert arguments
+            tool_input = arg_converter(kwargs, agent) if arg_converter else kwargs
 
-            # Allow the command to do whatever arg conversion it needs
-            if arg_converter:
-                tool_input = arg_converter(kwargs, agent)
+            LOG.debug(f"Running LangChain tool {langchain_tool.name} with arguments {kwargs}")
+
+            # Check if the tool's run method is asynchronous and call accordingly
+            if asyncio.iscoroutinefunction(langchain_tool.__call__):
+                return await langchain_tool.arun(tool_input)
             else:
-                tool_input = kwargs
+                return langchain_tool.run(tool_input)
 
-            LOG.debug(f"Running LangChain tool {tool.name} with arguments {kwargs}")
-
-            return tool.arun(tool_input=tool_input)
-
-        # typed_parameters = [
-        #     ToolParameter(
-        #         name=name,
-        #         spec=schema,
-        #     )
-        #     for name, schema in tool.args.items()
-        # ]
+            from .tool_decorator import tool as tool_wrapper
+            _tool_instance.__call__ = tool_wrapper(_tool_instance.__call__(**tool_input))
+            return _tool_instance.__call__too
 
         typed_parameters = [
             ToolParameter(
@@ -124,20 +121,20 @@ class Tool:
                     type=schema.get("type"),
                     description=schema.get("description", schema.get("title")),
                     required=bool(
-                        tool.args_schema.__fields__[name].required
+                        langchain_tool.args_schema.__fields__[name].required
                     )  # gives True if `field.required == pydantic.Undefined``
-                    if tool.args_schema
+                    if langchain_tool.args_schema
                     else True,
                 ),
             )
-            for name, schema in tool.args.items()
+            for name, schema in langchain_tool.args.items()
         ]
 
-        tool = Tool(
+        _tool_instance = Tool(
             categories=categories,
-            name=tool.name,
-            description=tool.description,
-            tech_description=tool.description,  # Added this line
+            name=langchain_tool.name,
+            description=langchain_tool.description,
+            tech_description=langchain_tool.description,  # Added this line
             exec_function=wrapper,
             parameters=typed_parameters,
             enabled=True,
@@ -153,10 +150,10 @@ class Tool:
         from AFAAS.core.tools.tool_decorator import TOOL_WRAPPER_MARKER
 
         # Set attributes on the command so that our import module scanner will recognize it
-        setattr(tool, TOOL_WRAPPER_MARKER, True)
-        setattr(tool, "tool", tool)
+        setattr(_tool_instance, TOOL_WRAPPER_MARKER, True)
+        setattr(_tool_instance, "tool", _tool_instance)
 
-        return tool
+        return _tool_instance
 
     async def default_success_check_callback(
         self, task: AbstractTask, tool_output: Any

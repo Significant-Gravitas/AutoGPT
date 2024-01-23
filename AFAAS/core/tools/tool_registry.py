@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib
 import inspect
 import os
+import importlib.util
+import pkgutil
 import time
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, Iterator
@@ -365,3 +367,37 @@ class DefaultToolRegistry(Configurable, AbstractToolRegistry):
         LOG.warning("ToolRegistry.call() is deprecated")
 
         return await self.perform(tool_name=tool_name, **kwargs)
+
+    @staticmethod
+    def write_and_load_module_in_afaas(module_name, code):
+        # Find the base directory of the AFAAS package
+        afaas_package = pkgutil.get_loader("AFAAS")
+        if not afaas_package:
+            raise ImportError("AFAAS package not found")
+
+        afaas_path = afaas_package.get_filename()
+
+        # Assuming the structure is AFAAS/__init__.py
+        base_directory = os.path.dirname(afaas_path)
+
+        # Target directory for the new module
+        target_directory = os.path.join(base_directory, "plugins", "tools")
+
+        # Ensure the target directory exists
+        if not os.path.exists(target_directory):
+            os.makedirs(target_directory)
+
+        # Path for the new Python file
+        file_path = os.path.join(target_directory, module_name + ".py")
+
+        # Write the Python code to the file
+        with open(file_path, 'w') as file:
+            file.write(code)
+
+        # Load the module
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        return module, file_path
+

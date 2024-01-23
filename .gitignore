@@ -180,3 +180,4 @@ pri*
 ig*
 .github_access_token
 ~/AFAAS/cache.json
+.env.bak

@@ -56,14 +56,14 @@ except ImportError:
     LOG.info("google_auth_oauthlib package has been installed.")
 
 google_serper_run = Tool.generate_from_langchain_tool(
-    tool=GoogleSerperRun(api_wrapper=GoogleSerperAPIWrapper()),
+    langchain_tool=GoogleSerperRun(api_wrapper=GoogleSerperAPIWrapper()),
     # arg_converter=file_search_args,
     categories=["search", "google"],
 )
 
 
 google_serper_result = Tool.generate_from_langchain_tool(
-    tool=GoogleSerperResults(api_wrapper=GoogleSerperAPIWrapper()),
+    langchain_tool=GoogleSerperResults(api_wrapper=GoogleSerperAPIWrapper()),
     # arg_converter=file_search_args,
     categories=["search", "google"],
 )
@@ -78,7 +78,7 @@ except ImportError:
     LOG.info("serpapi package has been installed.")
 
 google_finance = Tool.generate_from_langchain_tool(
-    tool=GoogleFinanceQueryRun(api_wrapper=GoogleFinanceAPIWrapper()),
+    langchain_tool=GoogleFinanceQueryRun(api_wrapper=GoogleFinanceAPIWrapper()),
     # arg_converter=file_search_args,
     categories=["google", "finance"],
 )

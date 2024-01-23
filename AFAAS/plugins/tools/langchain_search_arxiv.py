@@ -21,7 +21,7 @@ except ImportError:
     LOG.info("arxiv package has been installed.")
 
 arxiv_query = Tool.generate_from_langchain_tool(
-    tool=ArxivQueryRun(api_wrapper=ArxivAPIWrapper()),
+    langchain_tool=ArxivQueryRun(api_wrapper=ArxivAPIWrapper()),
     # arg_converter=file_search_args,
     categories=["search", "wikipedia"],
 )
