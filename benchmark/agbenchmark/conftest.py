@@ -12,10 +12,11 @@ import pytest
 
 from agbenchmark.challenges import OPTIONAL_CATEGORIES, BaseChallenge
 from agbenchmark.config import AgentBenchmarkConfig
+from agbenchmark.reports.processing.report_types import Test
 from agbenchmark.reports.ReportManager import RegressionTestsTracker
 from agbenchmark.reports.reports import (
-    finalize_test_report,
-    initialize_test_report,
+    add_test_result_to_report,
+    make_empty_test_report,
     session_finish,
 )
 from agbenchmark.utils.data_types import Category
@@ -80,6 +81,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     Args:
         parser: The Pytest CLI parser to which the command-line options are added.
     """
+    parser.addoption("-N", "--attempts", action="store")
     parser.addoption("--no-dep", action="store_true")
     parser.addoption("--mock", action="store_true")
     parser.addoption("--host", default=None)
@@ -149,6 +151,9 @@ def mock(request: pytest.FixtureRequest) -> bool:
     return request.config.getoption("--mock")
 
 
+test_reports: dict[str, Test] = {}
+
+
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> None:
     """
     Pytest hook that is called when a test report is being generated.
@@ -159,14 +164,19 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> None:
         call: The call object from which the test result is retrieved.
     """
     challenge: type[BaseChallenge] = item.cls  # type: ignore
+    challenge_id = challenge.info.eval_id
+
+    if challenge_id not in test_reports:
+        test_reports[challenge_id] = make_empty_test_report(challenge.info)
 
     if call.when == "setup":
         test_name = item.nodeid.split("::")[1]
         item.user_properties.append(("test_name", test_name))
-        initialize_test_report(item, challenge.info)
 
     if call.when == "call":
-        finalize_test_report(item, call, agbenchmark_config)
+        add_test_result_to_report(
+            test_reports[challenge_id], item, call, agbenchmark_config
+        )
 
 
 def timeout_monitor(start_time: int) -> None:
@@ -203,6 +213,11 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
     Finalizes and saves the test reports.
     """
     session_finish(agbenchmark_config)
+
+
+def pytest_generate_tests(metafunc: pytest.Metafunc):
+    if type(n := metafunc.config.getoption("-N")) is str:
+        metafunc.parametrize("i_attempt", range(int(n)))
 
 
 def pytest_collection_modifyitems(

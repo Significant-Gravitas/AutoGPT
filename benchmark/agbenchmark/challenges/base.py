@@ -47,7 +47,10 @@ class BaseChallenge(ABC):
 
     @abstractmethod
     def test_method(
-        self, config: AgentBenchmarkConfig, request: pytest.FixtureRequest
+        self,
+        config: AgentBenchmarkConfig,
+        request: pytest.FixtureRequest,
+        i_attempt: int,
     ) -> None:
         """
         Test method for use by Pytest-based benchmark sessions. Should return normally

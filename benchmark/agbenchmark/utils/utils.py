@@ -32,17 +32,6 @@ def replace_backslash(value: Any) -> Any:
         return value
 
 
-def calculate_success_percentage(results: list[bool]) -> float:
-    # Take the last 10 results or all if less than 10
-    last_results = results[-10:] if len(results) > 10 else results
-    success_count = last_results.count(True)
-    total_count = len(last_results)
-    if total_count == 0:
-        return 0
-    success_percentage = (success_count / total_count) * 100  # as a percentage
-    return round(success_percentage, 2)
-
-
 def get_test_path(json_file: str | Path) -> str:
     if isinstance(json_file, str):
         json_file = Path(json_file)
@@ -71,8 +60,8 @@ def get_highest_success_difficulty(
 
     for test_name, test_data in data.items():
         try:
-            if test_data.metrics.success:
-                difficulty_str = test_data.metrics.difficulty
+            if any(r.success for r in test_data.results):
+                difficulty_str = test_data.difficulty
                 if not difficulty_str:
                     continue
 
