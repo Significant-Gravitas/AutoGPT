@@ -68,9 +68,8 @@ Autonomous Agent are experimental initiative aiming to set inteligent systems wi
 
 - [v0.0.2](https://github.com/ph-ausseil/afaas/milestone/3)  - Reduce Technical debt (Planned on 31/01/2024)
   - Improving & automating tests coverage
-  - Capacity to create own tools
   - Improve general thinking & planning performances
-  - Sets a Proxy between the PlannerAgent & the User.
+  - Sets a Proxy between the PlannerAgent & the User [#54](https://github.com/ph-ausseil/afaas/issues/54)
 
 ## Roadmap
 
@@ -82,6 +81,7 @@ Autonomous Agent are experimental initiative aiming to set inteligent systems wi
   - 100% Test Coverage for API
   - 50% Test Coverage for Core
   - A Web Interface (If we receive help 🪄 )
+  - Capacity to create own tools [#134](https://github.com/ph-ausseil/afaas/issues/134)
 
 ## Contributing
 
