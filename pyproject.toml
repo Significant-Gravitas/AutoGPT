@@ -1,13 +1,13 @@
 [tool.poetry]
 name = "AFAAS"
-version = "0.0.0"
+version = "0.0.2"
 description = ""
 authors = ["Pierre-Henri AUSSEIL"]
 license = "No license, you are not allowed to read this code, neither execute it, nor copy it, nor modify it, nor distribute it, nor use it in any way, shape or form."
 readme = "README.md"
 packages = [
-    { include = "AFAAS" },
-    { include = "app" },
+    { include = "AFAAS", from = "." },
+    { include = "app", from = "." },
     # Add more packages as needed
 ]
 
@@ -17,7 +17,7 @@ packages = [
 [tool.poetry.scripts]
 demo = "app.cli_app.cli:run"
 run-server= "app.cli:serve"
-test-debug = "pytest -s --pdb"
+#test-debug = "pytest -s --pdb tests"
 
 
 [tool.poetry.dependencies]
@@ -43,7 +43,7 @@ gTTS = "^2.3.1"
 hypercorn = "^0.14.4"
 inflection = "*"
 jsonschema = "*"
-langchain = "^0.0.350"
+langchain = "^0.1.0"
 llama-index = "*"
 numpy = "*"
 openai = "^1.6.1"
@@ -100,7 +100,7 @@ types-Pillow = "*"
 # Testing
 asynctest = "*"
 coverage = "*"
-pytest = "*"
+pytest = "^7.4.0"
 pytest-asyncio = "*"
 pytest-benchmark = "*"
 pytest-cov = "*"

@@ -4,7 +4,7 @@ import uuid
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine
 
 from langchain_core.embeddings import Embeddings
-from langchain_core.vectorstores import VectorStore
+from langchain.vectorstores import VectorStore
 
 from AFAAS.core.tools.builtins import (
     BUILTIN_MODULES,  # FIXME: This is a temporary fix but shall not be delt here

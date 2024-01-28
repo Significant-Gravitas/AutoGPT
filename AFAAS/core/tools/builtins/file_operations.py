@@ -7,7 +7,7 @@ import os.path
 from pathlib import Path
 
 from langchain_community.tools.file_management.file_search import FileSearchTool
-from langchain_core.vectorstores import VectorStore
+from langchain.vectorstores import VectorStore
 
 from AFAAS.core.tools.builtins.file_operations_helpers import (
     is_duplicate_operation,

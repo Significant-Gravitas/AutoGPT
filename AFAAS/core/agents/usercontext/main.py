@@ -4,7 +4,7 @@ import uuid
 from typing import Awaitable, Callable
 
 from langchain_core.embeddings import Embeddings
-from langchain_core.vectorstores import VectorStore
+from langchain.vectorstores import VectorStore
 
 from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
 from AFAAS.interfaces.agent.assistants.prompt_manager import BasePromptManager

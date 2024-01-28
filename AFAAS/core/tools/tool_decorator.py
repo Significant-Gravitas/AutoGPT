@@ -15,7 +15,7 @@ from typing import (
     TypeVar,
 )
 
-from langchain_core.tools import BaseTool
+from langchain.tools import BaseTool
 
 from AFAAS.interfaces.tools.tool_output import ToolOutput
 from AFAAS.interfaces.tools.tool_parameters import ToolParameter
