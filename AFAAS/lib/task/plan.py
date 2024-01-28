@@ -11,7 +11,7 @@ from pydantic import Field
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.interfaces.task.plan import AbstractBaseTask, AbstractPlan
-from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.lib.sdk.logger import AFAASLogger, CONSOLE_LOG_LEVEL , logging
 from AFAAS.lib.task.task import Task
 
 LOG = AFAASLogger(name=__name__)
@@ -490,10 +490,8 @@ class Plan(AbstractPlan):
         ###
         # Step 2 : Prepend usercontext
         ###
-        # FIXME: DEACTIVATED FOR TEST PURPOSE
-        if False:
+        if CONSOLE_LOG_LEVEL > logging.DEBUG:
             try:
-                pass
 
                 refine_user_context_task = Task(
                     agent=self.agent,
