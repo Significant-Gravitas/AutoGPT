@@ -9,13 +9,11 @@ logger = logging.getLogger(__name__)
 
 def extract_dict_from_response(response_content: str) -> dict[str, Any]:
     # Sometimes the response includes the JSON in a code block with ```
-    pattern = r"```([\s\S]*?)```"
+    pattern = r"```(?:json|JSON)*([\s\S]*?)```"
     match = re.search(pattern, response_content)
 
     if match:
         response_content = match.group(1).strip()
-        # Remove language names in code blocks
-        response_content = response_content.lstrip("json")
     else:
         # The string may contain JSON.
         json_pattern = r"{[\s\S]*}"
