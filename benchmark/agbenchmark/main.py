@@ -22,6 +22,7 @@ def run_benchmark(
     categories: tuple[str] = tuple(),
     skip_categories: tuple[str] = tuple(),
     attempts_per_challenge: int = 1,
+    concurrent_tasks: int = 1,
     mock: bool = False,
     no_dep: bool = False,
     no_cutoff: bool = False,
@@ -99,6 +100,9 @@ def run_benchmark(
 
     if attempts_per_challenge > 1:
         pytest_args.append(f"--attempts={attempts_per_challenge}")
+
+    if concurrent_tasks > 1:
+        pytest_args.append(f"--tests-per-worker={concurrent_tasks}")
 
     if cutoff:
         pytest_args.append(f"--cutoff={cutoff}")
