@@ -62,8 +62,10 @@ class OpenAIModelName(str, enum.Enum):
     GPT4_v2 = "gpt-4-0613"
     GPT4_v2_32k = "gpt-4-32k-0613"
     GPT4_v3 = "gpt-4-1106-preview"
+    GPT4_v4 = "gpt-4-0125-preview"
     GPT4_ROLLING = "gpt-4"
     GPT4_ROLLING_32k = "gpt-4-32k"
+    GPT4_TURBO = "gpt-4-turbo-preview"
     GPT4_VISION = "gpt-4-vision-preview"
     GPT4 = GPT4_ROLLING
     GPT4_32k = GPT4_ROLLING_32k
@@ -130,7 +132,7 @@ OPEN_AI_CHAT_MODELS = {
             has_function_call_api=True,
         ),
         ChatModelInfo(
-            name=OpenAIModelName.GPT4_v3,
+            name=OpenAIModelName.GPT4_TURBO,
             service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.01 / 1000,
@@ -149,6 +151,7 @@ chat_model_mapping = {
         OpenAIModelName.GPT4_v1_32k,
         OpenAIModelName.GPT4_v2_32k,
     ],
+    OpenAIModelName.GPT4_TURBO: [OpenAIModelName.GPT4_v3, OpenAIModelName.GPT4_v4],
 }
 for base, copies in chat_model_mapping.items():
     for copy in copies:
