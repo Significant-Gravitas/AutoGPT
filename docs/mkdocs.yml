@@ -1,0 +1,131 @@
+site_name: AutoGPT Documentation
+site_url: https://docs.agpt.co/
+repo_url: https://github.com/Significant-Gravitas/AutoGPT
+docs_dir: content
+nav:
+  - Home: index.md
+
+  - AutoGPT Agent:
+    - Introduction: AutoGPT/index.md
+    - Setup:
+        - Setting up AutoGPT: AutoGPT/setup/index.md
+        - Set up with Docker: AutoGPT/setup/docker.md
+    - Usage: AutoGPT/usage.md
+    - Plugins: AutoGPT/plugins.md
+    # - Configuration:
+    #     - Options: AutoGPT/configuration/options.md
+    #     - Search: AutoGPT/configuration/search.md
+    #     - Memory: AutoGPT/configuration/memory.md
+    #     - Voice: AutoGPT/configuration/voice.md
+    #     - Image Generation: AutoGPT/configuration/imagegen.md
+    - Help us improve AutoGPT:
+        - Share your debug logs with us: AutoGPT/share-your-logs.md
+        - Contribution guide: contributing.md
+        - Running tests: AutoGPT/testing.md
+        - Code of Conduct: code-of-conduct.md
+
+  - Benchmark:
+    - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark/README.md
+
+  - Forge:
+    - Introduction: forge/get-started.md
+
+  - Frontend:
+    - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/frontend/README.md
+
+  # - Challenges:
+  #     - Introduction: challenges/introduction.md
+  #     - List of Challenges:
+  #         - Memory:
+  #             - Introduction: challenges/memory/introduction.md
+  #             - Memory Challenge A: challenges/memory/challenge_a.md
+  #             - Memory Challenge B: challenges/memory/challenge_b.md
+  #             - Memory Challenge C: challenges/memory/challenge_c.md
+  #             - Memory Challenge D: challenges/memory/challenge_d.md
+  #         - Information retrieval:
+  #             - Introduction: challenges/information_retrieval/introduction.md
+  #             - Information Retrieval Challenge A: challenges/information_retrieval/challenge_a.md
+  #             - Information Retrieval Challenge B: challenges/information_retrieval/challenge_b.md
+  # - Submit a Challenge: challenges/submit.md
+  # - Beat a Challenge: challenges/beat.md
+
+  - License: https://github.com/Significant-Gravitas/AutoGPT/blob/master/LICENSE
+
+theme:
+  name: material
+  custom_dir: overrides
+  icon:
+    logo: material/book-open-variant
+  favicon: favicon.png
+  features:
+    - navigation.sections
+    - toc.follow
+    - navigation.top
+    - content.code.copy
+  palette:
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  # Python Markdown
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+  - tables
+
+  # Python Markdown Extensions
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.critic
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_generator: !!python/name:materialx.emoji.to_svg
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      auto_append:
+        - includes/abbreviations.md
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+plugins:
+  - table-reader
+  - search
+
+extra_javascript:
+  - https://unpkg.com/tablesort@5.3.0/dist/tablesort.min.js
+  - _javascript/tablesort.js
+  - _javascript/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js

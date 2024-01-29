@@ -1,4 +1,3 @@
-[submodule "tests/Auto-GPT-test-cassettes"]
-    path = tests/Auto-GPT-test-cassettes
-    url = https://github.com/Significant-Gravitas/Auto-GPT-test-cassettes
-    branch = master
+[submodule "autogpts/autogpt/tests/vcr_cassettes"]
+	path = autogpts/autogpt/tests/vcr_cassettes
+	url = https://github.com/Significant-Gravitas/Auto-GPT-test-cassettes

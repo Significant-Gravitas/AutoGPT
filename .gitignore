@@ -1,7 +1,8 @@
 ## Original ignores
+.github_access_token
 autogpt/keys.py
 autogpt/*.json
-**/auto_gpt_workspace/*
+auto_gpt_workspace/*
 *.mpeg
 .env
 azure.yaml
@@ -28,11 +29,8 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
 develop-eggs/
 dist/
-/plugins/
-plugins_config.yaml
 downloads/
 eggs/
 .eggs/
@@ -160,3 +158,22 @@ openai/
 
 # news
 CURRENT_BULLETIN.md
+
+# AgBenchmark
+agbenchmark/reports/
+
+# Nodejs
+package-lock.json
+package.json
+
+# Allow for locally private items
+# private
+pri* 
+# ignore
+ig*
+.github_access_token
+arena/TestAgent.json
+
+# evo.ninja
+autogpts/evo.ninja/*
+!autogpts/evo.ninja/setup
