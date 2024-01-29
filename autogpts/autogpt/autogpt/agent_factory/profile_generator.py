@@ -1,3 +1,4 @@
+import json
 import logging
 
 from autogpt.config import AIDirectives, AIProfile, Config
@@ -9,7 +10,7 @@ from autogpt.core.prompting import (
 )
 from autogpt.core.prompting.utils import json_loads
 from autogpt.core.resource.model_providers.schema import (
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatMessage,
     ChatModelProvider,
     CompletionModelFunction,
@@ -23,14 +24,61 @@ class AgentProfileGeneratorConfiguration(SystemConfiguration):
     model_classification: LanguageModelClassification = UserConfigurable(
         default=LanguageModelClassification.SMART_MODEL
     )
+    _example_call: object = [
+        {
+            "type": "function",
+            "function": {
+                "name": "create_agent",
+                "arguments": {
+                    "name": "CMOGPT",
+                    "description": (
+                        "a professional digital marketer AI that assists Solopreneurs "
+                        "in growing their businesses by providing "
+                        "world-class expertise in solving marketing problems "
+                        "for SaaS, content products, agencies, and more."
+                    ),
+                    "directives": {
+                        "best_practices": [
+                            (
+                                "Engage in effective problem-solving, prioritization, "
+                                "planning, and supporting execution to address your "
+                                "marketing needs as your virtual "
+                                "Chief Marketing Officer."
+                            ),
+                            (
+                                "Provide specific, actionable, and concise advice to "
+                                "help you make informed decisions without the use of "
+                                "platitudes or overly wordy explanations."
+                            ),
+                            (
+                                "Identify and prioritize quick wins and cost-effective "
+                                "campaigns that maximize results with minimal time and "
+                                "budget investment."
+                            ),
+                            (
+                                "Proactively take the lead in guiding you and offering "
+                                "suggestions when faced with unclear information or "
+                                "uncertainty to ensure your marketing strategy remains "
+                                "on track."
+                            ),
+                        ],
+                        "constraints": [
+                            "Do not suggest illegal or unethical plans or strategies.",
+                            "Take reasonable budgetary limits into account.",
+                        ],
+                    },
+                },
+            },
+        }
+    ]
     system_prompt: str = UserConfigurable(
         default=(
             "Your job is to respond to a user-defined task, given in triple quotes, by "
             "invoking the `create_agent` function to generate an autonomous agent to "
             "complete the task. "
             "You should supply a role-based name for the agent (_GPT), "
-            "an informative description for what the agent does, and "
-            "1 to 5 directives in each of the categories Best Practices and Constraints, "
+            "an informative description for what the agent does, and 1 to 5 directives "
+            "in each of the categories Best Practices and Constraints, "
             "that are optimally aligned with the successful completion "
             "of its assigned task.\n"
             "\n"
@@ -38,38 +86,8 @@ class AgentProfileGeneratorConfiguration(SystemConfiguration):
             '"""Help me with marketing my business"""\n\n'
             "Example Call:\n"
             "```\n"
-            "["  # tool_calls
-            '{"type": "function", "function": {'
-            '"name": "create_agent",'
-            ' "arguments": {'
-            '"name": "CMOGPT",'
-            ' "description": "a professional digital marketer AI that assists Solopreneurs in'
-            " growing their businesses by providing world-class expertise in solving"
-            ' marketing problems for SaaS, content products, agencies, and more.",'
-            ' "directives": {'
-            ' "best_practices": ['
-            '"Engage in effective problem-solving, prioritization, planning, and'
-            " supporting execution to address your marketing needs as your virtual Chief"
-            ' Marketing Officer.",'
-            ' "Provide specific, actionable, and concise advice to help you make'
-            " informed decisions without the use of platitudes or overly wordy"
-            ' explanations.",'
-            ' "Identify and prioritize quick wins and cost-effective campaigns that'
-            ' maximize results with minimal time and budget investment.",'
-            ' "Proactively take the lead in guiding you and offering suggestions when'
-            " faced with unclear information or uncertainty to ensure your marketing"
-            ' strategy remains on track."'
-            "],"  # best_practices
-            ' "constraints": ['
-            '"Do not suggest illegal or unethical plans or strategies.",'
-            ' "Take reasonable budgetary limits into account."'
-            "]"  # constraints
-            "}"  # directives
-            "}"  # arguments
-            "}"  # function
-            "}"  # tool call
-            "]\n"  # tool_calls
-            "```"
+            f"{json.dumps(_example_call, indent=4)}"
+            "\n```"
         )
     )
     user_prompt_template: str = UserConfigurable(default='"""{user_objective}"""')
@@ -85,7 +103,10 @@ class AgentProfileGeneratorConfiguration(SystemConfiguration):
                 ),
                 "description": JSONSchema(
                     type=JSONSchema.Type.STRING,
-                    description="An informative one sentence description of what the AI agent does",
+                    description=(
+                        "An informative one sentence description "
+                        "of what the AI agent does"
+                    ),
                     required=True,
                 ),
                 "directives": JSONSchema(
@@ -99,8 +120,9 @@ class AgentProfileGeneratorConfiguration(SystemConfiguration):
                                 type=JSONSchema.Type.STRING,
                             ),
                             description=(
-                                "One to five highly effective best practices that are"
-                                " optimally aligned with the completion of the given task."
+                                "One to five highly effective best practices "
+                                "that are optimally aligned with the completion "
+                                "of the given task"
                             ),
                             required=True,
                         ),
@@ -112,8 +134,9 @@ class AgentProfileGeneratorConfiguration(SystemConfiguration):
                                 type=JSONSchema.Type.STRING,
                             ),
                             description=(
-                                "One to five highly effective constraints that are"
-                                " optimally aligned with the completion of the given task."
+                                "One to five reasonable and efficacious constraints "
+                                "that are optimally aligned with the completion "
+                                "of the given task"
                             ),
                             required=True,
                         ),
@@ -163,7 +186,7 @@ class AgentProfileGenerator(PromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> tuple[AIProfile, AIDirectives]:
         """Parse the actual text response from the objective model.
 
@@ -175,16 +198,21 @@ class AgentProfileGenerator(PromptStrategy):
 
         """
         try:
-            arguments = json_loads(
-                response_content["tool_calls"][0]["function"]["arguments"]
+            if not response_content.tool_calls:
+                raise ValueError(
+                    f"LLM did not call {self._create_agent_function.name} function; "
+                    "agent profile creation failed"
+                )
+            arguments: object = json_loads(
+                response_content.tool_calls[0].function.arguments
             )
             ai_profile = AIProfile(
                 ai_name=arguments.get("name"),
                 ai_role=arguments.get("description"),
             )
             ai_directives = AIDirectives(
-                best_practices=arguments["directives"].get("best_practices"),
-                constraints=arguments["directives"].get("constraints"),
+                best_practices=arguments.get("directives", {}).get("best_practices"),
+                constraints=arguments.get("directives", {}).get("constraints"),
                 resources=[],
             )
         except KeyError:

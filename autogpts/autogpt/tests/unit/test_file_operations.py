@@ -1,7 +1,3 @@
-"""
-This set of unit tests is designed to test the file operations that autoGPT has access to.
-"""
-
 import hashlib
 import os
 import re
@@ -30,7 +26,7 @@ def mock_MemoryItem_from_text(
     mocker: MockerFixture, mock_embedding: Embedding, config: Config
 ):
     mocker.patch.object(
-        file_ops.MemoryItem,
+        file_ops.MemoryItemFactory,
         "from_text",
         new=lambda content, source_type, config, metadata: MemoryItem(
             raw_content=content,
@@ -67,7 +63,7 @@ def test_file_with_content_path(test_file: TextIOWrapper, file_content, agent: A
     test_file.write(file_content)
     test_file.close()
     file_ops.log_operation(
-        "write", test_file.name, agent, file_ops.text_checksum(file_content)
+        "write", Path(test_file.name), agent, file_ops.text_checksum(file_content)
     )
     return Path(test_file.name)
 
@@ -136,42 +132,46 @@ def test_is_duplicate_operation(agent: Agent, mocker: MockerFixture):
     # Test cases with write operations
     assert (
         file_ops.is_duplicate_operation(
-            "write", "path/to/file1.txt", agent, "checksum1"
+            "write", Path("path/to/file1.txt"), agent, "checksum1"
         )
         is True
     )
     assert (
         file_ops.is_duplicate_operation(
-            "write", "path/to/file1.txt", agent, "checksum2"
+            "write", Path("path/to/file1.txt"), agent, "checksum2"
         )
         is False
     )
     assert (
         file_ops.is_duplicate_operation(
-            "write", "path/to/file3.txt", agent, "checksum3"
+            "write", Path("path/to/file3.txt"), agent, "checksum3"
         )
         is False
     )
     # Test cases with append operations
     assert (
         file_ops.is_duplicate_operation(
-            "append", "path/to/file1.txt", agent, "checksum1"
+            "append", Path("path/to/file1.txt"), agent, "checksum1"
         )
         is False
     )
     # Test cases with delete operations
     assert (
-        file_ops.is_duplicate_operation("delete", "path/to/file1.txt", agent) is False
+        file_ops.is_duplicate_operation("delete", Path("path/to/file1.txt"), agent)
+        is False
     )
-    assert file_ops.is_duplicate_operation("delete", "path/to/file3.txt", agent) is True
+    assert (
+        file_ops.is_duplicate_operation("delete", Path("path/to/file3.txt"), agent)
+        is True
+    )
 
 
 # Test logging a file operation
 def test_log_operation(agent: Agent):
-    file_ops.log_operation("log_test", "path/to/test", agent=agent)
+    file_ops.log_operation("log_test", Path("path/to/test"), agent=agent)
     with open(agent.file_manager.file_ops_log_path, "r", encoding="utf-8") as f:
         content = f.read()
-    assert f"log_test: path/to/test\n" in content
+    assert "log_test: path/to/test\n" in content
 
 
 def test_text_checksum(file_content: str):
@@ -182,10 +182,12 @@ def test_text_checksum(file_content: str):
 
 
 def test_log_operation_with_checksum(agent: Agent):
-    file_ops.log_operation("log_test", "path/to/test", agent=agent, checksum="ABCDEF")
+    file_ops.log_operation(
+        "log_test", Path("path/to/test"), agent=agent, checksum="ABCDEF"
+    )
     with open(agent.file_manager.file_ops_log_path, "r", encoding="utf-8") as f:
         content = f.read()
-    assert f"log_test: path/to/test #ABCDEF\n" in content
+    assert "log_test: path/to/test #ABCDEF\n" in content
 
 
 def test_read_file(
