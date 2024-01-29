@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "web_browse"
-COMMAND_CATEGORY_TITLE = "Web Browsing"
-
 import logging
 import re
 from pathlib import Path
@@ -33,16 +30,21 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
-if TYPE_CHECKING:
-    from autogpt.config import Config
-    from autogpt.agents.agent import Agent
-
 from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.processing.text import summarize_text
 from autogpt.url_utils.validators import validate_url
+
+COMMAND_CATEGORY = "web_browse"
+COMMAND_CATEGORY_TITLE = "Web Browsing"
+
+
+if TYPE_CHECKING:
+    from autogpt.agents.agent import Agent
+    from autogpt.config import Config
+
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +59,12 @@ class BrowsingError(CommandExecutionError):
 
 @command(
     "read_webpage",
-    "Read a webpage, and extract specific information from it if a question is specified."
-    " If you are looking to extract specific information from the webpage, you should"
-    " specify a question.",
+    (
+        "Read a webpage, and extract specific information from it"
+        " if a question is specified."
+        " If you are looking to extract specific information from the webpage,"
+        " you should specify a question."
+    ),
     {
         "url": JSONSchema(
             type=JSONSchema.Type.STRING,
@@ -68,7 +73,9 @@ class BrowsingError(CommandExecutionError):
         ),
         "question": JSONSchema(
             type=JSONSchema.Type.STRING,
-            description="A question that you want to answer using the content of the webpage.",
+            description=(
+                "A question that you want to answer using the content of the webpage."
+            ),
             required=False,
         ),
     },
@@ -111,11 +118,12 @@ async def read_webpage(url: str, agent: Agent, question: str = "") -> str:
             links = links[:LINKS_TO_RETURN]
 
         text_fmt = f"'''{text}'''" if "\n" in text else f"'{text}'"
+        links_fmt = "\n".join(f"- {link}" for link in links)
         return (
             f"Page content{' (summary)' if summarized else ''}:"
             if return_literal_content
             else "Answer gathered from webpage:"
-        ) + f" {text_fmt}\n\nLinks: {links}"
+        ) + f" {text_fmt}\n\nLinks:\n{links_fmt}"
 
     except WebDriverException as e:
         # These errors are often quite long and include lots of context.
@@ -123,8 +131,8 @@ async def read_webpage(url: str, agent: Agent, question: str = "") -> str:
         msg = e.msg.split("\n")[0]
         if "net::" in msg:
             raise BrowsingError(
-                f"A networking error occurred while trying to load the page: "
-                + re.sub(r"^unknown error: ", "", msg)
+                "A networking error occurred while trying to load the page: %s"
+                % re.sub(r"^unknown error: ", "", msg)
             )
         raise CommandExecutionError(msg)
     finally:
@@ -197,9 +205,7 @@ def open_page_in_browser(url: str, config: Config) -> WebDriver:
     }
 
     options: BrowserOptions = options_available[config.selenium_web_browser]()
-    options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
-    )
+    options.add_argument(f"user-agent={config.user_agent}")
 
     if config.selenium_web_browser == "firefox":
         if config.selenium_headless:
@@ -213,8 +219,8 @@ def open_page_in_browser(url: str, config: Config) -> WebDriver:
             service=EdgeDriverService(EdgeDriverManager().install()), options=options
         )
     elif config.selenium_web_browser == "safari":
-        # Requires a bit more setup on the users end
-        # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
+        # Requires a bit more setup on the users end.
+        # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari  # noqa: E501
         driver = SafariDriver(options=options)
     else:
         if platform == "linux" or platform == "linux2":
@@ -281,7 +287,12 @@ async def summarize_memorize_webpage(
 
     # memory = get_memory(agent.legacy_config)
 
-    # new_memory = MemoryItem.from_webpage(text, url, agent.legacy_config, question=question)
+    # new_memory = MemoryItem.from_webpage(
+    #     content=text,
+    #     url=url,
+    #     config=agent.legacy_config,
+    #     question=question,
+    # )
     # memory.add(new_memory)
 
     summary, _ = await summarize_text(

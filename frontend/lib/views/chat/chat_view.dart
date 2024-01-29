@@ -1,6 +1,6 @@
 import 'package:auto_gpt_flutter_client/models/message_type.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/settings_viewmodel.dart';
-import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/task_queue_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/chat/agent_message_tile.dart';
 import 'package:auto_gpt_flutter_client/views/chat/chat_input_field.dart';
@@ -64,7 +64,7 @@ class _ChatViewState extends State<ChatView> {
   @override
   Widget build(BuildContext context) {
     // TODO: Do we want to have a reference to task view model in this class?
-    final taskViewModel = Provider.of<TaskViewModel>(context, listen: false);
+    final taskViewModel = Provider.of<TaskViewModel>(context, listen: true);
     return Scaffold(
       body: Column(
         children: [
@@ -90,18 +90,10 @@ class _ChatViewState extends State<ChatView> {
                     key: ValueKey(chat.id),
                     chat: chat,
                     onArtifactsButtonPressed: () {
-                      // TODO: Create an actual artifact object
                       // Loop through each artifact and download it using the artifact_id
                       for (var artifact in chat.artifacts) {
-                        if (artifact is Map) {
-                          final artifactMap = artifact.cast<String,
-                              dynamic>(); // Cast each item to Map<String, dynamic>
-
-                          final artifactId = artifactMap['artifact_id']
-                              .toString(); // Get the artifact_id
-                          widget.viewModel.downloadArtifact(
-                              chat.taskId, artifactId); // Download the artifact
-                        }
+                        widget.viewModel
+                            .downloadArtifact(chat.taskId, artifact.artifactId);
                       }
                     },
                   );
@@ -111,15 +103,17 @@ class _ChatViewState extends State<ChatView> {
           ),
           const SizedBox(height: 10),
           LoadingIndicator(
-              isLoading: Provider.of<SkillTreeViewModel>(context, listen: true)
+              isLoading: Provider.of<TaskQueueViewModel>(context, listen: true)
                       .isBenchmarkRunning ||
-                  widget.viewModel.isWaitingForAgentResponse),
+                  widget.viewModel.isWaitingForAgentResponse ||
+                  taskViewModel.isWaitingForAgentResponse),
           const SizedBox(height: 10),
           // Input area
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: ChatInputField(
               onSendPressed: (message) async {
+                widget.viewModel.addTemporaryMessage(message);
                 try {
                   if (widget.viewModel.currentTaskId != null) {
                     widget.viewModel.sendChatMessage(
@@ -152,6 +146,20 @@ class _ChatViewState extends State<ChatView> {
                             "linear-gradient(to right, #dc1c13, #dc1c13)",
                         textColor: Colors.white,
                         fontSize: 16.0);
+                  } else if (response is http.Response &&
+                      response.statusCode >= 500 &&
+                      response.statusCode < 600) {
+                    Fluttertoast.showToast(
+                        msg: "500 error: Something went wrong",
+                        toastLength: Toast.LENGTH_LONG,
+                        gravity: ToastGravity.TOP,
+                        timeInSecForIosWeb: 5,
+                        backgroundColor: Colors.red,
+                        webPosition: "center",
+                        webBgColor:
+                            "linear-gradient(to right, #dc1c13, #dc1c13)",
+                        textColor: Colors.white,
+                        fontSize: 16.0);
                   }
                 }
               },
@@ -160,6 +168,7 @@ class _ChatViewState extends State<ChatView> {
                     !widget.viewModel.isContinuousMode;
               },
               isContinuousMode: widget.viewModel.isContinuousMode,
+              viewModel: widget.viewModel,
             ),
           ),
         ],

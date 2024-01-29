@@ -1,10 +1,11 @@
 import logging
 import os
 import re
+import sys
 
 import requests
 from colorama import Fore, Style
-from git.repo import Repo
+from git import InvalidGitRepositoryError, Repo
 from prompt_toolkit import ANSI, PromptSession
 from prompt_toolkit.history import InMemoryHistory
 
@@ -50,7 +51,7 @@ async def clean_input(config: Config, prompt: str = ""):
         # handle_sigint must be set to False, so the signal handler in the
         # autogpt/main.py could be employed properly. This referes to
         # https://github.com/Significant-Gravitas/AutoGPT/pull/4799/files/3966cdfd694c2a80c0333823c3bc3da090f85ed3#r1264278776
-        answer = await session.prompt_async(ANSI(prompt), handle_sigint=False)
+        answer = await session.prompt_async(ANSI(prompt + " "), handle_sigint=False)
         return answer
     except KeyboardInterrupt:
         logger.info("You interrupted AutoGPT")
@@ -61,7 +62,7 @@ async def clean_input(config: Config, prompt: str = ""):
 def get_bulletin_from_web():
     try:
         response = requests.get(
-            "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/master/autogpts/autogpt/BULLETIN.md"
+            "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/master/autogpts/autogpt/BULLETIN.md"  # noqa: E501
         )
         if response.status_code == 200:
             return response.text
@@ -76,7 +77,7 @@ def get_current_git_branch() -> str:
         repo = Repo(search_parent_directories=True)
         branch = repo.active_branch
         return branch.name
-    except:
+    except InvalidGitRepositoryError:
         return ""
 
 
@@ -93,7 +94,7 @@ def get_latest_bulletin() -> tuple[str, bool]:
     news_header = Fore.YELLOW + "Welcome to AutoGPT!\n"
     if new_bulletin or current_bulletin:
         news_header += (
-            "Below you'll find the latest AutoGPT News and updates regarding features!\n"
+            "Below you'll find the latest AutoGPT News and feature updates!\n"
             "If you don't wish to see this message, you "
             "can run AutoGPT with the *--skip-news* flag.\n"
         )
@@ -144,5 +145,46 @@ behalf. You acknowledge that using the System could expose you to potential liab
 
 ## Indemnification
 By using the System, you agree to indemnify, defend, and hold harmless the Project Parties from and against any and all claims, liabilities, damages, losses, or expenses (including reasonable attorneys' fees and costs) arising out of or in connection with your use of the System, including, without limitation, any actions taken by the System on your behalf, any failure to properly supervise or monitor the System, and any resulting harm or unintended consequences.
-            """
+    """  # noqa: E501
     return legal_text
+
+
+def print_motd(config: Config, logger: logging.Logger):
+    motd, is_new_motd = get_latest_bulletin()
+    if motd:
+        motd = markdown_to_ansi_style(motd)
+        for motd_line in motd.split("\n"):
+            logger.info(
+                extra={
+                    "title": "NEWS:",
+                    "title_color": Fore.GREEN,
+                    "preserve_color": True,
+                },
+                msg=motd_line,
+            )
+        if is_new_motd and not config.chat_messages_enabled:
+            input(
+                Fore.MAGENTA
+                + Style.BRIGHT
+                + "NEWS: Bulletin was updated! Press Enter to continue..."
+                + Style.RESET_ALL
+            )
+
+
+def print_git_branch_info(logger: logging.Logger):
+    git_branch = get_current_git_branch()
+    if git_branch and git_branch != "master":
+        logger.warning(
+            f"You are running on `{git_branch}` branch"
+            " - this is not a supported branch."
+        )
+
+
+def print_python_version_info(logger: logging.Logger):
+    if sys.version_info < (3, 10):
+        logger.error(
+            "WARNING: You are running on an older version of Python. "
+            "Some people have observed problems with certain "
+            "parts of AutoGPT with this version. "
+            "Please consider upgrading to Python 3.10 or higher.",
+        )

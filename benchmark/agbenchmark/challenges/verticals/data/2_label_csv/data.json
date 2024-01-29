@@ -9,6 +9,7 @@
     "eval_id": "6e2bf1f0-6842-4704-8ed1-b17c2065bbac",
     "ground": {
         "answer": "The csv labelled",
+        "case_sensitive": true,
         "eval": {
             "type": "file"
         },
@@ -16,7 +17,7 @@
             "output.csv"
         ],
         "should_contain": [
-            "Item, Color\nBanana, Yellow\nLeaf, Green\nSky, Blue\nSunflower, Yellow\nGrass, Green\nJeans, Blue\nLemon, Yellow\nTree, Green\nOcean, Blue\nDaisy, Yellow\nFern, Green"
+            "Item,Color\nBanana,yellow\nLeaf,green\nSky,blue\nSunflower,yellow\nGrass,green\nJeans,blue\nLemon,yellow\nTree,green\nOcean,blue\nDaisy,yellow\nFern,green"
         ]
     },
     "info": {
@@ -27,5 +28,5 @@
         ]
     },
     "name": "LabelCsv",
-    "task": "The csv 'input.csv' has many items. create a 'Color' column for these items and classify them as either 'blue', 'green', or 'yellow' depending on what the most likely color is. Preserve the order of the rows. The color column should be the second column. Write the output in output.csv"
+    "task": "The csv 'input.csv' has many items. Create a 'Color' column for these items and classify them as either 'blue', 'green', or 'yellow' depending on what the most likely color is. Use lowercase letters to classify and preserve the order of the rows. The color column should be the second column. Write the output in output.csv"
 }

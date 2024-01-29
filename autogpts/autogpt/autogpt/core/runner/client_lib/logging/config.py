@@ -2,7 +2,7 @@ import logging
 import sys
 
 from colorama import Fore, Style
-from openai.util import logger as openai_logger
+from openai._base_client import log as openai_logger
 
 SIMPLE_LOG_FORMAT = "%(asctime)s %(levelname)s  %(message)s"
 DEBUG_LOG_FORMAT = (
@@ -51,7 +51,7 @@ class FancyConsoleFormatter(logging.Formatter):
         # Make sure `msg` is a string
         if not hasattr(record, "msg"):
             record.msg = ""
-        elif not type(record.msg) == str:
+        elif not type(record.msg) is str:
             record.msg = str(record.msg)
 
         # Determine default color based on error level

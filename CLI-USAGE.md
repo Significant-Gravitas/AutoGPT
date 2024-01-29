@@ -19,7 +19,7 @@ Options:
   --help  Show this message and exit.
 
 Commands:
-  agents     Commands to create, start and stop agents
+  agent     Commands to create, start and stop agents
   benchmark  Commands to start the benchmark and list tests and categories
   setup      Installs dependencies needed for your system.
 ```
@@ -52,7 +52,7 @@ This command initializes the setup of the project.
 **a. List All Agents**
 
 ```sh
-./run agents list
+./run agent list
 ```
 
 **Output**:
@@ -68,7 +68,7 @@ Lists all the available agents.
 **b. Create a New Agent**
 
 ```sh
-./run agents create my_agent
+./run agent create my_agent
 ```
 
 **Output**:
@@ -82,7 +82,7 @@ Creates a new agent named 'my_agent'.
 **c. Start an Agent**
 
 ```sh
-./run agents start my_agent
+./run agent start my_agent
 ```
 
 **Output**:
@@ -98,7 +98,7 @@ Starts the 'my_agent' and displays startup ASCII art and logs.
 **d. Stop an Agent**
 
 ```sh
-./run agents stop
+./run agent stop
 ```
 
 **Output**:

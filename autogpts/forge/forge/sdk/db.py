@@ -7,7 +7,7 @@ IT IS NOT ADVISED TO USE THIS IN PRODUCTION!
 import datetime
 import math
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from sqlalchemy import (
     JSON,
@@ -23,7 +23,7 @@ from sqlalchemy.orm import DeclarativeBase, joinedload, relationship, sessionmak
 
 from .errors import NotFoundError
 from .forge_log import ForgeLogger
-from .schema import Artifact, Pagination, Status, Step, StepRequestBody, Task
+from .model import Artifact, Pagination, Status, Step, StepRequestBody, Task
 
 LOG = ForgeLogger(__name__)
 
@@ -54,6 +54,7 @@ class StepModel(Base):
     name = Column(String)
     input = Column(String)
     status = Column(String)
+    output = Column(String)
     is_last = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     modified_at = Column(
@@ -61,6 +62,7 @@ class StepModel(Base):
     )
 
     additional_input = Column(JSON)
+    additional_output = Column(JSON)
     artifacts = relationship("ArtifactModel", back_populates="step")
 
 
@@ -111,9 +113,11 @@ def convert_to_step(step_model: StepModel, debug_enabled: bool = False) -> Step:
         name=step_model.name,
         input=step_model.input,
         status=status,
+        output=step_model.output,
         artifacts=step_artifacts,
         is_last=step_model.is_last == 1,
         additional_input=step_model.additional_input,
+        additional_output=step_model.additional_output,
     )
 
 
@@ -255,7 +259,7 @@ class AgentDB:
             LOG.error(f"Unexpected error while creating step: {e}")
             raise
 
-    async def get_task(self, task_id: int) -> Task:
+    async def get_task(self, task_id: str) -> Task:
         """Get a task by its id"""
         if self.debug_enabled:
             LOG.debug(f"Getting task with task_id: {task_id}")
@@ -280,7 +284,7 @@ class AgentDB:
             LOG.error(f"Unexpected error while getting task: {e}")
             raise
 
-    async def get_step(self, task_id: int, step_id: int) -> Step:
+    async def get_step(self, task_id: str, step_id: str) -> Step:
         if self.debug_enabled:
             LOG.debug(f"Getting step with task_id: {task_id} and step_id: {step_id}")
         try:
@@ -296,40 +300,6 @@ class AgentDB:
                 else:
                     LOG.error(
                         f"Step not found with task_id: {task_id} and step_id: {step_id}"
-                    )
-                    raise NotFoundError("Step not found")
-        except SQLAlchemyError as e:
-            LOG.error(f"SQLAlchemy error while getting step: {e}")
-            raise
-        except NotFoundError as e:
-            raise
-        except Exception as e:
-            LOG.error(f"Unexpected error while getting step: {e}")
-            raise
-
-    async def update_step(
-        self,
-        task_id: str,
-        step_id: str,
-        status: str,
-        additional_input: Optional[Dict[str, Any]] = {},
-    ) -> Step:
-        if self.debug_enabled:
-            LOG.debug(f"Updating step with task_id: {task_id} and step_id: {step_id}")
-        try:
-            with self.Session() as session:
-                if (
-                    step := session.query(StepModel)
-                    .filter_by(task_id=task_id, step_id=step_id)
-                    .first()
-                ):
-                    step.status = status
-                    step.additional_input = additional_input
-                    session.commit()
-                    return await self.get_step(task_id, step_id)
-                else:
-                    LOG.error(
-                        f"Step not found for update with task_id: {task_id} and step_id: {step_id}"
                     )
                     raise NotFoundError("Step not found")
         except SQLAlchemyError as e:
@@ -363,6 +333,75 @@ class AgentDB:
         except Exception as e:
             LOG.error(f"Unexpected error while getting artifact: {e}")
             raise
+
+    async def update_step(
+        self,
+        task_id: str,
+        step_id: str,
+        status: Optional[str] = None,
+        output: Optional[str] = None,
+        additional_input: Optional[Dict[str, Any]] = None,
+        additional_output: Optional[Dict[str, Any]] = None,
+    ) -> Step:
+        if self.debug_enabled:
+            LOG.debug(f"Updating step with task_id: {task_id} and step_id: {step_id}")
+        try:
+            with self.Session() as session:
+                if (
+                    step := session.query(StepModel)
+                    .filter_by(task_id=task_id, step_id=step_id)
+                    .first()
+                ):
+                    if status is not None:
+                        step.status = status
+                    if additional_input is not None:
+                        step.additional_input = additional_input
+                    if output is not None:
+                        step.output = output
+                    if additional_output is not None:
+                        step.additional_output = additional_output
+                    session.commit()
+                    return await self.get_step(task_id, step_id)
+                else:
+                    LOG.error(
+                        f"Step not found for update with task_id: {task_id} and step_id: {step_id}"
+                    )
+                    raise NotFoundError("Step not found")
+        except SQLAlchemyError as e:
+            LOG.error(f"SQLAlchemy error while getting step: {e}")
+            raise
+        except NotFoundError as e:
+            raise
+        except Exception as e:
+            LOG.error(f"Unexpected error while getting step: {e}")
+            raise
+
+    async def update_artifact(
+        self,
+        artifact_id: str,
+        *,
+        file_name: str = "",
+        relative_path: str = "",
+        agent_created: Optional[Literal[True]] = None,
+    ) -> Artifact:
+        LOG.debug(f"Updating artifact with artifact_id: {artifact_id}")
+        with self.Session() as session:
+            if (
+                artifact := session.query(ArtifactModel)
+                .filter_by(artifact_id=artifact_id)
+                .first()
+            ):
+                if file_name:
+                    artifact.file_name = file_name
+                if relative_path:
+                    artifact.relative_path = relative_path
+                if agent_created:
+                    artifact.agent_created = agent_created
+                session.commit()
+                return await self.get_artifact(artifact_id)
+            else:
+                LOG.error(f"Artifact not found with artifact_id: {artifact_id}")
+                raise NotFoundError("Artifact not found")
 
     async def list_tasks(
         self, page: int = 1, per_page: int = 10

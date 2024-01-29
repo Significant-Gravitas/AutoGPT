@@ -11,7 +11,6 @@ from autogpt.agents.utils.exceptions import (
     InvalidArgumentError,
     OperationNotAllowedError,
 )
-from autogpt.config import Config
 
 
 @pytest.fixture
@@ -20,8 +19,8 @@ def random_code(random_string) -> str:
 
 
 @pytest.fixture
-def python_test_file(config: Config, random_code: str):
-    temp_file = tempfile.NamedTemporaryFile(dir=config.workspace_path, suffix=".py")
+def python_test_file(agent: Agent, random_code: str):
+    temp_file = tempfile.NamedTemporaryFile(dir=agent.workspace.root, suffix=".py")
     temp_file.write(str.encode(random_code))
     temp_file.flush()
 
@@ -30,8 +29,8 @@ def python_test_file(config: Config, random_code: str):
 
 
 @pytest.fixture
-def python_test_args_file(config: Config):
-    temp_file = tempfile.NamedTemporaryFile(dir=config.workspace_path, suffix=".py")
+def python_test_args_file(agent: Agent):
+    temp_file = tempfile.NamedTemporaryFile(dir=agent.workspace.root, suffix=".py")
     temp_file.write(str.encode("import sys\nprint(sys.argv[1], sys.argv[2])"))
     temp_file.flush()
 
@@ -67,15 +66,16 @@ def test_execute_python_code(random_code: str, random_string: str, agent: Agent)
 
 def test_execute_python_file_invalid(agent: Agent):
     with pytest.raises(InvalidArgumentError):
-        sut.execute_python_file("not_python", agent)
+        sut.execute_python_file(Path("not_python.txt"), agent)
 
 
 def test_execute_python_file_not_found(agent: Agent):
     with pytest.raises(
         FileNotFoundError,
-        match=r"python: can't open file '([a-zA-Z]:)?[/\\\-\w]*notexist.py': \[Errno 2\] No such file or directory",
+        match=r"python: can't open file '([a-zA-Z]:)?[/\\\-\w]*notexist.py': "
+        r"\[Errno 2\] No such file or directory",
     ):
-        sut.execute_python_file("notexist.py", agent)
+        sut.execute_python_file(Path("notexist.py"), agent)
 
 
 def test_execute_shell(random_string: str, agent: Agent):

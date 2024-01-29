@@ -8,16 +8,16 @@ from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from autogpt.config import Config
-    from autogpt.memory.vector import VectorMemory
     from autogpt.models.command_registry import CommandRegistry
 
-from autogpt.config import AIConfig
+from pydantic import Field
+
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
+    AssistantChatMessage,
     ChatMessage,
     ChatModelProvider,
-    ChatModelResponse,
 )
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.log_cycle import (
@@ -26,6 +26,7 @@ from autogpt.logs.log_cycle import (
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
+from autogpt.logs.utils import fmt_kwargs
 from autogpt.models.action_history import (
     Action,
     ActionErrorResult,
@@ -38,13 +39,18 @@ from autogpt.models.context_item import ContextItem
 
 from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 from .features.context import ContextMixin
+from .features.file_workspace import FileWorkspaceMixin
 from .features.watchdog import WatchdogMixin
-from .features.workspace import WorkspaceMixin
 from .prompt_strategies.one_shot import (
     OneShotAgentPromptConfiguration,
     OneShotAgentPromptStrategy,
 )
-from .utils.exceptions import AgentException, CommandExecutionError, UnknownCommandError
+from .utils.exceptions import (
+    AgentException,
+    AgentTerminated,
+    CommandExecutionError,
+    UnknownCommandError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,13 +60,17 @@ class AgentConfiguration(BaseAgentConfiguration):
 
 
 class AgentSettings(BaseAgentSettings):
-    config: AgentConfiguration
-    prompt_config: OneShotAgentPromptConfiguration
+    config: AgentConfiguration = Field(default_factory=AgentConfiguration)
+    prompt_config: OneShotAgentPromptConfiguration = Field(
+        default_factory=(
+            lambda: OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
+        )
+    )
 
 
 class Agent(
     ContextMixin,
-    WorkspaceMixin,
+    FileWorkspaceMixin,
     WatchdogMixin,
     BaseAgent,
     Configurable[AgentSettings],
@@ -70,18 +80,15 @@ class Agent(
     default_settings: AgentSettings = AgentSettings(
         name="Agent",
         description=__doc__,
-        ai_config=AIConfig(ai_name="AutoGPT"),
-        config=AgentConfiguration(),
-        prompt_config=OneShotAgentPromptStrategy.default_configuration,
-        history=BaseAgent.default_settings.history,
     )
+
+    prompt_strategy: OneShotAgentPromptStrategy
 
     def __init__(
         self,
         settings: AgentSettings,
         llm_provider: ChatModelProvider,
         command_registry: CommandRegistry,
-        memory: VectorMemory,
         legacy_config: Config,
     ):
         prompt_strategy = OneShotAgentPromptStrategy(
@@ -96,9 +103,6 @@ class Agent(
             legacy_config=legacy_config,
         )
 
-        self.memory = memory
-        """VectorMemoryProvider used to manage the agent's context (TODO)"""
-
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         """Timestamp the agent was created; only used for structured debug logging."""
 
@@ -108,10 +112,13 @@ class Agent(
     def build_prompt(
         self,
         *args,
-        extra_messages: list[ChatMessage] = [],
+        extra_messages: Optional[list[ChatMessage]] = None,
         include_os_info: Optional[bool] = None,
         **kwargs,
     ) -> ChatPrompt:
+        if not extra_messages:
+            extra_messages = []
+
         # Clock
         extra_messages.append(
             ChatMessage.system(f"The current time and date is {time.strftime('%c')}"),
@@ -156,7 +163,7 @@ class Agent(
 
         self.log_cycle_handler.log_count_within_cycle = 0
         self.log_cycle_handler.log_cycle(
-            self.ai_config.ai_name,
+            self.ai_profile.ai_name,
             self.created_at,
             self.config.cycle_count,
             prompt.raw(),
@@ -165,36 +172,35 @@ class Agent(
         return prompt
 
     def parse_and_process_response(
-        self, llm_response: ChatModelResponse, *args, **kwargs
+        self, llm_response: AssistantChatMessage, *args, **kwargs
     ) -> Agent.ThoughtProcessOutput:
         for plugin in self.config.plugins:
             if not plugin.can_handle_post_planning():
                 continue
-            llm_response.response["content"] = plugin.post_planning(
-                llm_response.response.get("content", "")
-            )
+            llm_response.content = plugin.post_planning(llm_response.content or "")
 
         (
             command_name,
             arguments,
             assistant_reply_dict,
-        ) = self.prompt_strategy.parse_response_content(llm_response.response)
+        ) = self.prompt_strategy.parse_response_content(llm_response)
 
         self.log_cycle_handler.log_cycle(
-            self.ai_config.ai_name,
+            self.ai_profile.ai_name,
             self.created_at,
             self.config.cycle_count,
             assistant_reply_dict,
             NEXT_ACTION_FILE_NAME,
         )
 
-        self.event_history.register_action(
-            Action(
-                name=command_name,
-                args=arguments,
-                reasoning=assistant_reply_dict["thoughts"]["reasoning"],
+        if command_name:
+            self.event_history.register_action(
+                Action(
+                    name=command_name,
+                    args=arguments,
+                    reasoning=assistant_reply_dict["thoughts"]["reasoning"],
+                )
             )
-        )
 
         return command_name, arguments, assistant_reply_dict
 
@@ -209,7 +215,7 @@ class Agent(
         if command_name == "human_feedback":
             result = ActionInterruptedByHuman(feedback=user_input)
             self.log_cycle_handler.log_cycle(
-                self.ai_config.ai_name,
+                self.ai_profile.ai_name,
                 self.created_at,
                 self.config.cycle_count,
                 user_input,
@@ -232,7 +238,7 @@ class Agent(
                 )
 
                 # Intercept ContextItem if one is returned by the command
-                if type(return_value) == tuple and isinstance(
+                if type(return_value) is tuple and isinstance(
                     return_value[1], ContextItem
                 ):
                     context_item = return_value[1]
@@ -243,8 +249,13 @@ class Agent(
                     self.context.add(context_item)
 
                 result = ActionSuccessResult(outputs=return_value)
+            except AgentTerminated:
+                raise
             except AgentException as e:
-                result = ActionErrorResult(reason=e.message, error=e)
+                result = ActionErrorResult.from_exception(e)
+                logger.warning(
+                    f"{command_name}({fmt_kwargs(command_args)}) raised an error: {e}"
+                )
 
             result_tlength = self.llm_provider.count_tokens(str(result), self.llm.name)
             if result_tlength > self.send_token_limit // 3:

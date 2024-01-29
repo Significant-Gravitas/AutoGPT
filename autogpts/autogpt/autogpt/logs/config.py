@@ -1,20 +1,24 @@
 """Logging module for Auto-GPT."""
 from __future__ import annotations
 
+import enum
 import logging
+import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
-from openai.util import logger as openai_logger
+from openai._base_client import log as openai_logger
 
 if TYPE_CHECKING:
     from autogpt.config import Config
+    from autogpt.speech import TTSConfig
 
+from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.runner.client_lib.logging import BelowLevelFilter
 
-from .formatters import AutoGptFormatter
+from .formatters import AutoGptFormatter, StructuredLoggingFormatter
 from .handlers import TTSHandler, TypingConsoleHandler
 
 LOG_DIR = Path(__file__).parent.parent.parent / "logs"
@@ -24,8 +28,7 @@ ERROR_LOG_FILE = "error.log"
 
 SIMPLE_LOG_FORMAT = "%(asctime)s %(levelname)s  %(title)s%(message)s"
 DEBUG_LOG_FORMAT = (
-    "%(asctime)s.%(msecs)03d %(levelname)s %(filename)s:%(lineno)d"
-    "  %(title)s%(message)s"
+    "%(asctime)s %(levelname)s %(filename)s:%(lineno)d" "  %(title)s%(message)s"
 )
 
 SPEECH_OUTPUT_LOGGER = "VOICE"
@@ -34,77 +37,145 @@ USER_FRIENDLY_OUTPUT_LOGGER = "USER_FRIENDLY_OUTPUT"
 _chat_plugins: list[AutoGPTPluginTemplate] = []
 
 
-def configure_logging(config: Config, log_dir: Path = LOG_DIR) -> None:
-    """Configure the native logging module."""
+class LogFormatName(str, enum.Enum):
+    SIMPLE = "simple"
+    DEBUG = "debug"
+    STRUCTURED = "structured_google_cloud"
+
+
+TEXT_LOG_FORMAT_MAP = {
+    LogFormatName.DEBUG: DEBUG_LOG_FORMAT,
+    LogFormatName.SIMPLE: SIMPLE_LOG_FORMAT,
+}
+
+
+class LoggingConfig(SystemConfiguration):
+    level: int = UserConfigurable(
+        default=logging.INFO,
+        from_env=lambda: logging.getLevelName(os.getenv("LOG_LEVEL", "INFO")),
+    )
+
+    # Console output
+    log_format: LogFormatName = UserConfigurable(
+        default=LogFormatName.SIMPLE,
+        from_env=lambda: LogFormatName(os.getenv("LOG_FORMAT", "simple")),
+    )
+    plain_console_output: bool = UserConfigurable(
+        default=False,
+        from_env=lambda: os.getenv("PLAIN_OUTPUT", "False") == "True",
+    )
+
+    # File output
+    log_dir: Path = LOG_DIR
+    log_file_format: Optional[LogFormatName] = UserConfigurable(
+        default=LogFormatName.SIMPLE,
+        from_env=lambda: LogFormatName(
+            os.getenv("LOG_FILE_FORMAT", os.getenv("LOG_FORMAT", "simple"))
+        ),
+    )
+
+
+def configure_logging(
+    level: int = logging.INFO,
+    log_dir: Path = LOG_DIR,
+    log_format: Optional[LogFormatName] = None,
+    log_file_format: Optional[LogFormatName] = None,
+    plain_console_output: bool = False,
+    tts_config: Optional[TTSConfig] = None,
+) -> None:
+    """Configure the native logging module.
+
+    Should be usable as `configure_logging(**config.logging.dict())`, where
+    `config.logging` is a `LoggingConfig` object.
+    """
+
+    # Auto-adjust default log format based on log level
+    log_format = log_format or (
+        LogFormatName.SIMPLE if level != logging.DEBUG else LogFormatName.DEBUG
+    )
+    log_file_format = log_file_format or log_format
+
+    structured_logging = log_format == LogFormatName.STRUCTURED
+
+    if structured_logging:
+        plain_console_output = True
+        log_file_format = None
 
     # create log directory if it doesn't exist
     if not log_dir.exists():
         log_dir.mkdir()
 
-    log_level = logging.DEBUG if config.debug_mode else logging.INFO
-    log_format = DEBUG_LOG_FORMAT if config.debug_mode else SIMPLE_LOG_FORMAT
-    console_formatter = AutoGptFormatter(log_format)
+    log_handlers: list[logging.Handler] = []
+
+    if log_format in (LogFormatName.DEBUG, LogFormatName.SIMPLE):
+        console_format_template = TEXT_LOG_FORMAT_MAP[log_format]
+        console_formatter = AutoGptFormatter(console_format_template)
+    else:
+        console_formatter = StructuredLoggingFormatter()
+        console_format_template = SIMPLE_LOG_FORMAT
 
     # Console output handlers
     stdout = logging.StreamHandler(stream=sys.stdout)
-    stdout.setLevel(log_level)
+    stdout.setLevel(level)
     stdout.addFilter(BelowLevelFilter(logging.WARNING))
     stdout.setFormatter(console_formatter)
     stderr = logging.StreamHandler()
     stderr.setLevel(logging.WARNING)
     stderr.setFormatter(console_formatter)
-
-    # INFO log file handler
-    activity_log_handler = logging.FileHandler(log_dir / LOG_FILE, "a", "utf-8")
-    activity_log_handler.setLevel(logging.INFO)
-    activity_log_handler.setFormatter(
-        AutoGptFormatter(SIMPLE_LOG_FORMAT, no_color=True)
-    )
-
-    if config.debug_mode:
-        # DEBUG log file handler
-        debug_log_handler = logging.FileHandler(log_dir / DEBUG_LOG_FILE, "a", "utf-8")
-        debug_log_handler.setLevel(logging.DEBUG)
-        debug_log_handler.setFormatter(
-            AutoGptFormatter(DEBUG_LOG_FORMAT, no_color=True)
-        )
-
-    # ERROR log file handler
-    error_log_handler = logging.FileHandler(log_dir / ERROR_LOG_FILE, "a", "utf-8")
-    error_log_handler.setLevel(logging.ERROR)
-    error_log_handler.setFormatter(AutoGptFormatter(DEBUG_LOG_FORMAT, no_color=True))
-
-    # Configure the root logger
-    logging.basicConfig(
-        format=log_format,
-        level=log_level,
-        handlers=(
-            [stdout, stderr, activity_log_handler, error_log_handler]
-            + ([debug_log_handler] if config.debug_mode else [])
-        ),
-    )
-
-    ## Set up user-friendly loggers
+    log_handlers += [stdout, stderr]
 
     # Console output handler which simulates typing
     typing_console_handler = TypingConsoleHandler(stream=sys.stdout)
     typing_console_handler.setLevel(logging.INFO)
     typing_console_handler.setFormatter(console_formatter)
 
+    # User friendly output logger (text + speech)
     user_friendly_output_logger = logging.getLogger(USER_FRIENDLY_OUTPUT_LOGGER)
     user_friendly_output_logger.setLevel(logging.INFO)
     user_friendly_output_logger.addHandler(
-        typing_console_handler if not config.plain_output else stdout
+        typing_console_handler if not plain_console_output else stdout
     )
-    user_friendly_output_logger.addHandler(TTSHandler(config))
-    user_friendly_output_logger.addHandler(activity_log_handler)
-    user_friendly_output_logger.addHandler(error_log_handler)
+    if tts_config:
+        user_friendly_output_logger.addHandler(TTSHandler(tts_config))
     user_friendly_output_logger.addHandler(stderr)
     user_friendly_output_logger.propagate = False
 
+    # File output handlers
+    if log_file_format is not None:
+        if level < logging.ERROR:
+            file_output_format_template = TEXT_LOG_FORMAT_MAP[log_file_format]
+            file_output_formatter = AutoGptFormatter(
+                file_output_format_template, no_color=True
+            )
+
+            # INFO log file handler
+            activity_log_handler = logging.FileHandler(log_dir / LOG_FILE, "a", "utf-8")
+            activity_log_handler.setLevel(level)
+            activity_log_handler.setFormatter(file_output_formatter)
+            log_handlers += [activity_log_handler]
+            user_friendly_output_logger.addHandler(activity_log_handler)
+
+        # ERROR log file handler
+        error_log_handler = logging.FileHandler(log_dir / ERROR_LOG_FILE, "a", "utf-8")
+        error_log_handler.setLevel(logging.ERROR)
+        error_log_handler.setFormatter(
+            AutoGptFormatter(DEBUG_LOG_FORMAT, no_color=True)
+        )
+        log_handlers += [error_log_handler]
+        user_friendly_output_logger.addHandler(error_log_handler)
+
+    # Configure the root logger
+    logging.basicConfig(
+        format=console_format_template,
+        level=level,
+        handlers=log_handlers,
+    )
+
+    # Speech output
     speech_output_logger = logging.getLogger(SPEECH_OUTPUT_LOGGER)
     speech_output_logger.setLevel(logging.INFO)
-    speech_output_logger.addHandler(TTSHandler(config))
+    if tts_config:
+        speech_output_logger.addHandler(TTSHandler(tts_config))
     speech_output_logger.propagate = False
 
     # JSON logger with better formatting
@@ -113,7 +184,7 @@ def configure_logging(config: Config, log_dir: Path = LOG_DIR) -> None:
     json_logger.propagate = False
 
     # Disable debug logging from OpenAI library
-    openai_logger.setLevel(logging.INFO)
+    openai_logger.setLevel(logging.WARNING)
 
 
 def configure_chat_plugins(config: Config) -> None:

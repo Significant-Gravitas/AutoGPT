@@ -2,31 +2,30 @@ name: Benchmark CI
 
 on:
   push:
-    branches: [master, ci-test*]
+    branches: [ master, development, ci-test* ]
     paths:
       - 'benchmark/**'
       - .github/workflows/benchmark-ci.yml
       - '!benchmark/reports/**'
   pull_request:
-    branches: [stable, master, release-*]
+    branches: [ master, development, release-* ]
     paths:
       - 'benchmark/**'
       - '!benchmark/reports/**'
       - .github/workflows/benchmark-ci.yml
 
+env:
+  min-python-version: '3.10'
+
 jobs:
   lint:
     runs-on: ubuntu-latest
-    env:
-      min-python-version: '3.10'
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - name: Set up Python ${{ env.min-python-version }}
         uses: actions/setup-python@v2
@@ -82,8 +81,6 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
           submodules: true
 
       - name: Set up Python ${{ env.min-python-version }}
@@ -97,10 +94,10 @@ jobs:
           curl -sSL https://install.python-poetry.org | python -
 
       - name: Run regression tests
-        working-directory: ./autogpts/${{ matrix.agent-name }}/
         run: |
-          sh run &
-          sleep 20
+          ./run agent start ${{ matrix.agent-name }}
+          sleep 10
+          cd autogpts/${{ matrix.agent-name }}
           set +e # Ignore non-zero exit codes and continue execution
           echo "Running the following command: poetry run agbenchmark --maintain --mock"
 
@@ -123,8 +120,6 @@ jobs:
 
           echo "Running the following command: poetry run agbenchmark --test=WriteFile"
           poetry run agbenchmark --test=WriteFile
-          sh run_benchmark serve &
-          sleep 10
           cd ../../benchmark
           poetry install
           echo "Adding the BUILD_SKILL_TREE environment variable. This will attempt to add new elements in the skill tree. If new elements are added, the CI fails because they should have been pushed"

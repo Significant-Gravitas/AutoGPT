@@ -1,30 +1,45 @@
-name: Valid AutoGPTs
+name: AutoGPTs smoke test CI
 
 on:
   workflow_dispatch:
-    branches: [master]
   schedule:
     - cron: '0 8 * * *'
   push:
-    branches: [master, ci-test*]
+    branches: [ master, development, ci-test* ]
+    paths:
+      - '.github/workflows/autogpts-ci.yml'
+      - 'autogpts/**'
+      - 'benchmark/**'
+      - 'run'
+      - 'cli.py'
+      - 'setup.py'
+      - '!**/*.md'
   pull_request:
-    branches: [stable, master, release-*]
+    branches: [ master, development, release-* ]
+    paths:
+      - '.github/workflows/autogpts-ci.yml'
+      - 'autogpts/**'
+      - 'benchmark/**'
+      - 'run'
+      - 'cli.py'
+      - 'setup.py'
+      - '!**/*.md'
 
 jobs:
   run-tests:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        agent-name: [ forge ]
+        agent-name: [ autogpt, forge ]
       fail-fast: false
     timeout-minutes: 20
+    env:
+      min-python-version: '3.10'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
           submodules: true
 
       - name: Set up Python ${{ env.min-python-version }}
@@ -38,10 +53,9 @@ jobs:
           curl -sSL https://install.python-poetry.org | python -
 
       - name: Run regression tests
-        working-directory: ./autogpts/${{ matrix.agent-name }}/
         run: |
-          sh run &
-          sleep 20
+          ./run agent start ${{ matrix.agent-name }}
+          cd autogpts/${{ matrix.agent-name }}
           poetry run agbenchmark --mock
           poetry run agbenchmark --test=WriteFile
         env:

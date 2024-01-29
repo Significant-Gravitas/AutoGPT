@@ -1,5 +1,6 @@
 import 'package:auto_gpt_flutter_client/models/step.dart';
 import 'package:auto_gpt_flutter_client/models/step_request_body.dart';
+import 'package:auto_gpt_flutter_client/services/shared_preferences_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:auto_gpt_flutter_client/services/chat_service.dart';
 import 'package:auto_gpt_flutter_client/models/chat.dart';
@@ -9,10 +10,12 @@ class ChatViewModel with ChangeNotifier {
   final ChatService _chatService;
   List<Chat> _chats = [];
   String? _currentTaskId;
+  final SharedPreferencesService _prefsService;
 
   bool _isWaitingForAgentResponse = false;
 
   bool get isWaitingForAgentResponse => _isWaitingForAgentResponse;
+  SharedPreferencesService get prefsService => _prefsService;
 
   bool _isContinuousMode = false;
 
@@ -22,7 +25,7 @@ class ChatViewModel with ChangeNotifier {
     notifyListeners();
   }
 
-  ChatViewModel(this._chatService);
+  ChatViewModel(this._chatService, this._prefsService);
 
   /// Returns the current list of chats.
   List<Chat> get chats => _chats;
@@ -92,7 +95,9 @@ class ChatViewModel with ChangeNotifier {
       }
 
       // Assign the chats list
-      _chats = chats;
+      if (chats.length > 0) {
+        _chats = chats;
+      }
 
       // Notify listeners to rebuild UI
       notifyListeners();
@@ -151,10 +156,13 @@ class ChatViewModel with ChangeNotifier {
 
       _chats.add(agentChat);
 
+      // Remove the temporary message
+      removeTemporaryMessage();
+
       // Notify UI of the new chats
       notifyListeners();
 
-      if (_isContinuousMode) {
+      if (_isContinuousMode && !executedStep.isLast) {
         print("Continuous Mode: Step $currentStep of $continuousModeSteps");
         if (currentStep < continuousModeSteps) {
           sendChatMessage(null,
@@ -167,6 +175,8 @@ class ChatViewModel with ChangeNotifier {
 
       print("Chats added for task ID: $_currentTaskId");
     } catch (e) {
+      // Remove the temporary message in case of an error
+      removeTemporaryMessage();
       // TODO: We are bubbling up the full response. Revisit this.
       rethrow;
       // TODO: Handle additional error scenarios or log them as required
@@ -174,6 +184,25 @@ class ChatViewModel with ChangeNotifier {
       _isWaitingForAgentResponse = false;
       notifyListeners();
     }
+  }
+
+  void addTemporaryMessage(String message) {
+    Chat tempMessage = Chat(
+        // You can generate a unique ID or use a placeholder
+        id: "TEMP_ID",
+        taskId: "TEMP_ID",
+        message: message,
+        timestamp: DateTime.now(),
+        messageType: MessageType.user,
+        artifacts: []);
+
+    _chats.add(tempMessage);
+    notifyListeners();
+  }
+
+  void removeTemporaryMessage() {
+    _chats.removeWhere((chat) => chat.id == "TEMP_ID");
+    notifyListeners();
   }
 
   /// Downloads an artifact associated with a specific chat.

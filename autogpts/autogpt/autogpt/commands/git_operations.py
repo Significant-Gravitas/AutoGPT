@@ -1,8 +1,5 @@
 """Commands to perform Git operations"""
 
-COMMAND_CATEGORY = "git_operations"
-COMMAND_CATEGORY_TITLE = "Git Operations"
-
 from pathlib import Path
 
 from git.repo import Repo
@@ -14,6 +11,9 @@ from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.url_utils.validators import validate_url
 
 from .decorators import sanitize_path_arg
+
+COMMAND_CATEGORY = "git_operations"
+COMMAND_CATEGORY_TITLE = "Git Operations"
 
 
 @command(
@@ -47,7 +47,7 @@ def clone_repository(url: str, clone_path: Path, agent: Agent) -> str:
         str: The result of the clone operation.
     """
     split_url = url.split("//")
-    auth_repo_url = f"//{agent.legacy_config.github_username}:{agent.legacy_config.github_api_key}@".join(
+    auth_repo_url = f"//{agent.legacy_config.github_username}:{agent.legacy_config.github_api_key}@".join(  # noqa: E501
         split_url
     )
     try:

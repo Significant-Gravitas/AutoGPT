@@ -21,7 +21,7 @@ def test_scan_plugins_openai(config: Config):
     )
 
     # Test that the function returns the correct number of plugins
-    result = scan_plugins(config, debug=True)
+    result = scan_plugins(config)
     assert len(result) == 1
 
 
@@ -34,7 +34,7 @@ def test_scan_plugins_generic(config: Config):
     plugins_config.plugins["AutoGPTPVicuna"] = PluginConfig(
         name="AutoGPTPVicuna", enabled=True
     )
-    result = scan_plugins(config, debug=True)
+    result = scan_plugins(config)
     plugin_class_names = [plugin.__class__.__name__ for plugin in result]
 
     assert len(result) == 2
@@ -51,7 +51,7 @@ def test_scan_plugins_not_enabled(config: Config):
     plugins_config.plugins["auto_gpt_vicuna"] = PluginConfig(
         name="auto_gptp_vicuna", enabled=False
     )
-    result = scan_plugins(config, debug=True)
+    result = scan_plugins(config)
     plugin_class_names = [plugin.__class__.__name__ for plugin in result]
 
     assert len(result) == 1
@@ -65,13 +65,16 @@ def test_inspect_zip_for_modules():
 
 
 def test_create_base_config(config: Config):
-    """Test the backwards-compatibility shim to convert old plugin allow/deny list to a config file"""
+    """
+    Test the backwards-compatibility shim to convert old plugin allow/deny list
+    to a config file.
+    """
     config.plugins_allowlist = ["a", "b"]
     config.plugins_denylist = ["c", "d"]
 
     os.remove(config.plugins_config_file)
     plugins_config = PluginsConfig.load_config(
-        plugins_config_file=config.workdir / config.plugins_config_file,
+        plugins_config_file=config.plugins_config_file,
         plugins_denylist=config.plugins_denylist,
         plugins_allowlist=config.plugins_allowlist,
     )
@@ -96,7 +99,9 @@ def test_create_base_config(config: Config):
 
 
 def test_load_config(config: Config):
-    """Test that the plugin config is loaded correctly from the plugins_config.yaml file"""
+    """
+    Test that the plugin config is loaded correctly from the plugins_config.yaml file.
+    """
     # Create a test config and write it to disk
     test_config = {
         "a": {"enabled": True, "config": {"api_key": "1234"}},
@@ -107,7 +112,7 @@ def test_load_config(config: Config):
 
     # Load the config from disk
     plugins_config = PluginsConfig.load_config(
-        plugins_config_file=config.workdir / config.plugins_config_file,
+        plugins_config_file=config.plugins_config_file,
         plugins_denylist=config.plugins_denylist,
         plugins_allowlist=config.plugins_allowlist,
     )
