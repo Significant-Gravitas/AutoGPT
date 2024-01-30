@@ -1,7 +1,7 @@
 import abc
 
 from autogpt.core.configuration import SystemConfiguration
-from autogpt.core.resource.model_providers import AssistantChatMessageDict
+from autogpt.core.resource.model_providers import AssistantChatMessage
 
 from .schema import ChatPrompt, LanguageModelClassification
 
@@ -19,5 +19,5 @@ class PromptStrategy(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def parse_response_content(self, response_content: AssistantChatMessageDict):
+    def parse_response_content(self, response_content: AssistantChatMessage):
         ...

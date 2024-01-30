@@ -64,7 +64,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
         install_error = True
 
     try:
-        # Check if GitHub user name is configured
+        # Check if git user is configured
         user_name = (
             subprocess.check_output(["git", "config", "user.name"])
             .decode("utf-8")
@@ -79,7 +79,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
         if user_name and user_email:
             click.echo(
                 click.style(
-                    f"✅ GitHub account is configured with username: {user_name} and email: {user_email}",
+                    f"✅ Git is configured with name '{user_name}' and email '{user_email}'",
                     fg="green",
                 )
             )
@@ -90,25 +90,27 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
 
     except subprocess.CalledProcessError:
         # If the GitHub account is not configured, print instructions on how to set it up
-        click.echo(click.style("❌ GitHub account is not configured.", fg="red"))
+        click.echo(click.style("⚠️ Git user is not configured.", fg="red"))
         click.echo(
             click.style(
-                "To configure your GitHub account, use the following commands:",
+                "To configure Git with your user info, use the following commands:",
                 fg="red",
             )
         )
         click.echo(
             click.style(
-                '  git config --global user.name "Your GitHub Username"', fg="red"
+                '  git config --global user.name "Your (user)name"', fg="red"
             )
         )
         click.echo(
             click.style(
-                '  git config --global user.email "Your GitHub Email"', fg="red"
+                '  git config --global user.email "Your email"', fg="red"
             )
         )
         install_error = True
+
     print_access_token_instructions = False
+
     # Check for the existence of the .github_access_token file
     if os.path.exists(".github_access_token"):
         with open(".github_access_token", "r") as file:
@@ -169,7 +171,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
         # Instructions to set up GitHub access token
         click.echo(
             click.style(
-                "❌ To configure your GitHub access token, follow these steps:", fg="red"
+                "💡 To configure your GitHub access token, follow these steps:", fg="red"
             )
         )
         click.echo(
@@ -195,6 +197,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
         click.echo(
             click.style("\t7. Save the file and run the setup command again.", fg="red")
         )
+
     if install_error:
         click.echo(
             click.style(
@@ -219,7 +222,7 @@ def create(agent_name):
     import re
     import shutil
 
-    if not re.match("^[a-zA-Z0-9_-]*$", agent_name):
+    if not re.match(r"\w*$", agent_name):
         click.echo(
             click.style(
                 f"😞 Agent name '{agent_name}' is not valid. It should not contain spaces or special characters other than -_",
@@ -229,9 +232,11 @@ def create(agent_name):
         return
     try:
         new_agent_dir = f"./autogpts/{agent_name}"
-        agent_json_file = f"./arena/{agent_name}.json"
+        new_agent_name = f"{agent_name.lower()}.json"
 
-        if not os.path.exists(new_agent_dir) and not os.path.exists(agent_json_file):
+        existing_arena_files = [name.lower() for name in os.listdir("./arena/")]
+
+        if not os.path.exists(new_agent_dir) and not new_agent_name in existing_arena_files:
             shutil.copytree("./autogpts/forge", new_agent_dir)
             click.echo(
                 click.style(
@@ -239,16 +244,10 @@ def create(agent_name):
                     fg="green",
                 )
             )
-            click.echo(
-                click.style(
-                    f"🚀 If you would like to enter the arena, run './run arena enter {agent_name}'",
-                    fg="yellow",
-                )
-            )
         else:
             click.echo(
                 click.style(
-                    f"😞 Agent '{agent_name}' already exists. Enter a different name for your agent",
+                    f"😞 Agent '{agent_name}' already exists. Enter a different name for your agent, the name needs to be unique regardless of case",
                     fg="red",
                 )
             )
@@ -258,7 +257,11 @@ def create(agent_name):
 
 @agent.command()
 @click.argument("agent_name")
-@click.option("--no-setup", is_flag=True, help="Rebuilds your poetry env")
+@click.option(
+    "--no-setup",
+    is_flag=True,
+    help="Disables running the setup script before starting the agent",
+)
 def start(agent_name, no_setup):
     """Start agent command"""
     import os
@@ -885,7 +888,6 @@ def update(agent_name, hash, branch):
                 fg="green",
             )
         )
-
 
 if __name__ == "__main__":
     cli()

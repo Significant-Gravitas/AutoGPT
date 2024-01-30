@@ -6,3 +6,13 @@ from autogpt.core.ability.simple import (
     AbilityRegistrySettings,
     SimpleAbilityRegistry,
 )
+
+__all__ = [
+    "Ability",
+    "AbilityConfiguration",
+    "AbilityRegistry",
+    "AbilityResult",
+    "AbilityRegistryConfiguration",
+    "AbilityRegistrySettings",
+    "SimpleAbilityRegistry",
+]

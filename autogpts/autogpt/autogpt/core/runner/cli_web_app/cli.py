@@ -49,7 +49,9 @@ async def client(settings_file) -> None:
     if settings_file.exists():
         settings = yaml.safe_load(settings_file.read_text())
 
-    # TODO: Call the API server with the settings and task, using the Python API client for agent protocol.
+    settings
+    # TODO: Call the API server with the settings and task,
+    #   using the Python API client for agent protocol.
 
 
 if __name__ == "__main__":

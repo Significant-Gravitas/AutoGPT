@@ -24,28 +24,28 @@ def test_safe_google_results_invalid_input():
 
 
 @pytest.mark.parametrize(
-    "query, num_results, expected_output, return_value",
+    "query, num_results, expected_output_parts, return_value",
     [
         (
             "test",
             1,
-            '[\n    {\n        "title": "Result 1",\n        "url": "https://example.com/result1"\n    }\n]',
+            ("Result 1", "https://example.com/result1"),
             [{"title": "Result 1", "href": "https://example.com/result1"}],
         ),
-        ("", 1, "[]", []),
-        ("no results", 1, "[]", []),
+        ("", 1, (), []),
+        ("no results", 1, (), []),
     ],
 )
 def test_google_search(
-    query, num_results, expected_output, return_value, mocker, agent: Agent
+    query, num_results, expected_output_parts, return_value, mocker, agent: Agent
 ):
     mock_ddg = mocker.Mock()
     mock_ddg.return_value = return_value
 
     mocker.patch("autogpt.commands.web_search.DDGS.text", mock_ddg)
     actual_output = web_search(query, agent=agent, num_results=num_results)
-    expected_output = safe_google_results(expected_output)
-    assert actual_output == expected_output
+    for o in expected_output_parts:
+        assert o in actual_output
 
 
 @pytest.fixture

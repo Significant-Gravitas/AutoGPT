@@ -52,7 +52,7 @@ class PromptScratchpad(BaseModel):
         """
         for p, s in params.items():
             invalid = False
-            if type(s) == str and s not in JSONSchema.Type._value2member_map_:
+            if type(s) is str and s not in JSONSchema.Type._value2member_map_:
                 invalid = True
                 logger.warning(
                     f"Cannot add command '{name}':"
@@ -72,7 +72,7 @@ class PromptScratchpad(BaseModel):
             description=description,
             parameters={
                 name: JSONSchema(type=JSONSchema.Type._value2member_map_[spec])
-                if type(spec) == str
+                if type(spec) is str
                 else JSONSchema.from_dict(spec)
                 for name, spec in params.items()
             },

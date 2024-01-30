@@ -8,12 +8,14 @@ T = TypeVar("T")
 
 
 def validate_url(func: Callable[P, T]) -> Callable[P, T]:
-    """The method decorator validate_url is used to validate urls for any command that requires
-    a url as an argument"""
+    """
+    The method decorator validate_url is used to validate urls for any command that
+    requires a url as an argument.
+    """
 
     @functools.wraps(func)
     def wrapper(url: str, *args, **kwargs) -> Any:
-        """Check if the URL is valid using a basic check, urllib check, and local file check
+        """Check if the URL is valid and not a local file accessor.
 
         Args:
             url (str): The URL to check
@@ -24,6 +26,7 @@ def validate_url(func: Callable[P, T]) -> Callable[P, T]:
         Raises:
             ValueError if the url fails any of the validation tests
         """
+
         # Most basic check if the URL is valid:
         if not re.match(r"^https?://", url):
             raise ValueError("Invalid URL format")
@@ -80,29 +83,10 @@ def check_local_file_access(url: str) -> bool:
     Returns:
         bool: True if the URL is a local file, False otherwise
     """
-    local_prefixes = [
+    # List of local file prefixes
+    local_file_prefixes = [
         "file:///",
-        "file://localhost/",
         "file://localhost",
-        "http://localhost",
-        "http://localhost/",
-        "https://localhost",
-        "https://localhost/",
-        "http://2130706433",
-        "http://2130706433/",
-        "https://2130706433",
-        "https://2130706433/",
-        "http://127.0.0.1/",
-        "http://127.0.0.1",
-        "https://127.0.0.1/",
-        "https://127.0.0.1",
-        "https://0.0.0.0/",
-        "https://0.0.0.0",
-        "http://0.0.0.0/",
-        "http://0.0.0.0",
-        "http://0000",
-        "http://0000/",
-        "https://0000",
-        "https://0000/",
     ]
-    return any(url.startswith(prefix) for prefix in local_prefixes)
+
+    return any(url.startswith(prefix) for prefix in local_file_prefixes)

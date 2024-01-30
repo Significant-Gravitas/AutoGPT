@@ -1,6 +1,7 @@
 """ Text to speech module """
 from __future__ import annotations
 
+import os
 import threading
 from threading import Semaphore
 from typing import Literal, Optional
@@ -20,11 +21,23 @@ _QUEUE_SEMAPHORE = Semaphore(
 
 class TTSConfig(SystemConfiguration):
     speak_mode: bool = False
-    provider: Literal[
-        "elevenlabs", "gtts", "macos", "streamelements"
-    ] = UserConfigurable(default="gtts")
     elevenlabs: Optional[ElevenLabsConfig] = None
     streamelements: Optional[StreamElementsConfig] = None
+    provider: Literal[
+        "elevenlabs", "gtts", "macos", "streamelements"
+    ] = UserConfigurable(
+        default="gtts",
+        from_env=lambda: os.getenv("TEXT_TO_SPEECH_PROVIDER")
+        or (
+            "macos"
+            if os.getenv("USE_MAC_OS_TTS")
+            else "elevenlabs"
+            if os.getenv("ELEVENLABS_API_KEY")
+            else "streamelements"
+            if os.getenv("USE_BRIAN_TTS")
+            else "gtts"
+        ),
+    )  # type: ignore
 
 
 class TextToSpeechProvider:
@@ -45,7 +58,10 @@ class TextToSpeechProvider:
             thread.start()
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(provider={self._voice_engine.__class__.__name__})"
+        return "{class_name}(provider={voice_engine_name})".format(
+            class_name=self.__class__.__name__,
+            voice_engine_name=self._voice_engine.__class__.__name__,
+        )
 
     @staticmethod
     def _get_voice_engine(config: TTSConfig) -> tuple[VoiceBase, VoiceBase]:

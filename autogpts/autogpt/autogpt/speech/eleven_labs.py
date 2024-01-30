@@ -17,8 +17,8 @@ PLACEHOLDERS = {"your-voice-id"}
 
 
 class ElevenLabsConfig(SystemConfiguration):
-    api_key: str = UserConfigurable()
-    voice_id: str = UserConfigurable()
+    api_key: str = UserConfigurable(from_env="ELEVENLABS_API_KEY")
+    voice_id: str = UserConfigurable(from_env="ELEVENLABS_VOICE_ID")
 
 
 class ElevenLabsSpeech(VoiceBase):
@@ -88,6 +88,6 @@ class ElevenLabsSpeech(VoiceBase):
             os.remove("speech.mpeg")
             return True
         else:
-            logger.warn("Request failed with status code:", response.status_code)
+            logger.warning("Request failed with status code:", response.status_code)
             logger.info("Response content:", response.content)
             return False

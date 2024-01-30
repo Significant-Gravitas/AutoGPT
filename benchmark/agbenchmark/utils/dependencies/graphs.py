@@ -1,3 +1,5 @@
+import json
+import logging
 import math
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -10,6 +12,8 @@ from pyvis.network import Network
 
 from agbenchmark.generate_test import DATA_CATEGORY
 from agbenchmark.utils.utils import write_pretty_json
+
+logger = logging.getLogger(__name__)
 
 
 def bezier_curve(
@@ -221,8 +225,8 @@ def graph_interactive_network(
             f"{source_id_str}_to_{target_id_str}"  # Construct a unique edge id
         )
         if not (source_id_str in nt.get_nodes() and target_id_str in nt.get_nodes()):
-            print(
-                f"Skipping edge {source_id_str} -> {target_id_str} due to missing nodes."
+            logger.warning(
+                f"Skipping edge {source_id_str} -> {target_id_str} due to missing nodes"
             )
             continue
         nt.add_edge(source_id_str, target_id_str, id=edge_id_str)
@@ -271,9 +275,12 @@ def graph_interactive_network(
         "layout": {"hierarchical": hierarchical_options},
     }
 
-    # Serialize the graph to JSON
+    # Serialize the graph to JSON and save in appropriate locations
     graph_data = {"nodes": nt.nodes, "edges": nt.edges}
+    logger.debug(f"Generated graph data:\n{json.dumps(graph_data, indent=4)}")
 
+    # FIXME: use more reliable method to find the right location for these files.
+    #   This will fail in all cases except if run from the root of our repo.
     home_path = Path.cwd()
     write_pretty_json(graph_data, home_path / "frontend" / "public" / "graph.json")
 
@@ -284,7 +291,6 @@ def graph_interactive_network(
     # this literally only works in the AutoGPT repo, but this part of the code is not reached if BUILD_SKILL_TREE is false
     write_pretty_json(graph_data, flutter_app_path / "tree_structure.json")
     validate_skill_tree(graph_data, "")
-    import json
 
     # Extract node IDs with category "coding"
 
@@ -317,9 +323,6 @@ def graph_interactive_network(
         scrape_synthesize_tree,
         flutter_app_path / "scrape_synthesize_tree_structure.json",
     )
-    # If you want to convert back to JSON
-    filtered_json = json.dumps(graph_data, indent=4)
-    print(filtered_json)
 
     if html_graph_path:
         file_path = str(Path(html_graph_path).resolve())

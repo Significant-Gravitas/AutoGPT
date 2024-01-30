@@ -4,6 +4,7 @@ import os
 import re
 from io import BytesIO
 from typing import Any, Dict, List
+from urllib.parse import urlparse, urlunparse
 
 from vcr.request import Request
 
@@ -43,13 +44,8 @@ def replace_message_content(content: str, replacements: List[Dict[str, str]]) ->
     return content
 
 
-def freeze_request_body(json_body: str | bytes) -> bytes:
+def freeze_request_body(body: dict) -> bytes:
     """Remove any dynamic items from the request body"""
-
-    try:
-        body = json.loads(json_body)
-    except ValueError:
-        return json_body if type(json_body) == bytes else json_body.encode()
 
     if "messages" not in body:
         return json.dumps(body, sort_keys=True).encode()
@@ -73,9 +69,11 @@ def freeze_request(request: Request) -> Request:
 
     with contextlib.suppress(ValueError):
         request.body = freeze_request_body(
-            request.body.getvalue()
-            if isinstance(request.body, BytesIO)
-            else request.body
+            json.loads(
+                request.body.getvalue()
+                if isinstance(request.body, BytesIO)
+                else request.body
+            )
         )
 
     return request
@@ -96,9 +94,6 @@ def before_record_request(request: Request) -> Request | None:
 
     filtered_request_without_dynamic_data = freeze_request(filtered_request)
     return filtered_request_without_dynamic_data
-
-
-from urllib.parse import urlparse, urlunparse
 
 
 def replace_request_hostname(
