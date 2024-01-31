@@ -1,5 +1,5 @@
 """Utilities for the json_fixes package."""
-import ast
+import json
 import logging
 import re
 from typing import Any
@@ -22,9 +22,7 @@ def extract_dict_from_response(response_content: str) -> dict[str, Any]:
         if match:
             response_content = match.group()
 
-    # Response content comes from OpenAI as a Python `str(content_dict)`.
-    # `literal_eval` does the reverse of `str(dict)`.
-    result = ast.literal_eval(response_content)
+    result = json.loads(response_content)
     if not isinstance(result, dict):
         raise ValueError(
             f"Response '''{response_content}''' evaluated to "
