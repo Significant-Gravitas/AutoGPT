@@ -274,6 +274,9 @@ class Agent(
 
         # Update action history
         self.event_history.register_result(result)
+        await self.event_history.handle_compression(
+            self.llm_provider, self.legacy_config
+        )
 
         return result
 
