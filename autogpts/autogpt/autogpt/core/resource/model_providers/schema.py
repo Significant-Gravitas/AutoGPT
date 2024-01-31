@@ -137,7 +137,8 @@ class CompletionModelFunction(BaseModel):
 
     def fmt_line(self) -> str:
         params = ", ".join(
-            f"{name}: {p.type.value}" for name, p in self.parameters.items()
+            f"{name}{'?' if not p.required else ''}: " f"{p.typescript_type}"
+            for name, p in self.parameters.items()
         )
         return f"{self.name}: {self.description}. Params: ({params})"
 
