@@ -65,6 +65,7 @@ class MessageAgentUser(AFAASMessage):
     agent_id: str  # Always PlannerAgent not ProxyAgent
     message: str
     question: Questions = None
+    hidden : bool = False
 
     _table_name = "message_agent_user"
 

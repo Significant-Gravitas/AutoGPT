@@ -39,6 +39,7 @@ class AbstractAgent(ABC):
         # Ensure 'tasks' and 'documents' VectorStores are initialized
         self._ensure_vectorstore_initialized("tasks")
         self._ensure_vectorstore_initialized("documents")
+        self._ensure_vectorstore_initialized("message_agent_user")
         return self._vectorstores
 
     def _ensure_vectorstore_initialized(self, key: str):

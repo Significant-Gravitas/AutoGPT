@@ -16,6 +16,7 @@ from AFAAS.lib.sdk.logger import AFAASLogger, logging
 from AFAAS.prompts.common.afaas_task_post_rag_update import (
     AfaasPostRagTaskUpdateStrategy,
 )
+from AFAAS.core.adapters.embeddings.search import get_related_documents, SearchFilter, DocumentType,  Filter, FilterType
 from AFAAS.prompts.common.afaas_task_rag_step2_history import AfaasTaskRagStep2Strategy
 from AFAAS.prompts.common.afaas_task_rag_step3_related import AfaasTaskRagStep3Strategy
 
@@ -314,7 +315,7 @@ class Task(AbstractTask):
         history: int = 10,
         sibblings=True,
         path=True,
-        similar_tasks: int = 100,
+        nb_similar_tasks: int = 100,
         avoid_sibbling_predecessors_redundancy: bool = False,
     ):
         plan_history: list[Task] = []
@@ -352,29 +353,24 @@ class Task(AbstractTask):
 
         # 6. Get the similar tasks , if at least n (similar_tasks) have been treated so we only look for similarity in complexe cases
         related_tasks: list[Task] = []
-        if len(self.agent.plan.get_all_done_tasks_ids()) > similar_tasks:
+        if len(self.agent.plan.get_all_done_tasks_ids()) > nb_similar_tasks:
             task_embedding = await self.agent.embedding_model.aembed_query(
                 text=self.long_description
             )
-            try:
-                # FIXME: Create an adapter or open a issue on Langchain Github : https://github.com/langchain-ai/langchain to harmonize the AP
-                related_tasks_documents = await self.agent.vectorstores[
-                    "tasks"
-                ].asimilarity_search_by_vector(
-                    task_embedding,
-                    k=similar_tasks,
-                    include_metadata=True,
-                    filter={"plan_id": {"$eq": self.plan_id}},
-                )
-            except Exception:
-                related_tasks_documents = await self.agent.vectorstores[
-                    "tasks"
-                ].asimilarity_search_by_vector(
-                    task_embedding,
-                    k=10,
-                    include_metadata=True,
-                    filter=[{"metadata.plan_id": {"$eq": self.plan_id}}],
-                )
+            # FIXME: Create an adapter or open a issue on Langchain Github : https://github.com/langchain-ai/langchain to harmonize the AP
+            related_tasks_documents = await get_related_documents(store_name =DocumentType.TASK.value,
+                                        agent=self.agent,
+                                        embedding =  task_embedding ,
+                                        nb_results = 10 ,
+                                        document_type = DocumentType.TASK,
+                                        search_filters= SearchFilter(filters = {
+                                            'agent_id' : Filter( 
+                                                filter_type=FilterType.EQUAL,
+                                                value=self.agent.agent_id,
+                                            ) 
+                                        }
+                                        )
+            )
 
             LOG.debug(related_tasks_documents)
             ## 1. Make Task Object

@@ -1,0 +1,14 @@
+## Main Instruction :
+
+We are tasked to work on the following task : 
+{{ task_parent.long_description }}
+
+Answer the following question : 
+
+{{ to_md_quotation(query) }}
+
+{% if documents %}Based on the following documents : 
+{% for document in documents %}Document {{ loop.index }}:
+to_md_quotation(document)
+
+{% endfor %}{% endif %}

@@ -168,7 +168,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         from AFAAS.lib.task.plan import Plan
 
         if isinstance(self, Plan):
-            LOG.debug(repr(self), "Adding task to plan")
+            LOG.debug(str(self), "Adding task to plan")
         elif self.state not in (
             TaskStatusList.READY,
             TaskStatusList.IN_PROGRESS_WITH_SUBTASKS,

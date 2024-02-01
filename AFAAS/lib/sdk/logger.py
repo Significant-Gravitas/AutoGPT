@@ -130,6 +130,10 @@ class ConsoleFormatter(logging.Formatter):
         # HACK: This is a hack to fix the issue with the logging module
         if levelname == "\x1b[94mINFO\x1b[0m":
             levelname = "INFO"
+        elif levelname == "\x1b[93mWARNING\x1b[0m":
+            levelname = "WARNING"
+        elif levelname == "\x1b[91mERROR\x1b[0m":
+            levelname = "ERROR"
 
         if self.use_color and levelname in KEYWORD_COLORS:
             current_color = KEYWORD_COLORS[levelname]

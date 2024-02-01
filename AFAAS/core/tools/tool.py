@@ -15,6 +15,7 @@ from langchain.tools.base import BaseTool
 
 from AFAAS.interfaces.adapters import CompletionModelFunction
 from AFAAS.interfaces.task.task import AbstractTask
+from AFAAS.core.adapters.embeddings.search import DocumentType
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 # from AFAAS.interfaces.agent.main import BaseAgent
@@ -65,16 +66,6 @@ class Tool:
         return inspect.iscoroutinefunction(self.method)
 
     def __call__(self, *args, agent: BaseAgent, **kwargs) -> Any:
-        # if callable(self.enabled) and not self.enabled(agent.legacy_config):
-        #     if self.disabled_reason:
-        #         raise RuntimeError(
-        #             f"Tool '{self.name}' is disabled: {self.disabled_reason}"
-        #         )
-        #     raise RuntimeError(f"Tool '{self.name}' is disabled")
-
-        # if callable(self.available) and not self.available(agent):
-        #     raise RuntimeError(f"Tool '{self.name}' is not available")
-
         return self.method(*args, **kwargs, agent=agent)
 
     def __str__(self) -> str:
@@ -109,10 +100,6 @@ class Tool:
                 return await langchain_tool.arun(tool_input)
             else:
                 return langchain_tool.run(tool_input)
-
-            from .tool_decorator import tool as tool_wrapper
-            _tool_instance.__call__ = tool_wrapper(_tool_instance.__call__(**tool_input))
-            return _tool_instance.__call__too
 
         typed_parameters = [
             ToolParameter(
@@ -179,20 +166,18 @@ class Tool:
             "command_args"
         ].get("text_output_as_uml", "")
 
-        # task_ouput_embedding = await agent.embedding_model.aembed_query(text = task.task_text_output)
-        # vector = await agent.vectorstore.aadd_texts(
-        #     task_ouput_embedding, metadatas= [{'task_id' : task.task_id , 'plan_id' : task.plan_id}]
-        #     )
         vector = await agent.vectorstores["tasks"].aadd_texts(
             texts=[task.task_text_output],
-            metadatas=[{"task_id": task.task_id, "plan_id": task.plan_id}],
+            metadatas=[{"task_id": task.task_id, 
+                        "plan_id": task.plan_id ,
+                        "agent_id": task.agent.agent_id ,
+                        "type" : DocumentType.MESSAGE_AGENT_USER.value
+                        }],
         )
 
         LOG.trace(f"Task output embedding added to vector store : {repr(vector)}")
 
         return task.task_text_output
-
-        # return summary
 
     def dump(self) -> CompletionModelFunction:
         param_dict = {parameter.name: parameter.spec for parameter in self.parameters}
