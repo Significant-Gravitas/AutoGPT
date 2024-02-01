@@ -59,6 +59,7 @@ class BasePromptManager(AgentMixin):
         import AFAAS.prompts.common as common_module
         from AFAAS.prompts import load_all_strategies , BaseTaskRagStrategy
 
+
         strategies: list[AbstractPromptStrategy] = []
 
         # Dynamically load strategies from AFAAS.prompts.common

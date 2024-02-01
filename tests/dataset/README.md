@@ -1,0 +1,1 @@
+To whomever may be concerned, the bible is used for tests purpose as it is an unlicenced corpus of text likely to have been used during LLM trainings.

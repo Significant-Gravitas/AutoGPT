@@ -4,7 +4,7 @@ from __future__ import annotations
 
 # from AFAAS.lib.app import clean_input
 from AFAAS.core.tools.tool_decorator import SAFE_MODE, tool
-from AFAAS.core.adapters.embeddings.search import get_related_documents, DocumentType, SearchFilter, Filter, FilterType
+from AFAAS.interfaces.adapters.embeddings.wrapper import DocumentType, SearchFilter, Filter, FilterType
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.tools.base import AbstractTool
 from AFAAS.lib.message_agent_user import Emiter, MessageAgentUser
@@ -53,8 +53,7 @@ async def user_interaction(
                 text=original_query
             )
 
-        messages = await get_related_documents(store_name ="message_agent_user",
-                                         agent=agent,
+        messages = await agent.vectorstores.get_related_documents(
                                          embedding =  query_embedding ,
                                          nb_results = 10 ,
                                          document_type = DocumentType.ALL,
@@ -100,16 +99,18 @@ async def user_interaction(
         message=response_message
     )
 
-    import datetime
-    import uuid
     document = Document(page_content=f"Question: {original_query}\nAnswer: {response_message.message}")
-    document.metadata["type"] = DocumentType.MESSAGE_AGENT_USER.value
-    document.metadata["created_at"] = str(datetime.datetime.now())
-    document.metadata["document_id"] = str(str(uuid.uuid4()))
     document.metadata["question"] = original_query
     document.metadata["answer"] = response_message.message
     document.metadata["agent_id"] = agent.agent_id
     document.metadata["user_id"] = agent.user_id
-    await agent.vectorstores['message_agent_user'].aadd_documents([document])
+
+    vector = await agent.vectorstores.add_document(
+                                                    document_type = DocumentType.MESSAGE_AGENT_USER,  
+                                                    document = document , 
+                                                    doc_id =  str(response_message.message_id)
+                                                    ) 
+    #  ids=[str(filename)],
+
 
     return response_message.message

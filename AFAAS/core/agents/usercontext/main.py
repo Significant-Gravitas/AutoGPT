@@ -14,6 +14,7 @@ from AFAAS.interfaces.db.db import AbstractMemory
 from AFAAS.interfaces.workflow import WorkflowRegistry
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.interfaces.adapters.embeddings.wrapper import VectorStoreWrapper, ChromaWrapper
 
 from .loop import UserContextLoop
 
@@ -35,7 +36,7 @@ class UserContextAgent(BaseAgent):
         db: AbstractMemory = None,
         default_llm_provider: AbstractLanguageModelProvider = None,
         workspace: AbstractFileWorkspace = None,
-        vectorstores: dict[str, VectorStore] = {},
+        vectorstore : VectorStoreWrapper= None,
         embeddings: Embeddings = None,
         workflow_registry: WorkflowRegistry = None,
         **kwargs,
@@ -48,7 +49,7 @@ class UserContextAgent(BaseAgent):
             prompt_manager=prompt_manager,
             user_id=user_id,
             agent_id=agent_id,
-            vectorstores=vectorstores,
+            vectorstore=vectorstore,
             embedding_model=embeddings,
             workflow_registry=workflow_registry,
             **kwargs,

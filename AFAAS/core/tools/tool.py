@@ -15,7 +15,7 @@ from langchain.tools.base import BaseTool
 
 from AFAAS.interfaces.adapters import CompletionModelFunction
 from AFAAS.interfaces.task.task import AbstractTask
-from AFAAS.core.adapters.embeddings.search import DocumentType
+from AFAAS.interfaces.adapters.embeddings.wrapper import DocumentType
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 # from AFAAS.interfaces.agent.main import BaseAgent
@@ -166,14 +166,31 @@ class Tool:
             "command_args"
         ].get("text_output_as_uml", "")
 
-        vector = await agent.vectorstores["tasks"].aadd_texts(
-            texts=[task.task_text_output],
-            metadatas=[{"task_id": task.task_id, 
+
+        # vector = await agent.vectorstores["tasks"].aadd_texts(
+        #     texts=[task.task_text_output],
+        #     metadatas=[{"task_id": task.task_id, 
+        #                 "plan_id": task.plan_id ,
+        #                 "agent_id": task.agent.agent_id ,
+        #                 "type" : DocumentType.TASK.value
+        #                 }],
+        # )
+        from langchain_core.documents import Document
+        document = Document(
+            page_content=task.task_text_output,
+            metadata=   {
+                        "task_id": task.task_id, 
                         "plan_id": task.plan_id ,
                         "agent_id": task.agent.agent_id ,
-                        "type" : DocumentType.MESSAGE_AGENT_USER.value
-                        }],
+                        }
+
         )
+        vector = await agent.vectorstores.add_document(
+                                                       document_type = DocumentType.TASK,  
+                                                       document = document , 
+                                                       document_id =  task.task_id
+                                                       ) 
+
 
         LOG.trace(f"Task output embedding added to vector store : {repr(vector)}")
 

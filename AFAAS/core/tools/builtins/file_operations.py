@@ -117,19 +117,37 @@ async def write_to_file(
     # FIXME:v0.1.0 if file exists, delete it first
     # await agent.vectorstore.adelete(id=str(filename))
 
-    await agent.vectorstores["documents"].aadd_texts(
-        texts=[contents],
-        metadatas=[
-            {
-                "id": str(artifact.artifact_id),
+    # await agent.vectorstores["documents"].aadd_texts(
+    #     texts=[contents],
+    #     metadatas=[
+    #         {
+    #             "id": str(artifact.artifact_id),
+    #             "agent_id": str(artifact.agent_id),
+    #             "user_id": str(artifact.user_id),
+    #             "relative_path": str(artifact.relative_path),
+    #             "file_name": str(artifact.file_name),
+    #             "mime_type": str(artifact.mime_type),
+    #         }
+    #     ],
+    # )
+
+    from langchain_core.documents import Document
+    from AFAAS.interfaces.adapters.embeddings.wrapper import DocumentType
+    document = Document(
+        page_content=contents,
+        metadata=               {
                 "agent_id": str(artifact.agent_id),
                 "user_id": str(artifact.user_id),
                 "relative_path": str(artifact.relative_path),
                 "file_name": str(artifact.file_name),
                 "mime_type": str(artifact.mime_type),
             }
-        ],
     )
+    vector = await agent.vectorstores.add_document(
+                                                    document_type = DocumentType.DOCUMENTS,  
+                                                    document = document , 
+                                                    document_id =  str(artifact.artifact_id)
+                                                    ) 
     #  ids=[str(filename)],
     #  lang="en",
     #  title=str(filename),

@@ -17,7 +17,8 @@ from AFAAS.lib.sdk.logger import AFAASLogger, logging
 from AFAAS.prompts.common.afaas_task_post_rag_update import (
     AfaasPostRagTaskUpdateStrategy,
 )
-from AFAAS.core.adapters.embeddings.search import get_related_documents, SearchFilter, DocumentType,  Filter, FilterType
+
+from AFAAS.interfaces.adapters.embeddings.wrapper import SearchFilter, DocumentType,  Filter, FilterType
 from AFAAS.prompts.common.afaas_task_rag_step2_history import AfaasTaskRagStep2Strategy
 from AFAAS.prompts.common.afaas_task_rag_step3_related import AfaasTaskRagStep3Strategy
 
@@ -413,8 +414,8 @@ class Task(AbstractTask):
                 text=self.long_description
             )
             # FIXME: Create an adapter or open a issue on Langchain Github : https://github.com/langchain-ai/langchain to harmonize the AP
-            related_tasks_documents = await get_related_documents(store_name =DocumentType.TASK.value,
-                                        agent=self.agent,
+
+            related_tasks_documents = await self.agent.vectorstores.get_related_documents(
                                         embedding =  task_embedding ,
                                         nb_results = 10 ,
                                         document_type = DocumentType.TASK,
