@@ -168,13 +168,11 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         from AFAAS.lib.task.plan import Plan
 
         if isinstance(self, Plan):
-            LOG.debug(str(self), "Adding task to plan")
+            LOG.debug(F"Adding task { task.debug_formated_str(status=True) } to plan")
         elif self.state not in (
             TaskStatusList.READY,
             TaskStatusList.IN_PROGRESS_WITH_SUBTASKS,
         ):
-            from tests.utils.ascii_tree import make_tree
-
             raise Exception(
                 f"Can't add task {task.debug_formated_str(status=True)} to {self.debug_formated_str(status=True)}."
             )

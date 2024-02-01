@@ -25,7 +25,7 @@ class AgentMixin:
 
     def set_agent(self, agent: BaseAgent):
         if hasattr(self, "_agent") and self._agent is not None:
-            LOG.warning(f"Agent already set")
+            LOG.notice(f"Agent already set")
         else :
             LOG.info(f"Setting agent {agent.agent_id} for {self.__class__.__name__}")
 
