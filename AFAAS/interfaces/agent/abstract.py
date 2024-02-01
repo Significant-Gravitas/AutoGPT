@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from pathlib import Path
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Optional
 
@@ -127,7 +128,7 @@ class AbstractAgent(ABC):
             super().__init__(**data)
             for field_name, field_type in self.__annotations__.items():
                 # Check if field_type is a class before calling issubclass
-                #FIXME:0.0.2 Implement same behaviour for TaskStack in AbstractBaseTask
+                #FIXME:0.0.3 Implement same behaviour for TaskStack in AbstractBaseTask
                 if isinstance(field_type, type) and field_name in data and issubclass(field_type, AFAASMessageStack):
                     setattr(self, field_name, AFAASMessageStack(_messages=data[field_name]))
 
@@ -190,6 +191,7 @@ class AbstractAgent(ABC):
         workflow_registry: WorkflowRegistry,
         user_id: str,
         agent_id: str,
+        log_path : str,
         **kwargs,
     ) -> Any:
         LOG.trace(f"{self.__class__.__name__}.__init__() : Entering")
@@ -198,6 +200,7 @@ class AbstractAgent(ABC):
         self.agent_id = agent_id
         self.user_id = user_id
         self.agent_name = settings.agent_name
+        self.log_path : Path = log_path or (Path(__file__).parent.parent.parent.parent / "logs")
 
         #
         # Step 1 : Set the chat model provider

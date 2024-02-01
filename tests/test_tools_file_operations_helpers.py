@@ -194,7 +194,7 @@ async def test_write_file_fails_if_content_exists(
 def test_log_operation(default_task: Task, agent: BaseAgent):
     # FIXMEv0.0.2 : Set as AgentSetting
     LOG_FILE_OPERATION = (
-        Path(__file__).parent.parent / "logs" / (f"{agent.agent_id}_file_operation")
+        Path(agent.log_path) / (f"{agent.agent_id}_file_operation")
     )
 
     file_ops.log_operation(
