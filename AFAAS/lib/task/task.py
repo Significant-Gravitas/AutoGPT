@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional
 from pydantic import Field, validator
 
 from AFAAS.interfaces.adapters import AbstractChatModelResponse
+from AFAAS.interfaces.adapters.embeddings.wrapper import SearchFilter, DocumentType,  Filter, FilterType
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.meta import TaskStatusList
@@ -22,8 +23,7 @@ from AFAAS.prompts.common.afaas_task_rag_step3_related import AfaasTaskRagStep3S
 
 LOG = AFAASLogger(name=__name__)
 
-if TYPE_CHECKING:
-    from AFAAS.interfaces.task.stack import TaskStack
+from AFAAS.interfaces.task.stack import TaskStack
 
 
 class Task(AbstractTask):
@@ -307,6 +307,61 @@ class Task(AbstractTask):
         if isinstance(other, Task):
             return self.task_id == other.task_id
         return False
+
+    def __copy__(self):
+        import copy
+        from AFAAS.interfaces.task.base import AFAASModel
+        cls = self.__class__
+        clone = cls(**self.dict(), agent = self.agent)
+        # for attr in self.__dict__:
+        #     original_value = getattr(self, attr)
+
+        #     if isinstance(original_value, (AbstractBaseTask, BaseAgent)):
+        #         # Keep reference for AbstractBaseTask and BaseAgent types
+        #         setattr(clone, attr, original_value)
+        #     elif isinstance(original_value, TaskStack):
+        #         continue
+        #     elif isinstance(original_value, asyncio.Future):
+        #         setattr(clone, attr, original_value)
+        #     else:
+        #         # Copy all other attributes
+        #         setattr(clone, attr, copy.copy(original_value))
+        clone.agent = self.agent
+        clone._task_parent = self._task_parent
+
+        return clone
+
+    def __deepcopy__(self, memo) : 
+        import copy
+        LOG.warning(f"You should not use deepcopy on Task objects. Use Task.clone() instead")
+        return copy.deepcopy(self)
+
+    async def clone(self , with_predecessor = False) -> Task:
+        import copy
+        clone = copy.copy(self)
+
+
+        import datetime
+        clone.created_at = datetime.datetime.now()
+        clone.task_id = Task.generate_uuid()
+
+        clone.state = TaskStatusList.BACKLOG
+        clone.task_text_output = None
+        clone.task_text_output_as_uml = None
+        clone._task_successors = []
+        for successor in await self.task_successors.get_all_tasks_from_stack():
+            successor.add_predecessor(clone)
+        if with_predecessor :
+            for predecessor in await self.task_predecessors.get_all_tasks_from_stack():
+                predecessor.add_successor(clone)
+        return clone
+
+    async def retry(self) -> Task:
+        """ Clone a task and adds it as its immediate successor"""
+        LOG.warning("Task.retry() is an experimental method")
+        clone = self.clone()
+        self.add_successor(clone)
+        return clone
 
     async def prepare_rag(
         self,
