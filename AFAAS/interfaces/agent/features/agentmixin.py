@@ -70,7 +70,7 @@ class AgentMixin:
         return await self._agent.db.get_table(table_name=table_name)
 
     def get_strategy(self, strategy_name: str) -> AbstractPromptStrategy:
-        return self._agent._prompt_manager._prompt_strategies[strategy_name]
+        return self._agent._prompt_manager.get_strategy(strategy_name=strategy_name)
 
     async def _execute_strategy(
         self, strategy_name: str, **kwargs

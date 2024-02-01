@@ -5,6 +5,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
+from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.prompts.strategy import (
@@ -40,6 +41,12 @@ class BasePromptManager(AgentMixin):
         for strategy in strategies:
             self._prompt_strategies[strategy.STRATEGY_NAME] = strategy
 
+    def add_strategy(self, strategy: AbstractPromptStrategy) -> None:
+        self._prompt_strategies[strategy.STRATEGY_NAME] = strategy
+
+    def get_strategy(self, strategy_name: str) -> AbstractPromptStrategy:
+        return self._prompt_strategies[strategy_name]
+
     def set_agent(self, agent: "BaseAgent"):
         if not hasattr(self, "_agent") or self._agent is None:
             super().set_agent(agent)
@@ -47,54 +54,25 @@ class BasePromptManager(AgentMixin):
 
     def load_strategies(self) -> list[AbstractPromptStrategy]:
 
-        from AFAAS.prompts import (
-            AFAAS_SMART_RAG_Strategy,
-            AfaasPostRagTaskUpdateStrategy,
-            AfaasTaskRagStep2Strategy,
-            AfaasTaskRagStep3Strategy,
-            AutoCorrectionStrategy,
-            BaseTaskSummary_Strategy,
-            QueryLLMStrategy,
-            SearchInfo_Strategy,
-            load_all_strategies,
-            UserProxyStrategy
-        )
-        common_strategies = [AutoCorrectionStrategy(
-                **AutoCorrectionStrategy.default_configuration.dict()
-            ),
-        AFAAS_SMART_RAG_Strategy(
-               **AFAAS_SMART_RAG_Strategy.default_configuration.dict()
-        ),
-        BaseTaskSummary_Strategy(
-                **BaseTaskSummary_Strategy.default_configuration.dict()
-        ),
-        AfaasTaskRagStep2Strategy(
-                **AfaasTaskRagStep2Strategy.default_configuration.dict()
-        ),
-        AfaasTaskRagStep3Strategy(
-                **AfaasTaskRagStep3Strategy.default_configuration.dict()
-        ),
-        AfaasPostRagTaskUpdateStrategy(
-                **AfaasPostRagTaskUpdateStrategy.default_configuration.dict()
-        ),
-        SearchInfo_Strategy(
-                **SearchInfo_Strategy.default_configuration.dict()
-        ),
-        QueryLLMStrategy(
-                **QueryLLMStrategy.default_configuration.dict()
-        ),
-        UserProxyStrategy(
-                **UserProxyStrategy.default_configuration.dict()
-        )
+        import importlib
+        from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
+        import AFAAS.prompts.common as common_module
+        from AFAAS.prompts import load_all_strategies , BaseTaskRagStrategy
 
-        ]
+        strategies: list[AbstractPromptStrategy] = []
 
+        # Dynamically load strategies from AFAAS.prompts.common
+        for attribute_name in dir(common_module):
+            attribute = getattr(common_module, attribute_name)
+            if isinstance(attribute, type) and issubclass(attribute, AbstractPromptStrategy) and attribute not in (AbstractPromptStrategy, BaseTaskRagStrategy):
+                strategies.append(attribute(**attribute.default_configuration.dict()))
 
-        self._agent.__class__.__module__.rsplit('.', 1)[0]
-        strategies : list[AbstractPromptStrategy] = []
+        # Load all other strategies
         strategies += load_all_strategies()
 
-        self.add_strategies(strategies = strategies + common_strategies)
+        for strategy in strategies:
+            self.add_strategy(strategy=strategy)
+
         return self._prompt_strategies
 
     async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse:
@@ -106,7 +84,7 @@ class BasePromptManager(AgentMixin):
         if strategy_name not in self._prompt_strategies:
             raise ValueError(f"Invalid strategy name {strategy_name}")
 
-        prompt_strategy: AbstractPromptStrategy = self._prompt_strategies[strategy_name]
+        prompt_strategy: AbstractPromptStrategy = self.get_strategy(strategy_name=strategy_name ) 
         if not hasattr(prompt_strategy, "_agent") or prompt_strategy._agent is None:
             prompt_strategy.set_agent(agent=self._agent)
 
