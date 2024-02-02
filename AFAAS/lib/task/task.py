@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import time
 from typing import TYPE_CHECKING, Optional
+from AFAAS.interfaces.tools.tool_output import ToolOutput
+from AFAAS.lib.sdk.errors import AgentException, ToolExecutionError, UnknownToolError
 
 from pydantic import Field, validator
 
@@ -529,11 +531,37 @@ class Task(AbstractTask):
             # Moved to task_preprossessing
             # self.task_workflow = rv.parsed_result[0]["command_args"]["task_workflow"]
 
-    async def task_execute(self):
-        ...
 
-    async def task_postprocessing(self):
-        ...
+    async def task_execute(self) -> ToolOutput:
+        LOG.info(f"Executing command : {self.command}")
+        LOG.info(f"with arguments : {self.arguments}")
+
+        if tool := self.agent._tool_registry.get_tool(tool_name=self.command):
+            try:
+                result = await tool(**self.arguments, task=self, agent=self.agent)
+                await tool.success_check_callback(self=tool, task=self, tool_output=result)
+                return result
+            except Exception as e:
+                raise ToolExecutionError(str(e))
+        raise UnknownToolError(f"Cannot execute command '{self.command}': unknown command.")
+
+
+    async def task_postprocessing(self) -> bool:
+        try : 
+            if await self.is_ready():
+                """If the task still match readiness criterias at this point, it means that we can close it"""
+                await self.close_task()
+            else:
+                """
+                If the task doesn't match readiness criterias at this point, it means that we can't close it
+                this situation is usualy due to the addition of subbtasks (or predecessor ?) during the excecution of the task.
+                """
+                if self.state != TaskStatusList.IN_PROGRESS_WITH_SUBTASKS : 
+                    LOG.error(f"Can't terminate Task : {self.debug_formated_str()}")
+                    raise Exception(f"Can't terminate Task : {self.debug_formated_str()}")
+            return True
+        except : 
+            return False
 
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.
