@@ -218,7 +218,9 @@ def test_extract_json_from_response_wrapped_in_code_block_with_language(
 
 
 def test_extract_json_from_response_json_contained_in_string(valid_json_response: dict):
-    emulated_response_from_openai = "sentence1" + json.dumps(valid_json_response) + "sentence2"
+    emulated_response_from_openai = (
+        "sentence1" + json.dumps(valid_json_response) + "sentence2"
+    )
     assert (
         extract_dict_from_response(emulated_response_from_openai) == valid_json_response
     )
