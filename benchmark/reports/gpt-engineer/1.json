@@ -1,0 +1,18 @@
+{
+  "command": "agbenchmark start --test TestWriteFile --mock",
+  "completion_time": "2023-07-10-21:18",
+  "time_elapsed": "7.92 seconds",
+  "tests": {
+    "TestWriteFile": {
+      "difficulty": "basic",
+      "dependencies": [],
+      "test": "agbenchmark/challenges/interface/write_file",
+      "success": true
+    }
+  },
+  "config": {
+    "workspace": "projects/my-new-project/workspace",
+    "entry_path": "agbenchmark/benchmarks.py",
+    "cutoff": 60
+  }
+}

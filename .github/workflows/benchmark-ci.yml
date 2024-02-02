@@ -1,0 +1,140 @@
+name: Benchmark CI
+
+on:
+  push:
+    branches: [ master, development, ci-test* ]
+    paths:
+      - 'benchmark/**'
+      - .github/workflows/benchmark-ci.yml
+      - '!benchmark/reports/**'
+  pull_request:
+    branches: [ master, development, release-* ]
+    paths:
+      - 'benchmark/**'
+      - '!benchmark/reports/**'
+      - .github/workflows/benchmark-ci.yml
+
+env:
+  min-python-version: '3.10'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ env.min-python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ env.min-python-version }}
+
+      - id: get_date
+        name: Get date
+        working-directory: ./benchmark/
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Install Poetry
+        working-directory: ./benchmark/
+        run: |
+          curl -sSL https://install.python-poetry.org | python -
+
+      - name: Install dependencies
+        working-directory: ./benchmark/
+        run: |
+          export POETRY_VIRTUALENVS_IN_PROJECT=true
+          poetry install -vvv
+
+      - name: Lint with flake8
+        working-directory: ./benchmark/
+        run: poetry run flake8
+
+      - name: Check black formatting
+        working-directory: ./benchmark/
+        run: poetry run  black . --exclude test.py --check
+        if: success() || failure()
+
+      - name: Check isort formatting
+        working-directory: ./benchmark/
+        run: poetry run  isort . --check
+        if: success() || failure()
+
+      - name: Check for unused imports and pass statements
+        working-directory: ./benchmark/
+        run: |
+          cmd="poetry run autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring agbenchmark"
+          $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
+        if: success() || failure()
+
+  tests-agbenchmark:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        agent-name: [ forge ]
+      fail-fast: false
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Set up Python ${{ env.min-python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ env.min-python-version }}
+
+      - name: Install Poetry
+        working-directory: ./autogpts/${{ matrix.agent-name }}/
+        run: |
+          curl -sSL https://install.python-poetry.org | python -
+
+      - name: Run regression tests
+        run: |
+          ./run agent start ${{ matrix.agent-name }}
+          sleep 10
+          cd autogpts/${{ matrix.agent-name }}
+          set +e # Ignore non-zero exit codes and continue execution
+          echo "Running the following command: poetry run agbenchmark --maintain --mock"
+
+          poetry run agbenchmark --maintain --mock
+          EXIT_CODE=$?
+          set -e  # Stop ignoring non-zero exit codes
+          # Check if the exit code was 5, and if so, exit with 0 instead
+          if [ $EXIT_CODE -eq 5 ]; then
+            echo "regression_tests.json is empty."
+          fi
+
+          echo "Running the following command: poetry run agbenchmark --mock"
+          poetry run agbenchmark --mock
+
+          echo "Running the following command: poetry run agbenchmark --mock --category=data"
+          poetry run agbenchmark --mock --category=data
+
+          echo "Running the following command: poetry run agbenchmark --mock --category=coding"
+          poetry run agbenchmark --mock --category=coding
+
+          echo "Running the following command: poetry run agbenchmark --test=WriteFile"
+          poetry run agbenchmark --test=WriteFile
+          cd ../../benchmark
+          poetry install
+          echo "Adding the BUILD_SKILL_TREE environment variable. This will attempt to add new elements in the skill tree. If new elements are added, the CI fails because they should have been pushed"
+          export BUILD_SKILL_TREE=true
+
+          poetry run agbenchmark --mock
+          poetry run pytest -vv -s tests
+          
+          CHANGED=$(git diff --name-only | grep -E '(agbenchmark/challenges)|(../frontend/assets)') || echo "No diffs"
+          if [ ! -z "$CHANGED" ]; then
+            echo "There are unstaged changes please run agbenchmark and commit those changes since they are needed."
+            echo "$CHANGED"
+            exit 1
+          else
+            echo "No unstaged changes."
+          fi
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
