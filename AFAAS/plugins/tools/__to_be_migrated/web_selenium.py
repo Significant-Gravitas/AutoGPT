@@ -17,6 +17,23 @@ from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.safari.options import Options as SafariOptions
+from selenium.webdriver.safari.webdriver import WebDriver as SafariDriver
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.wait import WebDriverWait
+from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.firefox import GeckoDriverManager
+from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
+
+from autogpt.agents.utils.exceptions import CommandExecutionError, TooMuchOutputError
+from autogpt.command_decorator import command
+from autogpt.core.utils.json_schema import JSONSchema
+from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
+from autogpt.processing.text import extract_information, summarize_text
+from autogpt.url_utils.validators import validate_url
+
+COMMAND_CATEGORY = "web_browse"
+COMMAND_CATEGORY_TITLE = "Web Browsing"
+
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent.main import BaseAgent
@@ -32,7 +49,7 @@ from AFAAS.lib.utils.url.validators import validate_url
 LOG = AFAASLogger(name=__name__)
 
 FILE_DIR = Path(__file__).parent.parent
-TOKENS_TO_TRIGGER_SUMMARY = 50
+MAX_RAW_CONTENT_LENGTH = 500
 LINKS_TO_RETURN = 20
 
 
@@ -43,16 +60,23 @@ class BrowsingError(ToolExecutionError):
 @tool(
     "read_webpage",
     (
-        "Read a webpage, and extract specific information from it"
-        " if a question is specified."
-        " If you are looking to extract specific information from the webpage,"
-        " you should specify a question."
+        "Read a webpage, and extract specific information from it."
+        " You must specify either topics_of_interest, a question, or get_raw_content."
     ),
     {
         "url": JSONSchema(
             type=JSONSchema.Type.STRING,
             description="The URL to visit",
             required=True,
+        ),
+        "topics_of_interest": JSONSchema(
+            type=JSONSchema.Type.ARRAY,
+            items=JSONSchema(type=JSONSchema.Type.STRING),
+            description=(
+                "A list of topics about which you want to extract information "
+                "from the page."
+            ),
+            required=False,
         ),
         "question": JSONSchema(
             type=JSONSchema.Type.STRING,
@@ -61,10 +85,25 @@ class BrowsingError(ToolExecutionError):
             ),
             required=False,
         ),
+        "get_raw_content": JSONSchema(
+            type=JSONSchema.Type.BOOLEAN,
+            description=(
+                "If true, the unprocessed content of the webpage will be returned. "
+                "This consumes a lot of tokens, so use it with caution."
+            ),
+            required=False,
+        ),
     },
 )
 @validate_url
-async def read_webpage(url: str, agent: BaseAgent, question: str = "") -> str:
+async def read_webpage(
+    url: str,
+    agent: Agent,
+    *,
+    topics_of_interest: list[str] = [],
+    get_raw_content: bool = False,
+    question: str = "",
+) -> str:
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -86,12 +125,19 @@ async def read_webpage(url: str, agent: BaseAgent, question: str = "") -> str:
         summarized = False
         if not text:
             return f"Website did not contain any text.\n\nLinks: {links}"
-        elif (
-            agent.llm_provider.count_tokens(text, agent.llm.name)
-            > TOKENS_TO_TRIGGER_SUMMARY
-        ):
+        elif get_raw_content:
+            if (
+                output_tokens := agent.llm_provider.count_tokens(text, agent.llm.name)
+            ) > MAX_RAW_CONTENT_LENGTH:
+                oversize_factor = round(output_tokens / MAX_RAW_CONTENT_LENGTH, 1)
+                raise TooMuchOutputError(
+                    f"Page content is {oversize_factor}x the allowed length "
+                    "for `get_raw_content=true`"
+                )
+            return text + (f"\n\nLinks: {links}" if links else "")
+        else:
             text = await summarize_memorize_webpage(
-                url, text, question or None, agent, driver
+                url, text, question or None, topics_of_interest, agent, driver
             )
             return_literal_content = bool(question)
             summarized = True
@@ -251,7 +297,8 @@ async def summarize_memorize_webpage(
     url: str,
     text: str,
     question: str | None,
-    agent: BaseAgent,
+    topics_of_interest: list[str],
+    agent: Agent,
     driver: Optional[WebDriver] = None,
 ) -> str:
     """Summarize text using the OpenAI API
@@ -281,10 +328,21 @@ async def summarize_memorize_webpage(
     # )
     # db.add(new_db)
 
-    summary, _ = await summarize_text(
-        text,
-        question=question,
-        llm_provider=agent.llm_provider,
-        config=agent.legacy_config,  # FIXME
-    )
-    return summary
+    result = None
+    information = None
+    if topics_of_interest:
+        information = await extract_information(
+            text,
+            topics_of_interest=topics_of_interest,
+            llm_provider=agent.llm_provider,
+            config=agent.legacy_config,
+        )
+        return "\n".join(f"* {i}" for i in information)
+    else:
+        result, _ = await summarize_text(
+            text,
+            question=question,
+            llm_provider=agent.llm_provider,
+            config=agent.legacy_config,
+        )
+        return result

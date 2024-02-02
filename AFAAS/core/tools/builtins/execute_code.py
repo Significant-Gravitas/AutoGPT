@@ -26,6 +26,7 @@ from .file_operations_utils import sanitize_path_arg
 
 LOG = AFAASLogger(name=__name__)
 TOOL_CATEGORY = "execute_code"
+TOOL_CATEGORY_TITLE = "Execute Code"
 
 
 ALLOWLIST_CONTROL = "allowlist"
@@ -94,6 +95,7 @@ def execute_python_code(code: str, task: Task, agent: BaseAgent) -> str:
 )
 @sanitize_path_arg("filename")
 def execute_python_file(
+    task: Task,
     filename: Path, agent: BaseAgent, args: list[str] | str = []
 ) -> str:
     """Execute a Python file in a Docker container and return the output
@@ -126,7 +128,7 @@ def execute_python_file(
 
     if we_are_running_in_a_docker_container():
         LOG.trace(
-            "AutoGPT is running in a Docker container; "
+            "AFAAS is running in a Docker container; "
             f"executing {file_path} directly..."
         )
         result = subprocess.run(
@@ -140,9 +142,9 @@ def execute_python_file(
         else:
             raise CodeExecutionError(result.stderr)
 
-    LOG.trace("AutoGPT is not running in a Docker container")
+    LOG.trace("AFAAS is not running in a Docker container")
     try:
-        assert agent.state.agent_id, "Need Agent ID to attach Docker container"
+        assert agent.agent_id, "Need Agent ID to attach Docker container"
 
         client = docker.from_env()
         # You can replace this with the desired Python image/version
