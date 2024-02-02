@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from pathlib import Path
 from sys import platform
 from typing import TYPE_CHECKING, Optional, Type
+from urllib.request import urlretrieve
 
 from bs4 import BeautifulSoup
 from selenium.common.exceptions import WebDriverException
@@ -115,8 +117,7 @@ async def read_webpage(
     """
     driver = None
     try:
-        # FIXME: agent.config -> something else
-        driver = open_page_in_browser(url, agent.legacy_config)
+        driver = await open_page_in_browser(url, agent.legacy_config)
 
         text = scrape_text_with_selenium(driver)
         links = scrape_links_with_selenium(driver, url)
@@ -214,7 +215,7 @@ def scrape_links_with_selenium(driver: WebDriver, base_url: str) -> list[str]:
     return format_hyperlinks(hyperlinks)
 
 
-def open_page_in_browser(url: str, config: Config) -> WebDriver:
+async def open_page_in_browser(url: str, config: Config) -> WebDriver:
     """Open a browser window and load a web page using Selenium
 
     Params:
@@ -236,22 +237,22 @@ def open_page_in_browser(url: str, config: Config) -> WebDriver:
     options: BrowserOptions = options_available[config.selenium_web_browser]()
     options.add_argument(f"user-agent={config.user_agent}")
 
-    if config.selenium_web_browser == "firefox":
+    if isinstance(options, FirefoxOptions):
         if config.selenium_headless:
             options.headless = True
             options.add_argument("--disable-gpu")
         driver = FirefoxDriver(
             service=GeckoDriverService(GeckoDriverManager().install()), options=options
         )
-    elif config.selenium_web_browser == "edge":
+    elif isinstance(options, EdgeOptions):
         driver = EdgeDriver(
             service=EdgeDriverService(EdgeDriverManager().install()), options=options
         )
-    elif config.selenium_web_browser == "safari":
+    elif isinstance(options, SafariOptions):
         # Requires a bit more setup on the users end.
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari  # noqa: E501
         driver = SafariDriver(options=options)
-    else:
+    elif isinstance(options, ChromeOptions):
         if platform == "linux" or platform == "linux2":
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--remote-debugging-port=9222")
@@ -260,6 +261,8 @@ def open_page_in_browser(url: str, config: Config) -> WebDriver:
         if config.selenium_headless:
             options.add_argument("--headless=new")
             options.add_argument("--disable-gpu")
+
+        _sideload_chrome_extensions(options, config.app_data_dir / "assets" / "crx")
 
         chromium_driver_path = Path("/usr/bin/chromedriver")
 
@@ -271,11 +274,35 @@ def open_page_in_browser(url: str, config: Config) -> WebDriver:
         )
     driver.get(url)
 
+    # Wait for page to be ready, sleep 2 seconds, wait again until page ready.
+    # This allows the cookiewall squasher time to get rid of cookie walls.
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.TAG_NAME, "body"))
+    )
+    await asyncio.sleep(2)
     WebDriverWait(driver, 10).until(
         EC.presence_of_element_located((By.TAG_NAME, "body"))
     )
 
     return driver
+
+
+def _sideload_chrome_extensions(options: ChromeOptions, dl_folder: Path) -> None:
+    crx_download_url_template = "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=49.0&acceptformat=crx3&x=id%3D{crx_id}%26installsource%3Dondemand%26uc"  # noqa
+    cookiewall_squasher_crx_id = "edibdbjcniadpccecjdfdjjppcpchdlm"
+    adblocker_crx_id = "cjpalhdlnbpafiamejdnhcphjbkeiagm"
+
+    # Make sure the target folder exists
+    dl_folder.mkdir(parents=True, exist_ok=True)
+
+    for crx_id in (cookiewall_squasher_crx_id, adblocker_crx_id):
+        crx_path = dl_folder / f"{crx_id}.crx"
+        if not crx_path.exists():
+            logger.debug(f"Downloading CRX {crx_id}...")
+            crx_download_url = crx_download_url_template.format(crx_id=crx_id)
+            urlretrieve(crx_download_url, crx_path)
+            logger.debug(f"Downloaded {crx_path.name}")
+        options.add_extension(str(crx_path))
 
 
 def close_browser(driver: WebDriver) -> None:
@@ -313,7 +340,7 @@ async def summarize_memorize_webpage(
         raise ValueError("No text to summarize")
 
     text_length = len(text)
-    logger.info(f"Text length: {text_length} characters")
+    logger.debug(f"Web page content length: {text_length} characters")
 
     # memory = get_memory(agent.legacy_config)
 
