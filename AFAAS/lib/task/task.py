@@ -14,13 +14,11 @@ from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.interfaces.task.plan import AbstractPlan
 from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.lib.sdk.logger import AFAASLogger, logging
-from AFAAS.prompts.common.afaas_task_post_rag_update import (
+from AFAAS.prompts.common import (
     AfaasPostRagTaskUpdateStrategy,
-)
-
+AfaasTaskRagStep2Strategy, AfaasTaskRagStep3Strategy , AfaasSelectWorkflowStrategy ) 
 from AFAAS.interfaces.adapters.embeddings.wrapper import SearchFilter, DocumentType,  Filter, FilterType
-from AFAAS.prompts.common.afaas_task_rag_step2_history import AfaasTaskRagStep2Strategy
-from AFAAS.prompts.common.afaas_task_rag_step3_related import AfaasTaskRagStep3Strategy
+from AFAAS.interfaces.workflow import FastTrackedWorkflow
 
 LOG = AFAASLogger(name=__name__)
 
@@ -364,7 +362,40 @@ class Task(AbstractTask):
         self.add_successor(clone)
         return clone
 
-    async def prepare_rag(
+    async def task_preprossessing(
+        self,
+        predecessors: bool = True,
+        successors: bool = False,
+        history: int = 10,
+        sibblings=True,
+        path=True,
+        nb_similar_tasks: int = 100,
+        avoid_sibbling_predecessors_redundancy: bool = False,
+    ):  
+        # NOTE: in current implementation self.command is always routing
+        workflow = await self._select_workflow()
+
+        if self.task_workflow != FastTrackedWorkflow.name : 
+            rv = await self._preprocess_rags(
+                predecessors=predecessors,
+                successors=successors,
+                history=history,
+                sibblings=sibblings,
+                path=path,
+                nb_similar_tasks=nb_similar_tasks,
+                avoid_sibbling_predecessors_redundancy=avoid_sibbling_predecessors_redundancy,
+            )
+
+    async def _select_workflow(self) : 
+            # RAG : 4. Post-Rag task update
+            rv: AbstractChatModelResponse = await self.agent.execute_strategy(
+                strategy_name=AfaasSelectWorkflowStrategy.STRATEGY_NAME,
+                task=self,
+            )
+            result = rv.parsed_result[0]["command_args"]
+            self.task_workflow = result["task_workflow"]
+
+    async def _preprocess_rags(
         self,
         predecessors: bool = True,
         successors: bool = False,
@@ -391,7 +422,9 @@ class Task(AbstractTask):
         # 3. Remove predecessors from history to avoid redondancy
         history_and_predecessors = set(plan_history) | set(task_predecessors)
 
-        # 4. Get the path to the task and remove it from history to avoid redondancy
+        # 4. Get the path to the task and remove it from history to avoid redondancy 
+        # NOTE: We keep the redundancy as the task path doesn't detail the content of tasks
+        # history_and_predecessors - set(task_path)
         task_path: list[Task] = []
         if path:
             task_path = await self.get_task_path()
@@ -414,7 +447,6 @@ class Task(AbstractTask):
                 text=self.long_description
             )
             # FIXME: Create an adapter or open a issue on Langchain Github : https://github.com/langchain-ai/langchain to harmonize the AP
-
             related_tasks_documents = await self.agent.vectorstores.get_related_documents(
                                         embedding =  task_embedding ,
                                         nb_results = 10 ,
@@ -494,8 +526,14 @@ class Task(AbstractTask):
             self.long_description = rv.parsed_result[0]["command_args"][
                 "long_description"
             ]
-            # FIXME: ONY for ruting & planning ?
-            self.task_workflow = rv.parsed_result[0]["command_args"]["task_workflow"]
+            # Moved to task_preprossessing
+            # self.task_workflow = rv.parsed_result[0]["command_args"]["task_workflow"]
+
+    async def task_execute(self):
+        ...
+
+    async def task_postprocessing(self):
+        ...
 
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.

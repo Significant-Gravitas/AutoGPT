@@ -9,3 +9,4 @@ from AFAAS.prompts.common.autocorrection import *
 from AFAAS.prompts.common.query_llm import *
 from AFAAS.prompts.common.search_info import *
 from AFAAS.prompts.common.user_proxy import *
+from AFAAS.prompts.common.afaas_select_workflow import *

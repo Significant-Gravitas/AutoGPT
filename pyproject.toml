@@ -85,7 +85,6 @@ scikit-learn = "^1.4.0"
 chromadb = "^0.4.22"
 
 
-
 [tool.poetry.extras]
 #benchmark = ["agbenchmark"]
 

@@ -114,7 +114,7 @@ class AbstractTask(AbstractBaseTask):
         return f"{self.task_goal} (id : {self.task_id} / status : {self.state})"
 
     @abstractmethod
-    async def prepare_rag(
+    async def task_preprossessing(
         self,
         predecessors: bool = True,
         successors: bool = False,
@@ -124,4 +124,12 @@ class AbstractTask(AbstractBaseTask):
         similar_tasks: int = 0,
         avoid_redondancy: bool = False,
     ):
+        ...
+
+    @abstractmethod
+    async def task_execute(self):
+        ...
+
+    @abstractmethod
+    async def task_postprocessing(self):
         ...

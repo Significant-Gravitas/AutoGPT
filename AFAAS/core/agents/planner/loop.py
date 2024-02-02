@@ -43,20 +43,6 @@ class PlannerLoop(BaseLoop):
         user_input_handler: Optional[Callable[[str], Awaitable[str]]] = None,
         user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None,
     ) -> None:
-        from pathlib import Path
-
-        # current_task = self._current_task
-        # # NOTE : Test tools individually
-        # command_name = "web_search"
-        # command_args= {"query": "instructions for building a Pizza oven"}
-        # return_value = await execute_command(
-        #     command_name=command_name,
-        #     arguments=command_args,
-        #     task=current_task,
-        #     agent=self._agent,
-        # )
-        # print(return_value)
-        import AFAAS.core.tools.builtins.file_operations as file_ops
 
         # current_task = self._current_task
         # # NOTE : Test tools individually
@@ -90,6 +76,7 @@ class PlannerLoop(BaseLoop):
         ##############################################################
         ### Step 1 : BEGIN WITH A HOOK
         ##############################################################
+        # NOTE : Reminicence opf a previous plugg in system to remove once Pipeline implemented
         await self.handle_hooks(
             hook_key="begin_run",
             hooks=hooks,
@@ -102,6 +89,7 @@ class PlannerLoop(BaseLoop):
             ##############################################################
             ### Step 2 : USER CONTEXT AGENT : IF USER CONTEXT AGENT EXIST
             ##############################################################
+            # Note to remove once user_context tool rewritten
             if not aaas["usercontext"]:
                 self._agent.agent_goals = [self._agent.agent_goal_sentence]
             else:
@@ -128,13 +116,6 @@ class PlannerLoop(BaseLoop):
             llm_response = await self.build_initial_plan(
                 description=description, routing_feedbacks=routing_feedbacks
             )
-
-            # Debugging :)
-            # LOG.info(Plan.debug_info_parse_task(self._agent.plan))
-
-            ###
-            ### Assign task
-            ###
 
         ##############################################################
         # NOTE : Important KPI to log during crashes
@@ -168,11 +149,14 @@ class PlannerLoop(BaseLoop):
                 ##############################################################
                 ### Step 6 : Prepare RAG #
                 ##############################################################
-                await current_task.prepare_rag()
+                # NOTE : Anayse swap between step 5 and 6
+                await current_task.task_preprossessing()
 
                 ##############################################################
                 ### Step 7 : execute_tool() #
                 ##############################################################
+                # NOTE : After Analysis of swap between step 5 and 6
+                # Refactor this to current_task.execute()
                 await self.execute_tool(
                     command_name=command_name,
                     command_args=command_args,
@@ -180,6 +164,7 @@ class PlannerLoop(BaseLoop):
                     # user_input = assistant_reply_dict
                 )
 
+            # NOTE : Rewrite to current_task.post_processing()
             if await current_task.is_ready():
                 """If the task still match readiness criterias at this point, it means that we can close it"""
                 await current_task.close_task()

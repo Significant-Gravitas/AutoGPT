@@ -166,7 +166,6 @@ class Tool:
             "command_args"
         ].get("text_output_as_uml", "")
 
-
         # vector = await agent.vectorstores["tasks"].aadd_texts(
         #     texts=[task.task_text_output],
         #     metadatas=[{"task_id": task.task_id, 
@@ -183,7 +182,6 @@ class Tool:
                         "plan_id": task.plan_id ,
                         "agent_id": task.agent.agent_id ,
                         }
-
         )
         vector = await agent.vectorstores.add_document(
                                                        document_type = DocumentType.TASK,  

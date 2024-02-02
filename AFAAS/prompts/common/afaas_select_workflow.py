@@ -25,25 +25,25 @@ from AFAAS.lib.utils.json_schema import JSONSchema
 LOG = AFAASLogger(name=__name__)
 
 
-class PostRagTaskUpdateStrategyFunctionNames(str, enum.Enum):
-    POST_RAG_UPDATE: str = "afaas_task_post_rag_update"
+class SelectWorkflowStrategyFunctionNames(str, enum.Enum):
+    SELECT_WORKFLOW: str = "afaas_select_workflow"
 
 
-class PostRagTaskUpdateStrategyConfiguration(PromptStrategiesConfiguration):
-    default_tool_choice: PostRagTaskUpdateStrategyFunctionNames = (
-        PostRagTaskUpdateStrategyFunctionNames.POST_RAG_UPDATE
+class SelectWorkflowStrategyConfiguration(PromptStrategiesConfiguration):
+    default_tool_choice: SelectWorkflowStrategyFunctionNames = (
+        SelectWorkflowStrategyFunctionNames.SELECT_WORKFLOW
     )
     task_context_length: int = 150
     temperature: float = 0.4
 
 
-class AfaasPostRagTaskUpdateStrategy(AbstractPromptStrategy):
-    STRATEGY_NAME = "afaas_task_post_rag_update"
-    default_configuration = PostRagTaskUpdateStrategyConfiguration()
+class AfaasSelectWorkflowStrategy(AbstractPromptStrategy):
+    STRATEGY_NAME = "afaas_select_workflow"
+    default_configuration = SelectWorkflowStrategyConfiguration()
 
     def __init__(
         self,
-        default_tool_choice: PostRagTaskUpdateStrategyFunctionNames,
+        default_tool_choice: SelectWorkflowStrategyFunctionNames,
         temperature: float,
         task_context_length: int,
         count=0,
@@ -59,14 +59,9 @@ class AfaasPostRagTaskUpdateStrategy(AbstractPromptStrategy):
         **kwargs,
     ):
         self.afaas_task_post_rag_update_function: CompletionModelFunction = CompletionModelFunction(
-            name=PostRagTaskUpdateStrategyFunctionNames.POST_RAG_UPDATE.value,
-            description="Update a task before processing",
+            name=SelectWorkflowStrategyFunctionNames.SELECT_WORKFLOW.value,
+            description="Select a workflow",
             parameters={
-                "long_description": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    description=f"New paragraph that should be {str(self.task_context_length * 0.8)} to {str(self.task_context_length *  1.25)} words long.",
-                    required=True,
-                ),
                 "task_workflow": JSONSchema(
                     type=JSONSchema.Type.STRING,
                         description=f"The workflow to be used for the task",
@@ -75,6 +70,10 @@ class AfaasPostRagTaskUpdateStrategy(AbstractPromptStrategy):
                             workflow.name
                             for workflow in self._agent.workflow_registry.workflows.values()
                         ],
+                ),
+                "justifications": JSONSchema(
+                    type=JSONSchema.Type.STRING,
+                    description=f"Explain the reasons that led you to select this workflow specificaly and not select the others",
                 ),
             },
         )
