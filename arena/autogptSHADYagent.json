@@ -1,6 +1,6 @@
 {
-  "github_repo_url": "https://github.com/shady23091986/AutoGPT-shady",
-  "timestamp": "2024-02-01T21:30:30.153056",
-  "commit_hash_to_benchmark": "266fe3a3f788e7837840c21c8f92aa1c08665981",
-  "branch_to_benchmark": "autogptSHADYagent-v0.1.1"
+    "github_repo_url": "https://github.com/shady23091986/AutoGPT-shady",
+    "timestamp": "2024-02-02T20:39:01.555160",
+    "commit_hash_to_benchmark": "266fe3a3f788e7837840c21c8f92aa1c08665981",
+    "branch_to_benchmark": "master"
 }
