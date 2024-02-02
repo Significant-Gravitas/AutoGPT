@@ -288,7 +288,7 @@ async def open_page_in_browser(url: str, config: Config) -> WebDriver:
 
 
 def _sideload_chrome_extensions(options: ChromeOptions, dl_folder: Path) -> None:
-    crx_download_url_template = "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=49.0&acceptformat=crx3&x=id%3D{crx_id}%26installsource%3Dondemand%26uc"
+    crx_download_url_template = "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=49.0&acceptformat=crx3&x=id%3D{crx_id}%26installsource%3Dondemand%26uc"  # noqa
     cookiewall_squasher_crx_id = "edibdbjcniadpccecjdfdjjppcpchdlm"
     adblocker_crx_id = "cjpalhdlnbpafiamejdnhcphjbkeiagm"
 
