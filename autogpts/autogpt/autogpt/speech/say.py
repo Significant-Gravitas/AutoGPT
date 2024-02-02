@@ -1,4 +1,5 @@
 """ Text to speech module """
+
 from __future__ import annotations
 
 import os
@@ -31,11 +32,11 @@ class TTSConfig(SystemConfiguration):
         or (
             "macos"
             if os.getenv("USE_MAC_OS_TTS")
-            else "elevenlabs"
-            if os.getenv("ELEVENLABS_API_KEY")
-            else "streamelements"
-            if os.getenv("USE_BRIAN_TTS")
-            else "gtts"
+            else (
+                "elevenlabs"
+                if os.getenv("ELEVENLABS_API_KEY")
+                else "streamelements" if os.getenv("USE_BRIAN_TTS") else "gtts"
+            )
         ),
     )  # type: ignore
 

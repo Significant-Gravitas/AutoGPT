@@ -1,6 +1,7 @@
 """
 The application entry point. Can be invoked by a CLI or any other front end application.
 """
+
 import enum
 import logging
 import math

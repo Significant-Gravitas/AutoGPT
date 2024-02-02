@@ -19,8 +19,7 @@ TText = Sequence[int]
 @overload
 async def get_embedding(
     input: str | TText, config: Config, embedding_provider: EmbeddingModelProvider
-) -> Embedding:
-    ...
+) -> Embedding: ...
 
 
 @overload
@@ -28,8 +27,7 @@ async def get_embedding(
     input: list[str] | list[TText],
     config: Config,
     embedding_provider: EmbeddingModelProvider,
-) -> list[Embedding]:
-    ...
+) -> list[Embedding]: ...
 
 
 async def get_embedding(

@@ -243,16 +243,13 @@ class ModelProvider(abc.ABC):
     _configuration: ModelProviderConfiguration
 
     @abc.abstractmethod
-    def count_tokens(self, text: str, model_name: str) -> int:
-        ...
+    def count_tokens(self, text: str, model_name: str) -> int: ...
 
     @abc.abstractmethod
-    def get_tokenizer(self, model_name: str) -> "ModelTokenizer":
-        ...
+    def get_tokenizer(self, model_name: str) -> "ModelTokenizer": ...
 
     @abc.abstractmethod
-    def get_token_limit(self, model_name: str) -> int:
-        ...
+    def get_token_limit(self, model_name: str) -> int: ...
 
     def get_incurred_cost(self) -> float:
         if self._budget:
@@ -269,12 +266,10 @@ class ModelTokenizer(Protocol):
     """A ModelTokenizer provides tokenization specific to a model."""
 
     @abc.abstractmethod
-    def encode(self, text: str) -> list:
-        ...
+    def encode(self, text: str) -> list: ...
 
     @abc.abstractmethod
-    def decode(self, tokens: list) -> str:
-        ...
+    def decode(self, tokens: list) -> str: ...
 
 
 ####################
@@ -311,8 +306,7 @@ class EmbeddingModelProvider(ModelProvider):
         model_name: str,
         embedding_parser: Callable[[Embedding], Embedding],
         **kwargs,
-    ) -> EmbeddingModelResponse:
-        ...
+    ) -> EmbeddingModelResponse: ...
 
 
 ###############
@@ -344,8 +338,7 @@ class ChatModelProvider(ModelProvider):
         self,
         messages: ChatMessage | list[ChatMessage],
         model_name: str,
-    ) -> int:
-        ...
+    ) -> int: ...
 
     @abc.abstractmethod
     async def create_chat_completion(
@@ -355,5 +348,4 @@ class ChatModelProvider(ModelProvider):
         completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
         **kwargs,
-    ) -> ChatModelResponse[_T]:
-        ...
+    ) -> ChatModelResponse[_T]: ...

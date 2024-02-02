@@ -2,6 +2,7 @@
 The GCSWorkspace class provides an interface for interacting with a file workspace, and
 stores the files in a Google Cloud Storage bucket.
 """
+
 from __future__ import annotations
 
 import inspect

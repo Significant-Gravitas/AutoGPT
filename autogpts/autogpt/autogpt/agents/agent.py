@@ -138,11 +138,15 @@ class Agent(
                 + (
                     " BUDGET EXCEEDED! SHUT DOWN!\n\n"
                     if remaining_budget == 0
-                    else " Budget very nearly exceeded! Shut down gracefully!\n\n"
-                    if remaining_budget < 0.005
-                    else " Budget nearly exceeded. Finish up.\n\n"
-                    if remaining_budget < 0.01
-                    else ""
+                    else (
+                        " Budget very nearly exceeded! Shut down gracefully!\n\n"
+                        if remaining_budget < 0.005
+                        else (
+                            " Budget nearly exceeded. Finish up.\n\n"
+                            if remaining_budget < 0.01
+                            else ""
+                        )
+                    )
                 ),
             )
             logger.debug(budget_msg)

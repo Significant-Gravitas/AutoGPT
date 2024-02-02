@@ -250,12 +250,14 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
         response = await self.llm_provider.create_chat_completion(
             prompt.messages,
-            functions=get_openai_command_specs(
-                self.command_registry.list_available_commands(self)
-            )
-            + list(self._prompt_scratchpad.commands.values())
-            if self.config.use_functions_api
-            else [],
+            functions=(
+                get_openai_command_specs(
+                    self.command_registry.list_available_commands(self)
+                )
+                + list(self._prompt_scratchpad.commands.values())
+                if self.config.use_functions_api
+                else []
+            ),
             model_name=self.llm.name,
             completion_parser=lambda r: self.parse_and_process_response(
                 r,

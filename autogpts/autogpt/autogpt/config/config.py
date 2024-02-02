@@ -1,4 +1,5 @@
 """Configuration class to store the state of bools for different scripts access."""
+
 from __future__ import annotations
 
 import os
@@ -60,9 +61,11 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Workspace
     workspace_backend: FileWorkspaceBackendName = UserConfigurable(
         default=FileWorkspaceBackendName.LOCAL,
-        from_env=lambda: FileWorkspaceBackendName(v)
-        if (v := os.getenv("WORKSPACE_BACKEND"))
-        else None,
+        from_env=lambda: (
+            FileWorkspaceBackendName(v)
+            if (v := os.getenv("WORKSPACE_BACKEND"))
+            else None
+        ),
     )
 
     ##########################

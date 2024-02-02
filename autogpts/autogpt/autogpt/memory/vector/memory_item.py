@@ -58,20 +58,28 @@ Metadata: {json.dumps(self.metadata, indent=2)}
             # Embeddings can either be list[float] or np.ndarray[float32],
             # and for comparison they must be of the same type
             and np.array_equal(
-                self.e_summary
-                if isinstance(self.e_summary, np.ndarray)
-                else np.array(self.e_summary, dtype=np.float32),
-                other.e_summary
-                if isinstance(other.e_summary, np.ndarray)
-                else np.array(other.e_summary, dtype=np.float32),
+                (
+                    self.e_summary
+                    if isinstance(self.e_summary, np.ndarray)
+                    else np.array(self.e_summary, dtype=np.float32)
+                ),
+                (
+                    other.e_summary
+                    if isinstance(other.e_summary, np.ndarray)
+                    else np.array(other.e_summary, dtype=np.float32)
+                ),
             )
             and np.array_equal(
-                self.e_chunks
-                if isinstance(self.e_chunks[0], np.ndarray)
-                else [np.array(c, dtype=np.float32) for c in self.e_chunks],
-                other.e_chunks
-                if isinstance(other.e_chunks[0], np.ndarray)
-                else [np.array(c, dtype=np.float32) for c in other.e_chunks],
+                (
+                    self.e_chunks
+                    if isinstance(self.e_chunks[0], np.ndarray)
+                    else [np.array(c, dtype=np.float32) for c in self.e_chunks]
+                ),
+                (
+                    other.e_chunks
+                    if isinstance(other.e_chunks[0], np.ndarray)
+                    else [np.array(c, dtype=np.float32) for c in other.e_chunks]
+                ),
             )
         )
 

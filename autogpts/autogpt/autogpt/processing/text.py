@@ -1,4 +1,5 @@
 """Text processing functions"""
+
 import json
 import logging
 import math

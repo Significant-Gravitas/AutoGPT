@@ -1,6 +1,7 @@
 """
 The FileWorkspace class provides an interface for interacting with a file workspace.
 """
+
 from __future__ import annotations
 
 import logging

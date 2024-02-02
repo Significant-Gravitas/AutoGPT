@@ -2,6 +2,7 @@
 Test cases for the config class, which handles the configuration settings
 for the AI and ensures it behaves as a singleton.
 """
+
 import os
 from typing import Any
 from unittest import mock

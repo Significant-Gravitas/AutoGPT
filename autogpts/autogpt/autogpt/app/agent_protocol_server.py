@@ -432,13 +432,15 @@ class AgentProtocolServer:
         workspace = get_workspace(
             backend=self.app_config.workspace_backend,
             id=agent_id if not use_local_ws else "",
-            root_path=agent_manager.get_agent_dir(
-                agent_id=agent_id,
-                must_exist=True,
-            )
-            / "workspace"
-            if use_local_ws
-            else None,
+            root_path=(
+                agent_manager.get_agent_dir(
+                    agent_id=agent_id,
+                    must_exist=True,
+                )
+                / "workspace"
+                if use_local_ws
+                else None
+            ),
         )
         workspace.initialize()
         return workspace

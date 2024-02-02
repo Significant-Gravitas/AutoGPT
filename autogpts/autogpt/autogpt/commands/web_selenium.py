@@ -264,9 +264,11 @@ def open_page_in_browser(url: str, config: Config) -> WebDriver:
         chromium_driver_path = Path("/usr/bin/chromedriver")
 
         driver = ChromeDriver(
-            service=ChromeDriverService(str(chromium_driver_path))
-            if chromium_driver_path.exists()
-            else ChromeDriverService(ChromeDriverManager().install()),
+            service=(
+                ChromeDriverService(str(chromium_driver_path))
+                if chromium_driver_path.exists()
+                else ChromeDriverService(ChromeDriverManager().install())
+            ),
             options=options,
         )
     driver.get(url)
