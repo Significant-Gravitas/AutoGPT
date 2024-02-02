@@ -11,7 +11,6 @@ from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
     ChatMessage,
     ChatModelProvider,
-    ChatModelResponse,
     ModelTokenizer,
 )
 
