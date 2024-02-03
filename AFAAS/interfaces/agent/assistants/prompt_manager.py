@@ -55,9 +55,10 @@ class BasePromptManager(AgentMixin):
     def load_strategies(self) -> list[AbstractPromptStrategy]:
 
         import importlib
-        from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
+
         import AFAAS.prompts.common as common_module
-        from AFAAS.prompts import load_all_strategies , BaseTaskRagStrategy
+        from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
+        from AFAAS.prompts import BaseTaskRagStrategy, load_all_strategies
 
         strategies: list[AbstractPromptStrategy] = []
 

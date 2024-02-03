@@ -168,7 +168,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         from AFAAS.lib.task.plan import Plan
 
         if isinstance(self, Plan):
-            LOG.debug(F"Adding task { task.debug_formated_str(status=True) } to plan")
+            LOG.debug(f"Adding task { task.debug_formated_str(status=True) } to plan")
         elif self.state not in (
             TaskStatusList.READY,
             TaskStatusList.IN_PROGRESS_WITH_SUBTASKS,
@@ -382,8 +382,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
 
     #
     @abc.abstractmethod
-    async def db_create(self, agent: BaseAgent):
-        ...
+    async def db_create(self, agent: BaseAgent): ...
 
     def __str__(self):
         return f"{self.task_goal} (id : {self.task_id})"

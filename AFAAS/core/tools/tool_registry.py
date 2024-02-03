@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import inspect
 import os
-import importlib.util
 import pkgutil
 import time
 from types import ModuleType
@@ -391,7 +391,7 @@ class DefaultToolRegistry(Configurable, AbstractToolRegistry):
         file_path = os.path.join(target_directory, module_name + ".py")
 
         # Write the Python code to the file
-        with open(file_path, 'w') as file:
+        with open(file_path, "w") as file:
             file.write(code)
 
         # Load the module
@@ -400,4 +400,3 @@ class DefaultToolRegistry(Configurable, AbstractToolRegistry):
         spec.loader.exec_module(module)
 
         return module, file_path
-

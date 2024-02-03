@@ -1,16 +1,10 @@
-from AFAAS.core.tools.tool import Tool
-from AFAAS.interfaces.agent.main import BaseAgent
-
 import pytest
 
 from AFAAS.core.tools.tool import Tool
 from AFAAS.core.tools.tool_registry import DefaultToolRegistry
+from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.tools.tool_parameters import ToolParameter
 from AFAAS.lib.utils.json_schema import JSONSchema
-
-
-
-
 
 PARAMETERS = [
     ToolParameter(
@@ -30,6 +24,7 @@ PARAMETERS = [
         ),
     ),
 ]
+
 
 def example_tool_exec_function(arg1: int, arg2: str, agent: BaseAgent) -> str:
     """Example function for testing the Command class."""

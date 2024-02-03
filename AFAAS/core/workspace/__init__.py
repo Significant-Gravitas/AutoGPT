@@ -17,7 +17,7 @@ def get_workspace(
     backend: FileWorkspaceBackendName,
     *,
     user_id: str,
-    agent_id: str
+    agent_id: str,
     # , root_path: Optional[Path] = None
 ) -> AbstractFileWorkspace:
     root_path = Path(f"/workspaces/{user_id}/{agent_id}")

@@ -139,7 +139,9 @@ class PlannerLoop(BaseLoop):
                     command_args = current_task.arguments
                     assistant_reply_dict = current_task.long_description
                 else:
-                    raise Exception("Honney pot ! In order to ensure we can remove this section of code securely, we raise an exception.")
+                    raise Exception(
+                        "Honney pot ! In order to ensure we can remove this section of code securely, we raise an exception."
+                    )
                     LOG.error("No command to execute")
                     (
                         command_name,
@@ -160,14 +162,15 @@ class PlannerLoop(BaseLoop):
                 current_task.arguments = command_args
                 try:
                     tool, result = await current_task.task_execute()
-                    #await tool.success_check_callback(self=tool, task=self, tool_output=result)
+                    # await tool.success_check_callback(self=tool, task=self, tool_output=result)
                 except AgentException as e:
                     # FIXME : Implement retry mechanism if a fail
                     result = AgentException(reason=e.message, error=e)
                 LOG.debug(f"result : {str(result)}")
 
-            successfull_closure : bool = await current_task.task_postprocessing(tool =tool,
-                                                                                result = result)
+            successfull_closure: bool = await current_task.task_postprocessing(
+                tool=tool, result=result
+            )
 
             LOG.debug(f"successfull_closure : {successfull_closure}")
             LOG.debug(await self.plan().debug_dump_str(depth=2))
@@ -182,60 +185,55 @@ class PlannerLoop(BaseLoop):
                 LOG.info("All tasks are done 😄")
             elif self._current_task is None:
                 self._is_running = False
-                raise AgentException(  "The agent can't find the next task to execute 😱 ! This is an anomaly and we would be working on it." )
+                raise AgentException(
+                    "The agent can't find the next task to execute 😱 ! This is an anomaly and we would be working on it."
+                )
             else:
                 self.prepare_next_iteration()
 
+    async def prepare_next_iteration(self):
+        LOG.trace(f"Next task : {self._current_task.debug_formated_str()}")
+        LOG.info("Task history : (Max. 10 tasks)")
+        plan_history: list[Task] = await self.plan().get_last_achieved_tasks(count=10)
+        for i, task in enumerate(plan_history):
+            LOG.info(
+                f"{i+1}.Task : {task.debug_formated_str()} : {getattr(task, 'task_text_output', '')}"
+            )
 
-    async def prepare_next_iteration(self) : 
-                LOG.trace(f"Next task : {self._current_task.debug_formated_str()}")
-                LOG.info("Task history : (Max. 10 tasks)")
-                plan_history: list[Task] = await self.plan().get_last_achieved_tasks(
-                    count=10
-                )
-                for i, task in enumerate(plan_history):
-                    LOG.info(
-                        f"{i+1}.Task : {task.debug_formated_str()} : {getattr(task, 'task_text_output', '')}"
-                    )
+        if LOG.isEnabledFor(TRACE):
+            input("Press Enter to continue...")
 
-                if LOG.isEnabledFor(TRACE):
-                    input("Press Enter to continue...")
+        LOG.info(f"Task Path : {await self._current_task.get_formated_task_path()}")
+        task_path: list[Task] = await self._current_task.get_task_path()
+        for i, task in enumerate(task_path):
+            LOG.trace(
+                f"{i+1}.Task : {task.debug_formated_str()} : {getattr(task, 'task_text_output', '')}"
+            )
 
-                LOG.info(
-                    f"Task Path : {await self._current_task.get_formated_task_path()}"
-                )
-                task_path: list[Task] = await self._current_task.get_task_path()
-                for i, task in enumerate(task_path):
-                    LOG.trace(
-                        f"{i+1}.Task : {task.debug_formated_str()} : {getattr(task, 'task_text_output', '')}"
-                    )
+        if LOG.isEnabledFor(TRACE):
+            input("Press Enter to continue...")
 
-                if LOG.isEnabledFor(TRACE):
-                    input("Press Enter to continue...")
+        LOG.trace(f"Task Sibblings :")
+        task_sibblings: list[Task] = await self._current_task.get_siblings()
+        for i, task in enumerate(task_sibblings):
+            LOG.trace(
+                f"{i+1}.Task : {task.debug_formated_str()} : {getattr(task, 'task_text_output', '')}"
+            )
 
-                LOG.trace(f"Task Sibblings :")
-                task_sibblings: list[Task] = await self._current_task.get_siblings()
-                for i, task in enumerate(task_sibblings):
-                    LOG.trace(
-                        f"{i+1}.Task : {task.debug_formated_str()} : {getattr(task, 'task_text_output', '')}"
-                    )
+        if LOG.isEnabledFor(TRACE):
+            input("Press Enter to continue...")
 
-                if LOG.isEnabledFor(TRACE):
-                    input("Press Enter to continue...")
+        LOG.trace(f"Task Predecessor :")
+        task_predecessors: list[Task] = (
+            await self._current_task.task_predecessors.get_all_tasks_from_stack()
+        )
+        for i, task in enumerate(task_predecessors):
+            LOG.trace(
+                f"{i+1}.Task : {task.debug_formated_str()} : {getattr(task, 'task_text_output', '')}"
+            )
 
-                LOG.trace(f"Task Predecessor :")
-                task_predecessors: list[
-                    Task
-                ] = (
-                    await self._current_task.task_predecessors.get_all_tasks_from_stack()
-                )
-                for i, task in enumerate(task_predecessors):
-                    LOG.trace(
-                        f"{i+1}.Task : {task.debug_formated_str()} : {getattr(task, 'task_text_output', '')}"
-                    )
-
-                if LOG.isEnabledFor(NOTICE):
-                    input("Press Enter to continue...")
+        if LOG.isEnabledFor(NOTICE):
+            input("Press Enter to continue...")
 
     async def start(
         self,
@@ -315,4 +313,3 @@ class PlannerLoop(BaseLoop):
             return_value = AgentException(reason=e.message, error=e)
 
         return return_value
-

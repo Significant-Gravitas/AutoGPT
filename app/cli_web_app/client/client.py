@@ -1,6 +1,7 @@
 """
 It is essential that Agent (the parent of PlannerAgent) provide a method to load an object from a dictionary/json object for webapps
 """
+
 from time import sleep
 
 import click

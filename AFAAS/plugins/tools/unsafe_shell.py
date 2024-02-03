@@ -7,8 +7,8 @@ from pathlib import Path
 from subprocess import PIPE, STDOUT, Popen
 
 from dotenv import load_dotenv
-from langchain_community.tools.file_management.file_search import FileSearchTool
 from langchain.vectorstores import VectorStore
+from langchain_community.tools.file_management.file_search import FileSearchTool
 
 from AFAAS.core.tools.tool import Tool
 from AFAAS.core.tools.tool_decorator import SAFE_MODE, tool

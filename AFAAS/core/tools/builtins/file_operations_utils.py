@@ -25,8 +25,7 @@ T = TypeVar("T")
 
 class ParserStrategy(ABC):
     @abstractmethod
-    def read(self, file: BinaryIO) -> str:
-        ...
+    def read(self, file: BinaryIO) -> str: ...
 
 
 # Basic text file reading

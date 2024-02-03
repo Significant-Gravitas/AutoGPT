@@ -58,24 +58,26 @@ class AfaasSelectWorkflowStrategy(AbstractPromptStrategy):
         task: AbstractTask,
         **kwargs,
     ):
-        self.afaas_task_post_rag_update_function: CompletionModelFunction = CompletionModelFunction(
-            name=SelectWorkflowStrategyFunctionNames.SELECT_WORKFLOW.value,
-            description="Select a workflow",
-            parameters={
-                "task_workflow": JSONSchema(
-                    type=JSONSchema.Type.STRING,
+        self.afaas_task_post_rag_update_function: CompletionModelFunction = (
+            CompletionModelFunction(
+                name=SelectWorkflowStrategyFunctionNames.SELECT_WORKFLOW.value,
+                description="Select a workflow",
+                parameters={
+                    "task_workflow": JSONSchema(
+                        type=JSONSchema.Type.STRING,
                         description=f"The workflow to be used for the task",
                         required=True,
                         enum=[
                             workflow.name
                             for workflow in self._agent.workflow_registry.workflows.values()
                         ],
-                ),
-                "justifications": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    description=f"Explain the reasons that led you to select this workflow specificaly and not select the others",
-                ),
-            },
+                    ),
+                    "justifications": JSONSchema(
+                        type=JSONSchema.Type.STRING,
+                        description=f"Explain the reasons that led you to select this workflow specificaly and not select the others",
+                    ),
+                },
+            )
         )
 
         self._tools = [

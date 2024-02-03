@@ -567,12 +567,17 @@ class Plan(AbstractPlan):
     def __len__(self):
         return len(self._all_task_ids)
 
-    def set_as_priority(self, task : Task) : 
-        if task.state is not TaskStatusList.READY or task.task_id not in self._ready_task_ids:
-            raise Exception(f"Task {task.task_id} is not ready ; state : {task.state} ; ready tasks : {self._ready_task_ids}")
+    def set_as_priority(self, task: Task):
+        if (
+            task.state is not TaskStatusList.READY
+            or task.task_id not in self._ready_task_ids
+        ):
+            raise Exception(
+                f"Task {task.task_id} is not ready ; state : {task.state} ; ready tasks : {self._ready_task_ids}"
+            )
 
         self._ready_task_ids.remove(task.task_id)
-        self._ready_task_ids.insert(0, task.task_id) 
+        self._ready_task_ids.insert(0, task.task_id)
 
 
 Plan.update_forward_refs()

@@ -1,6 +1,5 @@
 """Tools to execute code"""
 
-
 import os
 import subprocess
 from pathlib import Path
@@ -95,8 +94,7 @@ def execute_python_code(code: str, task: Task, agent: BaseAgent) -> str:
 )
 @sanitize_path_arg("filename")
 def execute_python_file(
-    task: Task,
-    filename: Path, agent: BaseAgent, args: list[str] | str = []
+    task: Task, filename: Path, agent: BaseAgent, args: list[str] | str = []
 ) -> str:
     """Execute a Python file in a Docker container and return the output
 

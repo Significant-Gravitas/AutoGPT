@@ -4,6 +4,7 @@ This is a minimal file intended to be run by users to help them manage the autog
 If you want to contribute, please use only libraries that come as part of Python.
 To ensure efficiency, add the imports to the functions so only what is needed is imported.
 """
+
 try:
     import sys
 
@@ -195,7 +196,9 @@ def benchmark_tests_list():
                     .replace("  ", " ")
                 )
                 test_name_padded = f"{test_name:<40}"
-                click.echo(click.style(f"\t\t🔬 {test_name_padded} - {test}", fg="cyan"))
+                click.echo(
+                    click.style(f"\t\t🔬 {test_name_padded} - {test}", fg="cyan")
+                )
     else:
         click.echo(click.style("No tests found 😞", fg="red"))
 

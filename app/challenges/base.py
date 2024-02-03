@@ -4,12 +4,11 @@ from pathlib import Path
 from typing import AsyncIterator, ClassVar, Optional
 
 import pytest
+from agbenchmark.config import AgentBenchmarkConfig
+from agbenchmark.utils.data_types import Category, DifficultyLevel, EvalResult
 from agent_protocol_client import AgentApi, Step
 from colorama import Fore, Style
 from pydantic import BaseModel, Field
-
-from agbenchmark.config import AgentBenchmarkConfig
-from agbenchmark.utils.data_types import Category, DifficultyLevel, EvalResult
 
 logger = logging.getLogger(__name__)
 
@@ -100,5 +99,4 @@ class BaseChallenge(ABC):
     @abstractmethod
     async def evaluate_task_state(
         cls, agent: AgentApi, task_id: str
-    ) -> list[EvalResult]:
-        ...
+    ) -> list[EvalResult]: ...

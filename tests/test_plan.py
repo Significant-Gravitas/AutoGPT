@@ -69,7 +69,9 @@ async def test_plan_hashable(plan_step_2: Plan):
     other_plan = await _plan_step_10()
     assert hash(plan_step_2) == hash(other_plan), "Hashes of same plans should match"
     other_plan = "new_id"
-    assert hash(plan_step_2) != hash(other_plan), "Hashes of different plans should not match"
+    assert hash(plan_step_2) != hash(
+        other_plan
+    ), "Hashes of different plans should not match"
 
 
 def test_plan_length(plan_with_no_task: Plan, default_task: Task):
@@ -81,4 +83,3 @@ def test_plan_length(plan_with_no_task: Plan, default_task: Task):
     assert len(plan) == 1, "Plan length should be 1 after adding a task"
 
     # Optionally, add more tasks and verify the length increases accordingly
-

@@ -103,14 +103,18 @@ class User(BaseModel):
 
 
 users_db = {
-    "user1@example.com": User(
-        email="user1@example.com", password_hash=password_context.hash("password1")
-    )
-    if USE_DICTIONARY
-    else None,
-    "user2@example.com": User(
-        email="user2@example.com", password_hash=password_context.hash("password2")
-    )
-    if USE_DICTIONARY
-    else None,
+    "user1@example.com": (
+        User(
+            email="user1@example.com", password_hash=password_context.hash("password1")
+        )
+        if USE_DICTIONARY
+        else None
+    ),
+    "user2@example.com": (
+        User(
+            email="user2@example.com", password_hash=password_context.hash("password2")
+        )
+        if USE_DICTIONARY
+        else None
+    ),
 }

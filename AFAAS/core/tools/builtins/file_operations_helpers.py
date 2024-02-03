@@ -88,10 +88,7 @@ def is_duplicate_operation(
         True if the operation has already been performed on the file
     """
     # FIXMEv0.0.2 : Set as AgentSetting #121 , https://github.com/ph-ausseil/afaas/issues/121
-    LOG_FILE_OPERATION = (
-        Path(agent.log_path)
-        / (f"{agent.agent_id}_file_operation")
-    )
+    LOG_FILE_OPERATION = Path(agent.log_path) / (f"{agent.agent_id}_file_operation")
     print(LOG_FILE_OPERATION)
     state = file_operations_state(LOG_FILE_OPERATION)
     if operation == "delete" and file_path not in state:
@@ -116,10 +113,7 @@ def log_operation(
         checksum: The checksum of the contents to be written
     """
     # FIXMEv0.0.2 : Set as AgentSetting  #121 , https://github.com/ph-ausseil/afaas/issues/121
-    LOG_FILE_OPERATION = (
-        Path(agent.log_path)
-        / (f"{agent.agent_id}_file_operation")
-    )
+    LOG_FILE_OPERATION = Path(agent.log_path) / (f"{agent.agent_id}_file_operation")
 
     log_entry = f"{operation}: {file_path}"
     if checksum is not None:
