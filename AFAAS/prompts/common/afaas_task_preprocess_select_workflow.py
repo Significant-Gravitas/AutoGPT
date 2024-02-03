@@ -26,7 +26,7 @@ LOG = AFAASLogger(name=__name__)
 
 
 class SelectWorkflowStrategyFunctionNames(str, enum.Enum):
-    SELECT_WORKFLOW: str = "afaas_select_workflow"
+    SELECT_WORKFLOW: str = "afaas_task_preprocess_select_workflow"
 
 
 class SelectWorkflowStrategyConfiguration(PromptStrategiesConfiguration):
@@ -38,7 +38,7 @@ class SelectWorkflowStrategyConfiguration(PromptStrategiesConfiguration):
 
 
 class AfaasSelectWorkflowStrategy(AbstractPromptStrategy):
-    STRATEGY_NAME = "afaas_select_workflow"
+    STRATEGY_NAME = "afaas_task_preprocess_select_workflow"
     default_configuration = SelectWorkflowStrategyConfiguration()
 
     def __init__(

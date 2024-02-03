@@ -62,5 +62,5 @@ def test_default_success_check_callback(empty_tool_registry):
     empty_tool_registry.register(tool)
 
     registered_tool = empty_tool_registry.get_tool(langchain_tool.name)
-    assert registered_tool.success_check_callback == Tool.default_success_check_callback
+    assert registered_tool.success_check_callback == Tool.default_tool_success_check_callback
 

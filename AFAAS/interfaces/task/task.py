@@ -133,3 +133,11 @@ class AbstractTask(AbstractBaseTask):
     @abstractmethod
     async def task_postprocessing(self):
         ...
+
+    @abstractmethod
+    async def retry(self):
+        ...
+
+    @abstractmethod
+    async def memorize_output(self):
+        ...

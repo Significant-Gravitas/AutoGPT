@@ -32,6 +32,7 @@ class Tool:
     """
 
     success_check_callback: Callable[..., Any]
+    make_summarry_function: Callable[..., Any]
 
     def __init__(
         self,
@@ -41,6 +42,7 @@ class Tool:
         exec_function: Callable[..., ToolOutput],
         parameters: list[ToolParameter],
         success_check_callback: Callable[..., Any],
+        make_summarry_function: Callable[..., Any],
         enabled: Literal[True] | Callable[[Any], bool] = True,
         disabled_reason: Optional[str] = None,
         aliases: list[str] = [],
@@ -58,6 +60,7 @@ class Tool:
         self.available = available
         self.hide = hide
         self.success_check_callback = success_check_callback
+        self.make_summarry_function = make_summarry_function
         self.tech_description = tech_description or description
         self.categories = categories
 
@@ -75,6 +78,15 @@ class Tool:
         ]
         return f"{self.name}: {self.description.rstrip('.')}. Params: ({', '.join(params)})"
 
+    def dump(self) -> CompletionModelFunction:
+        param_dict = {parameter.name: parameter.spec for parameter in self.parameters}
+
+        return CompletionModelFunction(
+            name=self.name,
+            description=self.description,
+            parameters=param_dict,
+        )
+
     @classmethod
     def generate_from_langchain_tool(
         cls,
@@ -82,9 +94,13 @@ class Tool:
         arg_converter: Optional[Callable] = None,
         categories: list[str] = ["undefined"],
         success_check_callback=None,
+        make_summarry_function=None,
     ) -> "Tool":
         success_check_callback = (
-            success_check_callback or cls.default_success_check_callback
+            success_check_callback or cls.default_tool_success_check_callback
+        )
+        make_summarry_function = (
+            make_summarry_function or cls.default_tool_execution_summarry
         )
 
         async def wrapper(*args, **kwargs):
@@ -131,6 +147,7 @@ class Tool:
             hide=False,
             # Add other optional parameters as needed, like disabled_reason, aliases, etc.
             success_check_callback=success_check_callback,  # Added this line
+            make_summarry_function=make_summarry_function,  # Added this line
         )
 
         # Avoid circular import
@@ -142,17 +159,16 @@ class Tool:
 
         return _tool_instance
 
-    async def default_success_check_callback(
+
+    async def default_tool_success_check_callback(
         self, task: AbstractTask, tool_output: Any
     ):
-        LOG.trace(f"Tool.default_success_check_callback() called for {self}")
-        LOG.debug(f"Task = {task}")
-        LOG.debug(f"Tool output = {tool_output}")
+        return True
 
-        agent: BaseAgent = task.agent
 
-        strategy_result = await agent.execute_strategy(
-            strategy_name="afaas_task_default_summary",
+    async def default_tool_execution_summarry(self, task: AbstractTask, tool_output: Any):
+        strategy_result = await task.agent.execute_strategy(
+            strategy_name="afaas_task_postprocess_default_summary",
             task=task,
             tool_output=tool_output,
             tool=self,
@@ -164,41 +180,5 @@ class Tool:
         ]
         task.task_text_output_as_uml = strategy_result.parsed_result[0][
             "command_args"
-        ].get("text_output_as_uml", "")
+        ].get("text_output_as_uml", "") #NOTE replace by [] if not present ?
 
-        # vector = await agent.vectorstores["tasks"].aadd_texts(
-        #     texts=[task.task_text_output],
-        #     metadatas=[{"task_id": task.task_id, 
-        #                 "plan_id": task.plan_id ,
-        #                 "agent_id": task.agent.agent_id ,
-        #                 "type" : DocumentType.TASK.value
-        #                 }],
-        # )
-        from langchain_core.documents import Document
-        document = Document(
-            page_content=task.task_text_output,
-            metadata=   {
-                        "task_id": task.task_id, 
-                        "plan_id": task.plan_id ,
-                        "agent_id": task.agent.agent_id ,
-                        }
-        )
-        vector = await agent.vectorstores.add_document(
-                                                       document_type = DocumentType.TASK,  
-                                                       document = document , 
-                                                       document_id =  task.task_id
-                                                       ) 
-
-
-        LOG.trace(f"Task output embedding added to vector store : {repr(vector)}")
-
-        return task.task_text_output
-
-    def dump(self) -> CompletionModelFunction:
-        param_dict = {parameter.name: parameter.spec for parameter in self.parameters}
-
-        return CompletionModelFunction(
-            name=self.name,
-            description=self.description,
-            parameters=param_dict,
-        )

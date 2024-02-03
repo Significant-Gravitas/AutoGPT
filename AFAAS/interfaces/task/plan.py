@@ -105,3 +105,13 @@ class AbstractPlan(AbstractBaseTask):
     @abstractmethod
     def _register_new_task(self, task: AbstractTask) -> None:
         ...
+
+    @abstractmethod
+    def __len__(self) -> int:
+        """ The total number of tasks in the plan. """
+        ...
+
+    @abstractmethod 
+    def set_as_priority(self, task : AbstractTask) -> None:
+        """ Move an Task that is ready among the next tasks to be executed. For example : If a tasks fails and is to be executed again, it can be moved to the top of the list of tasks to be executed. """
+        ...

@@ -159,13 +159,15 @@ class PlannerLoop(BaseLoop):
                 current_task.command = command_name
                 current_task.arguments = command_args
                 try:
-                    return_value = await current_task.task_execute()
+                    tool, result = await current_task.task_execute()
+                    #await tool.success_check_callback(self=tool, task=self, tool_output=result)
                 except AgentException as e:
                     # FIXME : Implement retry mechanism if a fail
-                    return_value = AgentException(reason=e.message, error=e)
-                LOG.debug(f"return_value : {str(return_value)}")
+                    result = AgentException(reason=e.message, error=e)
+                LOG.debug(f"result : {str(result)}")
 
-            successfull_closure : bool = await current_task.task_postprocessing()
+            successfull_closure : bool = await current_task.task_postprocessing(tool =tool,
+                                                                                result = result)
 
             LOG.debug(f"successfull_closure : {successfull_closure}")
             LOG.debug(await self.plan().debug_dump_str(depth=2))

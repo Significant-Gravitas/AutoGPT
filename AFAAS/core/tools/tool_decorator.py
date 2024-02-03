@@ -54,7 +54,10 @@ def tool(
     hide=False,
     success_check_callback: Optional[
         Callable[..., Any]
-    ] = Tool.default_success_check_callback,  # Add this line
+    ] = Tool.default_tool_success_check_callback, 
+    make_summarry_function: Optional[
+        Callable[..., Any]
+    ] = Tool.default_tool_execution_summarry,  # Add this line
     tech_description: Optional[str] = None,
 ) -> Callable[[Callable[P, CO]], Callable[P, CO]]:
     """The command decorator is used to create Tool objects from ordinary functions."""
@@ -80,6 +83,7 @@ def tool(
             available=available,
             hide=hide,
             success_check_callback=success_check_callback,
+            make_summarry_function= make_summarry_function
         )
 
         from AFAAS.core.tools.builtins.not_implemented_tool import not_implemented_tool
@@ -119,7 +123,8 @@ def tool_from_langchain(
     aliases: list[str] = [],
     available: bool = True,
     hide: bool = False,
-    success_check_callback: Callable = Tool.default_success_check_callback,
+    success_check_callback: Callable = Tool.default_tool_success_check_callback,
+    make_summarry_function: Callable = Tool.default_tool_execution_summarry,
 ):
     def decorator(base_tool: Type[BaseTool]):
         base_tool_instance = base_tool()
@@ -156,6 +161,7 @@ def tool_from_langchain(
             available=available,
             hide=hide,
             success_check_callback=success_check_callback,
+            make_summarry_function =make_summarry_function
         )(wrapper)
 
     return decorator

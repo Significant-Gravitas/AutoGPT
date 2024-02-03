@@ -27,7 +27,7 @@ LOG = AFAASLogger(name=__name__)
 
 
 class BaseTaskSummaryStrategyFunctionNames(str, enum.Enum):
-    DEFAULT_TASK_SUMMARY: str = "afaas_task_default_summary"
+    DEFAULT_TASK_SUMMARY: str = "afaas_task_postprocess_default_summary"
 
 
 class BaseTaskSummaryStrategyConfiguration(PromptStrategiesConfiguration):
@@ -40,7 +40,7 @@ class BaseTaskSummaryStrategyConfiguration(PromptStrategiesConfiguration):
 
 class BaseTaskSummary_Strategy(AbstractPromptStrategy):
     default_configuration = BaseTaskSummaryStrategyConfiguration()
-    STRATEGY_NAME = "afaas_task_default_summary"
+    STRATEGY_NAME = "afaas_task_postprocess_default_summary"
 
     def __init__(
         self,
@@ -60,7 +60,7 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
         task: AbstractTask,
         **kwargs,
     ):
-        self.afaas_task_default_summary: CompletionModelFunction = CompletionModelFunction(
+        self.afaas_task_postprocess_default_summary: CompletionModelFunction = CompletionModelFunction(
             name=BaseTaskSummaryStrategyFunctionNames.DEFAULT_TASK_SUMMARY.value,
             description="Provide detailed information about the task and the context of the task to the Agent responsible or completing the task.",
             parameters={
@@ -97,7 +97,7 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
         )
 
         self._tools = [
-            self.afaas_task_default_summary,
+            self.afaas_task_postprocess_default_summary,
         ]
 
     from AFAAS.core.tools import Tool

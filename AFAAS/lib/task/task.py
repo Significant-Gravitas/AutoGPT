@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import TYPE_CHECKING, Optional
+import copy
+from typing import TYPE_CHECKING, Optional, Any
 from AFAAS.interfaces.tools.tool_output import ToolOutput
+from AFAAS.core.tools.tool import Tool
 from AFAAS.lib.sdk.errors import AgentException, ToolExecutionError, UnknownToolError
 
 from pydantic import Field, validator
@@ -37,6 +39,8 @@ class Task(AbstractTask):
         # self._task_parent_loaded = asyncio.Event()
         self._task_parent_future = asyncio.Future()
         self.plan_id = self.agent.plan.plan_id
+        self.task_number = len(self.agent.plan)
+        self.task_attempt_number = 0
 
     def __setattr__(self, key, value):
         # Set attribute as normal
@@ -309,60 +313,6 @@ class Task(AbstractTask):
             return self.task_id == other.task_id
         return False
 
-    def __copy__(self):
-        import copy
-        from AFAAS.interfaces.task.base import AFAASModel
-        cls = self.__class__
-        clone = cls(**self.dict(), agent = self.agent)
-        # for attr in self.__dict__:
-        #     original_value = getattr(self, attr)
-
-        #     if isinstance(original_value, (AbstractBaseTask, BaseAgent)):
-        #         # Keep reference for AbstractBaseTask and BaseAgent types
-        #         setattr(clone, attr, original_value)
-        #     elif isinstance(original_value, TaskStack):
-        #         continue
-        #     elif isinstance(original_value, asyncio.Future):
-        #         setattr(clone, attr, original_value)
-        #     else:
-        #         # Copy all other attributes
-        #         setattr(clone, attr, copy.copy(original_value))
-        clone.agent = self.agent
-        clone._task_parent = self._task_parent
-
-        return clone
-
-    def __deepcopy__(self, memo) : 
-        import copy
-        LOG.warning(f"You should not use deepcopy on Task objects. Use Task.clone() instead")
-        return copy.deepcopy(self)
-
-    async def clone(self , with_predecessor = False) -> Task:
-        import copy
-        clone = copy.copy(self)
-
-
-        import datetime
-        clone.created_at = datetime.datetime.now()
-        clone.task_id = Task.generate_uuid()
-
-        clone.state = TaskStatusList.BACKLOG
-        clone.task_text_output = None
-        clone.task_text_output_as_uml = None
-        clone._task_successors = []
-        for successor in await self.task_successors.get_all_tasks_from_stack():
-            successor.add_predecessor(clone)
-        if with_predecessor :
-            for predecessor in await self.task_predecessors.get_all_tasks_from_stack():
-                predecessor.add_successor(clone)
-        return clone
-
-    async def retry(self) -> Task:
-        """ Clone a task and adds it as its immediate successor"""
-        LOG.warning("Task.retry() is an experimental method")
-        clone = self.clone()
-        self.add_successor(clone)
-        return clone
 
     async def task_preprossessing(
         self,
@@ -374,19 +324,20 @@ class Task(AbstractTask):
         nb_similar_tasks: int = 100,
         avoid_sibbling_predecessors_redundancy: bool = False,
     ):  
-        # NOTE: in current implementation self.command is always routing
-        workflow = await self._select_workflow()
+        if self.task_workflow is None : 
+            # NOTE: in current implementation self.command is always routing
+            workflow = await self._select_workflow()
 
-        if self.task_workflow != FastTrackedWorkflow.name : 
-            rv = await self._preprocess_rags(
-                predecessors=predecessors,
-                successors=successors,
-                history=history,
-                sibblings=sibblings,
-                path=path,
-                nb_similar_tasks=nb_similar_tasks,
-                avoid_sibbling_predecessors_redundancy=avoid_sibbling_predecessors_redundancy,
-            )
+            if workflow != FastTrackedWorkflow.name : 
+                rv = await self._preprocess_rags(
+                    predecessors=predecessors,
+                    successors=successors,
+                    history=history,
+                    sibblings=sibblings,
+                    path=path,
+                    nb_similar_tasks=nb_similar_tasks,
+                    avoid_sibbling_predecessors_redundancy=avoid_sibbling_predecessors_redundancy,
+                )
 
     async def _select_workflow(self) : 
             # RAG : 4. Post-Rag task update
@@ -396,6 +347,8 @@ class Task(AbstractTask):
             )
             result = rv.parsed_result[0]["command_args"]
             self.task_workflow = result["task_workflow"]
+
+            return self.task_workflow
 
     async def _preprocess_rags(
         self,
@@ -532,21 +485,85 @@ class Task(AbstractTask):
             # self.task_workflow = rv.parsed_result[0]["command_args"]["task_workflow"]
 
 
-    async def task_execute(self) -> ToolOutput:
+    async def task_execute(self) -> tuple[Tool, ToolOutput]:
         LOG.info(f"Executing command : {self.command}")
         LOG.info(f"with arguments : {self.arguments}")
 
         if tool := self.agent._tool_registry.get_tool(tool_name=self.command):
             try:
                 result = await tool(**self.arguments, task=self, agent=self.agent)
-                await tool.success_check_callback(self=tool, task=self, tool_output=result)
-                return result
+                return tool, result
             except Exception as e:
                 raise ToolExecutionError(str(e))
         raise UnknownToolError(f"Cannot execute command '{self.command}': unknown command.")
 
 
-    async def task_postprocessing(self) -> bool:
+    def __copy__(self):
+
+        cls = self.__class__
+        clone = cls(**self.dict(), agent = self.agent)
+        clone.agent = self.agent
+        clone._task_parent = self._task_parent
+
+        return clone
+
+    def __deepcopy__(self, memo) : 
+        LOG.warning(f"You should not use deepcopy on Task objects. Use Task.clone() instead")
+        return copy.deepcopy(self)
+
+    async def clone(self , with_predecessor = False , new_attempt = True , reset_attempt = True ) -> Task:
+        clone = copy.copy(self)
+
+
+        import datetime
+        clone.created_at = datetime.datetime.now()
+        clone.task_id = Task.generate_uuid()
+        clone.task_number = len(self.agent.plan)
+        if new_attempt :
+            clone.task_attempt_number += 1
+        elif reset_attempt :
+            clone.task_attempt_number = 0
+
+        clone.state = TaskStatusList.BACKLOG
+        clone.task_text_output = None
+        clone.task_text_output_as_uml = None
+        clone._task_successors = TaskStack(parent_task=clone, description="Successors")
+        for successor in await self.task_successors.get_all_tasks_from_stack():
+            successor.add_predecessor(clone)
+        if with_predecessor :
+            for predecessor in await self.task_predecessors.get_all_tasks_from_stack():
+                predecessor.add_successor(clone)
+        return clone
+
+    async def retry(self) -> Task:
+        """ Clone a task and adds it as its immediate successor"""
+        LOG.warning("Task.retry() is an experimental method")
+
+        # Clone the task
+        clone = await self.clone()
+
+        # Register it in the plan and add it as subtask of it's parent
+        parent = await self.task_parent()
+        parent.add_task(clone) 
+
+        # Add the clone as a successor of the original task
+        self.add_successor(clone)
+
+        # await clone.is_ready() will not work because the self, is not closed yet
+        # So we set the status to ready manually
+        clone.state = TaskStatusList.READY
+
+        # Make the clone the next task in the plan
+        self.agent.plan.set_as_priority(task = clone)
+
+        return clone
+
+
+    async def task_postprocessing(self, tool : Tool , tool_output: Any) -> bool:
+
+        await self.process_tool_output(tool = tool, 
+                                       tool_output = tool_output)
+
         try : 
             if await self.is_ready():
                 """If the task still match readiness criterias at this point, it means that we can close it"""
@@ -562,6 +579,43 @@ class Task(AbstractTask):
             return True
         except : 
             return False
+
+
+    async def process_tool_output(
+        self,
+        tool : Tool, 
+        tool_output: Any
+    ):
+        LOG.trace(f"Tool.default_success_check_callback() called for {tool}")
+        LOG.debug(f"Task = {self}")
+        LOG.debug(f"Tool output = {tool_output}")
+
+        await tool.make_summarry_function(self, task = self,  tool_output = tool_output)
+        await self.memorize_output()
+
+        if not await tool.success_check_callback() : 
+            await self.retry()
+
+        return 
+
+
+    async def memorize_output(self):
+        from langchain_core.documents import Document
+        document = Document(
+            page_content=self.task_text_output,
+            metadata=   {
+                        "task_id": self.task_id, 
+                        "plan_id": self.plan_id ,
+                        "agent_id": self.agent.agent_id ,
+                        }
+        )
+        vector = await self.agent.vectorstores.add_document(
+                                                       document_type = DocumentType.TASK,  
+                                                       document = document , 
+                                                       document_id =  self.task_id
+                                                       ) 
+        LOG.trace(f"Task output embedding added to vector store : {repr(vector)}")
+        return self.task_text_output
 
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.

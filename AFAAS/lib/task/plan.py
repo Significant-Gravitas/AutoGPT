@@ -561,49 +561,18 @@ class Plan(AbstractPlan):
                 plan_id=self.plan_id, agent_id=self.agent.agent_id, value=self
             )
 
-    # endregion
-
-    # def generate_pitch(self, task: Task = None):
-    #     if task is None:
-    #         task = self.find_first_ready_task()
-
-    #     # Extract the task's siblings and path
-    #     siblings: list[Task] = [
-    #         sib
-    #         for sib in self.subtasks
-    #         if sib._task_parent_id == task._task_parent_id and sib != task
-    #     ]
-    #     path_to_task = await task.get_task_path()
-
-    #     # Build the pitch
-    #     pitch = """
-    #     # INSTRUCTION
-    #     Your goal is to find the best-suited command in order to achieve the following task: {task_description}
-
-    #     # CONTEXT
-    #     The high-level plan designed to achieve our goal is:
-    #     {high_level_plan}
-
-    #     We are working on the task "{task_name}" that consists in: {task_command}. This task is located in:
-    #     {path_structure}
-    #     """.format(
-    #         task_description=task.description,
-    #         high_level_plan="\n".join(
-    #             [
-    #                 "{}: {}".format(t.task_goal, t.description)
-    #                 for t in self.subtasks
-    #                 if not t._task_parent_id
-    #             ]
-    #         ),
-    #         task_name=task.task_goal,
-    #         task_command=task.command,  # assuming each task has a 'command' attribute
-    #         path_structure="\n".join(["->".join(p.task_goal for p in path_to_task)]),
-    #     )
-
-    #     return pitch
-
     def __hash__(self):
         return hash(self.plan_id)
+
+    def __len__(self):
+        return len(self._all_task_ids)
+
+    def set_as_priority(self, task : Task) : 
+        if task.state is not TaskStatusList.READY or task.task_id not in self._ready_task_ids:
+            raise Exception(f"Task {task.task_id} is not ready ; state : {task.state} ; ready tasks : {self._ready_task_ids}")
+
+        self._ready_task_ids.remove(task.task_id)
+        self._ready_task_ids.insert(0, task.task_id) 
 
 
 Plan.update_forward_refs()
