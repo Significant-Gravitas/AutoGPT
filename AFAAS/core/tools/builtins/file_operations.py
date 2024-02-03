@@ -6,8 +6,8 @@ import os
 import os.path
 from pathlib import Path
 
-from langchain_community.tools.file_management.file_search import FileSearchTool
 from langchain.vectorstores import VectorStore
+from langchain_community.tools.file_management.file_search import FileSearchTool
 
 from AFAAS.core.tools.builtins.file_operations_helpers import (
     is_duplicate_operation,
@@ -132,22 +132,24 @@ async def write_to_file(
     # )
 
     from langchain_core.documents import Document
+
     from AFAAS.interfaces.adapters.embeddings.wrapper import DocumentType
+
     document = Document(
         page_content=contents,
-        metadata=               {
-                "agent_id": str(artifact.agent_id),
-                "user_id": str(artifact.user_id),
-                "relative_path": str(artifact.relative_path),
-                "file_name": str(artifact.file_name),
-                "mime_type": str(artifact.mime_type),
-            }
+        metadata={
+            "agent_id": str(artifact.agent_id),
+            "user_id": str(artifact.user_id),
+            "relative_path": str(artifact.relative_path),
+            "file_name": str(artifact.file_name),
+            "mime_type": str(artifact.mime_type),
+        },
     )
     vector = await agent.vectorstores.add_document(
-                                                    document_type = DocumentType.DOCUMENTS,  
-                                                    document = document , 
-                                                    document_id =  str(artifact.artifact_id)
-                                                    ) 
+        document_type=DocumentType.DOCUMENTS,
+        document=document,
+        document_id=str(artifact.artifact_id),
+    )
     #  ids=[str(filename)],
     #  lang="en",
     #  title=str(filename),

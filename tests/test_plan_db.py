@@ -69,7 +69,7 @@ async def mock_plan_data(agent, tasks):
         "plan_id": "mock_plan_" + str(uuid.uuid4()),
         "agent": agent,  # Assuming BaseAgent can be instantiated like this
         "tasks": tasks,
-        "task_goal": agent.agent_goal_sentence
+        "task_goal": agent.agent_goal_sentence,
         # Add other necessary plan attributes here
     }
 

@@ -3,14 +3,18 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine
 
-from langchain_core.embeddings import Embeddings
 from langchain.vectorstores import VectorStore
+from langchain_core.embeddings import Embeddings
 
 from AFAAS.core.tools.builtins import (
     BUILTIN_MODULES,  # FIXME: This is a temporary fix but shall not be delt here
 )
 from AFAAS.core.tools.tool_registry import DefaultToolRegistry
 from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
+from AFAAS.interfaces.adapters.embeddings.wrapper import (
+    ChromaWrapper,
+    VectorStoreWrapper,
+)
 from AFAAS.interfaces.agent.assistants.prompt_manager import BasePromptManager
 from AFAAS.interfaces.agent.assistants.tool_executor import ToolExecutor
 from AFAAS.interfaces.agent.main import BaseAgent
@@ -22,7 +26,6 @@ from AFAAS.lib.message_common import AFAASMessageStack
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.plan import Plan, TaskStatusList
 
-from AFAAS.interfaces.adapters.embeddings.wrapper import VectorStoreWrapper, ChromaWrapper
 from .loop import PlannerLoop
 
 LOG = AFAASLogger(name=__name__)
@@ -72,7 +75,7 @@ class PlannerAgent(BaseAgent):
         db: AbstractMemory = None,
         default_llm_provider: AbstractLanguageModelProvider = None,
         workspace: AbstractFileWorkspace = None,
-        vectorstore : VectorStoreWrapper = None,  # Optional parameter for custom vectorstore
+        vectorstore: VectorStoreWrapper = None,  # Optional parameter for custom vectorstore
         embedding_model: Embeddings = None,  # Optional parameter for custom embedding model
         workflow_registry: WorkflowRegistry = None,
         log_path=None,

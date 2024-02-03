@@ -54,7 +54,7 @@ def tool(
     hide=False,
     success_check_callback: Optional[
         Callable[..., Any]
-    ] = Tool.default_tool_success_check_callback, 
+    ] = Tool.default_tool_success_check_callback,
     make_summarry_function: Optional[
         Callable[..., Any]
     ] = Tool.default_tool_execution_summarry,  # Add this line
@@ -83,7 +83,7 @@ def tool(
             available=available,
             hide=hide,
             success_check_callback=success_check_callback,
-            make_summarry_function= make_summarry_function
+            make_summarry_function=make_summarry_function,
         )
 
         from AFAAS.core.tools.builtins.not_implemented_tool import not_implemented_tool
@@ -161,7 +161,7 @@ def tool_from_langchain(
             available=available,
             hide=hide,
             success_check_callback=success_check_callback,
-            make_summarry_function =make_summarry_function
+            make_summarry_function=make_summarry_function,
         )(wrapper)
 
     return decorator

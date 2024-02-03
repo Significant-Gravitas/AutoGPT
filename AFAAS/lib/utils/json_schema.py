@@ -67,9 +67,11 @@ class JSONSchema(BaseModel):
             type=schema["type"],
             enum=schema["enum"] if "enum" in schema else None,
             items=JSONSchema.from_dict(schema["items"]) if "items" in schema else None,
-            properties=JSONSchema.parse_properties(schema)
-            if schema["type"] == "object"
-            else None,
+            properties=(
+                JSONSchema.parse_properties(schema)
+                if schema["type"] == "object"
+                else None
+            ),
             minimum=schema.get("minimum"),
             maximum=schema.get("maximum"),
             minItems=schema.get("minItems"),

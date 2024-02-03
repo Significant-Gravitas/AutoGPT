@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import inspect
 import asyncio
+import inspect
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 from AFAAS.interfaces.tools.tool_output import ToolOutput
@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 from langchain.tools.base import BaseTool
 
 from AFAAS.interfaces.adapters import CompletionModelFunction
-from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.interfaces.adapters.embeddings.wrapper import DocumentType
+from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 # from AFAAS.interfaces.agent.main import BaseAgent
@@ -109,7 +109,9 @@ class Tool:
             # Convert arguments
             tool_input = arg_converter(kwargs, agent) if arg_converter else kwargs
 
-            LOG.debug(f"Running LangChain tool {langchain_tool.name} with arguments {kwargs}")
+            LOG.debug(
+                f"Running LangChain tool {langchain_tool.name} with arguments {kwargs}"
+            )
 
             # Check if the tool's run method is asynchronous and call accordingly
             if asyncio.iscoroutinefunction(langchain_tool.__call__):
@@ -123,11 +125,13 @@ class Tool:
                 spec=JSONSchema(
                     type=schema.get("type"),
                     description=schema.get("description", schema.get("title")),
-                    required=bool(
-                        langchain_tool.args_schema.__fields__[name].required
-                    )  # gives True if `field.required == pydantic.Undefined``
-                    if langchain_tool.args_schema
-                    else True,
+                    required=(
+                        bool(
+                            langchain_tool.args_schema.__fields__[name].required
+                        )  # gives True if `field.required == pydantic.Undefined``
+                        if langchain_tool.args_schema
+                        else True
+                    ),
                 ),
             )
             for name, schema in langchain_tool.args.items()
@@ -159,14 +163,14 @@ class Tool:
 
         return _tool_instance
 
-
     async def default_tool_success_check_callback(
         self, task: AbstractTask, tool_output: Any
     ):
         return True
 
-
-    async def default_tool_execution_summarry(self, task: AbstractTask, tool_output: Any):
+    async def default_tool_execution_summarry(
+        self, task: AbstractTask, tool_output: Any
+    ):
         strategy_result = await task.agent.execute_strategy(
             strategy_name="afaas_task_postprocess_default_summary",
             task=task,
@@ -180,5 +184,6 @@ class Tool:
         ]
         task.task_text_output_as_uml = strategy_result.parsed_result[0][
             "command_args"
-        ].get("text_output_as_uml", "") #NOTE replace by [] if not present ?
-
+        ].get(
+            "text_output_as_uml", ""
+        )  # NOTE replace by [] if not present ?

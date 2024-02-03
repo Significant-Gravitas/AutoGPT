@@ -5,11 +5,10 @@ from typing import ClassVar, Iterator, Literal
 
 import pytest
 import requests
-from agent_protocol_client import AgentApi, Step
-from pydantic import BaseModel, validator, ValidationError
-
 from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.utils.data_types import Category, EvalResult
+from agent_protocol_client import AgentApi, Step
+from pydantic import BaseModel, ValidationError, validator
 
 from .base import BaseChallenge, ChallengeInfo
 
@@ -77,13 +76,11 @@ def resolve_uri(uri: str) -> str:
 
 class Eval(ABC):
     @abstractmethod
-    def evaluate(self, string: str) -> bool:
-        ...
+    def evaluate(self, string: str) -> bool: ...
 
     @property
     @abstractmethod
-    def description(self) -> str:
-        ...
+    def description(self) -> str: ...
 
 
 class StringEval(BaseModel, Eval):
@@ -383,9 +380,11 @@ class WebArenaChallenge(BaseChallenge):
                     request.node.user_properties.append(
                         (
                             "answers",
-                            step.output
-                            if request.config.getoption("--keep-answers")
-                            else None,
+                            (
+                                step.output
+                                if request.config.getoption("--keep-answers")
+                                else None
+                            ),
                         )
                     )
             timed_out = False

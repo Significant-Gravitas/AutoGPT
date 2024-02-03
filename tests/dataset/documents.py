@@ -1,7 +1,9 @@
-import pytest
 from pathlib import Path
+
+import pytest
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import TextLoader
+
 
 async def load_and_chunk_file(file_path: str):
     if isinstance(file_path, Path):

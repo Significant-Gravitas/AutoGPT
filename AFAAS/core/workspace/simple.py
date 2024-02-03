@@ -1,6 +1,7 @@
 """
 The LocalFileWorkspace class implements a AbstractFileWorkspace that works with local files.
 """
+
 from __future__ import annotations
 
 import uuid
