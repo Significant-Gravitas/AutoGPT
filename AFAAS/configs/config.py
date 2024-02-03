@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional, Union
 
-from auto_gpt_plugin_template import AutoGPTPluginTemplate
+
 from pydantic import Field, validator
 
 import AFAAS
@@ -190,7 +190,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # plugins_config: PluginsConfig = Field(
     #     default_factory=lambda: PluginsConfig(plugins={})
     # )
-    plugins: list[AutoGPTPluginTemplate] = Field(default_factory=list, exclude=True)
+    plugins: list = Field(default_factory=list, exclude=True)
     plugins_allowlist: list[str] = UserConfigurable(
         default_factory=list,
         from_env=lambda: _safe_split(os.getenv("ALLOWLISTED_PLUGINS")),
@@ -231,15 +231,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Stable Diffusion
     sd_webui_auth: Optional[str] = UserConfigurable(from_env="SD_WEBUI_AUTH")
 
-    @validator("plugins", each_item=True)
-    def validate_plugins(cls, p: AutoGPTPluginTemplate | Any):
-        assert issubclass(
-            p.__class__, AutoGPTPluginTemplate
-        ), f"{p} does not subclass AutoGPTPluginTemplate"
-        assert (
-            p.__class__.__name__ != "AutoGPTPluginTemplate"
-        ), f"Plugins must subclass AutoGPTPluginTemplate; {p} is a template instance"
-        return p
+
 
     # @validator("openai_functions")
     # def validate_openai_functions(cls, v: bool, values: dict[str, Any]):

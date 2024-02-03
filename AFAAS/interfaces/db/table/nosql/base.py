@@ -115,7 +115,7 @@ class BaseNoSQLTable(AbstractTable):
         elif isinstance(value, Configurable):
             value = value.dict()
         else:
-            LOG.warning("Class not hinheriting from AFAASModel")
+            LOG.notice(f"Class {value.__class__.__name__} not hinheriting from AFAASModel")
             value = self.__class__.serialize_value(value)
 
         # Assigning primary key

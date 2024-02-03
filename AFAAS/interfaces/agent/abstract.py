@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from pathlib import Path
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Optional
 
@@ -22,6 +23,7 @@ from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores.chroma import Chroma
 from langchain_core.embeddings import Embeddings
 from langchain.vectorstores import VectorStore
+from AFAAS.interfaces.adapters.embeddings.wrapper import VectorStoreWrapper, ChromaWrapper
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.prompts.strategy import AbstractChatModelResponse
@@ -35,23 +37,19 @@ class AbstractAgent(ABC):
     plan : Optional[AbstractPlan] = None
 
     @property
-    def vectorstores(self) -> dict[str , VectorStore]:
-        # Ensure 'tasks' and 'documents' VectorStores are initialized
-        self._ensure_vectorstore_initialized("tasks")
-        self._ensure_vectorstore_initialized("documents")
+    def vectorstores(self) -> VectorStoreWrapper:        
+        if self._vectorstores is None:
+            self._vectorstores = ChromaWrapper(vector_store=Chroma(
+                persist_directory=f'data/chroma/',
+                embedding_function=self.embedding_model
+            ), embedding_model= self.embedding_model)
         return self._vectorstores
 
-    def _ensure_vectorstore_initialized(self, key: str):
-        if key not in self._vectorstores or self._vectorstores[key] is None:
-            self._vectorstores[key] = Chroma(
-                persist_directory=f'data/chroma/{key}',
-                embedding_function=self.embedding_model
-            )
-
     @vectorstores.setter
-    def vectorstores(self, value: dict[str , VectorStore]):
-        for key, vectorstore in value.items():
-            self._vectorstores[key] = vectorstore
+    def vectorstores(self, value: VectorStoreWrapper):
+        if not isinstance(value, VectorStoreWrapper):
+            raise ValueError("vectorstores must be a VectorStoreWrapper")
+        self._vectorstores : VectorStoreWrapper = value
 
     @property
     def embedding_model(self) -> Embeddings:
@@ -130,7 +128,7 @@ class AbstractAgent(ABC):
             super().__init__(**data)
             for field_name, field_type in self.__annotations__.items():
                 # Check if field_type is a class before calling issubclass
-                #FIXME:0.0.2 Implement same behaviour for TaskStack in AbstractBaseTask
+                #FIXME:0.0.3 Implement same behaviour for TaskStack in AbstractBaseTask
                 if isinstance(field_type, type) and field_name in data and issubclass(field_type, AFAASMessageStack):
                     setattr(self, field_name, AFAASMessageStack(_messages=data[field_name]))
 
@@ -188,11 +186,12 @@ class AbstractAgent(ABC):
         workspace: AbstractFileWorkspace,
         prompt_manager: BasePromptManager,
         default_llm_provider: AbstractLanguageModelProvider,
-        vectorstores: dict[str , VectorStore],
+        vectorstore: VectorStoreWrapper,
         embedding_model : Embeddings,
         workflow_registry: WorkflowRegistry,
         user_id: str,
         agent_id: str,
+        log_path : str,
         **kwargs,
     ) -> Any:
         LOG.trace(f"{self.__class__.__name__}.__init__() : Entering")
@@ -201,6 +200,7 @@ class AbstractAgent(ABC):
         self.agent_id = agent_id
         self.user_id = user_id
         self.agent_name = settings.agent_name
+        self.log_path : Path = log_path or (Path(__file__).parent.parent.parent.parent / "logs")
 
         #
         # Step 1 : Set the chat model provider
@@ -218,9 +218,8 @@ class AbstractAgent(ABC):
 
         self._default_llm_provider : AbstractLanguageModelProvider = default_llm_provider
         self._embedding_model : Embeddings = embedding_model
-        self._vectorstores : dict[VectorStore] = {}
-        for key, vectorstore in vectorstores.items():
-            self._vectorstores[key] : VectorStore = vectorstore
+
+        self._vectorstores: VectorStoreWrapper = vectorstore
 
         self._workflow_registry : WorkflowRegistry = workflow_registry
 
@@ -259,7 +258,7 @@ class AbstractAgent(ABC):
     #     agent = cls(    **system_dict , 
     #                     workspace=workspace, 
     #                     default_llm_provider=default_llm_provider,
-    #                     vectorstores=vectorstores,
+    #                     vectorstore=vectorstores,
     #                     embedding_model=embedding_model,
     #                     db=db,
     #                     )

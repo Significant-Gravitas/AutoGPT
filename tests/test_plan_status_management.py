@@ -182,7 +182,7 @@ async def test_update_individual_task_status(plan_step_0: Plan, default_task: Ta
     assert task.state == TaskStatusList.IN_PROGRESS_WITH_SUBTASKS
 
     # Assert the plan reflects this update
-    assert task.task_id not in plan._ready_task_ids
+    assert task.task_id not in default_task.agent.plan._ready_task_ids
 
 
 @pytest.mark.asyncio

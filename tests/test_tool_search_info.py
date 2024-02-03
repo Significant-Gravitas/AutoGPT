@@ -119,10 +119,10 @@ async def test_search_info_unrecognized_command(
     action_tool = MagicMock()
     mock_parameters = MagicMock()
 
-    mock_search_result.parsed_result = [
-        action,
-        mock_parameters,
-        mock_assistant_response,
+    mock_search_result.parsed_result = [{ "command_name" : action,
+        "command_args": mock_parameters,
+        "mock_assistant_response" : mock_assistant_response
+        }
     ]
 
     mock_agent.execute_strategy = AsyncMock(return_value=mock_search_result)

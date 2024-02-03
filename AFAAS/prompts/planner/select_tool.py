@@ -30,7 +30,6 @@ from AFAAS.interfaces.prompts.utils.utils import (
     to_string_list,
 )
 from AFAAS.interfaces.task.task import AbstractTask
-from AFAAS.lib.action_history import Episode
 
 
 class SelectToolFunctionNames(str, enum.Enum):
@@ -85,13 +84,7 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
         del kwargs["tools"]
         self._tools = agent._tool_registry.dump_tools()
 
-        progress = (
-            self.compile_progress(
-                event_history,
-            )
-            if event_history
-            else ""
-        )
+        progress = "" # TODO:""
         response_format_instr = self.response_format_instruction()
         extra_messages: list[ChatMessage] = []
         extra_messages.append(ChatMessage.system(response_format_instr))
@@ -149,49 +142,3 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
 
     def save(self):
         pass
-
-    def compile_progress(
-        self,
-        episode_history: list[Episode],
-        max_tokens: Optional[int] = None,
-        count_tokens: Optional[Callable[[str], int]] = None,
-    ) -> str:
-        if max_tokens and not count_tokens:
-            raise ValueError("count_tokens is required if max_tokens is set")
-
-        steps: list[str] = []
-        tokens: int = 0
-        start: int = len(episode_history)
-
-        for i, c in reversed(list(enumerate(episode_history))):
-            step = f"### Step {i+1}: Executed `{c.action.format_call()}`\n"
-            step += f'- **Reasoning:** "{c.action.reasoning}"\n'
-            step += (
-                f"- **Status:** `{c.result.status if c.result else 'did_not_finish'}`\n"
-            )
-            if c.result:
-                if c.result.status == "success":
-                    result = str(c.result)
-                    result = "\n" + indent(result) if "\n" in result else result
-                    step += f"- **Output:** {result}"
-                elif c.result.status == "error":
-                    step += f"- **Reason:** {c.result.reason}\n"
-                    if c.result.error:
-                        step += f"- **Error:** {c.result.error}\n"
-                elif c.result.status == "interrupted_by_human":
-                    step += f"- **Feedback:** {c.result.feedback}\n"
-
-            if max_tokens and count_tokens:
-                step_tokens = count_tokens(step)
-                if tokens + step_tokens > max_tokens:
-                    break
-                tokens += step_tokens
-
-            steps.insert(0, step)
-            start = i
-
-        # TODO: summarize remaining
-
-        slice(0, start)
-
-        return "\n\n".join(steps)

@@ -25,7 +25,7 @@ class AgentMixin:
 
     def set_agent(self, agent: BaseAgent):
         if hasattr(self, "_agent") and self._agent is not None:
-            LOG.warning(f"Agent already set")
+            LOG.notice(f"Agent already set")
         else :
             LOG.info(f"Setting agent {agent.agent_id} for {self.__class__.__name__}")
 
@@ -70,7 +70,7 @@ class AgentMixin:
         return await self._agent.db.get_table(table_name=table_name)
 
     def get_strategy(self, strategy_name: str) -> AbstractPromptStrategy:
-        return self._agent._prompt_manager._prompt_strategies[strategy_name]
+        return self._agent._prompt_manager.get_strategy(strategy_name=strategy_name)
 
     async def _execute_strategy(
         self, strategy_name: str, **kwargs

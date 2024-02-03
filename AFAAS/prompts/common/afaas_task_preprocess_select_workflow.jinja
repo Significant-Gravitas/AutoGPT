@@ -1,0 +1,24 @@
+## Instructions
+
+An Autonomous agent, powered by a Large Language Model, is tasked with executing a specific job. Given the capabilities and limitations of the Large Language Model, it is crucial to accurately determine the most suitable workflow for the task at hand. 
+
+### Task description
+
+{{ to_md_quotation(task.long_description) }}
+
+### Workflows
+
+Carefully evaluate the following workflows to decide which one aligns best with the requirements of the task described above. Consider factors such as the need for subdivision, the complexity of planning, and the immediacy of the task.
+
+{% for workflow in workflows %}{{ loop.index }}. {{ workflow.name }}: {{ workflow.description }}
+  Example:{% for example in workflow.examples %}
+   - {{ example }}{% endfor %}
+{% endfor %}
+
+### Decision Criteria
+
+- **Complexity**: Does the task involve multiple steps, requiring detailed planning or research?
+- **Specificity**: Is the task focused on software development, including coding, debugging, or integration?
+- **Urgency and Simplicity**: Is the task straightforward and needs to be executed quickly without requiring subdivision?
+
+Select the workflow that best matches the task's characteristics, ensuring that the chosen workflow facilitates efficient and effective completion. The goal is to avoid prematurely selecting the FastTrackedWorkflow in situations where a more thoughtful or structured approach could yield better results.

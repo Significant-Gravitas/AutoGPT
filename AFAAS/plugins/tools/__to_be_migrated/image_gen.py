@@ -10,10 +10,8 @@ import uuid
 from base64 import b64decode
 from pathlib import Path
 
-from openai import OpenAI
-
-client = OpenAI()
 import requests
+from openai import OpenAI
 from PIL import Image
 
 from AFAAS.core.tools.tool_decorator import SAFE_MODE, tool
@@ -153,17 +151,18 @@ def generate_image_with_dalle(
         )
         size = closest
 
-    response = client.images.generate(
+    response = OpenAI(
+        api_key=agent.legacy_config.openai_credentials.api_key.get_secret_value()
+    ).images.generate(
         prompt=prompt,
         n=1,
         size=f"{size}x{size}",
         response_format="b64_json",
-        api_key=agent.legacy_config.openai_credentials.api_key.get_secret_value(),
     )
 
     LOG.info(f"Image Generated for prompt:{prompt}")
 
-    image_data = b64decode(response["data"][0]["b64_json"])
+    image_data = b64decode(response.data[0].b64_json)
 
     with open(output_file, mode="wb") as png:
         png.write(image_data)

@@ -15,6 +15,7 @@ from langchain.tools.base import BaseTool
 
 from AFAAS.interfaces.adapters import CompletionModelFunction
 from AFAAS.interfaces.task.task import AbstractTask
+from AFAAS.interfaces.adapters.embeddings.wrapper import DocumentType
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 # from AFAAS.interfaces.agent.main import BaseAgent
@@ -31,6 +32,7 @@ class Tool:
     """
 
     success_check_callback: Callable[..., Any]
+    make_summarry_function: Callable[..., Any]
 
     def __init__(
         self,
@@ -40,6 +42,7 @@ class Tool:
         exec_function: Callable[..., ToolOutput],
         parameters: list[ToolParameter],
         success_check_callback: Callable[..., Any],
+        make_summarry_function: Callable[..., Any],
         enabled: Literal[True] | Callable[[Any], bool] = True,
         disabled_reason: Optional[str] = None,
         aliases: list[str] = [],
@@ -57,6 +60,7 @@ class Tool:
         self.available = available
         self.hide = hide
         self.success_check_callback = success_check_callback
+        self.make_summarry_function = make_summarry_function
         self.tech_description = tech_description or description
         self.categories = categories
 
@@ -65,16 +69,6 @@ class Tool:
         return inspect.iscoroutinefunction(self.method)
 
     def __call__(self, *args, agent: BaseAgent, **kwargs) -> Any:
-        # if callable(self.enabled) and not self.enabled(agent.legacy_config):
-        #     if self.disabled_reason:
-        #         raise RuntimeError(
-        #             f"Tool '{self.name}' is disabled: {self.disabled_reason}"
-        #         )
-        #     raise RuntimeError(f"Tool '{self.name}' is disabled")
-
-        # if callable(self.available) and not self.available(agent):
-        #     raise RuntimeError(f"Tool '{self.name}' is not available")
-
         return self.method(*args, **kwargs, agent=agent)
 
     def __str__(self) -> str:
@@ -84,6 +78,15 @@ class Tool:
         ]
         return f"{self.name}: {self.description.rstrip('.')}. Params: ({', '.join(params)})"
 
+    def dump(self) -> CompletionModelFunction:
+        param_dict = {parameter.name: parameter.spec for parameter in self.parameters}
+
+        return CompletionModelFunction(
+            name=self.name,
+            description=self.description,
+            parameters=param_dict,
+        )
+
     @classmethod
     def generate_from_langchain_tool(
         cls,
@@ -91,9 +94,13 @@ class Tool:
         arg_converter: Optional[Callable] = None,
         categories: list[str] = ["undefined"],
         success_check_callback=None,
+        make_summarry_function=None,
     ) -> "Tool":
         success_check_callback = (
-            success_check_callback or cls.default_success_check_callback
+            success_check_callback or cls.default_tool_success_check_callback
+        )
+        make_summarry_function = (
+            make_summarry_function or cls.default_tool_execution_summarry
         )
 
         async def wrapper(*args, **kwargs):
@@ -109,10 +116,6 @@ class Tool:
                 return await langchain_tool.arun(tool_input)
             else:
                 return langchain_tool.run(tool_input)
-
-            from .tool_decorator import tool as tool_wrapper
-            _tool_instance.__call__ = tool_wrapper(_tool_instance.__call__(**tool_input))
-            return _tool_instance.__call__too
 
         typed_parameters = [
             ToolParameter(
@@ -144,6 +147,7 @@ class Tool:
             hide=False,
             # Add other optional parameters as needed, like disabled_reason, aliases, etc.
             success_check_callback=success_check_callback,  # Added this line
+            make_summarry_function=make_summarry_function,  # Added this line
         )
 
         # Avoid circular import
@@ -155,17 +159,16 @@ class Tool:
 
         return _tool_instance
 
-    async def default_success_check_callback(
+
+    async def default_tool_success_check_callback(
         self, task: AbstractTask, tool_output: Any
     ):
-        LOG.trace(f"Tool.default_success_check_callback() called for {self}")
-        LOG.debug(f"Task = {task}")
-        LOG.debug(f"Tool output = {tool_output}")
+        return True
 
-        agent: BaseAgent = task.agent
 
-        strategy_result = await agent.execute_strategy(
-            strategy_name="afaas_task_default_summary",
+    async def default_tool_execution_summarry(self, task: AbstractTask, tool_output: Any):
+        strategy_result = await task.agent.execute_strategy(
+            strategy_name="afaas_task_postprocess_default_summary",
             task=task,
             tool_output=tool_output,
             tool=self,
@@ -177,28 +180,5 @@ class Tool:
         ]
         task.task_text_output_as_uml = strategy_result.parsed_result[0][
             "command_args"
-        ].get("text_output_as_uml", "")
+        ].get("text_output_as_uml", "") #NOTE replace by [] if not present ?
 
-        # task_ouput_embedding = await agent.embedding_model.aembed_query(text = task.task_text_output)
-        # vector = await agent.vectorstore.aadd_texts(
-        #     task_ouput_embedding, metadatas= [{'task_id' : task.task_id , 'plan_id' : task.plan_id}]
-        #     )
-        vector = await agent.vectorstores["tasks"].aadd_texts(
-            texts=[task.task_text_output],
-            metadatas=[{"task_id": task.task_id, "plan_id": task.plan_id}],
-        )
-
-        LOG.trace(f"Task output embedding added to vector store : {repr(vector)}")
-
-        return task.task_text_output
-
-        # return summary
-
-    def dump(self) -> CompletionModelFunction:
-        param_dict = {parameter.name: parameter.spec for parameter in self.parameters}
-
-        return CompletionModelFunction(
-            name=self.name,
-            description=self.description,
-            parameters=param_dict,
-        )

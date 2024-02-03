@@ -281,6 +281,9 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
                 "strategy": self,
             }
         )
+        if hasattr(task, "task_parent") :
+            template_params.update({"task_parent": await task.task_parent()})
+
         return template.render(template_params)
 
     def build_chat_prompt(self, messages: list[ChatMessage]) -> ChatPrompt:

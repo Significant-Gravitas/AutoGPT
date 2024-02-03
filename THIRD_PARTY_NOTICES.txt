@@ -8,3 +8,5 @@ AutoGPT
 -------
 Copyright (c) 2023, Toran Bruce Richards
 License: MIT License
+
+This project take inspiration from https://github.com/e-johnstonn/GPT-Doc-Summarizer , which is licensed under the MIT License.

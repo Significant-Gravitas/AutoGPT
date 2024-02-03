@@ -43,20 +43,6 @@ class PlannerLoop(BaseLoop):
         user_input_handler: Optional[Callable[[str], Awaitable[str]]] = None,
         user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None,
     ) -> None:
-        from pathlib import Path
-
-        # current_task = self._current_task
-        # # NOTE : Test tools individually
-        # command_name = "web_search"
-        # command_args= {"query": "instructions for building a Pizza oven"}
-        # return_value = await execute_command(
-        #     command_name=command_name,
-        #     arguments=command_args,
-        #     task=current_task,
-        #     agent=self._agent,
-        # )
-        # print(return_value)
-        import AFAAS.core.tools.builtins.file_operations as file_ops
 
         # current_task = self._current_task
         # # NOTE : Test tools individually
@@ -90,6 +76,7 @@ class PlannerLoop(BaseLoop):
         ##############################################################
         ### Step 1 : BEGIN WITH A HOOK
         ##############################################################
+        # NOTE : Reminicence opf a previous plugg in system to remove once Pipeline implemented
         await self.handle_hooks(
             hook_key="begin_run",
             hooks=hooks,
@@ -102,6 +89,7 @@ class PlannerLoop(BaseLoop):
             ##############################################################
             ### Step 2 : USER CONTEXT AGENT : IF USER CONTEXT AGENT EXIST
             ##############################################################
+            # Note to remove once user_context tool rewritten
             if not aaas["usercontext"]:
                 self._agent.agent_goals = [self._agent.agent_goal_sentence]
             else:
@@ -129,13 +117,6 @@ class PlannerLoop(BaseLoop):
                 description=description, routing_feedbacks=routing_feedbacks
             )
 
-            # Debugging :)
-            # LOG.info(Plan.debug_info_parse_task(self._agent.plan))
-
-            ###
-            ### Assign task
-            ###
-
         ##############################################################
         # NOTE : Important KPI to log during crashes
         ##############################################################
@@ -158,6 +139,7 @@ class PlannerLoop(BaseLoop):
                     command_args = current_task.arguments
                     assistant_reply_dict = current_task.long_description
                 else:
+                    raise Exception("Honney pot ! In order to ensure we can remove this section of code securely, we raise an exception.")
                     LOG.error("No command to execute")
                     (
                         command_name,
@@ -168,51 +150,45 @@ class PlannerLoop(BaseLoop):
                 ##############################################################
                 ### Step 6 : Prepare RAG #
                 ##############################################################
-                await current_task.prepare_rag()
+                # NOTE : Anayse swap between step 5 and 6
+                await current_task.task_preprossessing()
 
                 ##############################################################
                 ### Step 7 : execute_tool() #
                 ##############################################################
-                await self.execute_tool(
-                    command_name=command_name,
-                    command_args=command_args,
-                    current_task=current_task
-                    # user_input = assistant_reply_dict
-                )
+                current_task.command = command_name
+                current_task.arguments = command_args
+                try:
+                    tool, result = await current_task.task_execute()
+                    #await tool.success_check_callback(self=tool, task=self, tool_output=result)
+                except AgentException as e:
+                    # FIXME : Implement retry mechanism if a fail
+                    result = AgentException(reason=e.message, error=e)
+                LOG.debug(f"result : {str(result)}")
 
-            if await current_task.is_ready():
-                """If the task still match readiness criterias at this point, it means that we can close it"""
-                await current_task.close_task()
-            else:
-                """
-                If the task doesn't match readiness criterias at this point, it means that we can't close it
-                this situation is usualy due to the addition of subbtasks (or predecessor ?) during the excecution of the task.
-                """
-                if current_task.state != TaskStatusList.IN_PROGRESS_WITH_SUBTASKS : 
-                    LOG.error(f"Can't terminate Task : {current_task.debug_formated_str()}")
-                    raise Exception(f"Can't terminate Task : {current_task.debug_formated_str()}")
+            successfull_closure : bool = await current_task.task_postprocessing(tool =tool,
+                                                                                result = result)
 
+            LOG.debug(f"successfull_closure : {successfull_closure}")
             LOG.debug(await self.plan().debug_dump_str(depth=2))
-            self._current_task = await self.plan().get_next_task(task=current_task)
 
+            self._current_task = await self.plan().get_next_task(task=current_task)
             await self.save_plan()
 
             if len(self.plan().get_all_tasks_ids()) == len(
                 self.plan().get_all_done_tasks_ids()
             ):
+                self._is_running = False
                 LOG.info("All tasks are done 😄")
-                self._is_running = False
             elif self._current_task is None:
-                LOG.error(
-                    "The agent can't find the next task to execute 😱 ! This is an anomaly and we would be working on it."
-                )
-                LOG.info(
-                    "The software is still in deveopment and  availableas a preview. Such anomaly are a priority and we would be working on it."
-                )
                 self._is_running = False
+                raise AgentException(  "The agent can't find the next task to execute 😱 ! This is an anomaly and we would be working on it." )
             else:
-                LOG.trace(f"Next task : {self._current_task.debug_formated_str()}")
+                self.prepare_next_iteration()
 
+
+    async def prepare_next_iteration(self) : 
+                LOG.trace(f"Next task : {self._current_task.debug_formated_str()}")
                 LOG.info("Task history : (Max. 10 tasks)")
                 plan_history: list[Task] = await self.plan().get_last_achieved_tasks(
                     count=10
@@ -328,17 +304,11 @@ class PlannerLoop(BaseLoop):
     ) -> Any:
         result: any
 
-        # NOTE : Test tools individually
-        # command_name = "web_search"
-        # command_args: {"query": "instructions for building a Pizza oven"}
+        current_task.command = command_name
+        current_task.arguments = command_args
 
         try:
-            return_value = await execute_command(
-                command_name=command_name,
-                arguments=command_args,
-                task=current_task,
-                agent=self._agent,
-            )
+            return_value = await current_task.task_execute()
 
         except AgentException as e:
             # FIXME : Implement retry mechanism if a fail
@@ -346,20 +316,3 @@ class PlannerLoop(BaseLoop):
 
         return return_value
 
-
-async def execute_command(
-    command_name: str, arguments: dict[str, str], agent: PlannerAgent, task: Task
-) -> ToolOutput:
-    LOG.info(f"Executing command : {command_name}")
-    LOG.info(f"with arguments : {arguments}")
-    if tool := agent._tool_registry.get_tool(tool_name=command_name):
-        try:
-            result = await tool(**arguments, task=task, agent=agent)
-            await tool.success_check_callback(self=tool, task=task, tool_output=result)
-            return result
-        except AgentException:
-            raise
-        except Exception as e:
-            raise ToolExecutionError(str(e))
-
-    raise UnknownToolError(f"Cannot execute command '{command_name}': unknown command.")

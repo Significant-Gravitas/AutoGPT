@@ -1,4 +1,6 @@
 """Text processing functions"""
+import json
+import logging
 import math
 import os
 from typing import Iterator, Optional, TypeVar
@@ -84,74 +86,154 @@ async def summarize_text(
     model = "gpt-3.5-turbo"
 
     if question:
+        if instruction:
+            raise ValueError(
+                "Parameters 'question' and 'instructions' cannot both be set"
+            )
+
         instruction = (
-            'Include any information that can be used to answer the question: "%s". '
-            "Do not directly answer the question itself."
-        ) % question
-
-    summarization_prompt = ChatPrompt(messages=[])
-
-    text_tlength = llm_provider.count_tokens(text, model)
-    LOG.info(f"Text length: {text_tlength} tokens")
-
-    # reserve 50 tokens for summary prompt, 500 for the response
-    max_chunk_length = llm_provider.get_token_limit(model) - 550
-    LOG.info(f"Max chunk length: {max_chunk_length} tokens")
-
-    if text_tlength < max_chunk_length:
-        # summarization_prompt.add("user", text)
-        summarization_prompt.messages.append(
-            ChatMessage.user(
-                "Write a concise summary of the following text."
-                f"{f' {instruction}' if instruction is not None else ''}:"
-                "\n\n\n"
-                f'LITERAL TEXT: """{text}"""'
-                "\n\n\n"
-                "CONCISE SUMMARY: The text is best summarized as"
-            )
+            f'From the text, answer the question: "{question}". '
+            "If the answer is not in the text, indicate this clearly "
+            "and concisely state why the text is not suitable to answer the question."
+        )
+    elif not instruction:
+        instruction = (
+            "Summarize or describe the text clearly and concisely, "
+            "whichever seems more appropriate."
         )
 
-        summary = (
-            await llm_provider.create_chat_completion(
-                chat_messages=summarization_prompt.messages,
-                model_name=model,
-                temperature=0,
-                max_tokens=500,
-            )
-        ).response["content"]
-
-        LOG.trace(f"\n{'-'*16} SUMMARY {'-'*17}\n{summary}\n{'-'*42}\n")
-        return summary.strip(), None
-
-    summaries: list[str] = []
-    chunks = list(
-        split_text(
-            text,
-            max_chunk_length=max_chunk_length,
-            tokenizer=llm_provider.get_tokenizer(model),
-        )
-    )
-
-    for i, (chunk, chunk_length) in enumerate(chunks):
-        LOG.info(
-            f"Summarizing chunk {i + 1} / {len(chunks)} of length {chunk_length} tokens"
-        )
-        summary, _ = await summarize_text(
-            text=chunk,
-            instruction=instruction,
-            llm_provider=llm_provider,
-        )
-        summaries.append(summary)
-
-    LOG.info(f"Summarized {len(chunks)} chunks")
-
-    summary, _ = await summarize_text(
-        "\n\n".join(summaries),
+    return await _process_text(  # type: ignore
+        text=text,
+        instruction=instruction,
         llm_provider=llm_provider,
     )
-    return summary.strip(), [
-        (summaries[i], chunks[i][0]) for i in range(0, len(chunks))
-    ]
+
+
+async def extract_information(
+    source_text: str,
+    topics_of_interest: list[str],
+    llm_provider: AbstractChatModelProvider,
+    ) -> list[str]:
+    fmt_topics_list = "\n".join(f"* {topic}." for topic in topics_of_interest)
+    instruction = (
+        "Extract relevant pieces of information about the following topics:\n"
+        f"{fmt_topics_list}\n"
+        "Reword pieces of information if needed to make them self-explanatory. "
+        "Be concise.\n\n"
+        "Respond with an `Array<string>` in JSON format AND NOTHING ELSE. "
+        'If the text contains no relevant information, return "[]".'
+    )
+    return await _process_text(  # type: ignore
+        text=source_text,
+        instruction=instruction,
+        output_type=list[str],
+        llm_provider=llm_provider,
+            )
+
+
+async def _process_text(
+    text: str,
+    instruction: str,
+    llm_provider: AbstractChatModelProvider,
+        output_type: type[str | list[str]] = str,
+) -> tuple[str, list[tuple[str, str]]] | list[str]:
+    """Process text using the OpenAI API for summarization or information extraction
+
+    Params:
+        text (str): The text to process.
+        instruction (str): Additional instruction for processing.
+        llm_provider: LLM provider to use.
+        config (Config): The global application config.
+        output_type: `str` for summaries or `list[str]` for piece-wise info extraction.
+
+    Returns:
+        For summarization: tuple[str, None | list[(summary, chunk)]]
+        For piece-wise information extraction: list[str]
+    """
+    if not text.strip():
+        raise ValueError("No content")
+
+    model = "gpt-3"
+
+    text_tlength = llm_provider.count_tokens(text, model)
+    LOG.debug(f"Text length: {text_tlength} tokens")
+
+    max_result_tokens = 500
+    max_chunk_length = llm_provider.get_token_limit(model) - max_result_tokens - 50
+    LOG.debug(f"Max chunk length: {max_chunk_length} tokens")
+
+    if text_tlength < max_chunk_length:
+        prompt = ChatPrompt(
+            messages=[
+                ChatMessage.system(
+                    "The user is going to give you a text enclosed in triple quotes. "
+                    f"{instruction}"
+                ),
+                ChatMessage.user(f'"""{text}"""'),
+            ]
+        )
+
+        LOG.debug(f"PROCESSING:\n{prompt}")
+
+        response = await llm_provider.create_chat_completion(
+            model_prompt=prompt.messages,
+            model_name=model,
+            temperature=0.5,
+            max_tokens=max_result_tokens,
+            completion_parser=lambda s: (
+                json.loads(s.content) if output_type is not str else None
+            ),
+        )
+
+        if output_type == list[str]:
+            LOG.debug(f"Raw LLM response: {repr(response.response.content)}")
+            fmt_result_bullet_list = "\n".join(f"* {r}" for r in response.parsed_result)
+            LOG.debug(
+                f"\n{'-'*11} EXTRACTION RESULT {'-'*12}\n"
+                f"{fmt_result_bullet_list}\n"
+                f"{'-'*42}\n"
+            )
+            return response.parsed_result
+        else:
+            summary = response.response.content
+            LOG.debug(f"\n{'-'*16} SUMMARY {'-'*17}\n{summary}\n{'-'*42}\n")
+            return summary.strip(), [(summary, text)]
+    else:
+        chunks = list(
+            split_text(
+                text,
+                                max_chunk_length=max_chunk_length,
+                tokenizer=llm_provider.get_tokenizer(model),
+            )
+        )
+
+        processed_results = []
+        for i, (chunk, _) in enumerate(chunks):
+            LOG.info(f"Processing chunk {i + 1} / {len(chunks)}")
+            chunk_result = await _process_text(
+                text=chunk,
+                instruction=instruction,
+                output_type=output_type,
+                llm_provider=llm_provider,
+                            )
+            processed_results.extend(
+                chunk_result if output_type == list[str] else [chunk_result]
+            )
+
+        if output_type == list[str]:
+            return processed_results
+        else:
+            summary, _ = await _process_text(
+                "\n\n".join([result[0] for result in processed_results]),
+                instruction=(
+                    "The text consists of multiple partial summaries. "
+                    "Combine these partial summaries into one."
+                ),
+                llm_provider=llm_provider,
+                            )
+            return summary.strip(), [
+                (processed_results[i], chunks[i][0]) for i in range(0, len(chunks))
+            ]
 
 
 def split_text(

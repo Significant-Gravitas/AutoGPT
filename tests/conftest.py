@@ -10,6 +10,7 @@ from AFAAS.interfaces.tools.base import AbstractToolRegistry
 from AFAAS.lib.sdk.logger import AFAASLogger, logging
 from AFAAS.lib.task.task import Task
 from tests.dataset.agent_planner import agent_dataset
+from tests.dataset.plan_familly_dinner import Task, _plan_familly_dinner, default_task
 
 # LOG = AFAASLogger(name=__name__)
 # LOG.setLevel(logging.ERROR)
@@ -83,20 +84,20 @@ async def agent() -> PlannerAgent:
 
 
 @pytest.fixture(scope="function", autouse=True)
-def reset_environment_each_test():
+def reset_environment_each_test(default_task: Task):
     # AFAASLogger.setLevel(logging.ERROR)
     setup_environment()
-    delete_logs()
+    delete_logs(agent = default_task.agent)
     base_dir = Path("~/AFAAS/data/pytest").expanduser().resolve()
     print(base_dir)
     # Walk through the directory structure
-    for root, dirs, files in os.walk(base_dir):
-        shutil.rmtree(root)
-        print(f"Deleted directory: {root}")
 
     yield
 
     # Code to clean up after each test
+    for root, dirs, files in os.walk(base_dir):
+        shutil.rmtree(root)
+        print(f"Deleted directory: {root}")
     delete_logs()
 
 
@@ -105,8 +106,8 @@ def setup_environment():
     pass
 
 
-def delete_logs():
-    log_dir = Path(__file__).parent.parent / "logs"
+def delete_logs(agent : PlannerAgent = None):
+    log_dir = agent.log_path if agent else Path("~/AFAAS/data/logs").expanduser().resolve()
     # Check if the directory exists
     if not log_dir.exists():
         print("Directory does not exist:", log_dir)

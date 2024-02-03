@@ -89,8 +89,7 @@ def is_duplicate_operation(
     """
     # FIXMEv0.0.2 : Set as AgentSetting #121 , https://github.com/ph-ausseil/afaas/issues/121
     LOG_FILE_OPERATION = (
-        Path(__file__).parent.parent.parent.parent.parent
-        / "logs"
+        Path(agent.log_path)
         / (f"{agent.agent_id}_file_operation")
     )
     print(LOG_FILE_OPERATION)
@@ -118,8 +117,7 @@ def log_operation(
     """
     # FIXMEv0.0.2 : Set as AgentSetting  #121 , https://github.com/ph-ausseil/afaas/issues/121
     LOG_FILE_OPERATION = (
-        Path(__file__).parent.parent.parent.parent.parent
-        / "logs"
+        Path(agent.log_path)
         / (f"{agent.agent_id}_file_operation")
     )
 
