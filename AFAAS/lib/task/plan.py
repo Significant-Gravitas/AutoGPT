@@ -13,6 +13,7 @@ from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.interfaces.task.plan import AbstractBaseTask, AbstractPlan
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.task import Task
+from AFAAS.interfaces.workflow import FastTrackedWorkflow
 
 LOG = AFAASLogger(name=__name__)
 
@@ -483,6 +484,7 @@ class Plan(AbstractPlan):
             long_description="This is the initial task of the plan, no task has been performed yet and this tasks will consist in splitting the goal into subtasks",
             arguments={"note_to_agent_length": 400},
             acceptance_criteria=["A plan has been made to achieve the specific task"],
+            task_workflow = FastTrackedWorkflow.name
         )
         # self._current_task = initial_task  # .task_id
         initial_task_list = [initial_task]
@@ -509,6 +511,7 @@ class Plan(AbstractPlan):
                         "The user has clearly and undoubtly stated his willingness to quit the process"
                     ],
                     arguments={},
+                    task_workflow = FastTrackedWorkflow.name
                 )
                 initial_task_list = [refine_user_context_task] + initial_task_list
                 # self._current_task = refine_user_context_task  # .task_id

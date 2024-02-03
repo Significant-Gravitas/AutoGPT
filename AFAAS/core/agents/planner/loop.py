@@ -131,23 +131,21 @@ class PlannerLoop(BaseLoop):
             if self._active:
                 self._loop_count += 1
 
-                ##############################################################
-                ### Step 5 : select_tool()
-                ##############################################################
-                if current_task.command is not None:
-                    command_name = current_task.command
-                    command_args = current_task.arguments
-                    assistant_reply_dict = current_task.long_description
-                else:
-                    raise Exception(
-                        "Honney pot ! In order to ensure we can remove this section of code securely, we raise an exception."
-                    )
-                    LOG.error("No command to execute")
-                    (
-                        command_name,
-                        command_args,
-                        assistant_reply_dict,
-                    ) = await self.select_tool()
+                # ##############################################################
+                # ### Step 5 : select_tool()
+                # ##############################################################
+                # if current_task.command is not None:
+                #     command_name = current_task.command
+                #     command_args = current_task.arguments
+                #     assistant_reply_dict = current_task.long_description
+                # else:
+                #     raise Exception("Honney pot ! In order to ensure we can remove this section of code securely, we raise an exception.")
+                #     LOG.error("No command to execute")
+                #     (
+                #         command_name,
+                #         command_args,
+                #         assistant_reply_dict,
+                #     ) = await self.select_tool()
 
                 ##############################################################
                 ### Step 6 : Prepare RAG #
@@ -158,8 +156,8 @@ class PlannerLoop(BaseLoop):
                 ##############################################################
                 ### Step 7 : execute_tool() #
                 ##############################################################
-                current_task.command = command_name
-                current_task.arguments = command_args
+                # current_task.command = command_name
+                # current_task.arguments = command_args
                 try:
                     tool, result = await current_task.task_execute()
                     # await tool.success_check_callback(self=tool, task=self, tool_output=result)
@@ -168,28 +166,25 @@ class PlannerLoop(BaseLoop):
                     result = AgentException(reason=e.message, error=e)
                 LOG.debug(f"result : {str(result)}")
 
-            successfull_closure: bool = await current_task.task_postprocessing(
-                tool=tool, result=result
-            )
+                successfull_closure : bool = await current_task.task_postprocessing(tool =tool,
+                                                                                tool_output = result)
 
-            LOG.debug(f"successfull_closure : {successfull_closure}")
-            LOG.debug(await self.plan().debug_dump_str(depth=2))
+                LOG.debug(f"successfull_closure : {successfull_closure}")
+                LOG.debug(await self.plan().debug_dump_str(depth=2))
 
-            self._current_task = await self.plan().get_next_task(task=current_task)
-            await self.save_plan()
+                self._current_task = await self.plan().get_next_task(task=current_task)
+                await self.save_plan()
 
-            if len(self.plan().get_all_tasks_ids()) == len(
-                self.plan().get_all_done_tasks_ids()
-            ):
-                self._is_running = False
-                LOG.info("All tasks are done 😄")
-            elif self._current_task is None:
-                self._is_running = False
-                raise AgentException(
-                    "The agent can't find the next task to execute 😱 ! This is an anomaly and we would be working on it."
-                )
-            else:
-                self.prepare_next_iteration()
+                if len(self.plan().get_all_tasks_ids()) == len(
+                    self.plan().get_all_done_tasks_ids()
+                ):
+                    self._is_running = False
+                    LOG.info("All tasks are done 😄")
+                elif self._current_task is None:
+                    self._is_running = False
+                    raise AgentException(  "The agent can't find the next task to execute 😱 ! This is an anomaly and we would be working on it." )
+                else:
+                    self.prepare_next_iteration()
 
     async def prepare_next_iteration(self):
         LOG.trace(f"Next task : {self._current_task.debug_formated_str()}")
