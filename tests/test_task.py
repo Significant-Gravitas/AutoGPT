@@ -170,6 +170,9 @@ async def test_task_copy(default_task: Task):
         elif isinstance(original_attr , bool):
             assert original_attr == cloned_attr
         elif isinstance(original_attr, str) or isinstance(original_attr, int) or isinstance(original_attr, float) or isinstance(original_attr, tuple) :
+            if attr == "task_number" :
+                assert original_attr != cloned_attr
+                continue
             assert original_attr == cloned_attr
             if (isinstance(original_attr, str)):
                 setattr(task_clone, attr, "new_value")
