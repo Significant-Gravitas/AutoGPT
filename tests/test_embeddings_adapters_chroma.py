@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from langchain.vectorstores import VectorStore
 from langchain.vectorstores.chroma import Chroma
+from tests.dataset.documents import documents
+from AFAAS.interfaces.adapters.embeddings.wrapper import VectorStoreWrapper, SearchFilter, DocumentType, Document, Filter, FilterType, ChromaWrapper
 from langchain_openai import OpenAIEmbeddings
 from pydantic import ValidationError
 
@@ -58,12 +60,12 @@ async def vector_store_wrapper_with_documents(documents: list[Document]):
     )
     for doc in documents:
         doc.metadata = {"agent_id": "123"}
+
         await wrapper.add_document(
             document_type=DocumentType.DOCUMENTS,
             document=doc,
             document_id="DOC" + str(uuid.uuid4()),
         )
-        print(doc)
     return wrapper
 
 

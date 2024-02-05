@@ -9,11 +9,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from .dataset.example_tool_exec_function import (
-    PARAMETERS,
-    example_tool,
-    example_tool_exec_function,
-)
+from tests.dataset.example_tool_exec_function import PARAMETERS, example_tool_exec_function, example_tool
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent.main import BaseAgent
