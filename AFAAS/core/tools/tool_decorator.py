@@ -55,9 +55,11 @@ def tool(
     success_check_callback: Optional[
         Callable[..., Any]
     ] = Tool.default_tool_success_check_callback, 
+    # Check if the task has been successful and execute custom code if needed
     make_summarry_function: Optional[
         Callable[..., Any]
-    ] = Tool.default_tool_execution_summarry,  # Add this line
+    ] = Tool.default_tool_execution_summarry,  
+    # Make a resume of event that has happened during the task (document created, reasoning, output, etc.)
     tech_description: Optional[str] = None,
 ) -> Callable[[Callable[P, CO]], Callable[P, CO]]:
     """The command decorator is used to create Tool objects from ordinary functions."""

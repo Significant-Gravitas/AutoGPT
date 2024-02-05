@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 from AFAAS.lib.sdk.logger import AFAASLogger
 
-LOG = AFAASLogger(name="autogpt")
+LOG = AFAASLogger(name=__name__)
 
 class AgentMixin:
     _agent: BaseAgent

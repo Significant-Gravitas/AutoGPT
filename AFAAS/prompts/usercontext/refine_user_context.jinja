@@ -22,7 +22,8 @@ Your primary role is to assist the user in adhering to these principles and guid
 
 ## Current Iteration:
 {% if count == 1 %}
-This is the first iteration; the user's requirements are: "{{ task.long_description }}"
+This is the first iteration; the user's requirements are: {#"{{ task.long_description }}"#}
+{{ to_md_quotation(user_response) }}
 {% else %}
 This is the iteration number: {{ count }}
 
@@ -30,7 +31,7 @@ The user's requirements are:
 {{ to_md_quotation(user_last_goal) }}
 
 - **Your Last Questions**:
-{{ last_questions_list|join("\n") }}
+{{ to_numbered_list( last_questions ) }}
 
 - **User's Last Response**: 
 {{ to_md_quotation(user_response) }}

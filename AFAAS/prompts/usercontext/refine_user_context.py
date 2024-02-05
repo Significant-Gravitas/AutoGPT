@@ -182,7 +182,7 @@ class RefineUserContextStrategy(AbstractPromptStrategy):
             "questions_history_full" : to_numbered_list(
                 self.question_history_label_full
             ),
-            "last_questions" : to_numbered_list(self._last_questions_label),
+            "last_questions" : self._last_questions_label,
             "user_response" : user_objective,
             "count" : self._count + 1,
         }
@@ -195,6 +195,7 @@ class RefineUserContextStrategy(AbstractPromptStrategy):
                 )
             )
         )
+
         # Step 4 : Hallucination safegard
         #
         tool_choice = "auto"

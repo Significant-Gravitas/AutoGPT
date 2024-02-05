@@ -63,6 +63,7 @@ class Task(AbstractTask):
             "_task_parent_future",
             "_task_parent_loading",
             "_task_parent",
+            "custom_callback",
         }
 
     ###
@@ -590,11 +591,14 @@ class Task(AbstractTask):
         LOG.debug(f"Task = {self}")
         LOG.debug(f"Tool output = {tool_output}")
 
-        await tool.make_summarry_function(self, task = self,  tool_output = tool_output)
+        await tool.make_summarry_function(tool, task = self,  tool_output = tool_output)
         await self.memorize_output()
 
-        if not await tool.success_check_callback() : 
+        if self.custom_callback is not None and not await self.custom_callback(tool, task = self,  tool_output = tool_output):
             await self.retry()
+        elif not await tool.success_check_callback(tool, task = self,  tool_output = tool_output) : 
+            await self.retry()
+
 
         return 
 

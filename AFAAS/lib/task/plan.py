@@ -14,6 +14,7 @@ from AFAAS.interfaces.task.plan import AbstractBaseTask, AbstractPlan
 from AFAAS.lib.sdk.logger import AFAASLogger, CONSOLE_LOG_LEVEL , logging
 from AFAAS.lib.task.task import Task
 from AFAAS.interfaces.workflow import FastTrackedWorkflow
+from AFAAS.lib.task.helper.update_agent_goal import update_agent_goal
 
 LOG = AFAASLogger(name=__name__)
 
@@ -498,8 +499,11 @@ class Plan(AbstractPlan):
                     acceptance_criteria=[
                         "The user has clearly and undoubtly stated his willingness to quit the process"
                     ],
-                    arguments={},
-                    task_workflow = FastTrackedWorkflow.name
+                    arguments={
+                        "user_objectives": self.agent.agent_goal_sentence,
+                    },
+                    task_workflow = FastTrackedWorkflow.name,
+                    custom_callback = update_agent_goal
                 )
                 initial_task_list += [refine_user_context_task] 
             except:
@@ -583,3 +587,4 @@ class Plan(AbstractPlan):
 
 
 Plan.update_forward_refs()
+

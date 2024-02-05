@@ -107,7 +107,7 @@ async def user_interaction(
     vector = await agent.vectorstores.add_document(
                                                     document_type = DocumentType.MESSAGE_AGENT_USER,  
                                                     document = document , 
-                                                    doc_id =  str(response_message.message_id)
+                                                    document_id =  str(response_message.message_id)
                                                     ) 
     #  ids=[str(filename)],
 
