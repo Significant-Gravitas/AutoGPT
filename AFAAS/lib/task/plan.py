@@ -316,6 +316,12 @@ class Plan(AbstractPlan):
 
         return ready_task_ids
 
+    async def get_ready_tasks(self, task_ids_set: list[str] = None) -> list[Task]:
+        return [
+            await self.get_task(task_id=task_id)
+            for task_id in self.get_ready_tasks_ids(task_ids_set=task_ids_set)
+        ]
+
     def get_active_tasks_ids(self, task_ids_set: list[str] = None) -> list[Task]:
         """
         Active tasks are tasks not in Plan._done_task_ids but in Plan._all_task_ids
