@@ -15,13 +15,9 @@ from AFAAS.interfaces.task.stack import TaskStack
 from AFAAS.lib.task.plan import Plan
 from AFAAS.lib.task.task import BaseAgent, Task
 
-from .dataset.agent_planner import agent_dataset
-from .dataset.example_tool_exec_function import (
-    PARAMETERS,
-    example_tool,
-    example_tool_exec_function,
-)
-from .dataset.plan_familly_dinner import (
+from tests.dataset.agent_planner import agent_dataset
+from tests.dataset.example_tool_exec_function import PARAMETERS, example_tool_exec_function, example_tool
+from tests.dataset.plan_familly_dinner import (
     _plan_familly_dinner,
     _plan_step_3,
     _plan_step_10,

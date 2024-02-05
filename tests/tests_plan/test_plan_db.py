@@ -11,8 +11,8 @@ from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.lib.task.plan import Plan
 from AFAAS.lib.task.task import Task
 
-from .dataset.agent_planner import agent_dataset
-from .dataset.plan_familly_dinner import (
+from tests.dataset.agent_planner import agent_dataset
+from tests.dataset.plan_familly_dinner import (
     default_task,
     plan_step_0,
     plan_step_1,
