@@ -30,6 +30,7 @@ class UserContextAgent(BaseAgent):
         self,
         settings: UserContextAgent.SystemSettings,
         user_id: str,
+        task,
         agent_id: str = SystemSettings.generate_uuid(),
         loop: UserContextLoop = UserContextLoop(),
         prompt_manager: BasePromptManager = BasePromptManager(),
@@ -56,7 +57,7 @@ class UserContextAgent(BaseAgent):
             log_path=log_path,
             **kwargs,
         )
-
+        self._task = task
         self._loop: UserContextLoop = UserContextLoop()
         self._loop.set_agent(agent=self)
 

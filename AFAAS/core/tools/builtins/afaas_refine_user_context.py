@@ -42,6 +42,7 @@ async def afaas_refine_user_context(task: Task, agent: BaseAgent) -> None:
         user_context_agent = UserContextAgent(
             settings=usercontext_settings,
             **usercontext_settings.dict(),
+            task = task
         )
         # NOTE: We don't save the agent
         # new_user_context_agent = await UserContextAgent.create_agent()

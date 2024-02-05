@@ -277,7 +277,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
                 "to_numbered_list": to_numbered_list,
                 "to_string_list": to_string_list,
                 "indent": indent,
-                "task": self._task,
+                "task": task,
                 "strategy": self,
             }
         )
@@ -286,7 +286,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
 
         return template.render(template_params)
 
-    def build_chat_prompt(self, messages: list[ChatMessage]) -> ChatPrompt:
+    def build_chat_prompt(self, messages: list[ChatMessage] , tool_choice : str = "auto") -> ChatPrompt:
         strategy_tools = self.get_tools()
         prompt = ChatPrompt(
             messages=messages,

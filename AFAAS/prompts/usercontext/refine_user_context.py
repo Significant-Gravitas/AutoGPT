@@ -47,6 +47,7 @@ from AFAAS.interfaces.prompts.utils.utils import (
 from AFAAS.lib.message_agent_user import Questions
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.utils.json_schema import JSONSchema
+from AFAAS.interfaces.task.task import AbstractTask
 
 LOG = AFAASLogger(name=__name__)
 
@@ -122,11 +123,11 @@ class RefineUserContextStrategy(AbstractPromptStrategy):
 
     DEFAULT_SYSTEM_PROMPT_TEMPLATE = (
         "## Instructions\n\n"
-        "You are an AI running on {os_info}. Your are tasked with assisting a user in formulating user requirements through an iterative process."
+        "You are an AI running on {os_info}. Your task is to assist a user in formulating user requirements through an iterative process."
         """
 ## Iterative Process Flow:
 
-1. Step 1 **User Provides Requirements**: You will receive user's requirements, reformulate them, and ask three questions to assist users in providing more information. 
+1. Step 1 **User Provides Requirements**: You will receive the user's requirements, reformulate them, and ask three questions to assist users in providing more information.
 2. Step 2 **User Answers Clarification Questions**: You will receive the reformulated user requirements from Step 1, questions from Step 1, and user responses. You will reformulate user requirements by merging the previous requirements with the answers.
 
 **Loop Control**: Continue this iterative process until users express a willingness to finalize the process."""
@@ -137,7 +138,7 @@ class RefineUserContextStrategy(AbstractPromptStrategy):
         " - **Outcome-driven**: Focus on the end results or macro-goals that the AI should achieve, rather than measurable micro-goals or the steps that need to be taken to get there.\n"
         " - **Context-aware**: The goal should be aware of and clearly define the context in which the AI is expected to function. This is especially important if the AI has a limited understanding of the world or the domain in which it operates.\n"
         " - **Explicitness**: The goal must explicitly state what the AI needs to do. There should be no hidden assumptions or implied requirements. Everything that the AI needs to know to complete the goal should be explicitly stated.\n\n"
-        "Your primary role is to assist the user in adhering to these principles and guide them through the process of formulating requirements that meet these criteria. Please use your capabilities to ensure that the user's goal aligns with these principles by generating questions that guide him closer to our expectations in term of user requirement expression. \n\n"
+        "Your primary role is to assist the user in adhering to these principles and guide them through the process of formulating requirements that meet these criteria. Please use your capabilities to ensure that the user's goal aligns with these principles by generating questions that guide him closer to our expectations in term of user requirement expression."
     )
 
     SYSTEM_PROMPT_MESSAGES = "{generated_message_history}"
@@ -178,31 +179,6 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         exit_token: str = str(uuid.uuid4()),
         use_message: bool = False,
     ):
-        """
-        Initialize the RefineUserContextStrategy.
-
-        Parameters:
-        -----------
-        logger: Logger
-            The logger object.
-        model_classification:  PromptStrategyLanguageModelClassification
-            Classification of the language model.
-        default_tool_choice: RefineUserContextFunctionNames
-            Default function call for the strategy.
-
-        context_min_tokens: int
-            Minimum number of tokens in the context.
-        context_max_tokens: int
-            Maximum number of tokens in the context.
-        count: int, optional (default = 0)
-            The count for the iterative process.
-        user_last_goal: str, optional (default = "")
-            Last goal provided by the user.
-        exit_token: str, optional
-            Token to indicate exit from the process.
-        use_message: bool, optional (default = False)
-            Flag to determine whether to use messages.
-        """
         # NOTE : Make a list of Questions ?
         self.context_min_tokens: int = context_min_tokens
         self.context_max_tokens: int = context_max_tokens
@@ -216,6 +192,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         self._count = count
         self._config = self.default_configuration
         self.exit_token: str = exit_token
+        self.default_tool_choice = default_tool_choice
 
     def set_tools(self, **kwargs):
         ###
@@ -294,29 +271,12 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         ]
 
     async def build_message(
-        self, interupt_refinement_process: bool, user_objective: str = "", **kwargs
+        self, 
+        interupt_refinement_process: bool, 
+        task : AbstractTask,
+        user_objective: str = "",
+        **kwargs
     ) -> ChatPrompt:
-        """
-        Build a chat prompt based on the user's objective and whether the refinement process should exit.
-
-        Parameters:
-        -----------
-        interupt_refinement_process: bool
-            Flag indicating whether to exit the refinement process.
-        user_objective: str, optional
-            Objective provided by the user.
-
-        Example:
-            >>> strategy = RefineUserContextStrategy(...)
-            >>> user_input = "I need a system that can monitor temperatures."
-            >>> prompt = strategy.build_prompt(interupt_refinement_process=False, user_objective=user_input)
-            >>> print(prompt.messages[0].content)
-
-        Returns:
-        --------
-        ChatPrompt
-            The chat prompt generated for the strategy.
-        """
         #
         # STEP 1 : List all functions available
         #
@@ -441,49 +401,70 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             tokens_used=0,
         )
 
+        messages = []
+        smart_rag_param = {
+            "os_info" : kwargs["os_info"],
+            "tools_list" : self.get_tools_names(),
+            "tools_names" : to_string_list(self.get_tools_names()),
+            "user_last_goal" : self._user_last_goal,
+            "questions_history_full" : to_numbered_list(
+                self.question_history_label_full
+            ),
+            "last_questions" : to_numbered_list(self._last_questions_label),
+            "user_response" : user_objective,
+            "count" : self._count + 1,
+        }
+        messages.append(
+            ChatMessage.system(
+                await self._build_jinja_message(
+                    task=task,
+                    template_name=f"{self.STRATEGY_NAME}.jinja",
+                    template_params=smart_rag_param,
+                )
+            )
+        )
+        # Step 4 : Hallucination safegard
+        #
+        tool_choice = "auto"
+        if self._count == 0:
+            tool_choice = RefineUserContextFunctionNames.REFINE_REQUIREMENTS
+            messages.append(
+                ChatMessage.system(
+                    content="""Before finalizing your response, ensure that:
+1. The reformulated goal adheres strictly to the user's provided information, with no assumptions or hallucinations.
+2. You have prepared 5 relevant questions based on the user's requirements."""
+                )
+            )
+        elif interupt_refinement_process == True:
+            tool_choice = RefineUserContextFunctionNames.VALIDATE_REQUIREMENTS
+        #messages.append(ChatMessage.system(self.response_format_instruction()))
+        prompt_v2 = self.build_chat_prompt(messages=messages , tool_choice=tool_choice)
+
+        import difflib
+        d = difflib.Differ()
+        diff = d.compare(prompt.messages[0].content.splitlines(), prompt_v2.messages[0].content.splitlines())
+        if diff:
+            print('\n'.join(diff))
+            # print(prompt.messages[0].content)
+            # print(prompt_v2.messages[0].content)
+            LOG.error(f"DIFFERENCE DETECTED IN PROMPT")
+        else :
+            print("No difference")
         return prompt
 
     def parse_response_content(
         self,
         response_content: AssistantChatMessageDict,
     ) -> dict:
-        """
-        Parse the actual text response from the objective model.
-
-        Args:
-            response_content (AssistantChatMessageDict): The raw response content from the objective model.
-
-        Returns:
-            dict: The parsed response containing questions, goal refinements, and other related data.
-
-        Raises:
-            Exception: If the response_content can't be parsed properly.
-
-        Example:
-            >>> strategy = RefineUserContextStrategy(...)
-            >>> raw_response = {
-            >>>     "tool_calls": {
-            >>>         "name": "REFINE_REQUIREMENTS",
-            >>>         "arguments": '{"questions": ["What temperature range?", "Any specific brand?"], "reformulated_goal": "Monitor temperatures in the specified range with preferred brand"}'
-            >>>     }
-            >>> }
-            >>> parsed = strategy.parse_response_content(raw_response)
-            >>> print(parsed['questions'])
-            ['What temperature range?', 'Any specific brand?']
-            >>> print(parsed['reformulated_goal'])
-            'Monitor temperatures in the specified range with preferred brand'
-        """
         try:
             parsed_response = json_loads(
                 response_content["tool_calls"][0]["function"]["arguments"]
             )
         except Exception:
-            LOG.warning(parsed_response)
+            LOG.error(parsed_response)
+            raise Exception(f"Error parsing response content {response_content}")
 
-        #
-        # Give id to questions
-        # TODO : Type Questions in a Class ?
-        #
+
         save_questions = False
         questions_with_uuid = []
         if (

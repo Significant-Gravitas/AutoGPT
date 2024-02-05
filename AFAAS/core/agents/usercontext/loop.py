@@ -4,12 +4,11 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 
 from AFAAS.interfaces.agent.loop import BaseLoop
 
-if TYPE_CHECKING:
-    from AFAAS.interfaces.agent.main import BaseAgent
-    from AFAAS.interfaces.adapters import AbstractChatModelResponse
-    from AFAAS.prompts.usercontext.refine_user_context import (
-        RefineUserContextFunctionNames,
-    )
+from AFAAS.interfaces.agent.main import BaseAgent
+from AFAAS.interfaces.adapters import AbstractChatModelResponse
+from AFAAS.prompts.usercontext.refine_user_context import (
+    RefineUserContextFunctionNames,
+)
 
 from AFAAS.lib.sdk.logger import AFAASLogger
 
@@ -81,6 +80,7 @@ class UserContextLoop(BaseLoop):
                         strategy_name="refine_user_context",
                         interupt_refinement_process=interupt_refinement_process,
                         user_objective=user_objectives,
+                        task=self._agent._task, 
                     )
                 )
 
@@ -117,7 +117,7 @@ class UserContextLoop(BaseLoop):
                 if user_objectives.lower() == "y" and self.loop_count > 1:
                     interupt_refinement_process = True
 
-                await self.save_agent()
+                #await self.save_agent()
 
     def __repr__(self):
         """Return a string representation of the UserContextLoop.
