@@ -299,23 +299,22 @@ class Plan(AbstractPlan):
         """
         return self._all_task_ids
 
-    def get_ready_tasks_ids(self, task_ids_set: list[str] = None) -> list[Task]:
+    def get_ready_tasks_ids(self, task_ids_set: list[str] = None) -> list[str]:
         """
-        Get the all ready tasks from Plan._ready_task_ids
+        Get all ready tasks from Plan._ready_task_ids, preserving the order of the items.
         """
         LOG.debug(f"Getting ready tasks from plan {self.plan_id}")
 
-        ready_task_ids = set(self._ready_task_ids)
-        if (task_ids_set is not None) and (len(task_ids_set) > 0):
-            ready_task_ids = list(ready_task_ids.intersection(set(task_ids_set)))
+        # Use the provided task_ids_set if not None and not empty; otherwise, use all _ready_task_ids
+        if task_ids_set is not None and len(task_ids_set) > 0:
+            tasks_to_check = task_ids_set
+        else:
+            tasks_to_check = self._ready_task_ids
+
+        # Filter tasks_to_check to include only those that are in _ready_task_ids, preserving the order
+        ready_task_ids = [task_id for task_id in tasks_to_check if task_id in self._ready_task_ids]
 
         return ready_task_ids
-
-    async def get_ready_tasks(self, task_ids_set: list[str] = None) -> list[Task]:
-        return [
-            await self.get_task(task_id=task_id)
-            for task_id in self.get_ready_tasks_ids(task_ids_set=task_ids_set)
-        ]
 
     def get_active_tasks_ids(self, task_ids_set: list[str] = None) -> list[Task]:
         """
