@@ -79,7 +79,7 @@ class UserContextLoop(BaseLoop):
                     await self._execute_strategy(
                         strategy_name="refine_user_context",
                         interupt_refinement_process=interupt_refinement_process,
-                        user_objective=user_objectives,
+                        user_objectives=user_objectives,
                         task=self._agent._task, 
                     )
                 )

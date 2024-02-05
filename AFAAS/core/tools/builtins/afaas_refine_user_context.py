@@ -24,7 +24,7 @@ LOG = AFAASLogger(name=__name__)
     name="afaas_refine_user_context",
     description="Assist user refining it's requirements thus improving LLM responses",
     parameters = {
-        "user_objective": JSONSchema(
+        "user_objectives": JSONSchema(
             type="string",
             description="The user's objective to be refined",
             examples=["I want to learn how to cook", "I want to learn how to cook"],
@@ -52,7 +52,7 @@ async def afaas_refine_user_context(task: Task, agent: BaseAgent , user_objectiv
                     await agent.execute_strategy(
                         strategy_name="refine_user_context",
                         interupt_refinement_process=interupt_refinement_process,
-                        user_objective=user_objectives,
+                        user_objectives=user_objectives,
                         task=task, 
                     )
                 )
@@ -88,12 +88,14 @@ async def afaas_refine_user_context(task: Task, agent: BaseAgent , user_objectiv
                     and reformulated_goal is not None
                 ):
                     LOG.info(f"Exiting UserContextLoop")
-                    task.memory["agent_goal_sentence"] =  reformulated_goal,
-                    task.memory["agent_goals"] = model_response.parsed_result["goal_list"],
+                    task.memory["agent_goal_sentence"] =  reformulated_goal
+                    task.memory["agent_goals"] = model_response.parsed_result["goal_list"]
                     break
                 else:
                     LOG.error(model_response.parsed_result)
-                    raise Exception
+                    raise Exception(f"""Invalid response from refine_user_context.\n model_response.parsed_result['name'] : {model_response.parsed_result['name']}\n
+                    reformulated_goal : {reformulated_goal}\n
+                    model_response.parsed_result : {model_response.parsed_result}\n""")
 
                 if user_objectives.lower() == "y" and loop_count > 1:
                     interupt_refinement_process = True
@@ -103,4 +105,4 @@ async def afaas_refine_user_context(task: Task, agent: BaseAgent , user_objectiv
         # agent.agent_goal_sentence = return_value["agent_goal_sentence"]
         # agent.agent_goals = return_value["agent_goals"]
     except Exception as e:
-        raise str(e)
+        raise Exception(f"Error in afaas_refine_user_context: {e}")

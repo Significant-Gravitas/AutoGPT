@@ -169,7 +169,7 @@ class RefineUserContextStrategy(AbstractPromptStrategy):
         self, 
         interupt_refinement_process: bool, 
         task : AbstractTask,
-        user_objective: str = "",
+        user_objectives: str = "",
         **kwargs
     ) -> ChatPrompt:
         #
@@ -187,7 +187,7 @@ class RefineUserContextStrategy(AbstractPromptStrategy):
                 self.question_history_label_full
             ),
             "last_questions" : self._last_questions_label,
-            "user_response" : user_objective,
+            "user_response" : user_objectives,
             "count" : self._count + 1,
         }
         messages.append(
