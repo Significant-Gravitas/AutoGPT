@@ -483,7 +483,7 @@ class Plan(AbstractPlan):
         ###
         # Step 2 : Prepend usercontext
         ###
-        if CONSOLE_LOG_LEVEL >= logging.DEBUG:
+        if CONSOLE_LOG_LEVEL > logging.DEBUG:
             try:
 
                 refine_user_context_task = Task(
@@ -503,7 +503,7 @@ class Plan(AbstractPlan):
                         "user_objectives": self.agent.agent_goal_sentence,
                     },
                     task_workflow = FastTrackedWorkflow.name,
-                    custom_callback = update_agent_goal
+                    task_overide_tool_success_check_callback = update_agent_goal
                 )
                 initial_task_list += [refine_user_context_task] 
             except:

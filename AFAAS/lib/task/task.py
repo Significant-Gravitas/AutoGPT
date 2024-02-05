@@ -48,6 +48,7 @@ class Task(AbstractTask):
         self.plan_id = self.agent.plan.plan_id
         self.task_number = len(self.agent.plan)
         self.task_attempt_number = 0
+        self.task_overide_tool_success_check_callback = data.get("task_overide_tool_success_check_callback", None)
 
     def __setattr__(self, key, value):
         # Set attribute as normal
@@ -70,7 +71,7 @@ class Task(AbstractTask):
             "_task_parent_future",
             "_task_parent_loading",
             "_task_parent",
-            "custom_callback",
+            "task_overide_tool_success_check_callback",
         }
 
     ###
@@ -602,7 +603,8 @@ class Task(AbstractTask):
         await tool.make_summarry_function(tool, task = self,  tool_output = tool_output)
         await self.memorize_output()
 
-        if self.custom_callback is not None and not await self.custom_callback(tool, task = self,  tool_output = tool_output):
+        if (self.task_overide_tool_success_check_callback is not None 
+        and not await self.task_overide_tool_success_check_callback(tool, task = self,  tool_output = tool_output)):
             await self.retry()
         elif not await tool.success_check_callback(tool, task = self,  tool_output = tool_output) : 
             await self.retry()
