@@ -84,7 +84,7 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
         del kwargs["tools"]
         self._tools = agent._tool_registry.dump_tools()
 
-        progress = "" # TODO:""
+        progress = ""  # TODO:""
         response_format_instr = self.response_format_instruction()
         extra_messages: list[ChatMessage] = []
         extra_messages.append(ChatMessage.system(response_format_instr))

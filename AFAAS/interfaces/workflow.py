@@ -13,9 +13,9 @@ class BaseWorkflow(BaseModel):  # NOTE: Might be merged with Pipeline
 
 class DefaultWorkflow(BaseWorkflow):
     name: ClassVar[str] = "default"
-    description: ClassVar[
-        str
-    ] = "Suited for tasks that might require thought, planning or subdivision."
+    description: ClassVar[str] = (
+        "Suited for tasks that might require thought, planning or subdivision."
+    )
     examples: ClassVar[list[str]] = [
         "Writing technical documentation for a software project, because it might involves research and structuring information but not actual software development.",
         "Preparing a report on sales performance, because it might involve data collection, analysis, KPI definition, and selecting a reporting solution.",
@@ -24,9 +24,9 @@ class DefaultWorkflow(BaseWorkflow):
 
 class SoftwareDevelopmentWorkflow(BaseWorkflow):
     name: ClassVar[str] = "software_development"
-    description: ClassVar[
-        str
-    ] = "For tasks related to software creation or modification, whether in part or whole."
+    description: ClassVar[str] = (
+        "For tasks related to software creation or modification, whether in part or whole."
+    )
     examples: ClassVar[list[str]] = [
         "Developing a new feature for an existing mobile app.",
         "Updating and fixing bugs in a legacy software system.",
@@ -36,7 +36,9 @@ class SoftwareDevelopmentWorkflow(BaseWorkflow):
 
 class FastTrackedWorkflow(BaseWorkflow):
     name = "fast_tracked"
-    description: ClassVar[str] = "Ideal for simple tasks that do not require subdivision."
+    description: ClassVar[str] = (
+        "Ideal for simple tasks that do not require subdivision."
+    )
     examples: ClassVar[list[str]] = [
         "Writing 'Hello World' into HelloWorld.txt.",
         "Updating a single value in a database.",

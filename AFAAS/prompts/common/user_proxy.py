@@ -3,6 +3,7 @@ from __future__ import annotations
 import enum
 import uuid
 from typing import TYPE_CHECKING
+
 from langchain_core.documents import Document
 
 if TYPE_CHECKING:
@@ -66,25 +67,31 @@ class UserProxyStrategy(AbstractPromptStrategy):
         documents = kwargs.get("documents", [])
         user_input_description = ""
         if len(documents) > 0:
-            self.answer_with_document: CompletionModelFunction = CompletionModelFunction(
-                name=UserProxyStrategyFunctionNames.ANSWER_WITH_DOCUMENT.value,
-                description="Provide an answer based on documents.",
-                parameters={
-                    "answer": JSONSchema(
-                        type=JSONSchema.Type.STRING,
-                        description=f"Provide answer with as many details and justifications as possible. 1. Rephase the problematic ; 2. List options & informations ; 3. Provive a response with justifications ; 4(Optional). List possible chalenges.",
-                        required=True,
-                    ),
-                    "documents": JSONSchema(
-                        type=JSONSchema.Type.ARRAY,
-                        items=JSONSchema(
+            self.answer_with_document: CompletionModelFunction = (
+                CompletionModelFunction(
+                    name=UserProxyStrategyFunctionNames.ANSWER_WITH_DOCUMENT.value,
+                    description="Provide an answer based on documents.",
+                    parameters={
+                        "answer": JSONSchema(
                             type=JSONSchema.Type.STRING,
-                            description=f"List of documents to use for the answer.",
+                            description=f"Provide answer with as many details and justifications as possible. 1. Rephase the problematic ; 2. List options & informations ; 3. Provive a response with justifications ; 4(Optional). List possible chalenges.",
                             required=True,
-                            enum=[doc.metadata['document_id'] for doc in documents if 'document_id' in doc.metadata.keys()],
                         ),
-                    )
-                },
+                        "documents": JSONSchema(
+                            type=JSONSchema.Type.ARRAY,
+                            items=JSONSchema(
+                                type=JSONSchema.Type.STRING,
+                                description=f"List of documents to use for the answer.",
+                                required=True,
+                                enum=[
+                                    doc.metadata["document_id"]
+                                    for doc in documents
+                                    if "document_id" in doc.metadata.keys()
+                                ],
+                            ),
+                        ),
+                    },
+                )
             )
             self._tools.append(self.answer_with_document)
             user_input_description = " OR when documents made available to you don't produce a clear information"
@@ -104,7 +111,7 @@ class UserProxyStrategy(AbstractPromptStrategy):
 
         self.user_interaction = CompletionModelFunction(
             name=UserProxyStrategyFunctionNames.USER_INTERACTION.value,
-            description= f"Forward the question to someone else. USE FOR HIGH STAKES QUESTIONS WITH STRATEGIC CONSEQUENCES{user_input_description}.",
+            description=f"Forward the question to someone else. USE FOR HIGH STAKES QUESTIONS WITH STRATEGIC CONSEQUENCES{user_input_description}.",
             parameters={
                 "query": JSONSchema(
                     type=JSONSchema.Type.STRING,
@@ -115,13 +122,12 @@ class UserProxyStrategy(AbstractPromptStrategy):
         )
         self._tools.append(self.user_interaction)
 
-
     async def build_message(
         self,
         task: AbstractTask,
         agent: BaseAgent,
         query: str,
-        documents : list[Document],
+        documents: list[Document],
         **kwargs,
     ) -> ChatPrompt:
         LOG.debug("Building prompt for task : " + await task.debug_dump_str())
@@ -157,5 +163,5 @@ class UserProxyStrategy(AbstractPromptStrategy):
         return super().get_llm_provider()
 
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        #FIXME: Alike code, set a low temparature for this prompt (0.2 ?)
+        # FIXME: Alike code, set a low temparature for this prompt (0.2 ?)
         return super().get_prompt_config()

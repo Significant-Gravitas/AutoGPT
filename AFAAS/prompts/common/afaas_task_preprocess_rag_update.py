@@ -58,25 +58,27 @@ class AfaasPostRagTaskUpdateStrategy(AbstractPromptStrategy):
         task: AbstractTask,
         **kwargs,
     ):
-        self.afaas_task_post_rag_update_function: CompletionModelFunction = CompletionModelFunction(
-            name=PostRagTaskUpdateStrategyFunctionNames.POST_RAG_UPDATE.value,
-            description="Update a task before processing",
-            parameters={
-                "long_description": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    description=f"New paragraph that should be {str(self.task_context_length * 0.8)} to {str(self.task_context_length *  1.25)} words long.",
-                    required=True,
-                ),
-                "task_workflow": JSONSchema(
-                    type=JSONSchema.Type.STRING,
+        self.afaas_task_post_rag_update_function: CompletionModelFunction = (
+            CompletionModelFunction(
+                name=PostRagTaskUpdateStrategyFunctionNames.POST_RAG_UPDATE.value,
+                description="Update a task before processing",
+                parameters={
+                    "long_description": JSONSchema(
+                        type=JSONSchema.Type.STRING,
+                        description=f"New paragraph that should be {str(self.task_context_length * 0.8)} to {str(self.task_context_length *  1.25)} words long.",
+                        required=True,
+                    ),
+                    "task_workflow": JSONSchema(
+                        type=JSONSchema.Type.STRING,
                         description=f"The workflow to be used for the task",
                         required=True,
                         enum=[
                             workflow.name
                             for workflow in self._agent.workflow_registry.workflows.values()
                         ],
-                ),
-            },
+                    ),
+                },
+            )
         )
 
         self._tools = [

@@ -1,10 +1,10 @@
 """Configuration class to store the state of bools for different scripts access."""
+
 from __future__ import annotations
 
 import os
 from pathlib import Path
 from typing import Any, Optional, Union
-
 
 from pydantic import Field, validator
 
@@ -230,8 +230,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
 
     # Stable Diffusion
     sd_webui_auth: Optional[str] = UserConfigurable(from_env="SD_WEBUI_AUTH")
-
-
 
     # @validator("openai_functions")
     # def validate_openai_functions(cls, v: bool, values: dict[str, Any]):

@@ -182,9 +182,9 @@ class AbstractMemory(Configurable, abc.ABC):
         else:
             raise ValueError("Invalid db_adapter type")
 
-        AbstractMemory._instances[
-            config_key
-        ] = instance  # Store the newly created instance
+        AbstractMemory._instances[config_key] = (
+            instance  # Store the newly created instance
+        )
         return instance
 
     abc.abstractmethod

@@ -76,7 +76,7 @@ async def run_cli_demo():
 
                 if selected_agent_index.isdigit():
                     selected_agent_index = int(selected_agent_index)
-                else :
+                else:
                     selected_agent_index = 0
 
         else:

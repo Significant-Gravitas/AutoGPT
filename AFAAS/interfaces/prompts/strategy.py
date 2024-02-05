@@ -114,16 +114,13 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     default_configuration: PromptStrategiesConfiguration
 
     @abc.abstractmethod
-    async def build_message(self, *_, **kwargs) -> ChatPrompt:
-        ...
+    async def build_message(self, *_, **kwargs) -> ChatPrompt: ...
 
     @abc.abstractmethod
-    def parse_response_content(self, response_content: AssistantChatMessageDict):
-        ...
+    def parse_response_content(self, response_content: AssistantChatMessageDict): ...
 
     @abc.abstractmethod
-    def set_tools(self, **kwargs):
-        ...
+    def set_tools(self, **kwargs): ...
 
     @abc.abstractmethod
     def get_llm_provider(self) -> AbstractLanguageModelProvider:
@@ -281,7 +278,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
                 "strategy": self,
             }
         )
-        if hasattr(task, "task_parent") :
+        if hasattr(task, "task_parent"):
             template_params.update({"task_parent": await task.task_parent()})
 
         return template.render(template_params)

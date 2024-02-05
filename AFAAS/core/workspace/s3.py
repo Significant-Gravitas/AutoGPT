@@ -2,6 +2,7 @@
 The S3Workspace class provides an interface for interacting with a file workspace, and
 stores the files in an S3 bucket.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -52,9 +53,11 @@ class S3FileWorkspace_AlphaRelease(AbstractFileWorkspace):
         # https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html
         self._s3 = boto3.resource(
             "s3",
-            endpoint_url=config.s3_endpoint_url.get_secret_value()
-            if config.s3_endpoint_url
-            else None,
+            endpoint_url=(
+                config.s3_endpoint_url.get_secret_value()
+                if config.s3_endpoint_url
+                else None
+            ),
         )
 
     @property

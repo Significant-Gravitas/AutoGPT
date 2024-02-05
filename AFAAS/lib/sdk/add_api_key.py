@@ -22,14 +22,11 @@ def add_to_env_file(key: str, query: str, section=None, env_file_path=".env"):
     # Load the existing .env file
     load_dotenv()
     value = input(query)
-    set_to_env_file(key = key,
-                    value =  value,
-                    section=section,
-                    env_file_path=env_file_path
-                    )
+    set_to_env_file(key=key, value=value, section=section, env_file_path=env_file_path)
     # Optionally, update the environment variables in your script
     os.environ[key] = value
     return value
+
 
 def set_to_env_file(key: str, value: str, section=None, env_file_path=".env"):
     # Define the new entry
@@ -57,8 +54,7 @@ def set_to_env_file(key: str, value: str, section=None, env_file_path=".env"):
         env_file.write("\n" + new_entry)
 
 
-
-def ensure_api_key(key : str , api_name : str, section = "API KEYS"):
+def ensure_api_key(key: str, api_name: str, section="API KEYS"):
     """
     Ensure that an API key for a given API is available in the environment variables.
     If not, prompt the user to add it and update the environment.
@@ -88,22 +84,22 @@ def install_and_import_package(package_name):
         __import__(package_name)
 
     except ImportError:
-        #exit("T1")
+        # exit("T1")
         LOG.info(f"{package_name} package is not installed. Installing...")
-        #exit("T2")
+        # exit("T2")
         # Check if the script is running in a Poetry environment
-        if os.getenv('POETRY_ACTIVE') == '1':
-            #exit("T3")
+        if os.getenv("POETRY_ACTIVE") == "1":
+            # exit("T3")
             result = subprocess.run(["poetry", "add", package_name], check=False)
-            #exit("T3B")
+            # exit("T3B")
         else:
-            #exit("T4")
+            # exit("T4")
             result = subprocess.run(["pip", "install", package_name], check=False)
-            #exit("T4B")
+            # exit("T4B")
 
         if result.returncode != 0:
             LOG.error(f"Failed to install the {package_name} package.")
             sys.exit(1)
-        #sys.exit(result.returncode)
+        # sys.exit(result.returncode)
         LOG.info(f"{package_name} package has been installed.")
         __import__(package_name)

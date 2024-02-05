@@ -13,13 +13,11 @@ class AbstractPlan(AbstractBaseTask):
     # Properties
     @property
     @abstractmethod
-    def task_id(self) -> str:
-        ...
+    def task_id(self) -> str: ...
 
     @property
     @abstractmethod
-    def plan_id(self) -> str:
-        ...
+    def plan_id(self) -> str: ...
 
     def parent_task(self) -> AbstractBaseTask:
         return None
@@ -27,66 +25,55 @@ class AbstractPlan(AbstractBaseTask):
     # Public Methods
     @staticmethod
     @abstractmethod
-    def generate_uuid() -> str:
-        ...
+    def generate_uuid() -> str: ...
 
     @abstractmethod
-    def get_all_tasks_ids(self) -> list[str]:
-        ...
+    def get_all_tasks_ids(self) -> list[str]: ...
 
     @abstractmethod
-    def get_all_done_tasks_ids(self) -> list[str]:
-        ...
+    def get_all_done_tasks_ids(self) -> list[str]: ...
 
     @abstractmethod
-    async def get_task(self, task_id: str) -> Optional[AbstractTask]:
-        ...
+    async def get_task(self, task_id: str) -> Optional[AbstractTask]: ...
 
     @abstractmethod
     def get_next_task(
         self, task: Optional[AbstractTask] = None
-    ) -> Optional[AbstractTask]:
-        ...
+    ) -> Optional[AbstractTask]: ...
 
     @abstractmethod
     async def get_ready_tasks(
         self, task_ids_set: Optional[list[str]] = None
-    ) -> list[AbstractTask]:
-        ...
+    ) -> list[AbstractTask]: ...
 
     @abstractmethod
     async def get_active_tasks(
         self, task_ids_set: Optional[list[str]] = None
-    ) -> list[AbstractTask]:
-        ...
+    ) -> list[AbstractTask]: ...
 
     @abstractmethod
     async def get_first_ready_tasks(
         self, task_ids_set: Optional[list[str]] = None
-    ) -> AbstractTask:
-        ...
+    ) -> AbstractTask: ...
 
     @abstractmethod
-    async def get_last_achieved_tasks(self, count: int = 1) -> list[AbstractTask]:
-        ...
+    async def get_last_achieved_tasks(self, count: int = 1) -> list[AbstractTask]: ...
 
     @abstractmethod
-    def unregister_loaded_task(self, task_id: str) -> AbstractTask:
-        ...
+    def unregister_loaded_task(self, task_id: str) -> AbstractTask: ...
 
     @classmethod
     @abstractmethod
-    async def db_create(cls, agent: BaseAgent) -> "AbstractPlan":
-        ...
+    async def db_create(cls, agent: BaseAgent) -> "AbstractPlan": ...
 
     @abstractmethod
-    def db_save(self):
-        ...
+    def db_save(self): ...
 
     @classmethod
     @abstractmethod
-    async def get_plan_from_db(cls, plan_id: str, agent: BaseAgent) -> "AbstractPlan":
-        ...
+    async def get_plan_from_db(
+        cls, plan_id: str, agent: BaseAgent
+    ) -> "AbstractPlan": ...
 
     # @abstractmethod
     # def generate_pitch(self, task: Optional[AbstractTask] = None) -> str:
@@ -95,23 +82,20 @@ class AbstractPlan(AbstractBaseTask):
     @abstractmethod
     def _registry_update_task_status_in_list(
         self, task_id: AbstractTask, status: TaskStatusList
-    ):
-        ...
+    ): ...
 
     @abstractmethod
-    def _register_task_as_modified(self, task_id: str) -> None:
-        ...
+    def _register_task_as_modified(self, task_id: str) -> None: ...
 
     @abstractmethod
-    def _register_new_task(self, task: AbstractTask) -> None:
-        ...
+    def _register_new_task(self, task: AbstractTask) -> None: ...
 
     @abstractmethod
     def __len__(self) -> int:
-        """ The total number of tasks in the plan. """
+        """The total number of tasks in the plan."""
         ...
 
-    @abstractmethod 
-    def set_as_priority(self, task : AbstractTask) -> None:
-        """ Move an Task that is ready among the next tasks to be executed. For example : If a tasks fails and is to be executed again, it can be moved to the top of the list of tasks to be executed. """
+    @abstractmethod
+    def set_as_priority(self, task: AbstractTask) -> None:
+        """Move an Task that is ready among the next tasks to be executed. For example : If a tasks fails and is to be executed again, it can be moved to the top of the list of tasks to be executed."""
         ...

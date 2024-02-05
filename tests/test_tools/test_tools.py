@@ -9,13 +9,14 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from .dataset.example_tool_exec_function import PARAMETERS, example_tool_exec_function, example_tool
+from tests.dataset.example_tool_exec_function import PARAMETERS, example_tool_exec_function, example_tool
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent.main import BaseAgent
 
 from AFAAS.core.tools.tool import Tool
 from AFAAS.core.tools.tool_registry import DefaultToolRegistry
+
 
 def test_tool_creation():
     """Test that a Command object can be created with the correct attributes."""

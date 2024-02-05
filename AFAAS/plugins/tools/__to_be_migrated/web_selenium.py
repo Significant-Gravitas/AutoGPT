@@ -36,9 +36,8 @@ from AFAAS.lib.sdk.errors import ToolExecutionError, TooMuchOutputError
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.utils.json_schema import JSONSchema
 from AFAAS.lib.utils.processing.html import extract_hyperlinks, format_hyperlinks
-from AFAAS.lib.utils.processing.text import  extract_information, summarize_text
+from AFAAS.lib.utils.processing.text import extract_information, summarize_text
 from AFAAS.lib.utils.url.validators import validate_url
-from AFAAS.core.tools.tool_decorator import tool
 
 LOG = AFAASLogger(name=__name__)
 
@@ -252,10 +251,10 @@ async def open_page_in_browser(url: str) -> WebDriver:
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--remote-debugging-port=9222")
 
-    #     options.add_argument("--no-sandbox")
-    #     if config.selenium_headless:
-    #         options.add_argument("--headless=new")
-    #         options.add_argument("--disable-gpu")
+        #     options.add_argument("--no-sandbox")
+        #     if config.selenium_headless:
+        #         options.add_argument("--headless=new")
+        #         options.add_argument("--disable-gpu")
 
         _sideload_chrome_extensions(options, config.app_data_dir / "assets" / "crx")
 

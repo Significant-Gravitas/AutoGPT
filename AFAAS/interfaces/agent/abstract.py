@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import datetime
 import uuid
-from pathlib import Path
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Optional
 
 from pydantic import Field
@@ -19,11 +19,15 @@ from AFAAS.lib.message_common import AFAASMessageStack
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
-from langchain_openai.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import VectorStore
 from langchain_community.vectorstores.chroma import Chroma
 from langchain_core.embeddings import Embeddings
-from langchain.vectorstores import VectorStore
-from AFAAS.interfaces.adapters.embeddings.wrapper import VectorStoreWrapper, ChromaWrapper
+from langchain_openai.embeddings import OpenAIEmbeddings
+
+from AFAAS.interfaces.adapters.embeddings.wrapper import (
+    ChromaWrapper,
+    VectorStoreWrapper,
+)
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.prompts.strategy import AbstractChatModelResponse

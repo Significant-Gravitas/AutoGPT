@@ -221,6 +221,6 @@ class AgentArtifactsListResponse(AFAASModel):
     artifacts: Optional[List[Artifact]] = None
     pagination: Optional[Pagination] = None
 
+
 class TaskEvalRequestBody(TaskRequestBody):
     eval_id: str
-

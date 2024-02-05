@@ -60,40 +60,42 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
         task: AbstractTask,
         **kwargs,
     ):
-        self.afaas_task_postprocess_default_summary: CompletionModelFunction = CompletionModelFunction(
-            name=BaseTaskSummaryStrategyFunctionNames.DEFAULT_TASK_SUMMARY.value,
-            description="Provide detailed information about the task and the context of the task to the Agent responsible or completing the task.",
-            parameters={
-                "text_output": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    description=f"All the information with regards to what have been donne in the task. This note should be {str(self.task_output_lenght * 0.8)} to {str(self.task_output_lenght *  1.25)} words long.",
-                    required=True,
-                ),
-                "text_output_as_uml": JSONSchema(
-                    type=JSONSchema.Type.ARRAY,
-                    items=JSONSchema(
+        self.afaas_task_postprocess_default_summary: CompletionModelFunction = (
+            CompletionModelFunction(
+                name=BaseTaskSummaryStrategyFunctionNames.DEFAULT_TASK_SUMMARY.value,
+                description="Provide detailed information about the task and the context of the task to the Agent responsible or completing the task.",
+                parameters={
+                    "text_output": JSONSchema(
                         type=JSONSchema.Type.STRING,
-                        description=f"UML diagrams in PlantUML notation that may help any one to understand the task. Accepts Class Diagram, Object Diagram, Package Diagram, Component Diagram, Composite Structure Diagram, Deployment Diagram, Activity Diagram, State Machine Diagram, Use Case Diagram, Sequence Diagram, Communication Diagram, Interaction Overview Diagram, Timing Diagram",
+                        description=f"All the information with regards to what have been donne in the task. This note should be {str(self.task_output_lenght * 0.8)} to {str(self.task_output_lenght *  1.25)} words long.",
                         required=True,
                     ),
-                ),
-                "archimate_diagrams": JSONSchema(
-                    type=JSONSchema.Type.ARRAY,
-                    items=JSONSchema(
-                        type=JSONSchema.Type.STRING,
-                        description=f"Architectural diagrams in PlantUML notation that may help any one to understand the task",
-                        required=False,
+                    "text_output_as_uml": JSONSchema(
+                        type=JSONSchema.Type.ARRAY,
+                        items=JSONSchema(
+                            type=JSONSchema.Type.STRING,
+                            description=f"UML diagrams in PlantUML notation that may help any one to understand the task. Accepts Class Diagram, Object Diagram, Package Diagram, Component Diagram, Composite Structure Diagram, Deployment Diagram, Activity Diagram, State Machine Diagram, Use Case Diagram, Sequence Diagram, Communication Diagram, Interaction Overview Diagram, Timing Diagram",
+                            required=True,
+                        ),
                     ),
-                ),
-                "gant_diagrams": JSONSchema(
-                    type=JSONSchema.Type.ARRAY,
-                    items=JSONSchema(
-                        type=JSONSchema.Type.STRING,
-                        description=f"Gantt diagrams in PlantUML notation that may help any one to understand the task",
-                        required=False,
+                    "archimate_diagrams": JSONSchema(
+                        type=JSONSchema.Type.ARRAY,
+                        items=JSONSchema(
+                            type=JSONSchema.Type.STRING,
+                            description=f"Architectural diagrams in PlantUML notation that may help any one to understand the task",
+                            required=False,
+                        ),
                     ),
-                ),
-            },
+                    "gant_diagrams": JSONSchema(
+                        type=JSONSchema.Type.ARRAY,
+                        items=JSONSchema(
+                            type=JSONSchema.Type.STRING,
+                            description=f"Gantt diagrams in PlantUML notation that may help any one to understand the task",
+                            required=False,
+                        ),
+                    ),
+                },
+            )
         )
 
         self._tools = [

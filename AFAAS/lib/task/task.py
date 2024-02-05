@@ -1,28 +1,35 @@
 from __future__ import annotations
 
 import asyncio
-import time
 import copy
-from typing import TYPE_CHECKING, Optional, Any
-from AFAAS.interfaces.tools.tool_output import ToolOutput
-from AFAAS.core.tools.tool import Tool
-from AFAAS.lib.sdk.errors import AgentException, ToolExecutionError, UnknownToolError
+import time
+from typing import TYPE_CHECKING, Any, Optional
 
 from pydantic import Field, validator
 
+from AFAAS.core.tools.tool import Tool
 from AFAAS.interfaces.adapters import AbstractChatModelResponse
-from AFAAS.interfaces.adapters.embeddings.wrapper import SearchFilter, DocumentType,  Filter, FilterType
+from AFAAS.interfaces.adapters.embeddings.wrapper import (
+    DocumentType,
+    Filter,
+    FilterType,
+    SearchFilter,
+)
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.interfaces.task.plan import AbstractPlan
 from AFAAS.interfaces.task.task import AbstractTask
+from AFAAS.interfaces.tools.tool_output import ToolOutput
+from AFAAS.interfaces.workflow import FastTrackedWorkflow
+from AFAAS.lib.sdk.errors import AgentException, ToolExecutionError, UnknownToolError
 from AFAAS.lib.sdk.logger import AFAASLogger, logging
 from AFAAS.prompts.common import (
     AfaasPostRagTaskUpdateStrategy,
-AfaasTaskRagStep2Strategy, AfaasTaskRagStep3Strategy , AfaasSelectWorkflowStrategy ) 
-from AFAAS.interfaces.adapters.embeddings.wrapper import SearchFilter, DocumentType,  Filter, FilterType
-from AFAAS.interfaces.workflow import FastTrackedWorkflow
+    AfaasSelectWorkflowStrategy,
+    AfaasTaskRagStep2Strategy,
+    AfaasTaskRagStep3Strategy,
+)
 
 LOG = AFAASLogger(name=__name__)
 
@@ -314,7 +321,6 @@ class Task(AbstractTask):
             return self.task_id == other.task_id
         return False
 
-
     async def task_preprossessing(
         self,
         predecessors: bool = True,
@@ -329,7 +335,7 @@ class Task(AbstractTask):
             # NOTE: in current implementation self.command is always routing
             workflow = await self._select_workflow()
 
-            if workflow != FastTrackedWorkflow.name : 
+            if workflow != FastTrackedWorkflow.name:
                 rv = await self._preprocess_rags(
                     predecessors=predecessors,
                     successors=successors,
@@ -340,16 +346,16 @@ class Task(AbstractTask):
                     avoid_sibbling_predecessors_redundancy=avoid_sibbling_predecessors_redundancy,
                 )
 
-    async def _select_workflow(self) : 
-            # RAG : 4. Post-Rag task update
-            rv: AbstractChatModelResponse = await self.agent.execute_strategy(
-                strategy_name=AfaasSelectWorkflowStrategy.STRATEGY_NAME,
-                task=self,
-            )
-            result = rv.parsed_result[0]["command_args"]
-            self.task_workflow = result["task_workflow"]
+    async def _select_workflow(self):
+        # RAG : 4. Post-Rag task update
+        rv: AbstractChatModelResponse = await self.agent.execute_strategy(
+            strategy_name=AfaasSelectWorkflowStrategy.STRATEGY_NAME,
+            task=self,
+        )
+        result = rv.parsed_result[0]["command_args"]
+        self.task_workflow = result["task_workflow"]
 
-            return self.task_workflow
+        return self.task_workflow
 
     async def _preprocess_rags(
         self,
@@ -378,7 +384,7 @@ class Task(AbstractTask):
         # 3. Remove predecessors from history to avoid redondancy
         history_and_predecessors = set(plan_history) | set(task_predecessors)
 
-        # 4. Get the path to the task and remove it from history to avoid redondancy 
+        # 4. Get the path to the task and remove it from history to avoid redondancy
         # NOTE: We keep the redundancy as the task path doesn't detail the content of tasks
         # history_and_predecessors - set(task_path)
         task_path: list[Task] = []
@@ -403,17 +409,20 @@ class Task(AbstractTask):
                 text=self.long_description
             )
             # FIXME: Create an adapter or open a issue on Langchain Github : https://github.com/langchain-ai/langchain to harmonize the AP
-            related_tasks_documents = await self.agent.vectorstores.get_related_documents(
-                                        embedding =  task_embedding ,
-                                        nb_results = 10 ,
-                                        document_type = DocumentType.TASK,
-                                        search_filters= SearchFilter(filters = {
-                                            'agent_id' : Filter( 
-                                                filter_type=FilterType.EQUAL,
-                                                value=self.agent.agent_id,
-                                            ) 
-                                        }
-                                        )
+            related_tasks_documents = (
+                await self.agent.vectorstores.get_related_documents(
+                    embedding=task_embedding,
+                    nb_results=10,
+                    document_type=DocumentType.TASK,
+                    search_filters=SearchFilter(
+                        filters={
+                            "agent_id": Filter(
+                                filter_type=FilterType.EQUAL,
+                                value=self.agent.agent_id,
+                            )
+                        }
+                    ),
+                )
             )
 
             LOG.debug(related_tasks_documents)
@@ -485,7 +494,6 @@ class Task(AbstractTask):
             # Moved to task_preprossessing
             # self.task_workflow = rv.parsed_result[0]["command_args"]["task_workflow"]
 
-
     async def task_execute(self) -> tuple[Tool, ToolOutput]:
         LOG.info(f"Executing command : {self.command}")
         LOG.info(f"with arguments : {self.arguments}")
@@ -496,33 +504,38 @@ class Task(AbstractTask):
                 return tool, result
             except Exception as e:
                 raise ToolExecutionError(str(e))
-        raise UnknownToolError(f"Cannot execute command '{self.command}': unknown command.")
-
+        raise UnknownToolError(
+            f"Cannot execute command '{self.command}': unknown command."
+        )
 
     def __copy__(self):
 
         cls = self.__class__
-        clone = cls(**self.dict(), agent = self.agent)
+        clone = cls(**self.dict(), agent=self.agent)
         clone.agent = self.agent
         clone._task_parent = self._task_parent
 
         return clone
 
-    def __deepcopy__(self, memo) : 
-        LOG.warning(f"You should not use deepcopy on Task objects. Use Task.clone() instead")
+    def __deepcopy__(self, memo):
+        LOG.warning(
+            f"You should not use deepcopy on Task objects. Use Task.clone() instead"
+        )
         return copy.deepcopy(self)
 
-    async def clone(self , with_predecessor = False , new_attempt = True , reset_attempt = True ) -> Task:
+    async def clone(
+        self, with_predecessor=False, new_attempt=True, reset_attempt=True
+    ) -> Task:
         clone = copy.copy(self)
 
-
         import datetime
+
         clone.created_at = datetime.datetime.now()
         clone.task_id = Task.generate_uuid()
         clone.task_number = len(self.agent.plan)
-        if new_attempt :
+        if new_attempt:
             clone.task_attempt_number += 1
-        elif reset_attempt :
+        elif reset_attempt:
             clone.task_attempt_number = 0
 
         clone.state = TaskStatusList.BACKLOG
@@ -531,13 +544,13 @@ class Task(AbstractTask):
         clone._task_successors = TaskStack(parent_task=clone, description="Successors")
         for successor in await self.task_successors.get_all_tasks_from_stack():
             successor.add_predecessor(clone)
-        if with_predecessor :
+        if with_predecessor:
             for predecessor in await self.task_predecessors.get_all_tasks_from_stack():
                 predecessor.add_successor(clone)
         return clone
 
     async def retry(self) -> Task:
-        """ Clone a task and adds it as its immediate successor"""
+        """Clone a task and adds it as its immediate successor"""
         LOG.warning("Task.retry() is an experimental method")
 
         # Clone the task
@@ -545,7 +558,7 @@ class Task(AbstractTask):
 
         # Register it in the plan and add it as subtask of it's parent
         parent = await self.task_parent()
-        parent.add_task(clone) 
+        parent.add_task(clone)
 
         # Add the clone as a successor of the original task
         self.add_successor(clone)
@@ -555,17 +568,15 @@ class Task(AbstractTask):
         clone.state = TaskStatusList.READY
 
         # Make the clone the next task in the plan
-        self.agent.plan.set_as_priority(task = clone)
+        self.agent.plan.set_as_priority(task=clone)
 
         return clone
 
+    async def task_postprocessing(self, tool: Tool, tool_output: Any) -> bool:
 
-    async def task_postprocessing(self, tool : Tool , tool_output: Any) -> bool:
+        await self.process_tool_output(tool=tool, tool_output=tool_output)
 
-        await self.process_tool_output(tool = tool, 
-                                       tool_output = tool_output)
-
-        try : 
+        try:
             if await self.is_ready():
                 """If the task still match readiness criterias at this point, it means that we can close it"""
                 await self.close_task()
@@ -574,19 +585,16 @@ class Task(AbstractTask):
                 If the task doesn't match readiness criterias at this point, it means that we can't close it
                 this situation is usualy due to the addition of subbtasks (or predecessor ?) during the excecution of the task.
                 """
-                if self.state != TaskStatusList.IN_PROGRESS_WITH_SUBTASKS : 
+                if self.state != TaskStatusList.IN_PROGRESS_WITH_SUBTASKS:
                     LOG.error(f"Can't terminate Task : {self.debug_formated_str()}")
-                    raise Exception(f"Can't terminate Task : {self.debug_formated_str()}")
+                    raise Exception(
+                        f"Can't terminate Task : {self.debug_formated_str()}"
+                    )
             return True
-        except : 
+        except:
             return False
 
-
-    async def process_tool_output(
-        self,
-        tool : Tool, 
-        tool_output: Any
-    ):
+    async def process_tool_output(self, tool: Tool, tool_output: Any):
         LOG.trace(f"Tool.default_success_check_callback() called for {tool}")
         LOG.debug(f"Task = {self}")
         LOG.debug(f"Tool output = {tool_output}")
@@ -600,24 +608,22 @@ class Task(AbstractTask):
             await self.retry()
 
 
-        return 
-
+        return
 
     async def memorize_output(self):
         from langchain_core.documents import Document
+
         document = Document(
             page_content=self.task_text_output,
-            metadata=   {
-                        "task_id": self.task_id, 
-                        "plan_id": self.plan_id ,
-                        "agent_id": self.agent.agent_id ,
-                        }
+            metadata={
+                "task_id": self.task_id,
+                "plan_id": self.plan_id,
+                "agent_id": self.agent.agent_id,
+            },
         )
         vector = await self.agent.vectorstores.add_document(
-                                                       document_type = DocumentType.TASK,  
-                                                       document = document , 
-                                                       document_id =  self.task_id
-                                                       ) 
+            document_type=DocumentType.TASK, document=document, document_id=self.task_id
+        )
         LOG.trace(f"Task output embedding added to vector store : {repr(vector)}")
         return self.task_text_output
 

@@ -85,9 +85,9 @@ class BaseNoSQLTable(AbstractTable):
                 serialized_value = curr_obj.dict()
             elif hasattr(curr_obj, "__dict__"):
                 new_dict = {}
-                new_dict[
-                    "_type_"
-                ] = f"{curr_obj.__class__.__module__}.{curr_obj.__class__.__name__}"
+                new_dict["_type_"] = (
+                    f"{curr_obj.__class__.__module__}.{curr_obj.__class__.__name__}"
+                )
                 for attr, attr_value in curr_obj.__dict__.items():
                     if not (
                         attr.startswith("_")
@@ -115,7 +115,9 @@ class BaseNoSQLTable(AbstractTable):
         elif isinstance(value, Configurable):
             value = value.dict()
         else:
-            LOG.notice(f"Class {value.__class__.__name__} not hinheriting from AFAASModel")
+            LOG.notice(
+                f"Class {value.__class__.__name__} not hinheriting from AFAASModel"
+            )
             value = self.__class__.serialize_value(value)
 
         # Assigning primary key

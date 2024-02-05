@@ -70,10 +70,10 @@ async def list_agents(
     LOG.info("Getting agent settings")
 
     try:
-        agents: list[
-            PlannerAgent.SystemSettings
-        ] = PlannerAgent.list_users_agents_from_db(
-            user_id=request.state.user_id, page=page, page_size=page_size
+        agents: list[PlannerAgent.SystemSettings] = (
+            PlannerAgent.list_users_agents_from_db(
+                user_id=request.state.user_id, page=page, page_size=page_size
+            )
         )
 
         agents_list_response: AgentListResponse = AgentListResponse.from_afaas(

@@ -1,1 +1,8 @@
-from .wrapper import DocumentType, SearchFilter, Filter, FilterType, VectorStoreWrapper, ChromaWrapper
+from .wrapper import (
+    ChromaWrapper,
+    DocumentType,
+    Filter,
+    FilterType,
+    SearchFilter,
+    VectorStoreWrapper,
+)

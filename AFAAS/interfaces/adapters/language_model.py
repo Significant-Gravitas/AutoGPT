@@ -122,42 +122,34 @@ class AbstractModelProvider(abc.ABC):
     _configuration: BaseModelProviderConfiguration
 
     @abc.abstractmethod
-    def count_tokens(self, text: str, model_name: str) -> int:
-        ...
+    def count_tokens(self, text: str, model_name: str) -> int: ...
 
     @abc.abstractmethod
-    def get_tokenizer(self, model_name: str) -> "ModelTokenizer":
-        ...
+    def get_tokenizer(self, model_name: str) -> "ModelTokenizer": ...
 
     @abc.abstractmethod
-    def get_token_limit(self, model_name: str) -> int:
-        ...
+    def get_token_limit(self, model_name: str) -> int: ...
 
     @abc.abstractmethod
-    def get_remaining_budget(self) -> float:
-        ...
+    def get_remaining_budget(self) -> float: ...
 
 
 class AbstractLanguageModelProvider(AbstractModelProvider):
     @abc.abstractmethod
-    def has_oa_tool_calls_api(self, model_name: str) -> bool:
-        ...
+    def has_oa_tool_calls_api(self, model_name: str) -> bool: ...
 
     @abc.abstractmethod
-    def get_default_config(self) -> AbstractPromptConfiguration:
-        ...
+    def get_default_config(self) -> AbstractPromptConfiguration: ...
 
 
 class ModelTokenizer(Protocol):
     """A ModelTokenizer provides tokenization specific to a model."""
 
     @abc.abstractmethod
-    def encode(self, text: str) -> list:
-        ...
+    def encode(self, text: str) -> list: ...
 
     @abc.abstractmethod
-    def decode(self, tokens: list) -> str:
-        ...
+    def decode(self, tokens: list) -> str: ...
 
 
 ####################
@@ -193,8 +185,7 @@ class EmbeddingModelProvider(AbstractModelProvider):
         model_name: str,
         embedding_parser: Callable[[Embedding], Embedding],
         **kwargs,
-    ) -> EmbeddingModelResponse:
-        ...
+    ) -> EmbeddingModelResponse: ...
 
 
 class AbstractPromptConfiguration(abc.ABC, SystemConfiguration):

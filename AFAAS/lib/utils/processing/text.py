@@ -1,4 +1,5 @@
 """Text processing functions"""
+
 import json
 import logging
 import math
@@ -113,7 +114,7 @@ async def extract_information(
     source_text: str,
     topics_of_interest: list[str],
     llm_provider: AbstractChatModelProvider,
-    ) -> list[str]:
+) -> list[str]:
     fmt_topics_list = "\n".join(f"* {topic}." for topic in topics_of_interest)
     instruction = (
         "Extract relevant pieces of information about the following topics:\n"
@@ -128,14 +129,14 @@ async def extract_information(
         instruction=instruction,
         output_type=list[str],
         llm_provider=llm_provider,
-            )
+    )
 
 
 async def _process_text(
     text: str,
     instruction: str,
     llm_provider: AbstractChatModelProvider,
-        output_type: type[str | list[str]] = str,
+    output_type: type[str | list[str]] = str,
 ) -> tuple[str, list[tuple[str, str]]] | list[str]:
     """Process text using the OpenAI API for summarization or information extraction
 
@@ -202,7 +203,7 @@ async def _process_text(
         chunks = list(
             split_text(
                 text,
-                                max_chunk_length=max_chunk_length,
+                max_chunk_length=max_chunk_length,
                 tokenizer=llm_provider.get_tokenizer(model),
             )
         )
@@ -215,7 +216,7 @@ async def _process_text(
                 instruction=instruction,
                 output_type=output_type,
                 llm_provider=llm_provider,
-                            )
+            )
             processed_results.extend(
                 chunk_result if output_type == list[str] else [chunk_result]
             )
@@ -230,7 +231,7 @@ async def _process_text(
                     "Combine these partial summaries into one."
                 ),
                 llm_provider=llm_provider,
-                            )
+            )
             return summary.strip(), [
                 (processed_results[i], chunks[i][0]) for i in range(0, len(chunks))
             ]

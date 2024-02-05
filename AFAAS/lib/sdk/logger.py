@@ -166,10 +166,14 @@ class AFAASLogger(logging.Logger):
     LOG_FILENAME = "debug.log"
     DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
 
-    CONSOLE_FORMAT: str = "[%(asctime)s] [$BOLD%(name)-15s,%(lineno)d$RESET] [%(levelname)-8s]\t%(message)s"
+    CONSOLE_FORMAT: str = (
+        "[%(asctime)s] [$BOLD%(name)-15s,%(lineno)d$RESET] [%(levelname)-8s]\t%(message)s"
+    )
     FORMAT: str = "%(asctime)s %(name)-15s %(levelname)-8s %(message)s"
     COLOR_FORMAT: str = formatter_message(CONSOLE_FORMAT, True)
-    JSON_FORMAT: str = '{"time": "%(asctime)s", "name": "%(name)s", "level": "%(levelname)s", "message": "%(message)s"}'
+    JSON_FORMAT: str = (
+        '{"time": "%(asctime)s", "name": "%(name)s", "level": "%(levelname)s", "message": "%(message)s"}'
+    )
 
     # _instance = None  # Class attribute to hold the single instance
 

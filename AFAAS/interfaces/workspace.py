@@ -1,6 +1,7 @@
 """
 The AbstractFileWorkspace class provides an interface for interacting with a file workspace.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -80,8 +81,7 @@ class AbstractFileWorkspace(Configurable, ABC):
         self._initialize()
 
     @abstractmethod
-    def _initialize(self) -> None:
-        ...
+    def _initialize(self) -> None: ...
 
     @overload
     @abstractmethod

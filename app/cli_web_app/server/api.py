@@ -21,6 +21,7 @@ AP alias /agent/tasks/{agent_id} (GET): Get an agent from its ID & return an age
 /agent/{agent_id}/lastmessage (GET): Get the last message for an agent.
     => need PlannerAgent to provide a method 
 """
+
 import uuid
 
 from fastapi import APIRouter, FastAPI, Request

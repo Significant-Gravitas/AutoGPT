@@ -106,7 +106,6 @@ class AbstractChatMessage(abc.ABC, BaseModel):
 
 
 class Role(str, enum.Enum):
-
     """
     An enumeration class representing the roles of different entities in a chat conversation.
     The `Role` class is fundamental to role-based messaging within the module,
@@ -580,8 +579,7 @@ class AbstractChatModelProvider(AbstractLanguageModelProvider):
         self,
         messages: ChatMessage | list[ChatMessage],
         model_name: str,
-    ) -> int:
-        ...
+    ) -> int: ...
 
     async def create_language_completion(
         self,
@@ -591,8 +589,7 @@ class AbstractChatModelProvider(AbstractLanguageModelProvider):
         tools: list[CompletionModelFunction],
         tool_choice: str,
         **kwargs,
-    ) -> AbstractChatModelResponse:
-        ...
+    ) -> AbstractChatModelResponse: ...
 
     @abc.abstractmethod
     async def create_chat_completion(
@@ -602,5 +599,4 @@ class AbstractChatModelProvider(AbstractLanguageModelProvider):
         tools: list[CompletionModelFunction] = [],
         completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
         **kwargs,
-    ) -> AbstractChatModelResponse[_T]:
-        ...
+    ) -> AbstractChatModelResponse[_T]: ...

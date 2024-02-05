@@ -1,4 +1,3 @@
-from collections import deque
 import glob
 import json
 import logging
@@ -6,15 +5,11 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections import deque
 from pathlib import Path
 from typing import Any, ClassVar, Iterator, Literal, Optional
 
 import pytest
-from agent_protocol_client import AgentApi, ApiClient, Configuration as ClientConfig
-from colorama import Fore, Style
-from openai import _load_client as get_openai_client
-from pydantic import BaseModel, constr, Field, validator
-
 from agbenchmark.agent_api_interface import download_agent_artifacts_into_folder
 from agbenchmark.agent_interface import copy_challenge_artifacts_into_workspace
 from agbenchmark.config import AgentBenchmarkConfig
@@ -25,6 +20,11 @@ from agbenchmark.utils.prompts import (
     PROMPT_MAP,
     SCORING_MAP,
 )
+from agent_protocol_client import AgentApi, ApiClient
+from agent_protocol_client import Configuration as ClientConfig
+from colorama import Fore, Style
+from openai import _load_client as get_openai_client
+from pydantic import BaseModel, Field, constr, validator
 
 from .base import BaseChallenge, ChallengeInfo
 
@@ -200,9 +200,11 @@ class BuiltinChallenge(BaseChallenge):
         request.node.user_properties.append(
             (
                 "answers",
-                [r.result for r in eval_results]
-                if request.config.getoption("--keep-answers")
-                else None,
+                (
+                    [r.result for r in eval_results]
+                    if request.config.getoption("--keep-answers")
+                    else None
+                ),
             )
         )
         request.node.user_properties.append(("scores", [r.score for r in eval_results]))

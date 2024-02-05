@@ -87,7 +87,7 @@ async def agent() -> PlannerAgent:
 def reset_environment_each_test(default_task: Task):
     # AFAASLogger.setLevel(logging.ERROR)
     setup_environment()
-    delete_logs(agent = default_task.agent)
+    delete_logs(agent=default_task.agent)
     base_dir = Path("~/AFAAS/data/pytest").expanduser().resolve()
     print(base_dir)
     # Walk through the directory structure
@@ -106,8 +106,10 @@ def setup_environment():
     pass
 
 
-def delete_logs(agent : PlannerAgent = None):
-    log_dir = agent.log_path if agent else Path("~/AFAAS/data/logs").expanduser().resolve()
+def delete_logs(agent: PlannerAgent = None):
+    log_dir = (
+        agent.log_path if agent else Path("~/AFAAS/data/logs").expanduser().resolve()
+    )
     # Check if the directory exists
     if not log_dir.exists():
         print("Directory does not exist:", log_dir)
