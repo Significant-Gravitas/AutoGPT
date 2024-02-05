@@ -329,8 +329,8 @@ class Task(AbstractTask):
         path=True,
         nb_similar_tasks: int = 100,
         avoid_sibbling_predecessors_redundancy: bool = False,
-    ):
-        if self.task_workflow is None:
+    ):  
+        if self.command == 'afaas_routing' and self.task_workflow is None : 
             # NOTE: in current implementation self.command is always routing
             workflow = await self._select_workflow()
 
