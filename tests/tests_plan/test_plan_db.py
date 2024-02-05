@@ -36,7 +36,7 @@ from tests.dataset.plan_familly_dinner import (
     task_with_ongoing_subtasks,
     task_with_unmet_predecessors,
 )
-from .utils.ascii_tree import print_tree, pytest_terminal_summary, test_trees
+from tests.utils.ascii_tree import print_tree, pytest_terminal_summary, test_trees
 
 
 @pytest.mark.asyncio
