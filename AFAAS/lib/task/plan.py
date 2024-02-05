@@ -477,22 +477,7 @@ class Plan(AbstractPlan):
 
     def create_initial_tasks(self, status: TaskStatusList):
         LOG.debug(f"Creating initial task for plan {self.plan_id}")
-        initial_task = Task(
-            agent=self.agent,
-            plan_id=self.plan_id,
-            # task_parent=self,
-            state=status,
-            _task_parent_id=self.plan_id,
-            responsible_agent_id=None,
-            task_goal=self.task_goal,
-            command=Task.default_tool(),
-            long_description="This is the initial task of the plan, no task has been performed yet and this tasks will consist in splitting the goal into subtasks",
-            arguments={"note_to_agent_length": 400},
-            acceptance_criteria=["A plan has been made to achieve the specific task"],
-            task_workflow = FastTrackedWorkflow.name
-        )
-        # self._current_task = initial_task  # .task_id
-        initial_task_list = [initial_task]
+        initial_task_list = []
 
         ###
         # Step 2 : Prepend usercontext
@@ -516,10 +501,26 @@ class Plan(AbstractPlan):
                     arguments={},
                     task_workflow = FastTrackedWorkflow.name
                 )
-                initial_task_list = [refine_user_context_task] + initial_task_list
-                # self._current_task = refine_user_context_task  # .task_id
+                initial_task_list += [refine_user_context_task] 
             except:
                 pass
+
+        initial_task = Task(
+            agent=self.agent,
+            plan_id=self.plan_id,
+            # task_parent=self,
+            state=status,
+            _task_parent_id=self.plan_id,
+            responsible_agent_id=None,
+            task_goal=self.task_goal,
+            command=Task.default_tool(),
+            long_description="This is the initial task of the plan, no task has been performed yet and this tasks will consist in splitting the goal into subtasks",
+            arguments={"note_to_agent_length": 400},
+            acceptance_criteria=["A plan has been made to achieve the specific task"],
+            task_workflow = FastTrackedWorkflow.name
+        )
+        # self._current_task = initial_task  # .task_id
+        initial_task_list += [initial_task]
 
         self.add_tasks(tasks=initial_task_list)
 
