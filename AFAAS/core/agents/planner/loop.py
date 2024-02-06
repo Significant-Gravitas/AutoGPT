@@ -85,44 +85,13 @@ class PlannerLoop(BaseLoop):
             user_message_handler=self._user_message_handler,
         )
 
-        if self.plan() is None and False:
-            ##############################################################
-            ### Step 2 : USER CONTEXT AGENT : IF USER CONTEXT AGENT EXIST
-            ##############################################################
-            # Note to remove once user_context tool rewritten
-            if not aaas["usercontext"]:
-                self._agent.agent_goals = [self._agent.agent_goal_sentence]
-            else:
-                agent_goal_sentence, agent_goals = await self.run_user_context_agent()
-                self._agent.agent_goal_sentence = agent_goal_sentence
-                self._agent.agent_goals = agent_goals
-
-            ##############################################################
-            ### Step 3 : Define the approach
-            ##############################################################
-            routing_feedbacks = ""
-            description = ""
-            if aaas["routing"]:
-                description, routing_feedbacks = await self.run_routing_agent()
-
-            ##############################################################
-            ### Step 4 : Saving agent with its new goals
-            ##############################################################
-            await self.save_agent()
-
-            ##############################################################
-            ### Step 5 : Make an plan !
-            ##############################################################
-            llm_response = await self.build_initial_plan(
-                description=description, routing_feedbacks=routing_feedbacks
-            )
+        self.plan()
 
         ##############################################################
         # NOTE : Important KPI to log during crashes
         ##############################################################
         # Count the number of cycle, usefull to bench for stability before crash or hallunation
         self._loop_count = 0
-
         # _is_running is important because it avoid having two concurent loop in the same agent (cf : Agent.run())
         current_task = self._current_task
         while self._is_running:
@@ -131,44 +100,32 @@ class PlannerLoop(BaseLoop):
             if self._active:
                 self._loop_count += 1
 
-                # ##############################################################
-                # ### Step 5 : select_tool()
-                # ##############################################################
-                # if current_task.command is not None:
-                #     command_name = current_task.command
-                #     command_args = current_task.arguments
-                #     assistant_reply_dict = current_task.long_description
-                # else:
-                #     raise Exception("Honney pot ! In order to ensure we can remove this section of code securely, we raise an exception.")
-                #     LOG.error("No command to execute")
-                #     (
-                #         command_name,
-                #         command_args,
-                #         assistant_reply_dict,
-                #     ) = await self.select_tool()
-
                 ##############################################################
-                ### Step 6 : Prepare RAG #
+                ### Step 1 : Prepare Task #
                 ##############################################################
                 # NOTE : Anayse swap between step 5 and 6
                 await current_task.task_preprossessing()
 
                 ##############################################################
-                ### Step 7 : execute_tool() #
+                ### Step 2 : Execute Task #
                 ##############################################################
-                # current_task.command = command_name
-                # current_task.arguments = command_args
                 try:
                     tool, result = await current_task.task_execute()
-                    # await tool.success_check_callback(self=tool, task=self, tool_output=result)
                 except AgentException as e:
                     # FIXME : Implement retry mechanism if a fail
                     result = AgentException(reason=e.message, error=e)
                 LOG.debug(f"result : {str(result)}")
 
+                ##############################################################
+                ### Step 3 : Postprocess Task #
+                ##############################################################
                 successfull_closure : bool = await current_task.task_postprocessing(tool =tool,
                                                                                 tool_output = result)
 
+
+                ##############################################################
+                ### Step 4 : Save Plan & prepare next iteration
+                ##############################################################
                 LOG.debug(f"successfull_closure : {successfull_closure}")
                 LOG.debug(await self.plan().debug_dump_str(depth=2))
 
@@ -184,9 +141,11 @@ class PlannerLoop(BaseLoop):
                     self._is_running = False
                     raise AgentException(  "The agent can't find the next task to execute 😱 ! This is an anomaly and we would be working on it." )
                 else:
-                    self.prepare_next_iteration()
+                    await self._prepare_next_iteration()
 
-    async def prepare_next_iteration(self):
+
+
+    async def _prepare_next_iteration(self):
         LOG.trace(f"Next task : {self._current_task.debug_formated_str()}")
         LOG.info("Task history : (Max. 10 tasks)")
         plan_history: list[Task] = await self.plan().get_last_achieved_tasks(count=10)
@@ -288,23 +247,3 @@ class PlannerLoop(BaseLoop):
             )
         )
         return command_name, command_args, assistant_reply_dict
-
-    async def execute_tool(
-        self,
-        command_name: str,
-        current_task: Task,
-        command_args: dict[str, str] = {},
-    ) -> Any:
-        result: any
-
-        current_task.command = command_name
-        current_task.arguments = command_args
-
-        try:
-            return_value = await current_task.task_execute()
-
-        except AgentException as e:
-            # FIXME : Implement retry mechanism if a fail
-            return_value = AgentException(reason=e.message, error=e)
-
-        return return_value
