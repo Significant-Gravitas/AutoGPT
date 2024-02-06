@@ -4,6 +4,12 @@ import platform
 import time
 from typing import TYPE_CHECKING, Any
 
+import importlib
+
+import AFAAS.prompts.common as common_module
+from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
+from AFAAS.prompts import BaseTaskRagStrategy, load_all_strategies
+
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
 
@@ -54,27 +60,28 @@ class BasePromptManager(AgentMixin):
 
     def load_strategies(self) -> list[AbstractPromptStrategy]:
 
-        import importlib
 
-        import AFAAS.prompts.common as common_module
-        from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
-        from AFAAS.prompts import BaseTaskRagStrategy, load_all_strategies
-
-        strategies: list[AbstractPromptStrategy] = []
 
         # Dynamically load strategies from AFAAS.prompts.common
         for attribute_name in dir(common_module):
             attribute = getattr(common_module, attribute_name)
             if isinstance(attribute, type) and issubclass(attribute, AbstractPromptStrategy) and attribute not in (AbstractPromptStrategy, BaseTaskRagStrategy):
-                strategies.append(attribute(**attribute.default_configuration.dict()))
+                self.load_strategy(strategy_module_attr=attribute)
 
-        # Load all other strategies
-        strategies += load_all_strategies()
-
+        # TODO : This part should be migrated 
+        # 1. Each Tool is in a Folder
+        # 2. Each Folder has prompts
+        # 3. Start migration with refine_user_context
+        strategies: list[AbstractPromptStrategy] = []
+        strategies = load_all_strategies()
         for strategy in strategies:
             self.add_strategy(strategy=strategy)
 
         return self._prompt_strategies
+
+    def load_strategy(self, strategy_module_attr : type) : 
+        if isinstance(strategy_module_attr, type) and issubclass(strategy_module_attr, AbstractPromptStrategy) and strategy_module_attr not in (AbstractPromptStrategy, BaseTaskRagStrategy):
+            self.add_strategy( strategy_module_attr(**strategy_module_attr.default_configuration.dict()))
 
     async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse:
         """
