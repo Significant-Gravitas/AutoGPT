@@ -6,7 +6,6 @@ import os
 import os.path
 from pathlib import Path
 
-from langchain.vectorstores import VectorStore
 from langchain_community.tools.file_management.file_search import FileSearchTool
 
 from AFAAS.core.tools.builtins.file_operations_helpers import (
@@ -20,7 +19,7 @@ from AFAAS.core.tools.builtins.file_operations_utils import (  # FIXME: replace 
 from AFAAS.core.tools.tool import Tool
 from AFAAS.core.tools.tool_decorator import SAFE_MODE, tool, tool_from_langchain
 from AFAAS.interfaces.agent.main import BaseAgent
-from AFAAS.interfaces.tools.base import AbstractTool
+from AFAAS.interfaces.tools.tool import AFAASBaseTool
 from AFAAS.lib.sdk.errors import DuplicateOperationError
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.task import Task
@@ -43,7 +42,7 @@ LOG = AFAASLogger(name=__name__)
             required=True,
         )
     },
-    categories=[AbstractTool.FRAMEWORK_CATEGORY, TOOL_CATEGORY],
+    categories=[AFAASBaseTool.FRAMEWORK_CATEGORY, TOOL_CATEGORY],
 )
 def read_file(filename: str | Path, task: Task, agent: BaseAgent) -> str:
     """Read a file and return the contents
@@ -75,7 +74,7 @@ def read_file(filename: str | Path, task: Task, agent: BaseAgent) -> str:
             required=True,
         ),
     },
-    categories=[AbstractTool.FRAMEWORK_CATEGORY, TOOL_CATEGORY],
+    categories=[AFAASBaseTool.FRAMEWORK_CATEGORY, TOOL_CATEGORY],
 )
 async def write_to_file(
     filename: Path, contents: str, task: Task, agent: BaseAgent
@@ -184,7 +183,7 @@ async def write_to_file(
             required=True,
         )
     },
-    categories=[AbstractTool.FRAMEWORK_CATEGORY, TOOL_CATEGORY],
+    categories=[AFAASBaseTool.FRAMEWORK_CATEGORY, TOOL_CATEGORY],
 )
 def list_folder(folder: Path, task: Task, agent: BaseAgent) -> list[str]:
     """Lists files in a folder recursively
@@ -208,7 +207,7 @@ def file_search_args(input_args: dict[str, any], agent: BaseAgent):
 file_search = Tool.generate_from_langchain_tool(
     langchain_tool=FileSearchTool(),
     arg_converter=file_search_args,
-    categories=[AbstractTool.FRAMEWORK_CATEGORY, TOOL_CATEGORY],
+    categories=[AFAASBaseTool.FRAMEWORK_CATEGORY, TOOL_CATEGORY],
 )
 
 # @tool_from_langchain(arg_converter=file_search_args,

@@ -15,11 +15,12 @@ from AFAAS.interfaces.adapters.embeddings.wrapper import (
     ChromaWrapper,
     VectorStoreWrapper,
 )
-from AFAAS.interfaces.agent.assistants.prompt_manager import BasePromptManager
+from AFAAS.core.agents.prompt_manager import BasePromptManager
 from AFAAS.interfaces.agent.assistants.tool_executor import ToolExecutor
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.db.db import AbstractMemory
-from AFAAS.interfaces.tools.base import AbstractTool, AbstractToolRegistry
+from AFAAS.interfaces.tools.tool import AFAASBaseTool
+from AFAAS.interfaces.tools.base import AbstractToolRegistry
 from AFAAS.interfaces.workflow import WorkflowRegistry
 from AFAAS.lib.message_agent_user import Emiter, MessageAgentUser
 from AFAAS.lib.message_common import AFAASMessageStack
@@ -46,7 +47,7 @@ class PlannerAgent(BaseAgent):
                 model_providers=self.default_llm_provider,
             )
             self._tool_registry.add_tool_category(
-                category=AbstractTool.FRAMEWORK_CATEGORY
+                category=AFAASBaseTool.FRAMEWORK_CATEGORY
             )
         return self._tool_registry
 

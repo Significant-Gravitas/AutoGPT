@@ -13,7 +13,7 @@ from AFAAS.interfaces.adapters.embeddings.wrapper import (
     SearchFilter,
 )
 from AFAAS.interfaces.agent.main import BaseAgent
-from AFAAS.interfaces.tools.base import AbstractTool
+from AFAAS.interfaces.tools.tool import AFAASBaseTool
 from AFAAS.lib.message_agent_user import Emiter, MessageAgentUser
 from AFAAS.lib.message_common import AFAASMessageStack
 from AFAAS.lib.task.task import Task
@@ -33,7 +33,7 @@ from AFAAS.lib.utils.json_schema import JSONSchema
             required=True,
         )
     },
-    categories=[AbstractTool.FRAMEWORK_CATEGORY],
+    categories=[AFAASBaseTool.FRAMEWORK_CATEGORY],
 )
 async def user_interaction(
     query: str, task: Task, agent: BaseAgent, skip_proxy=False
