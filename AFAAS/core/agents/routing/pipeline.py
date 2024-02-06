@@ -16,8 +16,6 @@ from AFAAS.lib.task.task import Task, TaskStatusList
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent.main import BaseAgent
 
-from AFAAS.core.agents.routing.main import RoutingAgent
-
 from AFAAS.core.tools.tool_decorator import SAFE_MODE, tool
 from AFAAS.interfaces.tools.tool import AFAASBaseTool
 from AFAAS.prompts.routing import RoutingStrategyConfiguration
