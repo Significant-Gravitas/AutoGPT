@@ -1,0 +1,24 @@
+version: 2
+updates:
+  # NPM dependencies located in the root and the 'gui' directory
+  - package-ecosystem: "npm"
+    directory: "/"  # Root directory for Node.js project
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/gui"  # GUI directory for Node.js project
+    schedule:
+      interval: "weekly"
+
+  # Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"  # Assuming the requirements.txt is in the root
+    schedule:
+      interval: "weekly"
+
+  # Java (Maven) dependencies - specify if you have Maven projects in subdirectories
+  # Example configuration, adjust the directory path as necessary
+  - package-ecosystem: "maven"
+    directory: "/"  # Update this path if your pom.xml is located in a specific subdirectory
+    schedule:
+      interval: "weekly"
