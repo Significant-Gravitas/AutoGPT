@@ -1,0 +1,42 @@
+## Objective:
+
+Consider the the limitations of Large Language Model (LLM) and select the most suitable planning approach for an Autonomous Agent backed by a LLM.
+
+## Contextand Best Practices
+
+**Challenge**: {{task.task_goal}}
+
+{% if task.task_context %}**Additional information**: 
+{{to_md_quotation(task.task_context)}}{% endif %}
+
+### Contextual Elements
+
+The agent is autonomous, designed for independent problem-solving. The Autonomous Agent derives its decisions based on its interactions with an LLM. The LLM has:
+- **Context Limitation**: It may overlook details if they fall outside a certain context window.
+- **Token Limitation**: Its responses may be limited in scope and depth.
+- **Cognitive Limitation**: It doesn't always mirror human-like reasoning even with a vast knowledge base.
+
+**Interaction Limitation**: The Autonomous Agent should proactively address the possibility of limited interaction with the physical world when planning. It should explore strategies to either autonomously resolve challenges within these constraints or identify potential workarounds to achieve its objectives. 
+
+### Best Practices
+
+1. **Structured Project Logic**:
+   - **Applicability**: For complex tasks involving multiple dependencies, potential risks, large resources, and significant consequences. e.g., ERP system rollouts or major infrastructure projects.
+   - **Key Steps**:
+     - **Initiating**: Define and obtain necessary approvals.
+     - **Planning**: Determine the project scope, refine objectives, and plan the course of action.
+     - **Executing**: Assemble resources and execute the plan.
+     - **Monitoring & Controlling**: Regularly track project progress and make required adjustments.
+     - **Closing**: Conclude the project, ensuring formal acceptance.
+
+2. **Simple Plan Logic**:
+   - **Applicability**: For tasks that are more straightforward and have fewer complexities. e.g., daily task scheduling or planning short vacations.
+   - **Key Steps**:
+     - **Define**: Articulate the task's objective.
+     - **Resources**: List out necessary resources.
+     - **Sequence**: Set the order of actions.
+     - **Estimate**: Determine the time each task might take.
+     - **Execute**: Begin the task, adjusting the plan as required.
+     - **Review**: On completion, review the task and ascertain any deviations.
+
+Based on the challenge and the context provided, which planning logic should the Autonomous Agent adopt.

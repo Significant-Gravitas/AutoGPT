@@ -1,0 +1,80 @@
+## Objective:
+Based on the information provided, select the most suitable planning approach for an Autonomous Agent to address the challenge.
+
+**Challenge**: {{task.task_goal}}
+
+**Contextual Elements**:
+- **Decision-Maker**: The agent is autonomous, designed for independent problem-solving.
+- **Interactions with LLM**: The Autonomous Agent derives its decisions based on its interactions with an LLM. The LLM has:
+  - **Context Limitation**: It may overlook details if they fall outside a certain context window.
+  - **Token Limitation**: Its responses may be limited in scope and depth.
+  - **Cognitive Limitation**: It doesn't always mirror human-like reasoning even with a vast knowledge base.
+- **Decision Process**: 
+  - **Evaluation**: The agent can assess different methods or solutions.
+  - **Planning**: If the agent decides to plan, it chooses a planning logic.
+  - **Re-evaluation**: At any stage, the agent can re-evaluate and adjust its Evaluation or Planning.
+- **Additional Context**: 
+  - **Current Decision**: The agent has chosen the planning phase and is determining which planning logic to use.
+  {{task.task_context}}
+
+**Planning Approaches**:
+
+1. **Structured Project Logic**:
+   - **Applicability**: For complex tasks involving multiple dependencies, potential risks, large resources, and significant consequences. e.g., ERP system rollouts or major infrastructure projects.
+   - **Key Steps**:
+     - **Initiating**: Define and obtain necessary approvals.
+     - **Planning**: Determine the project scope, refine objectives, and plan the course of action.
+     - **Executing**: Assemble resources and execute the plan.
+     - **Monitoring & Controlling**: Regularly track project progress and make required adjustments.
+     - **Closing**: Conclude the project, ensuring formal acceptance.
+
+2. **Simple Plan Logic**:
+   - **Applicability**: For tasks that are more straightforward and have fewer complexities. e.g., daily task scheduling or planning short vacations.
+   - **Key Steps**:
+     - **Define**: Articulate the task's objective.
+     - **Resources**: List out necessary resources.
+     - **Sequence**: Set the order of actions.
+     - **Estimate**: Determine the time each task might take.
+     - **Execute**: Begin the task, adjusting the plan as required.
+     - **Review**: On completion, review the task and ascertain any deviations.
+
+Based on the challenge and the context provided, which planning logic should the Autonomous Agent adopt?"""]
+
+planning_options_param = {
+            "task_goal" : task.task_goal,
+            "objective_text": "Based on the information provided, select the most suitable planning approach for an Autonomous Agent to address the challenge.",
+            "decision_maker_description": "The agent is autonomous, designed for independent problem-solving.",
+            "interactions_with_llm_description": "The Autonomous Agent derives its decisions based on its interactions with an LLM. The LLM has:",
+            "context_limitation_description": "It may overlook details if they fall outside a certain context window.",
+            "token_limitation_description": "Its responses may be limited in scope and depth.",
+            "cognitive_limitation_description": "It doesn't always mirror human-like reasoning even with a vast knowledge base.",
+            "decision_process_description": "- **Evaluation**: The agent can assess different methods or solutions.\n  - **Planning**: If the agent decides to plan, it chooses a planning logic.\n  - **Re-evaluation**: At any stage, the agent can re-evaluate and adjust its Evaluation or Planning.",
+            "additional_context_description": "- **Current Decision**: The agent has chosen the planning phase and is determining which planning logic to use.\n  - {context}",
+            "approach_section_title": "Planning Approaches",
+            "approaches": [
+                {
+                    "name": "Structured Project Logic",
+                    "applicability_description": "For complex tasks involving multiple dependencies, potential risks, large resources, and significant consequences. e.g., ERP system rollouts or major infrastructure projects.",
+                    "key_steps": [
+                        {"name": "Initiating", "description": "Define and obtain necessary approvals."},
+                        {"name": "Planning", "description": "Determine the project scope, refine objectives, and plan the course of action."},
+                        {"name": "Executing", "description": "Assemble resources and execute the plan."},
+                        {"name": "Monitoring & Controlling", "description": "Regularly track project progress and make required adjustments."},
+                        {"name": "Closing", "description": "Conclude the project, ensuring formal acceptance."}
+                    ]
+                },
+                {
+                    "name": "Simple Plan Logic",
+                    "applicability_description": "For tasks that are more straightforward and have fewer complexities. e.g., daily task scheduling or planning short vacations.",
+                    "key_steps": [
+                        {"name": "Define", "description": "Articulate the task's objective."},
+                        {"name": "Resources", "description": "List out necessary resources."},
+                        {"name": "Sequence", "description": "Set the order of actions."},
+                        {"name": "Estimate", "description": "Determine the time each task might take."},
+                        {"name": "Execute", "description": "Begin the task, adjusting the plan as required."},
+                        {"name": "Review", "description": "On completion, review the task and ascertain any deviations."}
+                    ]
+                }
+            ],
+            "conclusion_question": "Based on the challenge and the context provided, which planning logic should the Autonomous Agent adopt?"
+}

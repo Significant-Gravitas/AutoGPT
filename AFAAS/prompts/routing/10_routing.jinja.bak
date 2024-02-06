@@ -1,0 +1,68 @@
+## Objective:
+{{ objective_text }}
+
+**Challenge**: {{task.task_goal}}
+
+**Contextual Elements**:
+- **Decision-Maker**: {{ decision_maker_description }}
+- **Interactions with LLM**: {{ interactions_with_llm_description }}
+  - **Context Limitation**: {{ context_limitation_description }}
+  - **Token Limitation**: {{ token_limitation_description }}
+  - **Cognitive Limitation**: {{ cognitive_limitation_description }}
+{% if decision_process_description %}
+- **Decision Process**: 
+  {{ decision_process_description }}
+{% endif %}
+- **Additional Context**: 
+  - {{ additional_context_description }}
+
+{{ approach_section_title }}:
+
+{% for approach in approaches %}
+1. **{{ approach.name }}**:
+   - **Applicability**: {{ approach.applicability_description }}
+   - **Key Steps**:
+     {% for step in approach.key_steps %}
+     - **{{ step.name }}**: {{ step.description }}
+     {% endfor %}
+{% endfor %}
+
+{{ conclusion_question }}
+
+
+
+routing_param = {
+            "step" : 'ROUTING',
+            "task" : task, 
+            "task_goal" : task.task_goal,
+            "objective_text": "Determine the most appropriate approach to address the given challenge using the context provided.",
+            "decision_maker_description": "An Autonomous Agent capable of independent problem-solving.",
+            "interactions_with_llm_description": "The agent's decisions are influenced by interactions with an LLM, which has specific strengths and limitations:",
+            "context_limitation_description": "Due to a fixed context window, the LLM may overlook information beyond this limit.",
+            "token_limitation_description": "Responses from the LLM may be restricted in depth or breadth due to token constraints.",
+            "cognitive_limitation_description": "Despite its vast data repository, the LLM may not always exhibit human-like intuition or insights.",
+            "decision_process_description": "",
+            "additional_context_description": str(task.task_context),
+            "approach_section_title": "Possible Approaches",
+            "approaches": [
+                {
+                    "name": "Evaluation and Selection Phase",
+                    "applicability_description": "",
+                    "key_steps": [
+                        {"name": "Pros", "description": "Rapid Prototyping: Enables quick testing of different solutions before in-depth planning."},
+                        {"name": "Pros", "description": "Adaptive Strategy Formation: Adapts strategy based on real-time feedback, possibly leading to more effective plans."},
+                        {"name": "Pros", "description": "Immediate Feedback: Direct LLM feedback aids in swift recalibration and refinement."}
+                    ]
+                },
+                {
+                    "name": "Plan Construction Phase",
+                    "applicability_description": "",
+                    "key_steps": [
+                        {"name": "Pros", "description": "Structured Approach: Provides a systematic roadmap for the agent, defining subsequent steps."},
+                        {"name": "Pros", "description": "Focus on Problem Understanding: Ensures adequate time is spent on grasping and outlining the problem."},
+                        {"name": "Cons", "description": "Potential Overhead: Might involve substantial planning time without assessing the feasibility of available solutions."}
+                    ]
+                }
+            ],
+            "conclusion_question": "Considering the information provided and the strengths or limitations of the LLM, determine the optimal phase to tackle the given problematic and context. Should the agent invoke the start_planning or start_evaluating_solutions function? If any feedback is deemed necessary for the chosen phase, please specify."
+        }

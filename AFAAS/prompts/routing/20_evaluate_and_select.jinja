@@ -1,0 +1,79 @@
+## Objective
+
+Consider the the limitations of Large Language Model (LLM) and generate instructions for an Autonomous Agent backed by a LLM.
+
+## Contextand Best Practices
+
+**Promote proactive problem-solving for this challenge**: {{task.task_goal}}
+
+**Additional information**: 
+{{to_md_quotation(task.task_context)}}
+
+### Interactions with LLM
+
+While decisions stem from interactions with the LLM, the agent should recognize the LLM's inherent limitations:
+ - **Reactivity**: Primarily responds based on training patterns without proactively seeking more information.
+ - **Depth vs. Breadth**: The depth of the response aligns with the depth of the prompt.
+ - **Contextual Limitation**: Lacks genuine understanding of real-world objectives unless explicitly informed.
+ - **Goal-orientation**: Doesn't inherently ask follow-up questions or engage in deep dialogue.
+ - **Assumptions**: May make assumptions based on training patterns when faced with vagueness.
+
+
+### Best practices
+
+Consider best practices  before generating instructions:
+ - Comprehensive Research: Delve into a variety of methodologies and designs pertinent to the challenge at hand.
+ - Robust Evaluation: Explore potential solutions critically, weighing their strengths and weaknesses.
+ - Active Inquiry: Proactively solicit further details, context, or clarifications to address ambiguities and refine understanding.
+ - Dynamic Re-assessment: Continuously evaluate decisions, ensuring adaptability in the face of new information or shifting conditions.
+ - Planning with Purpose: Following thorough evaluations, establish a clear and actionable plan.
+ - Technical Considerations: Ensure proposed solutions are aligned with available tools, expertise, and resources.
+ - Safety First: Identify potential risks and implement measures to mitigate them effectively.
+ - Appropriate Complexity: Ensure solutions match the intricacy required by the task — neither overly complex nor overly simplified.
+ - Resource Awareness: Understand what resources are necessary and ensure their availability.
+ - Balancing Efficiency with Effectiveness: Strive for solutions that are not only timely but also achieve the intended outcomes.
+ - Comparative Analysis: Stack up potential methodologies against each other, spotlighting the pros and cons of each.
+ - Clarify Ambiguities: Whenever faced with vagueness or uncertain areas, prioritize understanding over assumptions.
+{# 
+## Objective:
+
+Determine the most optimal approach to address the challenge, cognizant of inherent limitations and emphasizing intelligent problem-solving.
+
+**Challenge**: {{task.task_goal}}
+
+**Contextual Elements**:
+
+- **Decision-Maker**: The Autonomous Agent, designed for advanced problem-solving.
+- **Interactions with LLM**: While decisions stem from interactions with the LLM, the agent should recognize the LLM's inherent limitations:
+  - **Reactivity**: Primarily responds based on training patterns without proactively seeking more information.
+  - **Depth vs. Breadth**: The depth of the response aligns with the depth of the prompt.
+  - **Contextual Limitation**: Lacks genuine understanding of real-world objectives unless explicitly informed.
+  - **Goal-orientation**: Doesn't inherently ask follow-up questions or engage in deep dialogue.
+  - **Assumptions**: May make assumptions based on training patterns when faced with vagueness.
+- **Decision Process**:
+  - **Evaluation**: Delve into various methods or solutions.
+  - **Proactive Querying**: Actively request details or context to hone understanding.
+  - **Re-evaluation**: Reassess decisions at any point.
+  - **Planning**: Post evaluation, decide on a planning logic if essential.
+- **Additional Context**: {{task.task_context}}
+
+**Evaluation Criteria**:
+
+1. **Technical Feasibility**: Is the solution consistent with available resources, expertise, and tools?
+2. **Safety and Precautions**: What risks exist, and how are they mitigated?
+3. **Complexity Level**: Is the complexity apt for the task?
+4. **Resource Availability**: What's required and is it at hand?
+5. **Efficiency and Effectiveness**: Is the approach timely and effective?
+
+**Steps for Evaluation:**
+
+1. **Research**: Examine related methodologies or designs.
+2. **Assessment**: Gauge complexity, required resources, and potential risks.
+3. **Comparison**: Contrast the pros and cons of each methodology.
+4. **Proactive Querying**: Extract deeper context or clarification for unclear or ambiguous areas.
+
+To thoroughly understand, blend depth and breadth in the evaluation. Proactively seek more details or clarifications to ensure decisions are well-informed and reduce overlooking vital nuances. Evaluate, pick, and adapt through this comprehensive scrutiny.
+
+Apply structured reasoning to identify potential solutions for the given challenge, promoting proactive problem-solving while considering the limitations of LLM.
+
+ #}
