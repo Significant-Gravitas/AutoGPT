@@ -11,7 +11,7 @@ from AFAAS.interfaces.adapters.embeddings.wrapper import (
     ChromaWrapper,
     VectorStoreWrapper,
 )
-from AFAAS.interfaces.agent.assistants.prompt_manager import BasePromptManager
+from AFAAS.core.agents.prompt_manager import BasePromptManager
 from AFAAS.interfaces.agent.loop import BaseLoopHook
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.db.db import AbstractMemory
