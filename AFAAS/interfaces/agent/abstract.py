@@ -10,7 +10,7 @@ from pydantic import Field
 
 from AFAAS.configs.schema import Configurable, SystemSettings
 from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider
-from AFAAS.interfaces.agent.assistants.prompt_manager import BasePromptManager
+from AFAAS.interfaces.agent.assistants.prompt_manager import AbstractPromptManager
 from AFAAS.interfaces.agent.loop import BaseLoop  # Import only where it's needed
 from AFAAS.interfaces.db.db import AbstractMemory
 from AFAAS.interfaces.workflow import WorkflowRegistry
@@ -188,7 +188,7 @@ class AbstractAgent(ABC):
         settings: AbstractAgent.SystemSettings,
         db: AbstractMemory,
         workspace: AbstractFileWorkspace,
-        prompt_manager: BasePromptManager,
+        prompt_manager: AbstractPromptManager,
         default_llm_provider: AbstractLanguageModelProvider,
         vectorstore: VectorStoreWrapper,
         embedding_model : Embeddings,
@@ -212,7 +212,7 @@ class AbstractAgent(ABC):
         self.settings_agent_class_ = settings.settings_agent_class_
         self.settings_agent_module_ = settings.settings_agent_module_
 
-        self._prompt_manager : BasePromptManager = prompt_manager
+        self._prompt_manager : AbstractPromptManager = prompt_manager
         self._prompt_manager.set_agent(agent=self)
 
         self._db : AbstractMemory = db

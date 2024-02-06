@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from AFAAS.interfaces.agent.main import BaseAgent
 
 from AFAAS.core.tools.tool_decorator import SAFE_MODE, tool
-from AFAAS.interfaces.tools.base import AbstractTool
+from AFAAS.interfaces.tools.tool import AFAASBaseTool
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.task import Task
 from AFAAS.lib.utils.json_schema import JSONSchema
@@ -40,7 +40,7 @@ LOG = AFAASLogger(name=__name__)
             description="Optional : If given, will accurately will return a result reproducing the patern of the example",
         ),
     },
-    categories=[AbstractTool.FRAMEWORK_CATEGORY],
+    categories=[AFAASBaseTool.FRAMEWORK_CATEGORY],
 )
 async def query_language_model(
     task: Task,

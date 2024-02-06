@@ -27,7 +27,7 @@ from AFAAS.interfaces.adapters import (
 )
 from AFAAS.interfaces.db.db import AbstractMemory
 from AFAAS.interfaces.tools.base import (
-    AbstractTool,
+    AFAASBaseTool,
     AbstractToolRegistry,
     ToolConfiguration,
 )
@@ -108,9 +108,9 @@ class DefaultToolRegistry(Configurable, AbstractToolRegistry):
         # ) in self._settings.configuration.tools.items():
         #     self.register_tool(tool_name, tool_configuration)
 
-        self.tools_by_name: dict[AbstractTool] = {}
+        self.tools_by_name: dict[AFAASBaseTool] = {}
         # self.tool_aliases : dict[AbstractTool]  = {}
-        self._tool_module: dict[AbstractTool] = {}
+        self._tool_module: dict[AFAASBaseTool] = {}
 
         self.initialize_cache()
 
@@ -179,7 +179,7 @@ class DefaultToolRegistry(Configurable, AbstractToolRegistry):
         if tool_name not in self._tool_module:
             self._tool_module[tool_name] = module_path
 
-    def get_tool(self, tool_name: str) -> AbstractTool | None:
+    def get_tool(self, tool_name: str) -> AFAASBaseTool | None:
         if tool_name not in self.tools_by_name and tool_name in self._tool_module:
             self._load_tool(tool_name)
         return self.tools_by_name.get(tool_name)
@@ -201,7 +201,7 @@ class DefaultToolRegistry(Configurable, AbstractToolRegistry):
         aliases: list[str] = [],
         category: str = None,
     ) -> None:
-        return self.register(AbstractTool(tool_configuration))
+        return self.register(AFAASBaseTool(tool_configuration))
 
     #     """
     #     Register a new tool with the registry.
@@ -252,7 +252,7 @@ class DefaultToolRegistry(Configurable, AbstractToolRegistry):
     #             )
     #         self.categories[category].tools.append(tool_name)
 
-    def register(self, tool: AbstractTool) -> None:
+    def register(self, tool: AFAASBaseTool) -> None:
         if tool.name in self.tools_by_name:
             LOG.notice(
                 f"Tool '{tool.name}' already registered and will be overwritten!"
@@ -267,7 +267,7 @@ class DefaultToolRegistry(Configurable, AbstractToolRegistry):
         # for alias in tool.aliases:
         #     self.tool_aliases[alias] = tool
 
-    def unregister(self, tool: AbstractTool) -> None:
+    def unregister(self, tool: AFAASBaseTool) -> None:
         if tool.name in self.tools_by_name:
             del self.tools_by_name[tool.name]
             # for alias in tool.aliases:
@@ -321,7 +321,7 @@ class DefaultToolRegistry(Configurable, AbstractToolRegistry):
                 available_tools.append(tool.name)
         return available_tools
 
-    def get_tool_list(self) -> list[AbstractTool]:
+    def get_tool_list(self) -> list[AFAASBaseTool]:
         available_tools = []
         for tool_name in self._tool_module:
             tool = self.get_tool(tool_name)
@@ -346,8 +346,9 @@ class DefaultToolRegistry(Configurable, AbstractToolRegistry):
             # Register tool classes
             elif (
                 inspect.isclass(attr)
-                and issubclass(attr, AbstractTool)
-                and attr != AbstractTool
+                and attr.__module__ != 'AFAAS.core.tools.tool'
+                and issubclass(attr, AFAASBaseTool)
+                and attr != AFAASBaseTool
             ):
                 tool = attr()
 

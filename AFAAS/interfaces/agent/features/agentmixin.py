@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from AFAAS.interfaces.adapters import \
         CompletionModelFunction , AbstractChatModelResponse
     from AFAAS.interfaces.tools.base import AbstractToolRegistry
-    from AFAAS.core.tools.tool import Tool
+    from AFAAS.interfaces.tools.tool import AFAASBaseTool
     from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
 
     from AFAAS.interfaces.agent.main import BaseAgent
@@ -57,7 +57,7 @@ class AgentMixin:
     def tool_registry(self) -> AbstractToolRegistry:
         return self._agent.tool_registry
 
-    def get_tool_list(self) -> list[Tool]:
+    def get_tool_list(self) -> list[AFAASBaseTool]:
         return self.tool_registry().get_tool_list()
 
     def get_tools_as_functions_for_api(self) -> list[CompletionModelFunction]:

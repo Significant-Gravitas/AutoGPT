@@ -16,13 +16,14 @@ from langchain.tools.base import BaseTool
 from AFAAS.interfaces.adapters import CompletionModelFunction
 from AFAAS.interfaces.adapters.embeddings.wrapper import DocumentType
 from AFAAS.interfaces.task.task import AbstractTask
+from AFAAS.interfaces.tools.tool import AFAASBaseTool
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 # from AFAAS.interfaces.agent.main import BaseAgent
 LOG = AFAASLogger(name=__name__)
 
 
-class Tool:
+class Tool(AFAASBaseTool):
     """A class representing a command.
 
     Attributes:
@@ -137,7 +138,7 @@ class Tool:
             for name, schema in langchain_tool.args.items()
         ]
 
-        _tool_instance = Tool(
+        _tool_instance = cls(
             categories=categories,
             name=langchain_tool.name,
             description=langchain_tool.description,

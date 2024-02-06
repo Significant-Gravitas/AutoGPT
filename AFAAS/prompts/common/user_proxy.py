@@ -9,7 +9,6 @@ from langchain_core.documents import Document
 if TYPE_CHECKING:
     from AFAAS.interfaces.task.task import AbstractTask
 
-from AFAAS.core.tools.tool import Tool
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,
