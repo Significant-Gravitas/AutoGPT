@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from AFAAS.interfaces.task.task import AbstractTask
 
-from AFAAS.core.tools.tool import Tool
+from AFAAS.interfaces.tools.tool import AFAASBaseTool
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,
@@ -64,7 +64,7 @@ class SearchInfo_Strategy(AbstractPromptStrategy):
     def set_tools(
         self,
         task: AbstractTask,
-        tools: list[Tool],
+        tools: list[AFAASBaseTool],
         **kwargs,
     ):
         self._tools: list[CompletionModelFunction] = []
@@ -78,7 +78,7 @@ class SearchInfo_Strategy(AbstractPromptStrategy):
         agent: BaseAgent,
         query: str,
         reasoning: str,
-        tools: list[Tool],
+        tools: list[AFAASBaseTool],
         **kwargs,
     ) -> ChatPrompt:
         LOG.debug("Building prompt for task : " + await task.debug_dump_str())

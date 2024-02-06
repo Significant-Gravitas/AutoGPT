@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from AFAAS.interfaces.task.task import AbstractTask
 
-from AFAAS.core.tools.tool import Tool
+
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,

@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from AFAAS.interfaces.agent.main import BaseAgent
 
 from AFAAS.core.tools.tool_decorator import SAFE_MODE, tool
-from AFAAS.interfaces.tools.base import AbstractTool
+from AFAAS.interfaces.tools.tool import AFAASBaseTool
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.task import Task
 from AFAAS.interfaces.adapters import AbstractChatModelResponse

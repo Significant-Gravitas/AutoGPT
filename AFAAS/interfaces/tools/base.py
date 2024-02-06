@@ -15,6 +15,7 @@ from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 from AFAAS.interfaces.tools.schema import ToolResult
 from AFAAS.lib.utils.json_schema import JSONSchema
+from AFAAS.interfaces.tools.tool import AFAASBaseTool
 
 
 class ToolConfiguration(SystemConfiguration):
@@ -29,44 +30,44 @@ class ToolConfiguration(SystemConfiguration):
 ToolConfiguration.update_forward_refs()
 
 
-class AbstractTool(AgentMixin, abc.ABC):
-    """A class representing an agent ability."""
+# class AbstractTool(AgentMixin, abc.ABC):
+#     """A class representing an agent ability."""
 
-    default_configuration: ClassVar[ToolConfiguration]
+#     default_configuration: ClassVar[ToolConfiguration]
 
-    FRAMEWORK_CATEGORY = "framework"
+#     FRAMEWORK_CATEGORY = "framework"
 
-    @classmethod
-    def name(cls) -> str:
-        """The name of the ability."""
-        return inflection.underscore(cls.__name__)
+#     @classmethod
+#     def name(cls) -> str:
+#         """The name of the ability."""
+#         return inflection.underscore(cls.__name__)
 
-    @property
-    @classmethod
-    @abc.abstractmethod
-    def description(cls) -> str:
-        """A detailed description of what the ability does."""
-        ...
+#     @property
+#     @classmethod
+#     @abc.abstractmethod
+#     def description(cls) -> str:
+#         """A detailed description of what the ability does."""
+#         ...
 
-    @property
-    @classmethod
-    @abc.abstractmethod
-    def parameters(cls) -> dict[str, JSONSchema]: ...
+#     @property
+#     @classmethod
+#     @abc.abstractmethod
+#     def parameters(cls) -> dict[str, JSONSchema]: ...
 
-    @abc.abstractmethod
-    async def __call__(self, *args: Any, **kwargs: Any) -> ToolResult: ...
+#     @abc.abstractmethod
+#     async def __call__(self, *args: Any, **kwargs: Any) -> ToolResult: ...
 
-    def __str__(self) -> str:
-        return pformat(self.spec)
+#     def __str__(self) -> str:
+#         return pformat(self.spec)
 
-    @property
-    @classmethod
-    def spec(cls) -> CompletionModelFunction:
-        return CompletionModelFunction(
-            name=cls.name(),
-            description=cls.description,
-            parameters=cls.parameters,
-        )
+#     @property
+#     @classmethod
+#     def spec(cls) -> CompletionModelFunction:
+#         return CompletionModelFunction(
+#             name=cls.name(),
+#             description=cls.description,
+#             parameters=cls.parameters,
+#         )
 
 
 class AbstractToolRegistry(AgentMixin, abc.ABC):
@@ -85,7 +86,7 @@ class AbstractToolRegistry(AgentMixin, abc.ABC):
     def dump_tools(self) -> list[CompletionModelFunction]: ...
 
     @abc.abstractmethod
-    def get_tool(self, tool_name: str) -> AbstractTool: ...
+    def get_tool(self, tool_name: str) -> AFAASBaseTool: ...
 
     @abc.abstractmethod
     async def perform(self, tool_name: str, **kwargs: Any) -> ToolResult: ...
@@ -107,7 +108,7 @@ class ToolCategory:
     name: str
     title: str
     description: str
-    tools: list[AbstractTool] = field(default_factory=list[AbstractTool])
+    tools: list[AFAASBaseTool] = field(default_factory=list[AFAASBaseTool])
     modules: list[ModuleType] = field(default_factory=list[ModuleType])
 
     class Config:

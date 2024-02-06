@@ -20,6 +20,7 @@ from AFAAS.interfaces.prompts.strategy import (
     DefaultParsedResponse,
     PromptStrategiesConfiguration,
 )
+from AFAAS.interfaces.tools.tool import AFAASBaseTool
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.utils.json_schema import JSONSchema
 
@@ -102,10 +103,9 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
             self.afaas_task_postprocess_default_summary,
         ]
 
-    from AFAAS.core.tools import Tool
 
     async def build_message(
-        self, task: AbstractTask, tool: Tool, documents: list, **kwargs
+        self, task: AbstractTask, tool: AFAASBaseTool, documents: list, **kwargs
     ) -> ChatPrompt:
         LOG.debug("Building prompt for task : " + await task.debug_dump_str())
         self._task: AbstractTask = task
