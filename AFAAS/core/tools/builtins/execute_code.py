@@ -11,7 +11,7 @@ from docker.models.containers import Container as DockerContainer
 
 from AFAAS.core.tools.tool_decorator import SAFE_MODE, tool
 from AFAAS.interfaces.agent.main import BaseAgent
-from AFAAS.interfaces.tools.base import AbstractTool
+from AFAAS.interfaces.tools.tool import AFAASBaseTool
 from AFAAS.lib.sdk.errors import (
     CodeExecutionError,
     InvalidArgumentError,
@@ -43,7 +43,7 @@ DENYLIST_CONTROL = "denylist"
             required=True,
         ),
     },
-    categories=[AbstractTool.FRAMEWORK_CATEGORY, TOOL_CATEGORY],
+    categories=[AFAASBaseTool.FRAMEWORK_CATEGORY, TOOL_CATEGORY],
 )
 def execute_python_code(code: str, task: Task, agent: BaseAgent) -> str:
     """
