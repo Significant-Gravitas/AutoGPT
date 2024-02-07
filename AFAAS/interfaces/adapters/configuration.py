@@ -4,7 +4,7 @@ from pydantic import BaseModel, SecretBytes, SecretField, SecretStr
 
 from AFAAS.configs.config import SystemSettings, UserConfigurable
 from AFAAS.configs.schema import SystemConfiguration
-
+from pydantic.fields import Field
 
 class BaseProviderUsage(SystemConfiguration, abc.ABC):
     @abc.abstractmethod
@@ -14,7 +14,7 @@ class BaseProviderUsage(SystemConfiguration, abc.ABC):
 
 
 class BaseProviderBudget(SystemConfiguration):
-    total_budget: float = UserConfigurable()
+    total_budget: float = Field()
     total_cost: float
     remaining_budget: float
     usage: BaseProviderUsage

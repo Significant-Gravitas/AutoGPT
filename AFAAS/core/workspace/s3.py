@@ -16,7 +16,7 @@ import boto3
 import botocore.exceptions
 from pydantic import SecretStr
 
-from AFAAS.configs.schema import UserConfigurable
+from AFAAS.configs.schema import Field
 from AFAAS.interfaces.workspace import (
     AbstractFileWorkspace,
     AbstractFileWorkspaceConfiguration,
@@ -31,8 +31,8 @@ LOG = AFAASLogger(name=__name__)
 
 
 class S3FileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
-    bucket: str = UserConfigurable("autogpt", from_env="WORKSPACE_STORAGE_BUCKET")
-    s3_endpoint_url: Optional[SecretStr] = UserConfigurable(
+    bucket: str = Field("autogpt", from_env="WORKSPACE_STORAGE_BUCKET")
+    s3_endpoint_url: Optional[SecretStr] = Field(
         from_env=lambda: SecretStr(v) if (v := os.getenv("S3_ENDPOINT_URL")) else None
     )
 

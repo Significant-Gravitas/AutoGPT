@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from AFAAS.configs.schema import Configurable, SystemConfiguration, UserConfigurable
+from AFAAS.configs.schema import Configurable, SystemConfiguration, Field
 from AFAAS.interfaces.workspace import (
     AbstractFileWorkspace,
     AbstractFileWorkspaceConfiguration,
@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 
 class AbstractFileWorkspaceConfiguration(SystemConfiguration):
     root: str = ""
-    app_workspace: str = UserConfigurable(default="~/AFAAS/agents")
-    restrict_to_agent_workspace: bool = UserConfigurable(default=True)
+    app_workspace: str = Field(default="~/AFAAS/agents")
+    restrict_to_agent_workspace: bool = Field(default=True)
 
 
 class LocalFileWorkspace(AbstractFileWorkspace):

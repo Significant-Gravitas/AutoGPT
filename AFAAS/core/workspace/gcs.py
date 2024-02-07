@@ -12,7 +12,7 @@ from pathlib import Path
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
 
-from AFAAS.configs.schema import UserConfigurable
+from AFAAS.configs.schema import Field
 from AFAAS.interfaces.workspace import (
     AbstractFileWorkspace,
     AbstractFileWorkspaceConfiguration,
@@ -23,7 +23,7 @@ LOG = AFAASLogger(name=__name__)
 
 
 class GCSFileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
-    bucket: str = UserConfigurable("autogpt", from_env="WORKSPACE_STORAGE_BUCKET")
+    bucket: str = Field("autogpt", from_env="WORKSPACE_STORAGE_BUCKET")
 
 
 class GCSFileWorkspace_AlphaRealease(AbstractFileWorkspace):
