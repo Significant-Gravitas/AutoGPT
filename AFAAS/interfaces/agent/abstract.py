@@ -25,7 +25,7 @@ from langchain.vectorstores import VectorStore
 from langchain_community.vectorstores.chroma import Chroma
 from langchain_core.embeddings import Embeddings
 from langchain_openai.embeddings import OpenAIEmbeddings
-
+from AFAAS.interfaces.task.plan import AbstractPlan
 from AFAAS.interfaces.adapters.embeddings.wrapper import (
     ChromaWrapper,
     VectorStoreWrapper,
@@ -33,14 +33,12 @@ from AFAAS.interfaces.adapters.embeddings.wrapper import (
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.prompts.strategy import AbstractChatModelResponse
-    from AFAAS.interfaces.task.plan import AbstractPlan
 
 
 class AbstractAgent(ABC):
 
     _agent_type_: ClassVar[str] = __name__
     _agent_module_: ClassVar[str] = __module__ + "." + __name__
-    plan : Optional[AbstractPlan] = None
 
     @property
     def vectorstores(self) -> VectorStoreWrapper:        
@@ -107,18 +105,18 @@ class AbstractAgent(ABC):
 
         # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
         # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
-        model_config = update_model_config(original= SystemSettings.model_config 
-        , new =  {
-            'AGENT_CLASS_FIELD_NAME' : "_type_",
-            'AGENT_CLASS_MODULE_NAME' : "_module_"
-        }
-        )
+        model_config = update_model_config(original= SystemSettings.model_config ,
+                                           new = {
+                                                'AGENT_CLASS_FIELD_NAME' : "_type_",
+                                                'AGENT_CLASS_MODULE_NAME' : "_module_"
+                                                }
+                                            )
 
         modified_at: datetime.datetime = datetime.datetime.now()
         created_at: datetime.datetime = datetime.datetime.now()
         agent_name: str = Field(default="New Agent")
-        agent_goal_sentence: Optional[str]
-        agent_goals: Optional[list]
+        agent_goal_sentence: Optional[str] = None
+        agent_goals: Optional[list] = None
         user_id: str
 
         agent_id: str = Field(default_factory=lambda: AbstractAgent.SystemSettings.generate_uuid())
@@ -245,65 +243,6 @@ class AbstractAgent(ABC):
                     LOG.debug(f"{key} set for agent {self.agent_id}")
 
         LOG.trace(f"{self.__class__.__name__}.__init__() : Leaving")
-
-    # @classmethod
-    # def get_instance_from_settings(
-    #     cls,
-    #     agent_settings: AbstractAgent.SystemSettings,
-    #     db: AbstractMemory = None,
-    #     default_llm_provider: AbstractLanguageModelProvider = None,
-    #     workspace: AbstractFileWorkspace = None,
-    #     vectorstores: dict[VectorStore] = None,  # Optional parameter for custom vectorstore
-    #     embedding_model: Embeddings = None,  
-    # ) -> AbstractAgent:
-    #     if not isinstance(agent_settings, cls.SystemSettings):
-    #         agent_settings = cls.SystemSettings.parse_obj(agent_settings)
-    #         LOG.warning("Warning : agent_settings is not an instance of SystemSettings")
-
-    #     # TODO: Just pass **agent_settings.dict() to the constructor
-    #     system_dict: dict[Configurable] = {}
-    #     system_dict["settings"] = agent_settings
-    #     system_dict["user_id"] = agent_settings.user_id
-    #     system_dict["agent_id"] = agent_settings.agent_id
-
-    #     agent = cls(    **system_dict , 
-    #                     workspace=workspace, 
-    #                     default_llm_provider=default_llm_provider,
-    #                     vectorstore=vectorstores,
-    #                     embedding_model=embedding_model,
-    #                     db=db,
-    #                     )
-
-    #     return agent
-
-
-    # @classmethod
-    # async def db_get(
-    #     cls,
-    #     agent_settings: AbstractAgent.SystemSettings,
-    #     agent_id: str,
-    #     user_id: str,
-    # ) -> AbstractAgent:
-    #     from AFAAS.core.db.table.nosql.agent import AgentsTable
-    #     from AFAAS.interfaces.db.db import AbstractMemory
-
-    #     db_settings = agent_settings.db
-
-    #     db = AbstractMemory.get_adapter(
-    #         db_settings=db_settings
-    #     )
-    #     agent_table: AgentsTable = await db.get_table("agents")
-    #     agent_dict_from_db = await agent_table.get(
-    #         agent_id=str(agent_id), user_id=str(user_id)
-    #     )
-
-    #     if not agent_dict_from_db:
-    #         return None
-
-    #     agent = cls.get_instance_from_settings(
-    #         agent_settings=agent_settings.copy(update=agent_dict_from_db),
-    #     )
-    #     return agent
 
     # def add_hook(self, hook: BaseLoopHook, hook_id: uuid.UUID = uuid.uuid4()):
     #     self._loop._loophooks[hook["name"]][str(hook_id)] = hook

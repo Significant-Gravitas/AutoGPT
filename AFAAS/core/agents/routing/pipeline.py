@@ -105,23 +105,23 @@ async def generate_new_tasks(
 
 class PlanningJob(JobInterface):
     strategy : Type[AbstractPromptStrategy]= SelectPlanningStrategy
-    strategy_kwargs = {}
+    strategy_kwargs : dict = {}
     response_post_process : Callable = generate_new_tasks
-    autocorrection = False
+    autocorrection : bool = False
 
 
 class RoutingJob(JobInterface):
     strategy : Type[AbstractPromptStrategy]= RoutingStrategy
     strategy_kwargs: dict
     response_post_process: Callable = routing_post_processing
-    autocorrection = False
+    autocorrection : bool = False
 
 
 class EvaluateContextJob(JobInterface):
     strategy : Type[AbstractPromptStrategy]= EvaluateSelectStrategy
-    strategy_kwargs = {}
+    strategy_kwargs : dict = {}
     response_post_process : Callable = Pipeline.default_post_processing
-    autocorrection = True
+    autocorrection : bool = True
 
 class RoutingPipeline(Pipeline) : 
     def __init__(self, task: AbstractTask, agent: BaseAgent, note_to_agent_length : int ) -> None:

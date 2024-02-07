@@ -66,24 +66,24 @@ class SystemConfiguration(BaseModel):
             ),
             datetime.datetime: lambda v: v.isoformat(),
         }, 
-    default_exclude={
-        "agent",
-        "workspace",
-        "prompt_manager",
-        "chat_model_provider",
-        "memory",
-        "tool_registry",
-        "prompt_settings",
-        "systems",
-        "configuration",
-        "name",
-        "description",
-        "message_agent_user",
-        "db",
-    }, 
-    allow_inf_nan=False, 
-    validate_assignment=True
-    )
+        default_exclude={
+            "agent",
+            "workspace",
+            "prompt_manager",
+            "chat_model_provider",
+            "memory",
+            "tool_registry",
+            "prompt_settings",
+            "systems",
+            "configuration",
+            "name",
+            "description",
+            "message_agent_user",
+            "db",
+        }, 
+        allow_inf_nan=False, 
+        validate_assignment=True
+        )
 
     def json(self, **dumps_kwargs) -> str:
         LOG.warning(f"{__qualname__}.json()")

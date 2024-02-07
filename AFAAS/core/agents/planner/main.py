@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine, Optional
 
 from langchain.vectorstores import VectorStore
 from langchain_core.embeddings import Embeddings
@@ -26,7 +26,7 @@ from AFAAS.lib.message_user_agent import Emiter, MessageUserAgent
 from AFAAS.lib.message_common import AFAASMessageStack
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.plan import Plan, TaskStatusList
-
+from AFAAS.lib.task.task import AbstractPlan
 from .loop import PlannerLoop
 
 LOG = AFAASLogger(name=__name__)
@@ -36,6 +36,8 @@ if TYPE_CHECKING:
 
 
 class PlannerAgent(BaseAgent):
+
+    plan : Optional[AbstractPlan] = None
     # FIXME: Move to BaseAgent
     @property
     def tool_registry(self) -> AbstractToolRegistry:
@@ -184,7 +186,6 @@ class PlannerAgent(BaseAgent):
         return agent
 
     async def _create_with_plan_and_message(self):
-        # TODO: Make it a method not a classmethod
         self.plan = Plan(
             agent_id=self.agent_id,
             task_goal=self.agent_goal_sentence,
@@ -208,7 +209,6 @@ class PlannerAgent(BaseAgent):
 
         # Message agent user initialization
         self.message_agent_user = AFAASMessageStack(db=self.db)
-        # FIXME:v.0.0.1 : The first message seem not to be saved in the DB #91 https://github.com/ph-ausseil/afaas/issues/91
         await self.message_agent_user.db_create(
             message=MessageUserAgent(
                 emitter=Emiter.AGENT.value,

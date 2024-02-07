@@ -82,6 +82,7 @@ youtube-transcript-api = "^0.6.2"
 scikit-learn = "^1.4.0"
 chromadb = "^0.4.22"
 eval-type-backport = "^0.1.3"
+pip = "*"
 
 
 [tool.poetry.extras]

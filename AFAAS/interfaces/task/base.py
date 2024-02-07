@@ -7,7 +7,6 @@ from pydantic import Field, ConfigDict
 from pydantic.fields import ModelPrivateAttr
 
 from AFAAS.configs.schema import AFAASModel, update_model_config
-from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 from .meta import TaskStatusList
@@ -18,6 +17,7 @@ LOG = AFAASLogger(name=__name__)
 if TYPE_CHECKING:
     from .stack import TaskStack
     from .task import AbstractTask
+    from AFAAS.interfaces.agent.main import BaseAgent
 
 
 class AbstractBaseTask(abc.ABC, AFAASModel):
@@ -66,15 +66,15 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
     task_goal: str
     """ The title / Name of the task """
 
-    task_context: Optional[str]
+    task_context: Optional[str] = None
     """ Placeholder : Context given by RAG & other elements """
 
-    long_description: Optional[str]
+    long_description: Optional[str] = None
 
     ###
     ### Task Management properties
     ###
-    task_history: Optional[list[dict]]
+    task_history: Optional[list[dict]] = None
 
     acceptance_criteria: Optional[list[str]] = []
 

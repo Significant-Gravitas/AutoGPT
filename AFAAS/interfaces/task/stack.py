@@ -162,7 +162,3 @@ class TaskStack(AFAASModel):
 
     def __str__(self):
         return self._task_ids.__str__()
-
-
-# Additional methods can be added as needed
-#TaskStack.model_rebuild()

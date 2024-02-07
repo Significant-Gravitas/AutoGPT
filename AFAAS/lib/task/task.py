@@ -85,7 +85,7 @@ class Task(AbstractTask):
     ###
     task_id: str = Field(default_factory=lambda: Task.generate_uuid())
 
-    plan_id: Optional[str] = Field()
+    plan_id: Optional[str] = Field(None)
 
     _task_parent_id: str = ModelPrivateAttr()
     _task_parent: Optional[Task] = None
@@ -100,8 +100,8 @@ class Task(AbstractTask):
         except KeyError:
             raise ValueError(f"No parent task found with ID {self._task_parent_id}")
 
-    _task_predecessors: Optional[TaskStack]  # = Field(default=None)
-    _task_successors: Optional[TaskStack]  # = Field(default=None)
+    _task_predecessors: Optional[TaskStack] = None  # = Field(default=None)
+    _task_successors: Optional[TaskStack] = None  # = Field(default=None)
 
     @property
     def task_predecessors(self) -> TaskStack:
@@ -143,9 +143,9 @@ class Task(AbstractTask):
     command: Optional[str] = Field(default_factory=lambda: Task.default_tool())
     arguments: Optional[dict] = Field(default={})
 
-    task_text_output: Optional[str]
+    task_text_output: Optional[str] = None
     """ The agent summary of his own doing while performing the task"""
-    task_text_output_as_uml: Optional[str]
+    task_text_output_as_uml: Optional[str] = None
     """ The agent summary of his own doing while performing the task as a UML diagram"""
 
     async def is_ready(self) -> bool:

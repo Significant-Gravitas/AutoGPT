@@ -146,9 +146,12 @@ class AbstractMemory(Configurable, abc.ABC):
         """
         # FIXME: Move to a dependancy ingestion patern
         adapter_type = db_settings.configuration.db_adapter
-        config_key = base64.b64encode(
-            json.dumps(db_settings.configuration.dict()).encode()
-        ).decode()
+
+        #FIXME: Weakened the key to upgrade to pydantic 2.x
+        # config_key = base64.b64encode(
+        #     json.dumps(db_settings.configuration.dict()).encode()
+        # ).decode()
+        config_key = base64.b64encode(adapter_type.__class__.__name__.encode()).decode()
 
         if config_key in AbstractMemory._instances:
             return AbstractMemory._instances[config_key]
