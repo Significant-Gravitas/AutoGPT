@@ -313,7 +313,7 @@ logging_config: dict = dict(
         "level": logging.WARNING,
     },
     loggers={
-        "autogpt": {
+        "afaas": {
             "handlers": ["h", "file"],
             "level": CONSOLE_LOG_LEVEL,
             "propagate": False,

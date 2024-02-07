@@ -122,4 +122,8 @@ class AbstractTask(AbstractBaseTask):
     async def retry(self): ...
 
     @abstractmethod
-    async def memorize_output(self): ...
+    async def memorize_output(self):
+        ...
+
+    memory : dict = {}
+    """ Task is the unit of work in the AFAAS system. It passes from one system to another and memory is the way to keep track of the data that has been processed."""

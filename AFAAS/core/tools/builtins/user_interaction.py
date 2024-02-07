@@ -114,10 +114,10 @@ async def user_interaction(
     document.metadata["agent_id"] = agent.agent_id
     document.metadata["user_id"] = agent.user_id
     vector = await agent.vectorstores.add_document(
-        document_type=DocumentType.MESSAGE_AGENT_USER,
-        document=document,
-        doc_id=str(response_message.message_id),
-    )
+                                                    document_type = DocumentType.MESSAGE_AGENT_USER,  
+                                                    document = document , 
+                                                    document_id =  str(response_message.message_id)
+                                                    ) 
     #  ids=[str(filename)],
 
     return response_message.message

@@ -3,7 +3,7 @@ from __future__ import annotations
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 from AFAAS.lib.sdk.logger import AFAASLogger
 
-LOG=AFAASLogger(name="autogpt")
+LOG = AFAASLogger(name=__name__)
 
 class ToolExecutor(AgentMixin):
     def __init__(self, **kwargs):
