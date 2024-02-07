@@ -10,6 +10,8 @@ from AFAAS.interfaces.prompts import AbstractPromptStrategy
 
 
 class JobInterface(abc.ABC, BaseModel):
+    # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
+    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
     class Config(BaseModel.Config):
         arbitrary_types_allowed = True
 

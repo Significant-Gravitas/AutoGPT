@@ -56,6 +56,8 @@ class PlannerAgent(BaseAgent):
         self._tool_registry = value
 
     class SystemSettings(BaseAgent.SystemSettings):
+        # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
+        # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
         class Config(BaseAgent.SystemSettings.Config):
             pass
 

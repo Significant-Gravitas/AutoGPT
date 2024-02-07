@@ -24,9 +24,10 @@ from agent_protocol_client import AgentApi, ApiClient
 from agent_protocol_client import Configuration as ClientConfig
 from colorama import Fore, Style
 from openai import _load_client as get_openai_client
-from pydantic import BaseModel, Field, constr, validator
+from pydantic import StringConstraints, BaseModel, Field, validator
 
 from .base import BaseChallenge, ChallengeInfo
+from typing_extensions import Annotated
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class BuiltinChallengeSpec(BaseModel):
 
     class Info(BaseModel):
         difficulty: DifficultyLevel
-        description: constr(regex=r"^Tests if the agent can.*")
+        description: Annotated[str, StringConstraints(pattern=r"^Tests if the agent can.*")]
         side_effects: list[str] = Field(default_factory=list)
 
     info: Info
@@ -58,10 +59,12 @@ class BuiltinChallengeSpec(BaseModel):
 
         class Eval(BaseModel):
             type: str
-            scoring: Optional[Literal["percentage", "scale", "binary"]]
-            template: Optional[Literal["rubric", "reference", "question", "custom"]]
-            examples: Optional[str]
+            scoring: Optional[Literal["percentage", "scale", "binary"]] = None
+            template: Optional[Literal["rubric", "reference", "question", "custom"]] = None
+            examples: Optional[str] = None
 
+            # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
+            # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
             @validator("scoring", "template", always=True)
             def validate_eval_fields(cls, v, values, field):
                 if "type" in values and values["type"] == "llm":

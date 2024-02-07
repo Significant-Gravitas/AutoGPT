@@ -62,6 +62,8 @@ class Task(AbstractTask):
                 task_id=self.task_id, status=value
             )
 
+    # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
+    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
     class Config(AbstractBaseTask.Config):
         default_exclude = set(AbstractBaseTask.Config.default_exclude) | {
             # If commented create an infinite loop
@@ -117,6 +119,8 @@ class Task(AbstractTask):
             )
         return self._task_successors
 
+    # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
+    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
     @validator("state", pre=True)
     def set_state(cls, new_state, values):
         task_id = values.get("task_id")

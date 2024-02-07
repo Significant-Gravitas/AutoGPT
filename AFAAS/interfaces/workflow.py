@@ -7,7 +7,7 @@ class BaseWorkflow(BaseModel):  # NOTE: Might be merged with Pipeline
     name: ClassVar[str]
     description: ClassVar[str]
     examples: ClassVar[list[str]] = Field(
-        ..., description="Examples of tasks that would fit this workflow.", min_items=2
+        ..., description="Examples of tasks that would fit this workflow.", min_length=2
     )
 
 

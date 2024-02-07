@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 class AFAASMessage(ABC, AFAASModel):
     message_id: str
     _table_name: ClassVar[str]  # = "message"
-    task_id: Optional[str]
+    task_id: Optional[str] = None
 
 
 class AFAASMessageStack(AFAASModel):
@@ -48,6 +48,8 @@ class AFAASMessageStack(AFAASModel):
         return iter(self._messages.items())
 
     @classmethod
+    # TODO[pydantic]: We couldn't refactor `__get_validators__`, please create the `__get_pydantic_core_schema__` manually.
+    # Check https://docs.pydantic.dev/latest/migration/#defining-custom-types for more information.
     def __get_validators__(cls) -> Generator:
         LOG.trace(f"{cls.__name__}.__get_validators__()")
         yield cls.validate

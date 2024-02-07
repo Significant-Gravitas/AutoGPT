@@ -22,7 +22,7 @@ class ChallengeInfo(BaseModel):
     difficulty: Optional[DifficultyLevel] = None
     description: Optional[str] = None
     dependencies: list[str] = Field(default_factory=list)
-    reference_answer: Optional[str]
+    reference_answer: Optional[str] = None
 
     source_uri: str
     """Internal reference indicating the source of the challenge specification"""

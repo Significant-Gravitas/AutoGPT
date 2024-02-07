@@ -103,6 +103,8 @@ class AbstractAgent(ABC):
     class SystemSettings(SystemSettings):
 
 
+        # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
+        # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
         class Config(SystemSettings.Config):
             AGENT_CLASS_FIELD_NAME : str = "_type_"
             AGENT_CLASS_MODULE_NAME : str = "_module_"

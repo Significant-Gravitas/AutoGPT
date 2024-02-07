@@ -38,6 +38,8 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         "Write a report"
     """
 
+    # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
+    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
     class Config(AFAASModel.Config):
         # This is a list of Field to Exclude during serialization
         default_exclude = set(AFAASModel.Config.default_exclude) | {

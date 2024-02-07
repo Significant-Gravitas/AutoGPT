@@ -7,8 +7,8 @@ import os
 import uuid
 from typing import Any, Callable, Generic, Optional, Type, TypeVar, get_args
 
-from pydantic import BaseModel, Field, ValidationError
-from pydantic.fields import ModelField, Undefined, UndefinedType
+from pydantic import ConfigDict, BaseModel, Field, ValidationError
+from pydantic.main import ModelField, Undefined, UndefinedType
 from pydantic.main import ModelMetaclass
 
 T = TypeVar("T")
@@ -68,35 +68,29 @@ class SystemConfiguration(BaseModel):
             return default_value
 
         return _recursive_init_model(cls, infer_field_value)
-
-    class Config:
-        extra = "allow"
-        use_enum_values = True
-        json_encoders = {
-            uuid.UUID: lambda v: str(v),
-            float: lambda v: str(
-                9999.99 if v == float("inf") or v == float("-inf") else v
-            ),
-            datetime.datetime: lambda v: v.isoformat(),
-        }
-        # This is a list of Field to Exclude during serialization
-        default_exclude = {
-            "agent",
-            "workspace",
-            "prompt_manager",
-            "chat_model_provider",
-            "memory",
-            "tool_registry",
-            "prompt_settings",
-            "systems",
-            "configuration",
-            "name",
-            "description",
-            "message_agent_user",
-            "db",
-        }
-        allow_inf_nan = False
-        validate_assignment = True
+    # TODO[pydantic]: The following keys were removed: `json_encoders`.
+    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
+    model_config = ConfigDict(extra="allow", use_enum_values=True, json_encoders={
+        uuid.UUID: lambda v: str(v),
+        float: lambda v: str(
+            9999.99 if v == float("inf") or v == float("-inf") else v
+        ),
+        datetime.datetime: lambda v: v.isoformat(),
+    }, default_exclude={
+        "agent",
+        "workspace",
+        "prompt_manager",
+        "chat_model_provider",
+        "memory",
+        "tool_registry",
+        "prompt_settings",
+        "systems",
+        "configuration",
+        "name",
+        "description",
+        "message_agent_user",
+        "db",
+    }, allow_inf_nan=False, validate_assignment=True)
 
     def json(self, **dumps_kwargs) -> str:
         LOG.warning(f"{__qualname__}.json()")
@@ -107,19 +101,15 @@ SC = TypeVar("SC", bound=SystemConfiguration)
 
 
 class AFAASModel(BaseModel):
-    class Config:
-        extra = "allow"
-        use_enum_values = True
-        json_encoders = {
-            uuid.UUID: lambda v: str(v),
-            float: lambda v: str(
-                9999.99 if v == float("inf") or v == float("-inf") else v
-            ),
-            datetime.datetime: lambda v: str(v.isoformat()),
-        }
-        arbitrary_types_allowed = True
-        allow_inf_nan = False
-        default_exclude = {}
+    # TODO[pydantic]: The following keys were removed: `json_encoders`.
+    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
+    model_config = ConfigDict(extra="allow", use_enum_values=True, json_encoders={
+        uuid.UUID: lambda v: str(v),
+        float: lambda v: str(
+            9999.99 if v == float("inf") or v == float("-inf") else v
+        ),
+        datetime.datetime: lambda v: str(v.isoformat()),
+    }, arbitrary_types_allowed=True, allow_inf_nan=False, default_exclude={})
 
     # TODO: #21 https://github.com/ph-ausseil/afaas/issues/21
     created_at: datetime.datetime = datetime.datetime.now()
@@ -189,6 +179,8 @@ class AFAASModel(BaseModel):
 
 
 class SystemSettings(AFAASModel):
+    # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
+    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
     class Config(AFAASModel.Config):
         # FIXME: Workaround to not serialize elements that contains unserializable class , proper way is to implement serialization for each class
         default_exclude = {
@@ -226,11 +218,26 @@ class Configurable(abc.ABC, Generic[S]):
 
         name: str
         description: str
-
-        class Config:
-            extra = "allow"
-            use_enum_values = True
-            allow_inf_nan = False
+        model_config = ConfigDict(default_exclude={
+            "agent",
+            "workspace",
+            "prompt_manager",
+            "default_llm_provider",
+            "memory",
+            "tool_registry",
+            "prompt_settings",
+            "systems",
+            "configuration",
+            "agent_setting_module",
+            "agent_setting_class",
+            "name",
+            "description",
+            "parent_agent",
+            "current_task",
+            "message_agent_user",
+            "db",
+            "plan",
+        }, extra="allow", use_enum_values=True, allow_inf_nan=False)
 
     def json(self, **dumps_kwargs) -> str:
         LOG.warning(f"{__qualname__}.json()")

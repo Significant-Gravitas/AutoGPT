@@ -4,7 +4,7 @@ import abc
 import enum
 from typing import Callable, ClassVar, Protocol
 
-from pydantic import BaseModel, Field, validator
+from pydantic import field_validator, ConfigDict, BaseModel, Field
 
 from AFAAS.configs.schema import SystemConfiguration, UserConfigurable
 from AFAAS.interfaces.adapters.configuration import (
@@ -63,9 +63,7 @@ class BaseModelProviderCredentials(BaseProviderCredentials):
     api_base: str | None = UserConfigurable(default=None)
     api_version: str | None = UserConfigurable(default=None)
     deployment_id: str | None = UserConfigurable(default=None)
-
-    class Config:
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")
 
 
 class BaseModelProviderUsage(BaseProviderUsage):
@@ -170,7 +168,8 @@ class EmbeddingModelResponse(BaseModelResponse):
     embedding: Embedding = Field(default_factory=list)
 
     @classmethod
-    @validator("completion_tokens_used")
+    @field_validator("completion_tokens_used")
+    @classmethod
     def _verify_no_completion_tokens_used(cls, v):
         if v > 0:
             raise ValueError("Embeddings should not have completion tokens used.")

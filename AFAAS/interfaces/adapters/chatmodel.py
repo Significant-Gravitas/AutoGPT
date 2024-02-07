@@ -245,8 +245,8 @@ class Property(BaseModel):
 
     type: str
     description: str
-    items: Optional[Union["Property", Dict]]
-    properties: Optional[dict]  # Allows nested properties
+    items: Optional[Union["Property", Dict]] = None
+    properties: Optional[dict] = None  # Allows nested properties
 
 
 # Defines a function's parameters
@@ -355,8 +355,8 @@ class AssistantChatMessage(ChatMessage):
     """
 
     role: Role.ASSISTANT
-    content: Optional[str]
-    tool_calls: Optional[list[AssistantToolCall]]
+    content: Optional[str] = None
+    tool_calls: Optional[list[AssistantToolCall]] = None
 
 
 class AssistantChatMessageDict(TypedDict, total=False):

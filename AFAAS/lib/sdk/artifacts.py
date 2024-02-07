@@ -15,43 +15,43 @@ class Artifact(AFAASModel):
     agent_id: str = Field(
         ...,
         description="ID of the agent.",
-        example="b225e278-8b4c-4f99-a696-8facf19f0e56",
+        examples=["b225e278-8b4c-4f99-a696-8facf19f0e56"],
     )
     user_id: str = Field(
         ...,
         description="ID of the user.",
-        example="b225e278-8b4c-4f99-a696-8facf19f0e56",
+        examples=["b225e278-8b4c-4f99-a696-8facf19f0e56"],
     )
     source: str = Field(
         ...,
         description="Source of the artifact.",
-        example="www.mywebsite.com",
+        examples=["www.mywebsite.com"],
     )
     # NOTE: WILL NOT BE SUPPORTED
     agent_created: bool = Field(
         default=True,
         description="Whether the artifact has been created by the agent.",
-        example=False,
+        examples=[False],
     )
     relative_path: str = Field(
         ...,
         description="Relative path of the artifact in the agents workspace.",
-        example="/my_folder/my_other_folder/",
+        examples=["/my_folder/my_other_folder/"],
     )
     file_name: str = Field(
         ...,
         description="Filename of the artifact.",
-        example="main.py",
+        examples=["main.py"],
     )
     mime_type: str = Field(
         ...,
         description="MIME type of the artifact.",
-        example="text/plain",
+        examples=["text/plain"],
     )
     license: Optional[str] = Field(
         default=None,
         description="Licence; `None` the document is created by the agent or user",
-        example="MIT",
+        examples=["MIT"],
     )
     checksum: str = Field(default=None, description="Checksum of the artifact")
 

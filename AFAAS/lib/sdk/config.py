@@ -4,7 +4,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseSettings, Field
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 def _calculate_info_test_path(base_path: Path, benchmark_start_time: datetime) -> Path:
