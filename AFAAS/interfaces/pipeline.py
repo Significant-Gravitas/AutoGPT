@@ -4,28 +4,13 @@ import inspect
 from typing import Any, Awaitable, Callable, Coroutine, Optional
 
 from AFAAS.interfaces.adapters import AbstractChatModelResponse
-from AFAAS.interfaces.agent.loop import BaseLoop
+from AFAAS.interfaces.agent.features.agentmixin import AgentMixin 
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.job import JobInterface
 from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.prompts.common import AutoCorrectionStrategy
 
-
-class BasePipeline(BaseLoop):
-    class LoophooksDict(BaseLoop.LoophooksDict):
-        pass
-
-    async def run(
-        self,
-        agent: BaseAgent,
-        hooks: LoophooksDict,
-        user_input_handler: Callable[[str], Awaitable[str]] | None = None,
-        user_message_handler: Callable[[str], Awaitable[str]] | None = None,
-    ) -> Coroutine[Any, Any, dict | None]:
-        return super().run(agent, hooks, user_input_handler, user_message_handler)
-
-
-class Pipeline(BasePipeline):
+class Pipeline(AgentMixin):
     def __init__(
         self,
         task: AbstractTask,
