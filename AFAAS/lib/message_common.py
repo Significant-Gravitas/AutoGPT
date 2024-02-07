@@ -21,7 +21,8 @@ class AFAASMessage(ABC, AFAASModel):
 
 
 class AFAASMessageStack(AFAASModel):
-    _messages: dict[AFAASMessage] = {}
+    #_messages: dict[AFAASMessage] = {}
+    _messages: dict = {}
     db: AbstractMemory
 
     async def db_create(self, message: AFAASMessage):

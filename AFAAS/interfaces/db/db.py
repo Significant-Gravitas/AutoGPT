@@ -3,13 +3,12 @@ from __future__ import annotations
 import abc
 import base64
 import json
-import os
 import uuid
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pydantic import Field
+from pydantic import Field, ConfigDict
 
 from AFAAS.configs.schema import Configurable, SystemConfiguration, SystemSettings
 
@@ -65,7 +64,7 @@ class MemoryConfig(SystemConfiguration):
 #         name: str = "Memory"
 #         description: str = "Memory is an abstract db adapter"
 
-#         class Config(SystemSettings.Config):
+#         model_config = SystemSettings.model_config | ConfigDict(
 #             extra = "allow"
 
 
@@ -77,9 +76,9 @@ class AbstractMemory(Configurable, abc.ABC):
 
         # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
         # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
-        class Config(SystemSettings.Config):
+        model_config = SystemSettings.model_config | ConfigDict(
             extra = "allow"
-
+        )
     _instances: dict[AbstractMemory] = {}
 
     """

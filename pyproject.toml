@@ -81,6 +81,7 @@ google-search-results = "^2.4.2"
 youtube-transcript-api = "^0.6.2"
 scikit-learn = "^1.4.0"
 chromadb = "^0.4.22"
+eval-type-backport = "^0.1.3"
 
 
 [tool.poetry.extras]

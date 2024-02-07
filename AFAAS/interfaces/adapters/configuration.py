@@ -4,6 +4,7 @@ from pydantic import BaseModel, SecretBytes, SecretStr
 
 from AFAAS.configs.config import SystemSettings, UserConfigurable
 from AFAAS.configs.schema import SystemConfiguration
+from pydantic import  ConfigDict
 
 
 class BaseProviderUsage(SystemConfiguration, abc.ABC):
@@ -33,11 +34,12 @@ class BaseProviderCredentials(SystemConfiguration):
 
     # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
     # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
-    class Config(SystemConfiguration.Config):
-        json_encoders = {
+    model_config = SystemConfiguration.model_config | ConfigDict(
+        json_encoders={
             SecretStr: lambda v: v.get_secret_value() if v else None,
             SecretBytes: lambda v: v.get_secret_value() if v else None,
         }
+    )
 
     def unmask(model: BaseModel):
         unmasked_fields = {}

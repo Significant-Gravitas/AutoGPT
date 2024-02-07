@@ -35,7 +35,7 @@ class SoftwareDevelopmentWorkflow(BaseWorkflow):
 
 
 class FastTrackedWorkflow(BaseWorkflow):
-    name = "fast_tracked"
+    name : ClassVar[str] =  "fast_tracked"
     description: ClassVar[str] = (
         "Ideal for simple tasks that do not require subdivision."
     )

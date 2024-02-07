@@ -46,7 +46,7 @@ class MyCustomAgentSystemSettings(SystemSettings):
     # Hold a reference to the Agent Configuration class.
     configuration: MyCustomAgentConfiguration
 
-    class Config(SystemSettings.Config):
+    model_config = SystemSettings.model_config | ConfigDict(
         # Specify any additional configuration options for this class.
         extra = "allow"
 

@@ -158,7 +158,7 @@ class ModelTokenizer(Protocol):
 class EmbeddingModelInfo(BaseModelInfo):
     """Struct for embedding model information."""
 
-    llm_service = ModelProviderService.EMBEDDING
+    llm_service : ModelProviderService = ModelProviderService.EMBEDDING
     embedding_dimensions: int
 
 

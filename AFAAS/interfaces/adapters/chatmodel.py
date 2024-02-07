@@ -59,10 +59,10 @@ from typing import (
     Generic,
     Literal,
     Optional,
-    TypedDict,
     TypeVar,
     Union,
 )
+from typing_extensions import TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -416,7 +416,7 @@ class CompletionModelFunction(BaseModel):
 
     name: str
     description: str
-    parameters: dict[str, "JSONSchema"]
+    parameters: dict # dict[str, "JSONSchema"]
 
     @property
     def schema(self) -> dict[str, str | dict | list]:
@@ -568,7 +568,7 @@ class AbstractChatModelResponse(BaseModelResponse, Generic[_T]):
 class ChatModelInfo(BaseModelInfo):
     """Struct for language model information."""
 
-    llm_service = ModelProviderService.CHAT
+    llm_service : ModelProviderService = ModelProviderService.CHAT
     max_tokens: int
     has_function_call_api: bool = False
 

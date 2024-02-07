@@ -4,7 +4,8 @@ import abc
 import datetime
 import uuid
 from pathlib import Path
-from typing import Any, Literal, Optional, TypedDict
+from typing import Any, Literal, Optional
+from typing_extensions import TypedDict
 
 from pydantic import BaseModel
 

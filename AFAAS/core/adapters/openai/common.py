@@ -40,11 +40,11 @@ OpenAIChatParser = Callable[[str], dict]
 
 
 class OpenAIRoleLabel(AbstractRoleLabels):
-    USER = "user"
-    SYSTEM = "system"
-    ASSISTANT = "assistant"
+    USER : str = "user"
+    SYSTEM : str = "system"
+    ASSISTANT : str = "assistant"
 
-    FUNCTION = "function"
+    FUNCTION : str = "function"
     """May be used for the return value of function calls"""
 
 
@@ -191,8 +191,8 @@ class OpenAISettings(BaseModelProviderSettings):
     budget: OpenAIModelProviderBudget = OpenAIModelProviderBudget()
     chat: TypeVar = OpenAIChatMessage
 
-    name = "chat_model_provider"
-    description = "Provides access to OpenAI's API."
+    name : str =  "chat_model_provider"
+    description : str =  "Provides access to OpenAI's API."
 
 
 class _OpenAIRetryHandler:

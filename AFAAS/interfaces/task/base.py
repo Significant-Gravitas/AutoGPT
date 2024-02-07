@@ -3,7 +3,8 @@ from __future__ import annotations
 import abc
 from typing import TYPE_CHECKING, Optional, Union, get_args
 
-from pydantic import Field
+from pydantic import Field, ConfigDict
+from pydantic.fields import ModelPrivateAttr
 
 from AFAAS.configs.schema import AFAASModel
 from AFAAS.interfaces.agent.main import BaseAgent
@@ -38,16 +39,15 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         "Write a report"
     """
 
-    # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
-    class Config(AFAASModel.Config):
-        # This is a list of Field to Exclude during serialization
-        default_exclude = set(AFAASModel.Config.default_exclude) | {
-            "subtasks",
-            "agent",
-            "_loaded_tasks_dict",
-        }
-        json_encoders = AFAASModel.Config.json_encoders | {}
+
+    model_config = AFAASModel.model_config | ConfigDict(
+        default_exclude = set(AFAASModel.model_config['default_exclude'] ) | {
+            "subtasks", 
+            "agent", 
+            "_loaded_tasks_dict", 
+        },
+        json_encoders = AFAASModel.model_config['json_encoders'] | {}
+    )
 
     ###
     ### GENERAL properties
@@ -79,7 +79,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
     ###
     ### Dynamic properties
     ###
-    _subtasks: Optional[TaskStack] = Field()
+    _subtasks: Optional[TaskStack] = ModelPrivateAttr()
 
     @property
     def subtasks(self) -> TaskStack:

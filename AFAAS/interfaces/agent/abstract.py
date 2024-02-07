@@ -6,7 +6,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Optional
 
-from pydantic import Field
+from pydantic import Field, ConfigDict
+from pydantic.fields import ModelPrivateAttr
 
 from AFAAS.configs.schema import Configurable, SystemSettings
 from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider
@@ -105,9 +106,10 @@ class AbstractAgent(ABC):
 
         # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
         # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
-        class Config(SystemSettings.Config):
-            AGENT_CLASS_FIELD_NAME : str = "_type_"
-            AGENT_CLASS_MODULE_NAME : str = "_module_"
+        model_config = SystemSettings.model_config | ConfigDict(
+            AGENT_CLASS_FIELD_NAME = "_type_",
+            AGENT_CLASS_MODULE_NAME = "_module_"
+        )
 
         modified_at: datetime.datetime = datetime.datetime.now()
         created_at: datetime.datetime = datetime.datetime.now()
@@ -121,7 +123,7 @@ class AbstractAgent(ABC):
         def generate_uuid():
             return "A" + str(uuid.uuid4())
 
-        _message_agent_user: Optional[AFAASMessageStack] = Field(default=[])
+        _message_agent_user: Optional[AFAASMessageStack] = ModelPrivateAttr(default=[])
         @property
         def message_agent_user(self) -> AFAASMessageStack:
             if self._message_agent_user is None:

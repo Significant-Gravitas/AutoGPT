@@ -1,4 +1,5 @@
 from __future__ import annotations
+from pydantic import ConfigDict
 
 from AFAAS.configs.schema import AFAASModel, Configurable
 from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider
@@ -27,15 +28,8 @@ class BaseAgent(AFAASModel , AbstractAgent, Configurable):
             self._workspace = AGPTLocalFileWorkspace(user_id=self.user_id, agent_id=self.agent_id)
         return self._workspace
 
-
-    class SystemSettings(AbstractAgent.SystemSettings):
-
-        # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
-        # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
-        class Config(AbstractAgent.SystemSettings.Config):
-            pass
-    class Config(AFAASModel.Config):
-        default_exclude = set(AbstractAgent.SystemSettings.Config.default_exclude ) | {
+    model_config = AFAASModel.model_config | ConfigDict(
+        default_exclude = set(AbstractAgent.SystemSettings.model_config['default_exclude'] ) | {
             'embedding_model', 
             'settings',
             'vectorstores', 
@@ -56,6 +50,8 @@ class BaseAgent(AFAASModel , AbstractAgent, Configurable):
             '_tool_registry', 
             '_tool_executor', 
         }
+    )
+
 
     def __init__(self, **kwargs):
         #super().__init__(**kwargs)

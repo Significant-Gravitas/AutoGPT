@@ -3,7 +3,8 @@ from __future__ import annotations
 import abc
 import uuid
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, TypedDict, Union
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Union
+from typing_extensions import TypedDict
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.db.db import AbstractMemory

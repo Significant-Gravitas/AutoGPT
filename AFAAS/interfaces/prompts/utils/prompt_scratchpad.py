@@ -83,7 +83,7 @@ class PromptScratchpad(BaseModel):
         )
 
         if name in self.commands:
-            if description == self.commands[name].description:
+            if description : str = = self.commands[name].description:
                 return
             LOG.warning(
                 f"Replacing command {self.commands[name]} with conflicting {command}"
