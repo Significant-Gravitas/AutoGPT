@@ -9,7 +9,7 @@ from io import IOBase, TextIOBase
 from pathlib import Path
 from typing import IO, Any, BinaryIO, Callable, Literal, Optional, TextIO, overload
 
-from AFAAS.configs.schema import Configurable, SystemConfiguration, UserConfigurable
+from AFAAS.configs.schema import Configurable, SystemConfiguration, Field
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -17,7 +17,7 @@ LOG = AFAASLogger(name=__name__)
 
 class AbstractFileWorkspaceConfiguration(SystemConfiguration):
     restrict_to_agent_workspace: bool = True
-    app_workspace: Path = UserConfigurable(
+    app_workspace: Path = Field(
         default=Path("~/AFAAS/agents").expanduser().resolve()
     )
     agent_workspace: Path = Path("/")

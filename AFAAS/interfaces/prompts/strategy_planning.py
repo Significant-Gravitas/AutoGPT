@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     pass
 
 
-from AFAAS.configs.schema import UserConfigurable
+from AFAAS.configs.schema import Field
 from AFAAS.interfaces.prompts.strategy import (
     RESPONSE_SCHEMA,
     AbstractPromptStrategy,
@@ -27,13 +27,13 @@ class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
     )
     DEFAULT_RESPONSE_SCHEMA : JSONSchema = copy.deepcopy(RESPONSE_SCHEMA)
 
-    response_schema: dict = UserConfigurable(
+    response_schema: dict = Field(
         default_factory=DEFAULT_RESPONSE_SCHEMA.to_dict
     )
-    choose_action_instruction: str = UserConfigurable(
+    choose_action_instruction: str = Field(
         default=DEFAULT_CHOOSE_ACTION_INSTRUCTION
     )
-    use_functions_api: bool = UserConfigurable(default=False)
+    use_functions_api: bool = Field(default=False)
 
     #########
     # State #

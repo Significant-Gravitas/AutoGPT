@@ -6,7 +6,7 @@ from typing import Callable, ClassVar, Protocol
 
 from pydantic import field_validator, ConfigDict, BaseModel, Field
 
-from AFAAS.configs.schema import SystemConfiguration, UserConfigurable
+from AFAAS.configs.schema import SystemConfiguration, Field
 from AFAAS.interfaces.adapters.configuration import (
     BaseProviderBudget,
     BaseProviderCredentials,
@@ -51,18 +51,18 @@ class BaseModelResponse(BaseModel):
 
 
 class BaseModelProviderConfiguration(SystemConfiguration):
-    retries_per_request: int = UserConfigurable()
+    retries_per_request: int = Field()
     extra_request_headers: dict[str, str] = Field(default_factory=dict)
 
 
 class BaseModelProviderCredentials(BaseProviderCredentials):
     """Credentials for a model provider."""
 
-    api_key: str | None = UserConfigurable(default=None)
-    api_type: str | None = UserConfigurable(default=None)
-    api_base: str | None = UserConfigurable(default=None)
-    api_version: str | None = UserConfigurable(default=None)
-    deployment_id: str | None = UserConfigurable(default=None)
+    api_key: str | None = Field(default=None)
+    api_type: str | None = Field(default=None)
+    api_base: str | None = Field(default=None)
+    api_version: str | None = Field(default=None)
+    deployment_id: str | None = Field(default=None)
     model_config = ConfigDict(extra="ignore")
 
 
@@ -85,7 +85,7 @@ class BaseModelProviderUsage(BaseProviderUsage):
 
 
 class BaseModelProviderBudget(BaseProviderBudget):
-    total_budget: float = UserConfigurable()
+    total_budget: float = Field()
     total_cost: float
     remaining_budget: float
     usage: BaseModelProviderUsage
