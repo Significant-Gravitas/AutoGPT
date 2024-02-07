@@ -32,10 +32,8 @@ def UserConfigurable(
         default,
         *args,
         default_factory=default_factory,
-        from_env=from_env,
         description=description,
         **kwargs,
-        user_configurable=True,
     )
 
 

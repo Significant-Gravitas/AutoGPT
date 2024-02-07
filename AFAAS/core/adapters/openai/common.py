@@ -7,7 +7,7 @@ from typing import Callable, ClassVar, ParamSpec, TypeVar
 
 from openai import APIError, AsyncOpenAI, RateLimitError
 
-from AFAAS.configs.schema import UserConfigurable
+from AFAAS.configs.schema import Field
 from AFAAS.interfaces.adapters.chatmodel import (
     AbstractChatMessage,
     AbstractRoleLabels,
@@ -155,7 +155,7 @@ class OpenAIProviderConfiguration(BaseModelProviderConfiguration):
         maximum_retry_before_default_function: The maximum number of retries before a default function is used.
     """
 
-    retries_per_request: int = UserConfigurable(default=10)
+    retries_per_request: int = Field(default=10)
     maximum_retry: int = 1
     maximum_retry_before_default_function: int = 1
 
@@ -168,8 +168,8 @@ class OpenAIModelProviderBudget(BaseModelProviderBudget):
         warning_threshold: The warning threshold for budget.
     """
 
-    graceful_shutdown_threshold: float = UserConfigurable(default=0.005)
-    warning_threshold: float = UserConfigurable(default=0.01)
+    graceful_shutdown_threshold: float = Field(default=0.005)
+    warning_threshold: float = Field(default=0.01)
 
     total_budget: float = math.inf
     total_cost: float = 0.0
@@ -256,8 +256,8 @@ class _OpenAIRetryHandler:
 
 
 class OpenAIPromptConfiguration(AbstractPromptConfiguration):
-    model_name: str = UserConfigurable()
-    temperature: float = UserConfigurable()
+    model_name: str = Field()
+    temperature: float = Field()
 
 
 class OPEN_AI_DEFAULT_CHAT_CONFIGS:
