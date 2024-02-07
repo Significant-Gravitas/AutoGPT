@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pydantic import ConfigDict
 
-from AFAAS.configs.schema import AFAASModel, Configurable
+from AFAAS.configs.schema import AFAASModel, update_model_config, update_model_config, update_model_config, Configurable
 from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -28,28 +28,30 @@ class BaseAgent(AFAASModel , AbstractAgent, Configurable):
             self._workspace = AGPTLocalFileWorkspace(user_id=self.user_id, agent_id=self.agent_id)
         return self._workspace
 
-    model_config = AFAASModel.model_config | ConfigDict(
-        default_exclude = set(AbstractAgent.SystemSettings.model_config['default_exclude'] ) | {
-            'embedding_model', 
-            'settings',
-            'vectorstores', 
-            'workflow_registry', 
-            'db', 
-            'default_llm_provider', 
-            'prompt_manager', 
-            'workspace', 
-            '_settings', 
-            '_prompt_manager', 
-            '_db', 
-            '_workspace', 
-            '_default_llm_provider', 
-            '_embedding_model', 
-            '_vectorstores', 
-            '_workflow_registry', 
-            '_loop', 
-            '_tool_registry', 
-            '_tool_executor', 
-        }
+    model_config = update_model_config(original= AFAASModel.model_config ,
+                                       new = {
+                                            'default_exclude' :  AbstractAgent.SystemSettings.model_config['default_exclude'] | {
+                                                'embedding_model', 
+                                                'settings',
+                                                'vectorstores', 
+                                                'workflow_registry', 
+                                                'db', 
+                                                'default_llm_provider', 
+                                                'prompt_manager', 
+                                                'workspace', 
+                                                '_settings', 
+                                                '_prompt_manager', 
+                                                '_db', 
+                                                '_workspace', 
+                                                '_default_llm_provider', 
+                                                '_embedding_model', 
+                                                '_vectorstores', 
+                                                '_workflow_registry', 
+                                                '_loop', 
+                                                '_tool_registry', 
+                                                '_tool_executor', 
+                                                }
+                                            }
     )
 
 
@@ -105,7 +107,7 @@ class BaseAgent(AFAASModel , AbstractAgent, Configurable):
                         value=str(user_id), operator=AbstractTable.Operators.EQUAL_TO
                     )
                 ],
-                AbstractAgent.SystemSettings.Config.AGENT_CLASS_FIELD_NAME: [
+                AbstractAgent.SystemSettings.model_config.AGENT_CLASS_FIELD_NAME: [
                     AbstractTable.FilterItem(
                         #value=str(cls.__name__),
                         value=str(cls.__module__ + "." + cls.__name__),

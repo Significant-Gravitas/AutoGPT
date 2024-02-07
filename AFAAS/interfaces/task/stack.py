@@ -4,8 +4,9 @@ import json
 from typing import TYPE_CHECKING, Any, Generator
 
 from pydantic import Field
+from pydantic.fields import ModelPrivateAttr
 
-from AFAAS.configs.schema import AFAASModel
+from AFAAS.configs.schema import AFAASModel, update_model_config
 from AFAAS.interfaces.task.base import AbstractBaseTask
 
 if TYPE_CHECKING:
@@ -18,7 +19,7 @@ LOG = AFAASLogger(name=__name__)
 
 class TaskStack(AFAASModel):
     parent_task: AbstractBaseTask = Field(..., exclude=True)
-    _task_ids: list[str] = Field(default=[])
+    _task_ids: list[str] = ModelPrivateAttr(default=[])
 
     def __init__(self, **data: Any):
         super().__init__(**data)
@@ -164,4 +165,4 @@ class TaskStack(AFAASModel):
 
 
 # Additional methods can be added as needed
-TaskStack.update_forward_refs()
+#TaskStack.model_rebuild()

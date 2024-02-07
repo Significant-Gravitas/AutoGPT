@@ -47,7 +47,7 @@ class ToolsRegistryConfiguration(SystemConfiguration):
     tools: dict[str, ToolConfiguration] = {}
 
 
-ToolsRegistryConfiguration.update_forward_refs()
+ToolsRegistryConfiguration.model_rebuild()
 
 
 class DefaultToolRegistry(Configurable, AbstractToolRegistry):

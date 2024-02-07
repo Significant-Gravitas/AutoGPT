@@ -336,7 +336,7 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         self, response: AsyncCompletions, model_name: str
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         response_args = {
-            "model_info": OPEN_AI_CHAT_MODELS[model_name],
+            "MLmodel_info": OPEN_AI_CHAT_MODELS[model_name],
             "prompt_tokens_used": response.usage.prompt_tokens,
             "completion_tokens_used": response.usage.completion_tokens,
         }

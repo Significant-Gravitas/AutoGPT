@@ -9,7 +9,7 @@ from typing_extensions import TypedDict
 
 from pydantic import BaseModel
 
-from AFAAS.configs.schema import AFAASModel, Configurable
+from AFAAS.configs.schema import AFAASModel, update_model_config, Configurable
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.db.db_table import AbstractTable
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -92,7 +92,7 @@ class BaseNoSQLTable(AbstractTable):
                 for attr, attr_value in curr_obj.__dict__.items():
                     if not (
                         attr.startswith("_")
-                        or attr in value.__class__.SystemSettings.Config.default_exclude
+                        or attr in value.__class__.SystemSettings.model_config["default_exclude"]
                     ):
                         stack.append((attr_value, new_dict, attr))
                 serialized_value = new_dict

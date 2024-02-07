@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional, Union, get_args
 from pydantic import Field, ConfigDict
 from pydantic.fields import ModelPrivateAttr
 
-from AFAAS.configs.schema import AFAASModel
+from AFAAS.configs.schema import AFAASModel, update_model_config
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.lib.sdk.logger import AFAASLogger
 
@@ -40,14 +40,16 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
     """
 
 
-    model_config = AFAASModel.model_config | ConfigDict(
-        default_exclude = set(AFAASModel.model_config['default_exclude'] ) | {
-            "subtasks", 
-            "agent", 
-            "_loaded_tasks_dict", 
-        },
-        json_encoders = AFAASModel.model_config['json_encoders'] | {}
-    )
+    model_config = update_model_config(original= AFAASModel.model_config ,
+                                       new = {
+                                            'default_exclude' : AFAASModel.model_config['default_exclude'] | {
+                                                "subtasks", 
+                                                "agent", 
+                                                "_loaded_tasks_dict", 
+                                            },
+                                            'json_encoders' : AFAASModel.model_config['json_encoders'] | {}
+                                            }
+                                        )
 
     ###
     ### GENERAL properties
@@ -89,7 +91,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
             self._subtasks = TaskStack(parent_task=self, description="Subtasks")
         return self._subtasks
 
-    # @validator('_subtasks', pre=True, always=True)
+    # @field_validator('_subtasks', pre=True, always=True)
     # def set_subtasks(cls, v, values, **kwargs):
     #     if isinstance(v, dict) and 'task_ids' in v:
     #         # Initialize TaskStack with task_ids and other necessary parameters
@@ -463,4 +465,4 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
 
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.
-AbstractBaseTask.update_forward_refs()
+#AbstractBaseTask.model_rebuild()

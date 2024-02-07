@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Optional
 
 from pydantic import Field, ConfigDict
 from pydantic.fields import ModelPrivateAttr
+from AFAAS.configs.schema import SystemConfiguration, update_model_config
 
 from AFAAS.configs.schema import Configurable, SystemSettings
 from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider
@@ -106,9 +107,11 @@ class AbstractAgent(ABC):
 
         # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
         # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
-        model_config = SystemSettings.model_config | ConfigDict(
-            AGENT_CLASS_FIELD_NAME = "_type_",
-            AGENT_CLASS_MODULE_NAME = "_module_"
+        model_config = update_model_config(original= SystemSettings.model_config 
+        , new =  {
+            'AGENT_CLASS_FIELD_NAME' : "_type_",
+            'AGENT_CLASS_MODULE_NAME' : "_module_"
+        }
         )
 
         modified_at: datetime.datetime = datetime.datetime.now()
@@ -166,7 +169,7 @@ class AbstractAgent(ABC):
         def dict(self, include_all=False, *args, **kwargs):
             self.prepare_values_before_serialization()  # Call the custom treatment before .dict()
             if not include_all:
-                kwargs["exclude"] = self.Config.default_exclude
+                kwargs["exclude"] = self.model_config['default_exclude']
             # Call the .dict() method with the updated exclude_arg
             return super().dict(*args, **kwargs)
 
@@ -176,7 +179,7 @@ class AbstractAgent(ABC):
             )
             LOG.warning("AbstractAgent.SystemSettings.json()")
             self.prepare_values_before_serialization()  # Call the custom treatment before .json()
-            kwargs["exclude"] = self.Config.default_exclude
+            kwargs["exclude"] = self.model_config['default_exclude']
             return super().json(*args, **kwargs)
 
         # TODO Implement a BaseSettings class and move it to the BaseSettings ?
@@ -234,7 +237,7 @@ class AbstractAgent(ABC):
         self._loop : BaseLoop = None
 
         for key, value in settings.dict().items():
-            if key not in self.SystemSettings.Config.default_exclude:
+            if key not in self.SystemSettings.model_config['default_exclude']:
                 if(not hasattr(self, key)):
                     LOG.notice(f"Adding {key} to the agent")
                     setattr(self, key, value)
@@ -377,4 +380,4 @@ class AbstractAgent(ABC):
         return await self._prompt_manager._execute_strategy(strategy_name=strategy_name, **kwargs)
 
 
-AbstractAgent.SystemSettings.update_forward_refs()
+AbstractAgent.SystemSettings.model_rebuild()

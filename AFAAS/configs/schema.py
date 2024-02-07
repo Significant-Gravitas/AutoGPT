@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import copy
 import abc
 import datetime
 import enum
@@ -19,6 +19,12 @@ M = TypeVar("M", bound=BaseModel)
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
+
+def update_model_config(original : ConfigDict, new : dict) -> ConfigDict:
+    """Update the model_config of a BaseModel"""
+    new_config = copy.deepcopy(original)
+    new_config.update(new)
+    return new_config
 
 
 def UserConfigurable(
@@ -50,13 +56,17 @@ class SystemConfiguration(BaseModel):
 
     # TODO[pydantic]: The following keys were removed: `json_encoders`.
     # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
-    model_config = ConfigDict(extra="allow", use_enum_values=True, json_encoders={
-        uuid.UUID: lambda v: str(v),
-        float: lambda v: str(
-            9999.99 if v == float("inf") or v == float("-inf") else v
-        ),
-        datetime.datetime: lambda v: v.isoformat(),
-    }, default_exclude={
+    model_config = ConfigDict(
+        extra="allow", 
+        use_enum_values=True, 
+        json_encoders={
+            uuid.UUID: lambda v: str(v),
+            float: lambda v: str(
+                9999.99 if v == float("inf") or v == float("-inf") else v
+            ),
+            datetime.datetime: lambda v: v.isoformat(),
+        }, 
+    default_exclude={
         "agent",
         "workspace",
         "prompt_manager",
@@ -70,7 +80,10 @@ class SystemConfiguration(BaseModel):
         "description",
         "message_agent_user",
         "db",
-    }, allow_inf_nan=False, validate_assignment=True)
+    }, 
+    allow_inf_nan=False, 
+    validate_assignment=True
+    )
 
     def json(self, **dumps_kwargs) -> str:
         LOG.warning(f"{__qualname__}.json()")
@@ -83,13 +96,19 @@ SC = TypeVar("SC", bound=SystemConfiguration)
 class AFAASModel(BaseModel):
     # TODO[pydantic]: The following keys were removed: `json_encoders`.
     # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
-    model_config = ConfigDict(extra="allow", use_enum_values=True, json_encoders={
-        uuid.UUID: lambda v: str(v),
-        float: lambda v: str(
-            9999.99 if v == float("inf") or v == float("-inf") else v
-        ),
-        datetime.datetime: lambda v: str(v.isoformat()),
-    }, arbitrary_types_allowed=True, allow_inf_nan=False, default_exclude={})
+    model_config = ConfigDict(extra="allow", 
+                              use_enum_values=True, 
+                              json_encoders={
+                                uuid.UUID: lambda v: str(v),
+                                float: lambda v: str(
+                                    9999.99 if v == float("inf") or v == float("-inf") else v
+                                ),
+                                datetime.datetime: lambda v: str(v.isoformat()),
+                                }, 
+                                arbitrary_types_allowed=True, 
+                                allow_inf_nan=False, 
+                                default_exclude=set()
+                                )
 
     created_at: datetime.datetime = datetime.datetime.now()
     modified_at: datetime.datetime = datetime.datetime.now()
@@ -100,7 +119,7 @@ class AFAASModel(BaseModel):
         return self._apply_custom_encoders(data=dict)
 
     def _apply_custom_encoders(self, data: dict) -> dict:
-        encoders = self.Config.json_encoders
+        encoders = self.model_config.json_encoders
         for key, value in data.items():
             for type_, encoder in encoders.items():
                 if isinstance(value, type_):
@@ -111,7 +130,7 @@ class AFAASModel(BaseModel):
         # TODO: Move to System settings ?
         self.prepare_values_before_serialization()  # Call the custom treatment before .dict()
         if not include_all:
-            kwargs["exclude"] = self.Config.default_exclude
+            kwargs["exclude"] = self.model_config['default_exclude']
         # Call the .dict() method with the updated exclude_arg
         return super().dict(*args, **kwargs)
 
@@ -119,7 +138,7 @@ class AFAASModel(BaseModel):
         LOG.warning("Warning : Recomended use json_api() or json_memory()")
         LOG.warning("BaseAgent.SystemSettings.json()")
         self.prepare_values_before_serialization()  # Call the custom treatment before .json()
-        kwargs["exclude"] = self.Config.default_exclude
+        kwargs["exclude"] = self.model_config['default_exclude']
         return super().json(*args, **kwargs)
 
     # TODO Implement a BaseSettings class and move it to the BaseSettings ?
@@ -160,7 +179,7 @@ class AFAASModel(BaseModel):
 class SystemSettings(AFAASModel):
     # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
     # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
-    model_config = ConfigDict(default_exclude = {
+    model_config = ConfigDict(default_exclude={
             "agent",
             "workspace",
             "prompt_manager",
@@ -179,7 +198,8 @@ class SystemSettings(AFAASModel):
             "message_agent_user",
             "db",
             "plan",
-        })
+    },
+    )
 
 
 S = TypeVar("S", bound=SystemSettings)
@@ -214,7 +234,11 @@ class Configurable(abc.ABC, Generic[S]):
             "message_agent_user",
             "db",
             "plan",
-        }, extra="allow", use_enum_values=True, allow_inf_nan=False)
+        }, 
+        extra="allow", 
+        use_enum_values=True, 
+        allow_inf_nan=False
+        )
 
     def json(self, **dumps_kwargs) -> str:
         LOG.warning(f"{__qualname__}.json()")

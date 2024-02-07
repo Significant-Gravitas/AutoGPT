@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional, Union
 
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 
 import AFAAS
 from AFAAS.configs.schema import Configurable, SystemSettings, UserConfigurable

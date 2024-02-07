@@ -56,14 +56,11 @@ class PlannerAgent(BaseAgent):
         self._tool_registry = value
 
     class SystemSettings(BaseAgent.SystemSettings):
-        # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
-        # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
-        class Config(BaseAgent.SystemSettings.Config):
-            pass
+
 
         def json(self, *args, **kwargs):
             self.prepare_values_before_serialization()  # Call the custom treatment before .json()
-            kwargs["exclude"] = self.Config.default_exclude
+            kwargs["exclude"] = self.model_config['default_exclude']
             return super().json(*args, **kwargs)
 
     def __init__(

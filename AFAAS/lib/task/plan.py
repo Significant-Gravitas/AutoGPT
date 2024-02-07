@@ -5,7 +5,7 @@ import threading
 import uuid
 from typing import ClassVar
 
-from pydantic import Field
+from pydantic import Field, ConfigDict
 
 # from AFAAS.core.db import
 from AFAAS.interfaces.agent.main import BaseAgent
@@ -15,6 +15,7 @@ from AFAAS.lib.sdk.logger import AFAASLogger, CONSOLE_LOG_LEVEL , logging
 from AFAAS.lib.task.task import Task
 from AFAAS.interfaces.workflow import FastTrackedWorkflow
 from AFAAS.lib.task.helper.update_agent_goal import update_agent_goal
+from AFAAS.configs.schema import update_model_config
 
 LOG = AFAASLogger(name=__name__)
 
@@ -22,14 +23,17 @@ LOG = AFAASLogger(name=__name__)
 class Plan(AbstractPlan):
     # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
     # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
-    class Config(AbstractPlan.Config):
-        # This is a list of Field to Exclude during serialization
-        default_exclude = set(AbstractPlan.Config.default_exclude) | {
-            "initialized",
-            "lock",
-            "_loaded_tasks_dict",
+    model_config = update_model_config(original= AbstractPlan.model_config , 
+                                       new = {
+                                            'default_exclude' : AbstractPlan.model_config["default_exclude"] | {
+                                                "initialized",
+                                                "lock",
+                                                "_loaded_tasks_dict",
+                                            },
+                                            'json_encoders' : AbstractPlan.model_config['json_encoders']| {}
         }
-        json_encoders = AbstractPlan.Config.json_encoders | {}
+    )
+
 
     _instance: ClassVar[dict[Plan]] = {}
     lock: ClassVar[threading.Lock] = threading.Lock()
@@ -593,5 +597,5 @@ class Plan(AbstractPlan):
         self._ready_task_ids.insert(0, task.task_id)
 
 
-Plan.update_forward_refs()
+Plan.model_rebuild()
 

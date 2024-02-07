@@ -60,7 +60,7 @@ class EmbeddingsOpenAI(EmbeddingModelProvider):
         response = await self._create_embedding(text=text, **embedding_kwargs)
 
         response_args = {
-            "model_info": OPEN_AI_EMBEDDING_MODELS[model_name],
+            "MLmodel_info": OPEN_AI_EMBEDDING_MODELS[model_name],
             "prompt_tokens_used": response.usage.prompt_tokens,
             "completion_tokens_used": response.usage.completion_tokens,
         }

@@ -12,7 +12,7 @@ from langchain.vectorstores import VectorStore
 from langchain.vectorstores.chroma import Chroma
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, field_validator
 from sklearn.cluster import KMeans
 
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -41,7 +41,7 @@ class Filter(BaseModel):
     value: str
 
 
-Filter.update_forward_refs()
+Filter.model_rebuild()
 
 
 class RetrievedDocument(Document):
@@ -80,7 +80,7 @@ class SearchFilter(BaseModel):
 
     # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
     # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
-    @validator("filters", always=True)
+    @field_validator("filters")
     def check_agent_or_user_id(cls, v, values, **kwargs):
         if (
             "agent_id" not in v.keys()
@@ -107,7 +107,7 @@ class SearchFilter(BaseModel):
     #     return True
 
 
-SearchFilter.update_forward_refs()
+SearchFilter.model_rebuild()
 
 
 class VectorStoreWrapper(abc.ABC):

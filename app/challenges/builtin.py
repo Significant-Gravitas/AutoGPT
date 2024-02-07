@@ -24,7 +24,7 @@ from agent_protocol_client import AgentApi, ApiClient
 from agent_protocol_client import Configuration as ClientConfig
 from colorama import Fore, Style
 from openai import _load_client as get_openai_client
-from pydantic import StringConstraints, BaseModel, Field, validator
+from pydantic import StringConstraints, BaseModel, Field, field_validator
 
 from .base import BaseChallenge, ChallengeInfo
 from typing_extensions import Annotated
@@ -65,7 +65,7 @@ class BuiltinChallengeSpec(BaseModel):
 
             # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
             # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
-            @validator("scoring", "template", always=True)
+            @field_validator("scoring", "template")
             def validate_eval_fields(cls, v, values, field):
                 if "type" in values and values["type"] == "llm":
                     if v is None:

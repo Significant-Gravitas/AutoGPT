@@ -5,8 +5,10 @@ import copy
 import time
 from typing import TYPE_CHECKING, Any, Optional
 
-from pydantic import Field, validator
+from pydantic import Field, field_validator , ConfigDict
+from pydantic.fields import ModelPrivateAttr
 
+from AFAAS.configs.schema import update_model_config
 from AFAAS.core.tools.tool import Tool
 from AFAAS.interfaces.adapters import AbstractChatModelResponse
 from AFAAS.interfaces.adapters.embeddings.wrapper import (
@@ -62,19 +64,21 @@ class Task(AbstractTask):
                 task_id=self.task_id, status=value
             )
 
-    # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
-    class Config(AbstractBaseTask.Config):
-        default_exclude = set(AbstractBaseTask.Config.default_exclude) | {
-            # If commented create an infinite loop
-            "task_parent",
-            "task_predecessors",
-            "task_successors",
-            "_task_parent_future",
-            "_task_parent_loading",
-            "_task_parent",
-            "task_overide_tool_success_check_callback",
+
+    model_config = update_model_config(original= AbstractBaseTask.model_config , 
+                                       new = {
+                                            'default_exclude' : AbstractBaseTask.model_config['default_exclude'] | {
+                                                                # If commented create an infinite loop
+                                                                "task_parent",
+                                                                "task_predecessors",
+                                                                "task_successors",
+                                                                "_task_parent_future",
+                                                                "_task_parent_loading",
+                                                                "_task_parent",
+                                                                "task_overide_tool_success_check_callback",
+                                                                }
         }
+    )
 
     ###
     ### GENERAL properties
@@ -83,7 +87,7 @@ class Task(AbstractTask):
 
     plan_id: Optional[str] = Field()
 
-    _task_parent_id: str = Field(...)
+    _task_parent_id: str = ModelPrivateAttr()
     _task_parent: Optional[Task] = None
 
     async def task_parent(self) -> AbstractBaseTask:
@@ -121,7 +125,7 @@ class Task(AbstractTask):
 
     # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
     # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
-    @validator("state", pre=True)
+    @field_validator("state")
     def set_state(cls, new_state, values):
         task_id = values.get("task_id")
         if task_id and new_state:
@@ -635,4 +639,4 @@ class Task(AbstractTask):
 
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.
-Task.update_forward_refs()
+Task.model_rebuild()
