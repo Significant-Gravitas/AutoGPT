@@ -45,7 +45,7 @@ from AFAAS.interfaces.prompts.strategy import (
 )
 from AFAAS.interfaces.prompts.utils.utils import to_md_quotation
 from AFAAS.interfaces.task.task import AbstractTask
-from AFAAS.lib.message_agent_user import Questions
+from AFAAS.lib.message_user_agent import Questions
 from AFAAS.lib.utils.json_schema import JSONSchema
 
 

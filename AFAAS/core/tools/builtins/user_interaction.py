@@ -14,7 +14,7 @@ from AFAAS.interfaces.adapters.embeddings.wrapper import (
 )
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.tools.tool import AFAASBaseTool
-from AFAAS.lib.message_agent_user import Emiter, MessageAgentUser
+from AFAAS.lib.message_user_agent import Emiter, MessageUserAgent
 from AFAAS.lib.message_common import AFAASMessageStack
 from AFAAS.lib.task.task import Task
 from AFAAS.lib.utils.json_schema import JSONSchema
@@ -40,13 +40,13 @@ async def user_interaction(
 ) -> str:
 
     original_query = query
-    query_message = MessageAgentUser(
+    query_message = MessageUserAgent(
         emitter=Emiter.AGENT.value,
         user_id=agent.user_id,
         agent_id=agent.agent_id,
         message=str(original_query),
     )
-    response_message = MessageAgentUser(
+    response_message = MessageUserAgent(
         emitter=Emiter.USER.value,
         user_id=agent.user_id,
         agent_id=agent.agent_id,

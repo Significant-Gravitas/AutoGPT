@@ -20,7 +20,7 @@ from AFAAS.interfaces.prompts.utils.utils import (
     to_numbered_list,
     to_string_list,
 )
-from AFAAS.lib.message_agent_user import Questions
+from AFAAS.lib.message_user_agent import Questions
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.utils.json_schema import JSONSchema
 from AFAAS.interfaces.task.task import AbstractTask

@@ -22,7 +22,7 @@ from AFAAS.interfaces.db.db import AbstractMemory
 from AFAAS.interfaces.tools.tool import AFAASBaseTool
 from AFAAS.interfaces.tools.base import AbstractToolRegistry
 from AFAAS.interfaces.workflow import WorkflowRegistry
-from AFAAS.lib.message_agent_user import Emiter, MessageAgentUser
+from AFAAS.lib.message_user_agent import Emiter, MessageUserAgent
 from AFAAS.lib.message_common import AFAASMessageStack
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.plan import Plan, TaskStatusList
@@ -177,7 +177,7 @@ class PlannerAgent(BaseAgent):
 
             message_agent_user = AFAASMessageStack(db=agent.db)
             agent.message_agent_user = await message_agent_user.load(
-                agent=agent, cls=MessageAgentUser
+                agent=agent, cls=MessageUserAgent
             )
         else:
             await agent._create_with_plan_and_message()
@@ -211,7 +211,7 @@ class PlannerAgent(BaseAgent):
         self.message_agent_user = AFAASMessageStack(db=self.db)
         # FIXME:v.0.0.1 : The first message seem not to be saved in the DB #91 https://github.com/ph-ausseil/afaas/issues/91
         await self.message_agent_user.db_create(
-            message=MessageAgentUser(
+            message=MessageUserAgent(
                 emitter=Emiter.AGENT.value,
                 user_id=self.user_id,
                 agent_id=self.agent_id,
@@ -219,7 +219,7 @@ class PlannerAgent(BaseAgent):
             )
         )
         await self.message_agent_user.db_create(
-            message=MessageAgentUser(
+            message=MessageUserAgent(
                 emitter=Emiter.USER.value,
                 user_id=self.user_id,
                 agent_id=self.agent_id,
