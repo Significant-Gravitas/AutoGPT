@@ -23,3 +23,4 @@ omit =
     AFAAS/core/db/nosql/mongodb.py
     AFAAS/core/db/sqllikejsonfile.py
     AFAAS/core/db/table/nosql/message_agent_*
+    AFAAS/plugins/tools/__to_be_migrated/*
