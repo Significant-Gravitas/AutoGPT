@@ -1,6 +1,6 @@
 import abc
 
-from pydantic import BaseModel, SecretBytes, SecretField, SecretStr
+from pydantic import BaseModel, SecretBytes, SecretStr
 
 from AFAAS.configs.config import SystemSettings, UserConfigurable
 from AFAAS.configs.schema import SystemConfiguration
@@ -37,7 +37,6 @@ class BaseProviderCredentials(SystemConfiguration):
         json_encoders = {
             SecretStr: lambda v: v.get_secret_value() if v else None,
             SecretBytes: lambda v: v.get_secret_value() if v else None,
-            SecretField: lambda v: v.get_secret_value() if v else None,
         }
 
     def unmask(model: BaseModel):

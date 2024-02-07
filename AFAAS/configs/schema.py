@@ -5,11 +5,13 @@ import datetime
 import enum
 import os
 import uuid
-from typing import Any, Callable, Generic, Optional, Type, TypeVar, get_args
+from typing import Any, Callable, Generic, Optional, Type, TypeVar, get_args, ForwardRef
+from pydantic import ConfigDict, BaseModel, Field
+from pydantic_core.core_schema import ModelField
+from pydantic_core import PydanticUndefined
 
-from pydantic import ConfigDict, BaseModel, Field, ValidationError
-from pydantic.main import ModelField, Undefined, UndefinedType
-from pydantic.main import ModelMetaclass
+
+UndefinedType = ForwardRef('UndefinedType')
 
 T = TypeVar("T")
 M = TypeVar("M", bound=BaseModel)
@@ -20,7 +22,7 @@ LOG = AFAASLogger(name=__name__)
 
 
 def UserConfigurable(
-    default: T | UndefinedType = Undefined,
+    default: T | UndefinedType = PydanticUndefined,
     *args,
     default_factory: Optional[Callable[[], T]] = None,
     from_env: Optional[str | Callable[[], T | None]] = None,
@@ -89,7 +91,6 @@ class AFAASModel(BaseModel):
         datetime.datetime: lambda v: str(v.isoformat()),
     }, arbitrary_types_allowed=True, allow_inf_nan=False, default_exclude={})
 
-    # TODO: #21 https://github.com/ph-ausseil/afaas/issues/21
     created_at: datetime.datetime = datetime.datetime.now()
     modified_at: datetime.datetime = datetime.datetime.now()
 
@@ -159,9 +160,7 @@ class AFAASModel(BaseModel):
 class SystemSettings(AFAASModel):
     # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
     # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
-    class Config(AFAASModel.Config):
-        # FIXME: Workaround to not serialize elements that contains unserializable class , proper way is to implement serialization for each class
-        default_exclude = {
+    model_config = ConfigDict(default_exclude = {
             "agent",
             "workspace",
             "prompt_manager",
@@ -180,7 +179,7 @@ class SystemSettings(AFAASModel):
             "message_agent_user",
             "db",
             "plan",
-        }
+        })
 
 
 S = TypeVar("S", bound=SystemSettings)
