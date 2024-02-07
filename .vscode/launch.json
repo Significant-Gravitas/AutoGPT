@@ -33,8 +33,9 @@
             "name": "Mac Cli",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/app/cli_app/cli.py",
-            "args": ["run"],
+            "module" : "poetry",
+            "args": ["run", "demo"],
+            "pythonArgs": ["-Xfrozen_modules=off"],
             "console": "integratedTerminal",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/autogpts/autogpt/:${env:PYTHONPATH}:${workspaceFolder}/autogpts/AFAAS/"
@@ -44,9 +45,10 @@
         {
             "name": "Windows Cli",
             "type": "python",
+            "module" : "poetry",
             "request": "launch",
-            "program": "${workspaceFolder}/app/cli_app/cli.py",
-            "args": ["run"],
+            "args": ["run", "demo"],
+            "pythonArgs": ["-Xfrozen_modules=off"],
             "console": "integratedTerminal",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/autogpts/autogpt/;${env:PYTHONPATH}"
