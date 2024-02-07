@@ -57,8 +57,8 @@ class Emiter(enum.Enum):
     AGENT = "AGENT"
 
 
-class MessageAgentUser(AFAASMessage):
-    message_id: str = Field(default_factory=lambda: MessageAgentUser.generate_uuid())
+class MessageUserAgent(AFAASMessage):
+    message_id: str = Field(default_factory=lambda: MessageUserAgent.generate_uuid())
     message_type: str = AFAASMessageType.AGENT_USER.value
     emitter: Emiter
     user_id: str

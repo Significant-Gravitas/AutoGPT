@@ -9,9 +9,9 @@ class MessagesUserAgentTable(BaseNoSQLTable):
     secondary_key = "agent_id"
     third_key = "user_id"
 
-    from AFAAS.lib.message_agent_user import MessageAgentUser
+    from AFAAS.lib.message_user_agent import MessageUserAgent
 
-    async def add(self, value: dict, id: str = MessageAgentUser.generate_uuid()) -> str:
+    async def add(self, value: dict, id: str = MessageUserAgent.generate_uuid()) -> str:
         return await super().add(value, id)
 
     # NOTE : overwrite parent update
@@ -30,7 +30,7 @@ class MessagesUserAgentTable(BaseNoSQLTable):
         )
         return await super().delete(key=key)
 
-    async def get(self, message_id: str, agent_id: str) -> MessageAgentUser:
+    async def get(self, message_id: str, agent_id: str) -> MessageUserAgent:
         key = MessagesUserAgentTable.Key(
             primary_key=str(message_id),
             secondary_key=str(agent_id),

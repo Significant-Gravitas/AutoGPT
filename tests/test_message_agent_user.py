@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from AFAAS.interfaces.agent.main import BaseAgent
-from AFAAS.lib.message_agent_user import Emiter, MessageAgentUser, Questions
+from AFAAS.lib.message_user_agent import Emiter, MessageUserAgent, Questions
 from AFAAS.lib.message_common import AFAASMessage, AFAASMessageStack
 from tests.dataset.plan_familly_dinner import (
     Task,
@@ -18,7 +18,7 @@ from tests.dataset.plan_familly_dinner import (
 # Test Instance Creation
 @pytest.mark.asyncio
 async def test_message_agent_user_creation():
-    message_agent_user = MessageAgentUser(
+    message_agent_user = MessageUserAgent(
         emitter=Emiter.USER.value,
         user_id="user123",
         agent_id="agent123",
@@ -34,8 +34,8 @@ async def test_message_agent_user_creation():
 # Test UUID Generation
 @pytest.mark.asyncio
 async def test_uuid_generation():
-    id1 = MessageAgentUser.generate_uuid()
-    id2 = MessageAgentUser.generate_uuid()
+    id1 = MessageUserAgent.generate_uuid()
+    id2 = MessageUserAgent.generate_uuid()
     assert id1.startswith("MAU")
     assert id2.startswith("MAU")
     assert id1 != id2
@@ -53,7 +53,7 @@ async def test_load_method(default_task: Task):
     )
 
     result = await default_task.agent.message_agent_user.load(
-        default_task.agent, MessageAgentUser
+        default_task.agent, MessageUserAgent
     )
     assert isinstance(result, AFAASMessageStack)
     assert isinstance(result._messages, dict)
@@ -62,13 +62,13 @@ async def test_load_method(default_task: Task):
 @pytest.mark.asyncio
 async def test_load_method_integration(default_task: Task):
     agent = default_task.agent
-    message1 = MessageAgentUser(
+    message1 = MessageUserAgent(
         emitter=Emiter.USER,
         user_id=agent.user_id,
         agent_id=agent.agent_id,
         message="Sample message 1",
     )
-    message2 = MessageAgentUser(
+    message2 = MessageUserAgent(
         emitter=Emiter.AGENT,
         user_id=agent.user_id,
         agent_id=agent.agent_id,
@@ -76,7 +76,7 @@ async def test_load_method_integration(default_task: Task):
     )
 
     loaded_messages_before_creation = await agent.message_agent_user.load(
-        agent, MessageAgentUser
+        agent, MessageUserAgent
     )
     assert len(agent.message_agent_user) == 0
     agent.message_agent_user = AFAASMessageStack(db=agent.db)
@@ -86,7 +86,7 @@ async def test_load_method_integration(default_task: Task):
     await agent.message_agent_user.db_create(message=message2)
 
     assert len(agent.message_agent_user) == 2
-    loaded_messages = await agent.message_agent_user.load(agent, MessageAgentUser)
+    loaded_messages = await agent.message_agent_user.load(agent, MessageUserAgent)
 
     # Validate that the loaded messages match what was inserted
     assert len(loaded_messages) == len(loaded_messages_before_creation) + 2

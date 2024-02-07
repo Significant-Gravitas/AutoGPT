@@ -14,3 +14,12 @@ show_missing = True
 
 [run]
 relative_files = true
+omit =
+    AFAAS/core/user/*
+    AFAAS/core/ability/*
+    AFAAS/lib/message_agent_*
+    AFAAS/core/db/nosql/cosmodb.py
+    AFAAS/core/db/nosql/dynamodb.py
+    AFAAS/core/db/nosql/mongodb.py
+    AFAAS/core/db/sqllikejsonfile.py
+    AFAAS/core/db/table/nosql/message_agent_*
