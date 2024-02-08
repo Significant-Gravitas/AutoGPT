@@ -371,7 +371,7 @@ class Plan(AbstractPlan):
         """
         Get all the tasks ids from the plan
         """
-        return self.get_all_done_tasks_ids()
+        return self._done_task_ids
 
     async def get_all_done_tasks(self) -> list[Task]:
         """
