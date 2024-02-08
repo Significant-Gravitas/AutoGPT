@@ -106,7 +106,7 @@ async def test_get_next_task(
         ready_task = await plan.get_task(task_id=task_id)
         ready_task.state = TaskStatusList.BACKLOG
 
-    plan.get_ready_tasks_ids() = []
+    plan.set_ready_tasks_ids([])
 
     if current_task_id is not None:
         current_task: Task = await plan.get_task(task_id=current_task_id)
@@ -141,7 +141,7 @@ async def test_set_as_priority(plan_step_18):
         ready_task = await plan.get_task(task_id=task_id)
         ready_task.state = TaskStatusList.BACKLOG
 
-    plan.get_ready_tasks_ids() = ["oiuyitu", "piuoyiguf", "oiuyitu", "piuoyiguf"]
+    plan.set_ready_tasks_ids(["oiuyitu", "piuoyiguf", "oiuyitu", "piuoyiguf"])
 
     current_task: Task = await plan.get_task(task_id="300.4")
     current_task.state = TaskStatusList.READY
@@ -163,7 +163,7 @@ async def test_retry(plan_step_18):
         ready_task = await plan.get_task(task_id=task_id)
         ready_task.state = TaskStatusList.BACKLOG
 
-    plan.get_ready_tasks_ids() = []
+    plan.set_ready_tasks_ids([])
 
     current_task: Task = await plan.get_task(task_id="300.4")
     current_task.state = TaskStatusList.READY

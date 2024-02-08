@@ -343,15 +343,15 @@ async def test_plan_loading_and_task_retrieval(plan_step_0: Plan):
     assert task_id not in plan.get_all_tasks_ids()
     plan.add_task(new_task)
     assert task_id in plan.get_all_tasks_ids()
-    assert task_id in plan._new_tasks_ids
+    assert task_id in plan.get_new_tasks_ids()
 
     await plan.db_save()
-    plan._modified_tasks_ids = []
-    plan._new_tasks_ids = []
-    plan.get_loaded_tasks_dict() = {}
-    plan.get_all_tasks_ids() = []
-    plan.get_ready_tasks_ids() = []
-    plan.get_all_done_tasks_ids() = []
+    plan.set_modified_tasks_ids([])
+    plan.set_new_tasks_ids([])
+    plan.set_loaded_tasks_dict({})
+    plan.set_all_tasks_ids([])
+    plan.set_ready_tasks_ids([])
+    plan.set_all_done_tasks_ids([])
     plan._instance = {}
     plan._initialized = False
     loaded_plan = await Plan.get_plan_from_db(plan_id=plan.plan_id, agent=plan.agent)
@@ -362,7 +362,7 @@ async def test_plan_loading_and_task_retrieval(plan_step_0: Plan):
             f"All tasks = {loaded_plan.get_all_tasks_ids()}\n\n"
             # f"{await make_tree(loaded_plan)}"
         )
-    assert task_id not in loaded_plan._new_tasks_ids
+    assert task_id not in loaded_plan.get_new_tasks_ids()
 
     # Retrieve the task from the loaded plan
     retrieved_task = await loaded_plan.get_task(task_id)

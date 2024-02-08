@@ -217,7 +217,7 @@ async def reorder_list(plan: Plan, task=Task):
     # Insert them after the specified item
     lst[item_index + 1 : item_index + 1] = last_elements
 
-    plan.get_all_tasks_ids() = lst
+    plan.set_all_tasks_ids(lst)
 
 
 @pytest.fixture(scope="function")
