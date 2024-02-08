@@ -95,7 +95,7 @@ async def mock_plan_with_task_states(agent):
 
 @pytest.mark.asyncio
 async def test_load_plan_no_tasks(plan_with_no_task):
-    assert len(plan_with_no_task.get_all_tasks_ids()) == 0
+    assert len(plan_with_no_task.get_all_tasks_ids())) == 0
 
 
 @pytest.mark.asyncio
@@ -137,9 +137,9 @@ async def test_load_plan_with_various_task_states(plan_with_no_task):
             ),
         ]
     )
-    len(plan_with_no_task.get_all_tasks_ids()) == 3
+    len(plan_with_no_task.get_all_tasks_ids())) == 3
     await plan_with_no_task.db_save()
-    len(plan_with_no_task.get_all_tasks_ids()) == 3
+    len(plan_with_no_task.get_all_tasks_ids())) == 3
 
     plan_id = plan_with_no_task.plan_id
     agent = plan_with_no_task.agent
@@ -147,7 +147,7 @@ async def test_load_plan_with_various_task_states(plan_with_no_task):
     Plan._instance = {}
     # plan_data = await mock_plan_with_task_states(agent = plan_with_no_task.agent)
     loaded_plan = await Plan.get_plan_from_db(plan_id=plan_id, agent=agent)
-    assert len(loaded_plan.get_all_tasks_ids()) == 3
+    assert len(loaded_plan.get_all_tasks_ids())) == 3
 
 
 @pytest.mark.asyncio

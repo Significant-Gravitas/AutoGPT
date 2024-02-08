@@ -163,10 +163,10 @@ async def plan_familly_dinner_with_tasks_saved_in_db():
 
 async def move_to_next(plan: Plan, only_once=True):
     task_id: str
-    # plan._all_task_ids.reverse()
+    # plan.get_all_tasks_ids().reverse()
     return_flag = False
 
-    for task_id in plan._all_task_ids:
+    for task_id in plan.get_all_tasks_ids():
         task = await plan.get_task(task_id=task_id)
         #
         # raise Exception(task.debug_formated_str() + await make_tree(plan))
@@ -186,13 +186,13 @@ async def move_to_next(plan: Plan, only_once=True):
                 if return_flag:
                     return plan
 
-    # plan._all_task_ids.reverse()
+    # plan.get_all_tasks_ids().reverse()
 
     return plan
 
 
 async def reorder_list(plan: Plan, task=Task):
-    lst = plan._all_task_ids
+    lst = plan.get_all_tasks_ids()
     item = task.task_id
     num_last_items = len(task.subtasks.get_all_task_ids_from_stack())
     # Check if item is in the list and num_last_items is valid
@@ -217,7 +217,7 @@ async def reorder_list(plan: Plan, task=Task):
     # Insert them after the specified item
     lst[item_index + 1 : item_index + 1] = last_elements
 
-    plan._all_task_ids = lst
+    plan.get_all_tasks_ids() = lst
 
 
 @pytest.fixture(scope="function")
@@ -314,7 +314,7 @@ async def plan_step_7():
 async def _plan_step_7() -> Plan:
     t = await _plan_step_6()
     plan = await move_to_next(t)
-    # raise Exception(str(plan._all_task_ids) + "\n\n\n" +  await make_tree(plan))
+    # raise Exception(str(plan.get_all_tasks_ids()) + "\n\n\n" +  await make_tree(plan))
     return plan
 
 
@@ -381,7 +381,7 @@ async def _plan_step_8() -> Plan:
     )
     task_300_6_serve_bread.add_predecessor(task_300_5_cool_bread)
     task_300_6_serve_bread.add_predecessor(task_300_1_gather_ingredients)
-    # raise Exception(str(plan._all_task_ids) + "\n\n\n" +  await make_tree(plan))
+    # raise Exception(str(plan.get_all_tasks_ids()) + "\n\n\n" +  await make_tree(plan))
     task_200_prepare_main_course.add_task(task_300_1_gather_ingredients)
     task_200_prepare_main_course.add_task(task_300_2_prepare_baking_pan)
     task_200_prepare_main_course.add_task(task_300_3_mix_ingredients)
@@ -417,7 +417,7 @@ async def _plan_step_9() -> Plan:
         task_id="300.1.2",
         task_goal="300.1.2. Check Pantry for Ingredients",
     )
-    # raise Exception(str(plan._all_task_ids) + "\n\n\n" +  await make_tree(plan))
+    # raise Exception(str(plan.get_all_tasks_ids()) + "\n\n\n" +  await make_tree(plan))
     task_300_1_gather_ingredients.add_task(task_300_1_1_find_ingredients_list)
     task_300_1_gather_ingredients.add_task(task_300_1_2_check_pantry)
     task_300_1_2_check_pantry.add_predecessor(task_300_1_1_find_ingredients_list)
@@ -451,7 +451,7 @@ async def _plan_step_10() -> Plan:
     )
     task_300_2_2_line_pan.add_predecessor(task_300_2_1_grease_pan)
     task_300_2_prepare_baking_pan = await plan.get_task("300.2")
-    # raise Exception(str(plan._all_task_ids) + "\n\n\n" +  await make_tree(plan))
+    # raise Exception(str(plan.get_all_tasks_ids()) + "\n\n\n" +  await make_tree(plan))
     task_300_2_prepare_baking_pan.add_task(task_300_2_1_grease_pan)
     task_300_2_prepare_baking_pan.add_task(task_300_2_2_line_pan)
     await reorder_list(plan, task_300_2_prepare_baking_pan)
@@ -531,7 +531,7 @@ async def _plan_step_14() -> Plan:
     )
     task_300_3_3_combine_wet_ingredients.add_predecessor(task_300_3_1_measure_flour)
     task_300_3_3_combine_wet_ingredients.add_predecessor(task_300_3_2_mash_bananas)
-    # raise Exception(str(plan._all_task_ids) + "\n\n\n" +  await make_tree(plan))
+    # raise Exception(str(plan.get_all_tasks_ids()) + "\n\n\n" +  await make_tree(plan))
     task_300_3_mix_ingredients.add_task(task_300_3_1_measure_flour)
     task_300_3_mix_ingredients.add_task(task_300_3_2_mash_bananas)
     task_300_3_mix_ingredients.add_task(task_300_3_3_combine_wet_ingredients)
@@ -540,7 +540,7 @@ async def _plan_step_14() -> Plan:
     # if not await fix_201.is_ready() :
 
     #     raise Exception(
-    #                      "plan : " + str(plan._all_task_ids) + "\n" ,
+    #                      "plan : " + str(plan.get_all_tasks_ids()) + "\n" ,
     #                      "predecessors : " + str( fix_201._task_predecessors.get_all_task_ids_from_stack()) + "\n" ,
     #                      await make_tree(plan)
     #                     )
@@ -877,9 +877,9 @@ async def task_with_ongoing_subtasks(plan_step_10: Plan) -> Task:
         error_message = (
             "Error: Fixture task_with_ongoing_subtasks needs update\n"
             f"Active subtasks: {len(active_subtasks)}.\n\n\n"
-            f"plan._all_task_ids: {plan._all_task_ids}.\n\n\n"
-            f"plan._ready_task_ids: {plan._ready_task_ids}.\n\n\n"
-            f"plan._done_task_ids: {plan._done_task_ids}.\n\n\n"
+            f"plan.get_all_tasks_ids(): {plan.get_all_tasks_ids()}.\n\n\n"
+            f"plan.get_ready_tasks_ids(): {plan.get_ready_tasks_ids()}.\n\n\n"
+            f"plan.get_all_done_tasks_ids(): {plan.get_all_done_tasks_ids()}.\n\n\n"
             f"{await make_tree(plan)}"
         )
         raise Exception(error_message)
@@ -942,7 +942,7 @@ async def task_with_mixed_predecessors(plan_step_19: Plan) -> Task:
             f"{len(ready_tasks)} ready tasks, \n"
             f"{len(done_tasks)} done tasks, \n"
             f"plan.get_active_tasks_ids()): {plan.get_active_tasks_ids()}.\n"
-            f"plan._all_task_ids: {plan._all_task_ids}.\n"
+            f"plan.get_all_tasks_ids(): {plan.get_all_tasks_ids()}.\n"
             f"task._task_predecessors._task_ids: {task._task_predecessors._task_ids}.\n"
             f"for a total of {len(all_tasks)} tasks\n\n\n"
             f"{await make_tree(plan)}"

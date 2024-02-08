@@ -119,8 +119,8 @@ class Plan(AbstractPlan):
         # all_tasks_ids = []
         # for task_as_dict in all_tasks_from_db_dict:
         #     #NOTE: Safegard as Pytest as create unexpected situation
-        #     if task_as_dict['task_id'] in instance._all_task_ids :
-        #         raise Exception(f"Error {task_as_dict['task_id']} already exist in {instance._all_task_ids}")
+        #     if task_as_dict['task_id'] in instance._all_ask_ids :
+        #         raise Exception(f"Error {task_as_dict['task_id']} already exist in {instance._all_ask_ids}")
 
         #     task = Task(**task_as_dict, agent=agent)
         #     instance._register_task(task=task)
@@ -317,11 +317,11 @@ class Plan(AbstractPlan):
 
     async def get_last_achieved_tasks(self, count: int = 1) -> list[Task]:
         """
-        Get the n last achieved tasks from Plan._done_task_ids
+        Get the n last achieved tasks from Plan.get_all_done_tasks_ids()
         """
         LOG.debug(f"Getting last achieved tasks from plan {self.plan_id}")
         return [
-            await self.get_task(task_id) for task_id in self._done_task_ids[-count:]
+            await self.get_task(task_id) for task_id in self.get_all_done_tasks_ids()[-count:]
         ]
 
     def get_all_tasks_ids(self) -> list[str]:
@@ -339,13 +339,10 @@ class Plan(AbstractPlan):
         # Use the provided task_ids_set if not None and not empty; otherwise, use all _ready_task_ids
         if task_ids_set is not None and len(task_ids_set) > 0:
             tasks_to_check = task_ids_set
+            ready_task_ids = [task_id for task_id in tasks_to_check if task_id in self._ready_task_ids]
+            return ready_task_ids
         else:
-            tasks_to_check = self._ready_task_ids
-
-        # Filter tasks_to_check to include only those that are in _ready_task_ids, preserving the order
-        ready_task_ids = [task_id for task_id in tasks_to_check if task_id in self._ready_task_ids]
-
-        return ready_task_ids
+            return self._ready_task_ids
 
     async def get_ready_tasks(self, task_ids_set: list[str] = None) -> list[Task]:
         return [
@@ -354,12 +351,9 @@ class Plan(AbstractPlan):
         ]
 
     def get_active_tasks_ids(self, task_ids_set: list[str] = None) -> list[Task]:
-        """
-        Active tasks are tasks not in Plan._done_task_ids but in Plan._all_task_ids
-        """
         LOG.debug(f"Getting active tasks from plan {self.plan_id}")
         all_task_ids_set = set(self._all_task_ids)
-        done_task_ids_set = set(self._done_task_ids)
+        done_task_ids_set = set(self.get_all_done_tasks_ids())
         active_task_ids = all_task_ids_set - done_task_ids_set  # Set difference
 
         if (task_ids_set is not None) and (len(task_ids_set) > 0):
@@ -377,13 +371,16 @@ class Plan(AbstractPlan):
         """
         Get all the tasks ids from the plan
         """
-        return self._done_task_ids
+        return self.get_all_done_tasks_ids()
 
     async def get_all_done_tasks(self) -> list[Task]:
         """
         Get all the tasks ids from the plan
         """
-        return [await self.get_task(task_id) for task_id in self._done_task_ids]
+        return [await self.get_task(task_id) for task_id in self.get_all_done_tasks_ids()]
+
+    def get_loaded_tasks_dict(self) -> dict[str, Task]:
+        return self._loaded_tasks_dict
 
     #############################################################################################
     #############################################################################################
@@ -424,8 +421,8 @@ class Plan(AbstractPlan):
         elif status == TaskStatusList.DONE:
             if task_id in self._ready_task_ids:
                 self._ready_task_ids.remove(task_id)
-            if task_id not in self._done_task_ids:
-                self._done_task_ids.append(task_id)
+            if task_id not in self.get_all_done_tasks_ids():
+                self.get_all_done_tasks_ids().append(task_id)
 
             # if len(set(task.get_siblings_ids()) - set(task.agent.plan.get_all_done_tasks_ids())) == 0 :
             #     loop = asyncio.get_event_loop()

@@ -132,7 +132,7 @@ class PlannerLoop(BaseLoop):
                 self._current_task = await self.plan().get_next_task(task=current_task)
                 await self.save_plan()
 
-                if len(self.plan().get_all_tasks_ids()) == len(
+                if len(self.plan().get_all_tasks_ids())) == len(
                     self.plan().get_all_done_tasks_ids()
                 ):
                     self._is_running = False
