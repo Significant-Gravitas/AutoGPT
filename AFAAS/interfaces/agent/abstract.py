@@ -39,6 +39,7 @@ class AbstractAgent(ABC):
 
     _agent_type_: ClassVar[str] = __name__
     _agent_module_: ClassVar[str] = __module__ + "." + __name__
+    agent_id: str
 
     @property
     def vectorstores(self) -> VectorStoreWrapper:        

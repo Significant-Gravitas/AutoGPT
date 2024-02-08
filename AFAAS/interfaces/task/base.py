@@ -125,6 +125,8 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
 
         # FIXME: Make it dynamic as in AFAAS.lib.message_common
         from AFAAS.interfaces.task.stack import TaskStack
+        from AFAAS.interfaces.agent.main import BaseAgent
+        TaskStack.model_rebuild()
 
         if "_task_predecessors" in data and isinstance(
             data["_task_predecessors"], list
@@ -153,7 +155,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
             field_value = getattr(self, field)
 
             if field_value is not None:
-                field_type = field_info.outer_type_
+                field_type  = self.__annotations__[field]
 
                 # Direct check for BaseTask instances
                 if isinstance(field_value, AbstractBaseTask):

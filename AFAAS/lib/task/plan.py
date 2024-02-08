@@ -5,7 +5,8 @@ import threading
 import uuid
 from typing import ClassVar
 
-from pydantic import Field, ConfigDict
+from pydantic import Field, ConfigDict 
+from pydantic.fields import ModelPrivateAttr
 
 # from AFAAS.core.db import
 from AFAAS.interfaces.agent.main import BaseAgent
@@ -21,8 +22,8 @@ LOG = AFAASLogger(name=__name__)
 
 
 class Plan(AbstractPlan):
-    # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
+
+
     model_config = update_model_config(original= AbstractPlan.model_config , 
                                        new = {
                                             'default_exclude' : AbstractPlan.model_config["default_exclude"] | {
@@ -30,14 +31,24 @@ class Plan(AbstractPlan):
                                                 "lock",
                                                 "_loaded_tasks_dict",
                                             },
-                                            'json_encoders' : AbstractPlan.model_config['json_encoders']| {}
+                                            'json_encoders' : 
+                                                AbstractPlan.model_config['json_encoders']| 
+                                                {
+                                                #BaseAgent: lambda a: {'agent_id': a.agent_id}
+                                                }
         }
     )
 
+    def dict(self, **kwargs):
+        return super().dict(**kwargs)
 
-    _instance: ClassVar[dict[Plan]] = {}
+    #FIXME:  Pydantic 2.0.0 Limitation
+    #_instance: ClassVar[dict[Plan]] = {}
+    _instance: ClassVar[dict] = {}
     lock: ClassVar[threading.Lock] = threading.Lock()
-    initialized: ClassVar[bool] = False
+
+    #_initialized: bool = ModelPrivateAttr(False)
+    initialized : ClassVar[bool]
 
     def __new__(cls, *args, **kwargs):
         if kwargs.get("agent", None) is not None:
@@ -45,8 +56,8 @@ class Plan(AbstractPlan):
             with cls.lock:
                 if agent_id in cls._instance:
                     return cls._instance[agent_id]
-
                 instance = super(Plan, cls).__new__(cls)
+
                 cls._instance[agent_id] = instance
                 return instance
         else:
@@ -54,22 +65,25 @@ class Plan(AbstractPlan):
 
     def __init__(self, *args, **kwargs):
         with self.lock:
-            if self.initialized:
-                return
+            if not hasattr(Plan, 'initialized') or not Plan.initialized:
+                # Initialize the instance if needed
+                super().__init__(**kwargs)
+                Plan._instance[kwargs["agent"].agent_id] = self
+                self.agent.plan: Plan = self
+                #self._initialized = True 
+                Plan.initialized = True
 
-            # Initialize the instance if needed
-            super().__init__(**kwargs)
-            Plan._instance[kwargs["agent"].agent_id] = self
-            self.agent.plan: Plan = self
-            self.initialized = True
-            # self.reset_instance()
-            self._modified_tasks_ids = []
-            self._new_tasks_ids = []
-            self._loaded_tasks_dict = {}
-            self._all_task_ids = kwargs.get("_all_task_ids", [])
-            self._ready_task_ids = kwargs.get("_ready_task_ids", [])
-            self._done_task_ids = kwargs.get("_done_task_ids", [])
-            # self.task_goal = kwargs.get('task_goal' , self.agent.agent_goal)
+                # self.reset_instance()
+                self._modified_tasks_ids = []
+                self._new_tasks_ids = []
+                self._loaded_tasks_dict = {}
+                self._all_task_ids = kwargs.get("_all_task_ids", [])
+                self._ready_task_ids = kwargs.get("_ready_task_ids", [])
+                self._done_task_ids = kwargs.get("_done_task_ids", [])
+                # self.task_goal = kwargs.get('task_goal' , self.agent.agent_goal)
+
+
+        #NOTE : Plan.initialized = False ??
 
     @classmethod
     async def _load(cls, plan_id: str, agent: BaseAgent, **kwargs):
@@ -538,7 +552,7 @@ class Plan(AbstractPlan):
         agent = self.agent
         if agent:
             db = agent.db
-            self.agent_id = agent.agent_id
+            #self.agent_id = agent.agent_id
             plan_table = await db.get_table("plans")
             await plan_table.add(value=self, id=self.plan_id)
 
