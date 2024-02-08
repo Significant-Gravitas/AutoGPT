@@ -360,63 +360,17 @@ class AssistantChatMessage(ChatMessage):
 
 
 class AssistantChatMessageDict(TypedDict, total=False):
-    """
-    A Typed Dictionary for representing an `AssistantChatMessage` as a dictionary.
-    This representation provides a structured format for the assistant's message and function call information.
-
-    Attributes:
-        role (str): The role of the assistant.
-        content (str): The textual content of the message.
-        function_call (AssistantFunctionCallDict): A dictionary representation of the function call made by the assistant.
-
-    Example:
-        >>> acm_dict = AssistantChatMessageDict(role="assistant", content="The sum is 8", function_call={'name': 'calculate_sum', 'arguments': '5, 3'})
-        >>> print(acm_dict)
-        {'role': 'assistant', 'content': 'The sum is 8', 'function_call': {'name': 'calculate_sum', 'arguments': '5, 3'}}
-    """
 
     role: str
-    content: str
+    content: Optional[str]
     tool_calls: list[AssistantToolCallDict]
 
 
 class CompletionModelFunction(BaseModel):
-    """
-    `CompletionModelFunction` encapsulates a function specification that can be invoked by the language model within a chat-based interaction. The instances of this class are used to communicate the available commands to the language model, as seen in the `OneShotAgentPromptStrategy` where they are provided as input to build the system prompt section detailing available commands. The class allows for a structured representation of a function's name, description, and parameters, facilitating a clear and unambiguous definition of what functions the language model can call and with what arguments.
-
-    Attributes:
-        name (str): The name of the function, used to uniquely identify and call the function.
-        description (str): A textual description providing an overview of the function's purpose and behavior.
-        parameters (dict[str, "JSONSchema"]): A dictionary mapping parameter names to JSONSchema objects, describing the type and other properties of each parameter.
-
-    Methods:
-        schema() -> dict[str, str | dict | list]: Returns an OpenAI-consumable function specification as a dictionary.
-        parse(schema: dict) -> "CompletionModelFunction": Classmethod to parse a dictionary representation of a function specification into a `CompletionModelFunction` instance.
-        _remove_none_entries(data: Dict[str, Any]) -> Dict[str, Any]: Helper method to remove entries with None values from a dictionary.
-        dict(*args, **kwargs) -> Dict[str, Any]: Returns a dictionary representation of the `CompletionModelFunction` object, excluding entries with None values.
-        fmt_line() -> str: Returns a string representation of the function signature including the function name, description, and formatted parameter list.
-
-    Examples:
-        >>> func_spec = {
-        ...     "name": "sum_numbers",
-        ...     "description": "Sums two numbers.",
-        ...     "parameters": {
-        ...         "a": {"type": "number", "description": "First number"},
-        ...         "b": {"type": "number", "description": "Second number"}
-        ...     }
-        ... }
-        >>> cmf = CompletionModelFunction.parse(func_spec)
-        >>> print(cmf.fmt_line())
-        sum_numbers: Sums two numbers. Params: (a: number, b: number)
-
-        >>> func_schema = cmf.schema()
-        >>> print(func_schema["name"], func_schema["description"])
-        sum_numbers Sums two numbers.
-    """
-
     name: str
     description: str
-    parameters: dict # dict[str, "JSONSchema"]
+    #parameters: dict[str, "JSONSchema"]
+    parameters: Dict[str, JSONSchema]
 
     @property
     def schema(self) -> dict[str, str | dict | list]:
@@ -524,34 +478,8 @@ _T = TypeVar("_T")
 
 
 class AbstractChatModelResponse(BaseModelResponse, Generic[_T]):
-    """
-    `ChatModelResponse` extends `BaseModelResponse` to provide a structured representation of a language model's response in a chat-based interaction. It encapsulates the standard response from the language model, along with a parsed result of a generic type `_T`, and additional content as a dictionary.
 
-    This class is instrumental in handling and processing the responses from the language model, allowing for typed parsing of the result and additional content.
-
-    Attributes:
-        response (AssistantChatMessageDict): The standard dictionary representation of the assistant's chat message, encapsulating the role, content, and potential function call information.
-        parsed_result (_T, optional): A parsed result of generic type `_T`, facilitating typed handling of the language model's response. Defaults to None.
-        content (dict, optional): Additional content or data accompanying the language model's response. Defaults to None.
-
-    Example:
-        Suppose there's a function `parse_response` that processes the language model's response to extract certain information.
-
-        >>> def parse_response(response: AssistantChatMessageDict) -> str:
-        ...     # Assume it extracts and returns some text from the response
-        ...     return extracted_text
-
-        >>> lm_response = {
-        ...     "role": "assistant",
-        ...     "content": "The sum is 8.",
-        ...     "tool_calls": None
-        ... }
-        >>> chat_model_response = ChatModelResponse(response=lm_response, parsed_result=parse_response(lm_response))
-        >>> print(chat_model_response.parsed_result)
-        The sum is 8.
-    """
-
-    response: AssistantChatMessageDict
+    response: Optional[AssistantChatMessageDict] = None
     parsed_result: _T = None
     """Standard response struct for a response from a language model."""
 
@@ -594,7 +522,7 @@ class AbstractChatModelProvider(AbstractLanguageModelProvider):
     @abc.abstractmethod
     async def create_chat_completion(
         self,
-        model_name: str,
+        llm_model_name: str,
         chat_messages: list[ChatMessage],
         tools: list[CompletionModelFunction] = [],
         completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,

@@ -47,7 +47,7 @@ class BaseModelResponse(BaseModel):
 
     prompt_tokens_used: int
     completion_tokens_used: int
-    MLmodel_info: BaseModelInfo
+    llm_model_info: BaseModelInfo
 
 
 class BaseModelProviderConfiguration(SystemConfiguration):
@@ -95,11 +95,11 @@ class BaseModelProviderBudget(BaseProviderBudget):
         model_response: BaseModelResponse,
     ) -> None:
         """Update the usage and cost of the provider."""
-        MLmodel_info = model_response.MLmodel_info
+        llm_model_info = model_response.llm_model_info
         self.usage.update_usage(model_response)
         incurred_cost = (
-            model_response.completion_tokens_used * MLmodel_info.completion_token_cost
-            + model_response.prompt_tokens_used * MLmodel_info.prompt_token_cost
+            model_response.completion_tokens_used * llm_model_info.completion_token_cost
+            + model_response.prompt_tokens_used * llm_model_info.prompt_token_cost
         )
         self.total_cost += incurred_cost
         if abs(self.remaining_budget) != float("inf"):

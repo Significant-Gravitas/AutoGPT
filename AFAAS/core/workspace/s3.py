@@ -33,7 +33,7 @@ LOG = AFAASLogger(name=__name__)
 class S3FileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
     bucket: str = Field("autogpt", from_env="WORKSPACE_STORAGE_BUCKET")
     s3_endpoint_url: Optional[SecretStr] = Field(
-        from_env=lambda: SecretStr(v) if (v := os.getenv("S3_ENDPOINT_URL")) else None
+        None, from_env=lambda: SecretStr(v) if (v := os.getenv("S3_ENDPOINT_URL")) else None
     )
 
 
