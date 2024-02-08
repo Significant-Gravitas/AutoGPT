@@ -314,8 +314,7 @@ async def run_auto_gpt(
         agent.state.save_to_json_file(agent.file_manager.state_file_path)
 
 
-@coroutine
-async def run_auto_gpt_server(
+def create_server(
     prompt_settings: Optional[Path] = None,
     debug: bool = False,
     log_level: Optional[str] = None,
@@ -365,10 +364,37 @@ async def run_auto_gpt_server(
         database_string=os.getenv("AP_SERVER_DB_URL", "sqlite:///data/ap_server.db"),
         debug_enabled=debug,
     )
-    port: int = int(os.getenv("AP_SERVER_PORT", default=8000))
     server = AgentProtocolServer(
         app_config=config, database=database, llm_provider=llm_provider
     )
+    return server
+
+@coroutine
+async def run_auto_gpt_server(
+    prompt_settings: Optional[Path] = None,
+    debug: bool = False,
+    log_level: Optional[str] = None,
+    log_format: Optional[str] = None,
+    log_file_format: Optional[str] = None,
+    gpt3only: bool = False,
+    gpt4only: bool = False,
+    browser_name: Optional[str] = None,
+    allow_downloads: bool = False,
+    install_plugin_deps: bool = False,
+):
+    server = create_server(
+        prompt_settings=prompt_settings,
+        debug=debug,
+        log_level=log_level,
+        log_format=log_format,
+        log_file_format=log_file_format,
+        gpt3only=gpt3only,
+        gpt4only=gpt4only,
+        browser_name=browser_name,
+        allow_downloads=allow_downloads,
+        install_plugin_deps=install_plugin_deps,
+    )
+    port: int = int(os.getenv("AP_SERVER_PORT", default=8000))
     await server.start(port=port)
 
     logging.getLogger().info(

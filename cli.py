@@ -207,6 +207,38 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
             )
         )
 
+@cli.group()
+def jupyter():
+    """Commands to start the jupyter notebook"""
+    pass
+
+@jupyter.command(name="start")
+@click.argument("agent_name")
+@click.argument("subprocess_args", nargs=-1, type=click.UNPROCESSED)
+def start_jupyter(agent_name, subprocess_args):
+    """Start jupyter command"""
+    import os
+    import subprocess
+
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    agent_dir = os.path.join(script_dir, f"autogpts/{agent_name}")
+    jupyter_script = os.path.join(agent_dir, "run_jupyter")
+    if os.path.exists(agent_dir) and os.path.isfile(jupyter_script):
+        os.chdir(agent_dir)
+        subprocess.Popen([jupyter_script, *subprocess_args], cwd=agent_dir)
+        click.echo(
+            click.style(
+                f"🚀 Running jupyter for '{agent_name}' with subprocess arguments: {' '.join(subprocess_args)}",
+                fg="green",
+            )
+        )
+    else:
+        click.echo(
+            click.style(
+                f"😞 Agent '{agent_name}' does not exist. Please create the agent first.",
+                fg="red",
+            )
+        )
 
 @cli.group()
 def agent():
