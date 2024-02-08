@@ -38,13 +38,7 @@ async def _plan_familly_dinner():
         **plan_dict,
     )
     agent.plan = plan_prepare_dinner
-    plan_prepare_dinner._subtasks = None
-    plan_prepare_dinner._all_task_ids = []
-    plan_prepare_dinner._ready_task_ids = []
-    plan_prepare_dinner._done_task_ids = []
-    plan_prepare_dinner._loaded_tasks_dict = {}
-    plan_prepare_dinner._modified_tasks_ids = []
-    plan_prepare_dinner._new_tasks_ids = []
+    plan_prepare_dinner.reset_attributes()
     return plan_prepare_dinner
 
 

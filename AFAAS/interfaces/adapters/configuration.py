@@ -45,7 +45,7 @@ class BaseProviderCredentials(SystemConfiguration):
 
     def unmask(model: BaseModel):
         unmasked_fields = {}
-        for field_name, _ in model.__fields__.items():
+        for field_name, _ in model.model_fields.items():
             value = getattr(model, field_name)
             if isinstance(value, SecretStr):
                 unmasked_fields[field_name] = value.get_secret_value()

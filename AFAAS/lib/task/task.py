@@ -6,7 +6,7 @@ import time
 from typing import TYPE_CHECKING, Any, Optional
 
 from pydantic import Field, field_validator , ConfigDict
-from pydantic.fields import ModelPrivateAttr
+from pydantic.fields import PrivateAttr
 
 from AFAAS.configs.schema import update_model_config
 from AFAAS.core.tools.tool import Tool
@@ -56,7 +56,7 @@ class Task(AbstractTask):
         # Set attribute as normal
         super().__setattr__(key, value)
         # If the key is a model field, mark the instance as modified
-        if key in self.__fields__:
+        if key in self.model_fields:
             self.agent.plan._register_task_as_modified(task_id=self.task_id)
 
         if key == "state":
@@ -87,7 +87,7 @@ class Task(AbstractTask):
 
     plan_id: Optional[str] = Field(None)
 
-    _task_parent_id: str = ModelPrivateAttr()
+    _task_parent_id: str = PrivateAttr()
     _task_parent: Optional[Task] = None
 
     async def task_parent(self) -> AbstractBaseTask:
@@ -127,11 +127,11 @@ class Task(AbstractTask):
     # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
     @field_validator("state")
     def set_state(cls, new_state, values):
-        task_id = values.get("task_id")
+        task_id = values.data.get("task_id")
         if task_id and new_state:
             LOG.debug(f"Setting state of task {task_id} to {new_state}")
             # Assuming LOG and agent are defined and accessible
-            agent: BaseAgent = values.get("agent")
+            agent: BaseAgent = values.data.get("agent")
             if agent:
                 agent.plan._registry_update_task_status_in_list(
                     task_id=task_id, status=new_state

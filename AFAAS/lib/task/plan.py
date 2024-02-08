@@ -6,7 +6,7 @@ import uuid
 from typing import ClassVar
 
 from pydantic import Field, ConfigDict 
-from pydantic.fields import ModelPrivateAttr
+from pydantic.fields import PrivateAttr
 
 # from AFAAS.core.db import
 from AFAAS.interfaces.agent.main import BaseAgent
@@ -47,7 +47,7 @@ class Plan(AbstractPlan):
     _instance: ClassVar[dict] = {}
     lock: ClassVar[threading.Lock] = threading.Lock()
 
-    #_initialized: bool = ModelPrivateAttr(False)
+    #_initialized: bool = PrivateAttr(False)
     initialized : ClassVar[bool]
 
     def __new__(cls, *args, **kwargs):
@@ -84,6 +84,16 @@ class Plan(AbstractPlan):
 
 
         #NOTE : Plan.initialized = False ??
+    def reset_attributes(self):
+        """Resets specific attributes to their initial values."""
+        LOG.warning("This method should not be used unless it is to reset a Plan instance in pytest")
+        self._subtasks = PrivateAttr(None)
+        self._all_task_ids = PrivateAttr([])
+        self._ready_task_ids = PrivateAttr([])
+        self._done_task_ids = PrivateAttr([])
+        self._loaded_tasks_dict = PrivateAttr({})
+        self._modified_tasks_ids = PrivateAttr([])
+        self._new_tasks_ids = PrivateAttr([])
 
     @classmethod
     async def _load(cls, plan_id: str, agent: BaseAgent, **kwargs):

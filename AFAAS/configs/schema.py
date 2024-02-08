@@ -117,7 +117,7 @@ class AFAASModel(BaseModel):
         return self._apply_custom_encoders(data=dict)
 
     def _apply_custom_encoders(self, data: dict) -> dict:
-        encoders = self.model_config.json_encoders
+        encoders = self.model_config['json_encoders']
         for key, value in data.items():
             for type_, encoder in encoders.items():
                 if isinstance(value, type_):

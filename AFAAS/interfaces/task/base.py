@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import abc
-from typing import TYPE_CHECKING, Optional, Union, get_args
+from typing import TYPE_CHECKING, Optional, Union, get_args, ClassVar
 
 from pydantic import Field, ConfigDict
-from pydantic.fields import ModelPrivateAttr
+from pydantic.fields import PrivateAttr
 
 from AFAAS.configs.schema import AFAASModel, update_model_config
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -81,7 +81,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
     ###
     ### Dynamic properties
     ###
-    _subtasks: Optional[TaskStack] = ModelPrivateAttr()
+    _subtasks: Optional[TaskStack] = PrivateAttr()
 
     @property
     def subtasks(self) -> TaskStack:
@@ -103,16 +103,13 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
     #         # Handle other cases or raise an error
     #         raise ValueError("Invalid value for _subtasks")
 
-    _default_command: str = None
-
+    _default_command: ClassVar[str] = None 
     @classmethod
     def default_tool(cls) -> str:
         if cls._default_command is not None:
             return cls._default_command
 
         try:
-            pass
-
             cls._default_command = "afaas_routing"
         except:
             cls._default_command = "afaas_make_initial_plan"
@@ -155,15 +152,15 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
             field_value = getattr(self, field)
 
             if field_value is not None:
-                field_type  = self.__annotations__[field]
+                field_type  = field_info.annotation #.__class__ #.__origin__
 
                 # Direct check for BaseTask instances
                 if isinstance(field_value, AbstractBaseTask):
-                    d[field] = field_value.task_id
+                    d[field] = field_value.task_i
 
                 # Check for lists of BaseTask instances
                 if isinstance(field_value, list) and issubclass(
-                    get_args(field_type)[0], AbstractBaseTask
+                    get_args(field_type.__args__[0])[0], AbstractBaseTask
                 ):
                     # Replace the list of BaseTask instances with a list of their task_ids
                     d[field] = [v.task_id for v in field_value]
