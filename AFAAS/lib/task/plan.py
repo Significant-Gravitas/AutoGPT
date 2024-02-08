@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import uuid
-from typing import ClassVar
+from typing import ClassVar, Dict
 
 from pydantic import Field, ConfigDict 
 from pydantic.fields import PrivateAttr
@@ -39,11 +39,19 @@ class Plan(AbstractPlan):
         }
     )
 
+    _modified_tasks_ids: list[str] = PrivateAttr(default=[])
+    _new_tasks_ids: list[str] = PrivateAttr(default=[])
+    _loaded_tasks_dict: Dict[str, Task] = PrivateAttr(default={})
+    _all_task_ids: list[str] = PrivateAttr(default=[])
+    _ready_task_ids: list[str] = PrivateAttr(default=[])
+    _done_task_ids: list[str] = PrivateAttr(default=[])
+
+
     def dict(self, **kwargs):
         return super().dict(**kwargs)
 
     #FIXME:  Pydantic 2.0.0 Limitation
-    #_instance: ClassVar[dict[Plan]] = {}
+    #_instance: ClassVar[Dict[Plan]] = {}
     _instance: ClassVar[dict] = {}
     lock: ClassVar[threading.Lock] = threading.Lock()
 
@@ -83,17 +91,18 @@ class Plan(AbstractPlan):
                 # self.task_goal = kwargs.get('task_goal' , self.agent.agent_goal)
 
 
-        #NOTE : Plan.initialized = False ??
+        Plan.initialized = False
+
     def reset_attributes(self):
         """Resets specific attributes to their initial values."""
         LOG.warning("This method should not be used unless it is to reset a Plan instance in pytest")
-        self._subtasks = PrivateAttr(None)
-        self._all_task_ids = PrivateAttr([])
-        self._ready_task_ids = PrivateAttr([])
-        self._done_task_ids = PrivateAttr([])
-        self._loaded_tasks_dict = PrivateAttr({})
-        self._modified_tasks_ids = PrivateAttr([])
-        self._new_tasks_ids = PrivateAttr([])
+        self._subtasks = None
+        self._all_task_ids = []
+        self._ready_task_ids = []
+        self._done_task_ids = []
+        self._loaded_tasks_dict = {}
+        self._modified_tasks_ids = []
+        self._new_tasks_ids = []
 
     @classmethod
     async def _load(cls, plan_id: str, agent: BaseAgent, **kwargs):
@@ -382,32 +391,32 @@ class Plan(AbstractPlan):
     def get_loaded_tasks_dict(self) -> dict[str, Task]:
         return self._loaded_tasks_dict
 
-    def set_loaded_tasks_dict(self, tasks_dict):
+    def set_loaded_tasks_dict(self, tasks_dict : dict[str, Task]):
         """Sets the loaded tasks dictionary."""
         LOG.warning("This method should not be used unless it is to reset a Plan instance in pytest")
         self._loaded_tasks_dict = tasks_dict
 
-    def set_all_task_ids(self, task_ids):
+    def set_all_tasks_ids(self, task_ids : list[str]):
         """Sets the list of all task IDs."""
         LOG.warning("This method should not be used unless it is to reset a Plan instance in pytest")
         self._all_task_ids = task_ids
 
-    def set_ready_task_ids(self, task_ids):
+    def set_ready_tasks_ids(self, task_ids : list[str]):
         """Sets the list of ready task IDs."""
         LOG.warning("This method should not be used unless it is to reset a Plan instance in pytest")
         self._ready_task_ids = task_ids
 
-    def set_done_task_ids(self, task_ids):
+    def set_done_tasks_ids(self, task_ids : list[str]):
         """Sets the list of done task IDs."""
         LOG.warning("This method should not be used unless it is to reset a Plan instance in pytest")
         self._done_task_ids = task_ids
 
-    def set_modified_tasks_ids(self, task_ids):
+    def set_modified_tasks_ids(self, task_ids : list[str]):
         """Sets the list of modified task IDs."""
         LOG.warning("This method should not be used unless it is to reset a Plan instance in pytest")
         self._modified_tasks_ids = task_ids
 
-    def set_new_tasks_ids(self, task_ids):
+    def set_new_tasks_ids(self, task_ids : list[str]):
         """Sets the list of new task IDs."""
         LOG.warning("This method should not be used unless it is to reset a Plan instance in pytest")
         self._new_tasks_ids = task_ids
@@ -417,6 +426,7 @@ class Plan(AbstractPlan):
 
     def get_modified_tasks_ids(self):
         return self._modified_tasks_ids
+
 
     #############################################################################################
     #############################################################################################
@@ -519,7 +529,7 @@ class Plan(AbstractPlan):
         Register a task as modified in the index of modified Task (Plan._modified_tasks_ids)
         """
         LOG.debug(f"Task {task_id} is registered as modified in the Lazy Loading List")
-        if task_id not in self.get_modified_tasks_ids():
+        if task_id not in self._modified_tasks_ids:
             self._modified_tasks_ids.append(task_id)
 
     def _register_task_as_new(self, task_id: str):

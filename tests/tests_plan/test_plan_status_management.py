@@ -351,9 +351,9 @@ async def test_plan_loading_and_task_retrieval(plan_step_0: Plan):
     plan.set_loaded_tasks_dict({})
     plan.set_all_tasks_ids([])
     plan.set_ready_tasks_ids([])
-    plan.set_all_done_tasks_ids([])
-    plan._instance = {}
-    plan._initialized = False
+    plan.set_done_tasks_ids([])
+    Plan._instance = {}
+    Plan.initialized = False
     loaded_plan = await Plan.get_plan_from_db(plan_id=plan.plan_id, agent=plan.agent)
     try:
         assert task_id in loaded_plan.get_all_tasks_ids()

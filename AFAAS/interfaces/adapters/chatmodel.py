@@ -363,7 +363,7 @@ class AssistantChatMessageDict(TypedDict, total=False):
 
     role: str
     content: Optional[str]
-    tool_calls: list[AssistantToolCallDict]
+    tool_calls: Optional[list[AssistantToolCallDict]]
 
 
 class CompletionModelFunction(BaseModel):

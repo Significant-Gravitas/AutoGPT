@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import os.path
 from pathlib import Path
+from AFAAS.lib.sdk.artifacts import Artifact
 
 from langchain_community.tools.file_management.file_search import FileSearchTool
 
@@ -98,8 +99,6 @@ async def write_to_file(
         agent.workspace.get_path(directory).mkdir(exist_ok=True)
     await agent.workspace.write_file(filename, contents)
     log_operation("write", filename, agent, checksum)
-
-    from AFAAS.lib.sdk.artifacts import Artifact
 
     artifact = Artifact(
         agent_id=agent.agent_id,
