@@ -99,8 +99,8 @@ class Agent(AgentRequestBody):
             "ab7b4091-2560-4692-a4fe-d831ea3ca7d6",
         ]],
     )
-    # TODO[pydantic]: The following keys were removed: `json_encoders`.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
+    
+    
     model_config = ConfigDict(extra="allow", use_enum_values=True, json_encoders={
         uuid.UUID: lambda v: str(v),
         float: lambda v: str(
@@ -132,8 +132,8 @@ class AgentListResponse(AFAASModel):
         for agent in agent_list:
             tasks.append(Agent.from_afaas(agent))
         return cls(tasks=tasks)
-    # TODO[pydantic]: The following keys were removed: `json_encoders`.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
+    
+    
     model_config = ConfigDict(extra="allow", use_enum_values=True, json_encoders={
         uuid.UUID: lambda v: str(v),
         float: lambda v: str(

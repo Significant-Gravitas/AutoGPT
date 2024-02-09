@@ -52,8 +52,6 @@ class SystemConfiguration(BaseModel):
        # FIXME : Remove method from_env() 
         ...
 
-    # TODO[pydantic]: The following keys were removed: `json_encoders`.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
     model_config = ConfigDict(
         extra="allow", 
         use_enum_values=True, 
@@ -92,8 +90,8 @@ SC = TypeVar("SC", bound=SystemConfiguration)
 
 
 class AFAASModel(BaseModel):
-    # TODO[pydantic]: The following keys were removed: `json_encoders`.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
+
+
     model_config = ConfigDict(extra="allow", 
                               use_enum_values=True, 
                               json_encoders={
@@ -175,8 +173,8 @@ class AFAASModel(BaseModel):
 
 
 class SystemSettings(AFAASModel):
-    # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
+
+
     model_config = ConfigDict(default_exclude={
             "agent",
             "workspace",
@@ -211,26 +209,7 @@ class Configurable(abc.ABC, Generic[S]):
 
         name: str
         description: str
-        model_config = ConfigDict(default_exclude={
-            "agent",
-            "workspace",
-            "prompt_manager",
-            "default_llm_provider",
-            "memory",
-            "tool_registry",
-            "prompt_settings",
-            "systems",
-            "configuration",
-            "agent_setting_module",
-            "agent_setting_class",
-            "name",
-            "description",
-            "parent_agent",
-            "current_task",
-            "message_agent_user",
-            "db",
-            "plan",
-        }, 
+        model_config = ConfigDict(
         extra="allow", 
         use_enum_values=True, 
         allow_inf_nan=False
