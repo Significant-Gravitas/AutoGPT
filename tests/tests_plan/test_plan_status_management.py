@@ -68,12 +68,12 @@ async def test_register_new_task(default_task: Task):
     # Add a new task to the plan
     task = default_task
     plan = task.agent.plan
-    initial_task_count = len(plan._all_task_ids)
+    initial_task_count = len(plan.get_all_tasks_ids())
     plan._register_new_task(task)
 
     # Assert that the task is added
-    assert task.task_id in plan._all_task_ids
-    assert len(plan._all_task_ids) == initial_task_count + 1
+    assert task.task_id in plan.get_all_tasks_ids()
+    assert len(plan.get_all_tasks_ids()) == initial_task_count + 1
 
 
 @pytest.mark.asyncio
@@ -89,18 +89,18 @@ async def test_plan_state_consistency(plan_with_no_task: Plan):
     # Perform various operations on the plan
     # plan._register_new_task(task)
     plan.add_task(task)
-    assert task.task_id in plan._all_task_ids
-    assert task.task_id not in plan._ready_task_ids
-    assert task.task_id not in plan._done_task_ids
+    assert task.task_id in plan.get_all_tasks_ids()
+    assert task.task_id not in plan.get_ready_tasks_ids()
+    assert task.task_id not in plan.get_all_done_tasks_ids()
     task.state = TaskStatusList.READY
-    assert task.task_id in plan._ready_task_ids
-    assert task.task_id not in plan._done_task_ids
+    assert task.task_id in plan.get_ready_tasks_ids()
+    assert task.task_id not in plan.get_all_done_tasks_ids()
     await task.close_task()
 
     # Check for consistency in plan state
-    assert task.task_id in plan._all_task_ids
-    assert task.task_id not in plan._ready_task_ids
-    assert task.task_id in plan._done_task_ids
+    assert task.task_id in plan.get_all_tasks_ids()
+    assert task.task_id not in plan.get_ready_tasks_ids()
+    assert task.task_id in plan.get_all_done_tasks_ids()
 
 
 @pytest.mark.asyncio
@@ -111,11 +111,11 @@ async def test_register_multiple_tasks(plan_step_0: Plan, default_task: Task):
     tasks = [
         copy.deepcopy(default_task) for _ in range(5)
     ]  # Assuming copy is available
-    initial_task_count = len(plan._all_task_ids)
+    initial_task_count = len(plan.get_all_tasks_ids())
     plan._register_new_tasks(tasks)
 
     # Assert that all tasks are added
-    assert len(plan._all_task_ids) == initial_task_count + len(tasks)
+    assert len(plan.get_all_tasks_ids()) == initial_task_count + len(tasks)
 
 
 @pytest.mark.asyncio
@@ -138,8 +138,8 @@ async def test_update_task_status(task_ready_no_predecessors_or_subtasks: Task):
     await task.close_task()
 
     # Assert that task state is updated in the plan
-    assert task.task_id in plan._done_task_ids
-    assert task.task_id not in plan._ready_task_ids
+    assert task.task_id in plan.get_all_done_tasks_ids()
+    assert task.task_id not in plan.get_ready_tasks_ids()
 
 
 @pytest.mark.asyncio
@@ -152,14 +152,14 @@ async def test_task_lists_behavior(default_task: Task):
     task.state = TaskStatusList.READY
 
     # Assert that task is in the correct list
-    assert task.task_id in plan._ready_task_ids
+    assert task.task_id in plan.get_ready_tasks_ids()
 
     # Update task status to DONE
     await task.close_task()
 
     # Assert that task is moved to the done list
-    assert task.task_id in plan._done_task_ids
-    assert task.task_id not in plan._ready_task_ids
+    assert task.task_id in plan.get_all_done_tasks_ids()
+    assert task.task_id not in plan.get_ready_tasks_ids()
 
 
 @pytest.mark.asyncio
@@ -169,7 +169,7 @@ async def test_unregister_task(plan_step_0: Plan, default_task: Task):
     plan_step_0.unregister_loaded_task(default_task.task_id)
 
     # Assert that task is no longer in the plan
-    assert plan_step_0._loaded_tasks_dict.get(default_task.task_id) == None
+    assert plan_step_0.get_loaded_tasks_dict().get(default_task.task_id) == None
 
 
 @pytest.mark.asyncio
@@ -182,7 +182,7 @@ async def test_update_individual_task_status(plan_step_0: Plan, default_task: Ta
     assert task.state == TaskStatusList.IN_PROGRESS_WITH_SUBTASKS
 
     # Assert the plan reflects this update
-    assert task.task_id not in default_task.agent.plan._ready_task_ids
+    assert task.task_id not in default_task.agent.plan.get_ready_tasks_ids()
 
 
 @pytest.mark.asyncio
@@ -205,7 +205,7 @@ async def test_status_not_updated_before_is_ready(task_with_mixed_predecessors: 
         # raise Exception(
         #     str(predecessors[0].task_id),
         #     str(predecessors[1].task_id),
-        #     str(task_with_mixed_predecessors.agent.plan._all_task_ids) + "\n\n\n" ,
+        #     str(task_with_mixed_predecessors.agent.plan.get_all_tasks_ids()) + "\n\n\n" ,
         #     await make_tree(task_with_mixed_predecessors.agent.plan)
 
         #     )
@@ -340,29 +340,29 @@ async def test_plan_loading_and_task_retrieval(plan_step_0: Plan):
     )
 
     # Add a new task and simulate plan loading
-    assert task_id not in plan._all_task_ids
+    assert task_id not in plan.get_all_tasks_ids()
     plan.add_task(new_task)
-    assert task_id in plan._all_task_ids
-    assert task_id in plan._new_tasks_ids
+    assert task_id in plan.get_all_tasks_ids()
+    assert task_id in plan.get_new_tasks_ids()
 
     await plan.db_save()
-    plan._modified_tasks_ids = []
-    plan._new_tasks_ids = []
-    plan._loaded_tasks_dict = {}
-    plan._all_task_ids = []
-    plan._ready_task_ids = []
-    plan._done_task_ids = []
+    plan.set_modified_tasks_ids([])
+    plan.set_new_tasks_ids([])
+    plan.set_loaded_tasks_dict({})
+    plan.set_all_tasks_ids([])
+    plan.set_ready_tasks_ids([])
+    plan.set_all_done_tasks_ids([])
     plan._instance = {}
     plan.initialized = False
     loaded_plan = await Plan.get_plan_from_db(plan_id=plan.plan_id, agent=plan.agent)
     try:
-        assert task_id in loaded_plan._all_task_ids
+        assert task_id in loaded_plan.get_all_tasks_ids()
     except:
         raise Exception(
-            f"All tasks = {loaded_plan._all_task_ids}\n\n"
+            f"All tasks = {loaded_plan.get_all_tasks_ids()}\n\n"
             # f"{await make_tree(loaded_plan)}"
         )
-    assert task_id not in loaded_plan._new_tasks_ids
+    assert task_id not in loaded_plan.get_new_tasks_ids()
 
     # Retrieve the task from the loaded plan
     retrieved_task = await loaded_plan.get_task(task_id)

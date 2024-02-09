@@ -196,11 +196,11 @@ class PlannerAgent(BaseAgent):
         self.plan.create_initial_tasks(status=TaskStatusList.READY)
         self.plan_id = self.plan.plan_id
         await self.plan.db_save()
-        for task_id in self.plan._ready_task_ids : 
+        for task_id in self.plan.get_ready_tasks_ids() : 
             task = await self.plan.get_task(task_id=task_id)
             LOG.debug(f"Task {task.debug_formated_str()} is ready")
         ready_task = await self.plan.get_ready_tasks()
-        for task_id in self.plan._ready_task_ids : 
+        for task_id in self.plan.get_ready_tasks_ids() : 
             task = await self.plan.get_task(task_id=task_id)
             LOG.debug(f"Task {task.debug_formated_str()} is ready")
         self._loop.set_current_task(task=ready_task[0])
