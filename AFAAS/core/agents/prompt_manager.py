@@ -23,6 +23,7 @@ from AFAAS.interfaces.adapters import (
     AbstractChatModelProvider,
     AbstractChatModelResponse,
 )
+from AFAAS.interfaces.adapters.chatmodel import ChatModelWrapper
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -132,8 +133,9 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
         template_kwargs.update(model_configuration)
 
         prompt = await prompt_strategy.build_message(**template_kwargs)
+        llm_wrapper = ChatModelWrapper(llm_model=provider)
 
-        response: AbstractChatModelResponse = await provider.create_chat_completion(
+        response: AbstractChatModelResponse = await llm_wrapper.create_chat_completion(
             chat_messages=prompt.messages,
             tools=prompt.tools,
             **model_configuration,
