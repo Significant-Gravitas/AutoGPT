@@ -20,8 +20,6 @@ from AFAAS.interfaces.adapters.language_model import (
     BaseModelProviderCredentials,
     BaseModelProviderSettings,
     BaseModelProviderUsage,
-    Embedding,
-    EmbeddingModelInfo,
     ModelProviderName,
     ModelProviderService,
 )
@@ -33,9 +31,6 @@ _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
 
-aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
-
-OpenAIEmbeddingParser = Callable[[Embedding], Embedding]
 OpenAIChatParser = Callable[[str], dict]
 
 
@@ -74,18 +69,6 @@ class OpenAIModelName(str, enum.Enum):
     GPT3_FINE_TUNED = "gpt-3.5-turbo-1106" + ""
     GPT4 = "gpt-3.5-turbo-1106"
     GPT4_32k = "gpt-3.5-turbo-1106"
-
-
-OPEN_AI_EMBEDDING_MODELS = {
-    OpenAIModelName.ADA: EmbeddingModelInfo(
-        name=OpenAIModelName.ADA,
-        service=ModelProviderService.EMBEDDING,
-        provider_name=ModelProviderName.OPENAI,
-        prompt_token_cost=0.0001 / 1000,
-        max_tokens=8191,
-        embedding_dimensions=1536,
-    ),
-}
 
 
 OPEN_AI_CHAT_MODELS = {
@@ -142,7 +125,6 @@ OPEN_AI_CHAT_MODELS = {
 
 OPEN_AI_MODELS = {
     **OPEN_AI_CHAT_MODELS,
-    **OPEN_AI_EMBEDDING_MODELS,
 }
 
 

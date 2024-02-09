@@ -84,8 +84,6 @@ class SearchInfo_Strategy(AbstractPromptStrategy):
         LOG.debug("Building prompt for task : " + await task.debug_dump_str())
         self._task: AbstractTask = task
         smart_rag_param = {
-            "task_goal": task.task_goal,
-            "additional_context_description": str(task.task_context),
             "query": query,
             "reasoning": reasoning,
             "tools": tools,

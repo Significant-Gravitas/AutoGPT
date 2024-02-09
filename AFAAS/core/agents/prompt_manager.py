@@ -62,8 +62,6 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
 
     def load_strategies(self) -> list[AbstractPromptStrategy]:
 
-
-
         # Dynamically load strategies from AFAAS.prompts.common
         for attribute_name in dir(common_module):
             attribute = getattr(common_module, attribute_name)
@@ -86,11 +84,6 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
             self.add_strategy( strategy_module_attr(**strategy_module_attr.default_configuration.dict()))
 
     async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse:
-        """
-        await simple_planner.execute_strategy('name_and_goals', user_objective='Learn Python')
-        await simple_planner.execute_strategy('initial_plan', agent_name='Alice', agent_role='Student', agent_goals=['Learn Python'], tools=['coding'])
-        await simple_planner.execute_strategy('initial_plan', agent_name='Alice', agent_role='Student', agent_goal_sentence=['Learn Python'], tools=['coding'])
-        """
         if strategy_name not in self._prompt_strategies:
             raise ValueError(f"Invalid strategy name {strategy_name}")
 

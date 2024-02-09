@@ -15,8 +15,6 @@ from AFAAS.core.adapters.openai.common import (
     OpenAISettings,
     _OpenAIRetryHandler,
 )
-from AFAAS.core.adapters.openai.embeddings import _create_embedding
-
 aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 from AFAAS.configs.schema import Configurable
@@ -35,30 +33,15 @@ LOG = AFAASLogger(name=__name__)
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
-OpenAIEmbeddingParser = Callable[[Embedding], Embedding]
 OpenAIChatParser = Callable[[str], dict]
 
 
 class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
-    """A provider for OpenAI's API.
-
-    Provides methods to communicate with OpenAI's API and generate responses.
-
-    Attributes:
-        default_settings: The default settings for the OpenAI provider.
-    """
 
     def __init__(
         self,
-        # agent_systems: list[Configurable],
         settings: OpenAISettings = OpenAISettings(),
     ):
-        """
-        Initialize the OpenAIProvider.
-
-        Args:
-            settings (OpenAISettings, optional): Specific settings for the OpenAI provider. Uses default settings if none provided.
-        """
         super().__init__(settings)
         self._credentials = settings.credentials
         self._budget = settings.budget
@@ -69,78 +52,21 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         )
 
         self._create_chat_completion = retry_handler(_create_chat_completion)
-        self._create_embedding = retry_handler(_create_embedding)
 
         self._func_call_fails_count = 0
 
     def get_token_limit(self, model_name: str) -> int:
-        """
-        Get the token limit for a given model.
-
-        Args:
-            model_name (str): The name of the model.
-
-        Returns:
-            int: The maximum number of tokens allowed for the given model.
-
-        Example:
-            >>> provider = OpenAIProvider()
-            >>> provider.get_token_limit("gpt-3.5-turbo")
-            4096
-        """
         return OPEN_AI_MODELS[model_name].max_tokens
 
     def get_remaining_budget(self) -> float:
-        """
-        Get the remaining budget.
-
-        Returns:
-            float: Remaining budget value.
-
-        Example:
-            >>> provider = OpenAIProvider(...)
-            >>> remaining_budget = provider.get_remaining_budget()
-            >>> print(remaining_budget)
-            inf
-        """
-        """Get the remaining budget."""
         return self._budget.remaining_budget
 
     @classmethod
     def get_tokenizer(cls, model_name: OpenAIModelName) -> ModelTokenizer:
-        """
-        Get the tokenizer for a given model.
-
-        Args:
-            model_name (OpenAIModelName): Enum value representing the model.
-
-        Returns:
-            ModelTokenizer: Tokenizer for the specified model.
-
-        Example:
-            >>> tokenizer = OpenAIProvider.get_tokenizer(OpenAIModelName.GPT3)
-            >>> type(tokenizer)
-            <class 'ModelTokenizer'>
-        """
         return tiktoken.encoding_for_model(model_name)
 
     @classmethod
     def count_tokens(cls, text: str, model_name: OpenAIModelName) -> int:
-        """
-        Count the number of tokens in a given text for a specific model.
-
-        Args:
-            text (str): Input text.
-            model_name (OpenAIModelName): Enum value representing the model.
-
-        Returns:
-            int: Number of tokens in the text.
-
-        Example:
-            >>> token_count = OpenAIProvider.count_tokens("Hello, world!", OpenAIModelName.GPT3)
-            >>> print(token_count)
-            3
-        """
         encoding = cls.get_tokenizer(model_name)
         return len(encoding.encode(text))
 
@@ -150,22 +76,6 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         messages: OpenAIChatMessage | list[ChatMessage],
         model_name: OpenAIModelName,
     ) -> int:
-        """
-        Count the number of tokens in a given set of messages for a specific model.
-
-        Args:
-            messages (Union[ChatMessage, List[ChatMessage]]): Input messages.
-            model_name (OpenAIModelName): Enum value representing the model.
-
-        Returns:
-            int: Number of tokens in the messages.
-
-        Example:
-            >>> messages = [ChatMessage(role="user", content="Hello?")]
-            >>> token_count = OpenAIProvider.count_message_tokens(messages, OpenAIModelName.GPT3)
-            >>> print(token_count)
-            5
-        """
         if isinstance(messages, OpenAIChatMessage):
             messages = [messages]
 
@@ -213,28 +123,6 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
         **kwargs,
     ) -> AbstractChatModelResponse[_T]:
-        """Create a completion using the OpenAI API.
-
-        Args:
-            model_prompt (list): A list of chat messages.
-            functions (list): A list of completion model functions.
-            model_name (str): The name of the model.
-            tool_choice (str): The function call string.
-            default_tool_choice (str): The default function call to use after 3 failed attempts.
-            completion_parser (Callable): A parser to process the chat response.
-            **kwargs: Additional keyword arguments.
-
-        Returns:
-            ChatModelResponse: Response from the chat completion.
-
-        Example:
-            >>> provider = OpenAIProvider(...)
-            >>> messages = [ChatMessage(role="user", content="Tell me a joke.")]
-            >>> response = await provider.create_chat_completion(messages, ...)
-            >>> print(response.content)
-            "Why did the chicken cross the road? To get to the other side!"
-        """
-
         # ##############################################################################
         # ### Step 1: Prepare arguments for API call
         # ##############################################################################
@@ -424,22 +312,6 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         functions: list[CompletionModelFunction],
         **kwargs,
     ) -> dict:
-        """Get kwargs for completion API call.
-
-        Args:
-            model: The model to use.
-            kwargs: Keyword arguments to override the default values.
-
-        Returns:
-            dict: Dictionary containing the kwargs.
-
-        Example:
-            >>> provider = OpenAIProvider(...)
-            >>> completion_kwargs = provider._get_completion_kwargs(OpenAIModelName.GPT3, ...)
-            >>> print(completion_kwargs)
-            {'model': 'gpt-3.5-turbo-0613', ...}
-
-        """
         completion_kwargs = {
             "model": model_name,
             **kwargs,
@@ -453,17 +325,6 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         return completion_kwargs
 
     def __repr__(self):
-        """
-        String representation of the class.
-
-        Returns:
-            str: String representation.
-
-        Example:
-            >>> provider = OpenAIProvider(...)
-            >>> print(provider)
-            <OpenAIProvider: api_key=XXXXXXX, budget=inf>
-        """
         return "OpenAIProvider()"
 
     def has_oa_tool_calls_api(self, model_name: str) -> bool:
@@ -477,15 +338,7 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
 async def _create_chat_completion(
     messages: list[ChatMessage], *_, **kwargs
 ) -> AsyncCompletions:
-    """Create a chat completion using the OpenAI API.
 
-    Args:
-        messages: The prompt to use.
-
-    Returns:
-        The completion.
-
-    """
     raw_messages = [
         message.dict(include={"role", "content", "tool_calls", "name"})
         for message in messages
