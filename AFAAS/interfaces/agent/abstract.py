@@ -108,8 +108,8 @@ class AbstractAgent(ABC):
         # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
         model_config = update_model_config(original= SystemSettings.model_config ,
                                            new = {
-                                                'AGENT_CLASS_FIELD_NAME' : "_type_",
-                                                'AGENT_CLASS_MODULE_NAME' : "_module_"
+                                                'AGENT_CLASS_FIELD_NAME' : "settings_agent_class_",
+                                                'AGENT_CLASS_MODULE_NAME' : "settings_agent_module_"
                                                 }
                                             )
 

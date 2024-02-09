@@ -48,7 +48,11 @@ class Plan(AbstractPlan):
 
 
     def dict(self, **kwargs):
-        return super().dict(**kwargs)
+        d = super().dict(**kwargs)
+        d["_all_task_ids"] = self._all_task_ids
+        d["_ready_task_ids"] = self._ready_task_ids
+        d["_done_task_ids"] = self._done_task_ids
+        return d 
 
     #FIXME:  Pydantic 2.0.0 Limitation
     #_instance: ClassVar[Dict[Plan]] = {}

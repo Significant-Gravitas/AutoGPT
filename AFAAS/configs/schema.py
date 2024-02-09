@@ -206,8 +206,6 @@ S = TypeVar("S", bound=SystemSettings)
 class Configurable(abc.ABC, Generic[S]):
     """A base class for all configurable objects."""
 
-    prefix: str = ""
-
     class SystemSettings(SystemSettings):
         """A base class for all system settings."""
 

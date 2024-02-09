@@ -235,6 +235,7 @@ class BaseNoSQLTable(AbstractTable):
         data_list: dict = await self.db.list(table_name=self.table_name, filter=filter)
         filtered_data_list: list = []
 
+        # This section shoulmd probably be moved to JSONFileMemory
         LOG.notice("May need to be moved to JSONFileMemory")
         for data in data_list:
             remove_entry = False

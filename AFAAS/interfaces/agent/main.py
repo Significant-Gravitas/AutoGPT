@@ -49,7 +49,10 @@ class BaseAgent(AFAASModel , AbstractAgent, Configurable):
                                                 '_workflow_registry', 
                                                 '_loop', 
                                                 '_tool_registry', 
-                                                '_tool_executor', 
+                                                '_tool_executor',
+                                                'log_path' 
+                                                'prefix'
+                                                'vectorstore'
                                                 }
                                             }
     )
@@ -107,7 +110,7 @@ class BaseAgent(AFAASModel , AbstractAgent, Configurable):
                         value=str(user_id), operator=AbstractTable.Operators.EQUAL_TO
                     )
                 ],
-                AbstractAgent.SystemSettings.model_config['AGENT_CLASS_FIELD_NAME']: [
+                AbstractAgent.SystemSettings.model_config['AGENT_CLASS_MODULE_NAME']: [ #settings_agent_module_
                     AbstractTable.FilterItem(
                         #value=str(cls.__name__),
                         value=str(cls.__module__ + "." + cls.__name__),
