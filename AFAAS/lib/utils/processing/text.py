@@ -8,7 +8,8 @@ from typing import Iterator, Optional, TypeVar
 
 import spacy
 
-from AFAAS.interfaces.adapters import AbstractChatModelProvider, ChatMessage
+from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage
+from AFAAS.interfaces.adapters import AbstractChatModelProvider
 from AFAAS.interfaces.adapters.chatmodel import ChatPrompt
 from AFAAS.interfaces.adapters.language_model import ModelTokenizer
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -166,11 +167,11 @@ async def _process_text(
     if text_tlength < max_chunk_length:
         prompt = ChatPrompt(
             messages=[
-                ChatMessage.system(
+                SystemMessage(
                     "The user is going to give you a text enclosed in triple quotes. "
                     f"{instruction}"
                 ),
-                ChatMessage.user(f'"""{text}"""'),
+                HumanMessage(f'"""{text}"""'),
             ]
         )
 

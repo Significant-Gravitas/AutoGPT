@@ -2,11 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional
 
-from AFAAS.interfaces.task.meta import TaskStatusList
-from AFAAS.interfaces.tools.tool_output import ToolOutput
-from AFAAS.lib.sdk.errors import AgentException, ToolExecutionError, UnknownToolError
-from AFAAS.lib.task.plan import Plan
-from AFAAS.lib.task.task import Task, TaskStatusList
+from AFAAS.lib.sdk.errors import AgentException
+from AFAAS.lib.task.task import Task
 
 if TYPE_CHECKING:
     from AFAAS.core.agents.planner.main import PlannerAgent
@@ -216,7 +213,6 @@ class PlannerLoop(BaseLoop):
     ToolArgs = dict[str, str]
     AgentThoughts = dict[str, Any]
     ThoughtProcessOutput = tuple[ToolName, ToolArgs, AgentThoughts]
-    from AFAAS.interfaces.adapters.chatmodel import ChatMessage, ChatPrompt
 
     async def select_tool(
         self,

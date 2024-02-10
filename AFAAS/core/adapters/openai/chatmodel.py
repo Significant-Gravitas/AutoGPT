@@ -9,7 +9,6 @@ from AFAAS.core.adapters.openai.common import (
     OPEN_AI_CHAT_MODELS,
     OPEN_AI_DEFAULT_CHAT_CONFIGS,
     OPEN_AI_MODELS,
-    OpenAIChatMessage,
     OpenAIModelName,
     OpenAIPromptConfiguration,
     OpenAISettings,
@@ -19,12 +18,12 @@ from AFAAS.core.adapters.openai.embeddings import _create_embedding
 
 aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
+from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage, ChatMessage
 from AFAAS.configs.schema import Configurable
 from AFAAS.interfaces.adapters.chatmodel import (
     AbstractChatModelProvider,
     AbstractChatModelResponse,
     AssistantChatMessageDict,
-    ChatMessage,
     CompletionModelFunction,
 )
 from AFAAS.interfaces.adapters.language_model import Embedding, ModelTokenizer
@@ -147,27 +146,9 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
     @classmethod
     def count_message_tokens(
         cls,
-        messages: OpenAIChatMessage | list[ChatMessage],
+        messages: ChatMessage | list[ChatMessage],
         model_name: OpenAIModelName,
     ) -> int:
-        """
-        Count the number of tokens in a given set of messages for a specific model.
-
-        Args:
-            messages (Union[ChatMessage, List[ChatMessage]]): Input messages.
-            model_name (OpenAIModelName): Enum value representing the model.
-
-        Returns:
-            int: Number of tokens in the messages.
-
-        Example:
-            >>> messages = [ChatMessage(role="user", content="Hello?")]
-            >>> token_count = OpenAIProvider.count_message_tokens(messages, OpenAIModelName.GPT3)
-            >>> print(token_count)
-            5
-        """
-        if isinstance(messages, OpenAIChatMessage):
-            messages = [messages]
 
         if model_name.startswith("gpt-3.5-turbo"):
             tokens_per_message = (

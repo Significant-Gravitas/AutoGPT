@@ -5,7 +5,6 @@ from AFAAS.interfaces.adapters.chatmodel import (
     AssistantChatMessageDict,
     AssistantFunctionCall,
     AssistantFunctionCallDict,
-    ChatMessage,
     ChatModelInfo,
     ChatPrompt,
     CompletionModelFunction,

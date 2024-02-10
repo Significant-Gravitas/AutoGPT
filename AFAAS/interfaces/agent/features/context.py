@@ -7,8 +7,9 @@ if TYPE_CHECKING:
 
     from AFAAS.interfaces.agent.main import BaseAgent
 
-from AFAAS.interfaces.adapters import ChatMessage, ChatPrompt
+from AFAAS.interfaces.adapters import ChatPrompt
 
+from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage
 
 class AgentContext:
     items: list[ContextItem]
@@ -58,7 +59,7 @@ class ContextMixin:
         if self.context:
             extra_messages.insert(
                 0,
-                ChatMessage.system(
+                SystemMessage(
                     "## Context\n"
                     f"{self.context.format_numbered()}\n\n"
                     "When a context item is no longer needed and you are not done yet, "

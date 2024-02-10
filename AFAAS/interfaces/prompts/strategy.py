@@ -19,7 +19,6 @@ from AFAAS.interfaces.adapters import (
     AbstractChatModelResponse,
     AbstractLanguageModelProvider,
     AssistantChatMessageDict,
-    ChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )

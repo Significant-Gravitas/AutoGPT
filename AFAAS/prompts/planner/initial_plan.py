@@ -4,7 +4,6 @@ from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,
     AssistantChatMessageDict,
-    ChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
@@ -15,6 +14,11 @@ from AFAAS.interfaces.prompts.strategy import (
 from AFAAS.interfaces.prompts.utils.utils import json_loads, to_numbered_list
 from AFAAS.lib.utils.json_schema import JSONSchema
 
+from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage
+from AFAAS.lib.sdk.logger import AFAASLogger
+
+LOG = AFAASLogger(name=__name__)
+LOG.debug("TODO : Remove this strategy")
 
 class InitialPlanFunctionNames(str, enum.Enum):
     INITIAL_PLAN: str = "make_initial_plan"
@@ -131,15 +135,15 @@ class InitialPlanStrategy(AbstractPromptStrategy):
             self._system_info, **template_kwargs
         )
 
-        system_prompt = ChatMessage.system(
+        system_prompt = SystemMessage(
             content=self._system_prompt_template.format(**template_kwargs),
         )
-        user_prompt = ChatMessage.user(
+        user_prompt = HumanMessage(
             content=self._user_prompt_template.format(**template_kwargs),
         )
         strategy_tools = self._tools
 
-        response_format_instr = ChatMessage.system(self.response_format_instruction())
+        response_format_instr = SystemMessage(self.response_format_instruction())
 
         return ChatPrompt(
             messages=[system_prompt, user_prompt, response_format_instr],
@@ -163,6 +167,7 @@ class InitialPlanStrategy(AbstractPromptStrategy):
             The parsed response.
 
         """
+        from AFAAS.lib.task.task import Task
         parsed_response = json_loads(response_content["tool_calls"]["arguments"])
         parsed_response["task_list"] = [
             Task.parse_obj(task) for task in parsed_response["task_list"]

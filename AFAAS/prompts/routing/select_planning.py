@@ -1,27 +1,6 @@
-"""
-SelectPlanningStrategy Module
+from __future__ import annotations
 
-This module provides strategies and configurations to assist the AI in refining and clarifying user requirements
-through an iterative process, based on the COCE Framework.
-
-Classes:
----------
-SelectPlanningFunctionNames: Enum
-    Enum class that lists function names used in refining user context.
-
-SelectPlanningConfiguration: BaseModel
-    Pydantic model that represents the default configurations for the refine user context strategy.
-
-SelectPlanningStrategy: BasePromptStrategy
-    Strategy that guides the AI in refining and clarifying user requirements based on the COCE Framework.
-
-Examples:
----------
-To initialize and use the `SelectPlanningStrategy`:
-
->>> strategy = SelectPlanningStrategy(logger, model_classification= PromptStrategyLanguageModelClassification.FAST_MODEL_4K, default_tool_choice=SelectPlanningFunctionNames.REFINE_REQUIREMENTS, strategy_name="refine_user_context", context_min_tokens=250, context_max_tokens=300)
->>> prompt = strategy.build_prompt(interupt_refinement_process=False, user_objectives="Build a web app")
-"""
+from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage
 
 import enum
 import os
@@ -34,7 +13,6 @@ from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,
     AssistantChatMessageDict,
-    ChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
@@ -121,7 +99,7 @@ class SelectPlanningStrategy(AbstractPromptStrategy):
         }
 
         content = template.render(planning_options_param)
-        messages = [ChatMessage.system(content)]
+        messages = [SystemMessage(content)]
 
         #
         # Step 5 :

@@ -13,7 +13,6 @@ from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,
     AssistantChatMessageDict,
-    ChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
@@ -26,6 +25,7 @@ from AFAAS.interfaces.prompts.strategy import (
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.utils.json_schema import JSONSchema
 
+from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage
 LOG = AFAASLogger(name=__name__)
 
 
@@ -138,7 +138,7 @@ class UserProxyStrategy(AbstractPromptStrategy):
 
         messages = []
         messages.append(
-            ChatMessage.system(
+            SystemMessage(
                 await self._build_jinja_message(
                     task=task,
                     template_name=f"{self.STRATEGY_NAME}.jinja",

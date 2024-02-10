@@ -3,10 +3,10 @@ from __future__ import annotations
 import enum
 import uuid
 
+from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AssistantChatMessageDict,
-    ChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
@@ -191,7 +191,7 @@ class RefineUserContextStrategy(AbstractPromptStrategy):
             "count" : self._count + 1,
         }
         messages.append(
-            ChatMessage.system(
+            SystemMessage(
                 await self._build_jinja_message(
                     task=task,
                     template_name=f"{self.STRATEGY_NAME}.jinja",
@@ -206,7 +206,7 @@ class RefineUserContextStrategy(AbstractPromptStrategy):
         if self._count == 0:
             tool_choice = RefineUserContextFunctionNames.REFINE_REQUIREMENTS
             messages.append(
-                ChatMessage.system(
+                SystemMessage(
                     content="""Before finalizing your response, ensure that:
 1. The reformulated goal adheres strictly to the user's provided information, with no assumptions or hallucinations.
 2. You have prepared 5 relevant questions based on the user's requirements."""

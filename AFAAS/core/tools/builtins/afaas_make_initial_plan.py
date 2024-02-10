@@ -16,6 +16,7 @@ from AFAAS.lib.task.plan import Plan
 from AFAAS.lib.task.task import Task
 
 LOG = AFAASLogger(name=__name__)
+LOG.debug("TODO : Remove this tool")
 
 
 @tool(

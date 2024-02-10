@@ -8,12 +8,12 @@ if TYPE_CHECKING:
     from AFAAS.core.agents.planner.main import PlannerAgent
 
 
+from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage
 # prompting
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,
     AssistantChatMessageDict,
-    ChatMessage,
     ChatPrompt,
 )
 from AFAAS.interfaces.prompts.strategy import DefaultParsedResponse
@@ -87,7 +87,7 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
         progress = ""  # TODO:""
         response_format_instr = self.response_format_instruction()
         extra_messages: list[ChatMessage] = []
-        extra_messages.append(ChatMessage.system(response_format_instr))
+        extra_messages.append(SystemMessage(response_format_instr))
         extra_messages = [msg.content for msg in extra_messages]
 
         context = {
@@ -102,7 +102,7 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
 
         messages = []
         messages.append(
-            ChatMessage.system(
+            SystemMessage(
                 await self._build_jinja_message(
                     task=task,
                     template_name=f"{self.STRATEGY_NAME}.jinja",
@@ -111,7 +111,7 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
             )
         )
         messages.append(
-            ChatMessage.system(response_format_instr=self.response_format_instruction())
+            SystemMessage(response_format_instr=self.response_format_instruction())
         )
 
         # prompt = ChatPrompt(

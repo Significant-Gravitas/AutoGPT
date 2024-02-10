@@ -9,7 +9,6 @@ if TYPE_CHECKING:
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AssistantChatMessageDict,
-    ChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
@@ -19,6 +18,7 @@ from AFAAS.interfaces.prompts.strategy import (
     DefaultParsedResponse,
     PromptStrategiesConfiguration,
 )
+from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.utils.json_schema import JSONSchema
 
@@ -109,7 +109,7 @@ class BaseTaskRagStrategy(AbstractPromptStrategy):
 
         messages = []
         messages.append(
-            ChatMessage.system(
+            SystemMessage(
                 await self._build_jinja_message(
                     task=task,
                     template_name=f"{self.STRATEGY_NAME}.jinja",
@@ -117,7 +117,7 @@ class BaseTaskRagStrategy(AbstractPromptStrategy):
                 )
             )
         )
-        messages.append(ChatMessage.system(self.response_format_instruction()))
+        messages.append(SystemMessage(self.response_format_instruction()))
 
         return self.build_chat_prompt(messages=messages)
 

@@ -39,18 +39,6 @@ OpenAIEmbeddingParser = Callable[[Embedding], Embedding]
 OpenAIChatParser = Callable[[str], dict]
 
 
-class OpenAIRoleLabel(AbstractRoleLabels):
-    USER = "user"
-    SYSTEM = "system"
-    ASSISTANT = "assistant"
-
-    FUNCTION = "function"
-    """May be used for the return value of function calls"""
-
-
-class OpenAIChatMessage(AbstractChatMessage):
-    _role_labels: ClassVar[OpenAIRoleLabel] = OpenAIRoleLabel()
-
 
 class OpenAIModelName(str, enum.Enum):
     """
@@ -189,7 +177,6 @@ class OpenAISettings(BaseModelProviderSettings):
     configuration: OpenAIProviderConfiguration = OpenAIProviderConfiguration()
     credentials: BaseModelProviderCredentials = BaseModelProviderCredentials()
     budget: OpenAIModelProviderBudget = OpenAIModelProviderBudget()
-    chat: TypeVar = OpenAIChatMessage
 
     name = "chat_model_provider"
     description = "Provides access to OpenAI's API."
