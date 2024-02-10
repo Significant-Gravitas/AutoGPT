@@ -149,6 +149,7 @@ class CompletionModelFunction(BaseModel):
     @property
     def schema(self) -> dict[str, str | dict | list]:
         """Returns an OpenAI-consumable function specification"""
+        #FIXME : This is OpenAI specific & should be moved to the OpenAI adapter or implemented via dependency injection
 
         return {
             "name": self.name,
@@ -233,7 +234,7 @@ class ChatModelInfo(BaseModelInfo):
     has_function_call_api: bool = False
 
 
-class CompletionKwargs(BaseModel):
+class ChatCompletionKwargs(BaseModel):
     llm_model_name: str
     """The name of the language model"""
     tools: Optional[list[CompletionModelFunction]] = None
@@ -259,14 +260,14 @@ class ChatModelWrapper:
         retry_handler = _RetryHandler(
             num_retries=self.retry_per_request,
         )
-        self._create_chat_completion = retry_handler(self.chat)
+        self._create_chat_completion = retry_handler(self._chat)
         self._func_call_fails_count = 0
 
 
     async def create_chat_completion(
         self,
         chat_messages: list[ChatMessage],
-        completion_kwargs: CompletionKwargs,
+        completion_kwargs: ChatCompletionKwargs,
         completion_parser: Callable[[AssistantChatMessageDict], _T], 
         # Function to parse the response, usualy injectect by an AbstractPromptStrategy
         **kwargs,
@@ -275,14 +276,16 @@ class ChatModelWrapper:
         # ##############################################################################
         # ### Prepare arguments for API call using CompletionKwargs
         # ##############################################################################
-        llm_kwargs = self.llm_adapter.make_chat_kwargs(completion_kwargs=completion_kwargs)
+        llm_kwargs = self._make_chat_kwargs(completion_kwargs=completion_kwargs, **kwargs)
 
         # ##############################################################################
         # ### Step 2: Execute main chat completion and extract details
         # ##############################################################################
-        response = await self._get_chat_response(
-            chat_messages = chat_messages,
-            completion_kwargs = llm_kwargs 
+
+        response = await self._create_chat_completion(
+            messages=chat_messages, 
+            llm_kwargs = llm_kwargs,
+            **kwargs
         )
         response_message, response_args = self.llm_adapter._extract_response_details(
             response=response, 
@@ -352,7 +355,7 @@ class ChatModelWrapper:
     async def _retry_chat_completion(
         self,
         model_prompt: list[ChatMessage],
-        completion_kwargs: CompletionKwargs,
+        completion_kwargs: ChatCompletionKwargs,
         completion_parser: Callable[[AssistantChatMessageDict], _T],
         response: AsyncCompletions,
         response_args: Dict[str, Any],
@@ -367,59 +370,30 @@ class ChatModelWrapper:
             **kwargs
         )
 
-
-    def _update_function_call_for_retry(
-        self,
-        completion_kwargs: CompletionKwargs,
-        default_tool_choice: str
-    ) -> Dict[str, Any]:
-        if (
-            self._func_call_fails_count
-            >= self.maximum_retry_before_default_function
-        ):
-            completion_kwargs["tool_calls"] = default_tool_choice
-        else:
-            completion_kwargs["tool_calls"] = completion_kwargs.get(
-                "tool_calls", "auto"
-            )
-        completion_kwargs["default_tool_choice"] = completion_kwargs.get(
-            "default_tool_choice", default_tool_choice
-        )
-
-        return completion_kwargs
-
-    def make_chat_kwargs(self, completion_kwargs : CompletionKwargs , **kwargs) -> dict:   
+    def _make_chat_kwargs(self, completion_kwargs : ChatCompletionKwargs , **kwargs) -> dict:   
 
         built_kwargs = {}
         built_kwargs.update(self.llm_adapter.make_model_arg(model_name=completion_kwargs.llm_model_name))
-        if not "tools" in kwargs or kwargs["tools"] is None or len(kwargs["tools"]) == 0:
+
+        if completion_kwargs.tools is None or len(completion_kwargs.tools) == 0:
             #if their is no tool we do nothing 
-            return {}
+            return built_kwargs
 
         else:
-            built_kwargs["tools"] = [
-                self.llm_adapter.make_tool(f) for f in completion_kwargs.tools
-            ]
+            built_kwargs.update(self.llm_adapter.make_tools_arg(tools=completion_kwargs.tools))
+
             if len(completion_kwargs.tools) == 1:
-                built_kwargs["tool_choice"] = self.llm_adapter.make_tool_choice_arg(name= completion_kwargs.tools[0]["function"]["name"])
+                built_kwargs.update(self.llm_adapter.make_tool_choice_arg(name= completion_kwargs.tools[0].name))
+                #built_kwargs.update(self.llm_adapter.make_tool_choice_arg(name= completion_kwargs.tools[0]["function"]["name"]))
             elif completion_kwargs.tool_choice!= "auto":
                 if (
                     self._func_call_fails_count
                     >= self.maximum_retry_before_default_function
                 ):
-                    built_kwargs["tool_choice"] = self.llm_adapter.make_tool_choice_arg(name=completion_kwargs.default_tool_choice)
+                    built_kwargs.update(self.llm_adapter.make_tool_choice_arg(name=completion_kwargs.default_tool_choice))
                 else:
-                    built_kwargs["tool_choice"] = self.llm_adapter.make_tool_choice_arg(name=completion_kwargs.tool_choice)
+                    built_kwargs.update(self.llm_adapter.make_tool_choice_arg(name=completion_kwargs.tool_choice))
         return built_kwargs
-
-
-    async def _get_chat_response(
-        self, chat_messages: list[ChatMessage], **completion_kwargs: Any
-    ) -> AsyncCompletions:
-        return await self._create_chat_completion(
-            messages=chat_messages, **completion_kwargs
-        )
-
 
     def count_message_tokens(
         self,
@@ -428,10 +402,12 @@ class ChatModelWrapper:
     ) -> int: 
         return self.llm_adapter.count_message_tokens(messages, model_name)
 
-
-
-    async def chat(
-        self, messages: list[ChatMessage], *_, **kwargs
+    async def _chat(
+        self, 
+        messages: list[ChatMessage],
+        llm_kwargs : dict, 
+        *_, 
+        **kwargs
     ) -> AsyncCompletions:
 
         raw_messages = [
@@ -439,7 +415,7 @@ class ChatModelWrapper:
             for message in messages
         ]
 
-        llm_kwargs = self.llm_adapter.make_chat_kwargs(**kwargs)
+        #llm_kwargs = self._make_chat_kwargs(**kwargs)
         LOG.trace(raw_messages[0]["content"])
         LOG.trace(llm_kwargs)
         return_value = await self.llm_adapter.chat(
@@ -475,6 +451,14 @@ class AbstractChatModelProvider(AbstractLanguageModelProvider):
 
     @abc.abstractmethod
     def make_model_arg(self, model_name : str) -> dict:
+        ...
+
+    @abc.abstractmethod
+    def make_tool(self, f : CompletionModelFunction) -> dict:
+        ...
+
+    @abc.abstractmethod
+    def make_tools_arg(self, tools : list[CompletionModelFunction]) -> dict:
         ...
 
     @abc.abstractmethod

@@ -23,7 +23,7 @@ from AFAAS.interfaces.adapters import (
     AbstractChatModelProvider,
     AbstractChatModelResponse,
 )
-from AFAAS.interfaces.adapters.chatmodel import ChatModelWrapper, CompletionKwargs
+from AFAAS.interfaces.adapters.chatmodel import ChatModelWrapper, ChatCompletionKwargs
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -134,7 +134,7 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
 
         prompt = await prompt_strategy.build_message(**template_kwargs)
 
-        completion_kwargs = CompletionKwargs(
+        completion_kwargs = ChatCompletionKwargs(
             tool_choice=prompt.tool_choice, 
             default_tool_choice=prompt.default_tool_choice, 
             tools=prompt.tools,
@@ -153,7 +153,8 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
         # )
         response: AbstractChatModelResponse = await llm_wrapper.create_chat_completion(
             chat_messages = prompt.messages,
-            completion_kwargs = completion_kwargs
+            completion_kwargs = completion_kwargs, 
+            completion_parser = prompt_strategy.parse_response_content,
             **model_configuration,
         )
 

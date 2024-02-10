@@ -24,7 +24,7 @@ from AFAAS.interfaces.adapters.chatmodel import (
     AssistantChatMessageDict,
     ChatMessage,
     CompletionModelFunction,
-    CompletionKwargs
+    ChatCompletionKwargs
 )
 from AFAAS.interfaces.adapters.language_model import  ModelTokenizer
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -142,7 +142,7 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         return "OpenAIProvider()"
 
     def has_oa_tool_calls_api(self, model_name: str) -> bool:
-        return True
+        return True # Always True for OpenAI
         #return OPEN_AI_CHAT_MODELS[model_name].has_function_call_api
 
     def get_default_config(self) -> OpenAIPromptConfiguration:
@@ -150,18 +150,21 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
 
 
     def make_tool(self, f : CompletionModelFunction) -> dict:
-        return {
-            {"type": "function", "function": f.schema}
-        }
+        return  {"type": "function", "function": f.schema}
 
     def make_tool_choice_arg(self , name : str) -> dict:
         return {
+            "tool_choice" : {
             "type": "function",
             "function": {"name": name},
+            }
         }
 
     def make_model_arg(self, model_name : str) -> dict:
         return { "model" : model_name }
+
+    def make_tools_arg(self, tools : list[CompletionModelFunction]) -> dict:
+        return { "tools" : [self.make_tool(f) for f in tools] }
 
     async def chat(
         self, messages: list[ChatMessage], *_, **llm_kwargs
