@@ -19,10 +19,10 @@ from AFAAS.interfaces.adapters import (
     AbstractChatModelResponse,
     AbstractLanguageModelProvider,
     AssistantChatMessageDict,
-    ChatPrompt,
     CompletionModelFunction,
 )
 from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
+from AFAAS.interfaces.adapters.chatmodel import ChatMessage, ChatPrompt
 from AFAAS.interfaces.prompts.utils.utils import (
     indent,
     json_loads,

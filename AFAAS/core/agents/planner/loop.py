@@ -205,7 +205,7 @@ class PlannerLoop(BaseLoop):
     #     #  and ensure that they have actionable ready and acceptance criteria
 
     def __repr__(self):
-        return "SimpleLoop()"
+        return "PlannerAgentLoop()"
 
     from typing import Any, Literal
 
