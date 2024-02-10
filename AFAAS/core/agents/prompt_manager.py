@@ -23,7 +23,7 @@ from AFAAS.interfaces.adapters import (
     AbstractChatModelProvider,
     AbstractChatModelResponse,
 )
-from AFAAS.interfaces.adapters.chatmodel import ChatModelWrapper
+from AFAAS.interfaces.adapters.chatmodel import ChatModelWrapper, CompletionKwargs
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -133,15 +133,28 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
         template_kwargs.update(model_configuration)
 
         prompt = await prompt_strategy.build_message(**template_kwargs)
+
+        completion_kwargs = CompletionKwargs(
+            tool_choice=prompt.tool_choice, 
+            default_tool_choice=prompt.default_tool_choice, 
+            tools=prompt.tools,
+            llm_model_name= model_configuration.pop("llm_model_name", None),
+            completion_parser=prompt_strategy.parse_response_content,
+            )
         llm_wrapper = ChatModelWrapper(llm_model=provider)
 
+        # response: AbstractChatModelResponse = await llm_wrapper.create_chat_completion(
+        #     chat_messages=prompt.messages,
+        #     tools=prompt.tools,
+        #     **model_configuration,
+        #     completion_parser=prompt_strategy.parse_response_content,
+        #     tool_choice=prompt.tool_choice,
+        #     default_tool_choice=prompt.default_tool_choice,
+        # )
         response: AbstractChatModelResponse = await llm_wrapper.create_chat_completion(
-            chat_messages=prompt.messages,
-            tools=prompt.tools,
+            chat_messages = prompt.messages,
+            completion_kwargs = completion_kwargs
             **model_configuration,
-            completion_parser=prompt_strategy.parse_response_content,
-            tool_choice=prompt.tool_choice,
-            default_tool_choice=prompt.default_tool_choice,
         )
 
         response.chat_messages = prompt.messages

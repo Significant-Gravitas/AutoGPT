@@ -233,6 +233,16 @@ class ChatModelInfo(BaseModelInfo):
     has_function_call_api: bool = False
 
 
+class CompletionKwargs(BaseModel):
+    llm_model_name: str
+    """The name of the language model"""
+    tools: Optional[list[CompletionModelFunction]] = None
+    """List of available tools"""
+    tool_choice: Optional[str] = None
+    """Force the use of one tool"""
+    default_tool_choice: Optional[str] = None
+    """This tool would be called after 3 failed attemps(cf : try/catch block)"""
+
 class ChatModelWrapper:
 
     llm_adapter : AbstractChatModelProvider
@@ -256,50 +266,46 @@ class ChatModelWrapper:
     async def create_chat_completion(
         self,
         chat_messages: list[ChatMessage],
-        tools: list[CompletionModelFunction],
-        llm_model_name: str,
-        tool_choice: str,
-        default_tool_choice: str,  # This one would be called after 3 failed attemps(cf : try/catch block)
-        completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
+        completion_kwargs: CompletionKwargs,
+        completion_parser: Callable[[AssistantChatMessageDict], _T], 
+        # Function to parse the response, usualy injectect by an AbstractPromptStrategy
         **kwargs,
     ) -> AbstractChatModelResponse[_T]:
+
         # ##############################################################################
-        # ### Step 1: Prepare arguments for API call
+        # ### Prepare arguments for API call using CompletionKwargs
         # ##############################################################################
-        completion_kwargs = self.llm_adapter._initialize_completion_args(
-            model_name=llm_model_name,
-            tools=tools,
-            tool_choice=tool_choice,
-            **kwargs,
-        )
+        llm_kwargs = self.llm_adapter.make_chat_kwargs(completion_kwargs=completion_kwargs)
 
         # ##############################################################################
         # ### Step 2: Execute main chat completion and extract details
         # ##############################################################################
         response = await self._get_chat_response(
-            model_prompt=chat_messages, **completion_kwargs
+            chat_messages = chat_messages,
+            completion_kwargs = llm_kwargs 
         )
         response_message, response_args = self.llm_adapter._extract_response_details(
-            response=response, model_name=llm_model_name
+            response=response, 
+            model_name=completion_kwargs.llm_model_name
         )
 
         # ##############################################################################
         # ### Step 3: Handle missing function call and retry if necessary
         # ##############################################################################
         if self.llm_adapter._should_retry_function_call(
-            tools=tools, response_message=response_message
+            tools=completion_kwargs.tools, response_message=response_message
         ):
+            LOG.error(
+                f"Attempt number {self._func_call_fails_count + 1} : Function Call was expected"
+            )
             if (
                 self._func_call_fails_count
                 <= self.maximum_retry
             ):
                 return await self._retry_chat_completion(
                     model_prompt=chat_messages,
-                    tools=tools,
                     completion_kwargs=completion_kwargs,
-                    model_name=llm_model_name,
                     completion_parser=completion_parser,
-                    default_tool_choice=default_tool_choice,
                     response=response,
                     response_args=response_args,
                 )
@@ -346,31 +352,26 @@ class ChatModelWrapper:
     async def _retry_chat_completion(
         self,
         model_prompt: list[ChatMessage],
-        tools: list[CompletionModelFunction],
-        completion_kwargs: Dict[str, Any],
-        model_name: str,
+        completion_kwargs: CompletionKwargs,
         completion_parser: Callable[[AssistantChatMessageDict], _T],
-        default_tool_choice: str,
         response: AsyncCompletions,
         response_args: Dict[str, Any],
+        **kwargs
     ) -> AbstractChatModelResponse[_T]:
-        completion_kwargs = self._update_function_call_for_retry(
-            completion_kwargs=completion_kwargs,
-            default_tool_choice=default_tool_choice,
-        )
-        completion_kwargs["tools"] = tools
-        response.update(response_args)
+        self._func_call_fails_count += 1
         self.llm_adapter._budget.update_usage_and_cost(model_response=response)
         return await self.create_chat_completion(
             chat_messages=model_prompt,
-            llm_model_name=model_name,
             completion_parser=completion_parser,
-            **completion_kwargs,
+            completion_kwargs= completion_kwargs,
+            **kwargs
         )
 
 
     def _update_function_call_for_retry(
-        self, completion_kwargs: Dict[str, Any], default_tool_choice: str
+        self,
+        completion_kwargs: CompletionKwargs,
+        default_tool_choice: str
     ) -> Dict[str, Any]:
         if (
             self._func_call_fails_count
@@ -384,15 +385,39 @@ class ChatModelWrapper:
         completion_kwargs["default_tool_choice"] = completion_kwargs.get(
             "default_tool_choice", default_tool_choice
         )
-        self._func_call_fails_count += 1
+
         return completion_kwargs
+
+    def make_chat_kwargs(self, completion_kwargs : CompletionKwargs , **kwargs) -> dict:   
+
+        built_kwargs = {}
+        built_kwargs.update(self.llm_adapter.make_model_arg(model_name=completion_kwargs.llm_model_name))
+        if not "tools" in kwargs or kwargs["tools"] is None or len(kwargs["tools"]) == 0:
+            #if their is no tool we do nothing 
+            return {}
+
+        else:
+            built_kwargs["tools"] = [
+                self.llm_adapter.make_tool(f) for f in completion_kwargs.tools
+            ]
+            if len(completion_kwargs.tools) == 1:
+                built_kwargs["tool_choice"] = self.llm_adapter.make_tool_choice_arg(name= completion_kwargs.tools[0]["function"]["name"])
+            elif completion_kwargs.tool_choice!= "auto":
+                if (
+                    self._func_call_fails_count
+                    >= self.maximum_retry_before_default_function
+                ):
+                    built_kwargs["tool_choice"] = self.llm_adapter.make_tool_choice_arg(name=completion_kwargs.default_tool_choice)
+                else:
+                    built_kwargs["tool_choice"] = self.llm_adapter.make_tool_choice_arg(name=completion_kwargs.tool_choice)
+        return built_kwargs
 
 
     async def _get_chat_response(
-        self, model_prompt: list[ChatMessage], **completion_kwargs: Any
+        self, chat_messages: list[ChatMessage], **completion_kwargs: Any
     ) -> AsyncCompletions:
         return await self._create_chat_completion(
-            messages=model_prompt, **completion_kwargs
+            messages=chat_messages, **completion_kwargs
         )
 
 
@@ -433,18 +458,7 @@ class ChatModelWrapper:
 
 class AbstractChatModelProvider(AbstractLanguageModelProvider): 
 
-    class CompletionKwargs(BaseModel):
-        llm_model_name: str
-        tools: Optional[list[CompletionModelFunction]] = None
-        tool_choice: Optional[str] = None
-        default_tool_choice: Optional[str] = None
-        completion_parser: Callable[[AssistantChatMessageDict], _T]
-
     llm_model : Optional[BaseChatModel] = None
-
-    @abc.abstractmethod
-    def make_chat_kwargs(self, **kwargs) -> dict:
-        ...
 
     @abc.abstractmethod
     def count_message_tokens(
@@ -460,7 +474,11 @@ class AbstractChatModelProvider(AbstractLanguageModelProvider):
         ...
 
     @abc.abstractmethod
-    def make_tool_choice(self , name : str) -> dict:
+    def make_model_arg(self, model_name : str) -> dict:
+        ...
+
+    @abc.abstractmethod
+    def make_tool_choice_arg(self , name : str) -> dict:
         ... 
 
     @abc.abstractmethod
@@ -493,15 +511,6 @@ class AbstractChatModelProvider(AbstractLanguageModelProvider):
     ) -> AbstractChatModelResponse[_T]: 
         ...
 
-    @abc.abstractmethod
-    def _initialize_completion_args(
-        self,
-        model_name: str,
-        tools: list[CompletionModelFunction],
-        tool_choice: str,
-        **kwargs,
-    ) -> dict: 
-        ...
 
 
 _P = ParamSpec("_P")
