@@ -138,7 +138,6 @@ class RoutingStrategy(AbstractPromptStrategy):
         routing_param = {
             "step": "ROUTING",
             "task": task,
-            "task_goal": task.task_goal,
             "additional_context_description": str(task.task_context),
         }
         content = template.render(routing_param)

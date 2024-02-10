@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import abc
-from typing import TYPE_CHECKING, Optional, Union, get_args
+from typing import TYPE_CHECKING, Optional, Union, get_args, ClassVar
 
-from pydantic import Field
+from pydantic import Field, ConfigDict
+from pydantic.fields import PrivateAttr
 
-from AFAAS.configs.schema import AFAASModel
-from AFAAS.interfaces.agent.main import BaseAgent
+from AFAAS.configs.schema import AFAASModel, update_model_config
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 from .meta import TaskStatusList
@@ -17,6 +17,7 @@ LOG = AFAASLogger(name=__name__)
 if TYPE_CHECKING:
     from .stack import TaskStack
     from .task import AbstractTask
+    from AFAAS.interfaces.agent.main import BaseAgent
 
 
 class AbstractBaseTask(abc.ABC, AFAASModel):
@@ -38,14 +39,17 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         "Write a report"
     """
 
-    class Config(AFAASModel.Config):
-        # This is a list of Field to Exclude during serialization
-        default_exclude = set(AFAASModel.Config.default_exclude) | {
-            "subtasks",
-            "agent",
-            "_loaded_tasks_dict",
-        }
-        json_encoders = AFAASModel.Config.json_encoders | {}
+
+    model_config = update_model_config(original= AFAASModel.model_config ,
+                                       new = {
+                                            'default_exclude' : AFAASModel.model_config['default_exclude'] | {
+                                                "subtasks", 
+                                                "agent", 
+                                                "_loaded_tasks_dict", 
+                                            },
+                                            'json_encoders' : AFAASModel.model_config['json_encoders'] | {}
+                                            }
+                                        )
 
     ###
     ### GENERAL properties
@@ -62,22 +66,22 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
     task_goal: str
     """ The title / Name of the task """
 
-    task_context: Optional[str]
+    task_context: Optional[str] = None
     """ Placeholder : Context given by RAG & other elements """
 
-    long_description: Optional[str]
+    long_description: Optional[str] = None
 
     ###
     ### Task Management properties
     ###
-    task_history: Optional[list[dict]]
+    task_history: Optional[list[dict]] = None
 
     acceptance_criteria: Optional[list[str]] = []
 
     ###
     ### Dynamic properties
     ###
-    _subtasks: Optional[TaskStack] = Field()
+    _subtasks: Optional[TaskStack] = PrivateAttr()
 
     @property
     def subtasks(self) -> TaskStack:
@@ -87,7 +91,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
             self._subtasks = TaskStack(parent_task=self, description="Subtasks")
         return self._subtasks
 
-    # @validator('_subtasks', pre=True, always=True)
+    # @field_validator('_subtasks', pre=True, always=True)
     # def set_subtasks(cls, v, values, **kwargs):
     #     if isinstance(v, dict) and 'task_ids' in v:
     #         # Initialize TaskStack with task_ids and other necessary parameters
@@ -99,16 +103,13 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
     #         # Handle other cases or raise an error
     #         raise ValueError("Invalid value for _subtasks")
 
-    _default_command: str = None
-
+    _default_command: ClassVar[str] = None 
     @classmethod
     def default_tool(cls) -> str:
         if cls._default_command is not None:
             return cls._default_command
 
         try:
-            pass
-
             cls._default_command = "afaas_routing"
         except:
             cls._default_command = "afaas_make_initial_plan"
@@ -121,6 +122,8 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
 
         # FIXME: Make it dynamic as in AFAAS.lib.message_common
         from AFAAS.interfaces.task.stack import TaskStack
+        from AFAAS.interfaces.agent.main import BaseAgent
+        TaskStack.model_rebuild()
 
         if "_task_predecessors" in data and isinstance(
             data["_task_predecessors"], list
@@ -149,15 +152,15 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
             field_value = getattr(self, field)
 
             if field_value is not None:
-                field_type = field_info.outer_type_
+                field_type  = field_info.annotation #.__class__ #.__origin__
 
                 # Direct check for BaseTask instances
                 if isinstance(field_value, AbstractBaseTask):
-                    d[field] = field_value.task_id
+                    d[field] = field_value.task_i
 
                 # Check for lists of BaseTask instances
                 if isinstance(field_value, list) and issubclass(
-                    get_args(field_type)[0], AbstractBaseTask
+                    get_args(field_type.__args__[0])[0], AbstractBaseTask
                 ):
                     # Replace the list of BaseTask instances with a list of their task_ids
                     d[field] = [v.task_id for v in field_value]
@@ -461,4 +464,4 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
 
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.
-AbstractBaseTask.update_forward_refs()
+#AbstractBaseTask.model_rebuild()

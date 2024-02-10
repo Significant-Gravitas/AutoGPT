@@ -1,10 +1,12 @@
 import abc
 
-from pydantic import BaseModel, SecretBytes, SecretField, SecretStr
+from pydantic import BaseModel, SecretBytes, SecretStr
 
 from AFAAS.configs.config import SystemSettings, UserConfigurable
-from AFAAS.configs.schema import SystemConfiguration
+from AFAAS.configs.schema import SystemConfiguration, update_model_config
+from pydantic import  ConfigDict
 from pydantic.fields import Field
+
 
 class BaseProviderUsage(SystemConfiguration, abc.ABC):
     @abc.abstractmethod
@@ -31,16 +33,19 @@ class BaseProviderCredentials(SystemConfiguration):
     def unmasked(self) -> dict:
         return self.unmask(self)
 
-    class Config(SystemConfiguration.Config):
-        json_encoders = {
+    
+    
+    model_config = update_model_config(original= SystemConfiguration.model_config , 
+       new =  {
+            'json_encoders' : {
             SecretStr: lambda v: v.get_secret_value() if v else None,
             SecretBytes: lambda v: v.get_secret_value() if v else None,
-            SecretField: lambda v: v.get_secret_value() if v else None,
-        }
+        }}
+    )
 
     def unmask(model: BaseModel):
         unmasked_fields = {}
-        for field_name, _ in model.__fields__.items():
+        for field_name, _ in model.model_fields.items():
             value = getattr(model, field_name)
             if isinstance(value, SecretStr):
                 unmasked_fields[field_name] = value.get_secret_value()

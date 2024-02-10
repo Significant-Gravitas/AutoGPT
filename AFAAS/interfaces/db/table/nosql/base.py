@@ -4,11 +4,12 @@ import abc
 import datetime
 import uuid
 from pathlib import Path
-from typing import Any, Literal, Optional, TypedDict
+from typing import Any, Literal, Optional
+from typing_extensions import TypedDict
 
 from pydantic import BaseModel
 
-from AFAAS.configs.schema import AFAASModel, Configurable
+from AFAAS.configs.schema import AFAASModel, update_model_config, Configurable
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.db.db_table import AbstractTable
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -91,7 +92,7 @@ class BaseNoSQLTable(AbstractTable):
                 for attr, attr_value in curr_obj.__dict__.items():
                     if not (
                         attr.startswith("_")
-                        or attr in value.__class__.SystemSettings.Config.default_exclude
+                        or attr in value.__class__.SystemSettings.model_config["default_exclude"]
                     ):
                         stack.append((attr_value, new_dict, attr))
                 serialized_value = new_dict
@@ -234,6 +235,7 @@ class BaseNoSQLTable(AbstractTable):
         data_list: dict = await self.db.list(table_name=self.table_name, filter=filter)
         filtered_data_list: list = []
 
+        # This section shoulmd probably be moved to JSONFileMemory
         LOG.notice("May need to be moved to JSONFileMemory")
         for data in data_list:
             remove_entry = False

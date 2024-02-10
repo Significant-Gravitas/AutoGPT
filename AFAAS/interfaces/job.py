@@ -4,14 +4,14 @@ import abc
 import uuid
 from typing import Callable, Type
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from AFAAS.interfaces.prompts import AbstractPromptStrategy
 
 
 class JobInterface(abc.ABC, BaseModel):
-    class Config(BaseModel.Config):
-        arbitrary_types_allowed = True
+
+    model_config = ConfigDict( arbitrary_types_allowed = True)
 
     strategy: Type[AbstractPromptStrategy]
     strategy_kwargs: dict

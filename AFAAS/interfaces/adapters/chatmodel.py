@@ -1,56 +1,9 @@
 from __future__ import annotations
-
-"""
-This module defines the structure and representation of chat interactions, properties, and function specifications for a language model within a chat-based system. It includes classes for representing chat messages, function parameters, and function specifications, which are crucial for building prompts and handling interactions in a structured and type-safe manner.
-
-The classes in this module are typically utilized within the AutoGPT framework, particularly in classes inheriting from `PromptStrategy`, for constructing system prompts and processing user and assistant interactions. The `CompletionModelFunction` class is instrumental in defining function specifications that can be invoked by the language model. These definitions are used in `OneShotAgentPromptStrategy` to detail available commands for the language model.
-
-Key Classes:
-    - `Role`: An enumeration class representing the role of an entity in a chat.
-    - `ChatMessage`: Represents a message in a chat interaction, encapsulating the sender's role and message content.
-    - `Property`: Defines the basic structure for a single property within a function parameter specification.
-    - `FunctionParameters`: Provides a structured representation of a function's parameters.
-    - `CompletionModelFunction`: Encapsulates a function specification that can be invoked by the language model.
-    - `AssistantFunctionCall`: Represents a function call by the assistant, encapsulating the function name and arguments.
-    - `AssistantChatMessage`: Extends `ChatMessage` to include optional function call information alongside message content.
-    - `AssistantChatMessageDict`: A typed dictionary for representing an `AssistantChatMessage` as a dictionary.
-     - `AssistantFunctionCall`: Encapsulates a function call made by the assistant within a chat interaction.
-    - `AssistantFunctionCallDict`: A typed dictionary for representing an `AssistantFunctionCall` as a dictionary.
-    - `ChatPrompt`: Encapsulates the structure of a chat prompt used within a chat interaction with the language model.
-    - `ChatModelResponse`: Standard response structure for a response from a language model, encapsulating the response and parsed result.
-    - `Property`: Defines the basic structure for a single property within a function parameter specification.
-    - `FunctionParameters`: Provides a structured representation of a function's parameters.
-    - `CompletionModelFunction`: Encapsulates a function specification that can be invoked by the language model.
-
-
-Module Usage:
-    This module is used to define and structure the various elements involved in a chat interaction within the AutoGPT framework. It is imported and utilized in constructing and processing prompts, messages, and function calls within the chat-based interaction model.
-
-Examples:
-    >>> from AFAAS.lib.utils.json_schema import JSONSchema
-    >>> from AFAAS.core.agents.exampleagent.strategies.mystrategy import MyStrategy
-
-    >>> # Defining a function specification
-    >>> func_spec = {
-    ...     "name": "sum_numbers",
-    ...     "description": "Sums two numbers.",
-    ...     "parameters": {
-    ...         "a": {"type": "number", "description": "First number"},
-    ...         "b": {"type": "number", "description": "Second number"}
-    ...     }
-    ... }
-    >>> cmf = CompletionModelFunction.parse(func_spec)
-    >>> print(cmf.fmt_line())
-    sum_numbers: Sums two numbers. Params: (a: number, b: number)
-
-    >>> # Creating a chat message
-    >>> msg = ChatMessage.user("Calculate the sum of 5 and 3.")
-    >>> print(msg.role, msg.content)
-    Role.USER Calculate the sum of 5 and 3.
-"""
-
 import abc
 import enum
+import os
+import functools
+import time
 from typing import (
     Any,
     Callable,
@@ -59,21 +12,31 @@ from typing import (
     Generic,
     Literal,
     Optional,
-    TypedDict,
     TypeVar,
     Union,
+    ParamSpec,
 )
+from typing_extensions import TypedDict
 
 from pydantic import BaseModel, Field
+
+from langchain_core.language_models.chat_models import BaseChatModel
 
 from AFAAS.interfaces.adapters.language_model import (
     AbstractLanguageModelProvider,
     BaseModelInfo,
     BaseModelResponse,
     ModelProviderService,
+    AbstractPromptConfiguration,
 )
 from AFAAS.lib.utils.json_schema import JSONSchema
 
+
+from openai import APIError, AsyncOpenAI, RateLimitError
+from openai.resources import AsyncCompletions
+from AFAAS.lib.sdk.logger import AFAASLogger
+LOG = AFAASLogger(name=__name__)
+aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 class AbstractRoleLabels(abc.ABC, BaseModel):
     USER: str
@@ -106,29 +69,6 @@ class AbstractChatMessage(abc.ABC, BaseModel):
 
 
 class Role(str, enum.Enum):
-    """
-    An enumeration class representing the roles of different entities in a chat conversation.
-    The `Role` class is fundamental to role-based messaging within the module,
-    serving as a key attribute in `ChatMessage` and `AssistantChatMessage` classes.
-
-    Attributes:
-        USER (str): Represents the user in the conversation.
-        SYSTEM (str): Represents system-specific instructions or information.
-        ASSISTANT (str): Represents the assistant's responses or actions.
-        FUNCTION (str): Represents the return value of function calls within a conversation.
-
-    Example:
-    1.
-    role = Role.USER
-    print(role)  # Output: Role.USER
-
-    2.
-    def get_role(role_str: str) -> Role:
-        return Role(role_str)
-
-    print(get_role("assistant"))  # Output: Role.ASSISTANT
-    """
-
     USER = "user"
     SYSTEM = "system"
     ASSISTANT = "assistant"
@@ -163,138 +103,16 @@ class AFAASChatMessage(BaseModel):
 
 
 class ChatMessageDict(TypedDict):
-    """
-    `ChatMessageDict` serves as a typed dictionary representation of a chat message,
-    providing a structured format for `ChatMessage` instances when transformed into a dictionary.
-    It is utilized within the `ChatPrompt` class, specifically in the `raw()` method,
-    to return a list of dictionary representations of chat messages.
-
-
-    Attributes:
-    - role (str): The role of the entity sending the message. (e.g., "user", "system", "assistant", "function")
-    - content (str): The content of the message.
-
-    Example:
-    1.
-    message = ChatMessageDict(role="user", content="Hello, World!")
-    print(message)  # Output: {'role': 'user', 'content': 'Hello, World!'}
-
-    2.
-    def print_message(message: ChatMessageDict) -> None:
-        print(f"{message['role'].title()}: {message['content']}")
-
-    print_message({'role': 'assistant', 'content': 'How can I help?'})  # Output: Assistant: How can I help?
-    """
-
     role: str
     content: str
 
 
-# Basic structure for a single property
-class Property(BaseModel):
-    """
-    `Property` represents a single property within a function's parameters or a model's schema.
-    It is used within the `FunctionParameters` class to structure the parameters of a `CompletionModelFunction`.
-
-
-    Attributes:
-    - type (str): The type of the property.
-    - description (str): A description of the property.
-    - items (Optional[Union["Property", Dict]]): If the property is of type array, this attribute defines the schema of the items in the array.
-    - properties (Optional[dict]): If the property is of type object, this attribute defines the schema of the properties of the object.
-
-    Example:
-    1.
-    prop = Property(type="string", description="A simple string property")
-    print(prop.dict())  # Output: {'type': 'string', 'description': 'A simple string property', 'items': None, 'properties': None}
-
-    2.
-    nested_prop = Property(
-        type="object",
-        description="A nested object property",
-        properties={"name": {"type": "string", "description": "The name of the item"}}
-    )
-    print(nested_prop.dict())  # Output: {'type': 'object', 'description': 'A nested object property', 'items': None, 'properties': {'name': {'type': 'string', 'description': 'The name of the item'}}}
-    """
-
-    type: str
-    description: str
-    items: Optional[Union["Property", Dict]]
-    properties: Optional[dict]  # Allows nested properties
-
-
-# Defines a function's parameters
-class FunctionParameters(BaseModel):
-    """
-    `FunctionParameters` provides a structured representation of the parameters required for a function call within a language model. It captures the type, properties, and required fields to ensure a valid function call. This class is often utilized within `CompletionModelFunction` to define function specifications for language model interactions.
-
-    Attributes:
-        type (str): Specifies the data type of the function parameters, usually 'object'.
-        properties (Dict[str, Property]): A dictionary mapping parameter names to `Property` objects, detailing the individual properties of the parameters.
-        required (List[str]): A list of parameter names that are required for the function call.
-
-    Methods:
-        None
-
-    Examples:
-        >>> param_specs = {
-        ...     "text": {"type": "string", "description": "Text to be processed"},
-        ...     "num": {"type": "integer", "description": "A number parameter"}
-        ... }
-        >>> func_params = FunctionParameters(type="object", properties=param_specs, required=["text"])
-        >>> print(func_params.type, func_params.required)
-        object ['text']
-
-        >>> param_specs_2 = {
-        ...     "query": {"type": "string", "description": "Query text"},
-        ...     "limit": {"type": "integer", "description": "Limit on responses"}
-        ... }
-        >>> func_params_2 = FunctionParameters(type="object", properties=param_specs_2, required=["query", "limit"])
-        >>> print(func_params_2.type, func_params_2.required)
-        object ['query', 'limit']
-    """
-
-    type: str
-    properties: Dict[str, Property]
-    required: list[str]
-
-
 class AssistantFunctionCall(BaseModel):
-    """
-    `AssistantFunctionCall` encapsulates a function call made by the assistant within a chat interaction.
-    This class is utilized within `AssistantChatMessage` to represent function call information alongside
-    the assistant's message content.
-
-    Attributes:
-        name (str): The name of the function being called.
-        arguments (str): The arguments passed to the function in string format.
-
-    Examples:
-        >>> afc = AssistantFunctionCall(name="calculate_sum", arguments="5, 3")
-        >>> print(afc.name, afc.arguments)
-        calculate_sum 5, 3
-    """
-
     name: str
     arguments: str
 
 
 class AssistantFunctionCallDict(TypedDict):
-    """
-    A Typed Dictionary for representing an `AssistantFunctionCall` as a dictionary.
-    This representation is used within `AssistantChatMessageDict` to provide a structured
-    format for function call information.
-
-    Attributes:
-        name (str): The name of the function being called.
-        arguments (str): The arguments passed to the function in string format.
-
-    Example:
-        >>> afc_dict = AssistantFunctionCallDict(name="calculate_sum", arguments="5, 3")
-        >>> print(afc_dict)
-        {'name': 'calculate_sum', 'arguments': '5, 3'}
-    """
-
     name: str
     arguments: str
 
@@ -314,72 +132,27 @@ class AssistantToolCallDict(TypedDict):
 class AssistantChatMessage(AFAASChatMessage):
 
     role: Role.ASSISTANT
-    content: Optional[str]
-    tool_calls: Optional[list[AssistantToolCall]]
+    content: Optional[str] = None
+    tool_calls: Optional[list[AssistantToolCall]] = None
 
 
 class AssistantChatMessageDict(TypedDict, total=False):
-    """
-    A Typed Dictionary for representing an `AssistantChatMessage` as a dictionary.
-    This representation provides a structured format for the assistant's message and function call information.
-
-    Attributes:
-        role (str): The role of the assistant.
-        content (str): The textual content of the message.
-        function_call (AssistantFunctionCallDict): A dictionary representation of the function call made by the assistant.
-
-    Example:
-        >>> acm_dict = AssistantChatMessageDict(role="assistant", content="The sum is 8", function_call={'name': 'calculate_sum', 'arguments': '5, 3'})
-        >>> print(acm_dict)
-        {'role': 'assistant', 'content': 'The sum is 8', 'function_call': {'name': 'calculate_sum', 'arguments': '5, 3'}}
-    """
 
     role: str
-    content: str
-    tool_calls: list[AssistantToolCallDict]
+    content: Optional[str]
+    tool_calls: Optional[list[AssistantToolCallDict]]
 
 
 class CompletionModelFunction(BaseModel):
-    """
-    `CompletionModelFunction` encapsulates a function specification that can be invoked by the language model within a chat-based interaction. The instances of this class are used to communicate the available commands to the language model, as seen in the `OneShotAgentPromptStrategy` where they are provided as input to build the system prompt section detailing available commands. The class allows for a structured representation of a function's name, description, and parameters, facilitating a clear and unambiguous definition of what functions the language model can call and with what arguments.
-
-    Attributes:
-        name (str): The name of the function, used to uniquely identify and call the function.
-        description (str): A textual description providing an overview of the function's purpose and behavior.
-        parameters (dict[str, "JSONSchema"]): A dictionary mapping parameter names to JSONSchema objects, describing the type and other properties of each parameter.
-
-    Methods:
-        schema() -> dict[str, str | dict | list]: Returns an OpenAI-consumable function specification as a dictionary.
-        parse(schema: dict) -> "CompletionModelFunction": Classmethod to parse a dictionary representation of a function specification into a `CompletionModelFunction` instance.
-        _remove_none_entries(data: Dict[str, Any]) -> Dict[str, Any]: Helper method to remove entries with None values from a dictionary.
-        dict(*args, **kwargs) -> Dict[str, Any]: Returns a dictionary representation of the `CompletionModelFunction` object, excluding entries with None values.
-        fmt_line() -> str: Returns a string representation of the function signature including the function name, description, and formatted parameter list.
-
-    Examples:
-        >>> func_spec = {
-        ...     "name": "sum_numbers",
-        ...     "description": "Sums two numbers.",
-        ...     "parameters": {
-        ...         "a": {"type": "number", "description": "First number"},
-        ...         "b": {"type": "number", "description": "Second number"}
-        ...     }
-        ... }
-        >>> cmf = CompletionModelFunction.parse(func_spec)
-        >>> print(cmf.fmt_line())
-        sum_numbers: Sums two numbers. Params: (a: number, b: number)
-
-        >>> func_schema = cmf.schema()
-        >>> print(func_schema["name"], func_schema["description"])
-        sum_numbers Sums two numbers.
-    """
-
     name: str
     description: str
-    parameters: dict[str, "JSONSchema"]
+    #parameters: dict[str, "JSONSchema"]
+    parameters: Dict[str, JSONSchema]
 
     @property
     def schema(self) -> dict[str, str | dict | list]:
         """Returns an OpenAI-consumable function specification"""
+        #FIXME : This is OpenAI specific & should be moved to the OpenAI adapter or implemented via dependency injection
 
         return {
             "name": self.name,
@@ -430,41 +203,6 @@ class CompletionModelFunction(BaseModel):
 
 
 class ChatPrompt(BaseModel):
-    """
-    `ChatPrompt` encapsulates the structure of a chat prompt used within a chat interaction with the language model. It holds a sequence of chat messages, a list of available function specifications (`CompletionModelFunction` instances), a designated function call, and a default function call. This class is instrumental in structuring the interaction and providing the language model with necessary context, available commands, and specific instructions for the ongoing interaction.
-
-    Attributes:
-        messages (list[ChatMessage]): A list of `ChatMessage` instances representing the conversation history.
-        functions (list[CompletionModelFunction], optional): A list of `CompletionModelFunction` instances representing the available functions the language model can call. Defaults to an empty list.
-        function_call (str): A string representing a designated function (example : `myfunction`) to be called within the interaction. If you have only one function and you want to force the LLM to call this function, we recommand you to put the name of your function (example `function_call="myfunction"`), to let a LLM select the most apropriate of function within a list of function  `function_call="auto"`
-        default_tool_choice (str): This is a safeguard mechanism especialy usefull when using `function_call="auto"`, after 2 fails you can force a function of your choice.
-
-    Methods:
-        raw() -> list[ChatMessageDict]: Returns a list of dictionary representations of the messages in the chat prompt.
-        __str__() -> str: Returns a string representation of the chat prompt, formatting each message as "ROLE: content".
-
-    Examples:
-        >>> chat_msgs = [ChatMessage.user("Hello!"), ChatMessage.assistant("Hi there!")]
-        >>> func_specs = [CompletionModelFunction.parse({
-        ...     "name": "greet",
-        ...     "description": "Greets the user.",
-        ...     "parameters": {}
-        ... })]
-        >>> chat_prompt = ChatPrompt(
-        ...     messages=chat_msgs,
-        ...     functions=func_specs,
-        ...     function_call="greet",
-        ...     default_function_call="greet"
-        ... )
-        >>> print(chat_prompt)
-        USER: Hello!
-
-        ASSISTANT: Hi there!
-        >>> raw_msgs = chat_prompt.raw()
-        >>> print(raw_msgs)
-        [{'role': 'user', 'content': 'Hello!'}, {'role': 'assistant', 'content': 'Hi there!'}]
-    """
-
     messages: list[ChatMessage]
     tools: list[CompletionModelFunction] = Field(default_factory=list)
     tool_choice: str
@@ -483,34 +221,8 @@ _T = TypeVar("_T")
 
 
 class AbstractChatModelResponse(BaseModelResponse, Generic[_T]):
-    """
-    `ChatModelResponse` extends `BaseModelResponse` to provide a structured representation of a language model's response in a chat-based interaction. It encapsulates the standard response from the language model, along with a parsed result of a generic type `_T`, and additional content as a dictionary.
 
-    This class is instrumental in handling and processing the responses from the language model, allowing for typed parsing of the result and additional content.
-
-    Attributes:
-        response (AssistantChatMessageDict): The standard dictionary representation of the assistant's chat message, encapsulating the role, content, and potential function call information.
-        parsed_result (_T, optional): A parsed result of generic type `_T`, facilitating typed handling of the language model's response. Defaults to None.
-        content (dict, optional): Additional content or data accompanying the language model's response. Defaults to None.
-
-    Example:
-        Suppose there's a function `parse_response` that processes the language model's response to extract certain information.
-
-        >>> def parse_response(response: AssistantChatMessageDict) -> str:
-        ...     # Assume it extracts and returns some text from the response
-        ...     return extracted_text
-
-        >>> lm_response = {
-        ...     "role": "assistant",
-        ...     "content": "The sum is 8.",
-        ...     "tool_calls": None
-        ... }
-        >>> chat_model_response = ChatModelResponse(response=lm_response, parsed_result=parse_response(lm_response))
-        >>> print(chat_model_response.parsed_result)
-        The sum is 8.
-    """
-
-    response: AssistantChatMessageDict
+    response: Optional[AssistantChatMessageDict] = None
     parsed_result: _T = None
     """Standard response struct for a response from a language model."""
 
@@ -519,15 +231,8 @@ class AbstractChatModelResponse(BaseModelResponse, Generic[_T]):
     system_prompt: str = None
 
 
-###############
-# Chat Models #
-###############
-
-
 class ChatModelInfo(BaseModelInfo):
-    """Struct for language model information."""
-
-    llm_service = ModelProviderService.CHAT
+    llm_service : ModelProviderService = ModelProviderService.CHAT
     max_tokens: int
     has_function_call_api: bool = False
 
@@ -701,7 +406,7 @@ class ChatModelWrapper:
 
     def count_message_tokens(
         self,
-        messages: AFAASChatMessage | list[ChatMessage],
+        messages: ChatMessage | list[ChatMessage],
         model_name: str,
     ) -> int: 
         return self.llm_adapter.count_message_tokens(messages, model_name)
@@ -747,22 +452,117 @@ class AbstractChatModelProvider(AbstractLanguageModelProvider):
         model_name: str,
     ) -> int: ...
 
-    async def create_language_completion(
-        self,
-        model_prompt: list[ChatMessage],
-        model_name: str,
-        completion_parser: Callable[[dict], dict],
-        tools: list[CompletionModelFunction],
-        tool_choice: str,
-        **kwargs,
-    ) -> AbstractChatModelResponse: ...
+    @abc.abstractmethod
+    async def chat(
+        self, messages: list[ChatMessage], *_, **llm_kwargs
+    ) -> AsyncCompletions:
+        ...
 
     @abc.abstractmethod
-    async def create_chat_completion(
+    def make_model_arg(self, model_name : str) -> dict:
+        ...
+
+    @abc.abstractmethod
+    def make_tool(self, f : CompletionModelFunction) -> dict:
+        ...
+
+    @abc.abstractmethod
+    def make_tools_arg(self, tools : list[CompletionModelFunction]) -> dict:
+        ...
+
+    @abc.abstractmethod
+    def make_tool_choice_arg(self , name : str) -> dict:
+        ... 
+
+    @abc.abstractmethod
+    def has_oa_tool_calls_api(self, model_name: str) -> bool:
+        ...
+
+    @abc.abstractmethod
+    def get_default_config(self) -> AbstractPromptConfiguration:
+        ...
+
+
+    @abc.abstractmethod
+    def _extract_response_details(
+        self, response: AsyncCompletions, model_name: str
+    ) -> tuple[dict, dict]: 
+        ...
+
+    @abc.abstractmethod
+    def _should_retry_function_call(
+        self, tools: list[CompletionModelFunction], response_message: dict
+    ) -> bool: 
+        ...
+
+    @abc.abstractmethod
+    def _formulate_final_response(
         self,
-        model_name: str,
-        chat_messages: list[ChatMessage],
-        tools: list[CompletionModelFunction] = [],
-        completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
-        **kwargs,
-    ) -> AbstractChatModelResponse[_T]: ...
+        response_message: dict,
+        completion_parser: Callable[[AssistantChatMessageDict], _T],
+        response_args: dict,
+    ) -> AbstractChatModelResponse[_T]: 
+        ...
+
+
+
+_P = ParamSpec("_P")
+
+class _RetryHandler:
+    """Retry Handler for OpenAI API call.
+
+    Args:
+        num_retries int: Number of retries. Defaults to 10.
+        backoff_base float: Base for exponential backoff. Defaults to 2.
+        warn_user bool: Whether to warn the user. Defaults to True.
+    """
+
+    _retry_limit_msg = "Error: Reached rate limit, passing..."
+    _api_key_error_msg = (
+        "Please double check that you have setup a PAID OpenAI API Account. You can "
+        "read more here: https://docs.agpt.co/setup/#getting-an-api-key"
+    )
+    _backoff_msg = "Error: API Bad gateway. Waiting {backoff} seconds..."
+
+    def __init__(
+        self,
+        num_retries: int = 10,
+        backoff_base: float = 2.0,
+        warn_user: bool = True,
+    ):
+        self._num_retries = num_retries
+        self._backoff_base = backoff_base
+        self._warn_user = warn_user
+
+    def _log_rate_limit_error(self) -> None:
+        LOG.trace(self._retry_limit_msg)
+        if self._warn_user:
+            LOG.warning(self._api_key_error_msg)
+            self._warn_user = False
+
+    def _backoff(self, attempt: int) -> None:
+        backoff = self._backoff_base ** (attempt + 2)
+        LOG.trace(self._backoff_msg.format(backoff=backoff))
+        time.sleep(backoff)
+
+    def __call__(self, func: Callable[_P, _T]) -> Callable[_P, _T]:
+        @functools.wraps(func)
+        async def _wrapped(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+            num_attempts = self._num_retries + 1  # +1 for the first attempt
+            for attempt in range(1, num_attempts + 1):
+                try:
+                    return await func(*args, **kwargs)
+
+                except RateLimitError:
+                    if attempt == num_attempts:
+                        raise
+                    self._log_rate_limit_error()
+
+                except APIError as e:
+                    if (e.code != 502) or (attempt == num_attempts):
+                        raise
+                except Exception as e:
+                    LOG.warning(e)
+                self._backoff(attempt)
+
+        return _wrapped

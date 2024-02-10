@@ -108,9 +108,6 @@ async def run_cli_demo():
 
         agent_settings.agent_goal_sentence = user_objective
 
-        # agent_settings.agent_class = "PlannerAgent"
-        agent_settings._type_ = "AFAAS.core.agents.planner.main.PlannerAgent"
-
         # Step 3. Create the agent.
         agent: PlannerAgent = await PlannerAgent.load(
             settings=agent_settings, **agent_settings.dict()

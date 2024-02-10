@@ -27,8 +27,8 @@ class AbstractFileWorkspaceConfiguration(SystemConfiguration):
 
 class LocalFileWorkspace(AbstractFileWorkspace):
     class SystemSettings(AbstractFileWorkspace.SystemSettings):
-        name = "workspace"
-        description = "The workspace is the root directory for all agent activity."
+        name : str =  "workspace"
+        description : str =  "The workspace is the root directory for all agent activity."
         configuration: AbstractFileWorkspaceConfiguration = (
             AbstractFileWorkspaceConfiguration()
         )

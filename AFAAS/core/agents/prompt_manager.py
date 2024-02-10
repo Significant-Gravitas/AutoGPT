@@ -23,6 +23,7 @@ from AFAAS.interfaces.adapters import (
     AbstractChatModelProvider,
     AbstractChatModelResponse,
 )
+from AFAAS.interfaces.adapters.chatmodel import ChatModelWrapper, ChatCompletionKwargs
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -62,8 +63,6 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
 
     def load_strategies(self) -> list[AbstractPromptStrategy]:
 
-
-
         # Dynamically load strategies from AFAAS.prompts.common
         for attribute_name in dir(common_module):
             attribute = getattr(common_module, attribute_name)
@@ -86,11 +85,6 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
             self.add_strategy( strategy_module_attr(**strategy_module_attr.default_configuration.dict()))
 
     async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse:
-        """
-        await simple_planner.execute_strategy('name_and_goals', user_objective='Learn Python')
-        await simple_planner.execute_strategy('initial_plan', agent_name='Alice', agent_role='Student', agent_goals=['Learn Python'], tools=['coding'])
-        await simple_planner.execute_strategy('initial_plan', agent_name='Alice', agent_role='Student', agent_goal_sentence=['Learn Python'], tools=['coding'])
-        """
         if strategy_name not in self._prompt_strategies:
             raise ValueError(f"Invalid strategy name {strategy_name}")
 
@@ -140,13 +134,28 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
 
         prompt = await prompt_strategy.build_message(**template_kwargs)
 
-        response: AbstractChatModelResponse = await provider.create_chat_completion(
-            chat_messages=prompt.messages,
+        completion_kwargs = ChatCompletionKwargs(
+            tool_choice=prompt.tool_choice, 
+            default_tool_choice=prompt.default_tool_choice, 
             tools=prompt.tools,
-            **model_configuration,
+            llm_model_name= model_configuration.pop("llm_model_name", None),
             completion_parser=prompt_strategy.parse_response_content,
-            tool_choice=prompt.tool_choice,
-            default_tool_choice=prompt.default_tool_choice,
+            )
+        llm_wrapper = ChatModelWrapper(llm_model=provider)
+
+        # response: AbstractChatModelResponse = await llm_wrapper.create_chat_completion(
+        #     chat_messages=prompt.messages,
+        #     tools=prompt.tools,
+        #     **model_configuration,
+        #     completion_parser=prompt_strategy.parse_response_content,
+        #     tool_choice=prompt.tool_choice,
+        #     default_tool_choice=prompt.default_tool_choice,
+        # )
+        response: AbstractChatModelResponse = await llm_wrapper.create_chat_completion(
+            chat_messages = prompt.messages,
+            completion_kwargs = completion_kwargs, 
+            completion_parser = prompt_strategy.parse_response_content,
+            **model_configuration,
         )
 
         response.chat_messages = prompt.messages

@@ -93,8 +93,6 @@ class SelectPlanningStrategy(AbstractPromptStrategy):
         planning_options_param = {
             "step": "SELECT_PLANNING",
             "task": task,
-            "task_goal": task.task_goal,
-            "additional_context_description": str(task.task_context),
             "to_md_quotation": to_md_quotation,
         }
 

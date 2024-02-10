@@ -1,11 +1,9 @@
 import enum
-import functools
 import math
 import os
-import time
 from typing import Callable, ClassVar, ParamSpec, TypeVar
 
-from openai import APIError, AsyncOpenAI, RateLimitError
+from openai import AsyncOpenAI
 
 from AFAAS.configs.schema import Field
 from AFAAS.interfaces.adapters.chatmodel import (
@@ -20,8 +18,6 @@ from AFAAS.interfaces.adapters.language_model import (
     BaseModelProviderCredentials,
     BaseModelProviderSettings,
     BaseModelProviderUsage,
-    Embedding,
-    EmbeddingModelInfo,
     ModelProviderName,
     ModelProviderService,
 )
@@ -33,9 +29,6 @@ _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
 
-aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
-
-OpenAIEmbeddingParser = Callable[[Embedding], Embedding]
 OpenAIChatParser = Callable[[str], dict]
 
 
@@ -62,18 +55,6 @@ class OpenAIModelName(str, enum.Enum):
     GPT3_FINE_TUNED = "gpt-3.5-turbo-1106" + ""
     GPT4 = "gpt-3.5-turbo-1106"
     GPT4_32k = "gpt-3.5-turbo-1106"
-
-
-OPEN_AI_EMBEDDING_MODELS = {
-    OpenAIModelName.ADA: EmbeddingModelInfo(
-        name=OpenAIModelName.ADA,
-        service=ModelProviderService.EMBEDDING,
-        provider_name=ModelProviderName.OPENAI,
-        prompt_token_cost=0.0001 / 1000,
-        max_tokens=8191,
-        embedding_dimensions=1536,
-    ),
-}
 
 
 OPEN_AI_CHAT_MODELS = {
@@ -130,7 +111,6 @@ OPEN_AI_CHAT_MODELS = {
 
 OPEN_AI_MODELS = {
     **OPEN_AI_CHAT_MODELS,
-    **OPEN_AI_EMBEDDING_MODELS,
 }
 
 
@@ -178,93 +158,33 @@ class OpenAISettings(BaseModelProviderSettings):
     credentials: BaseModelProviderCredentials = BaseModelProviderCredentials()
     budget: OpenAIModelProviderBudget = OpenAIModelProviderBudget()
 
-    name = "chat_model_provider"
-    description = "Provides access to OpenAI's API."
-
-
-class _OpenAIRetryHandler:
-    """Retry Handler for OpenAI API call.
-
-    Args:
-        num_retries int: Number of retries. Defaults to 10.
-        backoff_base float: Base for exponential backoff. Defaults to 2.
-        warn_user bool: Whether to warn the user. Defaults to True.
-    """
-
-    _retry_limit_msg = "Error: Reached rate limit, passing..."
-    _api_key_error_msg = (
-        "Please double check that you have setup a PAID OpenAI API Account. You can "
-        "read more here: https://docs.agpt.co/setup/#getting-an-api-key"
-    )
-    _backoff_msg = "Error: API Bad gateway. Waiting {backoff} seconds..."
-
-    def __init__(
-        self,
-        num_retries: int = 10,
-        backoff_base: float = 2.0,
-        warn_user: bool = True,
-    ):
-        self._num_retries = num_retries
-        self._backoff_base = backoff_base
-        self._warn_user = warn_user
-
-    def _log_rate_limit_error(self) -> None:
-        LOG.trace(self._retry_limit_msg)
-        if self._warn_user:
-            LOG.warning(self._api_key_error_msg)
-            self._warn_user = False
-
-    def _backoff(self, attempt: int) -> None:
-        backoff = self._backoff_base ** (attempt + 2)
-        LOG.trace(self._backoff_msg.format(backoff=backoff))
-        time.sleep(backoff)
-
-    def __call__(self, func: Callable[_P, _T]) -> Callable[_P, _T]:
-        @functools.wraps(func)
-        async def _wrapped(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-            num_attempts = self._num_retries + 1  # +1 for the first attempt
-            for attempt in range(1, num_attempts + 1):
-                try:
-                    return await func(*args, **kwargs)
-
-                except RateLimitError:
-                    if attempt == num_attempts:
-                        raise
-                    self._log_rate_limit_error()
-
-                except APIError as e:
-                    if (e.http_status != 502) or (attempt == num_attempts):
-                        raise
-                except Exception as e:
-                    LOG.warning(e)
-                self._backoff(attempt)
-
-        return _wrapped
+    name : str =  "chat_model_provider"
+    description : str =  "Provides access to OpenAI's API."
 
 
 class OpenAIPromptConfiguration(AbstractPromptConfiguration):
-    model_name: str = Field()
+    llm_model_name: str = Field()
     temperature: float = Field()
 
 
 class OPEN_AI_DEFAULT_CHAT_CONFIGS:
     FAST_MODEL_4K = OpenAIPromptConfiguration(
-        model_name=OpenAIModelName.GPT3,
+        llm_model_name=OpenAIModelName.GPT3,
         temperature=0.9,
     )
     FAST_MODEL_16K = OpenAIPromptConfiguration(
-        model_name=OpenAIModelName.GPT3_16k,
+        llm_model_name=OpenAIModelName.GPT3_16k,
         temperature=0.9,
     )
     FAST_MODEL_FINE_TUNED_4K = OpenAIPromptConfiguration(
-        model_name=OpenAIModelName.GPT3_FINE_TUNED,
+        llm_model_name=OpenAIModelName.GPT3_FINE_TUNED,
         temperature=0.9,
     )
     MART_MODEL_8K = OpenAIPromptConfiguration(
-        model_name=OpenAIModelName.GPT4,
+        llm_model_name=OpenAIModelName.GPT4,
         temperature=0.9,
     )
     SMART_MODEL_32K = OpenAIPromptConfiguration(
-        model_name=OpenAIModelName.GPT4_32k,
+        llm_model_name=OpenAIModelName.GPT4_32k,
         temperature=0.9,
     )

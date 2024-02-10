@@ -100,8 +100,6 @@ class AFAAS_SMART_RAG_Strategy(AbstractPromptStrategy):
         LOG.debug("Building prompt for task : " + await task.debug_dump_str())
         self._task: AbstractTask = task
         smart_rag_param = {
-            "task_goal": task.task_goal,
-            "additional_context_description": str(task.task_context),
             "task_history": kwargs.get("task_history", None),
             "task_sibblings": kwargs.get("task_sibblings", None),
             "task_path": kwargs.get("task_path", None),

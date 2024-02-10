@@ -3,13 +3,12 @@ from __future__ import annotations
 import abc
 import base64
 import json
-import os
 import uuid
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pydantic import Field
+from pydantic import Field, ConfigDict
 
 from AFAAS.configs.schema import Configurable, SystemConfiguration, SystemSettings
 
@@ -65,8 +64,6 @@ class MemoryConfig(SystemConfiguration):
 #         name: str = "Memory"
 #         description: str = "Memory is an abstract db adapter"
 
-#         class Config(SystemSettings.Config):
-#             extra = "allow"
 
 
 class AbstractMemory(Configurable, abc.ABC):
@@ -74,9 +71,6 @@ class AbstractMemory(Configurable, abc.ABC):
         configuration: MemoryConfig = MemoryConfig()
         name: str = "Memory"
         description: str = "Memory is an abstract db adapter"
-
-        class Config(SystemSettings.Config):
-            extra = "allow"
 
     _instances: dict[AbstractMemory] = {}
 
@@ -152,9 +146,12 @@ class AbstractMemory(Configurable, abc.ABC):
         """
         # FIXME: Move to a dependancy ingestion patern
         adapter_type = db_settings.configuration.db_adapter
-        config_key = base64.b64encode(
-            json.dumps(db_settings.configuration.dict()).encode()
-        ).decode()
+
+        #FIXME: Weakened the key to upgrade to pydantic 2.x
+        # config_key = base64.b64encode(
+        #     json.dumps(db_settings.configuration.dict()).encode()
+        # ).decode()
+        config_key = base64.b64encode(adapter_type.__class__.__name__.encode()).decode()
 
         if config_key in AbstractMemory._instances:
             return AbstractMemory._instances[config_key]

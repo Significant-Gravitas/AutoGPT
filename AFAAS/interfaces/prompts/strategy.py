@@ -166,7 +166,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
         self,
     ) -> str:
         language_model_provider = self.get_llm_provider()
-        model_name = self.get_prompt_config().model_name
+        model_name = self.get_prompt_config().llm_model_name
         use_oa_tools_api = language_model_provider.has_oa_tool_calls_api(
             model_name=model_name
         )

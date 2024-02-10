@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, List, Optional
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from AFAAS.configs.schema import AFAASModel
 from AFAAS.lib.sdk.artifacts import Artifact
@@ -19,15 +19,15 @@ class ArtifactUpload(AFAASModel):
     relative_path: str = Field(
         ...,
         description="Relative path of the artifact in the agent's workspace.",
-        example="python/code",
+        examples=["python/code"],
     )
 
 
 class Pagination(AFAASModel):
-    total_items: int = Field(..., description="Total number of items.", example=42)
-    total_pages: int = Field(..., description="Total number of pages.", example=97)
-    current_page: int = Field(..., description="Current_page page number.", example=1)
-    page_size: int = Field(..., description="Number of items per page.", example=25)
+    total_items: int = Field(..., description="Total number of items.", examples=[42])
+    total_pages: int = Field(..., description="Total number of pages.", examples=[97])
+    current_page: int = Field(..., description="Current_page page number.", examples=[1])
+    page_size: int = Field(..., description="Number of items per page.", examples=[25])
 
     @classmethod
     def create_pagination(
@@ -56,7 +56,7 @@ class AgentRequestBody(AFAASModel):
         ...,
         min_length=1,
         description="Input prompt for the task.",
-        example="Write the words you receive to the file 'output.txt'.",
+        examples=["Write the words you receive to the file 'output.txt'."],
     )
 
     # NOTE: Base Agent not planned agent because Pydantic (1.10 (at least)) can't serialize :
@@ -77,39 +77,37 @@ class Agent(AgentRequestBody):
     created_at: datetime = Field(
         ...,
         description="The creation datetime of the task.",
-        example="2023-01-01T00:00:00Z",
+        examples=["2023-01-01T00:00:00Z"],
         json_encoders={datetime: lambda v: v.isoformat()},
     )
     modified_at: datetime = Field(
         ...,
         description="The modification datetime of the task.",
-        example="2023-01-01T00:00:00Z",
+        examples=["2023-01-01T00:00:00Z"],
         json_encoders={datetime: lambda v: v.isoformat()},
     )
     task_id: str = Field(
         ...,
         description="The ID of the task.",
-        example="50da533e-3904-4401-8a07-c49adf88b5eb",
+        examples=["50da533e-3904-4401-8a07-c49adf88b5eb"],
     )
     artifacts: Optional[List[Artifact]] = Field(
         [],
         description="A list of artifacts that the task has produced.",
-        example=[
+        examples=[[
             "7a49f31c-f9c6-4346-a22c-e32bc5af4d8e",
             "ab7b4091-2560-4692-a4fe-d831ea3ca7d6",
-        ],
+        ]],
     )
-
-    class Config:
-        extra = "allow"
-        use_enum_values = True
-        json_encoders = {
-            uuid.UUID: lambda v: str(v),
-            float: lambda v: str(
-                9999.99 if v == float("inf") or v == float("-inf") else v
-            ),
-            datetime: lambda v: v.isoformat(),
-        }
+    
+    
+    model_config = ConfigDict(extra="allow", use_enum_values=True, json_encoders={
+        uuid.UUID: lambda v: str(v),
+        float: lambda v: str(
+            9999.99 if v == float("inf") or v == float("-inf") else v
+        ),
+        datetime: lambda v: v.isoformat(),
+    })
 
     @classmethod
     def from_afaas(cls, agent: PlannerAgent.SystemSettings):
@@ -134,18 +132,15 @@ class AgentListResponse(AFAASModel):
         for agent in agent_list:
             tasks.append(Agent.from_afaas(agent))
         return cls(tasks=tasks)
-
-    class Config:
-        extra = "allow"
-        use_enum_values = True
-        json_encoders = {
-            uuid.UUID: lambda v: str(v),
-            float: lambda v: str(
-                9999.99 if v == float("inf") or v == float("-inf") else v
-            ),
-            datetime: lambda v: v.isoformat(),
-        }
-        allow_inf_nan = False
+    
+    
+    model_config = ConfigDict(extra="allow", use_enum_values=True, json_encoders={
+        uuid.UUID: lambda v: str(v),
+        float: lambda v: str(
+            9999.99 if v == float("inf") or v == float("-inf") else v
+        ),
+        datetime: lambda v: v.isoformat(),
+    }, allow_inf_nan=False)
 
     def json(self, *args, **kwargs):
         return super().json(*args, **kwargs)
@@ -153,12 +148,12 @@ class AgentListResponse(AFAASModel):
 
 class TaskRequestBody(AFAASModel):
     name: Optional[str] = Field(
-        None, description="The name of the task step.", example="Write to file"
+        None, description="The name of the task step.", examples=["Write to file"]
     )
     input: Optional[str] = Field(
         None,
         description="Input prompt for the step.",
-        example="Washington",
+        examples=["Washington"],
     )
     additional_input: Optional[dict] = {}
 
@@ -173,42 +168,42 @@ class Task(TaskRequestBody):
     created_at: datetime = Field(
         ...,
         description="The creation datetime of the task.",
-        example="2023-01-01T00:00:00Z",
+        examples=["2023-01-01T00:00:00Z"],
         json_encoders={datetime: lambda v: v.isoformat()},
     )
     modified_at: datetime = Field(
         ...,
         description="The modification datetime of the task.",
-        example="2023-01-01T00:00:00Z",
+        examples=["2023-01-01T00:00:00Z"],
         json_encoders={datetime: lambda v: v.isoformat()},
     )
     task_id: str = Field(
         ...,
         description="The ID of the task this step belongs to.",
-        example="50da533e-3904-4401-8a07-c49adf88b5eb",
+        examples=["50da533e-3904-4401-8a07-c49adf88b5eb"],
     )
     step_id: str = Field(
         ...,
         description="The ID of the task step.",
-        example="6bb1801a-fd80-45e8-899a-4dd723cc602e",
+        examples=["6bb1801a-fd80-45e8-899a-4dd723cc602e"],
     )
     name: Optional[str] = Field(
-        None, description="The name of the task step.", example="Write to file"
+        None, description="The name of the task step.", examples=["Write to file"]
     )
     status: Status = Field(
-        ..., description="The status of the task step.", example="created"
+        ..., description="The status of the task step.", examples=["created"]
     )
     output: Optional[str] = Field(
         None,
         description="Output of the task step.",
-        example="I am going to use the write_to_file command and write Washington to a file called output.txt <write_to_file('output.txt', 'Washington')",
+        examples=["I am going to use the write_to_file command and write Washington to a file called output.txt <write_to_file('output.txt', 'Washington')"],
     )
     additional_output: Optional[TaskOutput] = {}
     artifacts: Optional[List[Artifact]] = Field(
         [], description="A list of artifacts that the step has produced."
     )
     is_last: bool = Field(
-        ..., description="Whether this is the last step in the task.", example=True
+        ..., description="Whether this is the last step in the task.", examples=[True]
     )
 
 

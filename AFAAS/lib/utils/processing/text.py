@@ -179,7 +179,7 @@ async def _process_text(
 
         response = await llm_provider.create_chat_completion(
             model_prompt=prompt.messages,
-            model_name=model,
+            llm_model_name=model,
             temperature=0.5,
             max_tokens=max_result_tokens,
             completion_parser=lambda s: (

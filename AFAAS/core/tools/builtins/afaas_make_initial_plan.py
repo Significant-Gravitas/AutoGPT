@@ -56,8 +56,8 @@ async def afaas_make_initial_plan(task: Task, agent: BaseAgent) -> None:
 
 
 # @tool(
-#     name = "afaas__plan",
-#     description = "Make a plan to tacle a tasks",
+#     name : str =  "afaas__plan",
+#     description : str =  "Make a plan to tacle a tasks",
 # )
 # async def afaas_plan(task : Task, agent: BaseAgent) -> None:
 #    # plan =  self.execute_strategy(

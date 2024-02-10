@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 
-from AFAAS.configs.schema import AFAASModel
+from AFAAS.configs.schema import AFAASModel, update_model_config
 
 
 class TaskStatus(AFAASModel):

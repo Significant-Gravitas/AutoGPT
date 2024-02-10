@@ -99,9 +99,7 @@ class BaseTaskRagStrategy(AbstractPromptStrategy):
         LOG.debug("Building prompt for task : " + await task.debug_dump_str())
         self._task: AbstractTask = task
         smart_rag_param = {
-            "task_goal": task.task_goal,
-            "additional_context_description": str(task.task_context),
-            "task_history": task_history,
+            #"task_history": task_history,
             "task_sibblings": task_sibblings,
             "task_path": task_path,
             "related_tasks": related_tasks,
