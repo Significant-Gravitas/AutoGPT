@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Optional
+from typing import Optional , TYPE_CHECKING
 
-from AFAAS.interfaces.agent.main import BaseAgent
+if TYPE_CHECKING:
+    from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.interfaces.task.task import AbstractTask

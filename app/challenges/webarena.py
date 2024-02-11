@@ -8,7 +8,7 @@ import requests
 from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.utils.data_types import Category, EvalResult
 from agent_protocol_client import AgentApi, Step
-from pydantic import BaseModel, ValidationError, validator
+from pydantic import BaseModel, ValidationError, field_validator
 
 from .base import BaseChallenge, ChallengeInfo
 
@@ -169,7 +169,7 @@ class WebArenaChallengeSpec(BaseModel):
     """The JungleGym site (base URL) at which to start"""
     require_login: bool
     require_reset: bool
-    storage_state: str | None
+    storage_state: str | None = None
 
     intent: str
     intent_template: str
@@ -178,9 +178,9 @@ class WebArenaChallengeSpec(BaseModel):
 
     class EvalSet(BaseModel):
         class StringMatchEvalSet(BaseModel):
-            exact_match: str | None
-            fuzzy_match: list[str] | None
-            must_include: list[str] | None
+            exact_match: str | None = None
+            fuzzy_match: list[str] | None = None
+            must_include: list[str] | None = None
 
         reference_answers: StringMatchEvalSet | None
         """For string_match eval, a set of criteria to judge the final answer"""
@@ -197,7 +197,9 @@ class WebArenaChallengeSpec(BaseModel):
 
         eval_types: list[EvalType]
 
-        @validator("eval_types")
+        # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
+        # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
+        @field_validator("eval_types")
         def check_eval_parameters(cls, v: list[EvalType], values):
             if "string_match" in v and not values.get("reference_answers"):
                 raise ValueError("'string_match' eval_type requires reference_answers")

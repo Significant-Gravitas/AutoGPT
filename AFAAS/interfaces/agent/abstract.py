@@ -6,7 +6,9 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Optional
 
-from pydantic import Field
+from pydantic import Field, ConfigDict
+from pydantic.fields import ModelPrivateAttr
+from AFAAS.configs.schema import SystemConfiguration, update_model_config
 
 from AFAAS.configs.schema import Configurable, SystemSettings
 from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider
@@ -23,7 +25,7 @@ from langchain.vectorstores import VectorStore
 from langchain_community.vectorstores.chroma import Chroma
 from langchain_core.embeddings import Embeddings
 from langchain_openai.embeddings import OpenAIEmbeddings
-
+from AFAAS.interfaces.task.plan import AbstractPlan
 from AFAAS.interfaces.adapters.embeddings.wrapper import (
     ChromaWrapper,
     VectorStoreWrapper,
@@ -31,14 +33,13 @@ from AFAAS.interfaces.adapters.embeddings.wrapper import (
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.prompts.strategy import AbstractChatModelResponse
-    from AFAAS.interfaces.task.plan import AbstractPlan
 
 
 class AbstractAgent(ABC):
 
     _agent_type_: ClassVar[str] = __name__
     _agent_module_: ClassVar[str] = __module__ + "." + __name__
-    plan : Optional[AbstractPlan] = None
+    agent_id: str
 
     @property
     def vectorstores(self) -> VectorStoreWrapper:        
@@ -103,15 +104,20 @@ class AbstractAgent(ABC):
     class SystemSettings(SystemSettings):
 
 
-        class Config(SystemSettings.Config):
-            AGENT_CLASS_FIELD_NAME : str = "_type_"
-            AGENT_CLASS_MODULE_NAME : str = "_module_"
+        
+        
+        model_config = update_model_config(original= SystemSettings.model_config ,
+                                           new = {
+                                                'AGENT_CLASS_FIELD_NAME' : "settings_agent_class_",
+                                                'AGENT_CLASS_MODULE_NAME' : "settings_agent_module_"
+                                                }
+                                            )
 
         modified_at: datetime.datetime = datetime.datetime.now()
         created_at: datetime.datetime = datetime.datetime.now()
         agent_name: str = Field(default="New Agent")
-        agent_goal_sentence: Optional[str]
-        agent_goals: Optional[list]
+        agent_goal_sentence: Optional[str] = None
+        agent_goals: Optional[list] = None
         user_id: str
 
         agent_id: str = Field(default_factory=lambda: AbstractAgent.SystemSettings.generate_uuid())
@@ -119,7 +125,7 @@ class AbstractAgent(ABC):
         def generate_uuid():
             return "A" + str(uuid.uuid4())
 
-        _message_agent_user: Optional[AFAASMessageStack] = Field(default=[])
+        _message_agent_user: Optional[AFAASMessageStack] = ModelPrivateAttr(default=[])
         @property
         def message_agent_user(self) -> AFAASMessageStack:
             if self._message_agent_user is None:
@@ -162,7 +168,7 @@ class AbstractAgent(ABC):
         def dict(self, include_all=False, *args, **kwargs):
             self.prepare_values_before_serialization()  # Call the custom treatment before .dict()
             if not include_all:
-                kwargs["exclude"] = self.Config.default_exclude
+                kwargs["exclude"] = self.model_config['default_exclude']
             # Call the .dict() method with the updated exclude_arg
             return super().dict(*args, **kwargs)
 
@@ -172,7 +178,7 @@ class AbstractAgent(ABC):
             )
             LOG.warning("AbstractAgent.SystemSettings.json()")
             self.prepare_values_before_serialization()  # Call the custom treatment before .json()
-            kwargs["exclude"] = self.Config.default_exclude
+            kwargs["exclude"] = self.model_config['default_exclude']
             return super().json(*args, **kwargs)
 
         # TODO Implement a BaseSettings class and move it to the BaseSettings ?
@@ -230,7 +236,7 @@ class AbstractAgent(ABC):
         self._loop : BaseLoop = None
 
         for key, value in settings.dict().items():
-            if key not in self.SystemSettings.Config.default_exclude:
+            if key not in self.SystemSettings.model_config['default_exclude']:
                 if(not hasattr(self, key)):
                     LOG.notice(f"Adding {key} to the agent")
                     setattr(self, key, value)
@@ -238,65 +244,6 @@ class AbstractAgent(ABC):
                     LOG.debug(f"{key} set for agent {self.agent_id}")
 
         LOG.trace(f"{self.__class__.__name__}.__init__() : Leaving")
-
-    # @classmethod
-    # def get_instance_from_settings(
-    #     cls,
-    #     agent_settings: AbstractAgent.SystemSettings,
-    #     db: AbstractMemory = None,
-    #     default_llm_provider: AbstractLanguageModelProvider = None,
-    #     workspace: AbstractFileWorkspace = None,
-    #     vectorstores: dict[VectorStore] = None,  # Optional parameter for custom vectorstore
-    #     embedding_model: Embeddings = None,  
-    # ) -> AbstractAgent:
-    #     if not isinstance(agent_settings, cls.SystemSettings):
-    #         agent_settings = cls.SystemSettings.parse_obj(agent_settings)
-    #         LOG.warning("Warning : agent_settings is not an instance of SystemSettings")
-
-    #     # TODO: Just pass **agent_settings.dict() to the constructor
-    #     system_dict: dict[Configurable] = {}
-    #     system_dict["settings"] = agent_settings
-    #     system_dict["user_id"] = agent_settings.user_id
-    #     system_dict["agent_id"] = agent_settings.agent_id
-
-    #     agent = cls(    **system_dict , 
-    #                     workspace=workspace, 
-    #                     default_llm_provider=default_llm_provider,
-    #                     vectorstore=vectorstores,
-    #                     embedding_model=embedding_model,
-    #                     db=db,
-    #                     )
-
-    #     return agent
-
-
-    # @classmethod
-    # async def db_get(
-    #     cls,
-    #     agent_settings: AbstractAgent.SystemSettings,
-    #     agent_id: str,
-    #     user_id: str,
-    # ) -> AbstractAgent:
-    #     from AFAAS.core.db.table.nosql.agent import AgentsTable
-    #     from AFAAS.interfaces.db.db import AbstractMemory
-
-    #     db_settings = agent_settings.db
-
-    #     db = AbstractMemory.get_adapter(
-    #         db_settings=db_settings
-    #     )
-    #     agent_table: AgentsTable = await db.get_table("agents")
-    #     agent_dict_from_db = await agent_table.get(
-    #         agent_id=str(agent_id), user_id=str(user_id)
-    #     )
-
-    #     if not agent_dict_from_db:
-    #         return None
-
-    #     agent = cls.get_instance_from_settings(
-    #         agent_settings=agent_settings.copy(update=agent_dict_from_db),
-    #     )
-    #     return agent
 
     # def add_hook(self, hook: BaseLoopHook, hook_id: uuid.UUID = uuid.uuid4()):
     #     self._loop._loophooks[hook["name"]][str(hook_id)] = hook
@@ -373,4 +320,4 @@ class AbstractAgent(ABC):
         return await self._prompt_manager._execute_strategy(strategy_name=strategy_name, **kwargs)
 
 
-AbstractAgent.SystemSettings.update_forward_refs()
+AbstractAgent.SystemSettings.model_rebuild()

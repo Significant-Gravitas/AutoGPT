@@ -149,5 +149,5 @@ async def local_workspace() -> AbstractFileWorkspace:
 @pytest.fixture(scope="function", autouse=True)
 def reset_singleton():
     Plan._instance = {}
-    Plan.initialized = False
+    Plan._initialized = False
     yield

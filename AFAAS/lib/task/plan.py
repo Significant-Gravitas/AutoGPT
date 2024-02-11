@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import threading
 import uuid
-from typing import ClassVar
+from typing import ClassVar, Dict
 
-from pydantic import Field
+from pydantic import Field, ConfigDict 
+from pydantic.fields import PrivateAttr
 
 # from AFAAS.core.db import
 from AFAAS.interfaces.agent.main import BaseAgent
@@ -15,23 +16,51 @@ from AFAAS.lib.sdk.logger import AFAASLogger, CONSOLE_LOG_LEVEL , logging
 from AFAAS.lib.task.task import Task
 from AFAAS.interfaces.workflow import FastTrackedWorkflow
 from AFAAS.lib.task.helper.update_agent_goal import update_agent_goal
+from AFAAS.configs.schema import update_model_config
 
 LOG = AFAASLogger(name=__name__)
 
 
 class Plan(AbstractPlan):
-    class Config(AbstractPlan.Config):
-        # This is a list of Field to Exclude during serialization
-        default_exclude = set(AbstractPlan.Config.default_exclude) | {
-            "initialized",
-            "lock",
-            "_loaded_tasks_dict",
-        }
-        json_encoders = AbstractPlan.Config.json_encoders | {}
 
-    _instance: ClassVar[dict[Plan]] = {}
+
+    model_config = update_model_config(original= AbstractPlan.model_config , 
+                                       new = {
+                                            'default_exclude' : AbstractPlan.model_config["default_exclude"] | {
+                                                "initialized",
+                                                "lock",
+                                                "_loaded_tasks_dict",
+                                            },
+                                            'json_encoders' : 
+                                                AbstractPlan.model_config['json_encoders']| 
+                                                {
+                                                #BaseAgent: lambda a: {'agent_id': a.agent_id}
+                                                }
+        }
+    )
+
+    _modified_tasks_ids: list[str] = PrivateAttr(default=[])
+    _new_tasks_ids: list[str] = PrivateAttr(default=[])
+    _loaded_tasks_dict: Dict[str, Task] = PrivateAttr(default={})
+    _all_task_ids: list[str] = PrivateAttr(default=[])
+    _ready_task_ids: list[str] = PrivateAttr(default=[])
+    _done_task_ids: list[str] = PrivateAttr(default=[])
+
+
+    def dict(self, **kwargs):
+        d = super().dict(**kwargs)
+        d["_all_task_ids"] = self._all_task_ids
+        d["_ready_task_ids"] = self._ready_task_ids
+        d["_done_task_ids"] = self._done_task_ids
+        return d 
+
+    #FIXME:  Pydantic 2.0.0 Limitation
+    #_instance: ClassVar[Dict[Plan]] = {}
+    _instance: ClassVar[dict] = {}
     lock: ClassVar[threading.Lock] = threading.Lock()
-    initialized: ClassVar[bool] = False
+
+    #_initialized: bool = PrivateAttr(False)
+    initialized : ClassVar[bool]
 
     def __new__(cls, *args, **kwargs):
         if kwargs.get("agent", None) is not None:
@@ -39,8 +68,8 @@ class Plan(AbstractPlan):
             with cls.lock:
                 if agent_id in cls._instance:
                     return cls._instance[agent_id]
-
                 instance = super(Plan, cls).__new__(cls)
+
                 cls._instance[agent_id] = instance
                 return instance
         else:
@@ -48,22 +77,36 @@ class Plan(AbstractPlan):
 
     def __init__(self, *args, **kwargs):
         with self.lock:
-            if self.initialized:
-                return
+            if not hasattr(Plan, 'initialized') or not Plan.initialized:
+                # Initialize the instance if needed
+                super().__init__(**kwargs)
+                Plan._instance[kwargs["agent"].agent_id] = self
+                self.agent.plan: Plan = self
+                #self._initialized = True 
+                Plan.initialized = True
 
-            # Initialize the instance if needed
-            super().__init__(**kwargs)
-            Plan._instance[kwargs["agent"].agent_id] = self
-            self.agent.plan: Plan = self
-            self.initialized = True
-            # self.reset_instance()
-            self._modified_tasks_ids = []
-            self._new_tasks_ids = []
-            self._loaded_tasks_dict = {}
-            self._all_task_ids = kwargs.get("_all_task_ids", [])
-            self._ready_task_ids = kwargs.get("_ready_task_ids", [])
-            self._done_task_ids = kwargs.get("_done_task_ids", [])
-            # self.task_goal = kwargs.get('task_goal' , self.agent.agent_goal)
+                # self.reset_instance()
+                self._modified_tasks_ids = []
+                self._new_tasks_ids = []
+                self._loaded_tasks_dict = {}
+                self._all_task_ids = kwargs.get("_all_task_ids", [])
+                self._ready_task_ids = kwargs.get("_ready_task_ids", [])
+                self._done_task_ids = kwargs.get("_done_task_ids", [])
+                # self.task_goal = kwargs.get('task_goal' , self.agent.agent_goal)
+
+
+        Plan.initialized = False
+
+    def reset_attributes(self):
+        """Resets specific attributes to their initial values."""
+        LOG.warning("This method should not be used unless it is to reset a Plan instance in pytest")
+        self._subtasks = None
+        self._all_task_ids = []
+        self._ready_task_ids = []
+        self._done_task_ids = []
+        self._loaded_tasks_dict = {}
+        self._modified_tasks_ids = []
+        self._new_tasks_ids = []
 
     @classmethod
     async def _load(cls, plan_id: str, agent: BaseAgent, **kwargs):
@@ -352,32 +395,32 @@ class Plan(AbstractPlan):
     def get_loaded_tasks_dict(self) -> dict[str, Task]:
         return self._loaded_tasks_dict
 
-    def set_loaded_tasks_dict(self, tasks_dict):
+    def set_loaded_tasks_dict(self, tasks_dict : dict[str, Task]):
         """Sets the loaded tasks dictionary."""
         LOG.warning("This method should not be used unless it is to reset a Plan instance in pytest")
         self._loaded_tasks_dict = tasks_dict
 
-    def set_all_task_ids(self, task_ids):
+    def set_all_tasks_ids(self, task_ids : list[str]):
         """Sets the list of all task IDs."""
         LOG.warning("This method should not be used unless it is to reset a Plan instance in pytest")
         self._all_task_ids = task_ids
 
-    def set_ready_task_ids(self, task_ids):
+    def set_ready_tasks_ids(self, task_ids : list[str]):
         """Sets the list of ready task IDs."""
         LOG.warning("This method should not be used unless it is to reset a Plan instance in pytest")
         self._ready_task_ids = task_ids
 
-    def set_done_task_ids(self, task_ids):
+    def set_done_tasks_ids(self, task_ids : list[str]):
         """Sets the list of done task IDs."""
         LOG.warning("This method should not be used unless it is to reset a Plan instance in pytest")
         self._done_task_ids = task_ids
 
-    def set_modified_tasks_ids(self, task_ids):
+    def set_modified_tasks_ids(self, task_ids : list[str]):
         """Sets the list of modified task IDs."""
         LOG.warning("This method should not be used unless it is to reset a Plan instance in pytest")
         self._modified_tasks_ids = task_ids
 
-    def set_new_tasks_ids(self, task_ids):
+    def set_new_tasks_ids(self, task_ids : list[str]):
         """Sets the list of new task IDs."""
         LOG.warning("This method should not be used unless it is to reset a Plan instance in pytest")
         self._new_tasks_ids = task_ids
@@ -387,6 +430,7 @@ class Plan(AbstractPlan):
 
     def get_modified_tasks_ids(self):
         return self._modified_tasks_ids
+
 
     #############################################################################################
     #############################################################################################
@@ -489,7 +533,7 @@ class Plan(AbstractPlan):
         Register a task as modified in the index of modified Task (Plan._modified_tasks_ids)
         """
         LOG.debug(f"Task {task_id} is registered as modified in the Lazy Loading List")
-        if task_id not in self.get_modified_tasks_ids():
+        if task_id not in self._modified_tasks_ids:
             self._modified_tasks_ids.append(task_id)
 
     def _register_task_as_new(self, task_id: str):
@@ -565,7 +609,7 @@ class Plan(AbstractPlan):
         agent = self.agent
         if agent:
             db = agent.db
-            self.agent_id = agent.agent_id
+            #self.agent_id = agent.agent_id
             plan_table = await db.get_table("plans")
             await plan_table.add(value=self, id=self.plan_id)
 
@@ -624,5 +668,5 @@ class Plan(AbstractPlan):
         self._ready_task_ids.insert(0, task.task_id)
 
 
-Plan.update_forward_refs()
+Plan.model_rebuild()
 

@@ -13,6 +13,7 @@ from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy,
     PromptStrategiesConfiguration,
 )
+from AFAAS.lib.utils.json_schema import JSONSchema
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -24,7 +25,7 @@ class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
         "and the progress you have made so far, "
         "and respond using the JSON schema specified previously:"
     )
-    DEFAULT_RESPONSE_SCHEMA = copy.deepcopy(RESPONSE_SCHEMA)
+    DEFAULT_RESPONSE_SCHEMA : JSONSchema = copy.deepcopy(RESPONSE_SCHEMA)
 
     response_schema: dict = Field(
         default_factory=DEFAULT_RESPONSE_SCHEMA.to_dict

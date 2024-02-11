@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, validator
+from pydantic import field_validator, BaseModel, Field
 
 
 class AgentInfo(BaseModel):
@@ -19,7 +19,8 @@ class AgentConfiguration(BaseModel):
     user_configuration: dict
     agent_goals: AgentInfo
 
-    @validator("agent_goals")
+    @field_validator("agent_goals")
+    @classmethod
     def only_objective_or_name_role_goals(cls, agent_goals):
         goals_specification = [agent_goals.name, agent_goals.role, agent_goals.goals]
         if agent_goals.objective and any(goals_specification):
@@ -35,5 +36,5 @@ class AgentMessageRequestBody(BaseModel):
 
 class PlannerAgentMessageResponseBody(BaseModel):
     ability_result: Dict[str, Any]
-    current_task: Optional[Any]
-    next_ability: Optional[Any]
+    current_task: Optional[Any] = None
+    next_ability: Optional[Any] = None

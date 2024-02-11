@@ -5,8 +5,10 @@ import copy
 import time
 from typing import TYPE_CHECKING, Any, Optional
 
-from pydantic import Field, validator
+from pydantic import Field, field_validator , ConfigDict
+from pydantic.fields import PrivateAttr
 
+from AFAAS.configs.schema import update_model_config
 from AFAAS.core.tools.tool import Tool
 from AFAAS.interfaces.adapters import AbstractChatModelResponse
 from AFAAS.interfaces.adapters.embeddings.wrapper import (
@@ -54,7 +56,7 @@ class Task(AbstractTask):
         # Set attribute as normal
         super().__setattr__(key, value)
         # If the key is a model field, mark the instance as modified
-        if key in self.__fields__:
+        if key in self.model_fields:
             self.agent.plan._register_task_as_modified(task_id=self.task_id)
 
         if key == "state":
@@ -62,26 +64,30 @@ class Task(AbstractTask):
                 task_id=self.task_id, status=value
             )
 
-    class Config(AbstractBaseTask.Config):
-        default_exclude = set(AbstractBaseTask.Config.default_exclude) | {
-            # If commented create an infinite loop
-            "task_parent",
-            "task_predecessors",
-            "task_successors",
-            "_task_parent_future",
-            "_task_parent_loading",
-            "_task_parent",
-            "task_overide_tool_success_check_callback",
+
+    model_config = update_model_config(original= AbstractBaseTask.model_config , 
+                                       new = {
+                                            'default_exclude' : AbstractBaseTask.model_config['default_exclude'] | {
+                                                                # If commented create an infinite loop
+                                                                "task_parent",
+                                                                "task_predecessors",
+                                                                "task_successors",
+                                                                "_task_parent_future",
+                                                                "_task_parent_loading",
+                                                                "_task_parent",
+                                                                "task_overide_tool_success_check_callback",
+                                                                }
         }
+    )
 
     ###
     ### GENERAL properties
     ###
     task_id: str = Field(default_factory=lambda: Task.generate_uuid())
 
-    plan_id: Optional[str] = Field()
+    plan_id: Optional[str] = Field(None)
 
-    _task_parent_id: str = Field(...)
+    _task_parent_id: str = PrivateAttr()
     _task_parent: Optional[Task] = None
 
     async def task_parent(self) -> AbstractBaseTask:
@@ -94,8 +100,8 @@ class Task(AbstractTask):
         except KeyError:
             raise ValueError(f"No parent task found with ID {self._task_parent_id}")
 
-    _task_predecessors: Optional[TaskStack]  # = Field(default=None)
-    _task_successors: Optional[TaskStack]  # = Field(default=None)
+    _task_predecessors: Optional[TaskStack] = None  # = Field(default=None)
+    _task_successors: Optional[TaskStack] = None  # = Field(default=None)
 
     @property
     def task_predecessors(self) -> TaskStack:
@@ -117,13 +123,15 @@ class Task(AbstractTask):
             )
         return self._task_successors
 
-    @validator("state", pre=True)
+    # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
+    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
+    @field_validator("state")
     def set_state(cls, new_state, values):
-        task_id = values.get("task_id")
+        task_id = values.data.get("task_id")
         if task_id and new_state:
             LOG.debug(f"Setting state of task {task_id} to {new_state}")
             # Assuming LOG and agent are defined and accessible
-            agent: BaseAgent = values.get("agent")
+            agent: BaseAgent = values.data.get("agent")
             if agent:
                 agent.plan._registry_update_task_status_in_list(
                     task_id=task_id, status=new_state
@@ -135,9 +143,9 @@ class Task(AbstractTask):
     command: Optional[str] = Field(default_factory=lambda: Task.default_tool())
     arguments: Optional[dict] = Field(default={})
 
-    task_text_output: Optional[str]
+    task_text_output: Optional[str] = None
     """ The agent summary of his own doing while performing the task"""
-    task_text_output_as_uml: Optional[str]
+    task_text_output_as_uml: Optional[str] = None
     """ The agent summary of his own doing while performing the task as a UML diagram"""
 
     async def is_ready(self) -> bool:
@@ -631,4 +639,4 @@ class Task(AbstractTask):
 
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.
-Task.update_forward_refs()
+Task.model_rebuild()

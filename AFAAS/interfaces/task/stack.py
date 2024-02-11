@@ -4,8 +4,9 @@ import json
 from typing import TYPE_CHECKING, Any, Generator
 
 from pydantic import Field
+from pydantic.fields import PrivateAttr
 
-from AFAAS.configs.schema import AFAASModel
+from AFAAS.configs.schema import AFAASModel, update_model_config
 from AFAAS.interfaces.task.base import AbstractBaseTask
 
 if TYPE_CHECKING:
@@ -18,7 +19,7 @@ LOG = AFAASLogger(name=__name__)
 
 class TaskStack(AFAASModel):
     parent_task: AbstractBaseTask = Field(..., exclude=True)
-    _task_ids: list[str] = Field(default=[])
+    _task_ids: list[str] = PrivateAttr(default=[])
 
     def __init__(self, **data: Any):
         super().__init__(**data)
@@ -39,6 +40,8 @@ class TaskStack(AFAASModel):
         return iter(self._task_ids)
 
     @classmethod
+    # TODO[pydantic]: We couldn't refactor `__get_validators__`, please create the `__get_pydantic_core_schema__` manually.
+    # Check https://docs.pydantic.dev/latest/migration/#defining-custom-types for more information.
     def __get_validators__(cls) -> Generator:
         LOG.trace(f"{cls.__name__}.__get_validators__()")
         yield cls.validate
@@ -159,7 +162,3 @@ class TaskStack(AFAASModel):
 
     def __str__(self):
         return self._task_ids.__str__()
-
-
-# Additional methods can be added as needed
-TaskStack.update_forward_refs()

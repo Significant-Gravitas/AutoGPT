@@ -47,9 +47,9 @@ class Questions(AFAASModel):
         return "QUE" + str(uuid.uuid4())
 
     message: str
-    type: Optional[QuestionTypes]
-    state: Optional[QuestionStates]
-    items: Optional[list[QuestionItems]]
+    type: Optional[QuestionTypes] = None
+    state: Optional[QuestionStates] = None
+    items: Optional[list[QuestionItems]] = None
 
 
 class Emiter(enum.Enum):

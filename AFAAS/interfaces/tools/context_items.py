@@ -97,5 +97,5 @@ class FolderContextItem(AFAASModel, ContextItem):
 
 class StaticContextItem(AFAASModel, ContextItem):
     item_description: str = Field(alias="description")
-    item_source: Optional[str] = Field(alias="source")
+    item_source: Optional[str] = Field(None, alias="source")
     item_content: str = Field(alias="content")

@@ -207,7 +207,7 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         self,
         chat_messages: list[ChatMessage],
         tools: list[CompletionModelFunction],
-        model_name: OpenAIModelName,
+        llm_model_name: OpenAIModelName,
         tool_choice: str,
         default_tool_choice: str,  # This one would be called after 3 failed attemps(cf : try/catch block)
         completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
@@ -239,7 +239,7 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         # ### Step 1: Prepare arguments for API call
         # ##############################################################################
         completion_kwargs = self._initialize_completion_args(
-            model_name=model_name,
+            model_name=llm_model_name,
             tools=tools,
             tool_choice=tool_choice,
             **kwargs,
@@ -252,7 +252,7 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
             model_prompt=chat_messages, **completion_kwargs
         )
         response_message, response_args = self._extract_response_details(
-            response=response, model_name=model_name
+            response=response, model_name=llm_model_name
         )
 
         # ##############################################################################
@@ -269,7 +269,7 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
                     model_prompt=chat_messages,
                     tools=tools,
                     completion_kwargs=completion_kwargs,
-                    model_name=model_name,
+                    model_name=llm_model_name,
                     completion_parser=completion_parser,
                     default_tool_choice=default_tool_choice,
                     response=response,
@@ -336,7 +336,7 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         self, response: AsyncCompletions, model_name: str
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         response_args = {
-            "model_info": OPEN_AI_CHAT_MODELS[model_name],
+            "llm_model_info": OPEN_AI_CHAT_MODELS[model_name],
             "prompt_tokens_used": response.usage.prompt_tokens,
             "completion_tokens_used": response.usage.completion_tokens,
         }
@@ -373,7 +373,7 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         self._budget.update_usage_and_cost(model_response=response)
         return await self.create_chat_completion(
             chat_messages=model_prompt,
-            model_name=model_name,
+            llm_model_name=model_name,
             completion_parser=completion_parser,
             **completion_kwargs,
         )

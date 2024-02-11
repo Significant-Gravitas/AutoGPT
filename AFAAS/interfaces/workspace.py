@@ -35,8 +35,8 @@ class AbstractFileWorkspace(Configurable, ABC):
     """A class that represents a file workspace."""
 
     class SystemSettings(Configurable.SystemSettings):
-        name = "workspace"
-        description = "The workspace is the root directory for all agent activity."
+        name : str =  "workspace"
+        description : str =  "The workspace is the root directory for all agent activity."
         configuration: AbstractFileWorkspaceConfiguration
 
     def __init__(

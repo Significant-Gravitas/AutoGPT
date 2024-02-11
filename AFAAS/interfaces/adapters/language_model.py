@@ -4,7 +4,7 @@ import abc
 import enum
 from typing import Callable, ClassVar, Protocol
 
-from pydantic import BaseModel, Field, validator
+from pydantic import field_validator, ConfigDict, BaseModel, Field
 
 from AFAAS.configs.schema import SystemConfiguration, Field
 from AFAAS.interfaces.adapters.configuration import (
@@ -47,7 +47,7 @@ class BaseModelResponse(BaseModel):
 
     prompt_tokens_used: int
     completion_tokens_used: int
-    model_info: BaseModelInfo
+    llm_model_info: BaseModelInfo
 
 
 class BaseModelProviderConfiguration(SystemConfiguration):
@@ -63,8 +63,7 @@ class BaseModelProviderCredentials(BaseProviderCredentials):
     api_base: str | None = Field(default=None)
     api_version: str | None = Field(default=None)
     deployment_id: str | None = Field(default=None)
-    class Config:
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")
 
 
 class BaseModelProviderUsage(BaseProviderUsage):
@@ -96,11 +95,11 @@ class BaseModelProviderBudget(BaseProviderBudget):
         model_response: BaseModelResponse,
     ) -> None:
         """Update the usage and cost of the provider."""
-        model_info = model_response.model_info
+        llm_model_info = model_response.llm_model_info
         self.usage.update_usage(model_response)
         incurred_cost = (
-            model_response.completion_tokens_used * model_info.completion_token_cost
-            + model_response.prompt_tokens_used * model_info.prompt_token_cost
+            model_response.completion_tokens_used * llm_model_info.completion_token_cost
+            + model_response.prompt_tokens_used * llm_model_info.prompt_token_cost
         )
         self.total_cost += incurred_cost
         if abs(self.remaining_budget) != float("inf"):
@@ -159,7 +158,7 @@ class ModelTokenizer(Protocol):
 class EmbeddingModelInfo(BaseModelInfo):
     """Struct for embedding model information."""
 
-    llm_service = ModelProviderService.EMBEDDING
+    llm_service : ModelProviderService = ModelProviderService.EMBEDDING
     embedding_dimensions: int
 
 
@@ -169,7 +168,8 @@ class EmbeddingModelResponse(BaseModelResponse):
     embedding: Embedding = Field(default_factory=list)
 
     @classmethod
-    @validator("completion_tokens_used")
+    @field_validator("completion_tokens_used")
+    @classmethod
     def _verify_no_completion_tokens_used(cls, v):
         if v > 0:
             raise ValueError("Embeddings should not have completion tokens used.")

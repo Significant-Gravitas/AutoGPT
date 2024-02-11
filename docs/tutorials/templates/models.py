@@ -11,18 +11,8 @@ from AFAAS.interfaces.adapters import OpenAISettings
 from AFAAS.interfaces.db import MemorySettings
 
 
-# Define the Agent Systems Class
-# This class defines the systems that will be used by your custom agent.
-class MyCustomAgentSystems(SystemConfiguration):
-    # Define the plugin locations for each system your agent will use.
-    memory: PluginLocation  # Plugin location for the memory system
-    openai_provider: PluginLocation  # Plugin location for the OpenAI provider system
-    workspace: PluginLocation
-    # ... add other systems as needed
 
-    class Config(SystemConfiguration.Config):
-        # Specify any additional configuration options for this class.
-        extra = "allow"
+
 
 
 # Define the Agent Configuration Class
@@ -35,9 +25,6 @@ class MyCustomAgentConfiguration(SystemConfiguration):
     systems: MyCustomAgentSystems  # Reference to the Agent Systems class
     # ... add other configurations as needed
 
-    class Config(SystemConfiguration.Config):
-        # Specify any additional configuration options for this class.
-        extra = "allow"
 
 
 # Define the Agent System Settings Class
@@ -46,9 +33,7 @@ class MyCustomAgentSystemSettings(SystemSettings):
     # Hold a reference to the Agent Configuration class.
     configuration: MyCustomAgentConfiguration
 
-    class Config(SystemSettings.Config):
-        # Specify any additional configuration options for this class.
-        extra = "allow"
+
 
 
 # Define the Agent Settings Class
@@ -65,7 +50,7 @@ class MyCustomAgentSettings(BaseModel):
         # Define any additional configuration options for this class.
         json_encoders = {uuid.UUID: lambda v: str(v)}  # Custom encoder for UUID4
         extra = "allow"
-        default_exclude = {
+        default_exclude={
             "agent",
             # ... add other fields to exclude during serialization
         }

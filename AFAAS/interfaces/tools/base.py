@@ -27,7 +27,7 @@ class ToolConfiguration(SystemConfiguration):
     workspace_required: bool = False
 
 
-ToolConfiguration.update_forward_refs()
+ToolConfiguration.model_rebuild()
 
 
 # class AbstractTool(AgentMixin, abc.ABC):
