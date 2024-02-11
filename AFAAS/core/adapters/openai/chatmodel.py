@@ -24,6 +24,7 @@ from AFAAS.interfaces.adapters.chatmodel import (
     AssistantChatMessageDict,
     ChatMessage,
     CompletionModelFunction,
+    ChatCompletionKwargs
 )
 from AFAAS.interfaces.adapters.language_model import  ModelTokenizer
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -105,19 +106,6 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         num_tokens += 3  # every reply is primed with <|start|>assistant<|message|>
         return num_tokens
 
-
-    def _initialize_completion_args(
-        self,
-        model_name: str,
-        tools: list[CompletionModelFunction],
-        tool_choice: str,
-        **kwargs: Any,
-    ) -> Dict[str, Any]:
-        completion_kwargs = self._get_completion_kwargs(model_name, tools, **kwargs)
-        completion_kwargs["tool_choice"] = tool_choice
-        return completion_kwargs
-
-
     def _extract_response_details(
         self, response: AsyncCompletions, model_name: str
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -133,14 +121,8 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         self, tools: list[CompletionModelFunction], response_message: Dict[str, Any]
     ) -> bool:
         if tools is not None and "tool_calls" not in response_message:
-            LOG.error(
-                f"Attempt number {self._func_call_fails_count + 1} : Function Call was expected"
-            )
             return True
         return False
-
-
-    # def _handle_failed_retry(self, response_message: Dict[str, Any], response: openai.Completion) -> None:
 
     def _formulate_final_response(
         self,
@@ -156,55 +138,33 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         self._budget.update_usage_and_cost(model_response=response)
         return response
 
-    def _get_completion_kwargs(
-        self,
-        model_name: OpenAIModelName,
-        functions: list[CompletionModelFunction],
-        **kwargs,
-    ) -> dict:
-        completion_kwargs = {
-            "model": model_name,
-            **kwargs,
-            # **self._credentials.unmasked(),
-        }
-        if functions:
-            completion_kwargs["tools"] = [
-                {"type": "function", "function": f.schema} for f in functions
-            ]
-
-        return completion_kwargs
-
     def __repr__(self):
         return "OpenAIProvider()"
 
     def has_oa_tool_calls_api(self, model_name: str) -> bool:
-        # print(self._providers[model_name])
-        return OPEN_AI_CHAT_MODELS[model_name].has_function_call_api
+        return True # Always True for OpenAI
+        #return OPEN_AI_CHAT_MODELS[model_name].has_function_call_api
 
     def get_default_config(self) -> OpenAIPromptConfiguration:
         return OPEN_AI_DEFAULT_CHAT_CONFIGS.SMART_MODEL_32K
 
-    def make_chat_kwargs(self, **kwargs) -> dict:          
-        if not "tools" in kwargs or kwargs["tools"] is None or len(kwargs["tools"]) == 0:
-            if "tools" in kwargs:
-                del kwargs["tools"]
-            kwargs.pop("tool_choice", None)
 
-        else:
-            if len(kwargs["tools"]) == 0:
-                del kwargs["tools"]
-                kwargs.pop("tool_choice", None)
-            elif len(kwargs["tools"]) == 1:
-                kwargs["tool_choice"] = self.make_tool_choice(name= kwargs["tools"][0]["function"]["name"])
-            elif kwargs["tool_choice"] != "auto":
-                kwargs["tool_choice"] = self.make_tool_choice(name= kwargs["tool_choice"])
-        return kwargs
+    def make_tool(self, f : CompletionModelFunction) -> dict:
+        return  {"type": "function", "function": f.schema}
 
-    def make_tool_choice(self , name : str) -> dict:
+    def make_tool_choice_arg(self , name : str) -> dict:
         return {
+            "tool_choice" : {
             "type": "function",
             "function": {"name": name},
+            }
         }
+
+    def make_model_arg(self, model_name : str) -> dict:
+        return { "model" : model_name }
+
+    def make_tools_arg(self, tools : list[CompletionModelFunction]) -> dict:
+        return { "tools" : [self.make_tool(f) for f in tools] }
 
     async def chat(
         self, messages: list[ChatMessage], *_, **llm_kwargs
