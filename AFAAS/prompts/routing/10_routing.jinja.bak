@@ -42,7 +42,6 @@ routing_param = {
             "token_limitation_description": "Responses from the LLM may be restricted in depth or breadth due to token constraints.",
             "cognitive_limitation_description": "Despite its vast data repository, the LLM may not always exhibit human-like intuition or insights.",
             "decision_process_description": "",
-            "additional_context_description": str(task.task_context),
             "approach_section_title": "Possible Approaches",
             "approaches": [
                 {

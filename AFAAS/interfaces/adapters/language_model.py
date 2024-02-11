@@ -23,18 +23,10 @@ class ModelProviderService(str, enum.Enum):
     CHAT: str = "language"
     TEXT: str = "text"
 
-
 class ModelProviderName(str, enum.Enum):
     OPENAI: str = "openai"
 
-
 class BaseModelInfo(BaseModel):
-    """Struct for model information.
-
-    Would be lovely to eventually get this directly from APIs, but needs to be
-    scraped from websites for now.
-    """
-
     name: str
     service: ModelProviderService
     provider_name: ModelProviderName
@@ -43,8 +35,6 @@ class BaseModelInfo(BaseModel):
 
 
 class BaseModelResponse(BaseModel):
-    """Standard response struct for a response from a model."""
-
     prompt_tokens_used: int
     completion_tokens_used: int
     llm_model_info: BaseModelInfo
@@ -56,8 +46,6 @@ class BaseModelProviderConfiguration(SystemConfiguration):
 
 
 class BaseModelProviderCredentials(BaseProviderCredentials):
-    """Credentials for a model provider."""
-
     api_key: str | None = Field(default=None)
     api_type: str | None = Field(default=None)
     api_base: str | None = Field(default=None)
@@ -67,8 +55,6 @@ class BaseModelProviderCredentials(BaseProviderCredentials):
 
 
 class BaseModelProviderUsage(BaseProviderUsage):
-    """Usage for a particular model from a model provider."""
-
     completion_tokens: int = 0
     prompt_tokens: int = 0
     total_tokens: int = 0
@@ -113,8 +99,6 @@ class BaseModelProviderSettings(BaseProviderSettings):
 
 
 class AbstractModelProvider(abc.ABC):
-    """A ModelProvider abstracts the details of a particular provider of models."""
-
     default_settings: ClassVar[BaseModelProviderSettings]
 
     _configuration: BaseModelProviderConfiguration
@@ -139,53 +123,14 @@ class AbstractLanguageModelProvider(AbstractModelProvider):
     @abc.abstractmethod
     def get_default_config(self) -> AbstractPromptConfiguration: ...
 
-
 class ModelTokenizer(Protocol):
-    """A ModelTokenizer provides tokenization specific to a model."""
-
     @abc.abstractmethod
     def encode(self, text: str) -> list: ...
 
     @abc.abstractmethod
     def decode(self, tokens: list) -> str: ...
 
-
-####################
-# Embedding Models #
-####################
-
-
-class EmbeddingModelInfo(BaseModelInfo):
-    """Struct for embedding model information."""
-
-    llm_service : ModelProviderService = ModelProviderService.EMBEDDING
-    embedding_dimensions: int
-
-
-class EmbeddingModelResponse(BaseModelResponse):
-    """Standard response struct for a response from an embedding model."""
-
-    embedding: Embedding = Field(default_factory=list)
-
-    @classmethod
-    @field_validator("completion_tokens_used")
-    @classmethod
-    def _verify_no_completion_tokens_used(cls, v):
-        if v > 0:
-            raise ValueError("Embeddings should not have completion tokens used.")
-        return v
-
-
-class EmbeddingModelProvider(AbstractModelProvider):
-    @abc.abstractmethod
-    async def create_embedding(
-        self,
-        text: str,
-        model_name: str,
-        embedding_parser: Callable[[Embedding], Embedding],
-        **kwargs,
-    ) -> EmbeddingModelResponse: ...
-
-
 class AbstractPromptConfiguration(abc.ABC, SystemConfiguration):
     """Struct for model configuration."""
+    ...
+

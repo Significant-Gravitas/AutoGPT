@@ -131,7 +131,6 @@ class EvaluateSelectStrategy(AbstractPromptStrategy):
         evaluate_and_select_param = {
             "step": self.STRATEGY_NAME,
             "task": task,
-            "task_goal": task.task_goal,
             "additional_context_description": str(task.task_context),
         }
 

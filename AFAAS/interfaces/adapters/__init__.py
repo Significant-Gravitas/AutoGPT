@@ -16,9 +16,5 @@ from AFAAS.interfaces.adapters.language_model import (
     AbstractPromptConfiguration,
     BaseModelInfo,
     BaseModelProviderSettings,
-    Embedding,
-    EmbeddingModelInfo,
-    EmbeddingModelProvider,
-    EmbeddingModelResponse,
     ModelProviderName,
 )

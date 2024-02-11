@@ -23,6 +23,7 @@ from AFAAS.interfaces.adapters import (
     AbstractChatModelProvider,
     AbstractChatModelResponse,
 )
+from AFAAS.interfaces.adapters.chatmodel import ChatModelWrapper
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -62,8 +63,6 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
 
     def load_strategies(self) -> list[AbstractPromptStrategy]:
 
-
-
         # Dynamically load strategies from AFAAS.prompts.common
         for attribute_name in dir(common_module):
             attribute = getattr(common_module, attribute_name)
@@ -86,11 +85,6 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
             self.add_strategy( strategy_module_attr(**strategy_module_attr.default_configuration.dict()))
 
     async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse:
-        """
-        await simple_planner.execute_strategy('name_and_goals', user_objective='Learn Python')
-        await simple_planner.execute_strategy('initial_plan', agent_name='Alice', agent_role='Student', agent_goals=['Learn Python'], tools=['coding'])
-        await simple_planner.execute_strategy('initial_plan', agent_name='Alice', agent_role='Student', agent_goal_sentence=['Learn Python'], tools=['coding'])
-        """
         if strategy_name not in self._prompt_strategies:
             raise ValueError(f"Invalid strategy name {strategy_name}")
 
@@ -139,8 +133,9 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
         template_kwargs.update(model_configuration)
 
         prompt = await prompt_strategy.build_message(**template_kwargs)
+        llm_wrapper = ChatModelWrapper(llm_model=provider)
 
-        response: AbstractChatModelResponse = await provider.create_chat_completion(
+        response: AbstractChatModelResponse = await llm_wrapper.create_chat_completion(
             chat_messages=prompt.messages,
             tools=prompt.tools,
             **model_configuration,
