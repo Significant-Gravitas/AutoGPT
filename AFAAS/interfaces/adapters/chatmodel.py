@@ -161,9 +161,7 @@ class ChatModelWrapper:
         retry_handler = _RetryHandler(
             num_retries=self.retry_per_request,
         )
-        #self._create_chat_completion = retry_handler(self._chat)
-        #FIXME: Remove beforce commit
-        self._create_chat_completion = self._chat
+        self._create_chat_completion = retry_handler(self._chat)
         self._func_call_fails_count = 0
 
 
