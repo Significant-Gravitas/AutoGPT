@@ -71,6 +71,7 @@ To resolve this, you can use the `dos2unix` utility to convert the line endings 
 sudo apt update
 sudo apt install dos2unix
 dos2unix ./run
+dos2unix ./setup.sh
 ```
 
 After executing the above commands, running `./run setup` should work successfully. 
