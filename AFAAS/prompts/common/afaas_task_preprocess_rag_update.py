@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
@@ -121,7 +121,7 @@ class AfaasPostRagTaskUpdateStrategy(AbstractPromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> DefaultParsedResponse:
         return self.default_parse_response_content(response_content=response_content)
 

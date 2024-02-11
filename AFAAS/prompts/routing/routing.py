@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage
+from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , ChatMessage
 
 import enum
 import os
@@ -13,7 +13,7 @@ from jinja2 import Environment, FileSystemLoader
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
@@ -157,7 +157,7 @@ class RoutingStrategy(AbstractPromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> DefaultParsedResponse:
         return self.default_parse_response_content(response_content)
 

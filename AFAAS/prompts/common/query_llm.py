@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from AFAAS.interfaces.task.task import AbstractTask
 
-from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage
+from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , ChatMessage
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
@@ -96,7 +96,7 @@ class QueryLLMStrategy(AbstractPromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> DefaultParsedResponse:
         return response_content["content"]
 

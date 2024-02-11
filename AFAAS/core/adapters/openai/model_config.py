@@ -7,8 +7,6 @@ from openai import AsyncOpenAI
 
 from AFAAS.configs.schema import Field
 from AFAAS.interfaces.adapters.chatmodel import (
-    AbstractChatMessage,
-    AbstractRoleLabels,
     ChatModelInfo,
 )
 from AFAAS.interfaces.adapters.language_model import (
@@ -43,18 +41,18 @@ class OpenAIModelName(str, enum.Enum):
 
     # ADA = "text-embedding-ada-002"
     # GPT3 = "gpt-3.5-turbo-instruct"
-    # GPT3_16k = "gpt-3.5-turbo-1106"
-    # GPT3_FINE_TUNED = "gpt-3.5-turbo-1106" + ""
+    # GPT3_16k = "gpt-3.5-turbo"
+    # GPT3_FINE_TUNED = "gpt-3.5-turbo" + ""
     # # GPT4 = "gpt-4-0613" # TODO for tests
-    # GPT4 = "gpt-3.5-turbo-1106"
+    # GPT4 = "gpt-3.5-turbo"
     # GPT4_32k = "gpt-4-1106-preview"
 
     ADA = "text-embedding-ada-002"
-    GPT3 = "gpt-3.5-turbo-1106"
-    GPT3_16k = "gpt-3.5-turbo-1106"
-    GPT3_FINE_TUNED = "gpt-3.5-turbo-1106" + ""
-    GPT4 = "gpt-3.5-turbo-1106"
-    GPT4_32k = "gpt-3.5-turbo-1106"
+    GPT3 = "gpt-3.5-turbo"
+    GPT3_16k = "gpt-3.5-turbo"
+    GPT3_FINE_TUNED = "gpt-3.5-turbo" + ""
+    GPT4 = "gpt-3.5-turbo"
+    GPT4_32k = "gpt-3.5-turbo"
 
 
 OPEN_AI_CHAT_MODELS = {
@@ -156,7 +154,7 @@ class OpenAISettings(BaseModelProviderSettings):
 
     configuration: OpenAIProviderConfiguration = OpenAIProviderConfiguration()
     credentials: BaseModelProviderCredentials = BaseModelProviderCredentials()
-    budget: OpenAIModelProviderBudget = OpenAIModelProviderBudget()
+    budget: OpenAIModelProviderBudget = OpenAIModelProviderBudget()    
 
     name : str =  "chat_model_provider"
     description : str =  "Provides access to OpenAI's API."

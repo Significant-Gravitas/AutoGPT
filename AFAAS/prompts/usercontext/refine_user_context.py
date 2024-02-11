@@ -3,10 +3,10 @@ from __future__ import annotations
 import enum
 import uuid
 
-from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage
+from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , ChatMessage
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
@@ -221,7 +221,7 @@ class RefineUserContextStrategy(AbstractPromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> dict:
         try:
             parsed_response = json_loads(

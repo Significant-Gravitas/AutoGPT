@@ -18,11 +18,13 @@ from AFAAS.configs.schema import SystemConfiguration
 from AFAAS.interfaces.adapters import (
     AbstractChatModelResponse,
     AbstractLanguageModelProvider,
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     CompletionModelFunction,
 )
 from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
-from AFAAS.interfaces.adapters.chatmodel import ChatMessage, ChatPrompt
+from AFAAS.interfaces.adapters.chatmodel import  ChatPrompt
+from langchain_core.messages import ChatMessage
+
 from AFAAS.interfaces.prompts.utils.utils import (
     indent,
     json_loads,
@@ -116,7 +118,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     async def build_message(self, *_, **kwargs) -> ChatPrompt: ...
 
     @abc.abstractmethod
-    def parse_response_content(self, response_content: AssistantChatMessageDict): ...
+    def parse_response_content(self, response_content: AssistantChatMessage): ...
 
     @abc.abstractmethod
     def set_tools(self, **kwargs): ...
@@ -203,7 +205,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     ###
     def default_parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> list[DefaultParsedResponse]:
         """Parse the actual text response from the objective model.
 
@@ -282,14 +284,59 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
 
         return template.render(template_params)
 
+
+
+
+
     def build_chat_prompt(self, messages: list[ChatMessage] , tool_choice : str = "auto") -> ChatPrompt:
+        ChatMessage
+
+        # messagev2 = []
+        # if isinstance(messages, list):
+        #     for message in messages:
+        #         messagev2.append(convert_v1_instance_to_v2_dynamic(message))
+        # else : 
+        #     messagev2.append(convert_v1_instance_to_v2_dynamic(messages))
+
+        # print("""////////////////////////////////////\n\n"""*3)
+        # print(messages[0])
+        # print(messagev2[0])
+        # exit()
         strategy_tools = self.get_tools()
         prompt = ChatPrompt(
-            messages=messages,
-            tools=strategy_tools,
-            tool_choice="auto",
-            default_tool_choice=self.default_tool_choice,
-            tokens_used=0,
+            messages = messages ,
+            tools= strategy_tools ,
+            tool_choice = tool_choice ,
+            default_tool_choice =self.default_tool_choice ,
+            tokens_used = 0 ,
         )
 
         return prompt
+
+
+
+
+from pydantic import BaseModel
+def convert_v1_instance_to_v2_dynamic(obj_v1: BaseModel) -> BaseModel:
+
+        from pydantic import  create_model
+        from typing import Type
+        """
+        Converts an instance of a Pydantic v1 model to a dynamically created Pydantic v2 model instance.
+
+        Parameters:
+        - obj_v1: The instance of the Pydantic version 1 model.
+
+        Returns:
+        - An instance of a dynamically created Pydantic version 2 model that mirrors the structure of obj_v1.
+        """
+        # Extract field definitions from the v1 instance
+        fields = {name: (field.outer_type_, ...) for name, field in obj_v1.__fields__.items()}
+
+        # Dynamically create a new Pydantic model class
+        DynamicModelV2 = create_model('DynamicModelV2', **fields)
+
+        # Convert the v1 instance to a dictionary and use it to create an instance of the new model
+        obj_v2 = DynamicModelV2.parse_obj(obj_v1.dict())
+
+        return obj_v2

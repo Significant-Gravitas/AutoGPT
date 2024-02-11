@@ -8,12 +8,12 @@ if TYPE_CHECKING:
     from AFAAS.core.agents.planner.main import PlannerAgent
 
 
-from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage
+from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , ChatMessage
 # prompting
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatPrompt,
 )
 from AFAAS.interfaces.prompts.strategy import DefaultParsedResponse
@@ -136,7 +136,7 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> DefaultParsedResponse:
         return self.default_parse_response_content(response_content=response_content)
 

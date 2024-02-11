@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
@@ -18,7 +18,7 @@ from AFAAS.interfaces.prompts.strategy import (
     DefaultParsedResponse,
     PromptStrategiesConfiguration,
 )
-from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage
+from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , ChatMessage
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.utils.json_schema import JSONSchema
 
@@ -121,7 +121,7 @@ class BaseTaskRagStrategy(AbstractPromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> DefaultParsedResponse:
         return self.default_parse_response_content(response_content=response_content)
 

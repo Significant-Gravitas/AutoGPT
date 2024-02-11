@@ -17,6 +17,7 @@ from typing import (
     ParamSpec,
 )
 from typing_extensions import TypedDict
+from AFAAS.interfaces.adapters.chatmessage import AssistantChatMessage
 
 from pydantic import BaseModel, Field
 
@@ -36,117 +37,13 @@ from openai import APIError, AsyncOpenAI, RateLimitError
 from openai.resources import AsyncCompletions
 from AFAAS.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name=__name__)
-aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
-
-class AbstractRoleLabels(abc.ABC, BaseModel):
-    USER: str
-    SYSTEM: str
-    ASSISTANT: str
-    FUNCTION: Optional[str] = None
-
-
-class AbstractChatMessage(abc.ABC, BaseModel):
-    _role_labels: ClassVar[AbstractRoleLabels]
-    role: str
-    content: str
-
-    @classmethod
-    def assistant(cls, content: str) -> "AbstractChatMessage":
-        return cls(role=cls._role_labels.ASSISTANT, content=content)
-
-    @classmethod
-    def user(cls, content: str) -> "AbstractChatMessage":
-        return cls(role=cls._role_labels.USER, content=content)
-
-    @classmethod
-    def system(cls, content: str) -> "AbstractChatMessage":
-        return cls(role=cls._role_labels.SYSTEM, content=content)
-
-    def dict(self, **kwargs):
-        d = super().dict(**kwargs)
-        d["role"] = self.role
-        return d
-
-
-class Role(str, enum.Enum):
-    USER = "user"
-    SYSTEM = "system"
-    ASSISTANT = "assistant"
-
-    FUNCTION = "function"
-    """May be used for the return value of function calls"""
-
 
 from langchain_core.messages import ChatMessage, HumanMessage, SystemMessage, AIMessage
-
-
-class AFAASChatMessage(BaseModel):
-    role: Role
-    content: str
-
-    @staticmethod
-    def assistant(content: str) -> "AFAASChatMessage":
-        return AFAASChatMessage(role=Role.ASSISTANT, content=content)
-
-    @staticmethod
-    def user(content: str) -> "AFAASChatMessage":
-        return AFAASChatMessage(role=Role.USER, content=content)
-
-    @staticmethod
-    def system(content: str) -> "AFAASChatMessage":
-        return AFAASChatMessage(role=Role.SYSTEM, content=content)
-
-    def dict(self, **kwargs):
-        d = super().dict(**kwargs)
-        d["role"] = self.role.value
-        return d
-
-
-class ChatMessageDict(TypedDict):
-    role: str
-    content: str
-
-
-class AssistantFunctionCall(BaseModel):
-    name: str
-    arguments: str
-
-
-class AssistantFunctionCallDict(TypedDict):
-    name: str
-    arguments: str
-
-
-class AssistantToolCall(BaseModel):
-    # id: str
-    type: Literal["function"]
-    function: AssistantFunctionCall
-
-
-class AssistantToolCallDict(TypedDict):
-    # id: str
-    type: Literal["function"]
-    function: AssistantFunctionCallDict
-
-
-class AssistantChatMessage(AFAASChatMessage):
-
-    role: Role.ASSISTANT
-    content: Optional[str] = None
-    tool_calls: Optional[list[AssistantToolCall]] = None
-
-
-class AssistantChatMessageDict(TypedDict, total=False):
-
-    role: str
-    content: Optional[str]
-    tool_calls: Optional[list[AssistantToolCallDict]]
 
 
 class CompletionModelFunction(BaseModel):
     name: str
     description: str
-    #parameters: dict[str, "JSONSchema"]
     parameters: Dict[str, JSONSchema]
 
     @property
@@ -170,6 +67,7 @@ class CompletionModelFunction(BaseModel):
 
     @staticmethod
     def parse(schema: dict) -> "CompletionModelFunction":
+        #FIXME : This is OpenAI specific & should be moved to the OpenAI adapter or implemented via dependency injection
         return CompletionModelFunction(
             name=schema["name"],
             description=schema["description"],
@@ -203,17 +101,17 @@ class CompletionModelFunction(BaseModel):
 
 
 class ChatPrompt(BaseModel):
-    messages: list[ChatMessage]
+    messages: list
     tools: list[CompletionModelFunction] = Field(default_factory=list)
     tool_choice: str
     default_tool_choice: str
 
-    def raw(self) -> list[ChatMessageDict]:
+    def raw(self) -> list:
         return [m.dict() for m in self.messages]
 
     def __str__(self):
         return "\n\n".join(
-            f"{m.role.value.upper()}: {m.content}" for m in self.messages
+            [m.dict() for m in self.messages]
         )
 
 
@@ -222,7 +120,7 @@ _T = TypeVar("_T")
 
 class AbstractChatModelResponse(BaseModelResponse, Generic[_T]):
 
-    response: Optional[AssistantChatMessageDict] = None
+    response: Optional[AssistantChatMessage] = None
     parsed_result: _T = None
     """Standard response struct for a response from a language model."""
 
@@ -263,7 +161,9 @@ class ChatModelWrapper:
         retry_handler = _RetryHandler(
             num_retries=self.retry_per_request,
         )
-        self._create_chat_completion = retry_handler(self._chat)
+        #self._create_chat_completion = retry_handler(self._chat)
+        #FIXME: Remove beforce commit
+        self._create_chat_completion = self._chat
         self._func_call_fails_count = 0
 
 
@@ -271,15 +171,15 @@ class ChatModelWrapper:
         self,
         chat_messages: list[ChatMessage],
         completion_kwargs: ChatCompletionKwargs,
-        completion_parser: Callable[[AssistantChatMessageDict], _T], 
+        completion_parser: Callable[[AssistantChatMessage], _T], 
         # Function to parse the response, usualy injectect by an AbstractPromptStrategy
         **kwargs,
     ) -> AbstractChatModelResponse[_T]:
-        if isinstance(messages, ChatMessage):
-            messages = [messages]
-        elif not isinstance(messages, list):
+        if isinstance(chat_messages, ChatMessage):
+            chat_messages = [chat_messages]
+        elif not isinstance(chat_messages, list):
             raise TypeError(
-                f"Expected ChatMessage or list[ChatMessage], but got {type(messages)}"
+                f"Expected ChatMessage or list[ChatMessage], but got {type(chat_messages)}"
             )
 
         # ##############################################################################
@@ -296,7 +196,7 @@ class ChatModelWrapper:
             llm_kwargs = llm_kwargs,
             **kwargs
         )
-        response_message, response_args = self.llm_adapter._extract_response_details(
+        response_message, response_args = self.llm_adapter.extract_response_details(
             response=response, 
             model_name=completion_kwargs.llm_model_name
         )
@@ -304,7 +204,8 @@ class ChatModelWrapper:
         # ##############################################################################
         # ### Step 3: Handle missing function call and retry if necessary
         # ##############################################################################
-        if self.llm_adapter._should_retry_function_call(
+        # FIXME : Remove before commit
+        if True or self.llm_adapter.should_retry_function_call(
             tools=completion_kwargs.tools, response_message=response_message
         ):
             LOG.error(
@@ -354,7 +255,7 @@ class ChatModelWrapper:
         # ##############################################################################
         # ### Step 6: Formulate the response
         # ##############################################################################
-        return self.llm_adapter._formulate_final_response(
+        return self.llm_adapter.formulate_final_response(
             response_message=response_message,
             completion_parser=completion_parser,
             response_args=response_args,
@@ -365,12 +266,14 @@ class ChatModelWrapper:
         self,
         model_prompt: list[ChatMessage],
         completion_kwargs: ChatCompletionKwargs,
-        completion_parser: Callable[[AssistantChatMessageDict], _T],
+        completion_parser: Callable[[AssistantChatMessage], _T],
         response: AsyncCompletions,
         response_args: Dict[str, Any],
         **kwargs
     ) -> AbstractChatModelResponse[_T]:
         self._func_call_fails_count += 1
+
+        response.update(response_args)
         self.llm_adapter._budget.update_usage_and_cost(model_response=response)
         return await self.create_chat_completion(
             chat_messages=model_prompt,
@@ -419,16 +322,11 @@ class ChatModelWrapper:
         **kwargs
     ) -> AsyncCompletions:
 
-        raw_messages = [
-            message.dict(include={"role", "content", "tool_calls", "name"})
-            for message in messages
-        ]
-
         #llm_kwargs = self._make_chat_kwargs(**kwargs)
-        LOG.trace(raw_messages[0]["content"])
+        LOG.trace(messages[0].content)
         LOG.trace(llm_kwargs)
         return_value = await self.llm_adapter.chat(
-            messages=raw_messages, **llm_kwargs
+            messages=messages, **llm_kwargs
         )
 
         return return_value
@@ -448,7 +346,7 @@ class AbstractChatModelProvider(AbstractLanguageModelProvider):
     @abc.abstractmethod
     def count_message_tokens(
         self,
-        messages: AFAASChatMessage | list[ChatMessage],
+        messages: ChatMessage | list[ChatMessage],
         model_name: str,
     ) -> int: ...
 
@@ -482,24 +380,23 @@ class AbstractChatModelProvider(AbstractLanguageModelProvider):
     def get_default_config(self) -> AbstractPromptConfiguration:
         ...
 
-
     @abc.abstractmethod
-    def _extract_response_details(
+    def extract_response_details(
         self, response: AsyncCompletions, model_name: str
     ) -> tuple[dict, dict]: 
         ...
 
     @abc.abstractmethod
-    def _should_retry_function_call(
+    def should_retry_function_call(
         self, tools: list[CompletionModelFunction], response_message: dict
     ) -> bool: 
         ...
 
     @abc.abstractmethod
-    def _formulate_final_response(
+    def formulate_final_response(
         self,
         response_message: dict,
-        completion_parser: Callable[[AssistantChatMessageDict], _T],
+        completion_parser: Callable[[AssistantChatMessage], _T],
         response_args: dict,
     ) -> AbstractChatModelResponse[_T]: 
         ...

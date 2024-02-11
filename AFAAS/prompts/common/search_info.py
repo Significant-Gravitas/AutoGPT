@@ -11,7 +11,7 @@ from AFAAS.interfaces.tools.tool import AFAASBaseTool
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
@@ -24,7 +24,7 @@ from AFAAS.interfaces.prompts.strategy import (
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.utils.json_schema import JSONSchema
 
-from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage
+from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , ChatMessage
 LOG = AFAASLogger(name=__name__)
 
 
@@ -101,11 +101,12 @@ class SearchInfo_Strategy(AbstractPromptStrategy):
         )
         messages.append(SystemMessage(self.response_format_instruction()))
 
+
         return self.build_chat_prompt(messages=messages)
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> DefaultParsedResponse:
         return self.default_parse_response_content(response_content=response_content)
 

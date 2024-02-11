@@ -33,8 +33,6 @@ class BaseProviderCredentials(SystemConfiguration):
     def unmasked(self) -> dict:
         return self.unmask(self)
 
-    
-    
     model_config = update_model_config(original= SystemConfiguration.model_config , 
        new =  {
             'json_encoders' : {

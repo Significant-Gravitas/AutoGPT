@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 from AFAAS.interfaces.adapters import ChatPrompt
 
-from AFAAS.interfaces.adapters.chatmodel import AIMessage , HumanMessage, SystemMessage , ChatMessage
+from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , ChatMessage
 
 class AgentContext:
     items: list[ContextItem]
