@@ -196,7 +196,7 @@ class ChatModelWrapper:
             llm_kwargs = llm_kwargs,
             **kwargs
         )
-        response_message, response_args = self.llm_adapter.extract_response_details(
+        response_message = self.llm_adapter.extract_response_details(
             response=response, 
             model_name=completion_kwargs.llm_model_name
         )
@@ -205,7 +205,7 @@ class ChatModelWrapper:
         # ### Step 3: Handle missing function call and retry if necessary
         # ##############################################################################
         # FIXME : Remove before commit
-        if True or self.llm_adapter.should_retry_function_call(
+        if self.llm_adapter.should_retry_function_call(
             tools=completion_kwargs.tools, response_message=response_message
         ):
             LOG.error(
@@ -219,13 +219,16 @@ class ChatModelWrapper:
                     model_prompt=chat_messages,
                     completion_kwargs=completion_kwargs,
                     completion_parser=completion_parser,
-                    response=response,
-                    response_args=response_args,
+                    response=response_message,
                 )
 
             # FIXME, TODO, NOTE: Organize application save feedback loop to improve the prompts, as it is not normal that function are not called
-            response_message["tool_calls"] = None
-            response.choices[0].message["tool_calls"] = None
+            try : 
+                response_message.additional_kwargs['tool_calls'] = None
+            except Exception as e:
+                response_message['tool_calls'] = None
+                LOG.warning(f"Following Exception occurred : {e}")
+
             # self._handle_failed_retry(response_message)
 
         # ##############################################################################
@@ -258,7 +261,6 @@ class ChatModelWrapper:
         return self.llm_adapter.formulate_final_response(
             response_message=response_message,
             completion_parser=completion_parser,
-            response_args=response_args,
         )
 
 
@@ -268,13 +270,11 @@ class ChatModelWrapper:
         completion_kwargs: ChatCompletionKwargs,
         completion_parser: Callable[[AssistantChatMessage], _T],
         response: AsyncCompletions,
-        response_args: Dict[str, Any],
         **kwargs
     ) -> AbstractChatModelResponse[_T]:
         self._func_call_fails_count += 1
 
-        response.update(response_args)
-        self.llm_adapter._budget.update_usage_and_cost(model_response=response)
+        self.llm_adapter._budget.update_usage_and_cost(model_response=response.base_response)
         return await self.create_chat_completion(
             chat_messages=model_prompt,
             completion_parser=completion_parser,
@@ -383,7 +383,7 @@ class AbstractChatModelProvider(AbstractLanguageModelProvider):
     @abc.abstractmethod
     def extract_response_details(
         self, response: AsyncCompletions, model_name: str
-    ) -> tuple[dict, dict]: 
+    ) -> BaseModel:
         ...
 
     @abc.abstractmethod
@@ -397,7 +397,6 @@ class AbstractChatModelProvider(AbstractLanguageModelProvider):
         self,
         response_message: dict,
         completion_parser: Callable[[AssistantChatMessage], _T],
-        response_args: dict,
     ) -> AbstractChatModelResponse[_T]: 
         ...
 

@@ -98,8 +98,11 @@ class QueryLLMStrategy(AbstractPromptStrategy):
         self,
         response_content: AssistantChatMessage,
     ) -> DefaultParsedResponse:
-        return response_content["content"]
-
+        try : 
+            return response_content.content
+        except : 
+            LOG.warning("Could not parse response content , will try to return the content from deprecated fields")
+            return response_content["content"]
     def response_format_instruction(self) -> str:
         return super().response_format_instruction()
 

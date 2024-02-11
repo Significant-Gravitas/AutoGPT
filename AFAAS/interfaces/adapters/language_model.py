@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import abc
 import enum
-from typing import Callable, ClassVar, Protocol
+from typing import Callable, ClassVar, Protocol, Optional, Any
 
-from pydantic import field_validator, ConfigDict, BaseModel, Field
+from pydantic import ConfigDict, BaseModel, Field
+from AFAAS.lib.sdk.logger import AFAASLogger
 
 from AFAAS.configs.schema import SystemConfiguration, Field
 from AFAAS.interfaces.adapters.configuration import (
@@ -12,9 +13,9 @@ from AFAAS.interfaces.adapters.configuration import (
     BaseProviderCredentials,
     BaseProviderSettings,
     BaseProviderUsage,
-    Embedding,
 )
 
+LOG = AFAASLogger(name=__name__)
 
 class ModelProviderService(str, enum.Enum):
     """A ModelService describes what kind of service the model provides."""
@@ -35,9 +36,14 @@ class BaseModelInfo(BaseModel):
 
 
 class BaseModelResponse(BaseModel):
-    prompt_tokens_used: int
-    completion_tokens_used: int
+    prompt_tokens : int
+    completion_tokens: int
     llm_model_info: BaseModelInfo
+    strategy: Optional[Any] = None # TODO: Should save the strategy used to get the response
+
+    def __init__(self, **data: Any):
+        super().__init__(**data)
+        LOG.debug(f"BaseModelResponse does not save the strategy")
 
 
 class BaseModelProviderConfiguration(SystemConfiguration):
@@ -63,10 +69,12 @@ class BaseModelProviderUsage(BaseProviderUsage):
         self,
         model_response: BaseModelResponse,
     ) -> None:
-        self.completion_tokens += model_response.completion_tokens_used
-        self.prompt_tokens += model_response.prompt_tokens_used
+        self.completion_tokens += model_response.completion_tokens
+        self.prompt_tokens += model_response.prompt_tokens
+
         self.total_tokens += (
-            model_response.completion_tokens_used + model_response.prompt_tokens_used
+            model_response.completion_tokens + model_response.prompt_tokens
+
         )
 
 
@@ -84,8 +92,9 @@ class BaseModelProviderBudget(BaseProviderBudget):
         llm_model_info = model_response.llm_model_info
         self.usage.update_usage(model_response)
         incurred_cost = (
-            model_response.completion_tokens_used * llm_model_info.completion_token_cost
-            + model_response.prompt_tokens_used * llm_model_info.prompt_token_cost
+            model_response.completion_tokens * llm_model_info.completion_token_cost
+            + model_response.prompt_tokens
+ * llm_model_info.prompt_token_cost
         )
         self.total_cost += incurred_cost
         if abs(self.remaining_budget) != float("inf"):

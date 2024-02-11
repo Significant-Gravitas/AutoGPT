@@ -119,6 +119,6 @@ class AssistantToolCall(BaseModel):
 
 class AssistantChatMessage(AFAASChatMessage):
 
-    role: Role.ASSISTANT
+    role: Role = Role.ASSISTANT
     content: Optional[str] = None
     tool_calls: Optional[list[AssistantToolCall]] = None

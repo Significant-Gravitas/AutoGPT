@@ -91,7 +91,7 @@ class AutoCorrectionStrategy(AbstractPromptStrategy):
         if "note_to_agent_length" in kwargs:
             self.note_to_agent_length = "note_to_agent_length"
 
-        # FIXME: Will cose issue if multithreading, better return PromptStrategy object in BaseModelResponse
+        # FIXME: Will cause issue if multithreading, better return PromptStrategy object in BaseModelResponse
         strategy = self.get_strategy(
             strategy_name=kwargs["corrected_strategy"].STRATEGY_NAME
         )

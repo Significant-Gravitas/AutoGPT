@@ -24,7 +24,7 @@ from AFAAS.interfaces.adapters import (
 from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
 from AFAAS.interfaces.adapters.chatmodel import  ChatPrompt
 from langchain_core.messages import ChatMessage
-
+from langchain_core.messages import AIMessage
 from AFAAS.interfaces.prompts.utils.utils import (
     indent,
     json_loads,
@@ -217,28 +217,35 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
 
         """
         assistant_return_list: list[DefaultParsedResponse] = []
-        assistant_reply_dict = response_content["content"]
 
-        for tool in response_content["tool_calls"]:
-            try:
-                command_args = json_loads(tool["function"]["arguments"])
-            except Exception:
-                LOG.warning(command_args)
+        assistant_reply_dict = response_content.content
 
-            ###
-            ### NEW
-            ###
-            command_name = tool["function"]["name"]
+        if (isinstance(response_content, AIMessage)):
+            tool_calls = response_content.additional_kwargs['tool_calls']
+        else:
+            tool_calls = response_content["tool_calls"]
 
-            assistant_return_list.append(
-                DefaultParsedResponse(
-                    id=tool["id"],
-                    type=tool["type"],
-                    command_name=command_name,
-                    command_args=command_args,
-                    assistant_reply_dict=assistant_reply_dict,
+        if tool_calls : 
+            for tool in tool_calls:
+                try:
+                    command_args = json_loads(tool["function"]["arguments"])
+                except Exception:
+                    LOG.warning(command_args)
+
+                ###
+                ### NEW
+                ###
+                command_name = tool["function"]["name"]
+
+                assistant_return_list.append(
+                    DefaultParsedResponse(
+                        id=tool["id"],
+                        type=tool["type"],
+                        command_name=command_name,
+                        command_args=command_args,
+                        assistant_reply_dict=assistant_reply_dict,
+                    )
                 )
-            )
 
         return assistant_return_list
 

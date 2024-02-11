@@ -28,7 +28,7 @@ from AFAAS.interfaces.adapters.chatmodel import (
     CompletionModelFunction,
     ChatCompletionKwargs
 )
-from AFAAS.interfaces.adapters.language_model import  ModelTokenizer
+from AFAAS.interfaces.adapters.language_model import  ModelTokenizer, BaseModelResponse
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -109,21 +109,21 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         self, response: AsyncCompletions, model_name: str
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         if (isinstance(response, AsyncCompletions)) : 
-            response_args = {
-                "llm_model_info": OPEN_AI_CHAT_MODELS[model_name],
-                "prompt_tokens_used": response.usage.prompt_tokens,
-                "completion_tokens_used": response.usage.completion_tokens,
-            }
-            response_message = response.choices[0].message.model_dump()
+            response_args = BaseModelResponse(
+                llm_model_info=OPEN_AI_CHAT_MODELS[model_name],
+                prompt_tokens=response.usage.prompt_tokens,
+                completion_tokens=response.usage.completion_tokens,
+            )
+            #response_message = response.choices[0].message.model_dump()
         elif (isinstance(response, AIMessage)) :
             # AGPT retro compatibility
-            response_args = {
-                "llm_model_info": OPEN_AI_CHAT_MODELS[model_name],
-                "prompt_tokens_used": self.callback.prompt_tokens,
-                "completion_tokens_used": self.callback.completion_tokens,
-            }
-            response_message = response.dict()
-        return response_message, response_args
+            response_args = BaseModelResponse(
+                llm_model_info=OPEN_AI_CHAT_MODELS[model_name],
+                prompt_tokens= self.callback.prompt_tokens,
+                completion_tokens= self.callback.completion_tokens,
+            )
+            response.base_response = response_args 
+        return response
 
     def should_retry_function_call(
         self, tools: list[CompletionModelFunction], response_message: Dict[str, Any]
@@ -145,12 +145,18 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         self,
         response_message: Dict[str, Any],
         completion_parser: Callable[[AssistantChatMessage], _T],
-        response_args: Dict[str, Any],
+        **kwargs
     ) -> AbstractChatModelResponse[_T]:
+
+        response_info = response_message.base_response.model_dump()
+
+        response_message_dict = response_message.dict()
+        parsed_result = completion_parser(response_message)
+
         response = AbstractChatModelResponse(
-            response=response_message,
-            parsed_result=completion_parser(response_message),
-            **response_args,
+            response=response_message_dict,
+            parsed_result=parsed_result,
+            **response_info,
         )
         self._budget.update_usage_and_cost(model_response=response)
         return response
@@ -199,7 +205,7 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         chat = ChatOpenAI(model = "gpt-3.5-turbo" , temperature=0.5 )
         with get_openai_callback() as callback:
             self.callback : OpenAICallbackHandler = callback
-            return chat(messages = messages , **llm_kwargs)
+            return await chat.ainvoke(input = messages , **llm_kwargs)
 
         # OAClient : 
         # self.llm_model = aclient.chat
