@@ -56,6 +56,7 @@ jobs:
           ${{ env.IMAGE_NAME }},
           ${{ env.DEPLOY_IMAGE_NAME }}:latest,
           ${{ env.DEPLOY_IMAGE_NAME }}:${{ steps.sanitize_tag.outputs.tag }}
+        labels: GIT_REVISION=${{ github.sha }}
 
         # cache layers in GitHub Actions cache to speed up builds
         cache-from: ${{ !inputs.no_cache && 'type=gha' || '' }},scope=autogpt-docker-release
