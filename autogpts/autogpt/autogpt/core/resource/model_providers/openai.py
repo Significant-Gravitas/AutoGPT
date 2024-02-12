@@ -490,9 +490,8 @@ class OpenAIProvider(
                 _functions_compat_fix_kwargs(functions, kwargs)
 
         if extra_headers := self._configuration.extra_request_headers:
-            kwargs["extra_headers"] = kwargs.get("extra_headers", {}).update(
-                extra_headers.copy()
-            )
+            kwargs["extra_headers"] = kwargs.get("extra_headers", {})
+            kwargs["extra_headers"].update(extra_headers.copy())
 
         return kwargs
 
@@ -514,9 +513,8 @@ class OpenAIProvider(
         kwargs.update(self._credentials.get_model_access_kwargs(model_name))
 
         if extra_headers := self._configuration.extra_request_headers:
-            kwargs["extra_headers"] = kwargs.get("extra_headers", {}).update(
-                extra_headers.copy()
-            )
+            kwargs["extra_headers"] = kwargs.get("extra_headers", {})
+            kwargs["extra_headers"].update(extra_headers.copy())
 
         return kwargs
 
