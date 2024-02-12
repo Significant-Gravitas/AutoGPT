@@ -61,7 +61,6 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AGENT_NAME: ${{ matrix.agent-name }}
-          HELICONE_API_KEY: ${{ secrets.HELICONE_API_KEY }}
           REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
           HELICONE_CACHE_ENABLED: false
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
