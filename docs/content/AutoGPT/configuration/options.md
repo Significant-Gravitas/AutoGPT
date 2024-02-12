@@ -14,10 +14,10 @@ Configuration is controlled through the `Config` object. You can set configurati
 - `DISABLED_COMMAND_CATEGORIES`: Command categories to disable. Command categories are Python module names, e.g. autogpt.commands.execute_code. See the directory `autogpt/commands` in the source for all command modules. Default: None
 - `ELEVENLABS_API_KEY`: ElevenLabs API Key. Optional.
 - `ELEVENLABS_VOICE_ID`: ElevenLabs Voice ID. Optional.
-- `EMBEDDING_MODEL`: LLM Model to use for embedding tasks. Default: text-embedding-ada-002
+- `EMBEDDING_MODEL`: LLM Model to use for embedding tasks. Default: `text-embedding-3-small`
 - `EXECUTE_LOCAL_COMMANDS`: If shell commands should be executed locally. Default: False
 - `EXIT_KEY`: Exit key accepted to exit. Default: n
-- `FAST_LLM`: LLM Model to use for most tasks. Default: gpt-3.5-turbo
+- `FAST_LLM`: LLM Model to use for most tasks. Default: `gpt-3.5-turbo-0125`
 - `GITHUB_API_KEY`: [Github API Key](https://github.com/settings/tokens). Optional.
 - `GITHUB_USERNAME`: GitHub Username. Optional.
 - `GOOGLE_API_KEY`: Google API key. Optional.
@@ -44,7 +44,7 @@ Configuration is controlled through the `Config` object. You can set configurati
 - `SHELL_ALLOWLIST`: List of shell commands that ARE allowed to be executed by AutoGPT. Only applies if `SHELL_COMMAND_CONTROL` is set to `allowlist`. Default: None
 - `SHELL_COMMAND_CONTROL`: Whether to use `allowlist` or `denylist` to determine what shell commands can be executed (Default: denylist)
 - `SHELL_DENYLIST`: List of shell commands that ARE NOT allowed to be executed by AutoGPT. Only applies if `SHELL_COMMAND_CONTROL` is set to `denylist`. Default: sudo,su
-- `SMART_LLM`: LLM Model to use for "smart" tasks. Default: gpt-4
+- `SMART_LLM`: LLM Model to use for "smart" tasks. Default: `gpt-4-turbo-preview`
 - `STREAMELEMENTS_VOICE`: StreamElements voice to use. Default: Brian
 - `TEMPERATURE`: Value of temperature given to OpenAI. Value from 0 to 2. Lower is more deterministic, higher is more random. See https://platform.openai.com/docs/api-reference/completions/create#completions/create-temperature
 - `TEXT_TO_SPEECH_PROVIDER`: Text to Speech Provider. Options are `gtts`, `macos`, `elevenlabs`, and `streamelements`. Default: gtts
