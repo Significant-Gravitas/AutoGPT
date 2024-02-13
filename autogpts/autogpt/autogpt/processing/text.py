@@ -1,5 +1,4 @@
 """Text processing functions"""
-import json
 import logging
 import math
 from typing import Iterator, Optional, TypeVar
@@ -13,6 +12,7 @@ from autogpt.core.resource.model_providers import (
     ChatModelProvider,
     ModelTokenizer,
 )
+from autogpt.json_utils.utilities import extract_list_from_response
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +161,9 @@ async def _process_text(
             temperature=0.5,
             max_tokens=max_result_tokens,
             completion_parser=lambda s: (
-                json.loads(s.content) if output_type is not str else None
+                extract_list_from_response(s.content)
+                if output_type is not str
+                else None
             ),
         )
 
