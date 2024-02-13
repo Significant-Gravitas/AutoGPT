@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from autogpt.config import Config
     from autogpt.models.command_registry import CommandRegistry
 
+import sentry_sdk
 from pydantic import Field
 
 from autogpt.core.configuration import Configurable
@@ -256,6 +257,7 @@ class Agent(
                 logger.warning(
                     f"{command_name}({fmt_kwargs(command_args)}) raised an error: {e}"
                 )
+                sentry_sdk.capture_exception(e)
 
             result_tlength = self.llm_provider.count_tokens(str(result), self.llm.name)
             if result_tlength > self.send_token_limit // 3:

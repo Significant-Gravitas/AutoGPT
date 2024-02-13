@@ -2,6 +2,8 @@ import logging
 import os
 import re
 import sys
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import requests
 from colorama import Fore, Style
@@ -9,13 +11,14 @@ from git import InvalidGitRepositoryError, Repo
 from prompt_toolkit import ANSI, PromptSession
 from prompt_toolkit.history import InMemoryHistory
 
-from autogpt.config import Config
+if TYPE_CHECKING:
+    from autogpt.config import Config
 
 logger = logging.getLogger(__name__)
 session = PromptSession(history=InMemoryHistory())
 
 
-async def clean_input(config: Config, prompt: str = ""):
+async def clean_input(config: "Config", prompt: str = ""):
     try:
         if config.chat_messages_enabled:
             for plugin in config.plugins:
@@ -149,7 +152,7 @@ By using the System, you agree to indemnify, defend, and hold harmless the Proje
     return legal_text
 
 
-def print_motd(config: Config, logger: logging.Logger):
+def print_motd(config: "Config", logger: logging.Logger):
     motd, is_new_motd = get_latest_bulletin()
     if motd:
         motd = markdown_to_ansi_style(motd)
@@ -188,3 +191,31 @@ def print_python_version_info(logger: logging.Logger):
             "parts of AutoGPT with this version. "
             "Please consider upgrading to Python 3.10 or higher.",
         )
+
+
+ENV_FILE_PATH = Path(__file__).parent.parent.parent / ".env"
+
+
+def env_file_exists() -> bool:
+    return ENV_FILE_PATH.is_file()
+
+
+def set_env_config_value(key: str, value: str) -> None:
+    """Sets the specified env variable and updates it in .env as well"""
+    os.environ[key] = value
+
+    with ENV_FILE_PATH.open("r+") as file:
+        lines = file.readlines()
+        file.seek(0)
+        key_already_in_file = False
+        for line in lines:
+            if re.match(rf"^(?:# )?{key}=.*$", line):
+                file.write(f"{key}={value}\n")
+                key_already_in_file = True
+            else:
+                file.write(line)
+
+        if not key_already_in_file:
+            file.write(f"{key}={value}\n")
+
+        file.truncate()
