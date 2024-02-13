@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Callable, Coroutine, Iterator, Optional, ParamSpec, TypeVar
 
+import sentry_sdk
 import tenacity
 import tiktoken
 import yaml
@@ -460,6 +461,10 @@ class OpenAIProvider(
             except Exception as e:
                 self._logger.warning(f"Parsing attempt #{attempts} failed: {e}")
                 self._logger.debug(f"Parsing failed on response: '''{assistant_msg}'''")
+                sentry_sdk.capture_exception(
+                    error=e,
+                    extras={"assistant_msg": assistant_msg, "i_attempt": attempts},
+                )
                 if attempts < self._configuration.fix_failed_parse_tries:
                     model_prompt.append(
                         ChatMessage.system(f"ERROR PARSING YOUR RESPONSE:\n\n{e}")
