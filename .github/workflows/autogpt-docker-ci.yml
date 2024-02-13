@@ -52,6 +52,7 @@ jobs:
         context: autogpts/autogpt
         build-args: BUILD_TYPE=${{ matrix.build-type }}
         tags: ${{ env.IMAGE_NAME }}
+        labels: GIT_REVISION=${{ github.sha }}
         load: true    # save to docker images
         # cache layers in GitHub Actions cache to speed up builds
         cache-from: type=gha,scope=autogpt-docker-${{ matrix.build-type }}
@@ -122,6 +123,7 @@ jobs:
           tags: >
             ${{ env.IMAGE_NAME }},
             ${{ env.DEPLOY_IMAGE_NAME }}:${{ env.DEV_IMAGE_TAG }}
+          labels: GIT_REVISION=${{ github.sha }}
           load: true                  # save to docker images
           # cache layers in GitHub Actions cache to speed up builds
           cache-from: type=gha,scope=autogpt-docker-dev
