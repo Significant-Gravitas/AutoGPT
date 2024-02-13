@@ -38,7 +38,7 @@ pydantic = "^1.10.9"
 pytest = "^7.3.2"
 pytest-asyncio = "^0.21.1"
 python-dotenv = "^1.0.0"
-python-multipart = "^0.0.6"
+python-multipart = "^0.0.7"
 pyvis = "^0.3.2"
 requests = "^2.31.0"
 selenium = "^4.11.2"
@@ -50,7 +50,7 @@ uvicorn = "^0.23.2"
 type = "git"
 url = "https://github.com/Significant-Gravitas/AutoGPT.git"
 reference = "HEAD"
-resolved_reference = "e641cccb42836766e1004e60324a9466fabe9bad"
+resolved_reference = "6763196d78603808dcbbc418942e468a68773b10"
 subdirectory = "benchmark"
 
 [[package]]
@@ -331,7 +331,7 @@ jinja2 = "^3.1.2"
 litellm = "^1.17.9"
 openai = "^1.7.2"
 python-dotenv = "^1.0.0"
-python-multipart = "^0.0.6"
+python-multipart = "^0.0.7"
 selenium = "^4.13.0"
 sqlalchemy = "^2.0.19"
 tenacity = "^8.2.2"
@@ -345,8 +345,8 @@ benchmark = ["agbenchmark @ git+https://github.com/Significant-Gravitas/AutoGPT.
 [package.source]
 type = "git"
 url = "https://github.com/Significant-Gravitas/AutoGPT.git"
-reference = "b238aba"
-resolved_reference = "b238abac52a4f945325603d433b7eade5bb92d2a"
+reference = "6763196d78603808dcbb"
+resolved_reference = "6763196d78603808dcbbc418942e468a68773b10"
 subdirectory = "autogpts/forge"
 
 [[package]]
@@ -5234,17 +5234,17 @@ cli = ["click (>=5.0)"]
 
 [[package]]
 name = "python-multipart"
-version = "0.0.6"
+version = "0.0.7"
 description = "A streaming multipart parser for Python"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "python_multipart-0.0.6-py3-none-any.whl", hash = "sha256:ee698bab5ef148b0a760751c261902cd096e57e10558e11aca17646b74ee1c18"},
-    {file = "python_multipart-0.0.6.tar.gz", hash = "sha256:e9925a80bb668529f1b67c7fdb0a5dacdd7cbfc6fb0bff3ea443fe22bdd62132"},
+    {file = "python_multipart-0.0.7-py3-none-any.whl", hash = "sha256:b1fef9a53b74c795e2347daac8c54b252d9e0df9c619712691c1cc8021bd3c49"},
+    {file = "python_multipart-0.0.7.tar.gz", hash = "sha256:288a6c39b06596c1b988bb6794c6fbc80e6c369e35e5062637df256bee0c9af9"},
 ]
 
 [package.extras]
-dev = ["atomicwrites (==1.2.1)", "attrs (==19.2.0)", "coverage (==6.5.0)", "hatch", "invoke (==1.7.3)", "more-itertools (==4.3.0)", "pbr (==4.3.0)", "pluggy (==1.0.0)", "py (==1.11.0)", "pytest (==7.2.0)", "pytest-cov (==4.0.0)", "pytest-timeout (==2.1.0)", "pyyaml (==5.1)"]
+dev = ["atomicwrites (==1.2.1)", "attrs (==19.2.0)", "coverage (==6.5.0)", "hatch", "invoke (==2.2.0)", "more-itertools (==4.3.0)", "pbr (==4.3.0)", "pluggy (==1.0.0)", "py (==1.11.0)", "pytest (==7.2.0)", "pytest-cov (==4.0.0)", "pytest-timeout (==2.1.0)", "pyyaml (==5.1)"]
 
 [[package]]
 name = "pytz"
@@ -7191,4 +7191,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "faf51ae9abb9ed201153b74bfeb1421bd51d73984db9207f23e50701c8023d84"
+content-hash = "a80f52e61947dc4f87cabb5a5221e6bee40d27b4228a399da5211aae056bc7bc"
