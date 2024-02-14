@@ -18,9 +18,7 @@
         "files": [
             "output.txt"
         ],
-        "should_contain": [
-            ""
-        ],
+        "should_contain": [],
         "should_not_contain": []
     },
     "info": {
