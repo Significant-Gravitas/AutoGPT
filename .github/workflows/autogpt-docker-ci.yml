@@ -27,6 +27,9 @@ env:
   DEPLOY_IMAGE_NAME: ${{ secrets.DOCKER_USER }}/auto-gpt
   DEV_IMAGE_TAG: latest-dev
 
+  TELEMETRY_ENVIRONMENT: autogpt-docker-ci
+  TELEMETRY_OPT_IN: ${{ github.event_name == 'push' && github.ref_name == 'master' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
