@@ -16,9 +16,12 @@ def setup_telemetry() -> None:
         allow_telemetry = click.prompt(
             "❓ Do you want to enable telemetry? ❓\n"
             "This means AutoGPT will send diagnostic data to the core development team "
-            "when something goes wrong, and will help us to diagnose and fix problems "
-            "earlier and faster.\n"
-            "Please enter 'yes' or 'no'",
+            "when something goes wrong,\nand will help us to diagnose and fix problems "
+            "earlier and faster.\n\n"
+            "By entering 'yes', you agree that you have read and agree to our Privacy"
+            " Policy available here:\n"
+            "https://www.notion.so/auto-gpt/Privacy-Policy-ab11c9c20dbd4de1a15dcffe84d77984"
+            "\n\nPlease enter 'yes' or 'no'",
             type=bool,
         )
         set_env_config_value("TELEMETRY_OPT_IN", "true" if allow_telemetry else "false")
