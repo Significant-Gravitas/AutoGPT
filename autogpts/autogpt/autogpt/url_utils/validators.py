@@ -2,10 +2,11 @@ import functools
 import re
 from typing import Any, Callable, ParamSpec, TypeVar
 from urllib.parse import urljoin, urlparse
+from autogpt.config import Config
 
 P = ParamSpec("P")
 T = TypeVar("T")
-
+config = Config
 
 def validate_url(func: Callable[P, T]) -> Callable[P, T]:
     """
@@ -26,7 +27,9 @@ def validate_url(func: Callable[P, T]) -> Callable[P, T]:
         Raises:
             ValueError if the url fails any of the validation tests
         """
-
+        web_policy = config.web_policy
+        url_list = config.url_list
+        
         # Most basic check if the URL is valid:
         if not re.match(r"^https?://", url):
             raise ValueError("Invalid URL format")
@@ -38,6 +41,11 @@ def validate_url(func: Callable[P, T]) -> Callable[P, T]:
         # Check URL length
         if len(url) > 2000:
             raise ValueError("URL is too long")
+        if web_policy:
+            if url not in url_list:
+                raise ValueError("URL Not Whitelisted")
+        elif url in url_list:
+            raise ValueError("URL Blacklisted.")
 
         return func(sanitize_url(url), *args, **kwargs)
 

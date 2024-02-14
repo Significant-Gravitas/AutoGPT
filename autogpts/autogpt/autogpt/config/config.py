@@ -241,6 +241,10 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Stable Diffusion
     sd_webui_auth: Optional[str] = UserConfigurable(from_env="SD_WEBUI_AUTH")
 
+    # White/Black Listing URLs
+    web_policy: Optional[str] = os.getenv("WEB_POLICY", 0)
+    url_list: Optional[list] = os.getenv("URL_LIST",[]).split(",")
+
     @validator("plugins", each_item=True)
     def validate_plugins(cls, p: AutoGPTPluginTemplate | Any):
         assert issubclass(
