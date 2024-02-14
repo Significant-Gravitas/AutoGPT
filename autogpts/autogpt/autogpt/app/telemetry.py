@@ -2,7 +2,7 @@ import os
 
 import click
 
-from .utils import env_file_exists, set_env_config_value
+from .utils import env_file_exists, get_git_user_email, set_env_config_value
 
 
 def setup_telemetry() -> None:
@@ -38,3 +38,6 @@ def _setup_sentry() -> None:
         dsn="https://dc266f2f7a2381194d1c0fa36dff67d8@o4505260022104064.ingest.sentry.io/4506739844710400",  # noqa
         environment=os.getenv("TELEMETRY_ENVIRONMENT"),
     )
+
+    # Allow Sentry to distinguish between users
+    sentry_sdk.set_user({"email": get_git_user_email(), "ip_address": "{{auto}}"})
