@@ -423,7 +423,7 @@ class OpenAIProvider(
                 tool_calls=(
                     [AssistantToolCall(**tc.dict()) for tc in _assistant_msg.tool_calls]
                     if _assistant_msg.tool_calls
-                    else None
+                    else list()
                 ),
             )
             response = ChatModelResponse(
