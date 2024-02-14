@@ -317,7 +317,11 @@ class WebArenaChallenge(BaseChallenge):
         return results
 
     @classmethod
-    def evaluate_step_result(cls, step: Step) -> list[tuple[_Eval, EvalResult]]:
+    def evaluate_step_result(
+        cls, step: Step, *, mock: bool = False
+    ) -> list[tuple[_Eval, EvalResult]]:
+        if mock:
+            step.output = cls.info.reference_answer
         assert step.output
         eval_results = cls.evaluate_answer(step.output)
         for eval in cls._spec.eval.evaluators:
@@ -356,12 +360,12 @@ class WebArenaChallenge(BaseChallenge):
         self,
         config: AgentBenchmarkConfig,
         request: pytest.FixtureRequest,
-        i_attempt: int,
+        i_attempt: int = 0,
     ) -> None:
-        if os.environ.get("HELICONE_API_KEY"):
-            from helicone.lock import HeliconeLockManager
+        # if os.environ.get("HELICONE_API_KEY"):
+        #     from helicone.lock import HeliconeLockManager
 
-            HeliconeLockManager.write_custom_property("challenge", self.info.name)
+        #     HeliconeLockManager.write_custom_property("challenge", self.info.name)
 
         timeout = 120
         if request.config.getoption("--nc"):
@@ -372,11 +376,15 @@ class WebArenaChallenge(BaseChallenge):
         timed_out = None
         eval_results_per_step: list[list[tuple[_Eval, EvalResult]]] = []
         try:
-            async for step in self.run_challenge(config, timeout):
+            async for step in self.run_challenge(
+                config, timeout, mock=request.config.getoption("--mock")
+            ):
                 if not step.output:
                     logger.warn(f"Step has no output: {step}")
                     continue
-                step_eval_results = self.evaluate_step_result(step)
+                step_eval_results = self.evaluate_step_result(
+                    step, mock=request.config.getoption("--mock")
+                )
                 logger.debug(f"Intermediary results: {step_eval_results}")
                 eval_results_per_step.append(step_eval_results)
                 if step.is_last:

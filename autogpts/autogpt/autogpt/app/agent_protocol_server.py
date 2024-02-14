@@ -25,6 +25,7 @@ from forge.sdk.model import (
 from forge.sdk.routes.agent_protocol import base_router
 from hypercorn.asyncio import serve as hypercorn_serve
 from hypercorn.config import Config as HypercornConfig
+from sentry_sdk import set_user
 
 from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
@@ -121,6 +122,9 @@ class AgentProtocolServer:
         """
         Create a task for the agent.
         """
+        if user_id := (task_request.additional_input or {}).get("user_id"):
+            set_user({"id": user_id})
+
         task = await self.db.create_task(
             input=task_request.input,
             additional_input=task_request.additional_input,
@@ -179,6 +183,9 @@ class AgentProtocolServer:
             app_config=self.app_config,
             llm_provider=self._get_task_llm_provider(task),
         )
+
+        if user_id := (task.additional_input or {}).get("user_id"):
+            set_user({"id": user_id})
 
         # According to the Agent Protocol spec, the first execute_step request contains
         #  the same task input as the parent create_task request.

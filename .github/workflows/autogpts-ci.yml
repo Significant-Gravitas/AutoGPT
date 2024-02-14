@@ -25,6 +25,10 @@ on:
       - 'setup.py'
       - '!**/*.md'
 
+env:
+  TELEMETRY_ENVIRONMENT: autogpt-ci
+  TELEMETRY_OPT_IN: ${{ github.event_name == 'push' && github.ref_name == 'master' }}
+
 jobs:
   run-tests:
     runs-on: ubuntu-latest
@@ -56,7 +60,7 @@ jobs:
         run: |
           ./run agent start ${{ matrix.agent-name }}
           cd autogpts/${{ matrix.agent-name }}
-          poetry run agbenchmark --mock
+          poetry run agbenchmark --mock --test=BasicRetrieval --test=Battleship --test=WebArenaTask_0
           poetry run agbenchmark --test=WriteFile
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

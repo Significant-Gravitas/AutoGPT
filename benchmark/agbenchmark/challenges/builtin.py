@@ -158,12 +158,12 @@ class BuiltinChallenge(BaseChallenge):
         self,
         config: AgentBenchmarkConfig,
         request: pytest.FixtureRequest,
-        i_attempt: int,
+        i_attempt: int = 0,
     ) -> None:
-        if os.environ.get("HELICONE_API_KEY"):
-            from helicone.lock import HeliconeLockManager
+        # if os.environ.get("HELICONE_API_KEY"):
+        #     from helicone.lock import HeliconeLockManager
 
-            HeliconeLockManager.write_custom_property("challenge", self.info.name)
+        #     HeliconeLockManager.write_custom_property("challenge", self.info.name)
 
         timeout = self._spec.cutoff or 60
 
@@ -175,12 +175,11 @@ class BuiltinChallenge(BaseChallenge):
         task_id = ""
         timed_out = None
         try:
-            async for step in self.run_challenge(config, timeout):
+            async for step in self.run_challenge(
+                config, timeout, mock=request.config.getoption("--mock")
+            ):
                 if not task_id:
                     task_id = step.task_id
-                if request.config.getoption("--mock"):
-                    # Run only one step in mock mode
-                    break
             timed_out = False
         except TimeoutError:
             timed_out = True
@@ -230,15 +229,6 @@ class BuiltinChallenge(BaseChallenge):
 
     @classmethod
     def evaluate_workspace_content(cls, workspace: Path) -> Iterator[EvalResult]:
-        if cls._spec.task == "" and os.getenv("IS_MOCK"):
-            yield EvalResult(
-                result="This is a mock answer",
-                result_source="step_output",
-                score=1.0,
-                passed=True,
-            )
-            return
-
         result_ground = cls._spec.ground
         outputs_for_eval = cls.get_outputs_for_eval(workspace, result_ground)
 
@@ -253,6 +243,15 @@ class BuiltinChallenge(BaseChallenge):
                         score=score,
                         passed=score > 0.9,  # FIXME: arbitrary threshold
                     )
+
+        if result_ground.eval.type in ("python", "pytest"):
+            for py_file, output in outputs_for_eval:
+                yield EvalResult(
+                    result=output,
+                    result_source=str(py_file),
+                    score=float(not output.startswith("Error:")),
+                    passed=not output.startswith("Error:"),
+                )
 
         if result_ground.eval.type == "llm":
             combined_results = "\n".join(output[1] for output in outputs_for_eval)
@@ -290,7 +289,16 @@ class BuiltinChallenge(BaseChallenge):
                 # Otherwise, it is a specific file
                 matching_files = [os.path.join(script_dir, file_pattern)]
 
+            logger.debug(
+                f"Files to evaluate for pattern `{file_pattern}`: {matching_files}"
+            )
+
             for file_path in matching_files:
+                relative_file_path = Path(file_path).relative_to(workspace)
+                logger.debug(
+                    f"Evaluating {relative_file_path} "
+                    f"(eval type: {ground.eval.type})..."
+                )
                 if ground.eval.type == "python":
                     result = subprocess.run(
                         [sys.executable, file_path],
@@ -299,15 +307,12 @@ class BuiltinChallenge(BaseChallenge):
                         text=True,
                     )
                     if "error" in result.stderr or result.returncode != 0:
-                        print(result.stderr)
-                        assert False, result.stderr
-                    yield (
-                        Path(file_path).relative_to(workspace),
-                        f"Output: {result.stdout}\n",
-                    )
+                        yield relative_file_path, f"Error: {result.stderr}\n"
+                    else:
+                        yield relative_file_path, f"Output: {result.stdout}\n"
                 else:
                     with open(file_path, "r") as f:
-                        yield Path(file_path).relative_to(workspace), f.read()
+                        yield relative_file_path, f.read()
         else:
             if ground.eval.type == "pytest":
                 result = subprocess.run(
@@ -317,9 +322,9 @@ class BuiltinChallenge(BaseChallenge):
                     text=True,
                 )
                 if "error" in result.stderr or result.returncode != 0:
-                    print(result.stderr)
-                    assert False, result.stderr
-                yield "pytest", f"Output: {result.stdout}\n"
+                    yield "pytest", f"Error: {result.stderr}\n"
+                else:
+                    yield "pytest", f"Output: {result.stdout}\n"
 
     @staticmethod
     def score_result(content: str, ground: BuiltinChallengeSpec.Ground) -> float | None:
@@ -358,9 +363,9 @@ class BuiltinChallenge(BaseChallenge):
 
     @classmethod
     def score_result_with_llm(
-        cls, content: str, ground: BuiltinChallengeSpec.Ground
+        cls, content: str, ground: BuiltinChallengeSpec.Ground, *, mock: bool = False
     ) -> float:
-        if os.getenv("IS_MOCK"):
+        if mock:
             return 1.0
 
         # the validation for this is done in the Eval BaseModel

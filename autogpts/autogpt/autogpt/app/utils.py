@@ -84,6 +84,14 @@ def get_current_git_branch() -> str:
         return ""
 
 
+def get_git_user_email() -> str:
+    try:
+        repo = Repo(search_parent_directories=True)
+        return repo.config_reader().get_value("user", "email", default="")
+    except InvalidGitRepositoryError:
+        return ""
+
+
 def get_latest_bulletin() -> tuple[str, bool]:
     exists = os.path.exists("data/CURRENT_BULLETIN.md")
     current_bulletin = ""

@@ -423,7 +423,7 @@ class OpenAIProvider(
                 tool_calls=(
                     [AssistantToolCall(**tc.dict()) for tc in _assistant_msg.tool_calls]
                     if _assistant_msg.tool_calls
-                    else None
+                    else list()
                 ),
             )
             response = ChatModelResponse(
@@ -466,6 +466,7 @@ class OpenAIProvider(
                     extras={"assistant_msg": assistant_msg, "i_attempt": attempts},
                 )
                 if attempts < self._configuration.fix_failed_parse_tries:
+                    model_prompt.append(assistant_msg)
                     model_prompt.append(
                         ChatMessage.system(f"ERROR PARSING YOUR RESPONSE:\n\n{e}")
                     )
