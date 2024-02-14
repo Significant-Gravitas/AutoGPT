@@ -16,6 +16,8 @@ on:
 
 env:
   min-python-version: '3.10'
+  TELEMETRY_ENVIRONMENT: autogpt-benchmark-ci
+  TELEMETRY_OPT_IN: ${{ github.event_name == 'push' && github.ref_name == 'master' }}
 
 jobs:
   lint:

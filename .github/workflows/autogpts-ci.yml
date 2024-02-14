@@ -25,6 +25,10 @@ on:
       - 'setup.py'
       - '!**/*.md'
 
+env:
+  TELEMETRY_ENVIRONMENT: autogpt-ci
+  TELEMETRY_OPT_IN: ${{ github.event_name == 'push' && github.ref_name == 'master' }}
+
 jobs:
   run-tests:
     runs-on: ubuntu-latest
