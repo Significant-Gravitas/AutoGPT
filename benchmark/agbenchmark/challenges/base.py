@@ -60,7 +60,7 @@ class BaseChallenge(ABC):
 
     @classmethod
     async def run_challenge(
-        cls, config: AgentBenchmarkConfig, timeout: int
+        cls, config: AgentBenchmarkConfig, timeout: int, *, mock: bool = False
     ) -> AsyncIterator[Step]:
         """
         Runs the challenge on the subject agent with the specified timeout.
@@ -89,7 +89,7 @@ class BaseChallenge(ABC):
         logger.debug(f"Starting {cls.info.name} challenge run")
         i = 0
         async for step in run_api_agent(
-            cls.info.task, config, timeout, cls.info.task_artifacts_dir
+            cls.info.task, config, timeout, cls.info.task_artifacts_dir, mock=mock
         ):
             i += 1
             print(f"[{cls.info.name}] - step {step.name} ({i}. request)")
