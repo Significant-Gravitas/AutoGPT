@@ -22,6 +22,10 @@ defaults:
   run:
     working-directory: autogpts/autogpt
 
+env:
+  TELEMETRY_ENVIRONMENT: autogpt-ci
+  TELEMETRY_OPT_IN: ${{ github.event_name == 'push' && github.ref_name == 'master' }}
+
 jobs:
   lint:
     runs-on: ubuntu-latest
