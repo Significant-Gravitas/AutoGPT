@@ -39,7 +39,7 @@ uvicorn = "^0.23.2"
 type = "git"
 url = "https://github.com/Significant-Gravitas/AutoGPT.git"
 reference = "HEAD"
-resolved_reference = "e1da58da02e2fcc03efdd433f07dadbb2dca5c92"
+resolved_reference = "327fb1f9166d389c434adbc44720241f46244fa8"
 subdirectory = "benchmark"
 
 [[package]]
