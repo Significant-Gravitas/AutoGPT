@@ -3,7 +3,12 @@ import os
 import click
 from colorama import Fore, Style
 
-from .utils import env_file_exists, get_git_user_email, set_env_config_value
+from .utils import (
+    env_file_exists,
+    get_git_user_email,
+    set_env_config_value,
+    vcs_state_diverges_from_master,
+)
 
 
 def setup_telemetry() -> None:
@@ -49,7 +54,10 @@ def _setup_sentry() -> None:
     sentry_sdk.init(
         dsn="https://dc266f2f7a2381194d1c0fa36dff67d8@o4505260022104064.ingest.sentry.io/4506739844710400",  # noqa
         enable_tracing=True,
-        environment=os.getenv("TELEMETRY_ENVIRONMENT"),
+        environment=os.getenv(
+            "TELEMETRY_ENVIRONMENT",
+            "production" if not vcs_state_diverges_from_master() else "dev",
+        ),
     )
 
     # Allow Sentry to distinguish between users
