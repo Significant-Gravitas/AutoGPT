@@ -153,7 +153,7 @@ class SessionReportManager(BaseReportManager):
                 total_cost=self.get_total_costs(),
             ),
             tests=copy.copy(self.tests),
-            config=config.dict(exclude_none=True),
+            config=config.dict(exclude={"reports_folder"}, exclude_none=True),
         )
 
         agent_categories = get_highest_achieved_difficulty_per_category(self.tests)
