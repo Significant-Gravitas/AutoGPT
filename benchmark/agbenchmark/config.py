@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseSettings, Field
+from pydantic import BaseSettings, Field, validator
 
 
 def _calculate_info_test_path(base_path: Path, benchmark_start_time: datetime) -> Path:
@@ -66,6 +66,12 @@ class AgentBenchmarkConfig(BaseSettings, extra="allow"):
     host: str
     """Host (scheme://address:port) of the subject agent application."""
 
+    reports_folder: Path = Field(None)
+    """
+    Path to the folder where new reports should be stored.
+    Defaults to {agbenchmark_config_dir}/reports.
+    """
+
     @classmethod
     def load(cls, config_dir: Optional[Path] = None) -> "AgentBenchmarkConfig":
         config_dir = config_dir or cls.find_config_folder()
@@ -95,9 +101,11 @@ class AgentBenchmarkConfig(BaseSettings, extra="allow"):
     def config_file(self) -> Path:
         return self.agbenchmark_config_dir / "config.json"
 
-    @property
-    def reports_folder(self) -> Path:
-        return self.agbenchmark_config_dir / "reports"
+    @validator("reports_folder", pre=True, always=True)
+    def set_reports_folder(cls, v, values):
+        if not v:
+            return values["agbenchmark_config_dir"] / "reports"
+        return v
 
     def get_report_dir(self, benchmark_start_time: datetime) -> Path:
         return _calculate_info_test_path(self.reports_folder, benchmark_start_time)

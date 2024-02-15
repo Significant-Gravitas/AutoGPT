@@ -68,4 +68,4 @@ jobs:
           REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
           HELICONE_CACHE_ENABLED: false
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
-          REPORT_LOCATION: ${{ format('../../reports/{0}', matrix.agent-name) }}
+          REPORTS_FOLDER: ${{ format('../../reports/{0}', matrix.agent-name) }}
