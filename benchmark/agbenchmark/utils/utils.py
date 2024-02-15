@@ -14,7 +14,6 @@ from agbenchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel
 load_dotenv()
 
 AGENT_NAME = os.getenv("AGENT_NAME")
-REPORT_LOCATION = os.getenv("REPORT_LOCATION", None)
 
 logger = logging.getLogger(__name__)
 
