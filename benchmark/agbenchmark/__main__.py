@@ -216,7 +216,6 @@ def config():
 @cli.group()
 def challenge():
     logging.getLogger().setLevel(logging.WARNING)
-    pass
 
 
 @challenge.command("list")
