@@ -395,6 +395,7 @@ class WebArenaChallenge(BaseChallenge):
 
         n_steps = 0
         timed_out = None
+        agent_task_cost = None
         eval_results_per_step: list[list[tuple[_Eval, EvalResult]]] = []
         try:
             async for step in self.run_challenge(
@@ -403,7 +404,14 @@ class WebArenaChallenge(BaseChallenge):
                 if not step.output:
                     logger.warn(f"Step has no output: {step}")
                     continue
+
                 n_steps += 1
+                if step.additional_output:
+                    agent_task_cost = step.additional_output.get(
+                        "task_total_cost",
+                        step.additional_output.get("task_cumulative_cost"),
+                    )
+
                 step_eval_results = self.evaluate_step_result(
                     step, mock=request.config.getoption("--mock")
                 )
@@ -423,6 +431,7 @@ class WebArenaChallenge(BaseChallenge):
             timed_out = True
         request.node.user_properties.append(("n_steps", n_steps))
         request.node.user_properties.append(("timed_out", timed_out))
+        request.node.user_properties.append(("agent_task_cost", agent_task_cost))
 
         # Get the column aggregate (highest score for each Eval)
         # from the matrix of EvalResults per step.
