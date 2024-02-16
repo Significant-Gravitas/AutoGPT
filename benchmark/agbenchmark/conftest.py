@@ -216,8 +216,8 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc):
-    if type(n := metafunc.config.getoption("-N")) is str:
-        metafunc.parametrize("i_attempt", range(int(n)))
+    n = metafunc.config.getoption("-N")
+    metafunc.parametrize("i_attempt", range(int(n)) if type(n) is str else [0])
 
 
 def pytest_collection_modifyitems(

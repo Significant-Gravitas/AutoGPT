@@ -158,7 +158,7 @@ class BuiltinChallenge(BaseChallenge):
         self,
         config: AgentBenchmarkConfig,
         request: pytest.FixtureRequest,
-        i_attempt: int = 0,
+        i_attempt: int,
     ) -> None:
         # if os.environ.get("HELICONE_API_KEY"):
         #     from helicone.lock import HeliconeLockManager
