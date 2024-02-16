@@ -233,14 +233,21 @@ class AgentProtocolServer:
 
             if step.is_last and execute_command == finish.__name__:
                 assert execute_command_args
+
+                additional_output = {}
+                task_total_cost = agent.llm_provider.get_incurred_cost()
+                if task_total_cost > 0:
+                    additional_output["task_total_cost"] = task_total_cost
+                    logger.info(
+                        f"Total LLM cost for task {task_id}: "
+                        f"${round(task_total_cost, 2)}"
+                    )
+
                 step = await self.db.update_step(
                     task_id=task_id,
                     step_id=step.step_id,
                     output=execute_command_args["reason"],
-                )
-                logger.info(
-                    f"Total LLM cost for task {task_id}: "
-                    f"${round(agent.llm_provider.get_incurred_cost(), 2)}"
+                    additional_output=additional_output,
                 )
                 return step
 
@@ -320,6 +327,14 @@ class AgentProtocolServer:
             **raw_output,
         }
 
+        task_cumulative_cost = agent.llm_provider.get_incurred_cost()
+        if task_cumulative_cost > 0:
+            additional_output["task_cumulative_cost"] = task_cumulative_cost
+        logger.debug(
+            f"Running total LLM cost for task {task_id}: "
+            f"${round(task_cumulative_cost, 3)}"
+        )
+
         step = await self.db.update_step(
             task_id=task_id,
             step_id=step.step_id,
@@ -328,10 +343,6 @@ class AgentProtocolServer:
             additional_output=additional_output,
         )
 
-        logger.debug(
-            f"Running total LLM cost for task {task_id}: "
-            f"${round(agent.llm_provider.get_incurred_cost(), 3)}"
-        )
         agent.state.save_to_json_file(agent.file_manager.state_file_path)
         return step
 
