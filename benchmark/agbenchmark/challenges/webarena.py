@@ -37,7 +37,8 @@ site_info_map: dict[WebArenaSite, WebArenaSiteInfo] = {
         base_url="http://git.junglegym.ai",
         available=bool(_git_user and _git_password),
         additional_info=(
-            f"To log in, use the username '{_git_user}' and password '{_git_password}'."
+            f"To log in to {{url}}, use the username '{_git_user}' "
+            f"and password '{_git_password}'."
         ),
         unavailable_reason=(
             "WEBARENA_GIT_CREDENTIALS not set (correctly): "
@@ -52,16 +53,22 @@ site_info_map: dict[WebArenaSite, WebArenaSiteInfo] = {
     "shopping": WebArenaSiteInfo(base_url="http://shop.junglegym.ai"),
     "shopping_admin": WebArenaSiteInfo(
         base_url="http://cms.junglegym.ai/admin",
-        additional_info="To log in, use the username 'admin' and password 'admin1234'.",
+        additional_info=(
+            "To log in to {url}, use the username 'admin' and password 'admin1234'."
+        ),
     ),
     "wikipedia": WebArenaSiteInfo(base_url="http://wiki.junglegym.ai"),
 }
 
 
-def get_site_url(site: WebArenaSite) -> str:
+def get_site_info(site: WebArenaSite) -> WebArenaSiteInfo:
     if site not in site_info_map:
         raise ValueError(f"JungleGym site '{site}' unknown, cannot resolve URL")
-    return site_info_map[site].base_url
+    return site_info_map[site]
+
+
+def get_site_url(site: WebArenaSite) -> str:
+    return get_site_info(site).base_url
 
 
 def resolve_uri(uri: str) -> str:
@@ -245,10 +252,15 @@ class WebArenaChallengeSpec(BaseModel):
 
     @property
     def assignment_for_agent(self):
-        sites = [get_site_url(s) for s in self.sites]
+        sites = [get_site_info(s) for s in self.sites]
         nav_constraint = (
-            f"You are ONLY allowed to access URLs in {' and '.join(sites)}."
-        )
+            "You are ONLY allowed to access URLs in "
+            f"{' and '.join(s.base_url for s in sites)}.\n\n"
+            + "\n".join(
+                s.additional_info.format(url=s.base_url)
+                for s in sites if s.additional_info
+            )
+        ).strip()
 
         return (
             f"First of all, go to {self.start_url}. "
