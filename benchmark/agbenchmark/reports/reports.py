@@ -92,6 +92,7 @@ def add_test_result_to_report(
             run_time=f"{str(round(call.duration, 3))} seconds",
             fail_reason=str(call.excinfo.value) if call.excinfo else None,
             reached_cutoff=user_properties.get("timed_out", False),
+            n_steps=user_properties.get("n_steps"),
         )
     )
     test_report.metrics.success_percentage = (
