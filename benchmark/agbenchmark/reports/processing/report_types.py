@@ -20,6 +20,8 @@ class TestResult(BaseModel):
     """If applicable, the reason why the run was not successful"""
     reached_cutoff: bool | None = None  # None if in progress
     """Whether the run had to be stopped due to reaching the timeout"""
+    n_steps: int | None = None
+    """The number of steps executed by the agent"""
     cost: float | None = None
     """The (known) cost incurred by the run, e.g. from using paid LLM APIs"""
 

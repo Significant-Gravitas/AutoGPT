@@ -393,6 +393,7 @@ class WebArenaChallenge(BaseChallenge):
         elif cutoff := request.config.getoption("--cutoff"):
             timeout = int(cutoff)
 
+        n_steps = 0
         timed_out = None
         eval_results_per_step: list[list[tuple[_Eval, EvalResult]]] = []
         try:
@@ -402,6 +403,7 @@ class WebArenaChallenge(BaseChallenge):
                 if not step.output:
                     logger.warn(f"Step has no output: {step}")
                     continue
+                n_steps += 1
                 step_eval_results = self.evaluate_step_result(
                     step, mock=request.config.getoption("--mock")
                 )
@@ -419,6 +421,7 @@ class WebArenaChallenge(BaseChallenge):
             timed_out = False
         except TimeoutError:
             timed_out = True
+        request.node.user_properties.append(("n_steps", n_steps))
         request.node.user_properties.append(("timed_out", timed_out))
 
         # Get the column aggregate (highest score for each Eval)
