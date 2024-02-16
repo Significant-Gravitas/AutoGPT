@@ -377,7 +377,7 @@ class WebArenaChallenge(BaseChallenge):
         self,
         config: AgentBenchmarkConfig,
         request: pytest.FixtureRequest,
-        i_attempt: int = 0,
+        i_attempt: int,
     ) -> None:
         if not self._spec.available:
             pytest.skip(self._spec.unavailable_reason)
