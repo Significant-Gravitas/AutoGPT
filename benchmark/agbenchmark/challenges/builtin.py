@@ -173,6 +173,7 @@ class BuiltinChallenge(BaseChallenge):
             timeout = int(cutoff)  # type: ignore
 
         task_id = ""
+        n_steps = 0
         timed_out = None
         try:
             async for step in self.run_challenge(
@@ -180,9 +181,11 @@ class BuiltinChallenge(BaseChallenge):
             ):
                 if not task_id:
                     task_id = step.task_id
+                n_steps += 1
             timed_out = False
         except TimeoutError:
             timed_out = True
+        request.node.user_properties.append(("n_steps", n_steps))
         request.node.user_properties.append(("timed_out", timed_out))
 
         agent_client_config = ClientConfig(host=config.host)
