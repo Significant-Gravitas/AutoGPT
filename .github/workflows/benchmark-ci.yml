@@ -138,4 +138,4 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           TELEMETRY_ENVIRONMENT: autogpt-benchmark-ci
-          TELEMETRY_OPT_IN: ${{ github.event_name == 'push' && github.ref_name == 'master' }}
+          TELEMETRY_OPT_IN: ${{ github.ref_name == 'master' }}
