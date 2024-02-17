@@ -68,6 +68,9 @@ jobs:
 
       - name: Push reports to data branch
         run: |
+          # BODGE: Remove success_rate.json and regression_tests.json to avoid conflicts on checkout
+          rm ${{ env.REPORTS_FOLDER }}/*.json
+
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'github-actions@agpt.co'
           git fetch origin ${{ env.REPORTS_BRANCH }}:${{ env.REPORTS_BRANCH }} \
