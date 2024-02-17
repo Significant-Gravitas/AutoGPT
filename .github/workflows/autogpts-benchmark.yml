@@ -41,6 +41,8 @@ jobs:
         run: |
           ./run agent start ${{ matrix.agent-name }}
           cd autogpts/${{ matrix.agent-name }}
+
+          set +e  # Do not quit on non-zero exit codes
           poetry run agbenchmark run -N 3 \
             --test=ReadFile \
             --test=BasicRetrieval --test=RevenueRetrieval2 \
