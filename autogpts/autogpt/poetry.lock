@@ -42,7 +42,6 @@ python-multipart = "^0.0.7"
 pyvis = "^0.3.2"
 requests = "^2.31.0"
 selenium = "^4.11.2"
-tabulate = "^0.9.0"
 toml = "^0.10.2"
 types-requests = "^2.31.0.1"
 uvicorn = "^0.23.2"
@@ -51,7 +50,7 @@ uvicorn = "^0.23.2"
 type = "git"
 url = "https://github.com/Significant-Gravitas/AutoGPT.git"
 reference = "HEAD"
-resolved_reference = "63e6014b27e94bb636ed05499b1ae64f0dcc87d2"
+resolved_reference = "679339d00c20a4494b6c3ac9f399b2c470a16c17"
 subdirectory = "benchmark"
 
 [[package]]
@@ -6143,20 +6142,6 @@ files = [
 
 [package.dependencies]
 mpmath = ">=0.19"
-
-[[package]]
-name = "tabulate"
-version = "0.9.0"
-description = "Pretty-print tabular data"
-optional = true
-python-versions = ">=3.7"
-files = [
-    {file = "tabulate-0.9.0-py3-none-any.whl", hash = "sha256:024ca478df22e9340661486f85298cff5f6dcdba14f3813e8830015b9ed1948f"},
-    {file = "tabulate-0.9.0.tar.gz", hash = "sha256:0095b12bf5966de529c0feb1fa08671671b3368eec77d7ef7ab114be2c068b3c"},
-]
-
-[package.extras]
-widechars = ["wcwidth"]
 
 [[package]]
 name = "tenacity"

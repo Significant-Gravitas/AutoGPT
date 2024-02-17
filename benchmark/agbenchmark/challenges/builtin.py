@@ -158,7 +158,7 @@ class BuiltinChallenge(BaseChallenge):
         self,
         config: AgentBenchmarkConfig,
         request: pytest.FixtureRequest,
-        i_attempt: int,
+        i_attempt: int = 0,
     ) -> None:
         # if os.environ.get("HELICONE_API_KEY"):
         #     from helicone.lock import HeliconeLockManager
@@ -173,28 +173,17 @@ class BuiltinChallenge(BaseChallenge):
             timeout = int(cutoff)  # type: ignore
 
         task_id = ""
-        n_steps = 0
         timed_out = None
-        agent_task_cost = None
         try:
             async for step in self.run_challenge(
                 config, timeout, mock=request.config.getoption("--mock")
             ):
                 if not task_id:
                     task_id = step.task_id
-
-                n_steps += 1
-                if step.additional_output:
-                    agent_task_cost = step.additional_output.get(
-                        "task_total_cost",
-                        step.additional_output.get("task_cumulative_cost"),
-                    )
             timed_out = False
         except TimeoutError:
             timed_out = True
-        request.node.user_properties.append(("n_steps", n_steps))
         request.node.user_properties.append(("timed_out", timed_out))
-        request.node.user_properties.append(("agent_task_cost", agent_task_cost))
 
         agent_client_config = ClientConfig(host=config.host)
         async with ApiClient(agent_client_config) as api_client:

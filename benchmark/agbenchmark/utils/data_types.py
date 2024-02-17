@@ -29,8 +29,8 @@ STRING_DIFFICULTY_MAP = {e.value: DIFFICULTY_MAP[e] for e in DifficultyLevel}
 
 
 class Category(str, Enum):
-    GENERALIST = "general"
     DATA = "data"
+    GENERALIST = "general"
     CODING = "coding"
     SCRAPE_SYNTHESIZE = "scrape_synthesize"
     WEB = "web"

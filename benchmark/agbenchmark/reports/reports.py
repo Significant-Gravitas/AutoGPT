@@ -90,10 +90,8 @@ def add_test_result_to_report(
         TestResult(
             success=call.excinfo is None,
             run_time=f"{str(round(call.duration, 3))} seconds",
-            fail_reason=None if call.excinfo is None else str(call.excinfo.value),
+            fail_reason=str(call.excinfo.value) if call.excinfo else None,
             reached_cutoff=user_properties.get("timed_out", False),
-            n_steps=user_properties.get("n_steps"),
-            cost=user_properties.get("agent_task_cost"),
         )
     )
     test_report.metrics.success_percentage = (

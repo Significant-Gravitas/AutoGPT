@@ -37,8 +37,7 @@ site_info_map: dict[WebArenaSite, WebArenaSiteInfo] = {
         base_url="http://git.junglegym.ai",
         available=bool(_git_user and _git_password),
         additional_info=(
-            f"To log in to {{url}}, use the username '{_git_user}' "
-            f"and password '{_git_password}'."
+            f"To log in, use the username '{_git_user}' and password '{_git_password}'."
         ),
         unavailable_reason=(
             "WEBARENA_GIT_CREDENTIALS not set (correctly): "
@@ -53,22 +52,16 @@ site_info_map: dict[WebArenaSite, WebArenaSiteInfo] = {
     "shopping": WebArenaSiteInfo(base_url="http://shop.junglegym.ai"),
     "shopping_admin": WebArenaSiteInfo(
         base_url="http://cms.junglegym.ai/admin",
-        additional_info=(
-            "To log in to {url}, use the username 'admin' and password 'admin1234'."
-        ),
+        additional_info="To log in, use the username 'admin' and password 'admin1234'.",
     ),
     "wikipedia": WebArenaSiteInfo(base_url="http://wiki.junglegym.ai"),
 }
 
 
-def get_site_info(site: WebArenaSite) -> WebArenaSiteInfo:
+def get_site_url(site: WebArenaSite) -> str:
     if site not in site_info_map:
         raise ValueError(f"JungleGym site '{site}' unknown, cannot resolve URL")
-    return site_info_map[site]
-
-
-def get_site_url(site: WebArenaSite) -> str:
-    return get_site_info(site).base_url
+    return site_info_map[site].base_url
 
 
 def resolve_uri(uri: str) -> str:
@@ -186,9 +179,6 @@ class WebArenaChallengeSpec(BaseModel):
     intent_template_id: int
     instantiation_dict: dict[str, str | list[str]]
 
-    available: bool = True
-    unavailable_reason: str = ""
-
     class EvalSet(BaseModel):
         class StringMatchEvalSet(BaseModel):
             exact_match: str | None
@@ -252,15 +242,10 @@ class WebArenaChallengeSpec(BaseModel):
 
     @property
     def assignment_for_agent(self):
-        sites = [get_site_info(s) for s in self.sites]
+        sites = [get_site_url(s) for s in self.sites]
         nav_constraint = (
-            "You are ONLY allowed to access URLs in "
-            f"{' and '.join(s.base_url for s in sites)}.\n\n"
-            + "\n".join(
-                s.additional_info.format(url=s.base_url)
-                for s in sites if s.additional_info
-            )
-        ).strip()
+            f"You are ONLY allowed to access URLs in {' and '.join(sites)}."
+        )
 
         return (
             f"First of all, go to {self.start_url}. "
@@ -303,8 +288,6 @@ class WebArenaChallenge(BaseChallenge):
             ],  # TODO: make categories more specific
             reference_answer=spec.eval.reference_answer_raw_annotation,
             source_uri=cls.SOURCE_URI_TEMPLATE.format(task_id=spec.task_id),
-            available=spec.available,
-            unavailable_reason=spec.unavailable_reason,
         )
         return type(
             f"Test{challenge_info.name}",
@@ -377,11 +360,8 @@ class WebArenaChallenge(BaseChallenge):
         self,
         config: AgentBenchmarkConfig,
         request: pytest.FixtureRequest,
-        i_attempt: int,
+        i_attempt: int = 0,
     ) -> None:
-        if not self._spec.available:
-            pytest.skip(self._spec.unavailable_reason)
-
         # if os.environ.get("HELICONE_API_KEY"):
         #     from helicone.lock import HeliconeLockManager
 
@@ -393,9 +373,7 @@ class WebArenaChallenge(BaseChallenge):
         elif cutoff := request.config.getoption("--cutoff"):
             timeout = int(cutoff)
 
-        n_steps = 0
         timed_out = None
-        agent_task_cost = None
         eval_results_per_step: list[list[tuple[_Eval, EvalResult]]] = []
         try:
             async for step in self.run_challenge(
@@ -404,14 +382,6 @@ class WebArenaChallenge(BaseChallenge):
                 if not step.output:
                     logger.warn(f"Step has no output: {step}")
                     continue
-
-                n_steps += 1
-                if step.additional_output:
-                    agent_task_cost = step.additional_output.get(
-                        "task_total_cost",
-                        step.additional_output.get("task_cumulative_cost"),
-                    )
-
                 step_eval_results = self.evaluate_step_result(
                     step, mock=request.config.getoption("--mock")
                 )
@@ -429,9 +399,7 @@ class WebArenaChallenge(BaseChallenge):
             timed_out = False
         except TimeoutError:
             timed_out = True
-        request.node.user_properties.append(("n_steps", n_steps))
         request.node.user_properties.append(("timed_out", timed_out))
-        request.node.user_properties.append(("agent_task_cost", agent_task_cost))
 
         # Get the column aggregate (highest score for each Eval)
         # from the matrix of EvalResults per step.
@@ -458,13 +426,11 @@ class WebArenaChallenge(BaseChallenge):
         ) + "\n".join(f"{repr(r[0])}\n  -> {repr(r[1])}" for r in evals_results)
 
 
-def load_webarena_challenges(
-    skip_unavailable: bool = True
-) -> Iterator[type[WebArenaChallenge]]:
+def load_webarena_challenges() -> Iterator[type[WebArenaChallenge]]:
     logger.info("Loading WebArena challenges...")
 
     for site, info in site_info_map.items():
-        if not info.available and skip_unavailable:
+        if not info.available:
             logger.warning(
                 f"JungleGym site '{site}' is not available: {info.unavailable_reason} "
                 "Skipping all challenges which use this site."
@@ -491,38 +457,30 @@ def load_webarena_challenges(
     for entry in challenge_dicts:
         try:
             challenge_spec = WebArenaChallengeSpec.parse_obj(entry)
+            for site in challenge_spec.sites:
+                site_info = site_info_map.get(site)
+                if site_info is None:
+                    logger.warning(
+                        f"WebArena task {challenge_spec.task_id} requires unknown site "
+                        f"'{site}'; skipping..."
+                    )
+                    break
+                if not site_info.available:
+                    logger.debug(
+                        f"WebArena task {challenge_spec.task_id} requires unavailable "
+                        f"site '{site}'; skipping..."
+                    )
+                    break
+            else:
+                yield WebArenaChallenge.from_challenge_spec(challenge_spec)
+                loaded += 1
+                continue
+            skipped += 1
         except ValidationError as e:
             failed += 1
             logger.warning(f"Error validating WebArena challenge entry: {entry}")
             logger.warning(f"Error details: {e}")
-            continue
-
-        # Check all required sites for availability
-        for site in challenge_spec.sites:
-            site_info = site_info_map.get(site)
-            if site_info is None:
-                challenge_spec.available = False
-                challenge_spec.unavailable_reason = (
-                    f"WebArena task {challenge_spec.task_id} requires unknown site "
-                    f"'{site}'"
-                )
-            elif not site_info.available:
-                challenge_spec.available = False
-                challenge_spec.unavailable_reason = (
-                    f"WebArena task {challenge_spec.task_id} requires unavailable "
-                    f"site '{site}'"
-                )
-
-        if not challenge_spec.available and skip_unavailable:
-            logger.debug(f"{challenge_spec.unavailable_reason}; skipping...")
-            skipped += 1
-            continue
-
-        yield WebArenaChallenge.from_challenge_spec(challenge_spec)
-        loaded += 1
-
     logger.info(
         "Loading WebArena challenges complete: "
-        f"loaded {loaded}, skipped {skipped}."
-        + (f" {failed} challenges failed to load." if failed else "")
+        f"loaded {loaded}, skipped {skipped}. {failed} challenge failed to load."
     )

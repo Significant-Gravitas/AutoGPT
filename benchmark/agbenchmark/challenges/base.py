@@ -28,9 +28,6 @@ class ChallengeInfo(BaseModel):
     source_uri: str
     """Internal reference indicating the source of the challenge specification"""
 
-    available: bool = True
-    unavailable_reason: str = ""
-
 
 class BaseChallenge(ABC):
     """
