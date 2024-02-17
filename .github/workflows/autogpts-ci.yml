@@ -66,4 +66,4 @@ jobs:
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
           REPORTS_FOLDER: ${{ format('../../reports/{0}', matrix.agent-name) }}
           TELEMETRY_ENVIRONMENT: autogpt-ci
-          TELEMETRY_OPT_IN: ${{ github.event_name == 'push' && github.ref_name == 'master' }}
+          TELEMETRY_OPT_IN: ${{ github.ref_name == 'master' }}
