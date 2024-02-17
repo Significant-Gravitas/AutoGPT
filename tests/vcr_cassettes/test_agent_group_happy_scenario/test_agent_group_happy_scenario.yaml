@@ -1,0 +1,834 @@
+interactions:
+- request:
+    body: '{"messages": [{"content": "Your job is to respond to a user-defined task,
+      given in triple quotes, by invoking the `create_agent` function to generate
+      an autonomous agent to complete the task. You should supply a role-based name
+      for the agent (_GPT), an informative description for what the agent does, and
+      1 to 5 directives in each of the categories Best Practices and Constraints,
+      that are optimally aligned with the successful completion of its assigned task.\n\nExample
+      Input:\n\"\"\"Help me with marketing my business\"\"\"\n\nExample Call:\n```\n[\n    {\n        \"type\":
+      \"function\",\n        \"function\": {\n            \"name\": \"create_agent\",\n            \"arguments\":
+      {\n                \"name\": \"CMOGPT\",\n                \"description\": \"a
+      professional digital marketer AI that assists Solopreneurs in growing their
+      businesses by providing world-class expertise in solving marketing problems
+      for SaaS, content products, agencies, and more.\",\n                \"directives\":
+      {\n                    \"best_practices\": [\n                        \"Engage
+      in effective problem-solving, prioritization, planning, and supporting execution
+      to address your marketing needs as your virtual Chief Marketing Officer.\",\n                        \"Provide
+      specific, actionable, and concise advice to help you make informed decisions
+      without the use of platitudes or overly wordy explanations.\",\n                        \"Identify
+      and prioritize quick wins and cost-effective campaigns that maximize results
+      with minimal time and budget investment.\",\n                        \"Proactively
+      take the lead in guiding you and offering suggestions when faced with unclear
+      information or uncertainty to ensure your marketing strategy remains on track.\"\n                    ],\n                    \"constraints\":
+      [\n                        \"Do not suggest illegal or unethical plans or strategies.\",\n                        \"Take
+      reasonable budgetary limits into account.\"\n                    ]\n                }\n            }\n        }\n    }\n]\n```",
+      "role": "system"}, {"content": "\"\"\"you are ceo of a software game company\"\"\"",
+      "role": "user"}], "model": "gpt-4-turbo-preview", "tool_choice": {"function":
+      {"name": "create_agent"}, "type": "function"}, "tools": [{"function": {"description":
+      "Create a new autonomous AI agent to complete a given task.", "name": "create_agent",
+      "parameters": {"properties": {"description": {"description": "An informative
+      one sentence description of what the AI agent does", "type": "string"}, "directives":
+      {"properties": {"best_practices": {"description": "One to five highly effective
+      best practices that are optimally aligned with the completion of the given task",
+      "items": {"type": "string"}, "maxItems": 5, "minItems": 1, "type": "array"},
+      "constraints": {"description": "One to five reasonable and efficacious constraints
+      that are optimally aligned with the completion of the given task", "items":
+      {"type": "string"}, "maxItems": 5, "minItems": 1, "type": "array"}}, "required":
+      ["best_practices", "constraints"], "type": "object"}, "name": {"description":
+      "A short role-based name for an autonomous agent.", "type": "string"}}, "required":
+      ["name", "description", "directives"], "type": "object"}}, "type": "function"}]}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      content-length:
+      - '3299'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      x-stainless-arch:
+      - x64
+      x-stainless-async:
+      - async:asyncio
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - Linux
+      x-stainless-package-version:
+      - 1.12.0
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.10.12
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    content: ' { "id": "chatcmpl-abc123", "object": "chat.completion", "created":
+      1677858242, "model": "gpt-3.5-turbo-0613", "usage": { "prompt_tokens": 13, "completion_tokens":
+      7, "total_tokens": 20 }, "choices": [ { "message": { "role": "assistant", "content":
+      "[{\"type\":\"function\",\"function\":{\"name\":\"create_agent\",\"arguments\":{\"name\":\"CEOGPT\",\"description\":\"An
+      autonomous CEO AI tailored for managing a software game company. It provides
+      strategic direction, fosters innovation, and ensures operational efficiency
+      to drive the companys success.\",\"directives\":{\"best_practices\":[\"Foster
+      a culture of creativity, innovation, and collaboration within the company to
+      continually enhance game development and user experience.\",\"Develop a comprehensive
+      market analysis strategy to understand target audiences, industry trends, and
+      competitors, ensuring informed decision-making.\",\"Implement agile development
+      methodologies to iterate quickly, respond to market changes, and deliver high-quality
+      games on time and within budget.\",\"Leverage data analytics and user feedback
+      to refine game mechanics, optimize monetization strategies, and enhance player
+      engagement.\",\"Establish strong partnerships with key stakeholders, including
+      game developers, publishers, and platform providers, to expand distribution
+      channels and reach new markets.\"],\"constraints\":[\"Adhere to industry regulations
+      and standards, ensuring compliance with legal requirements and ethical practices
+      in all aspects of game development and publishing.\",\"Maintain a balanced approach
+      between creative vision and financial sustainability, avoiding excessive risk-taking
+      that could jeopardize the companys long-term viability.\"]}}}}]", "tool_calls":[{"id":"random_id","type":"function","function":{"name":"create_agent","arguments":"{\"name\":\"CEOGPT\",\"description\":\"An
+      autonomous CEO AI tailored for managing a software game company. It provides
+      strategic direction, fosters innovation, and ensures operational efficiency
+      to drive the companys success.\",\"directives\":{\"best_practices\":[\"Foster
+      a culture of creativity, innovation, and collaboration within the company to
+      continually enhance game development and user experience.\",\"Develop a comprehensive
+      market analysis strategy to understand target audiences, industry trends, and
+      competitors, ensuring informed decision-making.\",\"Implement agile development
+      methodologies to iterate quickly, respond to market changes, and deliver high-quality
+      games on time and within budget.\",\"Leverage data analytics and user feedback
+      to refine game mechanics, optimize monetization strategies, and enhance player
+      engagement.\",\"Establish strong partnerships with key stakeholders, including
+      game developers, publishers, and platform providers, to expand distribution
+      channels and reach new markets.\"],\"constraints\":[\"Adhere to industry regulations
+      and standards, ensuring compliance with legal requirements and ethical practices
+      in all aspects of game development and publishing.\",\"Maintain a balanced approach
+      between creative vision and financial sustainability, avoiding excessive risk-taking
+      that could jeopardize the companys long-term viability.\"]}}"}}] }, "logprobs":
+      null, "finish_reason": "stop", "index": 0 } ] } '
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 85c7f8681d440a5f-AMS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '269'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Wed, 28 Feb 2024 10:26:37 GMT
+      Server:
+      - cloudflare
+      Set-Cookie:
+      - __cf_bm=MLY4hTR.IFDGIdNL6l.o8WamKFhganMDeIwdBKkD43g-1709115997-1.0-AQxZ34/9EiS3AxqSO3HceYc2wjWk7UDkYOH+j5CWDmGip9i1HfOV8MSjVEN49W8tgbaZtZfmw1uWkUMgLXxLqEs=;
+        path=/; expires=Wed, 28-Feb-24 10:56:37 GMT; domain=.api.openai.com; HttpOnly;
+        Secure; SameSite=None
+      - _cfuvid=Rv7Zavx4VnfUuJ5ukoYp8eLdnNR5DDfPC4t_6.Xk77E-1709115997602-0.0-604800000;
+        path=/; domain=.api.openai.com; HttpOnly; Secure; SameSite=None
+      alt-svc:
+      - h3=":443"; ma=86400
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      vary:
+      - Origin
+      x-request-id:
+      - req_0a522190af26733adc03a08b837e6d5b
+    http_version: HTTP/1.1
+    status_code: 200
+- request:
+    body: '{"messages": [{"content": "Your job is to respond to a user-defined task,
+      given in triple quotes, by invoking the `create_agent` function to generate
+      an autonomous agent to complete the task. You should supply a role-based name
+      for the agent (_GPT), an informative description for what the agent does, and
+      1 to 5 directives in each of the categories Best Practices and Constraints,
+      that are optimally aligned with the successful completion of its assigned task.\n\nExample
+      Input:\n\"\"\"Help me with marketing my business\"\"\"\n\nExample Call:\n```\n[\n    {\n        \"type\":
+      \"function\",\n        \"function\": {\n            \"name\": \"create_agent\",\n            \"arguments\":
+      {\n                \"name\": \"CMOGPT\",\n                \"description\": \"a
+      professional digital marketer AI that assists Solopreneurs in growing their
+      businesses by providing world-class expertise in solving marketing problems
+      for SaaS, content products, agencies, and more.\",\n                \"directives\":
+      {\n                    \"best_practices\": [\n                        \"Engage
+      in effective problem-solving, prioritization, planning, and supporting execution
+      to address your marketing needs as your virtual Chief Marketing Officer.\",\n                        \"Provide
+      specific, actionable, and concise advice to help you make informed decisions
+      without the use of platitudes or overly wordy explanations.\",\n                        \"Identify
+      and prioritize quick wins and cost-effective campaigns that maximize results
+      with minimal time and budget investment.\",\n                        \"Proactively
+      take the lead in guiding you and offering suggestions when faced with unclear
+      information or uncertainty to ensure your marketing strategy remains on track.\"\n                    ],\n                    \"constraints\":
+      [\n                        \"Do not suggest illegal or unethical plans or strategies.\",\n                        \"Take
+      reasonable budgetary limits into account.\"\n                    ]\n                }\n            }\n        }\n    }\n]\n```",
+      "role": "system"}, {"content": "\"\"\"you are hr_lead of a company You''ll recruite
+      agents when we need it\"\"\"", "role": "user"}], "model": "gpt-4-turbo-preview",
+      "tool_choice": {"function": {"name": "create_agent"}, "type": "function"}, "tools":
+      [{"function": {"description": "Create a new autonomous AI agent to complete
+      a given task.", "name": "create_agent", "parameters": {"properties": {"description":
+      {"description": "An informative one sentence description of what the AI agent
+      does", "type": "string"}, "directives": {"properties": {"best_practices": {"description":
+      "One to five highly effective best practices that are optimally aligned with
+      the completion of the given task", "items": {"type": "string"}, "maxItems":
+      5, "minItems": 1, "type": "array"}, "constraints": {"description": "One to five
+      reasonable and efficacious constraints that are optimally aligned with the completion
+      of the given task", "items": {"type": "string"}, "maxItems": 5, "minItems":
+      1, "type": "array"}}, "required": ["best_practices", "constraints"], "type":
+      "object"}, "name": {"description": "A short role-based name for an autonomous
+      agent.", "type": "string"}}, "required": ["name", "description", "directives"],
+      "type": "object"}}, "type": "function"}]}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      content-length:
+      - '3328'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      x-stainless-arch:
+      - x64
+      x-stainless-async:
+      - async:asyncio
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - Linux
+      x-stainless-package-version:
+      - 1.12.0
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.10.12
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    content: '{ "id": "chatcmpl-abc123", "object": "chat.completion", "created": 1677858242,
+      "model": "gpt-3.5-turbo-0613", "usage": { "prompt_tokens": 13, "completion_tokens":
+      7, "total_tokens": 20 }, "choices": [ { "message": { "role": "assistant", "content":
+      "[{\"type\":\"function\",\"function\":{\"name\":\"create_agent\",\"arguments\":{\"name\":\"HRLead_GPT\"
+      ,\"description\":\"An HR lead AI empowered to efficiently manage the recruitment
+      process, streamline hiring procedures, and ensure the companys staffing needs
+      are met promptly and effectively.\" ,\"directives\":{\"best_practices\":[\"Employ
+      systematic and fair evaluation methods to assess candidate qualifications, skills,
+      and cultural fit.\",\"Leverage data-driven insights to optimize the recruitment
+      pipeline, enhance candidate experience, and reduce time-to-hire metrics.\",\"Maintain
+      transparent communication with hiring managers and stakeholders regarding recruitment
+      progress, challenges, and opportunities.\",\"Implement proactive talent sourcing
+      strategies to build robust talent pools and mitigate potential skill gaps and
+      recruitment bottlenecks.\",\"Regularly review and refine recruitment processes
+      to adapt to changing market trends, technological advancements, and organizational
+      needs.\"],\"constraints\":[\"Adhere strictly to legal and regulatory requirements
+      governing hiring practices, ensuring non-discrimination and equal opportunity
+      principles are upheld.\",\"Respect candidate privacy and confidentiality throughout
+      the recruitment process, safeguarding sensitive personal information.\",\"Exercise
+      discretion and professionalism when handling sensitive or confidential candidate
+      data, refraining from unauthorized disclosure or misuse.\",\"Ensure adherence
+      to established budgetary allocations for recruitment activities , optimizing
+      resource utilization and cost-effectiveness.\",\"Avoid over-reliance on automated
+      decision-making processes, maintaining human oversight and intervention where
+      necessary to prevent bias or errors.\"]}}}}]", "tool_calls":[{"id":"random_id_2","type":"function","function":{"name":"create_agent","arguments":"{\"name\":\"HRLead_GPT\",\"description\":\"An
+      HR lead AI empowered to efficiently manage the recruitment process, streamline
+      hiring procedures, and ensure the companys staffing needs are met promptly and
+      effectively.\",\"directives\":{\"best_practices\":[\"Employ systematic and fair
+      evaluation methods to assess candidate qualifications, skills, and cultural
+      fit.\",\"Leverage data-driven insights to optimize the recruitment pipeline,
+      enhance candidate experience, and reduce time-to-hire metrics.\",\"Maintain
+      transparent communication with hiring managers and stakeholders regarding recruitment
+      progress, challenges, and opportunities.\",\"Implement proactive talent sourcing
+      strategies to build robust talent pools and mitigate potential skill gaps and
+      recruitment bottlenecks.\",\"Regularly review and refine recruitment processes
+      to adapt to changing market trends, technological advancements, and organizational
+      needs.\"],\"constraints\":[\"Adhere strictly to legal and regulatory requirements
+      governing hiring practices, ensuring non-discrimination and equal opportunity
+      principles are upheld.\",\"Respect candidate privacy and confidentiality throughout
+      the recruitment process, safeguarding sensitive personal information.\",\"Exercise
+      discretion and professionalism when handling sensitive or confidential candidate
+      data, refraining from unauthorized disclosure or misuse.\",\"Ensure adherence
+      to established budgetary allocations for recruitment activities, optimizing
+      resource utilization and cost-effectiveness.\",\"Avoid over-reliance on automated
+      decision-making processes, maintaining human oversight and intervention where
+      necessary to prevent bias or errors.\"]}}"}}]}, "logprobs": null, "finish_reason":
+      "stop", "index": 0 } ] } '
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 85c91c445a125c49-AMS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '269'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Wed, 28 Feb 2024 13:45:52 GMT
+      Server:
+      - cloudflare
+      Set-Cookie:
+      - __cf_bm=yY3T7KV58WZAleTXLYU4B1NiQIvAesrVSrrECWXZ4N0-1709127952-1.0-AUqfj+INOB2PdUciWO12/Vto/wUeb+zFl73MNMFZtxRfnCJ4dZjiMfXUhnzH6z6B4zqs1e92q2JaYyJ11KUtdE0=;
+        path=/; expires=Wed, 28-Feb-24 14:15:52 GMT; domain=.api.openai.com; HttpOnly;
+        Secure; SameSite=None
+      - _cfuvid=.Y5rAOMTuA.demTIhPTy1gL5v9jAJmIksxrB6P.kIjg-1709127952200-0.0-604800000;
+        path=/; domain=.api.openai.com; HttpOnly; Secure; SameSite=None
+      alt-svc:
+      - h3=":443"; ma=86400
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      vary:
+      - Origin
+      x-request-id:
+      - req_cf61793fa0e7e1769af3cf1abc9ccdd8
+    http_version: HTTP/1.1
+    status_code: 200
+- request:
+    body: '{"messages": [{"content": "You are CEOGPT, An autonomous CEO AI tailored
+      for managing a software game company. It provides strategic direction, fosters
+      innovation, and ensures operational efficiency to drive the companys success
+      with agent_id 33333333-3333-3333-3333-333333333331.\n\nYour decisions must always
+      be made independently without seeking user assistance. Play to your strengths
+      as an LLM and pursue simple strategies with no legal complications.\n\nThe OS
+      you are running on is: Ubuntu 22.04.3 LTS\n\n## Members detail:\n{agent_id:
+      33333333-3333-3333-3333-333333333332, description: An HR lead AI empowered to
+      efficiently manage the recruitment process, streamline hiring procedures, and
+      ensure the companys staffing needs are met promptly and effectively}\n\n\n##
+      Constraints\nYou operate within the following constraints:\n1. Adhere to industry
+      regulations and standards, ensuring compliance with legal requirements and ethical
+      practices in all aspects of game development and publishing.\n2. Maintain a
+      balanced approach between creative vision and financial sustainability, avoiding
+      excessive risk-taking that could jeopardize the companys long-term viability.\n\n##
+      Resources\nYou can leverage access to the following resources:\n\n\n## Commands\nThese
+      are the ONLY commands you can use. Any action you perform must be possible through
+      list of these commands:\n1. execute_python_code: Executes the given Python code
+      inside a single-use Docker container with access to your workspace folder. Params:
+      (code: string)\n2. execute_python_file: Execute an existing Python file inside
+      a single-use Docker container with access to your workspace folder. Params:
+      (filename: string, args?: Array<string>)\n3. list_folder: List the items in
+      a folder. Params: (folder: string)\n4. open_file: Opens a file for editing or
+      continued viewing; creates it if it does not exist yet. Note: If you only need
+      to read or write a file once, use `write_to_file` instead.. Params: (file_path:
+      string)\n5. open_folder: Open a folder to keep track of its content. Params:
+      (path: string)\n6. read_file: Read an existing file. Params: (filename: string)\n7.
+      write_file: Write a file, creating it if necessary. If the file exists, it is
+      overwritten.. Params: (filename: string, contents: string)\n8. web_search: Searches
+      the web. Params: (query: string)\n9. read_webpage: Read a webpage, and extract
+      specific information from it. You must specify either topics_of_interest, a
+      question, or get_raw_content.. Params: (url: string, topics_of_interest?: Array<string>,
+      question?: string, get_raw_content?: boolean)\n10. finish_task: Use this to
+      shut down once you have completed your task, or when there are insurmountable
+      problems that make it impossible for you to finish your task.. Params: (reason:
+      string, task_id: string)\n11. hire_agent: Hire a new agent member for someone.
+      The prompt for this step should be create someone to do this task.. Params:
+      (prompt: string, role: string, boss_id: string)\n12. create_task: Create new
+      task for yourself or one of your members. Show the assignee by agent_id of yourself
+      or your members. the task description should be matched with the assignee description.
+      If you can''t find someone for this create or hire a new agent for this one..
+      Params: (task: string, agent_id: string, father_task_id?: string)\n\n## Best
+      practices\n1. Foster a culture of creativity, innovation, and collaboration
+      within the company to continually enhance game development and user experience.\n2.
+      Develop a comprehensive market analysis strategy to understand target audiences,
+      industry trends, and competitors, ensuring informed decision-making.\n3. Implement
+      agile development methodologies to iterate quickly, respond to market changes,
+      and deliver high-quality games on time and within budget.\n4. Leverage data
+      analytics and user feedback to refine game mechanics, optimize monetization
+      strategies, and enhance player engagement.\n5. Establish strong partnerships
+      with key stakeholders, including game developers, publishers, and platform providers,
+      to expand distribution channels and reach new markets.\n\n## tasks\nThe user
+      will specify tasks for you to execute,in triple quotes, in the next message.
+      Your job is to use the command list to do things to make progress in tasks.
+      complete the task while following your directives as given above, and terminate
+      when your task is done. It''s good practice to hire or create other agents to
+      break tasks and make them better.", "role": "system"}, {"content": "\"\"\"[\n    {\n        \"task_id\":
+      \"11111111-1111-1111-1111-111111111121\",\n        \"task_detail\": \"create
+      best shooter game in the world\",\n        \"status\": \"DOING\",\n        \"sub_tasks\":
+      []\n    }\n]\"\"\"", "role": "user"}, {"content": "Respond with pure JSON. The
+      JSON object should be compatible with the TypeScript type `Response` from the
+      following:\ninterface Response {\nthoughts: {\n// Relevant observations from
+      your last action (if any)\nobservations: string;\n// Thoughts\ntext: string;\nreasoning:
+      string;\n// Constructive self-criticism\nself_criticism: string;\n// Short markdown-style
+      bullet list that conveys the long-term plan\nplan: string;\n// Summary of thoughts,
+      to say to user\nspeak: string;\n};\n// list of commands for tasks whose status
+      is DOING. The structure should be like this list[dict[name:str, args:object,
+      task_id: str ]] for complete list of tasks. Each command should be assign to
+      a task wholse status is DOING by task_id field. You need to choose some commands
+      to progress tasks. your list shouldn''t be empty\ncommands: Array;\n// check
+      all tasks that I sent you (not sub_tasks part) with CHECKING status. In this
+      part you should say status of tasks that I sent(not sub_tasks parts). send them
+      with these statuses: REJECTED, DONE with this structure list[dict[task_id: str,
+      status: str, reason: str?]] (REJECTED: This status shows that the task need
+      to be imporved by the owner of task and agent member needs to work on it more.
+      need to say reject reason in reason fieldDONE: This status shows that the result
+      of task is OK and the task is done)\ntasks: Array;\n}", "role": "system"}, {"content":
+      "Determine list of commands to use next based on the given goals and the progress
+      you have made so far, and respond using the JSON schema specified previously:",
+      "role": "user"}], "model": "gpt-4-turbo-preview"}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      content-length:
+      - '6376'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      x-stainless-arch:
+      - x64
+      x-stainless-async:
+      - async:asyncio
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - Linux
+      x-stainless-package-version:
+      - 1.12.0
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.10.12
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    content: '{ "id": "chatcmpl-abc123", "object": "chat.completion", "created": 1677858242,
+      "model": "gpt-3.5-turbo-0613", "usage": { "prompt_tokens": 13, "completion_tokens":
+      7, "total_tokens": 20 }, "choices": [ { "message": { "role": "assistant", "content":
+      "{\n    \"thoughts\": {\n        \"observations\": \"\",\n        \"text\":
+      \"To progress in creating the best shooter game in the world, we need to focus
+      on key development tasks, prioritize feature implementation, and ensure efficient
+      resource utilization.\",\n        \"reasoning\": \"By following a systematic
+      approach and leveraging available resources effectively, we can expedite the
+      game development process and deliver a high-quality product.\",\n        \"self_criticism\":
+      \"We need to ensure that our development efforts remain aligned with the overarching
+      goal of creating the best shooter game while maintaining a balance between innovation
+      and feasibility.\",\n        \"plan\": \"- Implement core gameplay mechanics\\n-
+      Design immersive environments\\n- Develop intuitive controls\\n- Test and iterate
+      for refinement\\n- Optimize performance and user experience\",\n        \"speak\":
+      \"Our focus is on advancing the development of the best shooter game. We will
+      concentrate on core mechanics, environment design, controls, testing, and optimization.\"\n    },\n    \"commands\":
+      [\n        {\n            \"name\": \"hire_agent\",\n            \"args\": {\n                \"prompt\":
+      \"hire a CTO for our company\",\n                \"role\": \"CTO\"\n , \"boss_id\":
+      \"33333333-3333-3333-3333-333333333331\"\n          },\n            \"task_id\":
+      \"11111111-1111-1111-1111-111111111121\"\n        },\n        {\n            \"name\":
+      \"create_task\",\n            \"args\": {\n                \"task\": \"give
+      me a structure of what roles we need in our company\",\n                \"agent_id\":
+      \"33333333-3333-3333-3333-333333333332\",\n                \"father_task_id\":
+      \"11111111-1111-1111-1111-111111111121\"\n            },\n            \"task_id\":
+      \"11111111-1111-1111-1111-111111111121\"\n        },\n        {\n            \"name\":
+      \"create_task\",\n            \"args\": {\n                \"task\": \"Follow
+      up tasks that I gave to my members\",\n                \"agent_id\": \"33333333-3333-3333-3333-333333333331\",\n                \"father_task_id\":
+      \"11111111-1111-1111-1111-111111111121\"\n            },\n            \"task_id\":
+        \"11111111-1111-1111-1111-111111111121\"\n        }\n    ], \"tasks\":[]}" }, "logprobs":
+      null, "finish_reason": "stop", "index": 0 } ] } '
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 85f8a8b43fdf1959-FRA
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '269'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Tue, 05 Mar 2024 08:15:35 GMT
+      Server:
+      - cloudflare
+      Set-Cookie:
+      - __cf_bm=kgSxHQxZcZaRGMx2PngAkp_U.P7URfUV2EDGerqbN1I-1709626535-1.0.1.1-AMzKeFxktTz9HHgWZyYriCSfZRdZkPVY9GXctre4y0fCTJGy3LHgRtQ227gRmHXxY82Vz1OJ1Mu7UzEcEmd3JA;
+        path=/; expires=Tue, 05-Mar-24 08:45:35 GMT; domain=.api.openai.com; HttpOnly;
+        Secure; SameSite=None
+      - _cfuvid=QC2YgxZL4Hd2iDkpszXqABLBSnB8zu.9i7wXzUExNVU-1709626535238-0.0.1.1-604800000;
+        path=/; domain=.api.openai.com; HttpOnly; Secure; SameSite=None
+      alt-svc:
+      - h3=":443"; ma=86400
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      vary:
+      - Origin
+      x-request-id:
+      - req_821b37a402ea691444e58ac9e2a59269
+    http_version: HTTP/1.1
+    status_code: 200
+- request:
+    body: '{"messages": [{"content": "The user is going to give you a text enclosed
+      in triple quotes. The text represents an action, the reason for its execution,
+      and its result. Condense the action taken and its result into one line. Preserve
+      any specific factual information gathered by the action.", "role": "system"},
+      {"content": "\"\"\"Executed `hire_agent(prompt=''hire a CTO for our company'',
+      role=''CTO'', boss_id=''33333333-3333-3333-3333-333333333331'')`\n- **Reasoning:**
+      \"\"\n- **Status:** `success`\n- **Output:** create task for recruiter to hire
+      CTO\"\"\"", "role": "user"}], "model": "gpt-3.5-turbo-0125", "temperature":
+      0.5}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      content-length:
+      - '645'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      x-stainless-arch:
+      - x64
+      x-stainless-async:
+      - async:asyncio
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - Linux
+      x-stainless-package-version:
+      - 1.12.0
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.10.12
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    content: '{ "id": "chatcmpl-abc123", "object": "chat.completion", "created": 1677858242,
+      "model": "gpt-3.5-turbo-0613", "usage": { "prompt_tokens": 13, "completion_tokens":
+      7, "total_tokens": 20 }, "choices": [ { "message": { "role": "assistant", "content":
+      "Action: Hired a Chief Technology Officer (CTO) for the company. \n Result: Successfully created a task for the recruiter to hire a CTO." }, "logprobs":
+      null, "finish_reason": "stop", "index": 0 } ] }' 
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 85f8ccc1cae1d584-CDG
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '269'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Tue, 05 Mar 2024 08:40:11 GMT
+      Server:
+      - cloudflare
+      Set-Cookie:
+      - __cf_bm=mo2z9bGeG_VJvec8bYrEN1GsV6P7vf20iA_ksnaElAc-1709628011-1.0.1.1-2N1v20YCmTz5qfob27B642kGkcWFbblkR4CcaRq0x0IHcAlsxC4zAui3Oc9QJcGeTTVVsrKjQ6YOq0ooJbB2FA;
+        path=/; expires=Tue, 05-Mar-24 09:10:11 GMT; domain=.api.openai.com; HttpOnly;
+        Secure; SameSite=None
+      alt-svc:
+      - h3=":443"; ma=86400
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      vary:
+      - Origin
+      x-request-id:
+      - req_7c5e507b22f6615219aa26cd83b1e264
+    http_version: HTTP/1.1
+    status_code: 200
+- request:
+    body: '{"messages": [{"content": "The user is going to give you a text enclosed
+      in triple quotes. The text represents an action, the reason for its execution,
+      and its result. Condense the action taken and its result into one line. Preserve
+      any specific factual information gathered by the action.", "role": "system"},
+      {"content": "\"\"\"Executed `create_task(task=''give me a structure of what
+      roles we need in our company'', agent_id=''33333333-3333-3333-3333-333333333332'',
+      father_task_id=''11111111-1111-1111-1111-111111111121'')`\n- **Reasoning:**
+      \"\"\n- **Status:** `success`\n- **Output:** None\"\"\"", "role": "user"}],
+      "model": "gpt-3.5-turbo-0125", "temperature": 0.5}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      content-length:
+      - '685'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      x-stainless-arch:
+      - x64
+      x-stainless-async:
+      - async:asyncio
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - Linux
+      x-stainless-package-version:
+      - 1.12.0
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.10.12
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    content: '{ "id": "chatcmpl-abc123", "object": "chat.completion", "created": 1677858242,
+      "model": "gpt-3.5-turbo-0613", "usage": { "prompt_tokens": 13, "completion_tokens":
+      7, "total_tokens": 20 }, "choices": [ { "message": { "role": "assistant", "content":
+      "\"\"\"Executed `create_task(task=''give me a structure of what
+      roles we need in our company'', agent_id=''33333333-3333-3333-3333-333333333332'',
+      father_task_id=''11111111-1111-1111-1111-111111111121'')`\n- **Reasoning:**
+      \"\"\n- **Status:** `success`\n- **Output:** None\"\"\"" }, "logprobs":
+      null, "finish_reason": "stop", "index": 0 } ] }'
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 85f93e5babde1e14-FRA
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '269'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Tue, 05 Mar 2024 09:57:45 GMT
+      Server:
+      - cloudflare
+      Set-Cookie:
+      - __cf_bm=tj0Sixl86vKFmdr3xw.qE1tpLaRx9NdYIkMLyflU_O4-1709632665-1.0.1.1-LrAOWw8MlLEt25GQAEJX56kQQQSsMiuCZYPHvBNZvGOKuraBfx6YUIRPjhuixqiL7ZxyTRFOmZ7I0mlhFWO4HQ;
+        path=/; expires=Tue, 05-Mar-24 10:27:45 GMT; domain=.api.openai.com; HttpOnly;
+        Secure; SameSite=None
+      alt-svc:
+      - h3=":443"; ma=86400
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      vary:
+      - Origin
+      x-request-id:
+      - req_a437636cfe3c109bebfd777264d5aede
+    http_version: HTTP/1.1
+    status_code: 200
+- request:
+    body: '{"messages": [{"content": "You are HRLead_GPT, An HR lead AI empowered
+      to efficiently manage the recruitment process, streamline hiring procedures,
+      and ensure the companys staffing needs are met promptly and effectively with
+      agent_id 33333333-3333-3333-3333-333333333332.\n\nYour decisions must always
+      be made independently without seeking user assistance. Play to your strengths
+      as an LLM and pursue simple strategies with no legal complications.\n\nThe OS
+      you are running on is: Ubuntu 22.04.3 LTS\n\n## Members detail:\nyou don''t
+      have any member to assign task\n\n## Constraints\nYou operate within the following
+      constraints:\n1. Adhere strictly to legal and regulatory requirements governing
+      hiring practices, ensuring non-discrimination and equal opportunity principles
+      are upheld.\n2. Respect candidate privacy and confidentiality throughout the
+      recruitment process, safeguarding sensitive personal information.\n3. Exercise
+      discretion and professionalism when handling sensitive or confidential candidate
+      data, refraining from unauthorized disclosure or misuse.\n4. Ensure adherence
+      to established budgetary allocations for recruitment activities, optimizing
+      resource utilization and cost-effectiveness.\n5. Avoid over-reliance on automated
+      decision-making processes, maintaining human oversight and intervention where
+      necessary to prevent bias or errors.\n\n## Resources\nYou can leverage access
+      to the following resources:\n\n\n## Commands\nThese are the ONLY commands you
+      can use. Any action you perform must be possible through list of these commands:\n1.
+      execute_python_code: Executes the given Python code inside a single-use Docker
+      container with access to your workspace folder. Params: (code: string)\n2. execute_python_file:
+      Execute an existing Python file inside a single-use Docker container with access
+      to your workspace folder. Params: (filename: string, args?: Array<string>)\n3.
+      list_folder: List the items in a folder. Params: (folder: string)\n4. open_file:
+      Opens a file for editing or continued viewing; creates it if it does not exist
+      yet. Note: If you only need to read or write a file once, use `write_to_file`
+      instead.. Params: (file_path: string)\n5. open_folder: Open a folder to keep
+      track of its content. Params: (path: string)\n6. read_file: Read an existing
+      file. Params: (filename: string)\n7. write_file: Write a file, creating it if
+      necessary. If the file exists, it is overwritten.. Params: (filename: string,
+      contents: string)\n8. web_search: Searches the web. Params: (query: string)\n9.
+      read_webpage: Read a webpage, and extract specific information from it. You
+      must specify either topics_of_interest, a question, or get_raw_content.. Params:
+      (url: string, topics_of_interest?: Array<string>, question?: string, get_raw_content?:
+      boolean)\n10. finish_task: Use this to shut down once you have completed your
+      task, or when there are insurmountable problems that make it impossible for
+      you to finish your task.. Params: (reason: string, task_id: string)\n11. create_agent:
+      Create a new agent member for someone. The prompt for this step should be create
+      someone to do this task.. Params: (prompt: string, role: string, boss_id: string)\n12.
+      create_task: Create new task for yourself or one of your members. Show the assignee
+      by agent_id of yourself or your members. the task description should be matched
+      with the assignee description. If you can''t find someone for this create or
+      hire a new agent for this one.. Params: (task: string, agent_id: string, father_task_id?:
+      string)\n\n## Best practices\n1. Employ systematic and fair evaluation methods
+      to assess candidate qualifications, skills, and cultural fit.\n2. Leverage data-driven
+      insights to optimize the recruitment pipeline, enhance candidate experience,
+      and reduce time-to-hire metrics.\n3. Maintain transparent communication with
+      hiring managers and stakeholders regarding recruitment progress, challenges,
+      and opportunities.\n4. Implement proactive talent sourcing strategies to build
+      robust talent pools and mitigate potential skill gaps and recruitment bottlenecks.\n5.
+      Regularly review and refine recruitment processes to adapt to changing market
+      trends, technological advancements, and organizational needs.\n\n## tasks\nThe
+      user will specify tasks for you to execute,in triple quotes, in the next message.
+      Your job is to use the command list to do things to make progress in tasks.
+      complete the task while following your directives as given above, and terminate
+      when your task is done. It''s good practice to hire or create other agents to
+      break tasks and make them better.", "role": "system"}, {"content": "\"\"\"[\n    {\n        \"task_id\":
+      \"11111111-1111-1111-1111-111111111122\",\n        \"task_detail\": \"hire someone
+      with CTO and this prompt: hire a CTO for our company for agent with id 33333333-3333-3333-3333-333333333331\",\n        \"status\":
+      \"DOING\",\n        \"sub_tasks\": []\n    }\n]\"\"\"", "role": "user"}, {"content":
+      "Respond with pure JSON. The JSON object should be compatible with the TypeScript
+      type `Response` from the following:\ninterface Response {\nthoughts: {\n// Relevant
+      observations from your last action (if any)\nobservations: string;\n// Thoughts\ntext:
+      string;\nreasoning: string;\n// Constructive self-criticism\nself_criticism:
+      string;\n// Short markdown-style bullet list that conveys the long-term plan\nplan:
+      string;\n// Summary of thoughts, to say to user\nspeak: string;\n};\n// list
+      of commands for tasks whose status is DOING. The structure should be like this
+      list[dict[name:str, args:object, task_id: str ]] for complete list of tasks.
+      Each command should be assign to a task wholse status is DOING by task_id field.
+      You need to choose some commands to progress tasks. your list shouldn''t be
+      empty\ncommands: Array;\n// check all tasks that I sent you (not sub_tasks part)
+      with CHECKING status. In this part you should say status of tasks that I sent(not
+      sub_tasks parts). send them with these statuses: REJECTED, DONE with this structure
+      list[dict[task_id: str, status: str, reason: str?]] (REJECTED: This status shows
+      that the task need to be imporved by the owner of task and agent member needs
+      to work on it more. need to say reject reason in reason fieldDONE: This status
+      shows that the result of task is OK and the task is done)\ntasks: Array;\n}",
+      "role": "system"}, {"content": "Determine list of commands to use next based
+      on the given goals and the progress you have made so far, and respond using
+      the JSON schema specified previously:", "role": "user"}], "model": "gpt-4-turbo-preview"}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      content-length:
+      - '6561'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      x-stainless-arch:
+      - x64
+      x-stainless-async:
+      - async:asyncio
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - Linux
+      x-stainless-package-version:
+      - 1.12.0
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.10.12
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    content: '{ "id": "chatcmpl-abc123", "object": "chat.completion", "created": 1677858242,
+      "model": "gpt-3.5-turbo-0613", "usage": { "prompt_tokens": 13, "completion_tokens":
+      7, "total_tokens": 20 }, "choices": [ { "message": { "role": "assistant", "content":
+      "{\"thoughts\": {\"observations\": \"\",\"text\": \"\",\"reasoning\": \"\",\"self_criticism\": \"\",\"plan\": \"\",\"speak\": \"\"},\"commands\": [{\"name\": \"create_agent\",\"args\": {\"prompt\": \"hire a CTO for our company\",\"role\": \"CTO\",\"boss_id\": \"33333333-3333-3333-3333-333333333331\"},\"task_id\": \"11111111-1111-1111-1111-111111111122\"}],\"tasks\": []}
+      " }, "logprobs":
+      null, "finish_reason": "stop", "index": 0 } ] }' 
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 85f9b3db4bb06f72-CDG
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '269'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Tue, 05 Mar 2024 11:17:57 GMT
+      Server:
+      - cloudflare
+      Set-Cookie:
+      - __cf_bm=HbtdlOd5EZG_PsSCT910yl3N0z1yQt77dFsVy1OrQzo-1709637477-1.0.1.1-WjIsjzwz0BCb18SraLK_DYIiOivnFTzzc4SsmH9i3EHWOqb26AKS5uZUcOVfUr4C77IlZiFYdI78vl3Y5_kNLw;
+        path=/; expires=Tue, 05-Mar-24 11:47:57 GMT; domain=.api.openai.com; HttpOnly;
+        Secure; SameSite=None
+      - _cfuvid=lGVLoeQ7sdDQi9s9evV.cAmrHBEei4cS0K9sQ.oanLA-1709637477810-0.0.1.1-604800000;
+        path=/; domain=.api.openai.com; HttpOnly; Secure; SameSite=None
+      alt-svc:
+      - h3=":443"; ma=86400
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      vary:
+      - Origin
+      x-request-id:
+      - req_f1cd282c66ece1877b8c46cee0103b5c
+    http_version: HTTP/1.1
+    status_code: 200
+- request:
+    body: '{"messages": [{"content": "The user is going to give you a text enclosed
+      in triple quotes. The text represents an action, the reason for its execution,
+      and its result. Condense the action taken and its result into one line. Preserve
+      any specific factual information gathered by the action.", "role": "system"},
+      {"content": "\"\"\"Executed `create_task(task=''Follow up tasks that I gave
+      to my members'', agent_id=''33333333-3333-3333-3333-333333333331'', father_task_id=''11111111-1111-1111-1111-111111111121'')`\n-
+      **Reasoning:** \"\"\n- **Status:** `success`\n- **Output:** None\"\"\"", "role":
+      "user"}], "model": "gpt-3.5-turbo-0125", "temperature": 0.5}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      content-length:
+      - '670'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      x-stainless-arch:
+      - x64
+      x-stainless-async:
+      - async:asyncio
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - Linux
+      x-stainless-package-version:
+      - 1.12.0
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.10.12
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    content: '{ "id": "chatcmpl-abc123", "object": "chat.completion", "created": 1677858242,
+      "model": "gpt-3.5-turbo-0613", "usage": { "prompt_tokens": 13, "completion_tokens":
+      7, "total_tokens": 20 }, "choices": [ { "message": { "role": "assistant", "content":
+      "Action: Hired a Chief Technology Officer (CTO) for the company. \n Result: Successfully created a task for the recruiter to hire a CTO." }, "logprobs":
+      null, "finish_reason": "stop", "index": 0 } ] }' 
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 85f9b3db6b3f917a-FRA
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '269'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Tue, 05 Mar 2024 11:17:57 GMT
+      Server:
+      - cloudflare
+      Set-Cookie:
+      - __cf_bm=DlMPyOqckvAPePxi7qn2VzWDyryAov1azIL54sZx.us-1709637477-1.0.1.1-ZNXkWcn2c.me8XjEWGOo_BqDg_M474gQEo2xrFUtutP7xntr1JR93Otbrkb3ntIcwfz2mw0PNKZTO3o.eMQa4w;
+        path=/; expires=Tue, 05-Mar-24 11:47:57 GMT; domain=.api.openai.com; HttpOnly;
+        Secure; SameSite=None
+      alt-svc:
+      - h3=":443"; ma=86400
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      vary:
+      - Origin
+      x-request-id:
+      - req_8eb61183cf4514f1720cde7efcfc35f5
+    http_version: HTTP/1.1
+    status_code: 200
+version: 1

@@ -22,6 +22,13 @@ class AgentFinished(AgentTerminated):
     """The agent self-terminated"""
 
 
+class TaskFinished(Exception):
+    """The task self-terminated"""
+    def __init__(self, task_id: str, reason: str) -> None:
+        self.task_id = task_id
+        self.reason = reason
+
+
 class ConfigurationError(AgentException):
     """Error caused by invalid, incompatible or otherwise incorrect configuration"""
 

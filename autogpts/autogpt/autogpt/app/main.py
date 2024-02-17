@@ -16,6 +16,11 @@ from typing import TYPE_CHECKING, Optional
 from colorama import Fore, Style
 from forge.sdk.db import AgentDB
 
+from forge.sdk.model import TaskRequestBody
+from autogpt.agents.agent_group import AgentGroup, create_agent_member
+from autogpt.agents.agent_member import ProposeActionResult, AgentTaskSettings
+from autogpt.agents.prompt_strategies.divide_and_conquer import CommandRequest
+
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
 
@@ -418,7 +423,6 @@ async def run_auto_gpt_server(
         f"${round(sum(b.total_cost for b in server._task_budgets.values()), 2)}"
     )
 
-
 def _configure_openai_provider(config: Config) -> OpenAIProvider:
     """Create a configured OpenAIProvider object.
 
@@ -799,3 +803,487 @@ def print_assistant_thoughts(
 
 def remove_ansi_escape(s: str) -> str:
     return s.replace("\x1B", "")
+
+
+@coroutine
+async def run_multi_agents_auto_gpt(
+    continuous: bool = False,
+    continuous_limit: Optional[int] = None,
+    ai_settings: Optional[Path] = None,
+    prompt_settings: Optional[Path] = None,
+    skip_reprompt: bool = False,
+    speak: bool = False,
+    debug: bool = False,
+    log_level: Optional[str] = None,
+    log_format: Optional[str] = None,
+    log_file_format: Optional[str] = None,
+    gpt3only: bool = False,
+    gpt4only: bool = False,
+    browser_name: Optional[str] = None,
+    allow_downloads: bool = False,
+    skip_news: bool = False,
+    workspace_directory: Optional[Path] = None,
+    install_plugin_deps: bool = False,
+    override_ai_name: Optional[str] = None,
+    override_ai_role: Optional[str] = None,
+    resources: Optional[list[str]] = None,
+    constraints: Optional[list[str]] = None,
+    best_practices: Optional[list[str]] = None,
+    override_directives: bool = False,
+    member_descriptions: list[str] = [],
+):
+    # Set up configuration
+    config = ConfigBuilder.build_config_from_env()
+    # Storage
+    local = config.file_storage_backend == FileStorageBackendName.LOCAL
+    restrict_to_root = not local or config.restrict_to_workspace
+    file_storage = get_storage(
+        config.file_storage_backend,
+        root_path="data_group",
+        restrict_to_root=restrict_to_root,
+    )
+    file_storage.initialize()
+
+    # TODO: fill in llm values here
+    assert_config_has_openai_api_key(config)
+
+    apply_overrides_to_config(
+        config=config,
+        continuous=continuous,
+        continuous_limit=continuous_limit,
+        ai_settings_file=ai_settings,
+        prompt_settings_file=prompt_settings,
+        skip_reprompt=skip_reprompt,
+        speak=speak,
+        debug=debug,
+        log_level=log_level,
+        log_format=log_format,
+        log_file_format=log_file_format,
+        gpt3only=gpt3only,
+        gpt4only=gpt4only,
+        browser_name=browser_name,
+        allow_downloads=allow_downloads,
+        skip_news=skip_news,
+    )
+
+    # Set up logging module
+    configure_logging(
+        **config.logging.dict(),
+        tts_config=config.tts_config,
+    )
+
+    llm_provider = _configure_gpt_4_free_provider(config)
+
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+
+    if config.continuous_mode:
+        for line in get_legal_warning().split("\n"):
+            logger.warning(
+                extra={
+                    "title": "LEGAL:",
+                    "title_color": Fore.RED,
+                    "preserve_color": True,
+                },
+                msg=markdown_to_ansi_style(line),
+            )
+
+    if not config.skip_news:
+        print_motd(config, logger)
+        print_git_branch_info(logger)
+        print_python_version_info(logger)
+        print_attribute("Smart LLM", config.smart_llm)
+        print_attribute("Fast LLM", config.fast_llm)
+        print_attribute("Browser", config.selenium_web_browser)
+        if config.continuous_mode:
+            print_attribute("Continuous Mode", "ENABLED", title_color=Fore.YELLOW)
+            if continuous_limit:
+                print_attribute("Continuous Limit", config.continuous_limit)
+        if config.tts_config.speak_mode:
+            print_attribute("Speak Mode", "ENABLED")
+        if ai_settings:
+            print_attribute("Using AI Settings File", ai_settings)
+        if prompt_settings:
+            print_attribute("Using Prompt Settings File", prompt_settings)
+        if config.allow_downloads:
+            print_attribute("Native Downloading", "ENABLED")
+
+    if install_plugin_deps:
+        install_plugin_dependencies()
+
+    config.plugins = scan_plugins(config)
+    configure_chat_plugins(config)
+    agent_manager = AgentManager(file_storage)
+    existing_agents = agent_manager.list_agents()
+    load_existing_agent = ""
+    if existing_agents:
+        print(
+            "Existing agent groups\n---------------\n"
+            + "\n".join(f"{i} - {id}" for i, id in enumerate(existing_agents, 1))
+        )
+        load_existing_agent = await clean_input(
+            config,
+            "Enter the number or name of the agent group to run,"
+            " or hit enter to create a new one:",
+        )
+        if re.match(r"^\d+$", load_existing_agent):
+            load_existing_agent = existing_agents[int(load_existing_agent) - 1]
+        elif load_existing_agent and load_existing_agent not in existing_agents:
+            logger.info(
+                f"Unknown agent '{load_existing_agent}', "
+                f"creating a new one instead.",
+                extra={"color": Fore.YELLOW},
+            )
+            load_existing_agent = ""
+    agent_group = None
+
+    ##################################
+    # Resume an Existing Agent Group #
+    ##################################
+    agent_state = None
+    if load_existing_agent:
+        agent_state = None
+        while True:
+            answer = await clean_input(config, "Resume? [Y/n]")
+            if answer == "" or answer.lower() == "y":
+                agent_state = agent_manager.load_agent_state(load_existing_agent)
+                break
+            elif answer.lower() == "n":
+                break
+
+    if agent_state:
+        agent_group = AgentGroup.configure_agent_group_with_state(
+            state=agent_state,
+            app_config=config,
+            file_storage=file_storage,
+            llm_provider=llm_provider,
+        )
+
+        # if (
+        #     agent.event_history.current_episode
+        #     and agent.event_history.current_episode.action.name == finish.__name__
+        #     and not agent.event_history.current_episode.result
+        # ):
+        #     # Agent was resumed after `finish` -> rewrite result of `finish` action
+        #     finish_reason = agent.event_history.current_episode.action.args["reason"]
+        #     print(f"Agent previously self-terminated; reason: '{finish_reason}'")
+        #     new_assignment = await clean_input(
+        #         config, "Please give a follow-up question or assignment:"
+        #     )
+        #     agent.event_history.register_result(
+        #         ActionInterruptedByHuman(feedback=new_assignment)
+        #     )
+
+        # If any of these are specified as arguments,
+        #  assume the user doesn't want to revise them
+        # if not any(
+        #     [
+        #         override_ai_name,
+        #         override_ai_role,
+        #         resources,
+        #         constraints,
+        #         best_practices,
+        #     ]
+        # ):
+        #     ai_profile, ai_directives = await interactively_revise_ai_settings(
+        #         ai_profile=agent.state.ai_profile,
+        #         directives=agent.state.directives,
+        #         app_config=config,
+        #     )
+        # else:
+        #     logger.info("AI config overrides specified through CLI; skipping revision")
+
+    ######################
+    # Set up a new Agent Group #
+    ######################
+    if not agent_group:
+        task = await clean_input(
+            config,
+            "Enter the task that you want AutoGPT to execute,"
+            " with as much detail as possible:",
+        )
+
+        agent_members = []
+        if not len(member_descriptions) == 0:
+            for description in member_descriptions:
+                description_params = description.split(":")
+                agent_member = await create_agent_member(
+                    role=description_params[0],
+                    initial_prompt=description_params[1],
+                    create_agent=bool(description_params[2]),
+                    llm_provider=llm_provider,
+                )
+                agent_members.append(agent_member)
+
+            for member_index in range(len(agent_members)):
+                description_params = member_descriptions[member_index].split(":")
+                if len(description_params) >= 4 and description_params[3] != "":
+                    agent_members[member_index].boss = agent_members[
+                        int(description_params[3])
+                    ]
+                if len(description_params) >= 5 and description_params[4] != "":
+                    agent_members[member_index].recruiter = agent_members[
+                        int(description_params[4])
+                    ]
+
+            for member_index in range(len(agent_members)):
+                for sub_member_index in range(len(agent_members)):
+                    if agent_members[sub_member_index].boss != None:
+                        if (
+                            agent_members[sub_member_index].boss.id
+                            == agent_members[member_index].id
+                        ):
+                            agent_members[member_index].members.append(
+                                agent_members[sub_member_index]
+                            )
+        else:
+            leader = await create_agent_member(
+                role="leader",
+                initial_prompt=f"someone can do {task}",
+                create_agent=True,
+                llm_provider=llm_provider,
+            )
+            agent_members.append(leader)
+
+        agent_group = AgentGroup(leader=agent_members[0])
+        await agent_group.create_task(TaskRequestBody(input=task))
+
+    #################
+    # Run the Agent #
+    #################
+    await run_interaction_loop_for_agent_group(agent_group)
+
+
+async def run_interaction_loop_for_agent_group(
+    agent_group: "AgentGroup",
+) -> None:
+    """Run the main interaction loop for the agent group.
+
+    Args:
+        agent_group: The agent group to run the interaction loop for.
+
+    Returns:
+        None
+    """
+    # These contain both application config and agent config, so grab them here.
+    legacy_config = agent_group.leader.legacy_config
+    ai_profile = agent_group.leader.ai_profile
+    logger = logging.getLogger(__name__)
+
+    cycle_budget = cycles_remaining = _get_cycle_budget(
+        legacy_config.continuous_mode, legacy_config.continuous_limit
+    )
+    spinner = Spinner(
+        "Thinking...", plain_output=legacy_config.logging.plain_console_output
+    )
+    stop_reason = None
+
+    def graceful_agent_interrupt(signum: int, frame: Optional[FrameType]) -> None:
+        nonlocal cycle_budget, cycles_remaining, spinner, stop_reason
+        if stop_reason:
+            logger.error("Quitting immediately...")
+            sys.exit()
+        if cycles_remaining in [0, 1]:
+            logger.warning("Interrupt signal received: shutting down gracefully.")
+            logger.warning(
+                "Press Ctrl+C again if you want to stop AutoGPT immediately."
+            )
+            stop_reason = AgentTerminated("Interrupt signal received")
+        else:
+            restart_spinner = spinner.running
+            if spinner.running:
+                spinner.stop()
+
+            logger.error(
+                "Interrupt signal received: stopping continuous command execution."
+            )
+            cycles_remaining = 1
+            if restart_spinner:
+                spinner.start()
+
+    def handle_stop_signal() -> None:
+        if stop_reason:
+            raise stop_reason
+
+    # Set up an interrupt signal for the agent.
+    signal.signal(signal.SIGINT, graceful_agent_interrupt)
+
+    #########################
+    # Application Main Loop #
+    #########################
+
+    # Keep track of consecutive failures of the agent
+    consecutive_failures = 0
+
+    while cycles_remaining > 0:
+        logger.debug(f"Cycle budget: {cycle_budget}; remaining: {cycles_remaining}")
+
+        ########
+        # Plan #
+        ########
+        handle_stop_signal()
+        # Have the agent determine the next action to take.
+        commands_result = []
+        with spinner:
+            try:
+                commands_result = await agent_group.leader.recursive_propose_action()
+            except InvalidAgentResponseError as e:
+                logger.warning(f"The agent's thoughts could not be parsed: {e}")
+                consecutive_failures += 1
+                if consecutive_failures >= 3:
+                    logger.error(
+                        "The agent failed to output valid thoughts"
+                        f" {consecutive_failures} times in a row. Terminating..."
+                    )
+                    raise AgentTerminated(
+                        "The agent failed to output valid thoughts"
+                        f" {consecutive_failures} times in a row."
+                    )
+                continue
+
+        consecutive_failures = 0
+
+        ###############
+        # Update User #
+        ###############
+        # Print the assistant's thoughts and the next command to the user.
+        update_user_in_group_mode(commands_result)
+
+        ##################
+        # Get user input #
+        ##################
+        handle_stop_signal()
+        if cycles_remaining == 1:  # Last cycle
+            user_feedback, user_input, new_cycles_remaining = await get_user_feedback(
+                legacy_config,
+                ai_profile,
+            )
+
+            if user_feedback == UserFeedback.AUTHORIZE:
+                if new_cycles_remaining is not None:
+                    # Case 1: User is altering the cycle budget.
+                    if cycle_budget > 1:
+                        cycle_budget = new_cycles_remaining + 1
+                    # Case 2: User is running iteratively and
+                    #   has initiated a one-time continuous cycle
+                    cycles_remaining = new_cycles_remaining + 1
+                else:
+                    # Case 1: Continuous iteration was interrupted -> resume
+                    if cycle_budget > 1:
+                        logger.info(
+                            f"The cycle budget is {cycle_budget}.",
+                            extra={
+                                "title": "RESUMING CONTINUOUS EXECUTION",
+                                "title_color": Fore.MAGENTA,
+                            },
+                        )
+                    # Case 2: The agent used up its cycle budget -> reset
+                    cycles_remaining = cycle_budget + 1
+                logger.info(
+                    "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+                    extra={"color": Fore.MAGENTA},
+                )
+            elif user_feedback == UserFeedback.EXIT:
+                logger.warning("Exiting...")
+                exit()
+            else:  # user_feedback == UserFeedback.TEXT
+                commands_result = [
+                    ProposeActionResult(
+                        agent=agent_group.leader,
+                        commands=[
+                            CommandRequest(
+                                command="human_feedback",
+                                args={},
+                                user_input=user_input,
+                            )
+                        ],
+                    )
+                ]
+        else:
+            user_input = ""
+            # First log new-line so user can differentiate sections better in console
+            print()
+            if cycles_remaining != math.inf:
+                # Print authorized commands left value
+                print_attribute(
+                    "AUTHORIZED_COMMANDS_LEFT", cycles_remaining, title_color=Fore.CYAN
+                )
+
+        ###################
+        # Execute Command #
+        ###################
+        # Decrement the cycle counter first to reduce the likelihood of a SIGINT
+        # happening during command execution, setting the cycles remaining to 1,
+        # and then having the decrement set it to 0, exiting the application.
+        if (
+            len(commands_result[0].commands) > 0
+            and commands_result[0].commands[0].command != "human_feedback"
+        ):
+            cycles_remaining -= 1
+
+        if not commands_result:
+            continue
+
+        handle_stop_signal()
+
+        if commands_result:
+            for command_result in commands_result:
+                command_action_results = await command_result.agent.execute_commands(
+                    command_result.commands
+                )
+                command_result.agent.state.members = []
+                for member in command_result.agent.members:
+                    command_result.agent.state.members.append(member.id)
+                for task in command_result.agent.tasks:
+                    sub_tasks = []
+                    for sub_task in task.sub_tasks:
+                        sub_tasks.append(sub_task.task_id)
+                    command_result.agent.state.tasks.append(
+                        AgentTaskSettings(
+                            task_id=task.task_id,
+                            input=task.input,
+                            parent_task_id=task.parent_task_id,
+                            status=task.status.value,
+                            sub_tasks=sub_tasks,
+                        )
+                    )
+                for command_action_result in command_action_results:
+                    result = command_action_result.action_result
+                    command = command_action_result.command
+                    if result.status == "success":
+                        logger.info(
+                            result,
+                            extra={"title": "SYSTEM:", "title_color": Fore.YELLOW},
+                        )
+                    elif result.status == "error":
+                        logger.warning(
+                            f"Command {command} returned an error: "
+                            f"{result.error or result.reason}"
+                        )
+
+
+def update_user_in_group_mode(
+    commands_result: list[ProposeActionResult],
+) -> None:
+    """Prints the commands result.
+
+    Args:
+        commands_result: list of results for all of the agents
+    """
+    logger = logging.getLogger(__name__)
+
+    print()
+    for command_result in commands_result:
+        logger.info(
+            f"Agent = {Fore.CYAN}{command_result.agent.role}{Style.RESET_ALL}  "
+        )
+        for command in command_result.commands:
+            logger.info(
+                f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command.command)}{Style.RESET_ALL}  "
+                f"ARGUMENTS = {Fore.CYAN}{command.args}{Style.RESET_ALL}",
+                extra={
+                    "title": "NEXT ACTION:",
+                    "title_color": Fore.CYAN,
+                    "preserve_color": True,
+                },
+            )

@@ -17,14 +17,15 @@ packages = [{ include = "autogpt" }]
 
 [tool.poetry.scripts]
 autogpt = "autogpt.app.cli:cli"
+multi_agent = "autogpt.app.cli:run_multi_agent"
 serve = "autogpt.app.cli:serve"
 
 
 [tool.poetry.dependencies]
 python = "^3.10"
 auto-gpt-plugin-template = {git = "https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template", rev = "0.1.0"}
-# autogpt-forge = { path = "../forge" }
-autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", rev = "ab05b7ae70754c063909", subdirectory = "autogpts/forge"}
+autogpt-forge = { path = "../forge" }
+# autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", rev = "ab05b7ae70754c063909", subdirectory = "autogpts/forge"}
 beautifulsoup4 = "^4.12.2"
 boto3 = "^1.33.6"
 charset-normalizer = "^3.1.0"
