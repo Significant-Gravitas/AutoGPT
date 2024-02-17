@@ -33,7 +33,7 @@ class TestResult(BaseModel):
             logger.error(
                 "Error validating `success ^ fail_reason` on TestResult: "
                 f"success = {repr(values['success'])}; "
-                f"fail_reason = {repr(v)}"
+                f"fail_reason = {repr(v)} ({v})"
             )
         if v:
             success = values["success"]
