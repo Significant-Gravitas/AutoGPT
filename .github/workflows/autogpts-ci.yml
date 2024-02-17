@@ -25,10 +25,6 @@ on:
       - 'setup.py'
       - '!**/*.md'
 
-env:
-  TELEMETRY_ENVIRONMENT: autogpt-ci
-  TELEMETRY_OPT_IN: ${{ github.event_name == 'push' && github.ref_name == 'master' }}
-
 jobs:
   run-tests:
     runs-on: ubuntu-latest
@@ -69,3 +65,5 @@ jobs:
           HELICONE_CACHE_ENABLED: false
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
           REPORTS_FOLDER: ${{ format('../../reports/{0}', matrix.agent-name) }}
+          TELEMETRY_ENVIRONMENT: autogpt-ci
+          TELEMETRY_OPT_IN: ${{ github.event_name == 'push' && github.ref_name == 'master' }}

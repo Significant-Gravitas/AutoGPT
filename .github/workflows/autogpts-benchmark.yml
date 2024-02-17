@@ -5,10 +5,6 @@ on:
   schedule:
     - cron: '0 2 * * *'
 
-env:
-  TELEMETRY_ENVIRONMENT: autogpt-benchmark-ci
-  TELEMETRY_OPT_IN: ${{ github.event_name == 'push' && github.ref_name == 'master' }}
-
 jobs:
   benchmark:
     permissions:
@@ -64,6 +60,9 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
           REPORTS_FOLDER: ${{ format('../../{0}', env.REPORTS_FOLDER) }}  # account for changed workdir
+
+          TELEMETRY_ENVIRONMENT: autogpt-benchmark-ci
+          TELEMETRY_OPT_IN: ${{ github.event_name == 'push' && github.ref_name == 'master' }}
 
       - name: Push reports to data branch
         run: |

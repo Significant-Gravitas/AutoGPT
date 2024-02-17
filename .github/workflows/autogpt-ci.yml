@@ -22,10 +22,6 @@ defaults:
   run:
     working-directory: autogpts/autogpt
 
-env:
-  TELEMETRY_ENVIRONMENT: autogpt-ci
-  TELEMETRY_OPT_IN: ${{ github.event_name == 'push' && github.ref_name == 'master' }}
-
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -169,6 +165,8 @@ jobs:
           CI: true
           PLAIN_OUTPUT: True
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TELEMETRY_ENVIRONMENT: autogpt-ci
+          TELEMETRY_OPT_IN: ${{ github.event_name == 'push' && github.ref_name == 'master' }}
           S3_ENDPOINT_URL: http://localhost:9000
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
