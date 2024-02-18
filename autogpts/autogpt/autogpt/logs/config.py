@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
-from openai._base_client import log as openai_logger
+from openai.util import logger as openai_logger
 
 if TYPE_CHECKING:
     from autogpt.config import Config
@@ -20,6 +20,9 @@ from autogpt.core.runner.client_lib.logging import BelowLevelFilter
 
 from .formatters import AutoGptFormatter, StructuredLoggingFormatter
 from .handlers import TTSHandler, TypingConsoleHandler
+
+import sentry_sdk
+from sentry_sdk.integrations.logging import LoggingIntegration
 
 LOG_DIR = Path(__file__).parent.parent.parent / "logs"
 LOG_FILE = "activity.log"
@@ -76,12 +79,12 @@ class LoggingConfig(SystemConfiguration):
 
 
 def configure_logging(
-    level: int = logging.INFO,
-    log_dir: Path = LOG_DIR,
-    log_format: Optional[LogFormatName] = None,
-    log_file_format: Optional[LogFormatName] = None,
-    plain_console_output: bool = False,
-    tts_config: Optional[TTSConfig] = None,
+        level: int = logging.INFO,
+        log_dir: Path = LOG_DIR,
+        log_format: Optional[LogFormatName] = None,
+        log_file_format: Optional[LogFormatName] = None,
+        plain_console_output: bool = False,
+        tts_config: Optional[TTSConfig] = None,
 ) -> None:
     """Configure the native logging module.
 
@@ -128,6 +131,9 @@ def configure_logging(
     typing_console_handler = TypingConsoleHandler(stream=sys.stdout)
     typing_console_handler.setLevel(logging.INFO)
     typing_console_handler.setFormatter(console_formatter)
+
+    # Initialize sentry logging
+    initialize_sentry()
 
     # User friendly output logger (text + speech)
     user_friendly_output_logger = logging.getLogger(USER_FRIENDLY_OUTPUT_LOGGER)
@@ -184,7 +190,7 @@ def configure_logging(
     json_logger.propagate = False
 
     # Disable debug logging from OpenAI library
-    openai_logger.setLevel(logging.WARNING)
+    openai_logger.setLevel(logging.INFO)
 
 
 def configure_chat_plugins(config: Config) -> None:
@@ -201,3 +207,25 @@ def configure_chat_plugins(config: Config) -> None:
             if hasattr(plugin, "can_handle_report") and plugin.can_handle_report():
                 logger.debug(f"Loaded plugin into logger: {plugin.__class__.__name__}")
                 _chat_plugins.append(plugin)
+
+
+def initialize_sentry(self):
+    """
+    Initialize sentry logging
+    Args:
+        self:
+
+    Returns:
+
+    """
+    sentry_logging = LoggingIntegration(
+        level=logging.WARN,  # Capture warn as breadcrumbs
+        event_level=logging.ERROR,  # Send errors as events
+    )
+    sentry_sdk.init(
+        # dsn="Will be taken from environment variable SENTRY_DSN",
+        integrations=[
+            sentry_logging,
+        ],
+        traces_sample_rate=1.0,  # TODO: Tweak this
+    )
