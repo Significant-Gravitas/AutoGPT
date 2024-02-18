@@ -2,7 +2,6 @@
 Test cases for the config class, which handles the configuration settings
 for the AI and ensures it behaves as a singleton.
 """
-
 import os
 from typing import Any
 from unittest import mock
@@ -23,7 +22,7 @@ def test_initial_values(config: Config) -> None:
     """
     assert config.continuous_mode is False
     assert config.tts_config.speak_mode is False
-    assert config.fast_llm == "gpt-3.5-turbo-16k"
+    assert config.fast_llm.startswith("gpt-3.5-turbo")
     assert config.smart_llm.startswith("gpt-4")
 
 

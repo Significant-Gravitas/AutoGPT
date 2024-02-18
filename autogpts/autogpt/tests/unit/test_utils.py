@@ -1,14 +1,18 @@
+import json
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import requests
 from git import InvalidGitRepositoryError
 
+import autogpt.app.utils
 from autogpt.app.utils import (
     get_bulletin_from_web,
     get_current_git_branch,
     get_latest_bulletin,
+    set_env_config_value,
 )
 from autogpt.json_utils.utilities import extract_dict_from_response
 from autogpt.utils import validate_yaml_file
@@ -194,14 +198,14 @@ def test_get_current_git_branch_failure(mock_repo):
 
 
 def test_extract_json_from_response(valid_json_response: dict):
-    emulated_response_from_openai = str(valid_json_response)
+    emulated_response_from_openai = json.dumps(valid_json_response)
     assert (
         extract_dict_from_response(emulated_response_from_openai) == valid_json_response
     )
 
 
 def test_extract_json_from_response_wrapped_in_code_block(valid_json_response: dict):
-    emulated_response_from_openai = "```" + str(valid_json_response) + "```"
+    emulated_response_from_openai = "```" + json.dumps(valid_json_response) + "```"
     assert (
         extract_dict_from_response(emulated_response_from_openai) == valid_json_response
     )
@@ -210,14 +214,127 @@ def test_extract_json_from_response_wrapped_in_code_block(valid_json_response: d
 def test_extract_json_from_response_wrapped_in_code_block_with_language(
     valid_json_response: dict,
 ):
-    emulated_response_from_openai = "```json" + str(valid_json_response) + "```"
+    emulated_response_from_openai = "```json" + json.dumps(valid_json_response) + "```"
     assert (
         extract_dict_from_response(emulated_response_from_openai) == valid_json_response
     )
 
 
 def test_extract_json_from_response_json_contained_in_string(valid_json_response: dict):
-    emulated_response_from_openai = "sentence1" + str(valid_json_response) + "sentence2"
+    emulated_response_from_openai = (
+        "sentence1" + json.dumps(valid_json_response) + "sentence2"
+    )
     assert (
         extract_dict_from_response(emulated_response_from_openai) == valid_json_response
     )
+
+
+@pytest.fixture
+def mock_env_file_path(tmp_path):
+    return tmp_path / ".env"
+
+
+env_file_initial_content = """
+# This is a comment
+EXISTING_KEY=EXISTING_VALUE
+
+## This is also a comment
+# DISABLED_KEY=DISABLED_VALUE
+
+# Another comment
+UNUSED_KEY=UNUSED_VALUE
+"""
+
+
+@pytest.fixture
+def mock_env_file(mock_env_file_path: Path, monkeypatch: pytest.MonkeyPatch):
+    mock_env_file_path.write_text(env_file_initial_content)
+    monkeypatch.setattr(autogpt.app.utils, "ENV_FILE_PATH", mock_env_file_path)
+    return mock_env_file_path
+
+
+@pytest.fixture
+def mock_environ(monkeypatch: pytest.MonkeyPatch):
+    env = {}
+    monkeypatch.setattr(os, "environ", env)
+    return env
+
+
+def test_set_env_config_value_updates_existing_key(
+    mock_env_file: Path, mock_environ: dict
+):
+    # Before updating, ensure the original content is as expected
+    with mock_env_file.open("r") as file:
+        assert file.readlines() == env_file_initial_content.splitlines(True)
+
+    set_env_config_value("EXISTING_KEY", "NEW_VALUE")
+    with mock_env_file.open("r") as file:
+        content = file.readlines()
+
+    # Ensure only the relevant line is altered
+    expected_content_lines = [
+        "\n",
+        "# This is a comment\n",
+        "EXISTING_KEY=NEW_VALUE\n",  # existing key + new value
+        "\n",
+        "## This is also a comment\n",
+        "# DISABLED_KEY=DISABLED_VALUE\n",
+        "\n",
+        "# Another comment\n",
+        "UNUSED_KEY=UNUSED_VALUE\n",
+    ]
+    assert content == expected_content_lines
+    assert mock_environ["EXISTING_KEY"] == "NEW_VALUE"
+
+
+def test_set_env_config_value_uncomments_and_updates_disabled_key(
+    mock_env_file: Path, mock_environ: dict
+):
+    # Before adding, ensure the original content is as expected
+    with mock_env_file.open("r") as file:
+        assert file.readlines() == env_file_initial_content.splitlines(True)
+
+    set_env_config_value("DISABLED_KEY", "ENABLED_NEW_VALUE")
+    with mock_env_file.open("r") as file:
+        content = file.readlines()
+
+    # Ensure only the relevant line is altered
+    expected_content_lines = [
+        "\n",
+        "# This is a comment\n",
+        "EXISTING_KEY=EXISTING_VALUE\n",
+        "\n",
+        "## This is also a comment\n",
+        "DISABLED_KEY=ENABLED_NEW_VALUE\n",  # disabled -> enabled + new value
+        "\n",
+        "# Another comment\n",
+        "UNUSED_KEY=UNUSED_VALUE\n",
+    ]
+    assert content == expected_content_lines
+    assert mock_environ["DISABLED_KEY"] == "ENABLED_NEW_VALUE"
+
+
+def test_set_env_config_value_adds_new_key(mock_env_file: Path, mock_environ: dict):
+    # Before adding, ensure the original content is as expected
+    with mock_env_file.open("r") as file:
+        assert file.readlines() == env_file_initial_content.splitlines(True)
+
+    set_env_config_value("NEW_KEY", "NEW_VALUE")
+    with mock_env_file.open("r") as file:
+        content = file.readlines()
+
+    # Ensure the new key-value pair is added without altering the rest
+    expected_content_lines = [
+        "\n",
+        "# This is a comment\n",
+        "EXISTING_KEY=EXISTING_VALUE\n",
+        "\n",
+        "## This is also a comment\n",
+        "# DISABLED_KEY=DISABLED_VALUE\n",
+        "\n",
+        "# Another comment\n",
+        "UNUSED_KEY=UNUSED_VALUE\n",
+        "NEW_KEY=NEW_VALUE\n",  # New key-value pair added at the end
+    ]
+    assert content == expected_content_lines
+    assert mock_environ["NEW_KEY"] == "NEW_VALUE"

@@ -1,5 +1,4 @@
 """Configuration class to store the state of bools for different scripts access."""
-
 from __future__ import annotations
 
 import os
@@ -61,11 +60,9 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Workspace
     workspace_backend: FileWorkspaceBackendName = UserConfigurable(
         default=FileWorkspaceBackendName.LOCAL,
-        from_env=lambda: (
-            FileWorkspaceBackendName(v)
-            if (v := os.getenv("WORKSPACE_BACKEND"))
-            else None
-        ),
+        from_env=lambda: FileWorkspaceBackendName(v)
+        if (v := os.getenv("WORKSPACE_BACKEND"))
+        else None,
     )
 
     ##########################
@@ -83,11 +80,11 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
 
     # Model configuration
     fast_llm: str = UserConfigurable(
-        default="gpt-3.5-turbo-16k",
+        default="gpt-3.5-turbo-0125",
         from_env=lambda: os.getenv("FAST_LLM"),
     )
     smart_llm: str = UserConfigurable(
-        default="gpt-4",
+        default="gpt-4-turbo-preview",
         from_env=lambda: os.getenv("SMART_LLM"),
     )
     temperature: float = UserConfigurable(
@@ -98,7 +95,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         default=False, from_env=lambda: os.getenv("OPENAI_FUNCTIONS", "False") == "True"
     )
     embedding_model: str = UserConfigurable(
-        default="text-embedding-ada-002", from_env="EMBEDDING_MODEL"
+        default="text-embedding-3-small", from_env="EMBEDDING_MODEL"
     )
     browse_spacy_language_model: str = UserConfigurable(
         default="en_core_web_sm", from_env="BROWSE_SPACY_LANGUAGE_MODEL"

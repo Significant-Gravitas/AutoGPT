@@ -27,13 +27,14 @@ pyvis = "^0.3.2"
 selenium = "^4.11.2"
 pytest-asyncio = "^0.21.1"
 uvicorn = "^0.23.2"
-fastapi = "^0.99.0"
-python-multipart = "^0.0.6"
+fastapi = "^0.109.1"
+python-multipart = "^0.0.7"
 toml = "^0.10.2"
 # helicone = "^1.0.9"  # incompatible with openai@^1.0.0
 httpx = "^0.24.0"
 agent-protocol-client = "^1.1.0"
 click-default-group = "^1.2.4"
+tabulate = "^0.9.0"
 
 [tool.poetry.group.dev.dependencies]
 flake8 = "^3.9.2"

@@ -1,5 +1,4 @@
 """The singleton metaclass for ensuring only one instance of a class."""
-
 import abc
 
 

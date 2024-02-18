@@ -124,10 +124,7 @@ found in the [repository].
     If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and
     make an Azure configuration file:
 
-    - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all the deployment IDs for the relevant models in the `azure_model_map` section:
-        - `fast_llm_deployment_id`: your gpt-3.5-turbo or gpt-4 deployment ID
-        - `smart_llm_deployment_id`: your gpt-4 deployment ID
-        - `embedding_model_deployment_id`: your text-embedding-ada-002 v2 deployment ID
+    - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all the deployment IDs for the relevant models in the `azure_model_map` section.
 
     Example:
 
@@ -135,7 +132,7 @@ found in the [repository].
     # Please specify all of these values as double-quoted strings
     # Replace string in angled brackets (<>) to your own deployment Name
     azure_model_map:
-        fast_llm_deployment_id: "<auto-gpt-deployment>"
+        gpt-4-turbo-preview: "<gpt-4-turbo deployment ID>"
         ...
     ```
 

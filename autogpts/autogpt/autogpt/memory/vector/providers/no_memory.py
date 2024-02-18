@@ -1,5 +1,4 @@
 """A class that does not store any data. This is the default memory provider."""
-
 from __future__ import annotations
 
 from typing import Iterator, Optional

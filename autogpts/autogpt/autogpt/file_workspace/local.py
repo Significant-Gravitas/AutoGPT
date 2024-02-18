@@ -1,7 +1,6 @@
 """
 The LocalFileWorkspace class implements a FileWorkspace that works with local files.
 """
-
 from __future__ import annotations
 
 import inspect
