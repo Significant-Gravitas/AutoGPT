@@ -23,12 +23,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up Python ${{ env.min-python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.min-python-version }}
 
@@ -78,13 +78,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: true
 
       - name: Set up Python ${{ env.min-python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.min-python-version }}
 
@@ -96,11 +96,10 @@ jobs:
       - name: Run regression tests
         run: |
           ./run agent start ${{ matrix.agent-name }}
-          sleep 10
           cd autogpts/${{ matrix.agent-name }}
+
           set +e # Ignore non-zero exit codes and continue execution
           echo "Running the following command: poetry run agbenchmark --maintain --mock"
-
           poetry run agbenchmark --maintain --mock
           EXIT_CODE=$?
           set -e  # Stop ignoring non-zero exit codes
@@ -127,7 +126,7 @@ jobs:
 
           poetry run agbenchmark --mock
           poetry run pytest -vv -s tests
-          
+
           CHANGED=$(git diff --name-only | grep -E '(agbenchmark/challenges)|(../frontend/assets)') || echo "No diffs"
           if [ ! -z "$CHANGED" ]; then
             echo "There are unstaged changes please run agbenchmark and commit those changes since they are needed."
@@ -138,3 +137,5 @@ jobs:
           fi
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TELEMETRY_ENVIRONMENT: autogpt-benchmark-ci
+          TELEMETRY_OPT_IN: ${{ github.ref_name == 'master' }}
