@@ -92,7 +92,9 @@ def add_test_result_to_report(
             TestResult(
                 success=call.excinfo is None,
                 run_time=f"{str(round(call.duration, 3))} seconds",
-                fail_reason=None if call.excinfo is None else str(call.excinfo.value),
+                fail_reason=(
+                    str(call.excinfo.value) if call.excinfo is not None else None
+                ),
                 reached_cutoff=user_properties.get("timed_out", False),
                 n_steps=user_properties.get("n_steps"),
                 cost=user_properties.get("agent_task_cost"),
@@ -104,10 +106,11 @@ def add_test_result_to_report(
             * 100
         )
     except ValidationError:
-        logger.error(
-            "Validation failed on TestResult; "
-            f"call.excinfo = {repr(call.excinfo)} ({call.excinfo})"
-        )
+        if call.excinfo:
+            logger.error(
+                "Validation failed on TestResult; "
+                f"call.excinfo = {repr(call.excinfo)};\n{call.excinfo.getrepr()})"
+            )
         raise
 
     prev_test_results: list[bool | None] = get_and_update_success_history(
