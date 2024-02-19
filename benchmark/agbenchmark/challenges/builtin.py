@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import Any, ClassVar, Iterator, Literal, Optional
 
 import pytest
-from agent_protocol_client import AgentApi, ApiClient, Configuration as ClientConfig
+from agent_protocol_client import (
+    AgentApi,
+    ApiClient,
+    Configuration as ClientConfig,
+    Step,
+)
 from colorama import Fore, Style
 from openai import _load_client as get_openai_client
 from pydantic import BaseModel, constr, Field, validator
@@ -176,6 +181,7 @@ class BuiltinChallenge(BaseChallenge):
         n_steps = 0
         timed_out = None
         agent_task_cost = None
+        steps: list[Step] = []
         try:
             async for step in self.run_challenge(
                 config, timeout, mock=request.config.getoption("--mock")
@@ -184,6 +190,7 @@ class BuiltinChallenge(BaseChallenge):
                     task_id = step.task_id
 
                 n_steps += 1
+                steps.append(step.copy())
                 if step.additional_output:
                     agent_task_cost = step.additional_output.get(
                         "task_total_cost",
@@ -192,6 +199,7 @@ class BuiltinChallenge(BaseChallenge):
             timed_out = False
         except TimeoutError:
             timed_out = True
+        request.node.user_properties.append(("steps", steps))
         request.node.user_properties.append(("n_steps", n_steps))
         request.node.user_properties.append(("timed_out", timed_out))
         request.node.user_properties.append(("agent_task_cost", agent_task_cost))
