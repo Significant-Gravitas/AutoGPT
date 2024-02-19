@@ -71,6 +71,18 @@ jobs:
           # BODGE: Remove success_rate.json and regression_tests.json to avoid conflicts on checkout
           rm ${{ env.REPORTS_FOLDER }}/*.json
 
+          # Find folder with newest (untracked) report in it
+          report_subfolder=$(find ${{ env.REPORTS_FOLDER }} -type f -name 'report.json' \
+            | xargs -I {} dirname {} \
+            | xargs -I {} git ls-files --others --exclude-standard {} \
+            | xargs -I {} dirname {})
+          json_report_file="$report_subfolder/report.json"
+
+          # Convert JSON report to Markdown
+          markdown_report_file="$report_subfolder/report.md"
+          poetry run benchmark/reports/format.py "$json_report_file" > "$markdown_report_file"
+          cat "$markdown_report_file" >> $GITHUB_STEP_SUMMARY
+
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'github-actions@agpt.co'
           git fetch origin ${{ env.REPORTS_BRANCH }}:${{ env.REPORTS_BRANCH }} \
