@@ -97,6 +97,7 @@ def add_test_result_to_report(
                 ),
                 reached_cutoff=user_properties.get("timed_out", False),
                 n_steps=user_properties.get("n_steps"),
+                steps=user_properties.get("steps", []),
                 cost=user_properties.get("agent_task_cost"),
             )
         )
