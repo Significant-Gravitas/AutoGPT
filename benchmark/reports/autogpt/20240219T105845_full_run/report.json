@@ -1,0 +1,393 @@
+{
+    "command": "agbenchmark run -N 3 --test=ReadFile --test=BasicRetrieval --test=RevenueRetrieval2 --test=CombineCsv --test=LabelCsv --test=AnswerQuestionCombineCsv --test=UrlShortener --test=TicTacToe --test=Battleship --test=WebArenaTask_0 --test=WebArenaTask_21 --test=WebArenaTask_124 --test=WebArenaTask_134 --test=WebArenaTask_163",
+    "completion_time": "2024-02-19T11:55:15+00:00",
+    "benchmark_start_time": "2024-02-19T10:58:45+00:00",
+    "metrics": {
+        "run_time": "3389.75 seconds",
+        "highest_difficulty": "basic: 2",
+        "total_cost": 3.1731360000000004
+    },
+    "config": {
+        "host": "http://localhost:8000",
+        "workspace": {
+            "input": "agbenchmark_config/workspace",
+            "output": "agbenchmark_config/workspace"
+        },
+        "entry_path": "agbenchmark.benchmarks"
+    },
+    "agent_git_commit_sha": "---",
+    "benchmark_git_commit_sha": "---",
+    "repo_url": null,
+    "tests": {
+        "ReadFile": {
+            "category": [
+                "general",
+                "coding",
+                "scrape_synthesize",
+                "data"
+            ],
+            "difficulty": "interface",
+            "data_path": "__BUILTIN__/abilities/read_file/data.json",
+            "description": "Tests if the agent can read a file.",
+            "task": "Read the file called file_to_read.txt and write its content to a file called output.txt",
+            "answer": "The content of output.txt should be 'Hello World!'",
+            "metrics": {
+                "attempted": true,
+                "is_regression": false,
+                "success_percentage": 66.66666666666666
+            },
+            "results": [
+                {
+                    "success": false,
+                    "run_time": "62.425 seconds",
+                    "fail_reason": "[Errno 2] No such file or directory: '/tmp/tmp0fxi4t5m/output.txt'",
+                    "reached_cutoff": true,
+                    "n_steps": 2,
+                    "cost": 0.051463499999999995
+                },
+                {
+                    "success": true,
+                    "run_time": "81.384 seconds",
+                    "fail_reason": null,
+                    "reached_cutoff": true,
+                    "n_steps": 3,
+                    "cost": 0.076669
+                },
+                {
+                    "success": true,
+                    "run_time": "60.652 seconds",
+                    "fail_reason": null,
+                    "reached_cutoff": true,
+                    "n_steps": 3,
+                    "cost": 0.0725595
+                }
+            ],
+            "metadata": {}
+        },
+        "Battleship": {
+            "category": [
+                "coding",
+                "general"
+            ],
+            "difficulty": "expert",
+            "data_path": "__BUILTIN__/verticals/code/6_battleship/data.json",
+            "description": "Tests if the agent can create a Battleship.",
+            "task": "Build a battleship game\n\nSpecifications:\n\nOverview: Battleship is a two-player strategy game where each player places their fleet of ships on a grid and tries to sink the opponent's fleet by guessing their locations.\nPlayers take turns calling out a row and column, attempting to name a square containing one of the opponent's ships.\n\nThe Grid: Each player's grid is a 10x10 grid, identified by rows (using numbers 1-10) and columns (using letters A-J).\n\nShips:\n\nCarrier - 5 squares\nBattleship - 4 squares\nCruiser - 3 squares\nSubmarine - 3 squares\nDestroyer - 2 squares\nEach ship occupies contiguous squares on the grid, arranged either horizontally or vertically.\n\nSetup:\n\nAt the start of the game, each player places their fleet on their grid. This setup is hidden from the opponent.\nThe game begins with Player 1, followed by Player 2, and so on.\nTaking Turns:\n\nOn a player's turn, they announce a grid square (e.g., \"D5\").\nThe opponent announces whether that square is a \"hit\" (if there's a part of a ship on that square) or \"miss\" (if the square is empty).\nIf a player hits a square occupied by a ship, they get another turn to guess. This continues until they make a miss, at which point their turn ends.\nIf a player hits all the squares occupied by a ship, the opponent must announce the sinking of that specific ship, e.g., \"You sank my Battleship!\"\n\nObjective: The goal is to sink all of your opponent's ships before they sink yours.\n\nEnd of the Game: The game ends when one player has sunk all of the opponent's ships. The winner is the player who sinks all the opposing fleet first.\n\nTechnical details:\nIn your root folder you will find an abstract class that defines the public interface of the Battleship class you will have to build:\n```\nfrom abc import ABC, abstractmethod\nfrom typing import Optional\n\nfrom pydantic import BaseModel, validator\n\n\n# Models for the request and response payloads\nclass ShipPlacement(BaseModel):\n    ship_type: str\n    start: dict  # {\"row\": int, \"column\": str}\n    direction: str\n\n    @validator(\"start\")\n    def validate_start(cls, start):\n        row, column = start.get(\"row\"), start.get(\"column\")\n\n        if not (1 <= row <= 10):\n            raise ValueError(\"Row must be between 1 and 10 inclusive.\")\n\n        if column not in list(\"ABCDEFGHIJ\"):\n            raise ValueError(\"Column must be one of A, B, C, D, E, F, G, H, I, J.\")\n\n        return start\n\n\nclass Turn(BaseModel):\n    target: dict  # {\"row\": int, \"column\": str}\n\n\nclass TurnResponse(BaseModel):\n    result: str\n    ship_type: Optional[str]  # This would be None if the result is a miss\n\n\nclass GameStatus(BaseModel):\n    is_game_over: bool\n    winner: Optional[str]\n\n\nfrom typing import List\n\n\nclass Game(BaseModel):\n    game_id: str\n    players: List[str]\n    board: dict  # This could represent the state of the game board, you might need to flesh this out further\n    ships: List[ShipPlacement]  # List of ship placements for this game\n    turns: List[Turn]  # List of turns that have been taken\n\n\nclass AbstractBattleship(ABC):\n    SHIP_LENGTHS = {\n        \"carrier\": 5,\n        \"battleship\": 4,\n        \"cruiser\": 3,\n        \"submarine\": 3,\n        \"destroyer\": 2,\n    }\n\n    @abstractmethod\n    def create_ship_placement(self, game_id: str, placement: ShipPlacement) -> None:\n        \"\"\"\n        Place a ship on the grid.\n        \"\"\"\n        pass\n\n    @abstractmethod\n    def create_turn(self, game_id: str, turn: Turn) -> TurnResponse:\n        \"\"\"\n        Players take turns to target a grid cell.\n        \"\"\"\n        pass\n\n    @abstractmethod\n    def get_game_status(self, game_id: str) -> GameStatus:\n        \"\"\"\n        Check if the game is over and get the winner if there's one.\n        \"\"\"\n        pass\n\n    @abstractmethod\n    def get_winner(self, game_id: str) -> str:\n        \"\"\"\n        Get the winner of the game.\n        \"\"\"\n        pass\n\n    @abstractmethod\n    def get_game(self) -> Game:\n        \"\"\"\n        Retrieve the state of the game.\n        \"\"\"\n        pass\n\n    @abstractmethod\n    def delete_game(self, game_id: str) -> None:\n        \"\"\"\n        Delete a game given its ID.\n        \"\"\"\n        pass\n\n    @abstractmethod\n    def create_game(self) -> None:\n        \"\"\"\n        Create a new game.\n        \"\"\"\n        pass\n\n```\nAt any moment you can run ```pytest``` to execute the tests.\nYou have two types of test: \n- positive tests => test the battleship game being used in ideal conditions\n- negative tests => tests the battleship game behaviour when used incorrectly\n\nSuccess criteria:\n- you will need to write a file called battleship.py that implements the abstract Battleship class.\n- this class will have to pass all the tests.\n- you're not allowed to modify any other file than the battleship.py. You can add other files as long as the main entrypoint is the battleship class.",
+            "answer": "The implementation of battleship that passes all the tests.",
+            "metrics": {
+                "attempted": true,
+                "is_regression": false,
+                "success_percentage": 0.0
+            },
+            "results": [
+                {
+                    "success": false,
+                    "run_time": "208.819 seconds",
+                    "fail_reason": "Timed out; no passed evals: [EvalResult(result=\"Error: ImportError while loading conftest '/tmp/tmphefahkbe/conftest.py'.\\nconftest.py:3: in <module>\\n    from battleship import Battleship\\nbattleship.py:9: in <module>\\n    class Battleship(AbstractBattleship):\\nE   NameError: name 'AbstractBattleship' is not defined\\n\\n\", result_source='pytest', score=0.0, passed=False)]",
+                    "reached_cutoff": true,
+                    "n_steps": 4,
+                    "cost": 0.1036425
+                },
+                {
+                    "success": false,
+                    "run_time": "249.458 seconds",
+                    "fail_reason": "Timed out; no passed evals: [EvalResult(result=\"Error: ImportError while loading conftest '/tmp/tmpq4avvjp3/conftest.py'.\\nconftest.py:3: in <module>\\n    from battleship import Battleship\\nbattleship.py:15: in <module>\\n    class Battleship(AbstractBattleship):\\nE   NameError: name 'AbstractBattleship' is not defined\\n\\n\", result_source='pytest', score=0.0, passed=False)]",
+                    "reached_cutoff": true,
+                    "n_steps": 4,
+                    "cost": 0.2482665
+                },
+                {
+                    "success": false,
+                    "run_time": "202.77 seconds",
+                    "fail_reason": "Timed out; no passed evals: [EvalResult(result='Error: ImportError while loading conftest \\'/tmp/tmp13e8ctd4/conftest.py\\'.\\nconftest.py:3: in <module>\\n    from battleship import Battleship\\nE     File \"/tmp/tmp13e8ctd4/battleship.py\", line 61\\nE       @abstractmethod\\nE       ^\\nE   IndentationError: expected an indented block after function definition on line 60\\n\\n', result_source='pytest', score=0.0, passed=False)]",
+                    "reached_cutoff": true,
+                    "n_steps": 6,
+                    "cost": 0.30066550000000003
+                }
+            ],
+            "metadata": {}
+        },
+        "TicTacToe": {
+            "category": [
+                "coding",
+                "general"
+            ],
+            "difficulty": "basic",
+            "data_path": "__BUILTIN__/verticals/code/5_tic_tac_toe/data.json",
+            "description": "Tests if the agent can create Tic-Tac-Toe game",
+            "task": "Build a Tic-Tac-Toe game using a python CLI. Here are the specifications.\n\nThe Grid: The game board is a 3x3 grid, consisting of 3 rows and 3 columns, creating a total of 9 squares.\n\nPlayers: There are two players. One player uses the number \"1\", and the other player uses the number \"2\".\n\nTaking Turns: Players take turns to put their respective numbers (\"1\" or \"2\") in an empty square of the grid. Once a player has placed their number in a square, it cannot be changed or removed.\n\nObjective: The goal is to get three of your numbers in a row, either horizontally, vertically, or diagonally.\n\nEnd of the Game: The game concludes in one of two ways: One player gets three of their numbers in a row (horizontally, vertically, or diagonally) and is declared the winner.\nAll squares on the grid are filled, and no player has three in a row. This situation is a \"draw\" or a \"tie\".\n\nTechnical specifications:\nBuild a file called tic_tac_toe.py. This file will be called through command lines. You will have to prompt users for their move. Player 1 will always start.\nPlayers will input their move in the following format: \"x,y\" where x and y represent the location in the grid (0,0 is top left, 2,2 is bottom right).\n\nYour primary requirement is to halt the game when appropriate and to print only one of these three exact sentences:\n\n\"Player 1 won!\"\n\"Player 2 won!\"\n\"Draw\"\n\nEdge cases: A player can send an incorrect location. Either the location is incorrect or the square is already filled. In this case, this counts as doing nothing, and the player gets prompted for new locations again.\n\n\nYou will be expected to create a python file called tic_tac_toe.py that will run through command lines by using ```python tic_tac_toe.py```.\n\nHere is an example of how your tic_tac_toe.py game will be tested.\n```\nprocess = subprocess.Popen(\n    ['python', 'tic_tac_toe.py'],\n    stdout=subprocess.PIPE,\n    text=True\n)\n\noutput, _ = process.communicate('\\n'.join([\"0,0\", \"1,0\", \"0,1\", \"1,1\", \"0,2\"]))\n\nassert \"Player 1 won!\" in output\n```",
+            "answer": "The correct python file for a TicTacToe game is written",
+            "metrics": {
+                "attempted": true,
+                "is_regression": false,
+                "success_percentage": 100.0
+            },
+            "results": [
+                {
+                    "success": true,
+                    "run_time": "207.562 seconds",
+                    "fail_reason": null,
+                    "reached_cutoff": true,
+                    "n_steps": 5,
+                    "cost": 0.24055350000000003
+                },
+                {
+                    "success": true,
+                    "run_time": "152.036 seconds",
+                    "fail_reason": null,
+                    "reached_cutoff": true,
+                    "n_steps": 4,
+                    "cost": 0.17079649999999996
+                },
+                {
+                    "success": true,
+                    "run_time": "153.314 seconds",
+                    "fail_reason": null,
+                    "reached_cutoff": true,
+                    "n_steps": 5,
+                    "cost": 0.190435
+                }
+            ],
+            "metadata": {}
+        },
+        "UrlShortener": {
+            "category": [
+                "coding"
+            ],
+            "difficulty": "basic",
+            "data_path": "__BUILTIN__/verticals/code/4_url_shortener/data.json",
+            "description": "Tests if the agent can create a URL shortener.",
+            "task": "Build a basic URL shortener using a python CLI. Here are the specifications.\n\nFunctionality: The program should have two primary functionalities.\n\nShorten a given URL.\nRetrieve the original URL from a shortened URL.\n\nCLI: The command-line interface should accept a URL as its first input. It should be able to determine if the url is a shortened url or not. If the url is not shortened, it will display ONLY the shortened url, otherwise, it will display ONLY the original unshortened URL. Afterwards, it should prompt the user for another URL to process.\n\nTechnical specifications:\nBuild a file called url_shortener.py. This file will be called through command lines.\n\nEdge cases:\nFor the sake of simplicity, there will be no edge cases, you can assume the input is always correct and the user immediately passes the shortened version of the url he just shortened.\n\nYou will be expected to create a python file called url_shortener.py that will run through command lines by using python url_shortener.py.\n\nThe url_shortener.py will be tested this way:\n```\nimport unittest\nfrom url_shortener import shorten_url, retrieve_url\n\nclass TestURLShortener(unittest.TestCase):\n    def test_url_retrieval(self):\n        # Shorten the URL to get its shortened form\n        shortened_url = shorten_url('https://www.example.com')\n\n        # Retrieve the original URL using the shortened URL directly\n        retrieved_url = retrieve_url(shortened_url)\n\n        self.assertEqual(retrieved_url, 'https://www.example.com', \"Retrieved URL does not match the original!\")\n\nif __name__ == \"__main__\":\n    unittest.main()\n```",
+            "answer": "The correct python file for a basic url shortener CLI",
+            "metrics": {
+                "attempted": true,
+                "is_regression": false,
+                "success_percentage": 100.0
+            },
+            "results": [
+                {
+                    "success": true,
+                    "run_time": "154.084 seconds",
+                    "fail_reason": null,
+                    "reached_cutoff": true,
+                    "n_steps": 5,
+                    "cost": 0.1916355
+                },
+                {
+                    "success": true,
+                    "run_time": "168.568 seconds",
+                    "fail_reason": null,
+                    "reached_cutoff": true,
+                    "n_steps": 5,
+                    "cost": 0.185079
+                },
+                {
+                    "success": true,
+                    "run_time": "166.591 seconds",
+                    "fail_reason": null,
+                    "reached_cutoff": true,
+                    "n_steps": 4,
+                    "cost": 0.142031
+                }
+            ],
+            "metadata": {}
+        },
+        "AnswerQuestionCombineCsv": {
+            "category": [
+                "data",
+                "general"
+            ],
+            "difficulty": "intermediate",
+            "data_path": "__BUILTIN__/verticals/data/6_answer_question_combine_csv/data.json",
+            "description": "Tests if the agent can answer a question from a csv",
+            "task": "How much was spent on utilities in total ? Write the answer in an output.txt file.",
+            "answer": "The correct amount spent on utilities.",
+            "metrics": {
+                "attempted": true,
+                "is_regression": false,
+                "success_percentage": 0.0
+            },
+            "results": [
+                {
+                    "success": false,
+                    "run_time": "132.366 seconds",
+                    "fail_reason": "[Errno 2] No such file or directory: '/tmp/tmpi_3srnht/output.txt'",
+                    "reached_cutoff": true,
+                    "n_steps": 4,
+                    "cost": 0.20607200000000003
+                },
+                {
+                    "success": false,
+                    "run_time": "128.102 seconds",
+                    "fail_reason": "[Errno 2] No such file or directory: '/tmp/tmpcw5ixfip/output.txt'",
+                    "reached_cutoff": true,
+                    "n_steps": 4,
+                    "cost": 0.1873395
+                },
+                {
+                    "success": false,
+                    "run_time": "151.972 seconds",
+                    "fail_reason": "[Errno 2] No such file or directory: '/tmp/tmpyqh0athx/output.txt'",
+                    "reached_cutoff": true,
+                    "n_steps": 4,
+                    "cost": 0.09023500000000001
+                }
+            ],
+            "metadata": {}
+        },
+        "CombineCsv": {
+            "category": [
+                "data",
+                "general"
+            ],
+            "difficulty": "intermediate",
+            "data_path": "__BUILTIN__/verticals/data/3_combine_csv/data.json",
+            "description": "Tests if the agent can combine data from a csv",
+            "task": "The csvs 'file1.csv' and 'file2.csv' both have a column 'ID'. Combine these 2 csvs using the 'ID' column. Sort the rows by ID in ascending order and the columns alphabetically. Write the output in output.csv",
+            "answer": "The csv data is combined",
+            "metrics": {
+                "attempted": true,
+                "is_regression": false,
+                "success_percentage": 0.0
+            },
+            "results": [
+                {
+                    "success": false,
+                    "run_time": "92.962 seconds",
+                    "fail_reason": "[Errno 2] No such file or directory: '/tmp/tmpwr4wviza/output.csv'",
+                    "reached_cutoff": true,
+                    "n_steps": 3,
+                    "cost": 0.086807
+                },
+                {
+                    "success": false,
+                    "run_time": "86.318 seconds",
+                    "fail_reason": "[Errno 2] No such file or directory: '/tmp/tmpf99gbmzf/output.csv'",
+                    "reached_cutoff": true,
+                    "n_steps": 3,
+                    "cost": 0.087906
+                },
+                {
+                    "success": false,
+                    "run_time": "65.238 seconds",
+                    "fail_reason": "[Errno 2] No such file or directory: '/tmp/tmpsven3afk/output.csv'",
+                    "reached_cutoff": true,
+                    "n_steps": 2,
+                    "cost": 0.0571115
+                }
+            ],
+            "metadata": {}
+        },
+        "LabelCsv": {
+            "category": [
+                "data"
+            ],
+            "difficulty": "basic",
+            "data_path": "__BUILTIN__/verticals/data/2_label_csv/data.json",
+            "description": "Tests if the agent can label data in a csv",
+            "task": "The csv 'input.csv' has many items. Create a 'Color' column for these items and classify them as either 'blue', 'green', or 'yellow' depending on what the most likely color is. Use lowercase letters to classify and preserve the order of the rows. The color column should be the second column. Write the output in output.csv",
+            "answer": "The csv labelled",
+            "metrics": {
+                "attempted": true,
+                "is_regression": false,
+                "success_percentage": 0.0
+            },
+            "results": [
+                {
+                    "success": false,
+                    "run_time": "88.07 seconds",
+                    "fail_reason": "[Errno 2] No such file or directory: '/tmp/tmpot18lb_0/output.csv'",
+                    "reached_cutoff": true,
+                    "n_steps": 2,
+                    "cost": 0.05701150000000001
+                },
+                {
+                    "success": false,
+                    "run_time": "86.774 seconds",
+                    "fail_reason": "[Errno 2] No such file or directory: '/tmp/tmpbmj_thg2/output.csv'",
+                    "reached_cutoff": true,
+                    "n_steps": 2,
+                    "cost": 0.0643405
+                },
+                {
+                    "success": false,
+                    "run_time": "71.17 seconds",
+                    "fail_reason": "[Errno 2] No such file or directory: '/tmp/tmprxgycpbf/output.csv'",
+                    "reached_cutoff": true,
+                    "n_steps": 2,
+                    "cost": 0.063469
+                }
+            ],
+            "metadata": {}
+        },
+        "BasicRetrieval": {
+            "category": [
+                "scrape_synthesize",
+                "general"
+            ],
+            "difficulty": "basic",
+            "data_path": "__BUILTIN__/verticals/scrape/2_book_price/data.json",
+            "description": "Tests if the agent can retrieve a specific information from a website.",
+            "task": "Write the price of the book in this url 'http://books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file.",
+            "answer": "\u00a325.89",
+            "metrics": {
+                "attempted": true,
+                "is_regression": false,
+                "success_percentage": 33.33333333333333
+            },
+            "results": [
+                {
+                    "success": false,
+                    "run_time": "66.415 seconds",
+                    "fail_reason": "Timed out, no results to evaluate",
+                    "reached_cutoff": true,
+                    "n_steps": 2,
+                    "cost": 0.069091
+                },
+                {
+                    "success": true,
+                    "run_time": "67.116 seconds",
+                    "fail_reason": null,
+                    "reached_cutoff": true,
+                    "n_steps": 3,
+                    "cost": 0.10259599999999999
+                },
+                {
+                    "success": false,
+                    "run_time": "82.045 seconds",
+                    "fail_reason": "Timed out, no results to evaluate",
+                    "reached_cutoff": true,
+                    "n_steps": 2,
+                    "cost": 0.061196
+                }
+            ],
+            "metadata": {}
+        },
+        "RevenueRetrieval2": {
+            "category": [
+                "scrape_synthesize"
+            ],
+            "difficulty": "intermediate",
+            "data_path": "__BUILTIN__/verticals/scrape/4_revenue_retrieval_2/data.json",
+            "description": "Tests if the agent can retrieve all the revenues of Tesla since its creation.",
+            "task": "Write tesla's revenue every year since its creation into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 million).",
+            "answer": "15 Millions\n112 Millions\n117 Millions\n204 Millions\n413 Millions\n2,014 Millions\n3,198 Millions\n4,046 Millions\n7,000 Millions\n11,759 Millions\n21,461 Millions\n24,578 Millions\n31,536 Millions\n53,823 Millions\n81,462 Millions",
+            "metrics": {
+                "attempted": true,
+                "is_regression": false,
+                "success_percentage": 0.0
+            },
+            "results": [
+                {
+                    "success": false,
+                    "run_time": "62.222 seconds",
+                    "fail_reason": "Timed out, no results to evaluate",
+                    "reached_cutoff": true,
+                    "n_steps": 2,
+                    "cost": 0.066164
+                }
+            ],
+            "metadata": {}
+        }
+    }
+}
