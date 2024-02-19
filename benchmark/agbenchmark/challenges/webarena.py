@@ -396,6 +396,7 @@ class WebArenaChallenge(BaseChallenge):
         n_steps = 0
         timed_out = None
         agent_task_cost = None
+        steps: list[Step] = []
         eval_results_per_step: list[list[tuple[_Eval, EvalResult]]] = []
         try:
             async for step in self.run_challenge(
@@ -406,6 +407,7 @@ class WebArenaChallenge(BaseChallenge):
                     continue
 
                 n_steps += 1
+                steps.append(step)
                 if step.additional_output:
                     agent_task_cost = step.additional_output.get(
                         "task_total_cost",
@@ -429,6 +431,7 @@ class WebArenaChallenge(BaseChallenge):
             timed_out = False
         except TimeoutError:
             timed_out = True
+        request.node.user_properties.append(("steps", steps))
         request.node.user_properties.append(("n_steps", n_steps))
         request.node.user_properties.append(("timed_out", timed_out))
         request.node.user_properties.append(("agent_task_cost", agent_task_cost))
