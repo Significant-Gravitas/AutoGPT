@@ -264,14 +264,21 @@ async def open_page_in_browser(url: str, config: Config) -> WebDriver:
 
         _sideload_chrome_extensions(options, config.app_data_dir / "assets" / "crx")
 
-        chromium_driver_path = Path("/usr/bin/chromedriver")
+        if (chromium_driver_path := Path("/usr/bin/chromedriver")).exists():
+            chrome_service = ChromeDriverService(str(chromium_driver_path))
+        else:
+            try:
+                chrome_driver = ChromeDriverManager().install()
+            except AttributeError as e:
+                if "'NoneType' object has no attribute 'split'" in str(e):
+                    # https://github.com/SergeyPirogov/webdriver_manager/issues/649
+                    logger.critical(
+                        "Connecting to browser failed: is Chrome or Chromium installed?"
+                    )
+                raise
+            chrome_service = ChromeDriverService(chrome_driver)
+        driver = ChromeDriver(service=chrome_service, options=options)
 
-        driver = ChromeDriver(
-            service=ChromeDriverService(str(chromium_driver_path))
-            if chromium_driver_path.exists()
-            else ChromeDriverService(ChromeDriverManager().install()),
-            options=options,
-        )
     driver.get(url)
 
     # Wait for page to be ready, sleep 2 seconds, wait again until page ready.
