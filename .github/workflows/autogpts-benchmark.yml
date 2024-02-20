@@ -37,6 +37,8 @@ jobs:
       - name: Prepare reports folder
         run: mkdir -p ${{ env.REPORTS_FOLDER }}
 
+      - run: poetry -C benchmark install
+
       - name: Benchmark ${{ matrix.agent-name }}
         run: |
           ./run agent start ${{ matrix.agent-name }}
