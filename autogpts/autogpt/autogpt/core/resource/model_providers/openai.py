@@ -177,8 +177,9 @@ OPEN_AI_CHAT_MODELS = {
 }
 # Copy entries for models with equivalent specs
 chat_model_mapping = {
-    OpenAIModelName.GPT3_v1: [OpenAIModelName.GPT3_v2, OpenAIModelName.GPT3_ROLLING],
+    OpenAIModelName.GPT3_v1: [OpenAIModelName.GPT3_v2],
     OpenAIModelName.GPT3_v2_16k: [OpenAIModelName.GPT3_16k],
+    OpenAIModelName.GPT3_v4: [OpenAIModelName.GPT3_ROLLING],
     OpenAIModelName.GPT4_v1: [OpenAIModelName.GPT4_v2, OpenAIModelName.GPT4_ROLLING],
     OpenAIModelName.GPT4_v1_32k: [
         OpenAIModelName.GPT4_v2_32k,
