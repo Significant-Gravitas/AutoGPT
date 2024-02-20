@@ -107,7 +107,7 @@ async def interactively_revise_ai_settings(
                 continue
             elif new_constraint:
                 directives.constraints[i] = new_constraint
-            
+
             i += 1
 
         # Add new constraints
@@ -138,9 +138,8 @@ async def interactively_revise_ai_settings(
                 continue
             elif new_resource:
                 directives.resources[i] = new_resource
-            
-            i += 1
 
+            i += 1
 
         # Add new resources
         while True:
@@ -151,7 +150,6 @@ async def interactively_revise_ai_settings(
             if not new_resource:
                 break
             directives.resources.append(new_resource)
-
 
         # Revise best practices
         i = 0
@@ -171,7 +169,7 @@ async def interactively_revise_ai_settings(
                 continue
             elif new_best_practice:
                 directives.best_practices[i] = new_best_practice
-            
+
             i += 1
 
         # Add new best practices
