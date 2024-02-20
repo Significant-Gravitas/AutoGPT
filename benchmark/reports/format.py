@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import click
 
 from agbenchmark.reports.processing.report_types import Report
