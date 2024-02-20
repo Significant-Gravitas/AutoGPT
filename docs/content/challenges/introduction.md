@@ -1,4 +1,3 @@
-introduction.md
 # Introduction to Challenges
 
 Welcome to the AutoGPT Challenges page! This is a space where we encourage community members to collaborate and contribute towards improving AutoGPT by identifying and solving challenges that AutoGPT is not yet able to achieve.

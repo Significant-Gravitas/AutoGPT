@@ -116,6 +116,12 @@ class _ChatInputFieldState extends State<ChatInputField> {
             child: TextField(
               controller: _controller,
               focusNode: _focusNode,
+              // Enable enter key stroke to send the message
+              // Untested but submitted at Pwuts recommendation
+               onSubmitted: () {
+                widget.onSendPressed(_controller.text);
+                _controller.clear();
+              },
               // Allowing the TextField to expand vertically and accommodate multiple lines
               maxLines: null,
               decoration: InputDecoration(

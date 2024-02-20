@@ -68,7 +68,7 @@ def test_json_memory_clear(config: Config, memory_item: MemoryItem):
 def test_json_memory_get(config: Config, memory_item: MemoryItem, mock_get_embedding):
     index = JSONFileMemory(config)
     assert (
-        index.get("test", config) == None
+        index.get("test", config) is None
     ), "Cannot test get() because initial index is not empty"
 
     index.add(memory_item)
@@ -97,7 +97,7 @@ def test_json_memory_load_index(config: Config, memory_item: MemoryItem):
 
 @pytest.mark.vcr
 @pytest.mark.requires_openai_api_key
-def test_json_memory_get_relevant(config: Config, patched_api_requestor: None) -> None:
+def test_json_memory_get_relevant(config: Config, cached_openai_client: None) -> None:
     index = JSONFileMemory(config)
     mem1 = MemoryItem.from_text_file("Sample text", "sample.txt", config)
     mem2 = MemoryItem.from_text_file(

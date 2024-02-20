@@ -1,6 +1,1 @@
-{
-    "github_repo_url": "https://github.com/sampatkalyan/AutoGPTHackathon",
-    "timestamp": "2023-10-01T18:59:41.243243",
-    "commit_hash_to_benchmark": "a0fba5d1f13d35a1c4a8b7718550677bf62b5101",
-    "branch_to_benchmark": "master"
-}
+{"github_repo_url": "https://github.com/sampatkalyan/AutoGPTHackathon", "timestamp": "2023-10-02T08:16:27Z", "commit_hash_to_benchmark": "062d286c239dc863ede4ad475d7348698722f5fa", "branch_to_benchmark": "master"}

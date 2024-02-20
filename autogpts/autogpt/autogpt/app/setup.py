@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 def apply_overrides_to_ai_settings(
     ai_profile: AIProfile,
     directives: AIDirectives,
-    override_name: str = "",
-    override_role: str = "",
+    override_name: Optional[str] = "",
+    override_role: Optional[str] = "",
     replace_directives: bool = False,
     resources: Optional[list[str]] = None,
     constraints: Optional[list[str]] = None,
@@ -89,19 +89,26 @@ async def interactively_revise_ai_settings(
         )
 
         # Revise constraints
-        for i, constraint in enumerate(directives.constraints):
+        i = 0
+        while i < len(directives.constraints):
+            constraint = directives.constraints[i]
             print_attribute(f"Constraint {i+1}:", f'"{constraint}"')
             new_constraint = (
                 await clean_input(
                     app_config,
-                    f"Enter new constraint {i+1} (press enter to keep current, or '-' to remove):",
+                    f"Enter new constraint {i+1}"
+                    " (press enter to keep current, or '-' to remove):",
                 )
                 or constraint
             )
+
             if new_constraint == "-":
                 directives.constraints.remove(constraint)
+                continue
             elif new_constraint:
                 directives.constraints[i] = new_constraint
+
+            i += 1
 
         # Add new constraints
         while True:
@@ -114,19 +121,25 @@ async def interactively_revise_ai_settings(
             directives.constraints.append(new_constraint)
 
         # Revise resources
-        for i, resource in enumerate(directives.resources):
+        i = 0
+        while i < len(directives.resources):
+            resource = directives.resources[i]
             print_attribute(f"Resource {i+1}:", f'"{resource}"')
             new_resource = (
                 await clean_input(
                     app_config,
-                    f"Enter new resource {i+1} (press enter to keep current, or '-' to remove):",
+                    f"Enter new resource {i+1}"
+                    " (press enter to keep current, or '-' to remove):",
                 )
                 or resource
             )
             if new_resource == "-":
                 directives.resources.remove(resource)
+                continue
             elif new_resource:
                 directives.resources[i] = new_resource
+
+            i += 1
 
         # Add new resources
         while True:
@@ -139,19 +152,25 @@ async def interactively_revise_ai_settings(
             directives.resources.append(new_resource)
 
         # Revise best practices
-        for i, best_practice in enumerate(directives.best_practices):
+        i = 0
+        while i < len(directives.best_practices):
+            best_practice = directives.best_practices[i]
             print_attribute(f"Best Practice {i+1}:", f'"{best_practice}"')
             new_best_practice = (
                 await clean_input(
                     app_config,
-                    f"Enter new best practice {i+1} (press enter to keep current, or '-' to remove):",
+                    f"Enter new best practice {i+1}"
+                    " (press enter to keep current, or '-' to remove):",
                 )
                 or best_practice
             )
             if new_best_practice == "-":
                 directives.best_practices.remove(best_practice)
+                continue
             elif new_best_practice:
                 directives.best_practices[i] = new_best_practice
+
+            i += 1
 
         # Add new best practices
         while True:

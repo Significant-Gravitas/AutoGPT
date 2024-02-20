@@ -41,6 +41,8 @@ flutter pub get
 
 4. **Run the app:**
 ```
+#For chromium users on linux:
+#export CHROME_EXECUTABLE=/usr/bin/chromium
 flutter run -d chrome --web-port 5000
 ```
 

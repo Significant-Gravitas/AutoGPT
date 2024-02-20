@@ -14,12 +14,12 @@ from poetry.factory import Factory
 
 def main():
     poetry_project = Factory().create_poetry()
-    # repository = poetry_project.locker.locked_repository()
-    # dependencies = repository.packages
     dependency_group = poetry_project.package.dependency_group("main")
 
     missing_packages = []
     for dep in dependency_group.dependencies:
+        if dep.is_optional():
+            continue
         # Try to verify that the installed version is suitable
         with contextlib.suppress(ModuleNotFoundError):
             installed_version = version(dep.name)  # if this fails -> not installed

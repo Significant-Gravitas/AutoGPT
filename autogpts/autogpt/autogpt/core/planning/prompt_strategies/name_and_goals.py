@@ -5,7 +5,7 @@ from autogpt.core.prompting import PromptStrategy
 from autogpt.core.prompting.schema import ChatPrompt, LanguageModelClassification
 from autogpt.core.prompting.utils import json_loads
 from autogpt.core.resource.model_providers import (
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatMessage,
     CompletionModelFunction,
 )
@@ -61,7 +61,9 @@ class NameAndGoals(PromptStrategy):
             ),
             "agent_role": JSONSchema(
                 type=JSONSchema.Type.STRING,
-                description="An informative one sentence description of what the AI agent does",
+                description=(
+                    "An informative one sentence description of what the AI agent does"
+                ),
             ),
             "agent_goals": JSONSchema(
                 type=JSONSchema.Type.ARRAY,
@@ -71,8 +73,9 @@ class NameAndGoals(PromptStrategy):
                     type=JSONSchema.Type.STRING,
                 ),
                 description=(
-                    "One to five highly effective goals that are optimally aligned with the completion of a "
-                    "specific task. The number and complexity of the goals should correspond to the "
+                    "One to five highly effective goals that are optimally aligned "
+                    "with the completion of a specific task. "
+                    "The number and complexity of the goals should correspond to the "
                     "complexity of the agent's primary objective."
                 ),
             ),
@@ -121,7 +124,7 @@ class NameAndGoals(PromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> dict:
         """Parse the actual text response from the objective model.
 
@@ -133,7 +136,14 @@ class NameAndGoals(PromptStrategy):
 
         """
         try:
-            parsed_response = json_loads(response_content["function_call"]["arguments"])
+            if not response_content.tool_calls:
+                raise ValueError(
+                    f"LLM did not call {self._create_agent_function} function; "
+                    "agent profile creation failed"
+                )
+            parsed_response = json_loads(
+                response_content.tool_calls[0].function.arguments
+            )
         except KeyError:
             logger.debug(f"Failed to parse this response content: {response_content}")
             raise

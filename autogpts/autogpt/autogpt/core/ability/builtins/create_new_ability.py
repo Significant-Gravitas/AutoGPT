@@ -32,7 +32,10 @@ class CreateNewAbility(Ability):
             required=True,
         ),
         "description": JSONSchema(
-            description="A detailed description of the ability and its uses, including any limitations.",
+            description=(
+                "A detailed description of the ability and its uses, "
+                "including any limitations."
+            ),
             type=JSONSchema.Type.STRING,
             required=True,
         ),
@@ -47,11 +50,16 @@ class CreateNewAbility(Ability):
                         type=JSONSchema.Type.STRING,
                     ),
                     "type": JSONSchema(
-                        description="The type of the argument. Must be a standard json schema type.",
+                        description=(
+                            "The type of the argument. "
+                            "Must be a standard json schema type."
+                        ),
                         type=JSONSchema.Type.STRING,
                     ),
                     "description": JSONSchema(
-                        description="A detailed description of the argument and its uses.",
+                        description=(
+                            "A detailed description of the argument and its uses."
+                        ),
                         type=JSONSchema.Type.STRING,
                     ),
                 },
@@ -66,15 +74,22 @@ class CreateNewAbility(Ability):
             ),
         ),
         "package_requirements": JSONSchema(
-            description="A list of the names of the Python packages that are required to execute the ability.",
+            description=(
+                "A list of the names of the Python packages that are required to "
+                "execute the ability."
+            ),
             type=JSONSchema.Type.ARRAY,
             items=JSONSchema(
-                description="The of the Python package that is required to execute the ability.",
+                description=(
+                    "The of the Python package that is required to execute the ability."
+                ),
                 type=JSONSchema.Type.STRING,
             ),
         ),
         "code": JSONSchema(
-            description="The Python code that will be executed when the ability is called.",
+            description=(
+                "The Python code that will be executed when the ability is called."
+            ),
             type=JSONSchema.Type.STRING,
             required=True,
         ),

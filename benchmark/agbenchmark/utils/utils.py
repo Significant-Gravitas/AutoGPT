@@ -1,17 +1,27 @@
 # radio charts, logs, helper functions for tests, anything else relevant.
 import json
+import logging
 import os
 import re
+from enum import Enum
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Callable, Iterable, Optional, TypeVar, overload
 
+import click
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
-load_dotenv()
+from agbenchmark.reports.processing.report_types import Test
 from agbenchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel
 
+load_dotenv()
+
 AGENT_NAME = os.getenv("AGENT_NAME")
-REPORT_LOCATION = os.getenv("REPORT_LOCATION", None)
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+E = TypeVar("E", bound=Enum)
 
 
 def replace_backslash(value: Any) -> Any:
@@ -25,17 +35,6 @@ def replace_backslash(value: Any) -> Any:
         return {k: replace_backslash(v) for k, v in value.items()}
     else:
         return value
-
-
-def calculate_success_percentage(results: list[bool]) -> float:
-    # Take the last 10 results or all if less than 10
-    last_results = results[-10:] if len(results) > 10 else results
-    success_count = last_results.count(True)
-    total_count = len(last_results)
-    if total_count == 0:
-        return 0
-    success_percentage = (success_count / total_count) * 100  # as a percentage
-    return round(success_percentage, 2)
 
 
 def get_test_path(json_file: str | Path) -> str:
@@ -59,41 +58,41 @@ def get_test_path(json_file: str | Path) -> str:
 
 
 def get_highest_success_difficulty(
-    data: dict, just_string: Optional[bool] = None
+    data: dict[str, Test], just_string: Optional[bool] = None
 ) -> str:
     highest_difficulty = None
     highest_difficulty_level = 0
 
     for test_name, test_data in data.items():
         try:
-            if test_data.get("tests", None):
-                highest_difficulty_str = test_data["metrics"]["highest_difficulty"]
+            if any(r.success for r in test_data.results):
+                difficulty_str = test_data.difficulty
+                if not difficulty_str:
+                    continue
+
                 try:
-                    highest_difficulty = DifficultyLevel[highest_difficulty_str]
-                    highest_difficulty_level = DIFFICULTY_MAP[highest_difficulty]
+                    difficulty_enum = DifficultyLevel[difficulty_str.lower()]
+                    difficulty_level = DIFFICULTY_MAP[difficulty_enum]
+
+                    if difficulty_level > highest_difficulty_level:
+                        highest_difficulty = difficulty_enum
+                        highest_difficulty_level = difficulty_level
                 except KeyError:
-                    print(
-                        f"Unexpected difficulty level '{highest_difficulty_str}' in test '{test_name}'"
+                    logger.warning(
+                        f"Unexpected difficulty level '{difficulty_str}' "
+                        f"in test '{test_name}'"
                     )
                     continue
-            else:
-                if test_data["metrics"]["success"]:
-                    difficulty_str = test_data["metrics"]["difficulty"]
-
-                    try:
-                        difficulty_enum = DifficultyLevel[difficulty_str.lower()]
-                        difficulty_level = DIFFICULTY_MAP[difficulty_enum]
-
-                        if difficulty_level > highest_difficulty_level:
-                            highest_difficulty = difficulty_enum
-                            highest_difficulty_level = difficulty_level
-                    except KeyError:
-                        print(
-                            f"Unexpected difficulty level '{difficulty_str}' in test '{test_name}'"
-                        )
-                        continue
-        except Exception:
-            print(f"Make sure you selected the right test, no reports were generated.")
+        except Exception as e:
+            logger.warning(
+                "An unexpected error [1] occurred while analyzing report [2]."
+                "Please notify a maintainer.\n"
+                f"Report data [1]: {data}\n"
+                f"Error [2]: {e}"
+            )
+            logger.warning(
+                "Make sure you selected the right test, no reports were generated."
+            )
             break
 
     if highest_difficulty is not None:
@@ -116,20 +115,11 @@ def get_highest_success_difficulty(
 #             remote_url = remote_url[:-4]
 #         git_commit_sha = f"{remote_url}/tree/{repo.head.commit.hexsha}"
 
-#         # print(f"GIT_COMMIT_SHA: {git_commit_sha}")
+#         # logger.debug(f"GIT_COMMIT_SHA: {git_commit_sha}")
 #         return git_commit_sha
 #     except Exception:
-#         # print(f"{directory} is not a git repository!")
+#         # logger.error(f"{directory} is not a git repository!")
 #         return None
-
-
-def agent_eligibible_for_optional_categories(
-    optional_challenge_categories: List, agent_categories: List
-) -> bool:
-    for element in optional_challenge_categories:
-        if element not in agent_categories:
-            return False
-    return True
 
 
 def write_pretty_json(data, json_file):
@@ -138,6 +128,42 @@ def write_pretty_json(data, json_file):
     with open(json_file, "w") as f:
         f.write(json_graph)
         f.write("\n")
+
+
+def pretty_print_model(model: BaseModel, include_header: bool = True) -> None:
+    indent = ""
+    if include_header:
+        # Try to find the ID and/or name attribute of the model
+        id, name = None, None
+        for attr, value in model.dict().items():
+            if attr == "id" or attr.endswith("_id"):
+                id = value
+            if attr.endswith("name"):
+                name = value
+            if id and name:
+                break
+        identifiers = [v for v in [name, id] if v]
+        click.echo(
+            f"{model.__repr_name__()}{repr(identifiers) if identifiers else ''}:"
+        )
+        indent = " " * 2
+
+    k_col_width = max(len(k) for k in model.dict().keys())
+    for k, v in model.dict().items():
+        v_fmt = repr(v)
+        if v is None or v == "":
+            v_fmt = click.style(v_fmt, fg="black")
+        elif type(v) is bool:
+            v_fmt = click.style(v_fmt, fg="green" if v else "red")
+        elif type(v) is str and "\n" in v:
+            v_fmt = f"\n{v}".replace(
+                "\n", f"\n{indent} {click.style('|', fg='black')} "
+            )
+        if isinstance(v, Enum):
+            v_fmt = click.style(v.value, fg="blue")
+        elif type(v) is list and len(v) > 0 and isinstance(v[0], Enum):
+            v_fmt = ", ".join(click.style(lv.value, fg="blue") for lv in v)
+        click.echo(f"{indent}{k: <{k_col_width}}  = {v_fmt}")
 
 
 def deep_sort(obj):
@@ -149,3 +175,38 @@ def deep_sort(obj):
     if isinstance(obj, list):
         return [deep_sort(elem) for elem in obj]
     return obj
+
+
+@overload
+def sorted_by_enum_index(
+    sortable: Iterable[E],
+    enum: type[E],
+    *,
+    reverse: bool = False,
+) -> list[E]:
+    ...
+
+
+@overload
+def sorted_by_enum_index(
+    sortable: Iterable[T],
+    enum: type[Enum],
+    *,
+    key: Callable[[T], Enum | None],
+    reverse: bool = False,
+) -> list[T]:
+    ...
+
+
+def sorted_by_enum_index(
+    sortable: Iterable[T],
+    enum: type[Enum],
+    *,
+    key: Callable[[T], Enum | None] = lambda x: x,  # type: ignore
+    reverse: bool = False,
+) -> list[T]:
+    return sorted(
+        sortable,
+        key=lambda x: enum._member_names_.index(e.name) if (e := key(x)) else 420e3,
+        reverse=reverse,
+    )

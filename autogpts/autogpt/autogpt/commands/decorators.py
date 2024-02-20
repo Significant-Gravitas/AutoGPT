@@ -23,7 +23,8 @@ def sanitize_path_arg(
             arg_index = list(func.__annotations__.keys()).index(arg_name)
         except ValueError:
             raise TypeError(
-                f"Sanitized parameter '{arg_name}' absent or not annotated on function '{func.__name__}'"
+                f"Sanitized parameter '{arg_name}' absent or not annotated"
+                f" on function '{func.__name__}'"
             )
 
         # Get position of agent parameter, in case it is passed as a positional argument
@@ -31,7 +32,8 @@ def sanitize_path_arg(
             agent_arg_index = list(func.__annotations__.keys()).index("agent")
         except ValueError:
             raise TypeError(
-                f"Parameter 'agent' absent or not annotated on function '{func.__name__}'"
+                f"Parameter 'agent' absent or not annotated"
+                f" on function '{func.__name__}'"
             )
 
         @functools.wraps(func)

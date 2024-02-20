@@ -95,7 +95,9 @@ class ChatViewModel with ChangeNotifier {
       }
 
       // Assign the chats list
-      _chats = chats;
+      if (chats.length > 0) {
+        _chats = chats;
+      }
 
       // Notify listeners to rebuild UI
       notifyListeners();
@@ -154,6 +156,9 @@ class ChatViewModel with ChangeNotifier {
 
       _chats.add(agentChat);
 
+      // Remove the temporary message
+      removeTemporaryMessage();
+
       // Notify UI of the new chats
       notifyListeners();
 
@@ -170,6 +175,8 @@ class ChatViewModel with ChangeNotifier {
 
       print("Chats added for task ID: $_currentTaskId");
     } catch (e) {
+      // Remove the temporary message in case of an error
+      removeTemporaryMessage();
       // TODO: We are bubbling up the full response. Revisit this.
       rethrow;
       // TODO: Handle additional error scenarios or log them as required
@@ -177,6 +184,25 @@ class ChatViewModel with ChangeNotifier {
       _isWaitingForAgentResponse = false;
       notifyListeners();
     }
+  }
+
+  void addTemporaryMessage(String message) {
+    Chat tempMessage = Chat(
+        // You can generate a unique ID or use a placeholder
+        id: "TEMP_ID",
+        taskId: "TEMP_ID",
+        message: message,
+        timestamp: DateTime.now(),
+        messageType: MessageType.user,
+        artifacts: []);
+
+    _chats.add(tempMessage);
+    notifyListeners();
+  }
+
+  void removeTemporaryMessage() {
+    _chats.removeWhere((chat) => chat.id == "TEMP_ID");
+    notifyListeners();
   }
 
   /// Downloads an artifact associated with a specific chat.

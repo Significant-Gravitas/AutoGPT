@@ -43,5 +43,6 @@ class Task(BaseModel):
     context: TaskContext = Field(default_factory=TaskContext)
 
 
-# Need to resolve the circular dependency between Task and TaskContext once both models are defined.
+# Need to resolve the circular dependency between Task and TaskContext
+# once both models are defined.
 TaskContext.update_forward_refs()

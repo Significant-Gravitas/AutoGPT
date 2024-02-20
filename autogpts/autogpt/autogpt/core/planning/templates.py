@@ -13,23 +13,6 @@ USER_OBJECTIVE = (
 )
 
 
-ABILITIES = (
-    'analyze_code: Analyze Code, args: "code": "<full_code_string>"',
-    'execute_python_file: Execute Python File, args: "filename": "<filename>"',
-    'append_to_file: Append to file, args: "filename": "<filename>", "text": "<text>"',
-    'list_files: List Files in Directory, args: "directory": "<directory>"',
-    'read_file: Read a file, args: "filename": "<filename>"',
-    'write_to_file: Write to file, args: "filename": "<filename>", "text": "<text>"',
-    'google: Google Search, args: "query": "<query>"',
-    'improve_code: Get Improved Code, args: "suggestions": "<list_of_suggestions>", "code": "<full_code_string>"',
-    'browse_website: Browse Website, args: "url": "<url>", "question": "<what_you_want_to_find_on_website>"',
-    'write_tests: Write Tests, args: "code": "<full_code_string>", "focus": "<list_of_focus_areas>"',
-    'get_hyperlinks: Get hyperlinks, args: "url": "<url>"',
-    'get_text_summary: Get text summary, args: "url": "<url>", "question": "<question>"',
-    'task_complete: Task Complete (Shutdown), args: "reason": "<reason>"',
-)
-
-
 # Plan Prompt
 # -----------
 

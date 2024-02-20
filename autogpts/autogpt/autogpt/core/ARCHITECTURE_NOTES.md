@@ -40,7 +40,7 @@ for the breaking version change. We justified this by saying:
 
 ## Secondary goals
 
-- Use existing tools to ditch any unneccesary cruft in the codebase (document loading, 
+- Use existing tools to ditch any unnecessary cruft in the codebase (document loading, 
   json parsing, anything easier to replace than to port).
 - Bring in the [core agent loop updates](https://whimsical.com/agent-workflow-v2-NmnTQ8R7sVo7M3S43XgXmZ)
   being developed simultaneously by @Pwuts 
@@ -195,7 +195,7 @@ Plugins are a kind of garbage term.  They refer to a number of things.
 The current plugin system is _hook-based_.  This means plugins don't correspond to 
 kinds of objects in the system, but rather to times in the system at which we defer 
 execution to them.  The main advantage of this setup is that user code can hijack 
-pretty much any behavior of the agent by injecting code that supercedes the normal 
+pretty much any behavior of the agent by injecting code that supersedes the normal 
 agent execution.  The disadvantages to this approach are numerous:
 
 - We have absolutely no mechanisms to enforce any security measures because the threat 
@@ -235,7 +235,7 @@ There are three kinds of things (roughly) that are written as classes in the re-
     is *data* and we use **[Pydantic](https://docs.pydantic.dev/latest/)** to manage it as 
     pydantic is basically industry standard for this stuff. It provides runtime validation 
     for all the configuration and allows us to easily serialize configuration to both basic 
-    python types (dicts, lists, and primatives) as well as serialize to json, which is 
+    python types (dicts, lists, and primitives) as well as serialize to json, which is 
     important for us being able to put representations of agents 
     [on the wire](https://en.wikipedia.org/wiki/Wire_protocol) for web applications and 
     agent-to-agent communication. *These are essentially 

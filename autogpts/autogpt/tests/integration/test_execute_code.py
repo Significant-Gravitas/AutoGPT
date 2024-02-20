@@ -66,15 +66,16 @@ def test_execute_python_code(random_code: str, random_string: str, agent: Agent)
 
 def test_execute_python_file_invalid(agent: Agent):
     with pytest.raises(InvalidArgumentError):
-        sut.execute_python_file("not_python", agent)
+        sut.execute_python_file(Path("not_python.txt"), agent)
 
 
 def test_execute_python_file_not_found(agent: Agent):
     with pytest.raises(
         FileNotFoundError,
-        match=r"python: can't open file '([a-zA-Z]:)?[/\\\-\w]*notexist.py': \[Errno 2\] No such file or directory",
+        match=r"python: can't open file '([a-zA-Z]:)?[/\\\-\w]*notexist.py': "
+        r"\[Errno 2\] No such file or directory",
     ):
-        sut.execute_python_file("notexist.py", agent)
+        sut.execute_python_file(Path("notexist.py"), agent)
 
 
 def test_execute_shell(random_string: str, agent: Agent):

@@ -9,13 +9,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .abilities.registry import AbilityRegister
 from .db import AgentDB
 from .errors import NotFoundError
 from .forge_log import ForgeLogger
 from .middlewares import AgentMiddleware
+from .model import (
+    Artifact,
+    Step,
+    StepRequestBody,
+    Task,
+    TaskArtifactsListResponse,
+    TaskListResponse,
+    TaskRequestBody,
+    TaskStepsListResponse,
+)
 from .routes.agent_protocol import base_router
-from .schema import *
 from .workspace import Workspace
 
 LOG = ForgeLogger(__name__)
@@ -25,7 +33,6 @@ class Agent:
     def __init__(self, database: AgentDB, workspace: Workspace):
         self.db = database
         self.workspace = workspace
-        self.abilities = AbilityRegister(self)
 
     def get_agent_app(self, router: APIRouter = base_router):
         """

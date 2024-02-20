@@ -53,11 +53,17 @@ class PlannerSettings(SystemSettings):
 
 
 class SimplePlanner(Configurable):
-    """Manages the agent's planning and goal-setting by constructing language model prompts."""
+    """
+    Manages the agent's planning and goal-setting
+    by constructing language model prompts.
+    """
 
     default_settings = PlannerSettings(
         name="planner",
-        description="Manages the agent's planning and goal-setting by constructing language model prompts.",
+        description=(
+            "Manages the agent's planning and goal-setting "
+            "by constructing language model prompts."
+        ),
         configuration=PlannerConfiguration(
             models={
                 LanguageModelClassification.FAST_MODEL: LanguageModelConfiguration(

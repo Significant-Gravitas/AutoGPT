@@ -34,12 +34,19 @@ class PluginStorageFormat(str, enum.Enum):
 
     INSTALLED_PACKAGE = "installed_package"  # Required now, loads system defaults
     WORKSPACE = "workspace"  # Required now
-    # OPENAPI_URL = "open_api_url"           # Soon (requires some tooling we don't have yet).
+
+    # Soon (requires some tooling we don't have yet).
+    # OPENAPI_URL = "open_api_url"
+
     # OTHER_FILE_PATH = "other_file_path"    # Maybe later (maybe now)
     # GIT = "git"                            # Maybe later (or soon)
     # PYPI = "pypi"                          # Maybe later
-    # AUTOGPT_PLUGIN_SERVICE = "autogpt_plugin_service"  # Long term solution, requires design
-    # AUTO = "auto"                          # Feature for later maybe, automatically find plugin.
+
+    # Long term solution, requires design
+    # AUTOGPT_PLUGIN_SERVICE = "autogpt_plugin_service"
+
+    # Feature for later maybe, automatically find plugin.
+    # AUTO = "auto"
 
 
 # Installed package example

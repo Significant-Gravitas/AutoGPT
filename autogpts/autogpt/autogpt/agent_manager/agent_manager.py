@@ -29,6 +29,7 @@ class AgentManager:
         ]
 
     def get_agent_dir(self, agent_id: str, must_exist: bool = False) -> Path:
+        assert len(agent_id) > 0
         agent_dir = self.agents_dir / agent_id
         if must_exist and not agent_dir.exists():
             raise FileNotFoundError(f"No agent with ID '{agent_id}'")

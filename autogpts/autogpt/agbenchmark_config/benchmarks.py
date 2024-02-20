@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import sys
 from pathlib import Path
 
@@ -19,19 +20,15 @@ def run_specific_agent(task: str, continuous_mode: bool = False) -> None:
 
 def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
     config = ConfigBuilder.build_config_from_env()
-    config.debug_mode = False
+    config.logging.level = logging.DEBUG
+    config.logging.log_dir = LOG_DIR
+    config.logging.plain_console_output = True
+    configure_logging(**config.logging.dict())
+
     config.continuous_mode = continuous_mode
     config.continuous_limit = 20
-    config.temperature = 0
     config.noninteractive_mode = True
-    config.plain_output = True
     config.memory_backend = "no_memory"
-
-    configure_logging(
-        debug_mode=config.debug_mode,
-        plain_output=config.plain_output,
-        log_dir=LOG_DIR,
-    )
 
     command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
 

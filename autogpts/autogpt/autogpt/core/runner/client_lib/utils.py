@@ -17,9 +17,10 @@ def handle_exceptions(
 
     This is intended to be used as a wrapper for the main function of a CLI application.
     It will catch all errors and drop a user into a debugger if the error is not a
-    KeyboardInterrupt. If the error is a KeyboardInterrupt, it will raise the error.
-    If the error is not a KeyboardInterrupt, it will log the error and drop a user into a
-    debugger if with_debugger is True. If with_debugger is False, it will raise the error.
+    `KeyboardInterrupt`. If the error is a `KeyboardInterrupt`, it will raise the error.
+    If the error is not a `KeyboardInterrupt`, it will log the error and drop a user
+    into a debugger if `with_debugger` is `True`.
+    If `with_debugger` is `False`, it will raise the error.
 
     Parameters
     ----------

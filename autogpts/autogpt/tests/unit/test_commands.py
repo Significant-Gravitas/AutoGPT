@@ -201,10 +201,11 @@ def test_import_mock_commands_module():
 
     registry.import_command_module(mock_commands_module)
 
-    assert "function_based" in registry
-    assert registry.commands["function_based"].name == "function_based"
+    assert "function_based_cmd" in registry
+    assert registry.commands["function_based_cmd"].name == "function_based_cmd"
     assert (
-        registry.commands["function_based"].description == "Function-based test command"
+        registry.commands["function_based_cmd"].description
+        == "Function-based test command"
     )
 
 
@@ -230,8 +231,9 @@ def test_import_temp_command_file_module(tmp_path: Path):
     # Remove the temp directory from sys.path
     sys.path.remove(str(tmp_path))
 
-    assert "function_based" in registry
-    assert registry.commands["function_based"].name == "function_based"
+    assert "function_based_cmd" in registry
+    assert registry.commands["function_based_cmd"].name == "function_based_cmd"
     assert (
-        registry.commands["function_based"].description == "Function-based test command"
+        registry.commands["function_based_cmd"].description
+        == "Function-based test command"
     )

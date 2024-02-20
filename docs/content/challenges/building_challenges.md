@@ -27,7 +27,7 @@ Output => Artifact (files, image, code, etc, etc...)
 
 ## Defining your Agent
 
-Go to https://github.com/Significant-Gravitas/AutoGPT/blob/master/tests/integration/agent_factory.py
+Go to https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/autogpt/tests/integration/agent_factory.py
 
 Create your agent fixture.
 

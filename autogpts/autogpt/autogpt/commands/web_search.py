@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "web_search"
-COMMAND_CATEGORY_TITLE = "Web Search"
-
 import json
 import time
 from itertools import islice
@@ -15,6 +12,10 @@ from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import ConfigurationError
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
+
+COMMAND_CATEGORY = "web_search"
+COMMAND_CATEGORY_TITLE = "Web Search"
+
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3
 
@@ -61,12 +62,23 @@ def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
         {
             "title": r["title"],
             "url": r["href"],
-            **({"description": r["body"]} if r.get("body") else {}),
+            **({"exerpt": r["body"]} if r.get("body") else {}),
         }
         for r in search_results
     ]
 
-    results = json.dumps(search_results, ensure_ascii=False, indent=4)
+    results = (
+        "## Search results\n"
+        # "Read these results carefully."
+        # " Extract the information you need for your task from the list of results"
+        # " if possible. Otherwise, choose a webpage from the list to read entirely."
+        # "\n\n"
+    ) + "\n\n".join(
+        f"### \"{r['title']}\"\n"
+        f"**URL:** {r['url']}  \n"
+        "**Excerpt:** " + (f'"{exerpt}"' if (exerpt := r.get("exerpt")) else "N/A")
+        for r in search_results
+    )
     return safe_google_results(results)
 
 

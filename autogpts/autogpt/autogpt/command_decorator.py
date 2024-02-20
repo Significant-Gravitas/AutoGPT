@@ -27,7 +27,9 @@ def command(
     aliases: list[str] = [],
     available: Literal[True] | Callable[[BaseAgent], bool] = True,
 ) -> Callable[[Callable[P, CO]], Callable[P, CO]]:
-    """The command decorator is used to create Command objects from ordinary functions."""
+    """
+    The command decorator is used to create Command objects from ordinary functions.
+    """
 
     def decorator(func: Callable[P, CO]) -> Callable[P, CO]:
         typed_parameters = [

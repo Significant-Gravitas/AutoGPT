@@ -98,7 +98,7 @@ for report_file in sorted(report_files):
             test_metrics = test_data["metrics"]
             result_indicator = "❔"
 
-            if not "attempted" in test_metrics:
+            if "attempted" not in test_metrics:
                 return
             elif test_metrics["attempted"]:
                 if test_name not in test_names:
@@ -116,7 +116,7 @@ for report_file in sorted(report_files):
         for test_name, suite in test_tree.items():
             try:
                 process_test(test_name, suite)
-            except KeyError as e:
+            except KeyError:
                 print(f"{test_name}.metrics: {suite['metrics']}")
                 raise
 

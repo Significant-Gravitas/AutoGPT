@@ -5,6 +5,7 @@ from typing import Any, Sequence, overload
 import numpy as np
 
 from autogpt.config import Config
+from autogpt.core.resource.model_providers import EmbeddingModelProvider
 
 logger = logging.getLogger(__name__)
 
@@ -16,23 +17,32 @@ TText = Sequence[int]
 
 
 @overload
-def get_embedding(input: str | TText, config: Config) -> Embedding:
+async def get_embedding(
+    input: str | TText, config: Config, embedding_provider: EmbeddingModelProvider
+) -> Embedding:
     ...
 
 
 @overload
-def get_embedding(input: list[str] | list[TText], config: Config) -> list[Embedding]:
+async def get_embedding(
+    input: list[str] | list[TText],
+    config: Config,
+    embedding_provider: EmbeddingModelProvider,
+) -> list[Embedding]:
     ...
 
 
-def get_embedding(
-    input: str | TText | list[str] | list[TText], config: Config
+async def get_embedding(
+    input: str | TText | list[str] | list[TText],
+    config: Config,
+    embedding_provider: EmbeddingModelProvider,
 ) -> Embedding | list[Embedding]:
     """Get an embedding from the ada model.
 
     Args:
         input: Input text to get embeddings for, encoded as a string or array of tokens.
             Multiple inputs may be given as a list of strings or token arrays.
+        embedding_provider: The provider to create embeddings.
 
     Returns:
         List[float]: The embedding.
@@ -52,25 +62,30 @@ def get_embedding(
             return [_get_embedding_with_plugin(i, config) for i in input]
 
     model = config.embedding_model
-    kwargs = {"model": model}
-    kwargs.update(config.get_openai_credentials(model))
 
     logger.debug(
         f"Getting embedding{f's for {len(input)} inputs' if multiple else ''}"
         f" with model '{model}'"
-        + (f" via Azure deployment '{kwargs['engine']}'" if config.use_azure else "")
     )
 
-    embeddings = embedding_provider.create_embedding(
-        input,
-        **kwargs,
-    ).data
-
     if not multiple:
-        return embeddings[0]["embedding"]
-
-    embeddings = sorted(embeddings, key=lambda x: x["index"])
-    return [d["embedding"] for d in embeddings]
+        return (
+            await embedding_provider.create_embedding(
+                text=input,
+                model_name=model,
+                embedding_parser=lambda e: e,
+            )
+        ).embedding
+    else:
+        embeddings = []
+        for text in input:
+            result = await embedding_provider.create_embedding(
+                text=text,
+                model_name=model,
+                embedding_parser=lambda e: e,
+            )
+            embeddings.append(result.embedding)
+        return embeddings
 
 
 def _get_embedding_with_plugin(text: str, config: Config) -> Embedding:

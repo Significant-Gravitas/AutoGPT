@@ -9,3 +9,4 @@ exclude =
     .venv/*,
     reports/*,
     dist/*,
+    data/*,
