@@ -423,7 +423,7 @@ class OpenAIProvider(
                 tool_calls=(
                     [AssistantToolCall(**tc.dict()) for tc in _assistant_msg.tool_calls]
                     if _assistant_msg.tool_calls
-                    else list()
+                    else None
                 ),
             )
             response = ChatModelResponse(
@@ -570,7 +570,10 @@ class OpenAIProvider(
             messages: list[ChatMessage], *_, **kwargs
         ) -> ChatCompletion:
             raw_messages = [
-                message.dict(include={"role", "content", "tool_calls", "name"})
+                message.dict(
+                    include={"role", "content", "tool_calls", "name"},
+                    exclude_none=True,
+                )
                 for message in messages
             ]
             return await self._client.chat.completions.create(

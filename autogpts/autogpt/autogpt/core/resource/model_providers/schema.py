@@ -91,7 +91,7 @@ class AssistantToolCallDict(TypedDict):
 class AssistantChatMessage(ChatMessage):
     role: Literal["assistant"] = "assistant"
     content: Optional[str]
-    tool_calls: list[AssistantToolCall] = Field(default_factory=list)
+    tool_calls: Optional[list[AssistantToolCall]] = None
 
 
 class AssistantChatMessageDict(TypedDict, total=False):
