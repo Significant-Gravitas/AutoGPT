@@ -758,6 +758,7 @@ def _functions_compat_fix_kwargs(
 def _tool_calls_compat_extract_calls(response: str) -> Iterator[AssistantToolCall]:
     import json
     import re
+    import uuid
 
     logging.debug(f"Trying to extract tool calls from response:\n{response}")
 
@@ -770,6 +771,7 @@ def _tool_calls_compat_extract_calls(response: str) -> Iterator[AssistantToolCal
         tool_calls: list[AssistantToolCallDict] = json.loads(block.group(1))
 
     for t in tool_calls:
+        t["id"] = str(uuid.uuid4())
         t["function"]["arguments"] = str(t["function"]["arguments"])  # HACK
 
         yield AssistantToolCall.parse_obj(t)
