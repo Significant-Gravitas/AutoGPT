@@ -75,7 +75,8 @@ jobs:
           report_subfolder=$(find ${{ env.REPORTS_FOLDER }} -type f -name 'report.json' \
             | xargs -I {} dirname {} \
             | xargs -I {} git ls-files --others --exclude-standard {} \
-            | xargs -I {} dirname {})
+            | xargs -I {} dirname {} \
+            | sort -u)
           json_report_file="$report_subfolder/report.json"
 
           # Convert JSON report to Markdown
