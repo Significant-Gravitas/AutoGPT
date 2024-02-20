@@ -81,7 +81,7 @@ jobs:
 
           # Convert JSON report to Markdown
           markdown_report_file="$report_subfolder/report.md"
-          poetry run benchmark/reports/format.py "$json_report_file" > "$markdown_report_file"
+          poetry -C benchmark run benchmark/reports/format.py "$json_report_file" > "$markdown_report_file"
           cat "$markdown_report_file" >> $GITHUB_STEP_SUMMARY
 
           git config --global user.name 'GitHub Actions'
