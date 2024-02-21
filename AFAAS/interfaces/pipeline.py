@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Awaitable, Callable, Coroutine, Optional
+from typing import Any, Awaitable, Callable, Coroutine, Optional, Tuple
 
-from AFAAS.interfaces.adapters import AbstractChatModelResponse
+from AFAAS.interfaces.adapters.chatmodel import AbstractChatModelResponse
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin 
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.job import JobInterface
@@ -39,7 +39,7 @@ class Pipeline(AgentMixin):
                 self.jobs.insert(i + 1, job)
                 break
 
-    async def execute(self) -> (Optional[AbstractTask], Optional[BaseAgent]):
+    async def execute(self) -> Tuple[Optional[AbstractTask], Optional[BaseAgent]]:
         if self.jobs:
             current_job = self.jobs.pop()
             pipeline_response = await self._execute_job(current_job)

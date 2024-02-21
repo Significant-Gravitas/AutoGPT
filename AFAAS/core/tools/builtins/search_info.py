@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 from AFAAS.core.tools.builtins.query_language_model import query_language_model
 from AFAAS.core.tools.builtins.user_interaction import user_interaction
 from AFAAS.core.tools.tool_decorator import SAFE_MODE, tool
-from AFAAS.interfaces.adapters import AbstractChatModelResponse
+from AFAAS.interfaces.adapters.chatmodel import AbstractChatModelResponse
 from AFAAS.interfaces.tools.tool import AFAASBaseTool
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.task import Task

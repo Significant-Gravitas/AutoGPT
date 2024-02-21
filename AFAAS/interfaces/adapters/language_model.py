@@ -47,8 +47,10 @@ class BaseModelResponse(BaseModel):
 
 
 class BaseModelProviderConfiguration(SystemConfiguration):
-    retries_per_request: int = Field()
     extra_request_headers: dict[str, str] = Field(default_factory=dict)
+    retries_per_request: int = Field(default=10)
+    maximum_retry: int = 1
+    maximum_retry_before_default_function: int = 1
 
 
 class BaseModelProviderCredentials(BaseProviderCredentials):

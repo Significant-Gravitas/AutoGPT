@@ -99,8 +99,7 @@ class Agent(AgentRequestBody):
             "ab7b4091-2560-4692-a4fe-d831ea3ca7d6",
         ]],
     )
-    
-    
+
     model_config = ConfigDict(extra="allow", use_enum_values=True, json_encoders={
         uuid.UUID: lambda v: str(v),
         float: lambda v: str(
@@ -132,8 +131,7 @@ class AgentListResponse(AFAASModel):
         for agent in agent_list:
             tasks.append(Agent.from_afaas(agent))
         return cls(tasks=tasks)
-    
-    
+
     model_config = ConfigDict(extra="allow", use_enum_values=True, json_encoders={
         uuid.UUID: lambda v: str(v),
         float: lambda v: str(

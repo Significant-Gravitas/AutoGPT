@@ -27,6 +27,8 @@ class LLMConfig(BaseModel):
     long_context : AbstractChatModelProvider 
     code_expert : AbstractChatModelProvider 
 
+    default_temperature : float = 0.7
+
     def __getattr__(self, name):
         try : 
             return getattr(self, name)
@@ -36,6 +38,8 @@ class LLMConfig(BaseModel):
 
 class AbstractPromptManager(ABC):
     """ Helper (Potential Mixin) that manage Prompt & LLM"""
+
+    config : LLMConfig
 
     def __init__(
         self,

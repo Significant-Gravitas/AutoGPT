@@ -70,8 +70,8 @@ class CompletionModelFunction(BaseModel):
 
 class ChatPrompt(BaseModel):
     # TODO : Remove or rewrite with 2 arguments
-      # messages list[Union[ChatMessage, OpenAIChatMessage]]
-      # chat_completion_wargs 
+      # messages : list[Union[ChatMessage, AbstractChatMessage]]
+      # chat_completion_kwargs : ChatCompletionKwargs
     messages: list
     tools: list[CompletionModelFunction] = Field(default_factory=list)
     tool_choice: str
@@ -171,14 +171,14 @@ class AbstractChatModelProvider(AbstractLanguageModelProvider):
     ) -> AbstractChatModelResponse[_T]: 
         ...
 
-    def __getattribute__(self, __name: str) -> Any:
+    def __getattribute__(self, __name: str):
+
         if not __name.startswith("__llmmodel_"):
             return super().__getattribute__(__name)
 
-        if hasattr(self, __name):
-            return getattr(self, __name)
-
-        else :
+        try:
+            return super().__getattribute__(__name)
+        except AttributeError:
             return self.__llmmodel_default__()
 
     @abc.abstractmethod

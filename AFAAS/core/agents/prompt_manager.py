@@ -8,9 +8,10 @@ from typing import TYPE_CHECKING, Any
 
 from AFAAS.interfaces.agent.assistants.prompt_manager import AbstractPromptManager , LLMConfig
 
-from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
 from AFAAS.prompts import BaseTaskRagStrategy, load_all_strategies
 
+from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
+from AFAAS.interfaces.adapters.chatmodel.chatmodel import ChatPrompt
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
 
@@ -26,7 +27,6 @@ from AFAAS.interfaces.adapters.chatmodel import (
 from AFAAS.interfaces.adapters.chatmodel.wrapper import ChatCompletionKwargs, ChatModelWrapper
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.core.adapters.openai.chatmodel import AFAASChatOpenAI
-
 LOG = AFAASLogger(name=__name__)
 
 
@@ -132,24 +132,32 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
         provider : AbstractChatModelProvider = prompt_strategy.get_llm_provider()
 
         # Get the Prompt Configuration : Model version (eg: gpt-3.5, gpt-4...), temperature, top_k
-        model_configuration = prompt_strategy.get_prompt_config().dict()
+        model_configuration : AbstractPromptConfiguration = prompt_strategy.get_prompt_config()
+        if model_configuration is not AbstractPromptConfiguration:
+            LOG.error(f"{prompt_strategy.__class__.__name__}.get_prompt_config() does not have a valid model configuration, type AbstractPromptConfiguration expected. Using default configuration.")
+            provider = self.config.default
+            model_configuration = AbstractPromptConfiguration(
+                llm_model_name= self.config.default.__llmmodel_default__(),
+                temperature= self.config.default_temperature
+            )
 
-        LOG.trace(f"Using model configuration: {model_configuration}")
+        model_configuration_dict = model_configuration.dict()
+        LOG.trace(f"Using model configuration: {model_configuration_dict}")
 
         # FIXME : Check if Removable
         template_kwargs = self.get_system_info(strategy = prompt_strategy)
 
 
         template_kwargs.update(kwargs)
-        template_kwargs.update(model_configuration)
+        template_kwargs.update(model_configuration_dict)
 
-        prompt = await prompt_strategy.build_message(**template_kwargs)
+        prompt : ChatPrompt = await prompt_strategy.build_message(**template_kwargs)
 
         completion_kwargs = ChatCompletionKwargs(
             tool_choice=prompt.tool_choice, 
             default_tool_choice=prompt.default_tool_choice, 
             tools=prompt.tools,
-            llm_model_name= model_configuration.pop("llm_model_name", None),
+            llm_model_name= model_configuration_dict.pop("llm_model_name", None),
             completion_parser=prompt_strategy.parse_response_content,
             )
         llm_wrapper = ChatModelWrapper(llm_model=provider)
@@ -158,7 +166,7 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
             chat_messages = prompt.messages,
             completion_kwargs = completion_kwargs, 
             completion_parser = prompt_strategy.parse_response_content,
-            **model_configuration,
+            **model_configuration_dict, #NOTE: May be remove the kwarg argument
         )
 
         response.chat_messages = prompt.messages

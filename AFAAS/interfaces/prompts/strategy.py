@@ -7,24 +7,22 @@ import sys
 from typing import TYPE_CHECKING
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from langchain_core.messages import ChatMessage, AIMessage
 
-from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
-from AFAAS.lib.utils.json_schema import JSONSchema
+
+from AFAAS.configs.schema import SystemConfiguration
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.task.task import AbstractTask
 
-from AFAAS.configs.schema import SystemConfiguration
-from AFAAS.interfaces.adapters import (
+from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
+from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider, AbstractPromptConfiguration
+from AFAAS.interfaces.adapters.chatmodel import  (
+    ChatPrompt,
     AbstractChatModelResponse,
-    AbstractLanguageModelProvider,
     AssistantChatMessage,
     CompletionModelFunction,
 )
-from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
-from AFAAS.interfaces.adapters.chatmodel import  ChatPrompt
-from langchain_core.messages import ChatMessage
-from langchain_core.messages import AIMessage
 from AFAAS.interfaces.prompts.utils.utils import (
     indent,
     json_loads,
@@ -33,6 +31,7 @@ from AFAAS.interfaces.prompts.utils.utils import (
     to_numbered_list,
     to_string_list,
 )
+from AFAAS.lib.utils.json_schema import JSONSchema
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -74,21 +73,7 @@ RESPONSE_SCHEMA = JSONSchema(
                     required=True,
                 ),
             },
-        ),
-        "command": JSONSchema(
-            type=JSONSchema.Type.OBJECT,
-            required=True,
-            properties={
-                "name": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "args": JSONSchema(
-                    type=JSONSchema.Type.OBJECT,
-                    required=True,
-                ),
-            },
-        ),
+        )
     },
 )
 
@@ -325,27 +310,27 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
 
 
 
-from pydantic import BaseModel
-def convert_v1_instance_to_v2_dynamic(obj_v1: BaseModel) -> BaseModel:
+# from pydantic import BaseModel
+# def convert_v1_instance_to_v2_dynamic(obj_v1: BaseModel) -> BaseModel:
 
-        from pydantic import  create_model
-        from typing import Type
-        """
-        Converts an instance of a Pydantic v1 model to a dynamically created Pydantic v2 model instance.
+#         from pydantic import  create_model
+#         from typing import Type
+#         """
+#         Converts an instance of a Pydantic v1 model to a dynamically created Pydantic v2 model instance.
 
-        Parameters:
-        - obj_v1: The instance of the Pydantic version 1 model.
+#         Parameters:
+#         - obj_v1: The instance of the Pydantic version 1 model.
 
-        Returns:
-        - An instance of a dynamically created Pydantic version 2 model that mirrors the structure of obj_v1.
-        """
-        # Extract field definitions from the v1 instance
-        fields = {name: (field.outer_type_, ...) for name, field in obj_v1.__fields__.items()}
+#         Returns:
+#         - An instance of a dynamically created Pydantic version 2 model that mirrors the structure of obj_v1.
+#         """
+#         # Extract field definitions from the v1 instance
+#         fields = {name: (field.outer_type_, ...) for name, field in obj_v1.__fields__.items()}
 
-        # Dynamically create a new Pydantic model class
-        DynamicModelV2 = create_model('DynamicModelV2', **fields)
+#         # Dynamically create a new Pydantic model class
+#         DynamicModelV2 = create_model('DynamicModelV2', **fields)
 
-        # Convert the v1 instance to a dictionary and use it to create an instance of the new model
-        obj_v2 = DynamicModelV2.parse_obj(obj_v1.dict())
+#         # Convert the v1 instance to a dictionary and use it to create an instance of the new model
+#         obj_v2 = DynamicModelV2.parse_obj(obj_v1.dict())
 
-        return obj_v2
+#         return obj_v2

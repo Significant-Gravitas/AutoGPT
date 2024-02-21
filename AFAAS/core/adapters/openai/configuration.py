@@ -9,6 +9,7 @@ from AFAAS.configs.schema import Field
 from AFAAS.interfaces.adapters.chatmodel import (
     ChatModelInfo,
 )
+from AFAAS.interfaces.adapters.chatmodel.chatmessage import AbstractChatMessage, AbstractRoleLabels
 from AFAAS.interfaces.adapters.language_model import (
     AbstractPromptConfiguration,
     BaseModelProviderBudget,
@@ -27,23 +28,21 @@ _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
 
+class OpenAIRoleLabel(AbstractRoleLabels):
+    USER : str = "user"
+    SYSTEM : str = "system"
+    ASSISTANT : str = "assistant"
+
+    FUNCTION : str = "function"
+    """May be used for the return value of function calls"""
+
+
+class OpenAIChatMessage(AbstractChatMessage):
+    _role_labels: ClassVar[OpenAIRoleLabel] = OpenAIRoleLabel()
+
 
 class OpenAIModelName(str, enum.Enum):
-    """
-    Enumeration of OpenAI model names.
-
-    Attributes:
-        Each enumeration represents a distinct OpenAI model name.
-    """
-
-    # ADA = "text-embedding-ada-002"
-    # GPT3 = "gpt-3.5-turbo-instruct"
-    # GPT3_16k = "gpt-3.5-turbo"
-    # GPT3_FINE_TUNED = "gpt-3.5-turbo" + ""
-    # # GPT4 = "gpt-4-0613" # TODO for tests
-    # GPT4 = "gpt-3.5-turbo"
-    # GPT4_32k = "gpt-4-1106-preview"
-
+    # TODO : Remove
     ADA = "text-embedding-ada-002"
     GPT3 = "gpt-3.5-turbo"
     GPT3_16k = "gpt-3.5-turbo"
@@ -53,6 +52,7 @@ class OpenAIModelName(str, enum.Enum):
 
 
 OPEN_AI_CHAT_MODELS = {
+    #TODO : USEFULL FOR AGPT BUDGET MANAGEMENT
     info.name: info
     for info in [
         ChatModelInfo(
@@ -110,27 +110,9 @@ OPEN_AI_MODELS = {
 
 
 class OpenAIProviderConfiguration(BaseModelProviderConfiguration):
-    """Configuration for OpenAI.
-
-    Attributes:
-        retries_per_request: The number of retries per request.
-        maximum_retry: The maximum number of retries allowed.
-        maximum_retry_before_default_function: The maximum number of retries before a default function is used.
-    """
-
-    retries_per_request: int = Field(default=10)
-    maximum_retry: int = 1
-    maximum_retry_before_default_function: int = 1
-
+    ...
 
 class OpenAIModelProviderBudget(BaseModelProviderBudget):
-    """Budget configuration for the OpenAI Model Provider.
-
-    Attributes:
-        graceful_shutdown_threshold: The threshold for graceful shutdown.
-        warning_threshold: The warning threshold for budget.
-    """
-
     graceful_shutdown_threshold: float = Field(default=0.005)
     warning_threshold: float = Field(default=0.01)
 
@@ -141,14 +123,6 @@ class OpenAIModelProviderBudget(BaseModelProviderBudget):
 
 
 class OpenAISettings(BaseModelProviderSettings):
-    """Settings for the OpenAI provider.
-
-    Attributes:
-        configuration: Configuration settings for OpenAI.
-        credentials: The credentials for the model provider.
-        budget: Budget settings for the model provider.
-    """
-
     configuration: OpenAIProviderConfiguration = OpenAIProviderConfiguration()
     credentials: BaseModelProviderCredentials = BaseModelProviderCredentials()
     budget: OpenAIModelProviderBudget = OpenAIModelProviderBudget()
@@ -160,6 +134,7 @@ class OpenAIPromptConfiguration(AbstractPromptConfiguration):
     ...
 
 class OPEN_AI_DEFAULT_CHAT_CONFIGS:
+    # TODO : Can be removed
     FAST_MODEL_4K = OpenAIPromptConfiguration(
         llm_model_name=OpenAIModelName.GPT3,
         temperature=0.7,
@@ -180,3 +155,4 @@ class OPEN_AI_DEFAULT_CHAT_CONFIGS:
         llm_model_name=OpenAIModelName.GPT4_32k,
         temperature=0.7,
     )
+

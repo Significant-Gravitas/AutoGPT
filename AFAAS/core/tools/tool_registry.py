@@ -20,10 +20,9 @@ from AFAAS.configs.schema import Configurable, SystemConfiguration
 
 # from AFAAS.core.tools.builtins import BUILTIN_TOOLS
 from AFAAS.core.tools.tool_decorator import TOOL_WRAPPER_MARKER
-from AFAAS.interfaces.adapters import (
+from AFAAS.interfaces.adapters.chatmodel import (
     AbstractChatModelProvider,
     CompletionModelFunction,
-    ModelProviderName,
 )
 from AFAAS.interfaces.db.db import AbstractMemory
 from AFAAS.interfaces.tools.base import (

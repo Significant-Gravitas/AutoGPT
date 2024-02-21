@@ -11,17 +11,13 @@ from AFAAS.interfaces.adapters.chatmodel.chatmodel import (
 from AFAAS.interfaces.adapters.chatmodel.chatmessage import (
     AbstractChatMessage,
     AIMessage,
-    AFAASChatMessage,
     ChatMessage,
     FunctionMessage,
     HumanMessage,
     Role,
     SystemMessage,
     AssistantChatMessage,
-    AssistantChatMessage,
     AssistantFunctionCall,
-    AssistantFunctionCall,
-    OpenAIChatMessage,
 )
 
 from AFAAS.interfaces.adapters.chatmodel.wrapper import (

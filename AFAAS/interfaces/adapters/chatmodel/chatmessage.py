@@ -23,15 +23,6 @@ class Role(str, enum.Enum):
 
     FUNCTION = "function"
 
-class OpenAIRoleLabel(AbstractRoleLabels):
-    USER : str = "user"
-    SYSTEM : str = "system"
-    ASSISTANT : str = "assistant"
-
-    FUNCTION : str = "function"
-    """May be used for the return value of function calls"""
-
-
 class AbstractChatMessage(abc.ABC, BaseModel):
     _role_labels: ClassVar[AbstractRoleLabels]
     role: str
@@ -80,34 +71,6 @@ class AbstractChatMessage(abc.ABC, BaseModel):
         d["role"] = self.role
         return d
 
-class AFAASChatMessage(BaseModel):
-    role: Role
-    content: str
-
-    @staticmethod
-    def assistant(content: str) -> "AFAASChatMessage":
-        LOG.warning("AFAASChatMessage is deprecated. Use OpenAIChatMessage or Langchain.AIMessage instead.")
-        return AFAASChatMessage(role=Role.ASSISTANT, content=content)
-
-    @staticmethod
-    def user(content: str) -> "AFAASChatMessage":
-        LOG.warning("AFAASChatMessage is deprecated. Use OpenAIChatMessage or Langchain.HumanMessage instead.")
-        return AFAASChatMessage(role=Role.USER, content=content)
-
-    @staticmethod
-    def system(content: str) -> "AFAASChatMessage":
-        LOG.warning("AFAASChatMessage.assistant is deprecated. Use OpenAIChatMessage or Langchain.SystemMessage instead.")
-        return AFAASChatMessage(role=Role.SYSTEM, content=content)
-
-    def dict(self, **kwargs):
-        d = super().dict(**kwargs)
-        d["role"] = self.role.value
-        return d
-
-class OpenAIChatMessage(AbstractChatMessage):
-    _role_labels: ClassVar[OpenAIRoleLabel] = OpenAIRoleLabel()
-
-
 class AssistantFunctionCall(BaseModel):
     name: str
     arguments: str
@@ -117,7 +80,7 @@ class AssistantToolCall(BaseModel):
     type: Literal["function"]
     function: AssistantFunctionCall
 
-class AssistantChatMessage(AFAASChatMessage):
+class AssistantChatMessage(AbstractChatMessage):
 
     role: Role = Role.ASSISTANT
     content: Optional[str] = None

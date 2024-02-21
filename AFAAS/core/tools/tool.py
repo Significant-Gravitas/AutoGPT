@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 from langchain.tools.base import BaseTool
 
-from AFAAS.interfaces.adapters import CompletionModelFunction
+from AFAAS.interfaces.adapters.chatmodel import CompletionModelFunction
 from AFAAS.interfaces.adapters.embeddings.wrapper import DocumentType
 from AFAAS.interfaces.task.task import AbstractTask
 from AFAAS.interfaces.tools.tool import AFAASBaseTool
