@@ -11,7 +11,7 @@ on:
   pull_request:
     paths:
       - 'frontend/**'
-      - '.github/workflows/build-frontend.yml'
+      - '.github/workflows/frontend-ci.yml'
 
 jobs:
   build:
