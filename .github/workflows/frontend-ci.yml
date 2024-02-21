@@ -8,6 +8,7 @@ on:
       - 'ci-test*' # This will match any branch that starts with "ci-test"
     paths:
       - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
   pull_request:
     paths:
       - 'frontend/**'
