@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from AFAAS.interfaces.task.task import AbstractTask
 
+from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , ChatMessage
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,
-    AssistantChatMessageDict,
-    ChatMessage,
+    AssistantChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
@@ -109,7 +109,7 @@ class AFAAS_SMART_RAG_Strategy(AbstractPromptStrategy):
 
         messages = []
         messages.append(
-            ChatMessage.system(
+            SystemMessage(
                 await self._build_jinja_message(
                     task=task,
                     template_name=f"{self.STRATEGY_NAME}.jinja",
@@ -117,13 +117,13 @@ class AFAAS_SMART_RAG_Strategy(AbstractPromptStrategy):
                 )
             )
         )
-        messages.append(ChatMessage.system(self.response_format_instruction()))
+        messages.append(SystemMessage(self.response_format_instruction()))
 
         return self.build_chat_prompt(messages=messages)
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> DefaultParsedResponse:
         return self.default_parse_response_content(response_content=response_content)
         # parsed_response : DefaultParsedResponse = self.default_parse_response_content(response_content )

@@ -1,28 +1,6 @@
-"""
-AutoCorrectionStrategy Module
+from __future__ import annotations
 
-This module provides strategies and configurations to assist the AI in refining and clarifying user requirements
-through an iterative process, based on the COCE Framework.
-
-Classes:
----------
-AutoCorrectionFunctionNames: Enum
-    Enum class that lists function names used in refining user context.
-
-AutoCorrectionStrategyConfiguration: BaseModel
-    Pydantic model that represents the default configurations for the refine user context strategy.
-
-AutoCorrectionStrategy: BasePromptStrategy
-    Strategy that guides the AI in refining and clarifying user requirements based on the COCE Framework.
-
-Examples:
----------
-To initialize and use the `AutoCorrectionStrategy`:
-
->>> strategy = AutoCorrectionStrategy(logger, model_classification= PromptStrategyLanguageModelClassification.FAST_MODEL_4K, default_tool_choice=AutoCorrectionFunctionNames.REFINE_REQUIREMENTS, strategy_name="refine_user_context", context_min_tokens=250, context_max_tokens=300)
->>> prompt = strategy.build_prompt(interupt_refinement_process=False, user_objectives="Build a web app")
-"""
-
+from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , ChatMessage
 import enum
 import os
 import uuid
@@ -33,8 +11,7 @@ from jinja2 import Environment, FileSystemLoader
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,
-    AssistantChatMessageDict,
-    ChatMessage,
+    AssistantChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
@@ -114,7 +91,7 @@ class AutoCorrectionStrategy(AbstractPromptStrategy):
         if "note_to_agent_length" in kwargs:
             self.note_to_agent_length = "note_to_agent_length"
 
-        # FIXME: Will cose issue if multithreading, better return PromptStrategy object in BaseModelResponse
+        # FIXME: Will cause issue if multithreading, better return PromptStrategy object in BaseModelResponse
         strategy = self.get_strategy(
             strategy_name=kwargs["corrected_strategy"].STRATEGY_NAME
         )
@@ -143,7 +120,7 @@ class AutoCorrectionStrategy(AbstractPromptStrategy):
             "to_md_quotation": to_md_quotation,
         }
         content = template.render(autocorrection_param)
-        messages = [ChatMessage.system(content)]
+        messages = [SystemMessage(content)]
         strategy_tools = self.get_tools()
 
         #
@@ -162,7 +139,7 @@ class AutoCorrectionStrategy(AbstractPromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> DefaultParsedResponse:
         return self.default_parse_response_content(response_content)
 

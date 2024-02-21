@@ -1,27 +1,7 @@
-"""
-RoutingStrategy Module
+from __future__ import annotations
 
-This module provides strategies and configurations to assist the AI in refining and clarifying user requirements
-through an iterative process, based on the COCE Framework.
 
-Classes:
----------
-RoutingFunctionNames: Enum
-    Enum class that lists function names used in refining user context.
-
-RoutingStrategyConfiguration: BaseModel
-    Pydantic model that represents the default configurations for the refine user context strategy.
-
-RoutingStrategy: BasePromptStrategy
-    Strategy that guides the AI in refining and clarifying user requirements based on the COCE Framework.
-
-Examples:
----------
-To initialize and use the `RoutingStrategy`:
-
->>> strategy = RoutingStrategy(logger, model_classification= PromptStrategyLanguageModelClassification.FAST_MODEL_4K, default_tool_choice=RoutingFunctionNames.REFINE_REQUIREMENTS, strategy_name="refine_user_context", context_min_tokens=250, context_max_tokens=300)
->>> prompt = strategy.build_prompt(interupt_refinement_process=False, user_objectives="Build a web app")
-"""
+from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , ChatMessage
 
 import enum
 import os
@@ -33,8 +13,7 @@ from jinja2 import Environment, FileSystemLoader
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,
-    AssistantChatMessageDict,
-    ChatMessage,
+    AssistantChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
@@ -162,7 +141,7 @@ class RoutingStrategy(AbstractPromptStrategy):
             "additional_context_description": str(task.task_context),
         }
         content = template.render(routing_param)
-        messages = [ChatMessage.system(content)]
+        messages = [SystemMessage(content)]
         strategy_tools = self.get_tools()
 
         prompt = ChatPrompt(
@@ -178,7 +157,7 @@ class RoutingStrategy(AbstractPromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> DefaultParsedResponse:
         return self.default_parse_response_content(response_content)
 

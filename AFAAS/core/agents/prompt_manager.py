@@ -92,7 +92,7 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
         if not hasattr(prompt_strategy, "_agent") or prompt_strategy._agent is None:
             prompt_strategy.set_agent(agent=self._agent)
 
-        kwargs.update(self.get_system_info(prompt_strategy))
+        kwargs.update(self.get_system_info(strategy = prompt_strategy))
 
         LOG.trace(
             f"Executing strategy : {prompt_strategy.STRATEGY_NAME}"
@@ -128,7 +128,9 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
         LOG.trace(f"Using model configuration: {model_configuration}")
 
         # FIXME : Check if Removable
-        template_kwargs = self.get_system_info(prompt_strategy)
+        template_kwargs = self.get_system_info(strategy = prompt_strategy)
+
+
         template_kwargs.update(kwargs)
         template_kwargs.update(model_configuration)
 

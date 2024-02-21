@@ -1,27 +1,6 @@
-"""
-EvaluateSelectStrategy Module
+from __future__ import annotations
 
-This module provides strategies and configurations to assist the AI in refining and clarifying user requirements
-through an iterative process, based on the COCE Framework.
-
-Classes:
----------
-EvaluateSelectFunctionNames: Enum
-    Enum class that lists function names used in refining user context.
-
-EvaluateSelectStrategyConfiguration: BaseModel
-    Pydantic model that represents the default configurations for the refine user context strategy.
-
-EvaluateSelectStrategy: BasePromptStrategy
-    Strategy that guides the AI in refining and clarifying user requirements based on the COCE Framework.
-
-Examples:
----------
-To initialize and use the `EvaluateSelectStrategy`:
-
->>> strategy = EvaluateSelectStrategy(logger, model_classification= PromptStrategyLanguageModelClassification.FAST_MODEL_4K, default_tool_choice=EvaluateSelectFunctionNames.REFINE_REQUIREMENTS, strategy_name="refine_user_context", context_min_tokens=250, context_max_tokens=300)
->>> prompt = strategy.build_prompt(interupt_refinement_process=False, user_objectives="Build a web app")
-"""
+from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , ChatMessage
 
 import enum
 import uuid
@@ -29,8 +8,7 @@ import uuid
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
     AbstractPromptConfiguration,
-    AssistantChatMessageDict,
-    ChatMessage,
+    AssistantChatMessage,
     ChatPrompt,
     CompletionModelFunction,
 )
@@ -136,7 +114,7 @@ class EvaluateSelectStrategy(AbstractPromptStrategy):
 
         messages = []
         messages.append(
-            ChatMessage.system(
+            SystemMessage(
                 await self._build_jinja_message(
                     task=task,
                     template_name=f"20_evaluate_and_select.jinja",
@@ -144,13 +122,13 @@ class EvaluateSelectStrategy(AbstractPromptStrategy):
                 )
             )
         )
-        messages.append(ChatMessage.system(self.response_format_instruction()))
+        messages.append(SystemMessage(self.response_format_instruction()))
 
         return self.build_chat_prompt(messages=messages)
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> DefaultParsedResponse:
         return self.default_parse_response_content(response_content)
 
