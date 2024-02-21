@@ -117,8 +117,7 @@ class _ChatInputFieldState extends State<ChatInputField> {
               controller: _controller,
               focusNode: _focusNode,
               // Enable enter key stroke to send the message
-              // Untested but submitted at Pwuts recommendation
-               onSubmitted: () {
+              onSubmitted: (_) {
                 widget.onSendPressed(_controller.text);
                 _controller.clear();
               },
