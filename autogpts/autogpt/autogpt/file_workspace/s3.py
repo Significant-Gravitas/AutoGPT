@@ -124,5 +124,22 @@ class S3FileWorkspace(FileWorkspace):
         obj = self._s3.Object(self._bucket_name, str(path))
         obj.delete()
 
+    def exists(self, path: str | Path) -> bool:
+        """Check if a file exists in the workspace."""
+        obj = self._get_obj(path)
+        try:
+            obj.load()
+            return True
+        except botocore.exceptions.ClientError as e:
+            if int(e.response['ResponseMetadata']['HTTPStatusCode']) == 404:
+                return False
+            else:
+                raise
+    
+    def make_dir(self, path: str | Path) -> None:
+        """Create a directory in the workspace if doesn't exist."""
+        # S3 does not have directories, so we don't need to do anything
+        pass
+
     def __repr__(self) -> str:
         return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self._root})"

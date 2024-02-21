@@ -69,3 +69,12 @@ class LocalFileWorkspace(FileWorkspace):
         """Delete a file in the workspace."""
         full_path = self.get_path(path)
         full_path.unlink()
+
+    def exists(self, path: str | Path) -> bool:
+        """Check if a file exists in the workspace."""
+        return self.get_path(path).exists()
+
+    def make_dir(self, path: str | Path) -> None:
+        """Create a directory in the workspace if doesn't exist."""
+        full_path = self.get_path(path)
+        full_path.mkdir(exist_ok=True, parents=True)

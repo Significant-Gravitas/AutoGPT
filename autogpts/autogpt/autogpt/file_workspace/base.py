@@ -94,6 +94,14 @@ class FileWorkspace(ABC):
     def delete_file(self, path: str | Path) -> None:
         """Delete a file in the workspace."""
 
+    @abstractmethod
+    def exists(self, path: str | Path) -> bool:
+        """Check if a file exists in the workspace."""
+
+    @abstractmethod
+    def make_dir(self, path: str | Path) -> None:
+        """Create a directory in the workspace if doesn't exist."""
+
     def get_path(self, relative_path: str | Path) -> Path:
         """Get the full path for an item in the workspace.
 

@@ -109,5 +109,16 @@ class GCSFileWorkspace(FileWorkspace):
         blob = self._bucket.blob(str(path))
         blob.delete()
 
+    def exists(self, path: str | Path) -> bool:
+        """Check if a file exists in the workspace."""
+        path = self.get_path(path)
+        blob = self._bucket.blob(str(path))
+        return blob.exists()
+    
+    def make_dir(self, path: str | Path) -> None:
+        """Create a directory in the workspace if doesn't exist."""
+        # GCS does not have directories, so we don't need to do anything
+        pass
+
     def __repr__(self) -> str:
         return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self._root})"
