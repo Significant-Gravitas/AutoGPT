@@ -37,6 +37,8 @@ jobs:
       - name: Prepare reports folder
         run: mkdir -p ${{ env.REPORTS_FOLDER }}
 
+      - run: poetry -C benchmark install
+
       - name: Benchmark ${{ matrix.agent-name }}
         run: |
           ./run agent start ${{ matrix.agent-name }}
@@ -75,12 +77,13 @@ jobs:
           report_subfolder=$(find ${{ env.REPORTS_FOLDER }} -type f -name 'report.json' \
             | xargs -I {} dirname {} \
             | xargs -I {} git ls-files --others --exclude-standard {} \
-            | xargs -I {} dirname {})
+            | xargs -I {} dirname {} \
+            | sort -u)
           json_report_file="$report_subfolder/report.json"
 
           # Convert JSON report to Markdown
           markdown_report_file="$report_subfolder/report.md"
-          poetry run benchmark/reports/format.py "$json_report_file" > "$markdown_report_file"
+          poetry -C benchmark run benchmark/reports/format.py "$json_report_file" > "$markdown_report_file"
           cat "$markdown_report_file" >> $GITHUB_STEP_SUMMARY
 
           git config --global user.name 'GitHub Actions'

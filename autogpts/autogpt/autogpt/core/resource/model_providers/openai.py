@@ -177,8 +177,9 @@ OPEN_AI_CHAT_MODELS = {
 }
 # Copy entries for models with equivalent specs
 chat_model_mapping = {
-    OpenAIModelName.GPT3_v1: [OpenAIModelName.GPT3_v2, OpenAIModelName.GPT3_ROLLING],
+    OpenAIModelName.GPT3_v1: [OpenAIModelName.GPT3_v2],
     OpenAIModelName.GPT3_v2_16k: [OpenAIModelName.GPT3_16k],
+    OpenAIModelName.GPT3_v4: [OpenAIModelName.GPT3_ROLLING],
     OpenAIModelName.GPT4_v1: [OpenAIModelName.GPT4_v2, OpenAIModelName.GPT4_ROLLING],
     OpenAIModelName.GPT4_v1_32k: [
         OpenAIModelName.GPT4_v2_32k,
@@ -423,7 +424,7 @@ class OpenAIProvider(
                 tool_calls=(
                     [AssistantToolCall(**tc.dict()) for tc in _assistant_msg.tool_calls]
                     if _assistant_msg.tool_calls
-                    else list()
+                    else None
                 ),
             )
             response = ChatModelResponse(
@@ -570,7 +571,10 @@ class OpenAIProvider(
             messages: list[ChatMessage], *_, **kwargs
         ) -> ChatCompletion:
             raw_messages = [
-                message.dict(include={"role", "content", "tool_calls", "name"})
+                message.dict(
+                    include={"role", "content", "tool_calls", "name"},
+                    exclude_none=True,
+                )
                 for message in messages
             ]
             return await self._client.chat.completions.create(
@@ -755,6 +759,7 @@ def _functions_compat_fix_kwargs(
 def _tool_calls_compat_extract_calls(response: str) -> Iterator[AssistantToolCall]:
     import json
     import re
+    import uuid
 
     logging.debug(f"Trying to extract tool calls from response:\n{response}")
 
@@ -767,6 +772,7 @@ def _tool_calls_compat_extract_calls(response: str) -> Iterator[AssistantToolCal
         tool_calls: list[AssistantToolCallDict] = json.loads(block.group(1))
 
     for t in tool_calls:
+        t["id"] = str(uuid.uuid4())
         t["function"]["arguments"] = str(t["function"]["arguments"])  # HACK
 
         yield AssistantToolCall.parse_obj(t)
