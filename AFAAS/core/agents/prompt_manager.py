@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import platform
 import time
+import AFAAS.prompts.common as common_module
+from pydantic import BaseModel, ConfigDict
 from typing import TYPE_CHECKING, Any
 
-import importlib
-from AFAAS.interfaces.agent.assistants.prompt_manager import AbstractPromptManager
+from AFAAS.interfaces.agent.assistants.prompt_manager import AbstractPromptManager , LLMConfig
 
-import AFAAS.prompts.common as common_module
 from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
 from AFAAS.prompts import BaseTaskRagStrategy, load_all_strategies
 
@@ -19,12 +19,13 @@ if TYPE_CHECKING:
     AbstractPromptStrategy)
     from AFAAS.interfaces.agent.main import BaseAgent
 
-from AFAAS.interfaces.adapters import (
+from AFAAS.interfaces.adapters.chatmodel import (
     AbstractChatModelProvider,
     AbstractChatModelResponse,
 )
-from AFAAS.interfaces.adapters.chatmodel import ChatModelWrapper, ChatCompletionKwargs
+from AFAAS.interfaces.adapters.chatmodel.wrapper import ChatCompletionKwargs, ChatModelWrapper
 from AFAAS.lib.sdk.logger import AFAASLogger
+from AFAAS.core.adapters.openai.chatmodel import AFAASChatOpenAI
 
 LOG = AFAASLogger(name=__name__)
 
@@ -37,14 +38,19 @@ class SystemInfo(dict):
     current_time: str
 
 class BasePromptManager(AgentMixin, AbstractPromptManager):
-    """Manages the agent's planning and goal-setting by constructing language model prompts."""
 
     def __init__(
         self,
+        config : LLMConfig = LLMConfig(
+            default = AFAASChatOpenAI(),
+            cheap = AFAASChatOpenAI(),
+            long_context = AFAASChatOpenAI(),
+            code_expert = AFAASChatOpenAI(),
+        ),
     ) -> None:
-
         self._prompt_strategies = {}
-        super().__init__()
+        AgentMixin.__init__(self= self)
+        AbstractPromptManager.__init__(self = self, config=config)
 
     def add_strategies(self, strategies : list[AbstractPromptStrategy])->None : 
         for strategy in strategies:
@@ -122,7 +128,10 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
         **kwargs,
     ) -> AbstractChatModelResponse:
 
+        # Get the Provider : Gemini, OpenAI, Llama, ...
         provider : AbstractChatModelProvider = prompt_strategy.get_llm_provider()
+
+        # Get the Prompt Configuration : Model version (eg: gpt-3.5, gpt-4...), temperature, top_k
         model_configuration = prompt_strategy.get_prompt_config().dict()
 
         LOG.trace(f"Using model configuration: {model_configuration}")
@@ -145,14 +154,6 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
             )
         llm_wrapper = ChatModelWrapper(llm_model=provider)
 
-        # response: AbstractChatModelResponse = await llm_wrapper.create_chat_completion(
-        #     chat_messages=prompt.messages,
-        #     tools=prompt.tools,
-        #     **model_configuration,
-        #     completion_parser=prompt_strategy.parse_response_content,
-        #     tool_choice=prompt.tool_choice,
-        #     default_tool_choice=prompt.default_tool_choice,
-        # )
         response: AbstractChatModelResponse = await llm_wrapper.create_chat_completion(
             chat_messages = prompt.messages,
             completion_kwargs = completion_kwargs, 

@@ -125,10 +125,12 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
 
     @abc.abstractmethod
     def get_llm_provider(self) -> AbstractLanguageModelProvider:
-        return self._agent.default_llm_provider
+        """ Get the Provider : Gemini, OpenAI, Llama, ... """
+        return self._agent.prompt_manager.config.default
 
     @abc.abstractmethod
     def get_prompt_config(self) -> AbstractPromptConfiguration:
+        """ Get the Prompt Configuration : Model version (eg: gpt-3.5, gpt-4...), temperature, top_k, top_p, ... """
         return self.get_llm_provider().get_default_config()
 
     # TODO : This implementation is shit :)

@@ -1,19 +1,48 @@
 from __future__ import annotations
 
-from AFAAS.interfaces.adapters import AbstractChatModelResponse
-from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
 
-
+from pydantic import BaseModel, ConfigDict
+from typing import TYPE_CHECKING, Any
 
 from abc import ABC, abstractmethod
 from typing import Any, TYPE_CHECKING
+
+from AFAAS.interfaces.adapters.chatmodel import (
+    AbstractChatModelProvider,
+    AbstractChatModelResponse,
+)
+from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
+from AFAAS.lib.sdk.logger import AFAASLogger
+LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.agent.abstract import AbstractAgent
 
 
-class AbstractPromptManager(ABC):
+class LLMConfig(BaseModel):
+    model_config = ConfigDict(extra= "allow", arbitrary_types_allowed=True)
 
+    default : AbstractChatModelProvider 
+    cheap : AbstractChatModelProvider
+    long_context : AbstractChatModelProvider 
+    code_expert : AbstractChatModelProvider 
+
+    def __getattr__(self, name):
+        try : 
+            return getattr(self, name)
+        except AttributeError:
+            LOG.notice(f"Attribute {name} not found in Configuration, returning default value")
+        return self.default
+
+class AbstractPromptManager(ABC):
+    """ Helper (Potential Mixin) that manage Prompt & LLM"""
+
+    def __init__(
+        self,
+        config : LLMConfig,
+    ) -> None:
+        self.config = config
+        super().__init__()
 
     @abstractmethod
     def add_strategies(self, strategies: list[AbstractPromptStrategy]) -> None:

@@ -1,8 +1,10 @@
 from __future__ import annotations
-from pydantic import ConfigDict
+import abc
 
 from AFAAS.configs.schema import AFAASModel, update_model_config, update_model_config, update_model_config, Configurable
-from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider
+
+from AFAAS.interfaces.agent.assistants.prompt_manager import AbstractPromptManager
+from AFAAS.interfaces.agent.assistants.prompt_manager import AbstractPromptManager
 from AFAAS.interfaces.workspace import AbstractFileWorkspace
 from AFAAS.lib.sdk.logger import AFAASLogger
 
@@ -15,12 +17,6 @@ from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
 
 
 class BaseAgent(AFAASModel , AbstractAgent, Configurable):
-
-    @property
-    def default_llm_provider(self) -> AbstractLanguageModelProvider:
-        if self._default_llm_provider is None:
-            self._default_llm_provider = AFAASChatOpenAI()
-        return self._default_llm_provider
 
     @property
     def workspace(self) -> AbstractFileWorkspace:

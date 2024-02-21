@@ -141,5 +141,7 @@ class ModelTokenizer(Protocol):
 
 class AbstractPromptConfiguration(abc.ABC, SystemConfiguration):
     """Struct for model configuration."""
-    ...
+
+    llm_model_name: str = Field()
+    temperature: float = Field()
 

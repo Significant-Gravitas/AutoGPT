@@ -178,3 +178,4 @@ ig*
 .github_access_token
 ~/AFAAS/cache.json
 .env.bak
+AFAAS/interfaces/adapters/chatmodel/configuration.py

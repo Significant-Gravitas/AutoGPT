@@ -76,7 +76,7 @@ class DefaultToolRegistry(Configurable, AbstractToolRegistry):
         settings: DefaultToolRegistry.SystemSettings,
         db: AbstractMemory,
         workspace: AbstractFileWorkspace,
-        model_providers: dict[ModelProviderName, AbstractChatModelProvider],
+        #model_providers: dict[ModelProviderName, AbstractChatModelProvider],
         include_builtins=True,
     ):
         """

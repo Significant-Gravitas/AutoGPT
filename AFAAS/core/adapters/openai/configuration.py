@@ -27,9 +27,6 @@ _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
 
-OpenAIChatParser = Callable[[str], dict]
-
-
 
 class OpenAIModelName(str, enum.Enum):
     """
@@ -154,35 +151,32 @@ class OpenAISettings(BaseModelProviderSettings):
 
     configuration: OpenAIProviderConfiguration = OpenAIProviderConfiguration()
     credentials: BaseModelProviderCredentials = BaseModelProviderCredentials()
-    budget: OpenAIModelProviderBudget = OpenAIModelProviderBudget()    
-
+    budget: OpenAIModelProviderBudget = OpenAIModelProviderBudget()
     name : str =  "chat_model_provider"
     description : str =  "Provides access to OpenAI's API."
 
 
 class OpenAIPromptConfiguration(AbstractPromptConfiguration):
-    llm_model_name: str = Field()
-    temperature: float = Field()
-
+    ...
 
 class OPEN_AI_DEFAULT_CHAT_CONFIGS:
     FAST_MODEL_4K = OpenAIPromptConfiguration(
         llm_model_name=OpenAIModelName.GPT3,
-        temperature=0.9,
+        temperature=0.7,
     )
     FAST_MODEL_16K = OpenAIPromptConfiguration(
         llm_model_name=OpenAIModelName.GPT3_16k,
-        temperature=0.9,
+        temperature=0.7,
     )
     FAST_MODEL_FINE_TUNED_4K = OpenAIPromptConfiguration(
         llm_model_name=OpenAIModelName.GPT3_FINE_TUNED,
-        temperature=0.9,
+        temperature=0.7,
     )
     MART_MODEL_8K = OpenAIPromptConfiguration(
         llm_model_name=OpenAIModelName.GPT4,
-        temperature=0.9,
+        temperature=0.7,
     )
     SMART_MODEL_32K = OpenAIPromptConfiguration(
         llm_model_name=OpenAIModelName.GPT4_32k,
-        temperature=0.9,
+        temperature=0.7,
     )
