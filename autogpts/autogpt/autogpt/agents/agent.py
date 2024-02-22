@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from autogpt.config import Config
     from autogpt.models.command_registry import CommandRegistry
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
@@ -108,6 +108,9 @@ class Agent(
 
         self.log_cycle_handler = LogCycleHandler()
         """LogCycleHandler for structured debug logging."""
+
+    def save_agent_state(self):
+        self.file_manager.workspace.write_file(self.file_manager.state_file_path, self.state.to_json())
 
     def build_prompt(
         self,

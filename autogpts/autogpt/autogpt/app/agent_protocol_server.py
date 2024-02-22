@@ -58,7 +58,7 @@ class AgentProtocolServer:
         self.app_config = app_config
         self.db = database
         self.llm_provider = llm_provider
-        self.agent_manager = AgentManager(app_data_dir=app_config.app_data_dir)
+        self.agent_manager = AgentManager(app_config)
         self._task_budgets = {}
 
     async def start(self, port: int = 8000, router: APIRouter = base_router):
@@ -128,15 +128,16 @@ class AgentProtocolServer:
         logger.debug(f"Creating agent for task: '{task.input}'")
         task_agent = await generate_agent_for_task(
             task=task.input,
+            agent_id=task_agent_id(task.task_id),
             app_config=self.app_config,
             llm_provider=self._get_task_llm_provider(task),
         )
 
         # Assign an ID and a folder to the Agent and persist it
-        agent_id = task_agent.state.agent_id = task_agent_id(task.task_id)
-        logger.debug(f"New agent ID: {agent_id}")
-        task_agent.attach_fs(self.app_config.app_data_dir / "agents" / agent_id)
-        task_agent.state.save_to_json_file(task_agent.file_manager.state_file_path)
+        # agent_id = task_agent.state.agent_id = task_agent_id(task.task_id)
+        logger.debug(f"New agent ID: {task_agent.state.agent_id}")
+        # task_agent.attach_fs(self.app_config.app_data_dir / "agents" / agent_id)
+        task_agent.save_agent_state()
 
         return task
 
@@ -175,7 +176,7 @@ class AgentProtocolServer:
         # Restore Agent instance
         task = await self.get_task(task_id)
         agent = configure_agent_with_state(
-            state=self.agent_manager.retrieve_state(task_agent_id(task_id)),
+            state=self.agent_manager.load_agent_state(task_agent_id(task_id)),
             app_config=self.app_config,
             llm_provider=self._get_task_llm_provider(task),
         )
@@ -325,7 +326,7 @@ class AgentProtocolServer:
             f"Running total LLM cost for task {task_id}: "
             f"${round(agent.llm_provider.get_incurred_cost(), 3)}"
         )
-        agent.state.save_to_json_file(agent.file_manager.state_file_path)
+        agent.save_agent_state()
         return step
 
     async def _on_agent_write_file(

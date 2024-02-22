@@ -148,7 +148,7 @@ async def run_auto_gpt(
     configure_chat_plugins(config)
 
     # Let user choose an existing agent to run
-    agent_manager = AgentManager(config.app_data_dir)
+    agent_manager = AgentManager(config)
     existing_agents = agent_manager.list_agents()
     load_existing_agent = ""
     if existing_agents:
@@ -174,7 +174,7 @@ async def run_auto_gpt(
     # Resume an Existing Agent #
     ############################
     if load_existing_agent:
-        agent_state = agent_manager.retrieve_state(load_existing_agent)
+        agent_state = agent_manager.load_agent_state(load_existing_agent)
         while True:
             answer = await clean_input(config, "Resume? [Y/n]")
             if answer.lower() == "y":
@@ -311,7 +311,7 @@ async def run_auto_gpt(
             # TODO: clone workspace if user wants that
             # TODO: ... OR allow many-to-one relations of agents and workspaces
 
-        agent.state.save_to_json_file(agent.file_manager.state_file_path)
+        agent.save_agent_state()
 
 
 @coroutine

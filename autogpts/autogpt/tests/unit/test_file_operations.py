@@ -255,47 +255,6 @@ async def test_write_file_succeeds_if_content_different(
     await file_ops.write_to_file(test_file_with_content_path, new_content, agent=agent)
 
 
-@pytest.mark.asyncio
-async def test_append_to_file(test_nested_file: Path, agent: Agent):
-    append_text = "This is appended text.\n"
-    await file_ops.write_to_file(test_nested_file, append_text, agent=agent)
-
-    file_ops.append_to_file(test_nested_file, append_text, agent=agent)
-
-    with open(test_nested_file, "r") as f:
-        content_after = f.read()
-
-    assert content_after == append_text + append_text
-
-
-def test_append_to_file_uses_checksum_from_appended_file(
-    test_file_name: Path, agent: Agent
-):
-    append_text = "This is appended text.\n"
-    file_ops.append_to_file(
-        agent.workspace.get_path(test_file_name),
-        append_text,
-        agent=agent,
-    )
-    file_ops.append_to_file(
-        agent.workspace.get_path(test_file_name),
-        append_text,
-        agent=agent,
-    )
-    with open(agent.file_manager.file_ops_log_path, "r", encoding="utf-8") as f:
-        log_contents = f.read()
-
-    digest = hashlib.md5()
-    digest.update(append_text.encode("utf-8"))
-    checksum1 = digest.hexdigest()
-    digest.update(append_text.encode("utf-8"))
-    checksum2 = digest.hexdigest()
-    assert log_contents == (
-        f"append: {test_file_name} #{checksum1}\n"
-        f"append: {test_file_name} #{checksum2}\n"
-    )
-
-
 def test_list_files(workspace: FileWorkspace, test_directory: Path, agent: Agent):
     # Case 1: Create files A and B, search for A, and ensure we don't return A and B
     file_a = workspace.get_path("file_a.txt")

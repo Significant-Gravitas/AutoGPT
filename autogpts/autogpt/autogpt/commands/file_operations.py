@@ -124,9 +124,7 @@ def log_operation(
     if checksum is not None:
         log_entry += f" #{checksum}"
     logger.debug(f"Logging file operation: {log_entry}")
-    append_to_file(
-        agent.file_manager.file_ops_log_path, f"{log_entry}\n", agent, should_log=False
-    )
+    agent.file_manager.log_operation(f"{log_entry}\n")
 
 
 @command(
@@ -222,27 +220,6 @@ async def write_to_file(filename: str | Path, contents: str, agent: Agent) -> st
     await agent.workspace.write_file(filename, contents)
     log_operation("write", filename, agent, checksum)
     return f"File {filename} has been written successfully."
-
-
-def append_to_file(
-    filename: Path, text: str, agent: Agent, should_log: bool = True
-) -> None:
-    """Append text to a file
-
-    Args:
-        filename (Path): The name of the file to append to
-        text (str): The text to append to the file
-        should_log (bool): Should log output
-    """
-    directory = os.path.dirname(filename)
-    os.makedirs(directory, exist_ok=True)
-    with open(filename, "a") as f:
-        f.write(text)
-
-    if should_log:
-        with open(filename, "r") as f:
-            checksum = text_checksum(f.read())
-        log_operation("append", filename, agent, checksum=checksum)
 
 
 @command(

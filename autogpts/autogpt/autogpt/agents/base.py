@@ -147,13 +147,12 @@ class BaseAgentSettings(SystemSettings):
     history: EpisodicActionHistory = Field(default_factory=EpisodicActionHistory)
     """(STATE) The action history of the agent."""
 
-    def save_to_json_file(self, file_path: Path) -> None:
-        with file_path.open("w") as f:
-            f.write(self.json())
-
+    def to_json(self) -> str:
+        return self.model_dump_json()
+    
     @classmethod
-    def load_from_json_file(cls, file_path: Path):
-        return cls.parse_file(file_path)
+    def from_json(cls, data: str) -> BaseAgentSettings:
+        return cls.model_validate_json(data)
 
 
 class BaseAgent(Configurable[BaseAgentSettings], ABC):
@@ -212,11 +211,8 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
                 )
             self.attach_fs(new_agent_dir)
 
-    def attach_fs(self, agent_dir: Path) -> AgentFileManager:
-        self.file_manager = AgentFileManager(agent_dir)
-        self.file_manager.initialize()
+    def attach_fs(self, agent_dir: Path) -> None:
         self.state.agent_data_dir = agent_dir
-        return self.file_manager
 
     @property
     def llm(self) -> ChatModelInfo:

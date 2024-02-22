@@ -61,7 +61,7 @@ def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
         command_registry=command_registry,
         legacy_config=config,
     )
-    agent.attach_fs(config.app_data_dir / "agents" / "AutoGPT-benchmark")  # HACK
+    agent.set_id(agent.state.agent_id, config.app_data_dir / "agents" / "AutoGPT-benchmark") # HACK
     return agent
 
 

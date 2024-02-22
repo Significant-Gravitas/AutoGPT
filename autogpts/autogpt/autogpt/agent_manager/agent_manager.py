@@ -4,6 +4,11 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from autogpt.config.config import Config
+from autogpt.file_workspace import get_workspace
+from autogpt.file_workspace.base import FileWorkspace
+from autogpt.agents.agent import AgentSettings
+
 if TYPE_CHECKING:
     from autogpt.agents.agent import AgentSettings
 
@@ -11,10 +16,21 @@ from autogpt.agents.utils.agent_file_manager import AgentFileManager
 
 
 class AgentManager:
-    def __init__(self, app_data_dir: Path):
-        self.agents_dir = app_data_dir / "agents"
-        if not self.agents_dir.exists():
-            self.agents_dir.mkdir()
+    def __init__(self, legacy_config: Config):
+        self.agents_dir = legacy_config.app_data_dir / "agents"
+        self.workspace: FileWorkspace = None
+        self._setup_workspace(legacy_config)
+
+    def _setup_workspace(self, config: Config) -> None:
+        fm_backend = config.file_manager_backend
+        workspace = get_workspace(
+            backend=fm_backend,
+            root_path=config.app_data_dir,
+        )
+
+        workspace.initialize()
+        workspace.make_dir(self.agents_dir)
+        self.workspace = workspace
 
     @staticmethod
     def generate_id(agent_name: str) -> str:
@@ -25,7 +41,7 @@ class AgentManager:
         return [
             dir.name
             for dir in self.agents_dir.iterdir()
-            if dir.is_dir() and AgentFileManager(dir).state_file_path.exists()
+            if dir.is_dir() and AgentFileManager.get_state_file_path(dir).exists()
         ]
 
     def get_agent_dir(self, agent_id: str, must_exist: bool = False) -> Path:
@@ -35,14 +51,13 @@ class AgentManager:
             raise FileNotFoundError(f"No agent with ID '{agent_id}'")
         return agent_dir
 
-    def retrieve_state(self, agent_id: str) -> AgentSettings:
-        from autogpt.agents.agent import AgentSettings
-
+    def load_agent_state(self, agent_id: str) -> AgentSettings:
         agent_dir = self.get_agent_dir(agent_id, True)
-        state_file = AgentFileManager(agent_dir).state_file_path
-        if not state_file.exists():
+        state_file_path = AgentFileManager.get_state_file_path(agent_dir)
+        if not state_file_path.exists():
             raise FileNotFoundError(f"Agent with ID '{agent_id}' has no state.json")
+        
+        text = self.workspace.read_file(state_file_path)
+        return AgentSettings.from_json(text)
+        
 
-        state = AgentSettings.load_from_json_file(state_file)
-        state.agent_data_dir = agent_dir
-        return state

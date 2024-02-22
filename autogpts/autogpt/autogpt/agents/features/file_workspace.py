@@ -26,8 +26,8 @@ class FileWorkspaceMixin:
         # Initialize other bases first, because we need the config from BaseAgent
         super(FileWorkspaceMixin, self).__init__(**kwargs)
 
-        file_manager: AgentFileManager = getattr(self, "file_manager")
-        if not file_manager:
+        state: BaseAgentSettings = getattr(self, "state")
+        if not state.agent_id or not state.agent_data_dir:
             return
 
         self._setup_workspace()
@@ -40,26 +40,18 @@ class FileWorkspaceMixin:
         return res
 
     def _setup_workspace(self) -> None:
-        settings: BaseAgentSettings = getattr(self, "state")
-        assert settings.agent_id, "Cannot attach workspace to anonymous agent"
+        state: BaseAgentSettings = getattr(self, "state")
+        assert state.agent_id, "Cannot attach workspace to anonymous agent"
         app_config: Config = getattr(self, "legacy_config")
-        file_manager: AgentFileManager = getattr(self, "file_manager")
 
         ws_backend = app_config.workspace_backend
         local = ws_backend == FileWorkspaceBackendName.LOCAL
         workspace = get_workspace(
             backend=ws_backend,
-            id=settings.agent_id if not local else "",
-            root_path=file_manager.root / "workspace" if local else None,
+            id=state.agent_id if not local else "",
+            root_path=state.agent_data_dir / "workspace" if local else None,
         )
-        if local and settings.config.allow_fs_access:
+        if local and state.config.allow_fs_access:
             workspace._restrict_to_root = False  # type: ignore
         workspace.initialize()
         self.workspace = workspace
-
-
-def get_agent_workspace(agent: BaseAgent) -> FileWorkspace | None:
-    if isinstance(agent, FileWorkspaceMixin):
-        return agent.workspace
-
-    return None

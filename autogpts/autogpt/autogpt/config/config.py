@@ -65,6 +65,14 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         else None,
     )
 
+    # File manager
+    file_manager_backend: FileWorkspaceBackendName = UserConfigurable(
+        default=FileWorkspaceBackendName.LOCAL,
+        from_env=lambda: FileWorkspaceBackendName(v)
+        if (v := os.getenv("FILE_MANAGER_BACKEND"))
+        else None,
+    )
+
     ##########################
     # Agent Control Settings #
     ##########################
