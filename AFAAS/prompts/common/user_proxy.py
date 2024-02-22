@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
+    AbstractChatModelProvider,
     AbstractPromptConfiguration,
     AssistantChatMessage,
     ChatPrompt,
@@ -38,7 +39,7 @@ class UserProxyStrategyFunctionNames(str, enum.Enum):
 class UserProxyStrategyConfiguration(PromptStrategiesConfiguration):
     default_tool_choice: str = "user_interaction"
     task_context_length: int = 300
-    temperature: float = 0.4
+    temperature: float = 0.2
 
 
 class UserProxyStrategy(AbstractPromptStrategy):
@@ -158,9 +159,12 @@ class UserProxyStrategy(AbstractPromptStrategy):
     def response_format_instruction(self) -> str:
         return super().response_format_instruction()
 
-    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+    def get_llm_provider(self) -> AbstractChatModelProvider:
         return super().get_llm_provider()
 
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        # FIXME: Alike code, set a low temparature for this prompt (0.2 ?)
-        return super().get_prompt_config()
+        return AbstractPromptConfiguration(
+            #llm_model_name=self.get_llm_provider().__llmmodel_cheap__(),
+            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            temperature=self.temperature,
+        )

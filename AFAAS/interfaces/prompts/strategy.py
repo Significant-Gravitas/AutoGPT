@@ -19,6 +19,7 @@ from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
 from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider, AbstractPromptConfiguration
 from AFAAS.interfaces.adapters.chatmodel import  (
     ChatPrompt,
+    AbstractChatModelProvider,
     AbstractChatModelResponse,
     AssistantChatMessage,
     CompletionModelFunction,
@@ -108,7 +109,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     def set_tools(self, **kwargs): ...
 
     @abc.abstractmethod
-    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+    def get_llm_provider(self) -> AbstractChatModelProvider:
         """ Get the Provider : Gemini, OpenAI, Llama, ... """
         return self._agent.prompt_manager.config.default
 

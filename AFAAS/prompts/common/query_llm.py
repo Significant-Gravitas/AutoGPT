@@ -11,6 +11,7 @@ from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , C
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
+    AbstractChatModelProvider,
     AbstractPromptConfiguration,
     AssistantChatMessage,
     ChatPrompt,
@@ -106,12 +107,12 @@ class QueryLLMStrategy(AbstractPromptStrategy):
     def response_format_instruction(self) -> str:
         return super().response_format_instruction()
 
-    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+    def get_llm_provider(self) -> AbstractChatModelProvider:
         return super().get_llm_provider()
 
 
     def get_prompt_config(self) -> AbstractPromptConfiguration:
         return AbstractPromptConfiguration(
-            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            llm_model_name=self.get_llm_provider().__llmmodel_cheap__(),
             temperature=self.temperature,
         )

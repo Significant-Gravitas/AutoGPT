@@ -6,6 +6,7 @@ import uuid
 from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , ChatMessage
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
+    AbstractChatModelProvider,
     AssistantChatMessage,
     ChatPrompt,
     CompletionModelFunction,
@@ -292,7 +293,7 @@ class RefineUserContextStrategy(AbstractPromptStrategy):
     ) -> str:
         pass
 
-    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+    def get_llm_provider(self) -> AbstractChatModelProvider:
         return super().get_llm_provider()
 
 
