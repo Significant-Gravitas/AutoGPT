@@ -48,7 +48,7 @@ class SelectToolStrategyConfiguration(PlanningPromptStrategiesConfiguration):
 ### STRATEGY
 ####
 class SelectToolStrategy(AbstractPlanningPromptStrategy):
-    default_configuration: SelectToolStrategyConfiguration = (
+    config: SelectToolStrategyConfiguration = (
         SelectToolStrategyConfiguration()
     )
     STRATEGY_NAME = "select_tool"
@@ -59,11 +59,11 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
         note_to_agent_length: int,
         temperature: float,  # if coding 0.05,
         count=0,
-        exit_token: str = str(uuid.uuid4()),
+
         use_message: bool = False,
     ):
         self._count = count
-        self._config = self.default_configuration
+        self.temperature = temperature or self.default_configuration.temperature
         self.note_to_agent_length = note_to_agent_length
         self.default_tool_choice = default_tool_choice
 
@@ -131,8 +131,12 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
     def get_llm_provider(self) -> AbstractLanguageModelProvider:
         return super().get_llm_provider()
 
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        return super().get_prompt_config()
+        return AbstractPromptConfiguration(
+            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            temperature=self.temperature,
+        )
 
     def parse_response_content(
         self,

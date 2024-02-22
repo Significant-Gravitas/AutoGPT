@@ -41,7 +41,7 @@ class SearchInfoStrategyConfiguration(PromptStrategiesConfiguration):
 
 
 class SearchInfo_Strategy(AbstractPromptStrategy):
-    default_configuration = SearchInfoStrategyConfiguration()
+    default_configuration : SearchInfoStrategyConfiguration = SearchInfoStrategyConfiguration()
     STRATEGY_NAME = "search_info"
 
     def __init__(
@@ -53,11 +53,11 @@ class SearchInfo_Strategy(AbstractPromptStrategy):
         # frequency_penalty: Optional[float], # Avoid repeting oneselfif coding 0.3
         # presence_penalty : Optional[float], # Avoid certain subjects
         count=0,
-        exit_token: str = str(uuid.uuid4()),
+
         task_context_length: int = 300,
     ):
         self._count = count
-        self._config = self.default_configuration
+        self.temperature = temperature or self.default_configuration.temperature
         self.default_tool_choice = default_tool_choice
         self.task_context_length = task_context_length
 
@@ -116,5 +116,9 @@ class SearchInfo_Strategy(AbstractPromptStrategy):
     def get_llm_provider(self) -> AbstractLanguageModelProvider:
         return super().get_llm_provider()
 
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        return super().get_prompt_config()
+        return AbstractPromptConfiguration(
+            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            temperature=self.temperature,
+        )

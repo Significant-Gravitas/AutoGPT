@@ -39,7 +39,7 @@ class QueryLLMStrategyConfiguration(PromptStrategiesConfiguration):
 
 
 class QueryLLMStrategy(AbstractPromptStrategy):
-    default_configuration = QueryLLMStrategyConfiguration()
+    default_configuration : QueryLLMStrategyConfiguration = QueryLLMStrategyConfiguration()
     STRATEGY_NAME = "query_llm"
 
     def __init__(
@@ -47,11 +47,11 @@ class QueryLLMStrategy(AbstractPromptStrategy):
         default_tool_choice: QueryLLMStrategyFunctionNames,
         temperature: float,
         count=0,
-        exit_token: str = str(uuid.uuid4()),
+
         task_context_length: int = 300,
     ):
         self._count = count
-        self._config = self.default_configuration
+        self.temperature = temperature or self.default_configuration.temperature
         self.default_tool_choice = default_tool_choice
         self.task_context_length = task_context_length
 
@@ -109,5 +109,9 @@ class QueryLLMStrategy(AbstractPromptStrategy):
     def get_llm_provider(self) -> AbstractLanguageModelProvider:
         return super().get_llm_provider()
 
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        return super().get_prompt_config()
+        return AbstractPromptConfiguration(
+            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            temperature=self.temperature,
+        )

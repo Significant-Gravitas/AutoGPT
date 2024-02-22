@@ -32,7 +32,7 @@ class InitialPlanStrategyConfiguration(PromptStrategiesConfiguration):
 
 
 class InitialPlanStrategy(AbstractPromptStrategy):
-    default_configuration = InitialPlanStrategyConfiguration()
+    default_configuration : InitialPlanStrategyConfiguration = InitialPlanStrategyConfiguration()
     STRATEGY_NAME = "make_initial_plan"
 
     ###
@@ -180,5 +180,9 @@ class InitialPlanStrategy(AbstractPromptStrategy):
     def get_llm_provider(self) -> AbstractLanguageModelProvider:
         return super().get_llm_provider()
 
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        return super().get_prompt_config()
+        return AbstractPromptConfiguration(
+            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            temperature=self.temperature,
+        )

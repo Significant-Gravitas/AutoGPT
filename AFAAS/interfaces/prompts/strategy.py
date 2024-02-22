@@ -87,8 +87,7 @@ class DefaultParsedResponse(dict):
 
 
 class PromptStrategiesConfiguration(SystemConfiguration):
-    pass
-    # temperature: float
+    temperature: float
     # top_p: Optional[float] = None
     # max_tokens: Optional[int] = None
     # frequency_penalty: Optional[float] = None  # Avoid repeting oneselfif coding 0.3

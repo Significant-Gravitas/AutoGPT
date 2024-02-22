@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.task.task import AbstractTask
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
+    AbstractChatModelProvider,
     AssistantChatMessage,
     ChatPrompt,
     CompletionModelFunction,
@@ -33,11 +34,14 @@ class BaseTaskRagStrategyConfiguration(PromptStrategiesConfiguration):
     default_tool_choice: BaseTaskRagStrategyFunctionNames = (
         BaseTaskRagStrategyFunctionNames.MAKE_SMART_RAG
     )
-    task_context_length: int
+    task_context_length: Optional[int] = None
     temperature: float = 0.4
 
 
 class BaseTaskRagStrategy(AbstractPromptStrategy):
+
+    config : BaseTaskRagStrategyConfiguration = BaseTaskRagStrategyConfiguration()
+
     def __init__(
         self,
         default_tool_choice: BaseTaskRagStrategyFunctionNames,
@@ -46,7 +50,7 @@ class BaseTaskRagStrategy(AbstractPromptStrategy):
         task_context_length: int = 300,
     ):
         self._count = count
-        self._config = self.default_configuration
+        self.temperature = temperature or self.default_configuration.temperature
         self.default_tool_choice = default_tool_choice
         self.task_context_length = task_context_length
 
@@ -128,8 +132,12 @@ class BaseTaskRagStrategy(AbstractPromptStrategy):
     def response_format_instruction(self) -> str:
         return super().response_format_instruction()
 
-    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+    def get_llm_provider(self) -> AbstractChatModelProvider:
         return super().get_llm_provider()
 
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        return super().get_prompt_config()
+        return AbstractPromptConfiguration(
+            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            temperature=self.temperature,
+        )
+

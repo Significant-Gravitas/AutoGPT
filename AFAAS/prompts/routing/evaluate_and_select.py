@@ -37,7 +37,7 @@ class EvaluateSelectStrategyConfiguration(PromptStrategiesConfiguration):
 
 
 class EvaluateSelectStrategy(AbstractPromptStrategy):
-    default_configuration = EvaluateSelectStrategyConfiguration()
+    default_configuration : EvaluateSelectStrategyConfiguration = EvaluateSelectStrategyConfiguration()
     STRATEGY_NAME = "routing_evaluate"
 
     ###
@@ -49,7 +49,7 @@ class EvaluateSelectStrategy(AbstractPromptStrategy):
         note_to_agent_length: int,
         temperature: float,  # if coding 0.05,
         count=0,
-        exit_token: str = str(uuid.uuid4()),
+
         use_message: bool = False,
     ):
         """
@@ -77,7 +77,7 @@ class EvaluateSelectStrategy(AbstractPromptStrategy):
             Flag to determine whether to use messages.
         """
         self._count = count
-        self._config = self.default_configuration
+        self.temperature = temperature or self.default_configuration.temperature
         self.note_to_agent_length = note_to_agent_length
         self.default_tool_choice = default_tool_choice
 
@@ -138,5 +138,9 @@ class EvaluateSelectStrategy(AbstractPromptStrategy):
     def get_llm_provider(self) -> AbstractLanguageModelProvider:
         return super().get_llm_provider()
 
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        return super().get_prompt_config()
+        return AbstractPromptConfiguration(
+            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            temperature=self.temperature,
+        )

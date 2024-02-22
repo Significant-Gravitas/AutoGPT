@@ -39,7 +39,7 @@ class PostRagTaskUpdateStrategyConfiguration(PromptStrategiesConfiguration):
 
 class AfaasPostRagTaskUpdateStrategy(AbstractPromptStrategy):
     STRATEGY_NAME = "afaas_task_post_rag_update"
-    default_configuration = PostRagTaskUpdateStrategyConfiguration()
+    default_configuration : PostRagTaskUpdateStrategyConfiguration = PostRagTaskUpdateStrategyConfiguration()
 
     def __init__(
         self,
@@ -49,7 +49,7 @@ class AfaasPostRagTaskUpdateStrategy(AbstractPromptStrategy):
         count=0,
     ):
         self._count = count
-        self._config = self.default_configuration
+        self.temperature = temperature or self.default_configuration.temperature
         self.default_tool_choice = default_tool_choice
         self.task_context_length = task_context_length
 
@@ -131,5 +131,9 @@ class AfaasPostRagTaskUpdateStrategy(AbstractPromptStrategy):
     def get_llm_provider(self) -> AbstractLanguageModelProvider:
         return super().get_llm_provider()
 
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        return super().get_prompt_config()
+        return AbstractPromptConfiguration(
+            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            temperature=self.temperature,
+        )

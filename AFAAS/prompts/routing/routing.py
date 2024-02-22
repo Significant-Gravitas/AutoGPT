@@ -43,7 +43,7 @@ class RoutingStrategyConfiguration(PromptStrategiesConfiguration):
 
 
 class RoutingStrategy(AbstractPromptStrategy):
-    default_configuration = RoutingStrategyConfiguration()
+    default_configuration : RoutingStrategyConfiguration = RoutingStrategyConfiguration()
     STRATEGY_NAME = "routing_assess_context"
 
     ###
@@ -54,7 +54,7 @@ class RoutingStrategy(AbstractPromptStrategy):
         default_tool_choice: RoutingStrategyFunctionNames,
         temperature: float,  # if coding 0.05
         count=0,
-        exit_token: str = str(uuid.uuid4()),
+
         use_message: bool = False,
         note_to_agent_length: int = 250,
     ):
@@ -83,7 +83,7 @@ class RoutingStrategy(AbstractPromptStrategy):
             Flag to determine whether to use messages.
         """
         self._count = count
-        self._config = self.default_configuration
+        self.temperature = temperature or self.default_configuration.temperature
         self.note_to_agent_length = note_to_agent_length
 
     def set_tools(self, **kwargs):
@@ -167,5 +167,9 @@ class RoutingStrategy(AbstractPromptStrategy):
     def get_llm_provider(self) -> AbstractLanguageModelProvider:
         return super().get_llm_provider()
 
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        return super().get_prompt_config()
+        return AbstractPromptConfiguration(
+            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            temperature=self.temperature,
+        )

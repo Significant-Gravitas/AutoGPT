@@ -148,7 +148,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
         d = super().dict(**kwargs)
 
         # Iterate over each attribute of the dict
-        for field, field_info in self.__fields__.items():
+        for field, field_info in self.model_fields.items():
             field_value = getattr(self, field)
 
             if field_value is not None:

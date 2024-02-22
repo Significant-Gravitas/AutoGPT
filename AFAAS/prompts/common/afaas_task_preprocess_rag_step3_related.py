@@ -12,4 +12,4 @@ class AfaasTaskRagStep3StrategyConfiguration(BaseTaskRagStrategyConfiguration):
 
 class AfaasTaskRagStep3Strategy(BaseTaskRagStrategy):
     STRATEGY_NAME = "afaas_task_preprocess_rag_step3_history"
-    default_configuration = AfaasTaskRagStep3StrategyConfiguration()
+    default_configuration : AfaasTaskRagStep3StrategyConfiguration = AfaasTaskRagStep3StrategyConfiguration()

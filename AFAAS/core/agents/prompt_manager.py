@@ -133,7 +133,7 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
 
         # Get the Prompt Configuration : Model version (eg: gpt-3.5, gpt-4...), temperature, top_k
         model_configuration : AbstractPromptConfiguration = prompt_strategy.get_prompt_config()
-        if model_configuration is not AbstractPromptConfiguration:
+        if not isinstance( model_configuration , AbstractPromptConfiguration):
             LOG.error(f"{prompt_strategy.__class__.__name__}.get_prompt_config() does not have a valid model configuration, type AbstractPromptConfiguration expected. Using default configuration.")
             provider = self.config.default
             model_configuration = AbstractPromptConfiguration(
