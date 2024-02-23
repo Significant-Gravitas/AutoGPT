@@ -83,7 +83,7 @@ class BaseNoSQLTable(AbstractTable):
                     stack.append((val, new_list, idx))
                 serialized_value = new_list
             elif isinstance(curr_obj, BaseModel):
-                serialized_value = curr_obj.dict()
+                serialized_value = curr_obj.model_dump()
             elif hasattr(curr_obj, "__dict__"):
                 new_dict = {}
                 new_dict["_type_"] = (
@@ -110,11 +110,11 @@ class BaseNoSQLTable(AbstractTable):
     async def add(self, value: dict, id: str = str(uuid.uuid4())) -> uuid.UUID:
         # Serialize non-serializable objects
         if isinstance(value, BaseAgent):
-            value = value.dict()
+            value = value.model_dump()
         if isinstance(value, AFAASModel):
             value = value.dict_db()
         elif isinstance(value, Configurable):
-            value = value.dict()
+            value = value.model_dump()
         else:
             LOG.notice(
                 f"Class {value.__class__.__name__} not hinheriting from AFAASModel"
@@ -141,7 +141,7 @@ class BaseNoSQLTable(AbstractTable):
     async def update(self, key: BaseNoSQLTable.Key, value: dict):
         # Serialize non-serializable objects
         if isinstance(value, BaseModel):
-            value = value.dict()
+            value = value.model_dump()
 
         value["modified_at"]: datetime.datetime = datetime.datetime.now()
         value = self.__class__.serialize_value(value)

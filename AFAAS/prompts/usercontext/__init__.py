@@ -18,6 +18,6 @@ class StrategiesSet:
     def get_strategies() -> list[AbstractPromptStrategy]:
         return [
             RefineUserContextStrategy(
-                **RefineUserContextStrategy.default_configuration.dict()
+                **RefineUserContextStrategy.default_configuration.model_dump()
             ),
         ]

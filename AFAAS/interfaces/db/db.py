@@ -114,7 +114,7 @@ class AbstractMemory(Configurable, abc.ABC):
         # TODO:v0.1.0 Implement an add adapter method & a more robust multiton with dependency injection
         raise NotImplementedError("add_adapter")
         config_key = base64.b64encode(
-            json.dumps(adapter._settings.configuration.dict()).encode()
+            json.dumps(adapter._settings.configuration.model_dump()).encode()
         ).decode()
         cls._instances[config_key] = adapter
 
@@ -149,7 +149,7 @@ class AbstractMemory(Configurable, abc.ABC):
 
         #FIXME: Weakened the key to upgrade to pydantic 2.x
         # config_key = base64.b64encode(
-        #     json.dumps(db_settings.configuration.dict()).encode()
+        #     json.dumps(db_settings.configuration.model_dump()).encode()
         # ).decode()
         config_key = base64.b64encode(adapter_type.__class__.__name__.encode()).decode()
 

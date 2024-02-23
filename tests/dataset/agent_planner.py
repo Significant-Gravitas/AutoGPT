@@ -25,7 +25,7 @@ LOG = AFAASLogger(name=__name__)
 
 # agent = PlannerAgent(
 #     settings=agent_settings,
-#     **agent_settings.dict(),
+#     **agent_settings.model_dump(),
 #     db=AbstractMemory.get_adapter(settings=db_settings),
 # )
 
@@ -61,7 +61,7 @@ async def agent_dataset(
     )
 
     # #FIXME :
-    # #agent = PlannerAgent(settings=agent_settings, **agent_settings.dict())
+    # #agent = PlannerAgent(settings=agent_settings, **agent_settings.model_dump())
     # db_config = MemoryConfig()
     # db_config.json_file_path += "/pytest"
     # db_settings = AbstractMemory.SystemSettings()
@@ -70,12 +70,12 @@ async def agent_dataset(
 
     # agent = await PlannerAgent.load(
     #     settings=agent_settings,
-    #     **agent_settings.dict(),
+    #     **agent_settings.model_dump(),
     #     db=db ,
     # )
     # #NOTE:Hack
     # #agent.db._settings.configuration.json_file_path += "/pytest"
-    agent = PlannerAgent(settings=agent_settings, **agent_settings.dict())
+    agent = PlannerAgent(settings=agent_settings, **agent_settings.model_dump())
 
     agent.message_agent_user = AFAASMessageStack(db=agent.db)
     agent._user_input_handler = UserMessageHandlers.user_input_handler

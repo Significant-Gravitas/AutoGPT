@@ -36,11 +36,11 @@ class AFAASMessageStack(AFAASModel):
         if not "_messages" in data.keys():
             self._messages = {}
 
-    def dict(self, *args, **kwargs) -> dict[str]:
+    def model_dump(self, *args, **kwargs) -> dict[str]:
         return self._messages
 
     def json(self, *args, **kwargs):
-        return json.dumps(self.dict())
+        return json.dumps(self.model_dump())
 
     def __len__(self):
         return len(self._messages)

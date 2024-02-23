@@ -520,7 +520,7 @@ class Task(AbstractTask):
     def __copy__(self):
 
         cls = self.__class__
-        clone = cls(**self.dict(), agent=self.agent)
+        clone = cls(**self.model_dump(), agent=self.agent)
         clone.agent = self.agent
         clone._task_parent = self._task_parent
 
