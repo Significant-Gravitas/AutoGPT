@@ -35,10 +35,10 @@ from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.resource.model_providers.schema import ModelProviderBudget
-from autogpt.file_workspace import (
-    FileWorkspace,
-    FileWorkspaceBackendName,
-    get_workspace,
+from autogpt.file_storage import (
+    FileStorage,
+    FileStorageBackendName,
+    get_storage,
 )
 from autogpt.logs.utils import fmt_kwargs
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
@@ -425,13 +425,13 @@ class AgentProtocolServer:
         self,
         task_id: str | int,
         agent_manager: AgentManager,
-    ) -> FileWorkspace:
+    ) -> FileStorage:
         use_local_ws = (
-            self.app_config.workspace_backend == FileWorkspaceBackendName.LOCAL
+            self.app_config.file_storage_backend == FileStorageBackendName.LOCAL
         )
         agent_id = task_agent_id(task_id)
-        workspace = get_workspace(
-            backend=self.app_config.workspace_backend,
+        workspace = get_storage(
+            backend=self.app_config.file_storage_backend,
             id=agent_id if not use_local_ws else "",
             root_path=agent_manager.get_agent_dir(
                 agent_id=agent_id,

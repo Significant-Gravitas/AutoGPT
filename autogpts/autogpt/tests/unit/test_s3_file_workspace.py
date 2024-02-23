@@ -6,7 +6,7 @@ import pytest
 import pytest_asyncio
 from botocore.exceptions import ClientError
 
-from autogpt.file_workspace.s3 import S3FileWorkspace, S3FileWorkspaceConfiguration
+from autogpt.file_storage.s3 import S3FileStorage, S3FileStorageConfiguration
 
 if not os.getenv("S3_ENDPOINT_URL") and not os.getenv("AWS_ACCESS_KEY_ID"):
     pytest.skip("S3 environment variables are not set", allow_module_level=True)
@@ -18,16 +18,16 @@ def s3_bucket_name() -> str:
 
 
 @pytest.fixture
-def s3_workspace_uninitialized(s3_bucket_name: str) -> S3FileWorkspace:
-    os.environ["WORKSPACE_STORAGE_BUCKET"] = s3_bucket_name
-    ws_config = S3FileWorkspaceConfiguration.from_env()
-    ws_config.root = Path("/workspaces/AutoGPT-some-unique-task-id")
-    workspace = S3FileWorkspace(ws_config)
+def s3_workspace_uninitialized(s3_bucket_name: str) -> S3FileStorage:
+    os.environ["STORAGE_BUCKET"] = s3_bucket_name
+    storage_config = S3FileStorageConfiguration.from_env()
+    storage_config.root = Path("/workspaces/AutoGPT-some-unique-task-id")
+    workspace = S3FileStorage(storage_config)
     yield workspace  # type: ignore
-    del os.environ["WORKSPACE_STORAGE_BUCKET"]
+    del os.environ["STORAGE_BUCKET"]
 
 
-def test_initialize(s3_bucket_name: str, s3_workspace_uninitialized: S3FileWorkspace):
+def test_initialize(s3_bucket_name: str, s3_workspace_uninitialized: S3FileStorage):
     s3 = s3_workspace_uninitialized._s3
 
     # test that the bucket doesn't exist yet
@@ -41,14 +41,14 @@ def test_initialize(s3_bucket_name: str, s3_workspace_uninitialized: S3FileWorks
 
 
 def test_workspace_bucket_name(
-    s3_workspace: S3FileWorkspace,
+    s3_workspace: S3FileStorage,
     s3_bucket_name: str,
 ):
     assert s3_workspace._bucket.name == s3_bucket_name
 
 
 @pytest.fixture
-def s3_workspace(s3_workspace_uninitialized: S3FileWorkspace) -> S3FileWorkspace:
+def s3_workspace(s3_workspace_uninitialized: S3FileStorage) -> S3FileStorage:
     (s3_workspace := s3_workspace_uninitialized).initialize()
     yield s3_workspace  # type: ignore
 
@@ -67,7 +67,7 @@ TEST_FILES: list[tuple[str | Path, str]] = [
 
 
 @pytest_asyncio.fixture
-async def s3_workspace_with_files(s3_workspace: S3FileWorkspace) -> S3FileWorkspace:
+async def s3_workspace_with_files(s3_workspace: S3FileStorage) -> S3FileStorage:
     for file_name, file_content in TEST_FILES:
         s3_workspace._bucket.Object(str(s3_workspace.get_path(file_name))).put(
             Body=file_content
@@ -76,7 +76,7 @@ async def s3_workspace_with_files(s3_workspace: S3FileWorkspace) -> S3FileWorksp
 
 
 @pytest.mark.asyncio
-async def test_read_file(s3_workspace_with_files: S3FileWorkspace):
+async def test_read_file(s3_workspace_with_files: S3FileStorage):
     for file_name, file_content in TEST_FILES:
         content = s3_workspace_with_files.read_file(file_name)
         assert content == file_content
@@ -85,7 +85,7 @@ async def test_read_file(s3_workspace_with_files: S3FileWorkspace):
         s3_workspace_with_files.read_file("non_existent_file")
 
 
-def test_list_files(s3_workspace_with_files: S3FileWorkspace):
+def test_list_files(s3_workspace_with_files: S3FileStorage):
     # List at root level
     assert (files := s3_workspace_with_files.list()) == s3_workspace_with_files.list()
     assert len(files) > 0
@@ -104,19 +104,19 @@ def test_list_files(s3_workspace_with_files: S3FileWorkspace):
 
 
 @pytest.mark.asyncio
-async def test_write_read_file(s3_workspace: S3FileWorkspace):
+async def test_write_read_file(s3_workspace: S3FileStorage):
     await s3_workspace.write_file("test_file", "test_content")
     assert s3_workspace.read_file("test_file") == "test_content"
 
 
 @pytest.mark.asyncio
-async def test_overwrite_file(s3_workspace_with_files: S3FileWorkspace):
+async def test_overwrite_file(s3_workspace_with_files: S3FileStorage):
     for file_name, _ in TEST_FILES:
         await s3_workspace_with_files.write_file(file_name, "new content")
         assert s3_workspace_with_files.read_file(file_name) == "new content"
 
 
-def test_delete_file(s3_workspace_with_files: S3FileWorkspace):
+def test_delete_file(s3_workspace_with_files: S3FileStorage):
     for file_to_delete, _ in TEST_FILES:
         s3_workspace_with_files.delete_file(file_to_delete)
         with pytest.raises(ClientError):

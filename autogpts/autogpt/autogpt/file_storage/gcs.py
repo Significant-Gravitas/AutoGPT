@@ -14,21 +14,21 @@ from google.cloud.exceptions import NotFound
 
 from autogpt.core.configuration.schema import UserConfigurable
 
-from .base import FileWorkspace, FileWorkspaceConfiguration
+from .base import FileStorage, FileStorageConfiguration
 
 logger = logging.getLogger(__name__)
 
 
-class GCSFileWorkspaceConfiguration(FileWorkspaceConfiguration):
-    bucket: str = UserConfigurable("autogpt", from_env="WORKSPACE_STORAGE_BUCKET")
+class GCSFileStorageConfiguration(FileStorageConfiguration):
+    bucket: str = UserConfigurable("autogpt", from_env="STORAGE_BUCKET")
 
 
-class GCSFileWorkspace(FileWorkspace):
-    """A class that represents a Google Cloud Storage workspace."""
+class GCSFileStorage(FileStorage):
+    """A class that represents a Google Cloud Storage."""
 
     _bucket: storage.Bucket
 
-    def __init__(self, config: GCSFileWorkspaceConfiguration):
+    def __init__(self, config: GCSFileStorageConfiguration):
         self._bucket_name = config.bucket
         self._root = config.root
         assert self._root.is_absolute()

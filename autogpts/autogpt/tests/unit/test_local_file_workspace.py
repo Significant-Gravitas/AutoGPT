@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from autogpt.file_workspace.local import FileWorkspaceConfiguration, LocalFileWorkspace
+from autogpt.file_storage.local import FileStorageConfiguration, LocalFileStorage
 
 _WORKSPACE_ROOT = Path("home/users/monty/auto_gpt_workspace")
 
@@ -61,7 +61,7 @@ def inaccessible_path(request):
 
 
 def test_sanitize_path_accessible(accessible_path, workspace_root):
-    full_path = LocalFileWorkspace._sanitize_path(
+    full_path = LocalFileStorage._sanitize_path(
         accessible_path,
         root=workspace_root,
         restrict_to_root=True,
@@ -72,7 +72,7 @@ def test_sanitize_path_accessible(accessible_path, workspace_root):
 
 def test_sanitize_path_inaccessible(inaccessible_path, workspace_root):
     with pytest.raises(ValueError):
-        LocalFileWorkspace._sanitize_path(
+        LocalFileStorage._sanitize_path(
             inaccessible_path,
             root=workspace_root,
             restrict_to_root=True,
@@ -80,13 +80,13 @@ def test_sanitize_path_inaccessible(inaccessible_path, workspace_root):
 
 
 def test_get_path_accessible(accessible_path, workspace_root):
-    workspace = LocalFileWorkspace(FileWorkspaceConfiguration(root=workspace_root))
+    workspace = LocalFileStorage(FileStorageConfiguration(root=workspace_root))
     full_path = workspace.get_path(accessible_path)
     assert full_path.is_absolute()
     assert full_path.is_relative_to(workspace_root)
 
 
 def test_get_path_inaccessible(inaccessible_path, workspace_root):
-    workspace = LocalFileWorkspace(FileWorkspaceConfiguration(root=workspace_root))
+    workspace = LocalFileStorage(FileStorageConfiguration(root=workspace_root))
     with pytest.raises(ValueError):
         workspace.get_path(inaccessible_path)

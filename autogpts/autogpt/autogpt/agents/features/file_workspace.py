@@ -7,10 +7,10 @@ if TYPE_CHECKING:
 
     from ..base import BaseAgent, Config
 
-from autogpt.file_workspace import (
-    FileWorkspace,
-    FileWorkspaceBackendName,
-    get_workspace,
+from autogpt.file_storage import (
+    FileStorage,
+    FileStorageBackendName,
+    get_storage,
 )
 
 from ..base import AgentFileManager, BaseAgentSettings
@@ -19,7 +19,7 @@ from ..base import AgentFileManager, BaseAgentSettings
 class FileWorkspaceMixin:
     """Mixin that adds workspace support to a class"""
 
-    workspace: FileWorkspace = None
+    workspace: FileStorage = None
     """Workspace that the agent has access to, e.g. for reading/writing files."""
 
     def __init__(self, **kwargs):
@@ -44,9 +44,9 @@ class FileWorkspaceMixin:
         assert state.agent_id, "Cannot attach workspace to anonymous agent"
         app_config: Config = getattr(self, "legacy_config")
 
-        ws_backend = app_config.workspace_backend
-        local = ws_backend == FileWorkspaceBackendName.LOCAL
-        workspace = get_workspace(
+        ws_backend = app_config.file_storage_backend
+        local = ws_backend == FileStorageBackendName.LOCAL
+        workspace = get_storage(
             backend=ws_backend,
             id=state.agent_id if not local else "",
             root_path=state.agent_data_dir / "workspace" if local else None,

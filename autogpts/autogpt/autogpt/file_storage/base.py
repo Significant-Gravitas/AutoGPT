@@ -1,5 +1,5 @@
 """
-The FileWorkspace class provides an interface for interacting with a file workspace.
+The FileStorage class provides an interface for interacting with a file storage.
 """
 from __future__ import annotations
 
@@ -14,13 +14,13 @@ from autogpt.core.configuration.schema import SystemConfiguration
 logger = logging.getLogger(__name__)
 
 
-class FileWorkspaceConfiguration(SystemConfiguration):
+class FileStorageConfiguration(SystemConfiguration):
     restrict_to_root: bool = True
     root: Path = Path("/")
 
 
-class FileWorkspace(ABC):
-    """A class that represents a file workspace."""
+class FileStorage(ABC):
+    """A class that represents a file storage."""
 
     on_write_file: Callable[[Path], Any] | None = None
     """

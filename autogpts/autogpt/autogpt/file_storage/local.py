@@ -1,5 +1,5 @@
 """
-The LocalFileWorkspace class implements a FileWorkspace that works with local files.
+The LocalFileStorage class implements a FileStorage that works with local files.
 """
 from __future__ import annotations
 
@@ -8,15 +8,15 @@ import logging
 from pathlib import Path
 from typing import IO
 
-from .base import FileWorkspace, FileWorkspaceConfiguration
+from .base import FileStorage, FileStorageConfiguration
 
 logger = logging.getLogger(__name__)
 
 
-class LocalFileWorkspace(FileWorkspace):
-    """A class that represents a file workspace."""
+class LocalFileStorage(FileStorage):
+    """A class that represents a file storage."""
 
-    def __init__(self, config: FileWorkspaceConfiguration):
+    def __init__(self, config: FileStorageConfiguration):
         self._root = self._sanitize_path(config.root)
         self._restrict_to_root = config.restrict_to_root
         super().__init__()

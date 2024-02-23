@@ -11,7 +11,7 @@ import autogpt.commands.file_operations as file_ops
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import DuplicateOperationError
 from autogpt.config import Config
-from autogpt.file_workspace import FileWorkspace
+from autogpt.file_storage import FileStorage
 from autogpt.memory.vector.memory_item import MemoryItem
 from autogpt.memory.vector.utils import Embedding
 
@@ -46,7 +46,7 @@ def test_file_name():
 
 
 @pytest.fixture
-def test_file_path(test_file_name: Path, workspace: FileWorkspace):
+def test_file_path(test_file_name: Path, workspace: FileStorage):
     return workspace.get_path(test_file_name)
 
 
@@ -69,12 +69,12 @@ def test_file_with_content_path(test_file: TextIOWrapper, file_content, agent: A
 
 
 @pytest.fixture()
-def test_directory(workspace: FileWorkspace):
+def test_directory(workspace: FileStorage):
     return workspace.get_path("test_directory")
 
 
 @pytest.fixture()
-def test_nested_file(workspace: FileWorkspace):
+def test_nested_file(workspace: FileStorage):
     return workspace.get_path("nested/test_file.txt")
 
 
@@ -255,7 +255,7 @@ async def test_write_file_succeeds_if_content_different(
     await file_ops.write_to_file(test_file_with_content_path, new_content, agent=agent)
 
 
-def test_list_files(workspace: FileWorkspace, test_directory: Path, agent: Agent):
+def test_list_files(workspace: FileStorage, test_directory: Path, agent: Agent):
     # Case 1: Create files A and B, search for A, and ensure we don't return A and B
     file_a = workspace.get_path("file_a.txt")
     file_b = workspace.get_path("file_b.txt")

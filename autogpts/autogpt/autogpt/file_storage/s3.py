@@ -18,7 +18,7 @@ from pydantic import SecretStr
 
 from autogpt.core.configuration.schema import UserConfigurable
 
-from .base import FileWorkspace, FileWorkspaceConfiguration
+from .base import FileStorage, FileStorageConfiguration
 
 if TYPE_CHECKING:
     import mypy_boto3_s3
@@ -26,19 +26,19 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class S3FileWorkspaceConfiguration(FileWorkspaceConfiguration):
-    bucket: str = UserConfigurable("autogpt", from_env="WORKSPACE_STORAGE_BUCKET")
+class S3FileStorageConfiguration(FileStorageConfiguration):
+    bucket: str = UserConfigurable("autogpt", from_env="STORAGE_BUCKET")
     s3_endpoint_url: Optional[SecretStr] = UserConfigurable(
         from_env=lambda: SecretStr(v) if (v := os.getenv("S3_ENDPOINT_URL")) else None
     )
 
 
-class S3FileWorkspace(FileWorkspace):
+class S3FileStorage(FileStorage):
     """A class that represents an S3 workspace."""
 
     _bucket: mypy_boto3_s3.service_resource.Bucket
 
-    def __init__(self, config: S3FileWorkspaceConfiguration):
+    def __init__(self, config: S3FileStorageConfiguration):
         self._bucket_name = config.bucket
         self._root = config.root
         assert self._root.is_absolute()

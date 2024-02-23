@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from autogpt.file_workspace.base import FileWorkspace
+from autogpt.file_storage.base import FileStorage
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class AgentFileManager:
     """A class that represents a workspace for an AutoGPT agent."""
 
-    def __init__(self, agent_data_dir: Path, file_workspace: FileWorkspace):
+    def __init__(self, agent_data_dir: Path, file_workspace: FileStorage):
         self._root = agent_data_dir.resolve()
         self.workspace = file_workspace
         self.workspace.make_dir(self.root)

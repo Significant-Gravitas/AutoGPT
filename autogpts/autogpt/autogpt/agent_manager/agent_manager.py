@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from autogpt.config.config import Config
-from autogpt.file_workspace import get_workspace
-from autogpt.file_workspace.base import FileWorkspace
+from autogpt.file_storage import get_storage
+from autogpt.file_storage.base import FileStorage
 from autogpt.agents.agent import AgentSettings
 
 if TYPE_CHECKING:
@@ -18,12 +18,12 @@ from autogpt.agents.utils.agent_file_manager import AgentFileManager
 class AgentManager:
     def __init__(self, legacy_config: Config):
         self.agents_dir = legacy_config.app_data_dir / "agents"
-        self.workspace: FileWorkspace = None
+        self.workspace: FileStorage = None
         self._setup_workspace(legacy_config)
 
     def _setup_workspace(self, config: Config) -> None:
-        fm_backend = config.file_manager_backend
-        workspace = get_workspace(
+        fm_backend = config.file_storage_backend
+        workspace = get_storage(
             backend=fm_backend,
             root_path=config.app_data_dir,
         )
