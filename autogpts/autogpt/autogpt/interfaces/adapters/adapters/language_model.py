@@ -7,8 +7,9 @@ from typing import Callable, ClassVar, Protocol, Optional, Any
 from pydantic import ConfigDict, BaseModel, Field
 import logging
 
-from AFAAS.configs.schema import SystemConfiguration, Field
-from AFAAS.interfaces.adapters.configuration import (
+from autogpt.core.configuration import SystemConfiguration
+, Field
+from autogpt.interfaces.adapters.configuration import (
     BaseProviderBudget,
     BaseProviderCredentials,
     BaseProviderSettings,

@@ -6,25 +6,25 @@ import AFAAS.prompts.common as common_module
 from pydantic import BaseModel, ConfigDict
 from typing import TYPE_CHECKING, Any
 
-from AFAAS.interfaces.agent.assistants.prompt_manager import AbstractPromptManager , LLMConfig
+from autogpt.interfaces.agent.assistants.prompt_manager import AbstractPromptManager , LLMConfig
 
 from AFAAS.prompts import BaseTaskRagStrategy, load_all_strategies
 
-from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
-from AFAAS.interfaces.adapters.chatmodel.chatmodel import ChatPrompt
-from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
-from AFAAS.interfaces.prompts.strategy import AbstractPromptStrategy
+from autogpt.interfaces.adapters.language_model import AbstractPromptConfiguration
+from autogpt.interfaces.adapters.chatmodel.chatmodel import ChatPrompt
+from autogpt.core.configuration import SystemConfiguration
+from autogpt.interfaces.prompts.strategy import AbstractPromptStrategy
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.prompts.strategy import (
+    from autogpt.interfaces.prompts.strategy import (
     AbstractPromptStrategy)
-    from AFAAS.interfaces.agent.main import BaseAgent
+    from autogpt.interfaces.agent.main import BaseAgent
 
-from AFAAS.interfaces.adapters.chatmodel import (
+from autogpt.interfaces.adapters.chatmodel import (
     AbstractChatModelProvider,
     AbstractChatModelResponse,
 )
-from AFAAS.interfaces.adapters.chatmodel.wrapper import ChatCompletionKwargs, ChatModelWrapper
+from autogpt.interfaces.adapters.chatmodel.wrapper import ChatCompletionKwargs, ChatModelWrapper
 import logging
 from autogpt.adapters.openai.chatmodel import AFAASChatOpenAI
 LOG = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ class SystemInfo(dict):
     api_budget: float
     current_time: str
 
-class BasePromptManager(AgentMixin, AbstractPromptManager):
+class BasePromptManager( AbstractPromptManager):
 
     def __init__(
         self,

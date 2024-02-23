@@ -5,12 +5,12 @@ from typing import Callable, ClassVar, ParamSpec, TypeVar
 
 from openai import AsyncOpenAI
 
-from AFAAS.configs.schema import Field
-from AFAAS.interfaces.adapters.chatmodel import (
+from autogpt.core.configuration import Field
+from autogpt.interfaces.adapters.chatmodel import (
     ChatModelInfo,
 )
-from AFAAS.interfaces.adapters.chatmodel.chatmessage import AbstractChatMessage, AbstractRoleLabels
-from AFAAS.interfaces.adapters.language_model import (
+from autogpt.interfaces.adapters.chatmodel.chatmessage import AbstractChatMessage, AbstractRoleLabels
+from autogpt.interfaces.adapters.language_model import (
     AbstractPromptConfiguration,
     BaseModelProviderBudget,
     BaseModelProviderConfiguration,

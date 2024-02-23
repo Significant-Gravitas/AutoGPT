@@ -1,5 +1,5 @@
 from __future__ import annotations
-from AFAAS.interfaces.adapters.chatmodel.chatmodel import (
+from autogpt.interfaces.adapters.chatmodel.chatmodel import (
     AbstractChatModelProvider,
     AbstractChatModelResponse,
     ChatModelInfo,
@@ -8,7 +8,7 @@ from AFAAS.interfaces.adapters.chatmodel.chatmodel import (
 )
 
 
-from AFAAS.interfaces.adapters.chatmodel.chatmessage import (
+from autogpt.interfaces.adapters.chatmodel.chatmessage import (
     AbstractChatMessage,
     AIMessage,
     ChatMessage,
@@ -20,7 +20,7 @@ from AFAAS.interfaces.adapters.chatmodel.chatmessage import (
     AssistantFunctionCall,
 )
 
-from AFAAS.interfaces.adapters.chatmodel.wrapper import (
+from autogpt.interfaces.adapters.chatmodel.wrapper import (
     ChatCompletionKwargs,
     ChatModelWrapper,
 )

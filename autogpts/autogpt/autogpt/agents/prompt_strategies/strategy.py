@@ -10,21 +10,21 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from langchain_core.messages import ChatMessage, AIMessage
 
 
-from AFAAS.configs.schema import SystemConfiguration
+from autogpt.core.configuration import SystemConfiguration
 
 if TYPE_CHECKING:
-    from AFAAS.interfaces.task.task import AbstractTask
+    from autogpt.interfaces.task.task import AbstractTask
 
-from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
-from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider, AbstractPromptConfiguration
-from AFAAS.interfaces.adapters.chatmodel import  (
+from autogpt.core.configuration import SystemConfiguration
+from autogpt.interfaces.adapters.language_model import AbstractLanguageModelProvider, AbstractPromptConfiguration
+from autogpt.interfaces.adapters.chatmodel import  (
     ChatPrompt,
     AbstractChatModelProvider,
     AbstractChatModelResponse,
     AssistantChatMessage,
     CompletionModelFunction,
 )
-from AFAAS.interfaces.prompts.utils.utils import (
+from autogpt.interfaces.utils import (
     indent,
     json_loads,
     to_dotted_list,
@@ -96,7 +96,7 @@ class PromptStrategiesConfiguration(SystemConfiguration):
     # presence_penalty: Optional[float] = None  # Avoid certain subjects
 
 
-class AbstractPromptStrategy(AgentMixin, abc.ABC):
+class AbstractPromptStrategy( abc.ABC):
     STRATEGY_NAME: str
     default_configuration: PromptStrategiesConfiguration
 

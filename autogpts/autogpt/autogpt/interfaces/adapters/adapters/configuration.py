@@ -3,7 +3,8 @@ import abc
 from pydantic import BaseModel, SecretBytes, SecretStr
 
 from AFAAS.configs.config import SystemSettings, UserConfigurable
-from AFAAS.configs.schema import SystemConfiguration, update_model_config
+from autogpt.core.configuration import SystemConfiguration
+, update_model_config
 from pydantic import  ConfigDict
 from pydantic.fields import Field
 

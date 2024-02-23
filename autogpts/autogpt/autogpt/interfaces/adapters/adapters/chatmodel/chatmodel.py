@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from AFAAS.interfaces.adapters.language_model import (
+from autogpt.interfaces.adapters.language_model import (
     AbstractLanguageModelProvider,
     BaseModelInfo,
     BaseModelResponse,
@@ -31,7 +31,7 @@ import logging
 LOG = logging.getLogger(__name__)
 
 from langchain_core.messages import ChatMessage
-from AFAAS.interfaces.adapters.chatmodel.chatmessage import AssistantChatMessage
+from autogpt.interfaces.adapters.chatmodel.chatmessage import AssistantChatMessage
 
 
 class CompletionModelFunction(BaseModel):

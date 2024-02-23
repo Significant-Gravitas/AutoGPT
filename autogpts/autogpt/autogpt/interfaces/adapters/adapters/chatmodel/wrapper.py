@@ -1,13 +1,13 @@
 from pydantic import BaseModel
-from AFAAS.interfaces.adapters.chatmodel.chatmodel import LOG, _RetryHandler, AbstractChatModelProvider, AbstractChatModelResponse, CompletionModelFunction
-from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
+from autogpt.interfaces.adapters.chatmodel.chatmodel import LOG, _RetryHandler, AbstractChatModelProvider, AbstractChatModelResponse, CompletionModelFunction
+from autogpt.interfaces.adapters.language_model import AbstractPromptConfiguration
 
 from typing import (
     Callable,
     TypeVar,
     Optional
 )
-from AFAAS.interfaces.adapters.chatmodel.chatmessage import AssistantChatMessage
+from autogpt.interfaces.adapters.chatmodel.chatmessage import AssistantChatMessage
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import ChatMessage

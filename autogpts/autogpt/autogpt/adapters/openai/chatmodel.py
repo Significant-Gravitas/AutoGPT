@@ -14,14 +14,14 @@ from autogpt.adapters.openai.configuration import (
 )
 
 from langchain_core.messages  import AIMessage , ChatMessage
-from AFAAS.configs.schema import Configurable
-from AFAAS.interfaces.adapters.chatmodel.chatmodel import (
+from autogpt.core.configuration import Configurable
+from autogpt.interfaces.adapters.chatmodel.chatmodel import (
     AbstractChatModelProvider,
     AbstractChatModelResponse,
     AssistantChatMessage,
     CompletionModelFunction,
 )
-from AFAAS.interfaces.adapters.language_model import  ModelTokenizer, BaseModelResponse
+from autogpt.interfaces.adapters.language_model import  ModelTokenizer, BaseModelResponse
 import logging
 
 LOG = logging.getLogger(__name__)
