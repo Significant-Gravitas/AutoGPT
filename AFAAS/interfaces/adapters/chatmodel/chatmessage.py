@@ -66,8 +66,8 @@ class AbstractChatMessage(abc.ABC, BaseModel):
         else:
             raise ValueError(f"Unknown message type: {type(message)}")
 
-    def dict(self, **kwargs):
-        d = super().dict(**kwargs)
+    def model_dump(self, **kwargs):
+        d = super().model_dump(**kwargs)
         d["role"] = self.role
         return d
 

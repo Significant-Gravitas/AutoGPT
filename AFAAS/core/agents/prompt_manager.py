@@ -88,7 +88,7 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
 
     def load_strategy(self, strategy_module_attr : type) : 
         if isinstance(strategy_module_attr, type) and issubclass(strategy_module_attr, AbstractPromptStrategy) and strategy_module_attr not in (AbstractPromptStrategy, BaseTaskRagStrategy):
-            self.add_strategy( strategy_module_attr(**strategy_module_attr.default_configuration.dict()))
+            self.add_strategy( strategy_module_attr(**strategy_module_attr.default_configuration.model_dump()))
 
     async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse:
         if strategy_name not in self._prompt_strategies:
@@ -141,7 +141,7 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
                 temperature= self.config.default_temperature
             )
 
-        model_configuration_dict = model_configuration.dict()
+        model_configuration_dict = model_configuration.model_dump()
         LOG.trace(f"Using model configuration: {model_configuration_dict}")
 
         # FIXME : Check if Removable

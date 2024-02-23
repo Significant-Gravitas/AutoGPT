@@ -52,9 +52,9 @@ class CompletionModelFunction(BaseModel):
                     cleaned_data[key] = value
         return cleaned_data
 
-    def dict(self, *args, **kwargs):
-        # Call the parent class's dict() method to get the original dictionary
-        data = super().dict(*args, **kwargs)
+    def model_dump(self, *args, **kwargs):
+        # Call the parent class's model_dump() method to get the original dictionary
+        data = super().model_dump(*args, **kwargs)
 
         # Remove entries with None values recursively
         cleaned_data = self._remove_none_entries(data)
