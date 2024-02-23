@@ -34,7 +34,7 @@ class S3FileStorageConfiguration(FileStorageConfiguration):
 
 
 class S3FileStorage(FileStorage):
-    """A class that represents an S3 workspace."""
+    """A class that represents an S3 storage."""
 
     _bucket: mypy_boto3_s3.service_resource.Bucket
 
@@ -55,7 +55,7 @@ class S3FileStorage(FileStorage):
 
     @property
     def root(self) -> Path:
-        """The root directory of the file workspace."""
+        """The root directory of the file storage."""
         return self._root
 
     @property
@@ -86,16 +86,16 @@ class S3FileStorage(FileStorage):
         return obj
 
     def open_file(self, path: str | Path, binary: bool = False) -> IOBase:
-        """Open a file in the workspace."""
+        """Open a file in the storage."""
         obj = self._get_obj(path)
         return obj.get()["Body"] if binary else TextIOWrapper(obj.get()["Body"])
 
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
-        """Read a file in the workspace."""
+        """Read a file in the storage."""
         return self.open_file(path, binary).read()
 
     async def write_file(self, path: str | Path, content: str | bytes) -> None:
-        """Write to a file in the workspace."""
+        """Write to a file in the storage."""
         obj = self._get_obj(path)
         obj.put(Body=content)
 
@@ -108,7 +108,7 @@ class S3FileStorage(FileStorage):
                 await res
 
     def list(self, path: str | Path = ".") -> list[Path]:
-        """List all files (recursively) in a directory in the workspace."""
+        """List all files (recursively) in a directory in the storage."""
         path = self.get_path(path)
         if path == Path("."):  # root level of bucket
             return [Path(obj.key) for obj in self._bucket.objects.all()]
@@ -117,27 +117,57 @@ class S3FileStorage(FileStorage):
                 Path(obj.key).relative_to(path)
                 for obj in self._bucket.objects.filter(Prefix=f"{path}/")
             ]
+        
+    def list_folders(self, path: str | Path = ".", recursive: bool = False) -> list[Path]:
+        """List 'directories' directly in a given path or recursively in the storage."""
+        path_str = str(path)
+        prefix = f"{path_str.strip('/')}/" if path_str != "." else ""
+        delimiter = '/' if not recursive else None
+
+        # Initialize an empty set to hold unique folder names
+        folder_names = set()
+
+        # List objects with the specified prefix and delimiter
+        for obj_summary in self.bucket.objects.filter(Prefix=prefix, Delimiter=delimiter):
+            if delimiter:
+                # If a delimiter is used, we're not listing recursively, so include common prefixes
+                response = obj_summary.bucket.meta.client.list_objects_v2(
+                    Bucket=self.bucket.name, Prefix=prefix, Delimiter=delimiter)
+                for prefix_info in response.get('CommonPrefixes', []):
+                    folder_names.add(Path(prefix_info['Prefix']).relative_to(Path(prefix)).parent)
+            else:
+                # For a recursive list, add all unique 'folder' paths by splitting object keys
+                folder_path = Path(obj_summary.key).parent
+                if folder_path != Path(prefix).parent:
+                    folder_names.add(folder_path.relative_to(Path(prefix).parent))
+
+        return list(folder_names)
 
     def delete_file(self, path: str | Path) -> None:
-        """Delete a file in the workspace."""
+        """Delete a file in the storage."""
         path = self.get_path(path)
         obj = self._s3.Object(self._bucket_name, str(path))
         obj.delete()
 
     def exists(self, path: str | Path) -> bool:
-        """Check if a file exists in the workspace."""
-        obj = self._get_obj(path)
+        """Check if a file or folder exists in S3 storage."""
+        path_str = str(path)
+        # Check for exact object match (file)
+        obj = self._bucket.Object(path_str)
         try:
-            obj.load()
+            obj.load()  # Will succeed if the object exists
             return True
         except botocore.exceptions.ClientError as e:
             if int(e.response['ResponseMetadata']['HTTPStatusCode']) == 404:
-                return False
+                # If the object does not exist, check for objects with the prefix (folder)
+                prefix = f"{path_str.rstrip('/')}/"
+                objs = list(self._bucket.objects.filter(Prefix=prefix, MaxKeys=1))
+                return len(objs) > 0  # True if any objects exist with the prefix
             else:
-                raise
+                raise  # Re-raise for any other client errors
     
     def make_dir(self, path: str | Path) -> None:
-        """Create a directory in the workspace if doesn't exist."""
+        """Create a directory in the storage if doesn't exist."""
         # S3 does not have directories, so we don't need to do anything
         pass
 

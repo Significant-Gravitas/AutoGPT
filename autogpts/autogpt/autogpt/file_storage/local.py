@@ -23,7 +23,7 @@ class LocalFileStorage(FileStorage):
 
     @property
     def root(self) -> Path:
-        """The root directory of the file workspace."""
+        """The root directory of the file storage."""
         return self._root
 
     @property
@@ -35,7 +35,7 @@ class LocalFileStorage(FileStorage):
         self.root.mkdir(exist_ok=True, parents=True)
 
     def open_file(self, path: str | Path, binary: bool = False) -> IO:
-        """Open a file in the workspace."""
+        """Open a file in the storage."""
         return self._open_file(path, "rb" if binary else "r")
 
     def _open_file(self, path: str | Path, mode: str = "r") -> IO:
@@ -43,12 +43,12 @@ class LocalFileStorage(FileStorage):
         return open(full_path, mode)  # type: ignore
 
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
-        """Read a file in the workspace."""
+        """Read a file in the storage."""
         with self._open_file(path, "rb" if binary else "r") as file:
             return file.read()
 
     async def write_file(self, path: str | Path, content: str | bytes) -> None:
-        """Write to a file in the workspace."""
+        """Write to a file in the storage."""
         with self._open_file(path, "wb" if type(content) is bytes else "w") as file:
             file.write(content)
 
@@ -61,20 +61,28 @@ class LocalFileStorage(FileStorage):
                 await res
 
     def list(self, path: str | Path = ".") -> list[Path]:
-        """List all files (recursively) in a directory in the workspace."""
+        """List all files (recursively) in a directory in the storage."""
         path = self.get_path(path)
         return [file.relative_to(path) for file in path.rglob("*") if file.is_file()]
+    
+    def list_folders(self, path: str | Path = ".", recursive: bool = False) -> list[Path]:
+        """List directories directly in a given path or recursively."""
+        path = self.get_path(path)
+        if recursive:
+            return [folder.relative_to(path) for folder in path.rglob("*") if folder.is_dir()]
+        else:
+            return [folder.relative_to(path) for folder in path.iterdir() if folder.is_dir()]
 
     def delete_file(self, path: str | Path) -> None:
-        """Delete a file in the workspace."""
+        """Delete a file in the storage."""
         full_path = self.get_path(path)
         full_path.unlink()
 
     def exists(self, path: str | Path) -> bool:
-        """Check if a file exists in the workspace."""
+        """Check if a file or folder exists in the storage."""
         return self.get_path(path).exists()
 
     def make_dir(self, path: str | Path) -> None:
-        """Create a directory in the workspace if doesn't exist."""
+        """Create a directory in the storage if doesn't exist."""
         full_path = self.get_path(path)
         full_path.mkdir(exist_ok=True, parents=True)

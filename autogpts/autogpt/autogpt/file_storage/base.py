@@ -27,23 +27,23 @@ class FileStorage(ABC):
     Event hook, executed after writing a file.
 
     Params:
-        Path: The path of the file that was written, relative to the workspace root.
+        Path: The path of the file that was written, relative to the storage root.
     """
 
     @property
     @abstractmethod
     def root(self) -> Path:
-        """The root path of the file workspace."""
+        """The root path of the file storage."""
 
     @property
     @abstractmethod
     def restrict_to_root(self) -> bool:
-        """Whether to restrict file access to within the workspace's root path."""
+        """Whether to restrict file access to within the storage's root path."""
 
     @abstractmethod
     def initialize(self) -> None:
         """
-        Calling `initialize()` should bring the workspace to a ready-to-use state.
+        Calling `initialize()` should bring the storage to a ready-to-use state.
         For example, it can create the resource in which files will be stored, if it
         doesn't exist yet. E.g. a folder on disk, or an S3 Bucket.
         """
@@ -69,47 +69,51 @@ class FileStorage(ABC):
     @overload
     @abstractmethod
     def read_file(self, path: str | Path, binary: Literal[False] = False) -> str:
-        """Read a file in the workspace as text."""
+        """Read a file in the storage as text."""
         ...
 
     @overload
     @abstractmethod
     def read_file(self, path: str | Path, binary: Literal[True] = True) -> bytes:
-        """Read a file in the workspace as binary."""
+        """Read a file in the storage as binary."""
         ...
 
     @abstractmethod
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
-        """Read a file in the workspace."""
+        """Read a file in the storage."""
 
     @abstractmethod
     async def write_file(self, path: str | Path, content: str | bytes) -> None:
-        """Write to a file in the workspace."""
+        """Write to a file in the storage."""
 
     @abstractmethod
     def list(self, path: str | Path = ".") -> list[Path]:
-        """List all files (recursively) in a directory in the workspace."""
+        """List all files (recursively) in a directory in the storage."""
+
+    @abstractmethod
+    def list_folders(self, path: str | Path = ".", recursive: bool = False) -> list[Path]:
+        """List all folders in a directory in the storage."""
 
     @abstractmethod
     def delete_file(self, path: str | Path) -> None:
-        """Delete a file in the workspace."""
+        """Delete a file in the storage."""
 
     @abstractmethod
     def exists(self, path: str | Path) -> bool:
-        """Check if a file exists in the workspace."""
+        """Check if a file or folder exists in the storage."""
 
     @abstractmethod
     def make_dir(self, path: str | Path) -> None:
-        """Create a directory in the workspace if doesn't exist."""
+        """Create a directory in the storage if doesn't exist."""
 
     def get_path(self, relative_path: str | Path) -> Path:
-        """Get the full path for an item in the workspace.
+        """Get the full path for an item in the storage.
 
         Parameters:
-            relative_path: The relative path to resolve in the workspace.
+            relative_path: The relative path to resolve in the storage.
 
         Returns:
-            Path: The resolved path relative to the workspace.
+            Path: The resolved path relative to the storage.
         """
         return self._sanitize_path(relative_path, self.root)
 
@@ -143,13 +147,13 @@ class FileStorage(ABC):
         if root is None:
             return Path(relative_path).resolve()
 
-        logger.debug(f"Resolving path '{relative_path}' in workspace '{root}'")
+        logger.debug(f"Resolving path '{relative_path}' in storage '{root}'")
 
         root, relative_path = Path(root).resolve(), Path(relative_path)
 
         logger.debug(f"Resolved root as '{root}'")
 
-        # Allow absolute paths if they are contained in the workspace.
+        # Allow absolute paths if they are contained in the storage.
         if (
             relative_path.is_absolute()
             and restrict_to_root
@@ -157,7 +161,7 @@ class FileStorage(ABC):
         ):
             raise ValueError(
                 f"Attempted to access absolute path '{relative_path}' "
-                f"in workspace '{root}'."
+                f"in storage '{root}'."
             )
 
         full_path = root.joinpath(relative_path).resolve()
@@ -166,7 +170,7 @@ class FileStorage(ABC):
 
         if restrict_to_root and not full_path.is_relative_to(root):
             raise ValueError(
-                f"Attempted to access path '{full_path}' outside of workspace '{root}'."
+                f"Attempted to access path '{full_path}' outside of storage '{root}'."
             )
 
         return full_path

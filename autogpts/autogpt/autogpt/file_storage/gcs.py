@@ -38,7 +38,7 @@ class GCSFileStorage(FileStorage):
 
     @property
     def root(self) -> Path:
-        """The root directory of the file workspace."""
+        """The root directory of the file storage."""
         return self._root
 
     @property
@@ -62,17 +62,17 @@ class GCSFileStorage(FileStorage):
         return self._bucket.blob(str(path))
 
     def open_file(self, path: str | Path, binary: bool = False) -> IOBase:
-        """Open a file in the workspace."""
+        """Open a file in the storage."""
         blob = self._get_blob(path)
         blob.reload()  # pin revision number to prevent version mixing while reading
         return blob.open("rb" if binary else "r")
 
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
-        """Read a file in the workspace."""
+        """Read a file in the storage."""
         return self.open_file(path, binary).read()
 
     async def write_file(self, path: str | Path, content: str | bytes) -> None:
-        """Write to a file in the workspace."""
+        """Write to a file in the storage."""
         blob = self._get_blob(path)
 
         blob.upload_from_string(
@@ -94,7 +94,7 @@ class GCSFileStorage(FileStorage):
                 await res
 
     def list(self, path: str | Path = ".") -> list[Path]:
-        """List all files (recursively) in a directory in the workspace."""
+        """List all files (recursively) in a directory in the storage."""
         path = self.get_path(path)
         return [
             Path(blob.name).relative_to(path)
@@ -102,21 +102,40 @@ class GCSFileStorage(FileStorage):
                 prefix=f"{path}/" if path != Path(".") else None
             )
         ]
+    
+    def list_folders(self, path: str | Path = ".", recursive: bool = False) -> list[Path]:
+        """List 'directories' directly in a given path or recursively in the storage."""
+        path = str(path)
+        prefix = f"{path}/" if path != "." else ""
+        delimiter = '/' if not recursive else None
+        iterator = self._bucket.list_blobs(prefix=prefix, delimiter=delimiter)
+        prefixes = set()
+        for page in iterator.pages:
+            prefixes.update(page.prefixes)
+        return [Path(p).relative_to(Path(prefix)) for p in prefixes]
 
     def delete_file(self, path: str | Path) -> None:
-        """Delete a file in the workspace."""
+        """Delete a file in the storage."""
         path = self.get_path(path)
         blob = self._bucket.blob(str(path))
         blob.delete()
 
     def exists(self, path: str | Path) -> bool:
-        """Check if a file exists in the workspace."""
-        path = self.get_path(path)
+        """Check if a file or folder exists in GCS storage."""
+        path = self.get_path(path)  # Assuming this method returns a Path object or a string path
+        # Check for exact blob match (file)
         blob = self._bucket.blob(str(path))
-        return blob.exists()
+        if blob.exists():
+            return True
+        # Check for any blobs with prefix (folder)
+        prefix = f"{str(path).rstrip('/')}/"
+        blobs = self._bucket.list_blobs(prefix=prefix, max_results=1)
+        for _ in blobs:
+            return True  # If there is at least one object, the folder exists
+        return False
     
     def make_dir(self, path: str | Path) -> None:
-        """Create a directory in the workspace if doesn't exist."""
+        """Create a directory in the storage if doesn't exist."""
         # GCS does not have directories, so we don't need to do anything
         pass
 
