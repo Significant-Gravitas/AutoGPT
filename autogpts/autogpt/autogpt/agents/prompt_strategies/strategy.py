@@ -32,10 +32,11 @@ from AFAAS.interfaces.prompts.utils.utils import (
     to_numbered_list,
     to_string_list,
 )
-from AFAAS.lib.utils.json_schema import JSONSchema
-from AFAAS.lib.sdk.logger import AFAASLogger
+from autogpt.core.utils.json_schema import JSONSchema
 
-LOG = AFAASLogger(name=__name__)
+import logging
+
+LOG = logging.getLogger(__name__)
 RESPONSE_SCHEMA = JSONSchema(
     type=JSONSchema.Type.OBJECT,
     properties={

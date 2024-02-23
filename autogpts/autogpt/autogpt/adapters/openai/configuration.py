@@ -20,9 +20,9 @@ from AFAAS.interfaces.adapters.language_model import (
     ModelProviderName,
     ModelProviderService,
 )
-from AFAAS.lib.sdk.logger import AFAASLogger
+import logging
 
-LOG = AFAASLogger(name=__name__)
+LOG = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")

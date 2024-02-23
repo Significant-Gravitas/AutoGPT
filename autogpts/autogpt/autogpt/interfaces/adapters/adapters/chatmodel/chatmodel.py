@@ -22,13 +22,13 @@ from AFAAS.interfaces.adapters.language_model import (
     ModelProviderService,
     AbstractPromptConfiguration,
 )
-from AFAAS.lib.utils.json_schema import JSONSchema
+from autogpt.core.utils.json_schema import JSONSchema
 
 
 from openai import APIError, RateLimitError
 from openai.resources import AsyncCompletions
-from AFAAS.lib.sdk.logger import AFAASLogger
-LOG = AFAASLogger(name=__name__)
+import logging
+LOG = logging.getLogger(__name__)
 
 from langchain_core.messages import ChatMessage
 from AFAAS.interfaces.adapters.chatmodel.chatmessage import AssistantChatMessage

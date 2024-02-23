@@ -25,9 +25,9 @@ from AFAAS.interfaces.adapters.chatmodel import (
     AbstractChatModelResponse,
 )
 from AFAAS.interfaces.adapters.chatmodel.wrapper import ChatCompletionKwargs, ChatModelWrapper
-from AFAAS.lib.sdk.logger import AFAASLogger
-from AFAAS.core.adapters.openai.chatmodel import AFAASChatOpenAI
-LOG = AFAASLogger(name=__name__)
+import logging
+from autogpt.adapters.openai.chatmodel import AFAASChatOpenAI
+LOG = logging.getLogger(__name__)
 
 
 # FIXME: Find somewhere more appropriate

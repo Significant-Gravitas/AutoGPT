@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, ParamSpec, Tuple, TypeVar
 import tiktoken
 from openai.resources import AsyncCompletions
 
-from AFAAS.core.adapters.openai.configuration import (
+from autogpt.adapters.openai.configuration import (
     OPEN_AI_CHAT_MODELS,
     OPEN_AI_DEFAULT_CHAT_CONFIGS,
     OPEN_AI_MODELS,
@@ -22,9 +22,9 @@ from AFAAS.interfaces.adapters.chatmodel.chatmodel import (
     CompletionModelFunction,
 )
 from AFAAS.interfaces.adapters.language_model import  ModelTokenizer, BaseModelResponse
-from AFAAS.lib.sdk.logger import AFAASLogger
+import logging
 
-LOG = AFAASLogger(name=__name__)
+LOG = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")

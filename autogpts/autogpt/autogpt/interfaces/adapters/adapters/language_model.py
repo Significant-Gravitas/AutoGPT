@@ -5,7 +5,7 @@ import enum
 from typing import Callable, ClassVar, Protocol, Optional, Any
 
 from pydantic import ConfigDict, BaseModel, Field
-from AFAAS.lib.sdk.logger import AFAASLogger
+import logging
 
 from AFAAS.configs.schema import SystemConfiguration, Field
 from AFAAS.interfaces.adapters.configuration import (
@@ -15,7 +15,7 @@ from AFAAS.interfaces.adapters.configuration import (
     BaseProviderUsage,
 )
 
-LOG = AFAASLogger(name=__name__)
+LOG = logging.getLogger(__name__)
 
 class ModelProviderService(str, enum.Enum):
     """A ModelService describes what kind of service the model provides."""

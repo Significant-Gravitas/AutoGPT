@@ -3,10 +3,10 @@ import abc
 import enum
 from typing import ClassVar, Optional, Literal
 from pydantic import BaseModel
-from AFAAS.lib.sdk.logger import AFAASLogger
+import logging
 from langchain_core.messages import ChatMessage, HumanMessage, SystemMessage, AIMessage, FunctionMessage
 
-LOG = AFAASLogger(name=__name__)
+LOG = logging.getLogger(__name__)
 
 class AbstractRoleLabels(abc.ABC, BaseModel):
     USER: str
