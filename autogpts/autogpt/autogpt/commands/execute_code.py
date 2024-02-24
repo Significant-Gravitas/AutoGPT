@@ -24,8 +24,6 @@ from autogpt.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
 
-import shlex
-
 COMMAND_CATEGORY = "execute_code"
 COMMAND_CATEGORY_TITLE = "Execute Code"
 
@@ -272,7 +270,7 @@ def execute_shell(command_line: str, agent: Agent) -> str:
     Returns:
         str: The output of the command
     """
-    
+
     current_dir = Path.cwd()
     # Change dir into workspace if necessary
     if not current_dir.is_relative_to(agent.workspace.root):
@@ -283,7 +281,7 @@ def execute_shell(command_line: str, agent: Agent) -> str:
     )
 
     if agent.legacy_config.shell_command_control in [
-        ALLOWLIST_CONTROL, DENYLIST_CONTROL]:
+            ALLOWLIST_CONTROL, DENYLIST_CONTROL]:
         if not validate_command(command_line, agent.legacy_config):
             logger.info(f"Command '{command_line}' not allowed")
             raise OperationNotAllowedError("This shell command is not allowed.")
@@ -336,11 +334,11 @@ def execute_shell_popen(command_line: str, agent: Agent) -> str:
 
     do_not_show_output = subprocess.DEVNULL
     if agent.legacy_config.shell_command_control in [
-        ALLOWLIST_CONTROL, DENYLIST_CONTROL]:
+            ALLOWLIST_CONTROL, DENYLIST_CONTROL]:
         if not validate_command(command_line, agent.legacy_config):
             logger.info(f"Command '{command_line}' not allowed")
             raise OperationNotAllowedError("This shell command is not allowed.")
-    
+
         process = subprocess.Popen(
             shlex.split(command_line), shell=False,
             stdout=do_not_show_output, stderr=do_not_show_output
