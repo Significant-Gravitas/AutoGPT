@@ -23,6 +23,8 @@ from autogpt.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
 
+import shlex
+
 COMMAND_CATEGORY = "execute_code"
 COMMAND_CATEGORY_TITLE = "Execute Code"
 
@@ -237,7 +239,7 @@ def validate_command(command: str, config: Config) -> bool:
     if not command:
         return False
 
-    command_name = command.split()[0]
+    command_name = shlex.split(command)[0]
 
     if config.shell_command_control == ALLOWLIST_CONTROL:
         return command_name in config.shell_allowlist
@@ -269,10 +271,7 @@ def execute_shell(command_line: str, agent: Agent) -> str:
     Returns:
         str: The output of the command
     """
-    if not validate_command(command_line, agent.legacy_config):
-        logger.info(f"Command '{command_line}' not allowed")
-        raise OperationNotAllowedError("This shell command is not allowed.")
-
+    
     current_dir = Path.cwd()
     # Change dir into workspace if necessary
     if not current_dir.is_relative_to(agent.workspace.root):
@@ -282,7 +281,13 @@ def execute_shell(command_line: str, agent: Agent) -> str:
         f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
     )
 
-    result = subprocess.run(command_line, capture_output=True, shell=True)
+    if agent.legacy_config.shell_command_control in [ALLOWLIST_CONTROL, DENYLIST_CONTROL]:
+        if not validate_command(command_line, agent.legacy_config):
+            logger.info(f"Command '{command_line}' not allowed")
+            raise OperationNotAllowedError("This shell command is not allowed.")
+        result = subprocess.run(shlex.split(command_line), capture_output=True, shell=False)
+    else:
+        result = subprocess.run(command_line, capture_output=True, shell=True)
     output = f"STDOUT:\n{result.stdout.decode()}\nSTDERR:\n{result.stderr.decode()}"
 
     # Change back to whatever the prior working dir was
@@ -316,9 +321,6 @@ def execute_shell_popen(command_line: str, agent: Agent) -> str:
     Returns:
         str: Description of the fact that the process started and its id
     """
-    if not validate_command(command_line, agent.legacy_config):
-        logger.info(f"Command '{command_line}' not allowed")
-        raise OperationNotAllowedError("This shell command is not allowed.")
 
     current_dir = Path.cwd()
     # Change dir into workspace if necessary
@@ -330,9 +332,19 @@ def execute_shell_popen(command_line: str, agent: Agent) -> str:
     )
 
     do_not_show_output = subprocess.DEVNULL
-    process = subprocess.Popen(
-        command_line, shell=True, stdout=do_not_show_output, stderr=do_not_show_output
-    )
+    if agent.legacy_config.shell_command_control in [ALLOWLIST_CONTROL, DENYLIST_CONTROL]:
+        if not validate_command(command_line, agent.legacy_config):
+            logger.info(f"Command '{command_line}' not allowed")
+            raise OperationNotAllowedError("This shell command is not allowed.")
+    
+        process = subprocess.Popen(
+            shlex.split(command_line), shell=False, stdout=do_not_show_output, stderr=do_not_show_output
+        )
+
+    else:
+        process = subprocess.Popen(
+            command_line, shell=True, stdout=do_not_show_output, stderr=do_not_show_output
+        )
 
     # Change back to whatever the prior working dir was
     os.chdir(current_dir)
