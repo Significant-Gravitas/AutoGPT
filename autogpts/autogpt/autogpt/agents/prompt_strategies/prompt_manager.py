@@ -26,7 +26,7 @@ from autogpt.interfaces.adapters.chatmodel import (
 )
 from autogpt.interfaces.adapters.chatmodel.wrapper import ChatCompletionKwargs, ChatModelWrapper
 import logging
-from autogpt.adapters.openai.chatmodel import AFAASChatOpenAI
+from autogpt.adapters.openai.chatmodel import ChatOpenAIAdapter
 LOG = logging.getLogger(__name__)
 
 
@@ -42,10 +42,10 @@ class BasePromptManager( AbstractPromptManager):
     def __init__(
         self,
         config : LLMConfig = LLMConfig(
-            default = AFAASChatOpenAI(),
-            cheap = AFAASChatOpenAI(),
-            long_context = AFAASChatOpenAI(),
-            code_expert = AFAASChatOpenAI(),
+            default = ChatOpenAIAdapter(),
+            cheap = ChatOpenAIAdapter(),
+            long_context = ChatOpenAIAdapter(),
+            code_expert = ChatOpenAIAdapter(),
         ),
     ) -> None:
         self._prompt_strategies = {}

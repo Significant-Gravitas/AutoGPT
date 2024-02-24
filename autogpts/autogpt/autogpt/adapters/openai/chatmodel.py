@@ -1,5 +1,5 @@
 import os
-from typing import Any, Callable, Dict, ParamSpec, Tuple, TypeVar
+from typing import Any, Callable, Dict, ParamSpec, Tuple, TypeVar, Optional
 
 import tiktoken
 from openai.resources import AsyncCompletions
@@ -21,7 +21,7 @@ from autogpt.interfaces.adapters.chatmodel.chatmodel import (
     AssistantChatMessage,
     CompletionModelFunction,
 )
-from autogpt.interfaces.adapters.language_model import  ModelTokenizer, BaseModelResponse
+from autogpt.interfaces.adapters.language_model import  ModelTokenizer, LanguageModelResponse
 import logging
 
 LOG = logging.getLogger(__name__)
@@ -29,20 +29,29 @@ LOG = logging.getLogger(__name__)
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
+# Example : LangChain Client
+from langchain_openai import ChatOpenAI
+from langchain_community.callbacks import get_openai_callback, OpenAICallbackHandler
 
-class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
+# Example : OAClient : 
+# from openai import AsyncOpenAI
 
-    def __llmmodel_default__(self) :
-        return "gpt-3.5-turbo"
+class ChatOpenAIAdapter(Configurable[OpenAISettings], AbstractChatModelProvider): 
 
-    def __llmmodel_cheap__(self) :
-        return "gpt-3.5-turbo"
+    # Example : LangChain Client
+    callback : Optional[OpenAICallbackHandler] = None
+    llm_api_client = ChatOpenAI()
 
-    def __llmmodel_code_expert_model__(self) :
-        return "gpt-3.5-turbo"
+    # Example : OAClient : 
+    # llm_model = = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-    def __llmmodel_long_context_model__(self) :
-        return "gpt-3.5-turbo"
+    llmmodel_default : str = "gpt-3.5-turbo"
+    llmmodel_fine_tuned : str = "gpt-3.5-turbo"
+    llmmodel_cheap : str = "gpt-3.5-turbo"
+    llmmodel_code_expert_model : str = "gpt-3.5-turbo"
+    llmmodel_long_context_model : str = "gpt-3.5-turbo"
+
+
 
     def __init__(
         self,
@@ -112,7 +121,7 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         self, response: AsyncCompletions, model_name: str
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         if (isinstance(response, AsyncCompletions)) : 
-            response_args = BaseModelResponse(
+            response_args = LanguageModelResponse(
                 llm_model_info=OPEN_AI_CHAT_MODELS[model_name],
                 prompt_tokens=response.usage.prompt_tokens,
                 completion_tokens=response.usage.completion_tokens,
@@ -120,7 +129,7 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
             #response_message = response.choices[0].message.model_dump()
         elif (isinstance(response, AIMessage)) :
             # AGPT retro compatibility
-            response_args = BaseModelResponse(
+            response_args = LanguageModelResponse(
                 llm_model_info=OPEN_AI_CHAT_MODELS[model_name],
                 prompt_tokens= self.callback.prompt_tokens,
                 completion_tokens= self.callback.completion_tokens,
@@ -167,9 +176,6 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
     def __repr__(self):
         return "OpenAIProvider()"
 
-    def has_oa_tool_calls_api(self, model_name: str) -> bool:
-        return True # Always True for OpenAI
-
     def get_default_config(self) -> OpenAIPromptConfiguration:
         LOG.warning(f"Using {__class__.__name__} default config, we recommend setting individual model configs")
         return OPEN_AI_DEFAULT_CHAT_CONFIGS.SMART_MODEL_32K
@@ -212,16 +218,9 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
         self, messages: list[ChatMessage], *_, **llm_kwargs
     ) -> AsyncCompletions: 
 
-        # Example : LangChain Client
-        from langchain_community.callbacks import get_openai_callback, OpenAICallbackHandler
-        from langchain_openai import ChatOpenAI
-        self.callback : OpenAICallbackHandler
-        self.llm_model = ChatOpenAI() #model = "gpt-3.5-turbo" , temperature=0.5 )
         with get_openai_callback() as callback:
             self.callback : OpenAICallbackHandler = callback
-            return await self.llm_model.ainvoke(input = messages , **llm_kwargs)
+            return await self.llm_api_client.ainvoke(input = messages , **llm_kwargs)
 
         # Example : OAClient : 
-        # aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
-        # self.llm_model = aclient.chat
-        # return await aclient.chat.completions.create( messages=messages, **llm_kwargs )
+        # return await self.llm_api_client.chat.completions.create( messages=messages, **llm_kwargs )
