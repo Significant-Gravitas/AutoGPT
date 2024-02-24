@@ -12,10 +12,10 @@ from AFAAS.interfaces.adapters.chatmodel import (
 from AFAAS.interfaces.adapters.chatmodel.chatmessage import AbstractChatMessage, AbstractRoleLabels
 from AFAAS.interfaces.adapters.language_model import (
     AbstractPromptConfiguration,
-    BaseModelProviderBudget,
-    BaseModelProviderConfiguration,
+    LanguageModelProviderBudget,
+    LanguageModelProviderConfiguration,
     BaseModelProviderCredentials,
-    BaseModelProviderSettings,
+    LanguageModelProviderSettings,
     BaseModelProviderUsage,
     ModelProviderName,
     ModelProviderService,
@@ -62,7 +62,6 @@ OPEN_AI_CHAT_MODELS = {
             prompt_token_cost=0.0015 / 1000,
             completion_token_cost=0.002 / 1000,
             max_tokens=4096,
-            has_function_call_api=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT3_16k,
@@ -71,7 +70,6 @@ OPEN_AI_CHAT_MODELS = {
             prompt_token_cost=0.003 / 1000,
             completion_token_cost=0.004 / 1000,
             max_tokens=16384,
-            has_function_call_api=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT3_FINE_TUNED,
@@ -80,7 +78,6 @@ OPEN_AI_CHAT_MODELS = {
             prompt_token_cost=0.0120 / 1000,
             completion_token_cost=0.0160 / 1000,
             max_tokens=4096,
-            has_function_call_api=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT4,
@@ -89,7 +86,6 @@ OPEN_AI_CHAT_MODELS = {
             prompt_token_cost=0.03 / 1000,
             completion_token_cost=0.06 / 1000,
             max_tokens=8191,
-            has_function_call_api=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT4_32k,
@@ -98,7 +94,6 @@ OPEN_AI_CHAT_MODELS = {
             prompt_token_cost=0.06 / 1000,
             completion_token_cost=0.12 / 1000,
             max_tokens=32768,
-            has_function_call_api=True,
         ),
     ]
 }
@@ -109,10 +104,10 @@ OPEN_AI_MODELS = {
 }
 
 
-class OpenAIProviderConfiguration(BaseModelProviderConfiguration):
+class OpenAIProviderConfiguration(LanguageModelProviderConfiguration):
     ...
 
-class OpenAIModelProviderBudget(BaseModelProviderBudget):
+class OpenAIModelProviderBudget(LanguageModelProviderBudget):
     graceful_shutdown_threshold: float = Field(default=0.005)
     warning_threshold: float = Field(default=0.01)
 
@@ -122,7 +117,7 @@ class OpenAIModelProviderBudget(BaseModelProviderBudget):
     usage: BaseModelProviderUsage = BaseModelProviderUsage()
 
 
-class OpenAISettings(BaseModelProviderSettings):
+class OpenAISettings(LanguageModelProviderSettings):
     configuration: OpenAIProviderConfiguration = OpenAIProviderConfiguration()
     credentials: BaseModelProviderCredentials = BaseModelProviderCredentials()
     budget: OpenAIModelProviderBudget = OpenAIModelProviderBudget()

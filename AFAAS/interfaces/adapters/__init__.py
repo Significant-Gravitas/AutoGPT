@@ -4,8 +4,8 @@ from AFAAS.interfaces.adapters.language_model import (
     AbstractLanguageModelProvider,
     AbstractModelProvider,
     AbstractPromptConfiguration,
-    BaseModelInfo,
-    BaseModelProviderSettings,
+    LanguageModelInfo,
+    LanguageModelProviderSettings,
     ModelProviderName,
 )
 

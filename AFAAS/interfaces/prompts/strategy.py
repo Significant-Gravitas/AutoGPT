@@ -156,17 +156,9 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     ) -> str:
         language_model_provider = self.get_llm_provider()
         model_name = self.get_prompt_config().llm_model_name
-        use_oa_tools_api = language_model_provider.has_oa_tool_calls_api(
-            model_name=model_name
-        )
 
-        response_schema = RESPONSE_SCHEMA.copy(deep=True)
-        if (
-            use_oa_tools_api
-            and response_schema.properties
-            and "command" in response_schema.properties
-        ):
-            del response_schema.properties["command"]
+        #response_schema = RESPONSE_SCHEMA.copy(deep=True)
+        response_schema = RESPONSE_SCHEMA
 
         # Unindent for performance
         response_format: str = re.sub(
@@ -175,15 +167,8 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
             response_schema.to_typescript_object_interface("Response"),
         )
 
-        if use_oa_tools_api:
-            return (
-                f"Respond strictly with a JSON of type `Response` :\n"
-                f"{response_format}"
-            )
-
         return (
-            f"Respond strictly with JSON{', and also specify a command to use through a tool_calls' if use_oa_tools_api else ''}. "
-            "The JSON should be compatible with the TypeScript type `Response` from the following:\n"
+            f"Respond strictly with JSON. The JSON should be compatible with the TypeScript type `Response` from the following:\n"
             f"{response_format}"
         )
 

@@ -12,7 +12,7 @@ from .abstract import AbstractAgent
 
 LOG = AFAASLogger(name=__name__)
 
-from AFAAS.core.adapters.openai.chatmodel import AFAASChatOpenAI
+from AFAAS.core.adapters.openai.chatmodel import ChatOpenAIAdapter
 from AFAAS.core.workspace.local import AGPTLocalFileWorkspace
 
 

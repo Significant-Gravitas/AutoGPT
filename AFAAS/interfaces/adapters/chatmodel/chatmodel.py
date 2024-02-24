@@ -10,15 +10,16 @@ from typing import (
     Optional,
     TypeVar,
     ParamSpec,
+    Union,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from langchain_core.language_models.chat_models import BaseChatModel
-
+from openai import AsyncOpenAI
 from AFAAS.interfaces.adapters.language_model import (
     AbstractLanguageModelProvider,
-    BaseModelInfo,
-    BaseModelResponse,
+    LanguageModelInfo,
+    LanguageModelResponse,
     ModelProviderService,
     AbstractPromptConfiguration,
 )
@@ -89,7 +90,7 @@ class ChatPrompt(BaseModel):
 _T = TypeVar("_T")
 
 
-class AbstractChatModelResponse(BaseModelResponse, Generic[_T]):
+class AbstractChatModelResponse(LanguageModelResponse, Generic[_T]):
 
     response: Optional[AssistantChatMessage] = None
     parsed_result: _T = None
@@ -100,15 +101,25 @@ class AbstractChatModelResponse(BaseModelResponse, Generic[_T]):
     system_prompt: str = None
 
 
-class ChatModelInfo(BaseModelInfo):
+class ChatModelInfo(LanguageModelInfo):
     llm_service : ModelProviderService = ModelProviderService.CHAT
     max_tokens: int
-    has_function_call_api: bool = False
 
 
 class AbstractChatModelProvider(AbstractLanguageModelProvider): 
 
-    #llm_model : Optional[BaseChatModel] = None
+    model_config: ConfigDict = ConfigDict(
+        extra= "allow",
+    )
+
+    llm_api_client : Union [BaseChatModel , AsyncOpenAI , Any]
+
+    llmmodel_default : str
+    llmmodel_default : Optional[str] = None
+    llmmodel_fine_tuned : Optional[str] = None
+    llmmodel_cheap : Optional[str] = None
+    llmmodel_code_expert_model : Optional[str] = None
+    llmmodel_long_context_model : Optional[str] = None
 
     @abc.abstractmethod
     def count_message_tokens(
@@ -144,10 +155,6 @@ class AbstractChatModelProvider(AbstractLanguageModelProvider):
         ... 
 
     @abc.abstractmethod
-    def has_oa_tool_calls_api(self, model_name: str) -> bool:
-        ...
-
-    @abc.abstractmethod
     def get_default_config(self) -> AbstractPromptConfiguration:
         ...
 
@@ -177,14 +184,28 @@ class AbstractChatModelProvider(AbstractLanguageModelProvider):
             return super().__getattribute__(__name)
 
         try:
-            return super().__getattribute__(__name)
+            model_name = super().__getattribute__(__name)
+            if model_name is not None:
+                return model_name
         except AttributeError:
-            return self.__llmmodel_default__()
+            LOG.warning(f"Model name {__name} not found in {self.__class__.__name__} , defaulting to {self.llmmodel_default}")
 
-    @abc.abstractmethod
+        return self.__llmmodel_default__()
+
     def __llmmodel_default__(self) -> str:
-        ...
+        return self.llmmodel_default
 
+    def __llmmodel_cheap__(self) -> str:
+        return self.llmmodel_cheap
+
+    def __llmmodel_code_expert_model__(self) -> str:
+        return self.llmmodel_code_expert_model
+
+    def __llmmodel_long_context_model__(self) -> str:
+        return self.llmmodel_long_context_model
+
+    def __llmmodel_fine_tuned__(self) -> str:
+        return self.llmmodel_fine_tuned
 
 
 _P = ParamSpec("_P")
