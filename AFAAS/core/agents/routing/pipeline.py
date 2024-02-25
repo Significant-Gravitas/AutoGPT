@@ -31,7 +31,7 @@ def routing_post_processing(
         command_name: str,
         command_args: dict,
         assistant_reply_dict: Any,
-    ):
+    ) -> None:
         Pipeline.default_post_processing(
             pipeline=pipeline,
             command_name=command_name,
@@ -47,7 +47,7 @@ async def generate_new_tasks(
     command_name: str,
     command_args: Any,
     assistant_reply_dict: Any,
-):
+)->dict[str, AbstractTask]:
     agent: BaseAgent = pipeline._agent
     pipeline_task: AbstractTask = pipeline._task
     pipeline_task.task_text_output = assistant_reply_dict

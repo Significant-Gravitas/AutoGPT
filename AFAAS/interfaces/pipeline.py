@@ -39,10 +39,12 @@ class Pipeline(AgentMixin):
                 self.jobs.insert(i + 1, job)
                 break
 
-    async def execute(self) -> Tuple[Optional[AbstractTask], Optional[BaseAgent]]:
+    async def execute(self, last_execution_feedback = None) -> Tuple[Optional[AbstractTask], Optional[BaseAgent]]:
         if self.jobs:
             current_job = self.jobs.pop()
-            pipeline_response = await self._execute_job(current_job)
+            pipeline_response = await self._execute_job(
+                job = current_job, last_execution_feedback = last_execution_feedback
+                )
 
             if self.jobs:
                 return await self.execute()
@@ -91,7 +93,7 @@ class Pipeline(AgentMixin):
 
     def _parse_response(
         self, strategy_name: str, model_response: AbstractChatModelResponse
-    ):
+    )->Tuple[str, dict, Any]:
         strategy_tools = self.get_strategy(
             strategy_name=strategy_name
         ).get_tools_names()
@@ -111,7 +113,7 @@ class Pipeline(AgentMixin):
         command_name: str,
         command_args: dict,
         assistant_reply_dict: Any,
-    ):
+    )->None:
         pipeline._task.task_text_output = assistant_reply_dict
         pipeline._task.task_context = command_args["note_to_agent"]
         return None
@@ -123,7 +125,7 @@ class Pipeline(AgentMixin):
         command_name: str,
         command_args: dict,
         assistant_reply_dict: Any,
-    ):
+    )->None:
         return cls.default_post_processing(
             pipeline=pipeline,
             command_name=command_name,
