@@ -22,7 +22,7 @@ from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.interfaces.task.plan import AbstractPlan
 from AFAAS.interfaces.task.task import AbstractTask
-from AFAAS.interfaces.tools.tool_output import ToolOutput
+from AFAAS.interfaces.tools.tool_output import ToolOutput, DefaultOutputType
 from AFAAS.interfaces.workflow import FastTrackedWorkflow
 from AFAAS.lib.sdk.errors import AgentException, ToolExecutionError, UnknownToolError
 from AFAAS.lib.sdk.logger import AFAASLogger, logging
@@ -510,6 +510,12 @@ class Task(AbstractTask):
         if tool := self.agent._tool_registry.get_tool(tool_name=self.command):
             try:
                 result = await tool(**self.arguments, task=self, agent=self.agent)
+                if not isinstance(result, ToolOutput):
+                    error_message = f"Tool {tool} returned an object of type {type(result)} instead of ToolOutputv2"
+                    result = ToolOutput(type = DefaultOutputType.ERROR, output = error_message)
+                    raise ToolExecutionError(
+                        f"Tool {tool} returned an object of type {type(result)} instead of ToolOutputv2"
+                    )
                 return tool, result
             except Exception as e:
                 raise ToolExecutionError(str(e))
