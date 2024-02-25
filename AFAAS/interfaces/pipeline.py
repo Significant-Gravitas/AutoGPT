@@ -39,12 +39,10 @@ class Pipeline(AgentMixin):
                 self.jobs.insert(i + 1, job)
                 break
 
-    async def execute(self, last_execution_feedback = None) -> Tuple[Optional[AbstractTask], Optional[BaseAgent]]:
+    async def execute(self) -> Tuple[Optional[AbstractTask], Optional[BaseAgent]]:
         if self.jobs:
             current_job = self.jobs.pop()
-            pipeline_response = await self._execute_job(
-                job = current_job, last_execution_feedback = last_execution_feedback
-                )
+            pipeline_response = await self._execute_job(current_job)
 
             if self.jobs:
                 return await self.execute()
