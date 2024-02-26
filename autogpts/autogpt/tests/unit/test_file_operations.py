@@ -118,6 +118,7 @@ def test_file_operations_state(test_file: TextIOWrapper):
         "path/to/file1.txt": "checksum1",
         "path/to/file2.txt": "checksum4",
     }
+    #TODO kcze - fix (accepts list[str])
     assert file_ops.file_operations_state(test_file.name) == expected_state
 
 

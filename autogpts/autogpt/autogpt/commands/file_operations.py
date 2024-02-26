@@ -35,17 +35,12 @@ def text_checksum(text: str) -> str:
 
 
 def operations_from_log(
-    log_path: str | Path,
+    logs: list[str],
 ) -> Iterator[
     tuple[Literal["write", "append"], str, str] | tuple[Literal["delete"], str, None]
 ]:
-    """Parse the file operations log and return a tuple containing the log entries"""
-    try:
-        log = open(log_path, "r", encoding="utf-8")
-    except FileNotFoundError:
-        return
-
-    for line in log:
+    """Parse logs and return a tuple containing the log entries"""
+    for line in logs:
         line = line.replace("File Operation Logger", "").strip()
         if not line:
             continue
@@ -57,14 +52,12 @@ def operations_from_log(
         elif operation == "delete":
             yield (operation, tail.strip(), None)
 
-    log.close()
 
+def file_operations_state(logs: list[str]) -> dict[str, str]:
+    """Iterates over the operations and returns the expected state.
 
-def file_operations_state(log_path: str | Path) -> dict[str, str]:
-    """Iterates over the operations log and returns the expected state.
-
-    Parses a log file at file_manager.file_ops_log_path to construct a dictionary
-    that maps each file path written or appended to its checksum. Deleted files are
+    Constructs a dictionary that maps each file path written
+    or appended to its checksum. Deleted files are
     removed from the dictionary.
 
     Returns:
@@ -75,7 +68,7 @@ def file_operations_state(log_path: str | Path) -> dict[str, str]:
         ValueError: If the log file content is not in the expected format.
     """
     state = {}
-    for operation, path, checksum in operations_from_log(log_path):
+    for operation, path, checksum in operations_from_log(logs):
         if operation in ("write", "append"):
             state[path] = checksum
         elif operation == "delete":
@@ -98,8 +91,7 @@ def is_duplicate_operation(
     Returns:
         True if the operation has already been performed on the file
     """
-    #TODO kcze - won't work
-    state = file_operations_state(agent.file_manager.file_ops_log_path)
+    state = file_operations_state(agent.get_logs())
     if operation == "delete" and str(file_path) not in state:
         return True
     if operation == "write" and state.get(str(file_path)) == checksum:
@@ -108,7 +100,7 @@ def is_duplicate_operation(
 
 
 @sanitize_path_arg("file_path", make_relative=True)
-def log_operation(
+async def log_operation(
     operation: Operation,
     file_path: str | Path,
     agent: Agent,
@@ -125,7 +117,7 @@ def log_operation(
     if checksum is not None:
         log_entry += f" #{checksum}"
     logger.debug(f"Logging file operation: {log_entry}")
-    agent.log_operation(f"{log_entry}\n")
+    await agent.log_operation(f"{log_entry}\n")
 
 
 @command(
@@ -219,7 +211,7 @@ async def write_to_file(filename: str | Path, contents: str, agent: Agent) -> st
     if directory := os.path.dirname(filename):
         agent.workspace.make_dir(directory)
     await agent.workspace.write_file(filename, contents)
-    log_operation("write", filename, agent, checksum)
+    await log_operation("write", filename, agent, checksum)
     return f"File {filename} has been written successfully."
 
 

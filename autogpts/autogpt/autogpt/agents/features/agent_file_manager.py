@@ -49,21 +49,24 @@ class AgentFileManagerMixin:
         self.workspace = FileManager(
             self._file_storage, f"agents/{state.agent_id}/workspace/"
         )
-        self.init_file_ops_log()
 
     @property
     def _file_ops_log_path(self) -> Path:
         return self.files.root / "file_logger.log"
 
-    def init_file_ops_log(self) -> None:
-        if not self.files.exists(self._file_ops_log_path):
-            self.workspace.write_file(self._file_ops_log_path, "")
-
-    def log_operation(self, content: str) -> None:
+    async def log_operation(self, content: str) -> None:
+        logger.debug(f"Logging operation: {content}")
+        logs = ""
+        if self.files.exists(self._file_ops_log_path):
+            logs = self.workspace.read_file(self._file_ops_log_path) + "\n"
         # TODO kcze - better would be to append
-        logs = self.workspace.read_file(self._file_ops_log_path)
-        logs = f"{logs}\n{content}"
-        self.workspace.write_file(self._file_ops_log_path, logs)
+        logs = logs + content
+        await self.workspace.write_file(self._file_ops_log_path, logs)
+
+    def get_logs(self) -> list[str]:
+        if not self.files.exists(self._file_ops_log_path):
+            return []
+        return self.workspace.read_file(self._file_ops_log_path).split("\n")
 
     async def save_state(self) -> None:
         state: BaseAgentSettings = getattr(self, "state")
