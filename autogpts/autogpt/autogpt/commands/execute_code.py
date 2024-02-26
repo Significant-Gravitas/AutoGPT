@@ -281,12 +281,15 @@ def execute_shell(command_line: str, agent: Agent) -> str:
     )
 
     if agent.legacy_config.shell_command_control in [
-            ALLOWLIST_CONTROL, DENYLIST_CONTROL]:
+        ALLOWLIST_CONTROL,
+        DENYLIST_CONTROL,
+    ]:
         if not validate_command(command_line, agent.legacy_config):
             logger.info(f"Command '{command_line}' not allowed")
             raise OperationNotAllowedError("This shell command is not allowed.")
-        result = subprocess.run(shlex.split(command_line),
-                                capture_output=True, shell=False)
+        result = subprocess.run(
+            shlex.split(command_line), capture_output=True, shell=False
+        )
     else:
         result = subprocess.run(command_line, capture_output=True, shell=True)
     output = f"STDOUT:\n{result.stdout.decode()}\nSTDERR:\n{result.stderr.decode()}"
@@ -334,20 +337,26 @@ def execute_shell_popen(command_line: str, agent: Agent) -> str:
 
     do_not_show_output = subprocess.DEVNULL
     if agent.legacy_config.shell_command_control in [
-            ALLOWLIST_CONTROL, DENYLIST_CONTROL]:
+        ALLOWLIST_CONTROL,
+        DENYLIST_CONTROL,
+    ]:
         if not validate_command(command_line, agent.legacy_config):
             logger.info(f"Command '{command_line}' not allowed")
             raise OperationNotAllowedError("This shell command is not allowed.")
 
         process = subprocess.Popen(
-            shlex.split(command_line), shell=False,
-            stdout=do_not_show_output, stderr=do_not_show_output
+            shlex.split(command_line),
+            shell=False,
+            stdout=do_not_show_output,
+            stderr=do_not_show_output,
         )
 
     else:
         process = subprocess.Popen(
-            command_line, shell=True,
-            stdout=do_not_show_output, stderr=do_not_show_output
+            command_line,
+            shell=True,
+            stdout=do_not_show_output,
+            stderr=do_not_show_output,
         )
 
     # Change back to whatever the prior working dir was
