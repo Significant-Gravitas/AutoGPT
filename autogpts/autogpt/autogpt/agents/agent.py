@@ -6,6 +6,8 @@ import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
+from autogpt.file_storage.base import FileStorage
+
 if TYPE_CHECKING:
     from autogpt.config import Config
     from autogpt.models.command_registry import CommandRegistry
@@ -38,8 +40,8 @@ from autogpt.models.command import CommandOutput
 from autogpt.models.context_item import ContextItem
 
 from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
+from .features.agent_file_manager import AgentFileManagerMixin
 from .features.context import ContextMixin
-from .features.file_workspace import FileWorkspaceMixin
 from .features.watchdog import WatchdogMixin
 from .prompt_strategies.one_shot import (
     OneShotAgentPromptConfiguration,
@@ -70,7 +72,7 @@ class AgentSettings(BaseAgentSettings):
 
 class Agent(
     ContextMixin,
-    FileWorkspaceMixin,
+    AgentFileManagerMixin,
     WatchdogMixin,
     BaseAgent,
     Configurable[AgentSettings],
@@ -89,6 +91,7 @@ class Agent(
         settings: AgentSettings,
         llm_provider: ChatModelProvider,
         command_registry: CommandRegistry,
+        file_storage: FileStorage,
         legacy_config: Config,
     ):
         prompt_strategy = OneShotAgentPromptStrategy(
@@ -100,6 +103,7 @@ class Agent(
             llm_provider=llm_provider,
             prompt_strategy=prompt_strategy,
             command_registry=command_registry,
+            file_storage=file_storage,
             legacy_config=legacy_config,
         )
 
@@ -108,9 +112,6 @@ class Agent(
 
         self.log_cycle_handler = LogCycleHandler()
         """LogCycleHandler for structured debug logging."""
-
-    def save_agent_state(self):
-        self.file_manager.workspace.write_file(self.file_manager.state_file_path, self.state.to_json())
 
     def build_prompt(
         self,

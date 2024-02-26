@@ -7,12 +7,14 @@ if TYPE_CHECKING:
 
     from ..base import BaseAgent, Config
 
-from ..base import BaseAgentSettings
-import logging
+
 from pathlib import Path
 
 from autogpt.agents.utils.file_manager import FileManager
 
+from ..base import BaseAgentSettings
+
+import logging
 logger = logging.getLogger(__name__)
 
 
@@ -28,6 +30,7 @@ class AgentFileManagerMixin:
     """Workspace that the agent has access to, e.g. for reading/writing files.
     Use `files` to access agent-related files, e.g. state, logs."""
 
+    # TODO kcze try passing file_storage as a parameter
     def __init__(self, **kwargs):
         # Initialize other bases first, because we need the config from BaseAgent
         super(AgentFileManagerMixin, self).__init__(**kwargs)
@@ -62,6 +65,6 @@ class AgentFileManagerMixin:
         logs = f"{logs}\n{content}"
         self.workspace.write_file(self._file_ops_log_path, logs)
 
-    def save_state(self) -> None:
+    async def save_state(self) -> None:
         state: BaseAgentSettings = getattr(self, "state")
-        self.files.write_file(self.files.root / "state.json", state.model_dump_json())
+        await self.files.write_file(self.files.root / "state.json", state.json())

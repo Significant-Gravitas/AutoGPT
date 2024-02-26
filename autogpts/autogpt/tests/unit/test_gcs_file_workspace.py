@@ -31,9 +31,7 @@ def gcs_workspace_uninitialized(gcs_bucket_name: str) -> GCSFileStorage:
     del os.environ["STORAGE_BUCKET"]
 
 
-def test_initialize(
-    gcs_bucket_name: str, gcs_workspace_uninitialized: GCSFileStorage
-):
+def test_initialize(gcs_bucket_name: str, gcs_workspace_uninitialized: GCSFileStorage):
     gcs = gcs_workspace_uninitialized._gcs
 
     # test that the bucket doesn't exist yet
@@ -95,14 +93,14 @@ async def test_read_file(gcs_workspace_with_files: GCSFileStorage):
 
 def test_list_files(gcs_workspace_with_files: GCSFileStorage):
     # List at root level
-    assert (files := gcs_workspace_with_files.list()) == gcs_workspace_with_files.list()
+    assert (files := gcs_workspace_with_files.list_files()) == gcs_workspace_with_files.list_files()
     assert len(files) > 0
     assert set(files) == set(Path(file_name) for file_name, _ in TEST_FILES)
 
     # List at nested path
     assert (
-        nested_files := gcs_workspace_with_files.list(NESTED_DIR)
-    ) == gcs_workspace_with_files.list(NESTED_DIR)
+        nested_files := gcs_workspace_with_files.list_files(NESTED_DIR)
+    ) == gcs_workspace_with_files.list_files(NESTED_DIR)
     assert len(nested_files) > 0
     assert set(nested_files) == set(
         p.relative_to(NESTED_DIR)

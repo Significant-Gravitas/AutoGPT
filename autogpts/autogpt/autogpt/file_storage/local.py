@@ -60,18 +60,26 @@ class LocalFileStorage(FileStorage):
             if inspect.isawaitable(res):
                 await res
 
-    def list(self, path: str | Path = ".") -> list[Path]:
+    def list_files(self, path: str | Path = ".") -> list[Path]:
         """List all files (recursively) in a directory in the storage."""
         path = self.get_path(path)
         return [file.relative_to(path) for file in path.rglob("*") if file.is_file()]
-    
-    def list_folders(self, path: str | Path = ".", recursive: bool = False) -> list[Path]:
+
+    def list_folders(
+        self, path: str | Path = ".", recursive: bool = False
+    ) -> list[Path]:
         """List directories directly in a given path or recursively."""
         path = self.get_path(path)
         if recursive:
-            return [folder.relative_to(path) for folder in path.rglob("*") if folder.is_dir()]
+            return [
+                folder.relative_to(path)
+                for folder in path.rglob("*")
+                if folder.is_dir()
+            ]
         else:
-            return [folder.relative_to(path) for folder in path.iterdir() if folder.is_dir()]
+            return [
+                folder.relative_to(path) for folder in path.iterdir() if folder.is_dir()
+            ]
 
     def delete_file(self, path: str | Path) -> None:
         """Delete a file in the storage."""

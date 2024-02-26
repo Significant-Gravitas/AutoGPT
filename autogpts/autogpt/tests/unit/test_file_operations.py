@@ -165,7 +165,7 @@ def test_is_duplicate_operation(agent: Agent, mocker: MockerFixture):
         is True
     )
 
-
+#TODO kcze - won't work
 # Test logging a file operation
 def test_log_operation(agent: Agent):
     file_ops.log_operation("log_test", Path("path/to/test"), agent=agent)
@@ -180,7 +180,7 @@ def test_text_checksum(file_content: str):
     assert re.match(r"^[a-fA-F0-9]+$", checksum) is not None
     assert checksum != different_checksum
 
-
+#TODO kcze - won't work
 def test_log_operation_with_checksum(agent: Agent):
     file_ops.log_operation(
         "log_test", Path("path/to/test"), agent=agent, checksum="ABCDEF"
@@ -223,7 +223,7 @@ async def test_write_to_file_absolute_path(test_file_path: Path, agent: Agent):
         content = f.read()
     assert content == new_content
 
-
+#TODO kcze - won't work
 @pytest.mark.asyncio
 async def test_write_file_logs_checksum(test_file_name: Path, agent: Agent):
     new_content = "This is new content.\n"

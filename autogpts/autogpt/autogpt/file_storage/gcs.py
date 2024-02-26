@@ -93,7 +93,7 @@ class GCSFileStorage(FileStorage):
             if inspect.isawaitable(res):
                 await res
 
-    def list(self, path: str | Path = ".") -> list[Path]:
+    def list_files(self, path: str | Path = ".") -> list[Path]:
         """List all files (recursively) in a directory in the storage."""
         path = self.get_path(path)
         return [
@@ -102,12 +102,14 @@ class GCSFileStorage(FileStorage):
                 prefix=f"{path}/" if path != Path(".") else None
             )
         ]
-    
-    def list_folders(self, path: str | Path = ".", recursive: bool = False) -> list[Path]:
+
+    def list_folders(
+        self, path: str | Path = ".", recursive: bool = False
+    ) -> list[Path]:
         """List 'directories' directly in a given path or recursively in the storage."""
         path = str(path)
         prefix = f"{path}/" if path != "." else ""
-        delimiter = '/' if not recursive else None
+        delimiter = "/" if not recursive else None
         iterator = self._bucket.list_blobs(prefix=prefix, delimiter=delimiter)
         prefixes = set()
         for page in iterator.pages:
@@ -122,7 +124,9 @@ class GCSFileStorage(FileStorage):
 
     def exists(self, path: str | Path) -> bool:
         """Check if a file or folder exists in GCS storage."""
-        path = self.get_path(path)  # Assuming this method returns a Path object or a string path
+        path = self.get_path(
+            path
+        )  # Assuming this method returns a Path object or a string path
         # Check for exact blob match (file)
         blob = self._bucket.blob(str(path))
         if blob.exists():
@@ -133,7 +137,7 @@ class GCSFileStorage(FileStorage):
         for _ in blobs:
             return True  # If there is at least one object, the folder exists
         return False
-    
+
     def make_dir(self, path: str | Path) -> None:
         """Create a directory in the storage if doesn't exist."""
         # GCS does not have directories, so we don't need to do anything

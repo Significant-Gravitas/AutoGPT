@@ -8,9 +8,7 @@ from autogpt.file_storage import FileStorage
 from autogpt.memory.vector import JSONFileMemory, MemoryItem
 
 
-def test_json_memory_init_without_backing_file(
-    config: Config, workspace: FileStorage
-):
+def test_json_memory_init_without_backing_file(config: Config, workspace: FileStorage):
     index_file = workspace.root / f"{config.memory_index}.json"
 
     assert not index_file.exists()

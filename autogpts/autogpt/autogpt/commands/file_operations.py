@@ -98,6 +98,7 @@ def is_duplicate_operation(
     Returns:
         True if the operation has already been performed on the file
     """
+    #TODO kcze - won't work
     state = file_operations_state(agent.file_manager.file_ops_log_path)
     if operation == "delete" and str(file_path) not in state:
         return True
@@ -124,7 +125,7 @@ def log_operation(
     if checksum is not None:
         log_entry += f" #{checksum}"
     logger.debug(f"Logging file operation: {log_entry}")
-    agent.file_manager.log_operation(f"{log_entry}\n")
+    agent.log_operation(f"{log_entry}\n")
 
 
 @command(
@@ -216,7 +217,7 @@ async def write_to_file(filename: str | Path, contents: str, agent: Agent) -> st
         raise DuplicateOperationError(f"File {filename} has already been updated.")
 
     if directory := os.path.dirname(filename):
-        agent.workspace.get_path(directory).mkdir(exist_ok=True)
+        agent.workspace.make_dir(directory)
     await agent.workspace.write_file(filename, contents)
     log_operation("write", filename, agent, checksum)
     return f"File {filename} has been written successfully."
@@ -242,4 +243,4 @@ def list_folder(folder: str | Path, agent: Agent) -> list[str]:
     Returns:
         list[str]: A list of files found in the folder
     """
-    return [str(p) for p in agent.workspace.list(folder)]
+    return [str(p) for p in agent.workspace.list_files(folder)]

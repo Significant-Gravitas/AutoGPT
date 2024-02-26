@@ -107,7 +107,7 @@ class S3FileStorage(FileStorage):
             if inspect.isawaitable(res):
                 await res
 
-    def list(self, path: str | Path = ".") -> list[Path]:
+    def list_files(self, path: str | Path = ".") -> list[Path]:
         """List all files (recursively) in a directory in the storage."""
         path = self.get_path(path)
         if path == Path("."):  # root level of bucket
@@ -117,24 +117,31 @@ class S3FileStorage(FileStorage):
                 Path(obj.key).relative_to(path)
                 for obj in self._bucket.objects.filter(Prefix=f"{path}/")
             ]
-        
-    def list_folders(self, path: str | Path = ".", recursive: bool = False) -> list[Path]:
+
+    def list_folders(
+        self, path: str | Path = ".", recursive: bool = False
+    ) -> list[Path]:
         """List 'directories' directly in a given path or recursively in the storage."""
         path_str = str(path)
         prefix = f"{path_str.strip('/')}/" if path_str != "." else ""
-        delimiter = '/' if not recursive else None
+        delimiter = "/" if not recursive else None
 
         # Initialize an empty set to hold unique folder names
         folder_names = set()
 
         # List objects with the specified prefix and delimiter
-        for obj_summary in self.bucket.objects.filter(Prefix=prefix, Delimiter=delimiter):
+        for obj_summary in self.bucket.objects.filter(
+            Prefix=prefix, Delimiter=delimiter
+        ):
             if delimiter:
                 # If a delimiter is used, we're not listing recursively, so include common prefixes
                 response = obj_summary.bucket.meta.client.list_objects_v2(
-                    Bucket=self.bucket.name, Prefix=prefix, Delimiter=delimiter)
-                for prefix_info in response.get('CommonPrefixes', []):
-                    folder_names.add(Path(prefix_info['Prefix']).relative_to(Path(prefix)).parent)
+                    Bucket=self.bucket.name, Prefix=prefix, Delimiter=delimiter
+                )
+                for prefix_info in response.get("CommonPrefixes", []):
+                    folder_names.add(
+                        Path(prefix_info["Prefix"]).relative_to(Path(prefix)).parent
+                    )
             else:
                 # For a recursive list, add all unique 'folder' paths by splitting object keys
                 folder_path = Path(obj_summary.key).parent
@@ -158,14 +165,14 @@ class S3FileStorage(FileStorage):
             obj.load()  # Will succeed if the object exists
             return True
         except botocore.exceptions.ClientError as e:
-            if int(e.response['ResponseMetadata']['HTTPStatusCode']) == 404:
+            if int(e.response["ResponseMetadata"]["HTTPStatusCode"]) == 404:
                 # If the object does not exist, check for objects with the prefix (folder)
                 prefix = f"{path_str.rstrip('/')}/"
                 objs = list(self._bucket.objects.filter(Prefix=prefix, MaxKeys=1))
                 return len(objs) > 0  # True if any objects exist with the prefix
             else:
                 raise  # Re-raise for any other client errors
-    
+
     def make_dir(self, path: str | Path) -> None:
         """Create a directory in the storage if doesn't exist."""
         # S3 does not have directories, so we don't need to do anything

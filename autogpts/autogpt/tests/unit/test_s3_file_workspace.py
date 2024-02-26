@@ -87,14 +87,14 @@ async def test_read_file(s3_workspace_with_files: S3FileStorage):
 
 def test_list_files(s3_workspace_with_files: S3FileStorage):
     # List at root level
-    assert (files := s3_workspace_with_files.list()) == s3_workspace_with_files.list()
+    assert (files := s3_workspace_with_files.list_files()) == s3_workspace_with_files.list_files()
     assert len(files) > 0
     assert set(files) == set(Path(file_name) for file_name, _ in TEST_FILES)
 
     # List at nested path
     assert (
-        nested_files := s3_workspace_with_files.list(NESTED_DIR)
-    ) == s3_workspace_with_files.list(NESTED_DIR)
+        nested_files := s3_workspace_with_files.list_files(NESTED_DIR)
+    ) == s3_workspace_with_files.list_files(NESTED_DIR)
     assert len(nested_files) > 0
     assert set(nested_files) == set(
         p.relative_to(NESTED_DIR)

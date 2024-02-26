@@ -11,6 +11,7 @@ from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.app.main import _configure_openai_provider
 from autogpt.config import AIProfile, Config, ConfigBuilder
 from autogpt.core.resource.model_providers import ChatModelProvider, OpenAIProvider
+from autogpt.file_storage import FileStorageBackendName, get_storage
 from autogpt.file_storage.local import (
     FileStorage,
     FileStorageConfiguration,
@@ -149,11 +150,16 @@ def agent(
         history=Agent.default_settings.history.copy(deep=True),
     )
 
+    local = config.file_storage_backend == FileStorageBackendName.LOCAL
+    restrict_to_root = not (local and not config.restrict_to_workspace)
+    file_storage = get_storage(config.file_storage_backend, root_path="data", restrict_to_root=restrict_to_root)
+    file_storage.initialize()
+
     agent = Agent(
         settings=agent_settings,
         llm_provider=llm_provider,
         command_registry=command_registry,
+        file_storage=file_storage,
         legacy_config=config,
     )
-    agent.attach_fs(agent_data_dir)
     return agent

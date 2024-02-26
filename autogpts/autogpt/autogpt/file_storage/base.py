@@ -87,11 +87,13 @@ class FileStorage(ABC):
         """Write to a file in the storage."""
 
     @abstractmethod
-    def list(self, path: str | Path = ".") -> list[Path]:
+    def list_files(self, path: str | Path = ".") -> list[Path]:
         """List all files (recursively) in a directory in the storage."""
 
     @abstractmethod
-    def list_folders(self, path: str | Path = ".", recursive: bool = False) -> list[Path]:
+    def list_folders(
+        self, path: str | Path = ".", recursive: bool = False
+    ) -> list[Path]:
         """List all folders in a directory in the storage."""
 
     @abstractmethod

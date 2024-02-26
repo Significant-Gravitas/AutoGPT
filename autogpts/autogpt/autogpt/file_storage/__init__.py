@@ -12,30 +12,31 @@ class FileStorageBackendName(str, enum.Enum):
 
 
 def get_storage(
-    backend: FileStorageBackendName, *, id: str = "", root_path: Optional[Path] = None
+    backend: FileStorageBackendName,
+    root_path: Path = ".",
+    restrict_to_root: bool = True,
 ) -> FileStorage:
-    assert bool(root_path) != bool(id), "Specify root_path or id to get storage"
-    if root_path is None:
-        root_path = Path(f"/workspaces/{id}")
-
     match backend:
         case FileStorageBackendName.LOCAL:
             from .local import FileStorageConfiguration, LocalFileStorage
 
             config = FileStorageConfiguration.from_env()
             config.root = root_path
+            config.restrict_to_root = restrict_to_root
             return LocalFileStorage(config)
         case FileStorageBackendName.S3:
             from .s3 import S3FileStorage, S3FileStorageConfiguration
 
             config = S3FileStorageConfiguration.from_env()
             config.root = root_path
+            config.restrict_to_root = restrict_to_root
             return S3FileStorage(config)
         case FileStorageBackendName.GCS:
             from .gcs import GCSFileStorage, GCSFileStorageConfiguration
 
             config = GCSFileStorageConfiguration.from_env()
             config.root = root_path
+            config.restrict_to_root = restrict_to_root
             return GCSFileStorage(config)
 
 

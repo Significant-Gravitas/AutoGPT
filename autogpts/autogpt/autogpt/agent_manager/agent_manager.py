@@ -4,33 +4,17 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from autogpt.config.config import Config
-from autogpt.file_storage import get_storage
-from autogpt.file_storage.base import FileStorage
 from autogpt.agents.agent import AgentSettings
+from autogpt.agents.utils.file_manager import FileManager
+from autogpt.file_storage.base import FileStorage
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import AgentSettings
 
-from autogpt.agents.utils.agent_file_manager import AgentFileManager
-
 
 class AgentManager:
-    def __init__(self, legacy_config: Config):
-        self.agents_dir = legacy_config.app_data_dir / "agents"
-        self.workspace: FileStorage = None
-        self._setup_workspace(legacy_config)
-
-    def _setup_workspace(self, config: Config) -> None:
-        fm_backend = config.file_storage_backend
-        workspace = get_storage(
-            backend=fm_backend,
-            root_path=config.app_data_dir,
-        )
-
-        workspace.initialize()
-        workspace.make_dir(self.agents_dir)
-        self.workspace = workspace
+    def __init__(self, file_storage: FileStorage):
+        self.file_manager = FileManager(file_storage, "agents")
 
     @staticmethod
     def generate_id(agent_name: str) -> str:
@@ -38,26 +22,25 @@ class AgentManager:
         return f"{agent_name}-{unique_id}"
 
     def list_agents(self) -> list[str]:
-        return [
-            dir.name
-            for dir in self.agents_dir.iterdir()
-            if dir.is_dir() and AgentFileManager.get_state_file_path(dir).exists()
-        ]
+        agent_dirs: list[str] = []
+        for dir in self.file_manager.list_folders():
+            if dir.is_dir() and self.file_manager.exists(dir / "state.json"):
+                agent_dirs.append(dir.name)
+        return agent_dirs
 
-    def get_agent_dir(self, agent_id: str, must_exist: bool = False) -> Path:
+    def get_agent_dir(self, agent_id: str) -> Path:
         assert len(agent_id) > 0
-        agent_dir = self.agents_dir / agent_id
-        if must_exist and not agent_dir.exists():
+        agent_dir: Path | None = None
+        if self.file_manager.exists(agent_id):
+            agent_dir = self.file_manager.root / agent_id
+        else:
             raise FileNotFoundError(f"No agent with ID '{agent_id}'")
         return agent_dir
 
     def load_agent_state(self, agent_id: str) -> AgentSettings:
-        agent_dir = self.get_agent_dir(agent_id, True)
-        state_file_path = AgentFileManager.get_state_file_path(agent_dir)
-        if not state_file_path.exists():
+        state_file_path = Path(agent_id) / "state.json"
+        if not self.file_manager.exists(state_file_path):
             raise FileNotFoundError(f"Agent with ID '{agent_id}' has no state.json")
-        
-        text = self.workspace.read_file(state_file_path)
-        return AgentSettings.from_json(text)
-        
 
+        text = self.file_manager.read_file(state_file_path)
+        return AgentSettings.parse_raw(text)

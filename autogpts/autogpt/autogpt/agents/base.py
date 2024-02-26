@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from autogpt.models.command_registry import CommandRegistry
 
 from autogpt.agents.utils.prompt_scratchpad import PromptScratchpad
+from autogpt.file_storage.base import FileStorage
 from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
@@ -42,8 +43,6 @@ from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.models.action_history import ActionResult, EpisodicActionHistory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
-
-from .utils.agent_file_manager import AgentFileManager
 
 logger = logging.getLogger(__name__)
 
@@ -147,12 +146,9 @@ class BaseAgentSettings(SystemSettings):
     history: EpisodicActionHistory = Field(default_factory=EpisodicActionHistory)
     """(STATE) The action history of the agent."""
 
-    def to_json(self) -> str:
-        return self.model_dump_json()
-    
-    @classmethod
-    def from_json(cls, data: str) -> BaseAgentSettings:
-        return cls.model_validate_json(data)
+    @validator("agent_data_dir", always=True)
+    def _validate_agent_data_dir(cls, v: Optional[Path], values: dict[str, Any]):
+        return values["agent_id"] if v is None else v
 
 
 class BaseAgent(Configurable[BaseAgentSettings], ABC):
@@ -171,6 +167,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         llm_provider: ChatModelProvider,
         prompt_strategy: PromptStrategy,
         command_registry: CommandRegistry,
+        file_storage: FileStorage,
         legacy_config: Config,
     ):
         self.state = settings
@@ -181,12 +178,6 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
 
         self.legacy_config = legacy_config
         """LEGACY: Monolithic application configuration."""
-
-        self.file_manager: AgentFileManager = (
-            AgentFileManager(settings.agent_data_dir)
-            if settings.agent_data_dir
-            else None
-        )  # type: ignore
 
         self.llm_provider = llm_provider
 
@@ -201,18 +192,6 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         super(BaseAgent, self).__init__()
 
         logger.debug(f"Created {__class__} '{self.ai_profile.ai_name}'")
-
-    def set_id(self, new_id: str, new_agent_dir: Optional[Path] = None):
-        self.state.agent_id = new_id
-        if self.state.agent_data_dir:
-            if not new_agent_dir:
-                raise ValueError(
-                    "new_agent_dir must be specified if one is currently configured"
-                )
-            self.attach_fs(new_agent_dir)
-
-    def attach_fs(self, agent_dir: Path) -> None:
-        self.state.agent_data_dir = agent_dir
 
     @property
     def llm(self) -> ChatModelInfo:
@@ -232,10 +211,6 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         Returns:
             The command name and arguments, if any, and the agent's thoughts.
         """
-        assert self.file_manager, (
-            f"Agent has no FileManager: call {__class__.__name__}.attach_fs()"
-            " before trying to run the agent."
-        )
 
         # Scratchpad as surrogate PromptGenerator for plugin hooks
         self._prompt_scratchpad = PromptScratchpad()
