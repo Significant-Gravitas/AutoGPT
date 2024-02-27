@@ -34,7 +34,6 @@ def create_agent(
         file_storage=file_storage,
         llm_provider=llm_provider,
     )
-    agent.state.agent_id = AgentManager.generate_id(agent.ai_profile.ai_name)
 
     return agent
 
