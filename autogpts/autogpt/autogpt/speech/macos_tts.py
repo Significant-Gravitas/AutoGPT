@@ -1,7 +1,7 @@
 """ MacOS TTS Voice. """
 from __future__ import annotations
 
-import os
+import subprocess
 
 from autogpt.speech.base import VoiceBase
 
@@ -15,9 +15,9 @@ class MacOSTTS(VoiceBase):
     def _speech(self, text: str, voice_index: int = 0) -> bool:
         """Play the given text."""
         if voice_index == 0:
-            os.system(f'say "{text}"')
+            subprocess.run(["say", text], shell=False)
         elif voice_index == 1:
-            os.system(f'say -v "Ava (Premium)" "{text}"')
+            subprocess.run(["say", "-v", "Ava (Premium)", text], shell=False)
         else:
-            os.system(f'say -v Samantha "{text}"')
+            subprocess.run(["say", "-v", "Samantha", text], shell=False)
         return True
