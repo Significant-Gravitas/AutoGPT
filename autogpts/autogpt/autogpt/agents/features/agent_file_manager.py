@@ -56,19 +56,18 @@ class AgentFileManagerMixin:
         file_storage = kwargs["file_storage"]
         self.files = FileManager(file_storage, f"agents/{state.agent_id}/")
         self.workspace = FileManager(file_storage, f"agents/{state.agent_id}/workspace")
+        # Read and cache logs
+        self._logs_cache = []
+        if self.files.exists(self.LOGS_FILE):
+            self._logs_cache = self.files.read_file(self.LOGS_FILE).split("\n")
 
     async def log_operation(self, content: str) -> None:
         logger.debug(f"Logging operation: {content}")
-        logs = ""
-        # TODO kcze maybe instead of reading each time just cache the logs
-        if self.files.exists(self.LOGS_FILE):
-            logs = self.files.read_file(self.LOGS_FILE) + "\n"
-        await self.files.write_file(self.LOGS_FILE, logs + content)
+        self._logs_cache.append(content)
+        await self.files.write_file(self.LOGS_FILE, self._logs_cache.join("\n") + "\n")
 
     def get_logs(self) -> list[str]:
-        if not self.files.exists(self.LOGS_FILE):
-            return []
-        return self.files.read_file(self.LOGS_FILE).split("\n")
+        return self._logs_cache
 
     async def save_state(self) -> None:
         state: BaseAgentSettings = getattr(self, "state")

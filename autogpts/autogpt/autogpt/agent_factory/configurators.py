@@ -1,6 +1,5 @@
 from typing import Optional
 
-from autogpt.agent_manager import AgentManager
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIDirectives, AIProfile, Config

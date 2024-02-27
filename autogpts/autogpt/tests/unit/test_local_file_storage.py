@@ -4,8 +4,6 @@ import pytest
 
 from autogpt.file_storage.local import FileStorageConfiguration, LocalFileStorage
 
-_STORAGE_ROOT = Path("data")
-
 _ACCESSIBLE_PATHS = [
     Path("."),
     Path("test_file.txt"),
@@ -47,7 +45,7 @@ _INACCESSIBLE_PATHS = (
 
 @pytest.fixture()
 def storage_root(tmp_path):
-    return tmp_path / _STORAGE_ROOT
+    return tmp_path / "data"
 
 
 @pytest.fixture()
