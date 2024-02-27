@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from openai import OpenAI
+from openai import OpenAI, AzureOpenAI
 from openai.types import Model
+from pydantic import SecretStr
 
 from autogpt.core.resource.model_providers.openai import (
     OPEN_AI_MODELS,
@@ -107,9 +108,18 @@ class ApiManager(metaclass=Singleton):
             list[Model]: List of available GPT models.
         """
         if self.models is None:
-            all_models = (
-                OpenAI(**openai_credentials.get_api_access_kwargs()).models.list().data
-            )
+            if openai_credentials.api_type == "azure":
+                args = openai_credentials.get_api_access_kwargs()
+                for key in args:
+                    if isinstance(args[key], SecretStr):
+                        args[key] = args[key].get_secret_value()
+                all_models = (
+                    AzureOpenAI(**args).models.list().data
+                )
+            else:
+                all_models = (
+                    OpenAI(**openai_credentials.get_api_access_kwargs()).models.list().data
+                )
             self.models = [model for model in all_models if "gpt" in model.id]
 
         return self.models

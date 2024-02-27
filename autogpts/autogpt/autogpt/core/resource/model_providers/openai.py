@@ -330,7 +330,11 @@ class OpenAIProvider(
 
             # API key and org (if configured) are passed, the rest of the required
             # credentials is loaded from the environment by the AzureOpenAI client.
-            self._client = AsyncAzureOpenAI(**self._credentials.get_api_access_kwargs())
+            args = self._credentials.get_api_access_kwargs()
+            for key in args:
+                if isinstance(args[key], SecretStr):
+                    args[key] = args[key].get_secret_value()
+            self._client = AsyncAzureOpenAI(**args)
         else:
             from openai import AsyncOpenAI
 
