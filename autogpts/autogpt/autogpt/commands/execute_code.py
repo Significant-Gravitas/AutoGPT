@@ -225,7 +225,7 @@ def execute_python_file(
         raise CommandExecutionError(f"Could not run the script in a container: {e}")
 
 
-def validate_command(command: str, config: Config) -> bool:
+def validate_command(command: str, config: Config) -> tuple[bool, bool]:
     """Validate a command to ensure it is allowed
 
     Args:
@@ -234,16 +234,19 @@ def validate_command(command: str, config: Config) -> bool:
 
     Returns:
         bool: True if the command is allowed, False otherwise
+        bool: True if the command may be executed in a shell, False otherwise
     """
     if not command:
-        return False
+        return False, False
 
     command_name = shlex.split(command)[0]
 
     if config.shell_command_control == ALLOWLIST_CONTROL:
-        return command_name in config.shell_allowlist
+        return command_name in config.shell_allowlist, False
+    elif config.shell_command_control == DENYLIST_CONTROL:
+        return command_name not in config.shell_denylist, False
     else:
-        return command_name not in config.shell_denylist
+        return True, True
 
 
 @command(
@@ -270,6 +273,10 @@ def execute_shell(command_line: str, agent: Agent) -> str:
     Returns:
         str: The output of the command
     """
+    allow_execute, allow_shell = validate_command(command_line, agent.legacy_config)
+    if not allow_execute:
+        logger.info(f"Command '{command_line}' not allowed")
+        raise OperationNotAllowedError("This shell command is not allowed.")
 
     current_dir = Path.cwd()
     # Change dir into workspace if necessary
@@ -280,18 +287,11 @@ def execute_shell(command_line: str, agent: Agent) -> str:
         f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
     )
 
-    if agent.legacy_config.shell_command_control in [
-        ALLOWLIST_CONTROL,
-        DENYLIST_CONTROL,
-    ]:
-        if not validate_command(command_line, agent.legacy_config):
-            logger.info(f"Command '{command_line}' not allowed")
-            raise OperationNotAllowedError("This shell command is not allowed.")
-        result = subprocess.run(
-            shlex.split(command_line), capture_output=True, shell=False
-        )
-    else:
-        result = subprocess.run(command_line, capture_output=True, shell=True)
+    result = subprocess.run(
+        command_line if allow_shell else shlex.split(command_line),
+        capture_output=True,
+        shell=allow_shell,
+    )
     output = f"STDOUT:\n{result.stdout.decode()}\nSTDERR:\n{result.stderr.decode()}"
 
     # Change back to whatever the prior working dir was
@@ -325,6 +325,10 @@ def execute_shell_popen(command_line: str, agent: Agent) -> str:
     Returns:
         str: Description of the fact that the process started and its id
     """
+    allow_execute, allow_shell = validate_command(command_line, agent.legacy_config)
+    if not allow_execute:
+        logger.info(f"Command '{command_line}' not allowed")
+        raise OperationNotAllowedError("This shell command is not allowed.")
 
     current_dir = Path.cwd()
     # Change dir into workspace if necessary
@@ -336,28 +340,12 @@ def execute_shell_popen(command_line: str, agent: Agent) -> str:
     )
 
     do_not_show_output = subprocess.DEVNULL
-    if agent.legacy_config.shell_command_control in [
-        ALLOWLIST_CONTROL,
-        DENYLIST_CONTROL,
-    ]:
-        if not validate_command(command_line, agent.legacy_config):
-            logger.info(f"Command '{command_line}' not allowed")
-            raise OperationNotAllowedError("This shell command is not allowed.")
-
-        process = subprocess.Popen(
-            shlex.split(command_line),
-            shell=False,
-            stdout=do_not_show_output,
-            stderr=do_not_show_output,
-        )
-
-    else:
-        process = subprocess.Popen(
-            command_line,
-            shell=True,
-            stdout=do_not_show_output,
-            stderr=do_not_show_output,
-        )
+    process = subprocess.Popen(
+        command_line if allow_shell else shlex.split(command_line),
+        shell=allow_shell,
+        stdout=do_not_show_output,
+        stderr=do_not_show_output,
+    )
 
     # Change back to whatever the prior working dir was
     os.chdir(current_dir)
