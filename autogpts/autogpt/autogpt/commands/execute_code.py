@@ -225,21 +225,24 @@ def execute_python_file(
         raise CommandExecutionError(f"Could not run the script in a container: {e}")
 
 
-def validate_command(command: str, config: Config) -> tuple[bool, bool]:
-    """Validate a command to ensure it is allowed
+def validate_command(command_line: str, config: Config) -> tuple[bool, bool]:
+    """Check whether a command is allowed and whether it may be executed in a shell.
+
+    If shell command control is enabled, we disallow executing in a shell, because
+    otherwise the model could easily circumvent the command filter using shell features.
 
     Args:
-        command (str): The command to validate
-        config (Config): The config to use to validate the command
+        command_line (str): The command line to validate
+        config (Config): The application config including shell command control settings
 
     Returns:
         bool: True if the command is allowed, False otherwise
         bool: True if the command may be executed in a shell, False otherwise
     """
-    if not command:
+    if not command_line:
         return False, False
 
-    command_name = shlex.split(command)[0]
+    command_name = shlex.split(command_line)[0]
 
     if config.shell_command_control == ALLOWLIST_CONTROL:
         return command_name in config.shell_allowlist, False
