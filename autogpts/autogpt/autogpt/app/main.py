@@ -84,7 +84,9 @@ async def run_auto_gpt(
     # Storage
     local = config.file_storage_backend == FileStorageBackendName.LOCAL
     restrict_to_root = not (local and not config.restrict_to_workspace)
-    file_storage = get_storage(config.file_storage_backend, root_path="data", restrict_to_root=restrict_to_root)
+    file_storage = get_storage(
+        config.file_storage_backend, root_path="data", restrict_to_root=restrict_to_root
+    )
     file_storage.initialize()
 
     # TODO: fill in llm values here
@@ -344,7 +346,9 @@ async def run_auto_gpt_server(
     # Storage
     local = config.file_storage_backend == FileStorageBackendName.LOCAL
     restrict_to_root = not (local and not config.restrict_to_workspace)
-    file_storage = get_storage(config.file_storage_backend, root_path="data", restrict_to_root=restrict_to_root)
+    file_storage = get_storage(
+        config.file_storage_backend, root_path="data", restrict_to_root=restrict_to_root
+    )
     file_storage.initialize()
 
     # TODO: fill in llm values here

@@ -4,7 +4,7 @@ import pytest
 
 from autogpt.file_storage.local import FileStorageConfiguration, LocalFileStorage
 
-_WORKSPACE_ROOT = Path("home/users/monty/auto_gpt_workspace")
+_STORAGE_ROOT = Path("data")
 
 _ACCESSIBLE_PATHS = [
     Path("."),
@@ -46,8 +46,15 @@ _INACCESSIBLE_PATHS = (
 
 
 @pytest.fixture()
-def workspace_root(tmp_path):
-    return tmp_path / _WORKSPACE_ROOT
+def storage_root(tmp_path):
+    return tmp_path / _STORAGE_ROOT
+
+
+@pytest.fixture()
+def storage(storage_root):
+    return LocalFileStorage(
+        FileStorageConfiguration(root=storage_root, restrict_to_root=True)
+    )
 
 
 @pytest.fixture(params=_ACCESSIBLE_PATHS)
@@ -60,33 +67,12 @@ def inaccessible_path(request):
     return request.param
 
 
-def test_sanitize_path_accessible(accessible_path, workspace_root):
-    full_path = LocalFileStorage._sanitize_path(
-        accessible_path,
-        root=workspace_root,
-        restrict_to_root=True,
-    )
+def test_get_path_accessible(accessible_path: Path, storage: LocalFileStorage):
+    full_path = storage.get_path(accessible_path)
     assert full_path.is_absolute()
-    assert full_path.is_relative_to(workspace_root)
+    assert full_path.is_relative_to(storage.root)
 
 
-def test_sanitize_path_inaccessible(inaccessible_path, workspace_root):
+def test_get_path_inaccessible(inaccessible_path: Path, storage: LocalFileStorage):
     with pytest.raises(ValueError):
-        LocalFileStorage._sanitize_path(
-            inaccessible_path,
-            root=workspace_root,
-            restrict_to_root=True,
-        )
-
-
-def test_get_path_accessible(accessible_path, workspace_root):
-    workspace = LocalFileStorage(FileStorageConfiguration(root=workspace_root))
-    full_path = workspace.get_path(accessible_path)
-    assert full_path.is_absolute()
-    assert full_path.is_relative_to(workspace_root)
-
-
-def test_get_path_inaccessible(inaccessible_path, workspace_root):
-    workspace = LocalFileStorage(FileStorageConfiguration(root=workspace_root))
-    with pytest.raises(ValueError):
-        workspace.get_path(inaccessible_path)
+        storage.get_path(inaccessible_path)

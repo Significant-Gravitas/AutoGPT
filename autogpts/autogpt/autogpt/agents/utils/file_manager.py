@@ -23,7 +23,7 @@ class FileManager:
     def root(self) -> Path:
         """The full root directory of the FileManager."""
         return self.file_storage.root / self._root
-    
+
     def get_path(self, relative_path: Path) -> Path:
         """Get the full path for an item in the storage."""
         return self.file_storage.get_path(self.root / relative_path)
@@ -61,3 +61,7 @@ class FileManager:
     def make_dir(self, path: Path) -> None:
         """Create a directory in the storage if doesn't exist."""
         return self.file_storage.make_dir(self.root / path)
+
+    def delete_dir(self, path: Path) -> None:
+        """Delete an empty folder in the storage."""
+        return self.file_storage.delete_dir(self.root / path)

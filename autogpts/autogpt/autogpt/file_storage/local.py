@@ -17,7 +17,7 @@ class LocalFileStorage(FileStorage):
     """A class that represents a file storage."""
 
     def __init__(self, config: FileStorageConfiguration):
-        self._root = self._sanitize_path(config.root)
+        self._root = config.root.resolve()
         self._restrict_to_root = config.restrict_to_root
         super().__init__()
 
@@ -30,6 +30,11 @@ class LocalFileStorage(FileStorage):
     def restrict_to_root(self) -> bool:
         """Whether to restrict generated paths to the root."""
         return self._restrict_to_root
+
+    @property
+    def is_local(self) -> bool:
+        """Whether the storage is local (i.e. on the same machine, not cloud-based)."""
+        return True
 
     def initialize(self) -> None:
         self.root.mkdir(exist_ok=True, parents=True)
@@ -85,6 +90,11 @@ class LocalFileStorage(FileStorage):
         """Delete a file in the storage."""
         full_path = self.get_path(path)
         full_path.unlink()
+
+    def delete_dir(self, path: str | Path) -> None:
+        """Delete an empty folder in the storage."""
+        full_path = self.get_path(path)
+        full_path.rmdir()
 
     def exists(self, path: str | Path) -> bool:
         """Check if a file or folder exists in the storage."""

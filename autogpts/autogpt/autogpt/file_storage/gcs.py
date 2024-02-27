@@ -46,6 +46,11 @@ class GCSFileStorage(FileStorage):
         """Whether to restrict generated paths to the root."""
         return True
 
+    @property
+    def is_local(self) -> bool:
+        """Whether the storage is local (i.e. on the same machine, not cloud-based)."""
+        return False
+
     def initialize(self) -> None:
         logger.debug(f"Initializing {repr(self)}...")
         try:
@@ -121,6 +126,11 @@ class GCSFileStorage(FileStorage):
         path = self.get_path(path)
         blob = self._bucket.blob(str(path))
         blob.delete()
+
+    def delete_dir(self, path: str | Path) -> None:
+        """Delete an empty folder in the storage."""
+        # Since GCS does not have directories, we don't need to do anything
+        pass
 
     def exists(self, path: str | Path) -> bool:
         """Check if a file or folder exists in GCS storage."""

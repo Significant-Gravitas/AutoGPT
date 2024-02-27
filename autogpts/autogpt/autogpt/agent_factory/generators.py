@@ -13,7 +13,6 @@ from .configurators import _configure_agent
 from .profile_generator import generate_agent_profile_for_task
 
 
-# TODO kcze why is this async?
 async def generate_agent_for_task(
     agent_id: str,
     task: str,

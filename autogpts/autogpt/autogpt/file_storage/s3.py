@@ -63,6 +63,11 @@ class S3FileStorage(FileStorage):
         """Whether to restrict generated paths to the root."""
         return True
 
+    @property
+    def is_local(self) -> bool:
+        """Whether the storage is local (i.e. on the same machine, not cloud-based)."""
+        return False
+
     def initialize(self) -> None:
         logger.debug(f"Initializing {repr(self)}...")
         try:
@@ -155,6 +160,11 @@ class S3FileStorage(FileStorage):
         path = self.get_path(path)
         obj = self._s3.Object(self._bucket_name, str(path))
         obj.delete()
+
+    def delete_dir(self, path: str | Path) -> None:
+        """Delete an empty folder in the storage."""
+        # S3 does not have directories, so we don't need to do anything
+        pass
 
     def exists(self, path: str | Path) -> bool:
         """Check if a file or folder exists in S3 storage."""

@@ -8,8 +8,8 @@ from autogpt.file_storage import FileStorage
 from autogpt.memory.vector import JSONFileMemory, MemoryItem
 
 
-def test_json_memory_init_without_backing_file(config: Config, workspace: FileStorage):
-    index_file = workspace.root / f"{config.memory_index}.json"
+def test_json_memory_init_without_backing_file(config: Config, storage: FileStorage):
+    index_file = storage.root / f"{config.memory_index}.json"
 
     assert not index_file.exists()
     JSONFileMemory(config)
@@ -17,10 +17,8 @@ def test_json_memory_init_without_backing_file(config: Config, workspace: FileSt
     assert index_file.read_text() == "[]"
 
 
-def test_json_memory_init_with_backing_empty_file(
-    config: Config, workspace: FileStorage
-):
-    index_file = workspace.root / f"{config.memory_index}.json"
+def test_json_memory_init_with_backing_empty_file(config: Config, storage: FileStorage):
+    index_file = storage.root / f"{config.memory_index}.json"
     index_file.touch()
 
     assert index_file.exists()
@@ -30,9 +28,9 @@ def test_json_memory_init_with_backing_empty_file(
 
 
 def test_json_memory_init_with_backing_invalid_file(
-    config: Config, workspace: FileStorage
+    config: Config, storage: FileStorage
 ):
-    index_file = workspace.root / f"{config.memory_index}.json"
+    index_file = storage.root / f"{config.memory_index}.json"
     index_file.touch()
 
     raw_data = {"texts": ["test"]}

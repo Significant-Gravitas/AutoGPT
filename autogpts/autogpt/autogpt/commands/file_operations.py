@@ -117,7 +117,7 @@ async def log_operation(
     if checksum is not None:
         log_entry += f" #{checksum}"
     logger.debug(f"Logging file operation: {log_entry}")
-    await agent.log_operation(f"{log_entry}\n")
+    await agent.log_operation(f"{log_entry}")
 
 
 @command(

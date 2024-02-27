@@ -93,7 +93,9 @@ async def test_read_file(gcs_workspace_with_files: GCSFileStorage):
 
 def test_list_files(gcs_workspace_with_files: GCSFileStorage):
     # List at root level
-    assert (files := gcs_workspace_with_files.list_files()) == gcs_workspace_with_files.list_files()
+    assert (
+        files := gcs_workspace_with_files.list_files()
+    ) == gcs_workspace_with_files.list_files()
     assert len(files) > 0
     assert set(files) == set(Path(file_name) for file_name, _ in TEST_FILES)
 

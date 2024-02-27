@@ -29,14 +29,14 @@ from hypercorn.config import Config as HypercornConfig
 from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
+from autogpt.agents.agent import Agent
 from autogpt.commands.system import finish
 from autogpt.commands.user_interaction import ask_user
-from autogpt.agents.agent import Agent
 from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.resource.model_providers.schema import ModelProviderBudget
-from autogpt.file_storage import FileStorage, FileStorageBackendName, get_storage
+from autogpt.file_storage import FileStorage
 from autogpt.logs.utils import fmt_kwargs
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
 
@@ -392,11 +392,8 @@ class AgentProtocolServer:
         return artifact
 
     async def get_artifact(
-            self,
-            agent: Agent,
-            task_id: str,
-            artifact_id: str
-        ) -> StreamingResponse:
+        self, agent: Agent, task_id: str, artifact_id: str
+    ) -> StreamingResponse:
         """
         Download a task artifact by ID.
         """

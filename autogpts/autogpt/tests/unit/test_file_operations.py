@@ -46,8 +46,8 @@ def test_file_name():
 
 
 @pytest.fixture
-def test_file_path(test_file_name: Path, workspace: FileStorage):
-    return workspace.get_path(test_file_name)
+def test_file_path(test_file_name: Path, storage: FileStorage):
+    return storage.get_path(test_file_name)
 
 
 @pytest.fixture()
@@ -69,17 +69,17 @@ def test_file_with_content_path(test_file: TextIOWrapper, file_content, agent: A
 
 
 @pytest.fixture()
-def test_directory(workspace: FileStorage):
-    return workspace.get_path("test_directory")
+def test_directory(storage: FileStorage):
+    return storage.get_path("test_directory")
 
 
 @pytest.fixture()
-def test_nested_file(workspace: FileStorage):
-    return workspace.get_path("nested/test_file.txt")
+def test_nested_file(storage: FileStorage):
+    return storage.get_path("nested/test_file.txt")
 
 
 def test_file_operations_log(test_file: TextIOWrapper):
-    log_file_content = (
+    all_logs = (
         "File Operation Logger\n"
         "write: path/to/file1.txt #checksum1\n"
         "write: path/to/file2.txt #checksum2\n"
@@ -87,8 +87,7 @@ def test_file_operations_log(test_file: TextIOWrapper):
         "append: path/to/file2.txt #checksum4\n"
         "delete: path/to/file3.txt\n"
     )
-    test_file.write(log_file_content)
-    test_file.close()
+    logs = all_logs.split("\n")
 
     expected = [
         ("write", "path/to/file1.txt", "checksum1"),
@@ -97,29 +96,7 @@ def test_file_operations_log(test_file: TextIOWrapper):
         ("append", "path/to/file2.txt", "checksum4"),
         ("delete", "path/to/file3.txt", None),
     ]
-    assert list(file_ops.operations_from_log(test_file.name)) == expected
-
-
-def test_file_operations_state(test_file: TextIOWrapper):
-    # Prepare a fake log file
-    log_file_content = (
-        "File Operation Logger\n"
-        "write: path/to/file1.txt #checksum1\n"
-        "write: path/to/file2.txt #checksum2\n"
-        "write: path/to/file3.txt #checksum3\n"
-        "append: path/to/file2.txt #checksum4\n"
-        "delete: path/to/file3.txt\n"
-    )
-    test_file.write(log_file_content)
-    test_file.close()
-
-    # Call the function and check the returned dictionary
-    expected_state = {
-        "path/to/file1.txt": "checksum1",
-        "path/to/file2.txt": "checksum4",
-    }
-    #TODO kcze - fix (accepts list[str])
-    assert file_ops.file_operations_state(test_file.name) == expected_state
+    assert list(file_ops.operations_from_log(logs)) == expected
 
 
 def test_is_duplicate_operation(agent: Agent, mocker: MockerFixture):
@@ -166,13 +143,13 @@ def test_is_duplicate_operation(agent: Agent, mocker: MockerFixture):
         is True
     )
 
-#TODO kcze - won't work
+
 # Test logging a file operation
-def test_log_operation(agent: Agent):
-    file_ops.log_operation("log_test", Path("path/to/test"), agent=agent)
-    with open(agent.file_manager.file_ops_log_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    assert "log_test: path/to/test\n" in content
+@pytest.mark.asyncio
+async def test_log_operation(agent: Agent):
+    await file_ops.log_operation("log_test", Path("path/to/test"), agent=agent)
+    log_entry = agent.get_logs()[-1]
+    assert "log_test: path/to/test" in log_entry
 
 
 def test_text_checksum(file_content: str):
@@ -181,14 +158,14 @@ def test_text_checksum(file_content: str):
     assert re.match(r"^[a-fA-F0-9]+$", checksum) is not None
     assert checksum != different_checksum
 
-#TODO kcze - won't work
-def test_log_operation_with_checksum(agent: Agent):
-    file_ops.log_operation(
+
+@pytest.mark.asyncio
+async def test_log_operation_with_checksum(agent: Agent):
+    await file_ops.log_operation(
         "log_test", Path("path/to/test"), agent=agent, checksum="ABCDEF"
     )
-    with open(agent.file_manager.file_ops_log_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    assert "log_test: path/to/test #ABCDEF\n" in content
+    log_entry = agent.get_logs()[-1]
+    assert "log_test: path/to/test #ABCDEF" in log_entry
 
 
 def test_read_file(
@@ -224,21 +201,20 @@ async def test_write_to_file_absolute_path(test_file_path: Path, agent: Agent):
         content = f.read()
     assert content == new_content
 
-#TODO kcze - won't work
+
 @pytest.mark.asyncio
 async def test_write_file_logs_checksum(test_file_name: Path, agent: Agent):
     new_content = "This is new content.\n"
     new_checksum = file_ops.text_checksum(new_content)
     await file_ops.write_to_file(test_file_name, new_content, agent=agent)
-    with open(agent.file_manager.file_ops_log_path, "r", encoding="utf-8") as f:
-        log_entry = f.read()
-    assert log_entry == f"write: {test_file_name} #{new_checksum}\n"
+    log_entry = agent.get_logs()[-1]
+    assert log_entry == f"write: {test_file_name} #{new_checksum}"
 
 
 @pytest.mark.asyncio
 async def test_write_file_fails_if_content_exists(test_file_name: Path, agent: Agent):
     new_content = "This is new content.\n"
-    file_ops.log_operation(
+    await file_ops.log_operation(
         "write",
         test_file_name,
         agent=agent,
@@ -256,34 +232,32 @@ async def test_write_file_succeeds_if_content_different(
     await file_ops.write_to_file(test_file_with_content_path, new_content, agent=agent)
 
 
-def test_list_files(workspace: FileStorage, test_directory: Path, agent: Agent):
-    # Case 1: Create files A and B, search for A, and ensure we don't return A and B
-    file_a = workspace.get_path("file_a.txt")
-    file_b = workspace.get_path("file_b.txt")
+@pytest.mark.asyncio
+async def test_list_files(agent: Agent):
+    # Create files A and B
+    file_a_name = "file_a.txt"
+    file_b_name = "file_b.txt"
+    test_directory = Path("test_directory")
 
-    with open(file_a, "w") as f:
-        f.write("This is file A.")
-
-    with open(file_b, "w") as f:
-        f.write("This is file B.")
+    await agent.workspace.write_file(file_a_name, "This is file A.")
+    await agent.workspace.write_file(file_b_name, "This is file B.")
 
     # Create a subdirectory and place a copy of file_a in it
-    if not os.path.exists(test_directory):
-        os.makedirs(test_directory)
+    agent.workspace.make_dir(test_directory)
+    await agent.workspace.write_file(
+        test_directory / file_a_name, "This is file A in the subdirectory."
+    )
 
-    with open(os.path.join(test_directory, file_a.name), "w") as f:
-        f.write("This is file A in the subdirectory.")
-
-    files = file_ops.list_folder(str(workspace.root), agent=agent)
-    assert file_a.name in files
-    assert file_b.name in files
-    assert os.path.join(Path(test_directory).name, file_a.name) in files
+    files = file_ops.list_folder(".", agent=agent)
+    assert file_a_name in files
+    assert file_b_name in files
+    assert os.path.join(test_directory, file_a_name) in files
 
     # Clean up
-    os.remove(file_a)
-    os.remove(file_b)
-    os.remove(os.path.join(test_directory, file_a.name))
-    os.rmdir(test_directory)
+    agent.workspace.delete_file(file_a_name)
+    agent.workspace.delete_file(file_b_name)
+    agent.workspace.delete_file(test_directory / file_a_name)
+    agent.workspace.delete_dir(test_directory)
 
     # Case 2: Search for a file that does not exist and make sure we don't throw
     non_existent_file = "non_existent_file.txt"

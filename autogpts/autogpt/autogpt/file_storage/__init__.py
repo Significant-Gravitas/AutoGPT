@@ -29,14 +29,12 @@ def get_storage(
 
             config = S3FileStorageConfiguration.from_env()
             config.root = root_path
-            config.restrict_to_root = restrict_to_root
             return S3FileStorage(config)
         case FileStorageBackendName.GCS:
             from .gcs import GCSFileStorage, GCSFileStorageConfiguration
 
             config = GCSFileStorageConfiguration.from_env()
             config.root = root_path
-            config.restrict_to_root = restrict_to_root
             return GCSFileStorage(config)
 
 
