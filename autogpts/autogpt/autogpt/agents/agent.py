@@ -191,7 +191,8 @@ class Agent(
         if self.event_history.contains_command(command_name, arguments):
             raise DuplicateOperationError(
                 f"The command {command_name} with args {arguments} "
-                f"has been already executed.")
+                f"has been already executed."
+            )
 
         self.log_cycle_handler.log_cycle(
             self.ai_profile.ai_name,
