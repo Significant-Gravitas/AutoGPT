@@ -2,6 +2,7 @@
 
 import logging
 import os
+import shlex
 import subprocess
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -33,6 +34,28 @@ ALLOWLIST_CONTROL = "allowlist"
 DENYLIST_CONTROL = "denylist"
 
 
+def we_are_running_in_a_docker_container() -> bool:
+    """Check if we are running in a Docker container
+
+    Returns:
+        bool: True if we are running in a Docker container, False otherwise
+    """
+    return os.path.exists("/.dockerenv")
+
+
+def is_docker_available() -> bool:
+    """Check if Docker is available
+
+    Returns:
+        bool: True if Docker is available, False otherwise"""
+    try:
+        client = docker.from_env()
+        client.ping()
+        return True
+    except Exception:
+        return False
+
+
 @command(
     "execute_python_code",
     "Executes the given Python code inside a single-use Docker container"
@@ -44,6 +67,10 @@ DENYLIST_CONTROL = "denylist"
             required=True,
         ),
     },
+    disabled_reason="To execute python code agent "
+    "must be running in a Docker container or "
+    "Docker must be available on the system.",
+    available=we_are_running_in_a_docker_container() or is_docker_available(),
 )
 def execute_python_code(code: str, agent: Agent) -> str:
     """
@@ -91,6 +118,10 @@ def execute_python_code(code: str, agent: Agent) -> str:
             items=JSONSchema(type=JSONSchema.Type.STRING),
         ),
     },
+    disabled_reason="To execute python code agent "
+    "must be running in a Docker container or "
+    "Docker must be available on the system.",
+    available=we_are_running_in_a_docker_container() or is_docker_available(),
 )
 @sanitize_path_arg("filename")
 def execute_python_file(
@@ -224,25 +255,31 @@ def execute_python_file(
         raise CommandExecutionError(f"Could not run the script in a container: {e}")
 
 
-def validate_command(command: str, config: Config) -> bool:
-    """Validate a command to ensure it is allowed
+def validate_command(command_line: str, config: Config) -> tuple[bool, bool]:
+    """Check whether a command is allowed and whether it may be executed in a shell.
+
+    If shell command control is enabled, we disallow executing in a shell, because
+    otherwise the model could easily circumvent the command filter using shell features.
 
     Args:
-        command (str): The command to validate
-        config (Config): The config to use to validate the command
+        command_line (str): The command line to validate
+        config (Config): The application config including shell command control settings
 
     Returns:
         bool: True if the command is allowed, False otherwise
+        bool: True if the command may be executed in a shell, False otherwise
     """
-    if not command:
-        return False
+    if not command_line:
+        return False, False
 
-    command_name = command.split()[0]
+    command_name = shlex.split(command_line)[0]
 
     if config.shell_command_control == ALLOWLIST_CONTROL:
-        return command_name in config.shell_allowlist
+        return command_name in config.shell_allowlist, False
+    elif config.shell_command_control == DENYLIST_CONTROL:
+        return command_name not in config.shell_denylist, False
     else:
-        return command_name not in config.shell_denylist
+        return True, True
 
 
 @command(
@@ -269,7 +306,8 @@ def execute_shell(command_line: str, agent: Agent) -> str:
     Returns:
         str: The output of the command
     """
-    if not validate_command(command_line, agent.legacy_config):
+    allow_execute, allow_shell = validate_command(command_line, agent.legacy_config)
+    if not allow_execute:
         logger.info(f"Command '{command_line}' not allowed")
         raise OperationNotAllowedError("This shell command is not allowed.")
 
@@ -282,7 +320,11 @@ def execute_shell(command_line: str, agent: Agent) -> str:
         f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
     )
 
-    result = subprocess.run(command_line, capture_output=True, shell=True)
+    result = subprocess.run(
+        command_line if allow_shell else shlex.split(command_line),
+        capture_output=True,
+        shell=allow_shell,
+    )
     output = f"STDOUT:\n{result.stdout.decode()}\nSTDERR:\n{result.stderr.decode()}"
 
     # Change back to whatever the prior working dir was
@@ -316,7 +358,8 @@ def execute_shell_popen(command_line: str, agent: Agent) -> str:
     Returns:
         str: Description of the fact that the process started and its id
     """
-    if not validate_command(command_line, agent.legacy_config):
+    allow_execute, allow_shell = validate_command(command_line, agent.legacy_config)
+    if not allow_execute:
         logger.info(f"Command '{command_line}' not allowed")
         raise OperationNotAllowedError("This shell command is not allowed.")
 
@@ -331,19 +374,13 @@ def execute_shell_popen(command_line: str, agent: Agent) -> str:
 
     do_not_show_output = subprocess.DEVNULL
     process = subprocess.Popen(
-        command_line, shell=True, stdout=do_not_show_output, stderr=do_not_show_output
+        command_line if allow_shell else shlex.split(command_line),
+        shell=allow_shell,
+        stdout=do_not_show_output,
+        stderr=do_not_show_output,
     )
 
     # Change back to whatever the prior working dir was
     os.chdir(current_dir)
 
     return f"Subprocess started with PID:'{str(process.pid)}'"
-
-
-def we_are_running_in_a_docker_container() -> bool:
-    """Check if we are running in a Docker container
-
-    Returns:
-        bool: True if we are running in a Docker container, False otherwise
-    """
-    return os.path.exists("/.dockerenv")
