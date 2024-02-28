@@ -34,6 +34,28 @@ ALLOWLIST_CONTROL = "allowlist"
 DENYLIST_CONTROL = "denylist"
 
 
+def we_are_running_in_a_docker_container() -> bool:
+    """Check if we are running in a Docker container
+
+    Returns:
+        bool: True if we are running in a Docker container, False otherwise
+    """
+    return os.path.exists("/.dockerenv")
+
+
+def is_docker_available() -> bool:
+    """Check if Docker is available
+
+    Returns:
+        bool: True if Docker is available, False otherwise"""
+    try:
+        client = docker.from_env()
+        client.ping()
+        return True
+    except Exception:
+        return False
+
+
 @command(
     "execute_python_code",
     "Executes the given Python code inside a single-use Docker container"
@@ -45,6 +67,10 @@ DENYLIST_CONTROL = "denylist"
             required=True,
         ),
     },
+    disabled_reason="To execute python code agent "
+    "must be running in a Docker container or "
+    "Docker must be available on the system.",
+    available=we_are_running_in_a_docker_container() or is_docker_available(),
 )
 def execute_python_code(code: str, agent: Agent) -> str:
     """
@@ -92,6 +118,10 @@ def execute_python_code(code: str, agent: Agent) -> str:
             items=JSONSchema(type=JSONSchema.Type.STRING),
         ),
     },
+    disabled_reason="To execute python code agent "
+    "must be running in a Docker container or "
+    "Docker must be available on the system.",
+    available=we_are_running_in_a_docker_container() or is_docker_available(),
 )
 @sanitize_path_arg("filename")
 def execute_python_file(
@@ -354,12 +384,3 @@ def execute_shell_popen(command_line: str, agent: Agent) -> str:
     os.chdir(current_dir)
 
     return f"Subprocess started with PID:'{str(process.pid)}'"
-
-
-def we_are_running_in_a_docker_container() -> bool:
-    """Check if we are running in a Docker container
-
-    Returns:
-        bool: True if we are running in a Docker container, False otherwise
-    """
-    return os.path.exists("/.dockerenv")
