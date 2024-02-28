@@ -74,11 +74,14 @@ class AgentProtocolServer:
             version="v0.4",
         )
 
-        # Add CORS middleware
-        origins = [
-            "*",
-            # Add any other origins you want to whitelist
+        # Configure CORS middleware
+        default_origins = [f"http://localhost:{port}"]  # Default only local access
+        configured_origins = [
+            origin
+            for origin in os.getenv("AP_SERVER_CORS_ALLOWED_ORIGINS", "").split(",")
+            if origin  # Empty list if not configured
         ]
+        origins = configured_origins or default_origins
 
         app.add_middleware(
             CORSMiddleware,
