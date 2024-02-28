@@ -1,5 +1,4 @@
 import logging
-import os
 import time
 from pathlib import Path
 from typing import AsyncIterator, Optional
@@ -23,6 +22,8 @@ async def run_api_agent(
     config: AgentBenchmarkConfig,
     timeout: int,
     artifacts_location: Optional[Path] = None,
+    *,
+    mock: bool = False,
 ) -> AsyncIterator[Step]:
     configuration = Configuration(host=config.host)
     async with ApiClient(configuration) as api_client:
@@ -36,26 +37,32 @@ async def run_api_agent(
         task_id = response.task_id
 
         if artifacts_location:
+            logger.debug("Uploading task input artifacts to agent...")
             await upload_artifacts(
                 api_instance, artifacts_location, task_id, "artifacts_in"
             )
 
+        logger.debug("Running agent until finished or timeout...")
         while True:
             step = await api_instance.execute_agent_task_step(task_id=task_id)
             yield step
 
             if time.time() - start_time > timeout:
                 raise TimeoutError("Time limit exceeded")
+            if step and mock:
+                step.is_last = True
             if not step or step.is_last:
                 break
 
         if artifacts_location:
             # In "mock" mode, we cheat by giving the correct artifacts to pass the test
-            if os.getenv("IS_MOCK"):
+            if mock:
+                logger.debug("Uploading mock artifacts to agent...")
                 await upload_artifacts(
                     api_instance, artifacts_location, task_id, "artifacts_out"
                 )
 
+            logger.debug("Downloading agent artifacts...")
             await download_agent_artifacts_into_folder(
                 api_instance, task_id, config.temp_folder
             )

@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from agbenchmark.challenges import ChallengeInfo
 from agbenchmark.config import AgentBenchmarkConfig
@@ -86,19 +87,32 @@ def add_test_result_to_report(
     else:
         test_report.metrics.attempted = True
 
-    test_report.results.append(
-        TestResult(
-            success=call.excinfo is None,
-            run_time=f"{str(round(call.duration, 3))} seconds",
-            fail_reason=str(call.excinfo.value) if call.excinfo else None,
-            reached_cutoff=user_properties.get("timed_out", False),
+    try:
+        test_report.results.append(
+            TestResult(
+                success=call.excinfo is None,
+                run_time=f"{str(round(call.duration, 3))} seconds",
+                fail_reason=(
+                    str(call.excinfo.value) if call.excinfo is not None else None
+                ),
+                reached_cutoff=user_properties.get("timed_out", False),
+                n_steps=user_properties.get("n_steps"),
+                steps=user_properties.get("steps", []),
+                cost=user_properties.get("agent_task_cost"),
+            )
         )
-    )
-    test_report.metrics.success_percentage = (
-        sum(r.success or False for r in test_report.results)
-        / len(test_report.results)
-        * 100
-    )
+        test_report.metrics.success_percentage = (
+            sum(r.success or False for r in test_report.results)
+            / len(test_report.results)
+            * 100
+        )
+    except ValidationError:
+        if call.excinfo:
+            logger.error(
+                "Validation failed on TestResult; "
+                f"call.excinfo = {repr(call.excinfo)};\n{call.excinfo.getrepr()})"
+            )
+        raise
 
     prev_test_results: list[bool | None] = get_and_update_success_history(
         test_name, test_report.results[-1].success

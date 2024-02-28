@@ -35,10 +35,10 @@ jobs:
         build-type: [release, dev]
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      uses: docker/setup-buildx-action@v3
 
     - if: runner.debug
       run: |
@@ -47,11 +47,12 @@ jobs:
 
     - id: build
       name: Build image
-      uses: docker/build-push-action@v3
+      uses: docker/build-push-action@v5
       with:
         context: autogpts/autogpt
         build-args: BUILD_TYPE=${{ matrix.build-type }}
         tags: ${{ env.IMAGE_NAME }}
+        labels: GIT_REVISION=${{ github.sha }}
         load: true    # save to docker images
         # cache layers in GitHub Actions cache to speed up builds
         cache-from: type=gha,scope=autogpt-docker-${{ matrix.build-type }}
@@ -100,28 +101,29 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: true
 
       - name: Log in to Docker hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - id: build
         name: Build image
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v5
         with:
           context: autogpts/autogpt
           build-args: BUILD_TYPE=dev  # include pytest
           tags: >
             ${{ env.IMAGE_NAME }},
             ${{ env.DEPLOY_IMAGE_NAME }}:${{ env.DEV_IMAGE_TAG }}
+          labels: GIT_REVISION=${{ github.sha }}
           load: true                  # save to docker images
           # cache layers in GitHub Actions cache to speed up builds
           cache-from: type=gha,scope=autogpt-docker-dev

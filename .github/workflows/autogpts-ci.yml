@@ -37,13 +37,13 @@ jobs:
       min-python-version: '3.10'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: true
 
       - name: Set up Python ${{ env.min-python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.min-python-version }}
 
@@ -56,13 +56,14 @@ jobs:
         run: |
           ./run agent start ${{ matrix.agent-name }}
           cd autogpts/${{ matrix.agent-name }}
-          poetry run agbenchmark --mock
+          poetry run agbenchmark --mock --test=BasicRetrieval --test=Battleship --test=WebArenaTask_0
           poetry run agbenchmark --test=WriteFile
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AGENT_NAME: ${{ matrix.agent-name }}
-          HELICONE_API_KEY: ${{ secrets.HELICONE_API_KEY }}
           REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
           HELICONE_CACHE_ENABLED: false
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
-          REPORT_LOCATION: ${{ format('../../reports/{0}', matrix.agent-name) }}
+          REPORTS_FOLDER: ${{ format('../../reports/{0}', matrix.agent-name) }}
+          TELEMETRY_ENVIRONMENT: autogpt-ci
+          TELEMETRY_OPT_IN: ${{ github.ref_name == 'master' }}

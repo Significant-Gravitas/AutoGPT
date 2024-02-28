@@ -25,6 +25,7 @@ from forge.sdk.model import (
 from forge.sdk.routes.agent_protocol import base_router
 from hypercorn.asyncio import serve as hypercorn_serve
 from hypercorn.config import Config as HypercornConfig
+from sentry_sdk import set_user
 
 from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
@@ -120,6 +121,9 @@ class AgentProtocolServer:
         """
         Create a task for the agent.
         """
+        if user_id := (task_request.additional_input or {}).get("user_id"):
+            set_user({"id": user_id})
+
         task = await self.db.create_task(
             input=task_request.input,
             additional_input=task_request.additional_input,
@@ -177,6 +181,9 @@ class AgentProtocolServer:
             llm_provider=self._get_task_llm_provider(task),
         )
 
+        if user_id := (task.additional_input or {}).get("user_id"):
+            set_user({"id": user_id})
+
         # According to the Agent Protocol spec, the first execute_step request contains
         #  the same task input as the parent create_task request.
         # To prevent this from interfering with the agent's process, we ignore the input
@@ -223,14 +230,21 @@ class AgentProtocolServer:
 
             if step.is_last and execute_command == finish.__name__:
                 assert execute_command_args
+
+                additional_output = {}
+                task_total_cost = agent.llm_provider.get_incurred_cost()
+                if task_total_cost > 0:
+                    additional_output["task_total_cost"] = task_total_cost
+                    logger.info(
+                        f"Total LLM cost for task {task_id}: "
+                        f"${round(task_total_cost, 2)}"
+                    )
+
                 step = await self.db.update_step(
                     task_id=task_id,
                     step_id=step.step_id,
                     output=execute_command_args["reason"],
-                )
-                logger.info(
-                    f"Total LLM cost for task {task_id}: "
-                    f"${round(agent.llm_provider.get_incurred_cost(), 2)}"
+                    additional_output=additional_output,
                 )
                 return step
 
@@ -310,6 +324,14 @@ class AgentProtocolServer:
             **raw_output,
         }
 
+        task_cumulative_cost = agent.llm_provider.get_incurred_cost()
+        if task_cumulative_cost > 0:
+            additional_output["task_cumulative_cost"] = task_cumulative_cost
+        logger.debug(
+            f"Running total LLM cost for task {task_id}: "
+            f"${round(task_cumulative_cost, 3)}"
+        )
+
         step = await self.db.update_step(
             task_id=task_id,
             step_id=step.step_id,
@@ -318,10 +340,6 @@ class AgentProtocolServer:
             additional_output=additional_output,
         )
 
-        logger.debug(
-            f"Running total LLM cost for task {task_id}: "
-            f"${round(agent.llm_provider.get_incurred_cost(), 3)}"
-        )
         await agent.save_state()
         return step
 

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Callable, Coroutine, Iterator, Optional, ParamSpec, TypeVar
 
+import sentry_sdk
 import tenacity
 import tiktoken
 import yaml
@@ -46,12 +47,15 @@ OpenAIChatParser = Callable[[str], dict]
 
 
 class OpenAIModelName(str, enum.Enum):
-    ADA = "text-embedding-ada-002"
+    EMBEDDING_v2 = "text-embedding-ada-002"
+    EMBEDDING_v3_S = "text-embedding-3-small"
+    EMBEDDING_v3_L = "text-embedding-3-large"
 
     GPT3_v1 = "gpt-3.5-turbo-0301"
     GPT3_v2 = "gpt-3.5-turbo-0613"
     GPT3_v2_16k = "gpt-3.5-turbo-16k-0613"
     GPT3_v3 = "gpt-3.5-turbo-1106"
+    GPT3_v4 = "gpt-3.5-turbo-0125"
     GPT3_ROLLING = "gpt-3.5-turbo"
     GPT3_ROLLING_16k = "gpt-3.5-turbo-16k"
     GPT3 = GPT3_ROLLING
@@ -62,6 +66,7 @@ class OpenAIModelName(str, enum.Enum):
     GPT4_v2 = "gpt-4-0613"
     GPT4_v2_32k = "gpt-4-32k-0613"
     GPT4_v3 = "gpt-4-1106-preview"
+    GPT4_v3_VISION = "gpt-4-1106-vision-preview"
     GPT4_v4 = "gpt-4-0125-preview"
     GPT4_ROLLING = "gpt-4"
     GPT4_ROLLING_32k = "gpt-4-32k"
@@ -72,14 +77,33 @@ class OpenAIModelName(str, enum.Enum):
 
 
 OPEN_AI_EMBEDDING_MODELS = {
-    OpenAIModelName.ADA: EmbeddingModelInfo(
-        name=OpenAIModelName.ADA,
-        service=ModelProviderService.EMBEDDING,
-        provider_name=ModelProviderName.OPENAI,
-        prompt_token_cost=0.0001 / 1000,
-        max_tokens=8191,
-        embedding_dimensions=1536,
-    ),
+    info.name: info
+    for info in [
+        EmbeddingModelInfo(
+            name=OpenAIModelName.EMBEDDING_v2,
+            service=ModelProviderService.EMBEDDING,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.0001 / 1000,
+            max_tokens=8191,
+            embedding_dimensions=1536,
+        ),
+        EmbeddingModelInfo(
+            name=OpenAIModelName.EMBEDDING_v3_S,
+            service=ModelProviderService.EMBEDDING,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.00002 / 1000,
+            max_tokens=8191,
+            embedding_dimensions=1536,
+        ),
+        EmbeddingModelInfo(
+            name=OpenAIModelName.EMBEDDING_v3_L,
+            service=ModelProviderService.EMBEDDING,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.00013 / 1000,
+            max_tokens=8191,
+            embedding_dimensions=3072,
+        ),
+    ]
 }
 
 
@@ -87,7 +111,7 @@ OPEN_AI_CHAT_MODELS = {
     info.name: info
     for info in [
         ChatModelInfo(
-            name=OpenAIModelName.GPT3,
+            name=OpenAIModelName.GPT3_v1,
             service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.0015 / 1000,
@@ -96,7 +120,7 @@ OPEN_AI_CHAT_MODELS = {
             has_function_call_api=True,
         ),
         ChatModelInfo(
-            name=OpenAIModelName.GPT3_16k,
+            name=OpenAIModelName.GPT3_v2_16k,
             service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.003 / 1000,
@@ -114,7 +138,16 @@ OPEN_AI_CHAT_MODELS = {
             has_function_call_api=True,
         ),
         ChatModelInfo(
-            name=OpenAIModelName.GPT4,
+            name=OpenAIModelName.GPT3_v4,
+            service=ModelProviderService.CHAT,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.0005 / 1000,
+            completion_token_cost=0.0015 / 1000,
+            max_tokens=16384,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT4_v1,
             service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.03 / 1000,
@@ -123,7 +156,7 @@ OPEN_AI_CHAT_MODELS = {
             has_function_call_api=True,
         ),
         ChatModelInfo(
-            name=OpenAIModelName.GPT4_32k,
+            name=OpenAIModelName.GPT4_v1_32k,
             service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.06 / 1000,
@@ -144,19 +177,24 @@ OPEN_AI_CHAT_MODELS = {
 }
 # Copy entries for models with equivalent specs
 chat_model_mapping = {
-    OpenAIModelName.GPT3: [OpenAIModelName.GPT3_v1, OpenAIModelName.GPT3_v2],
-    OpenAIModelName.GPT3_16k: [OpenAIModelName.GPT3_v2_16k],
-    OpenAIModelName.GPT4: [OpenAIModelName.GPT4_v1, OpenAIModelName.GPT4_v2],
-    OpenAIModelName.GPT4_32k: [
-        OpenAIModelName.GPT4_v1_32k,
+    OpenAIModelName.GPT3_v1: [OpenAIModelName.GPT3_v2],
+    OpenAIModelName.GPT3_v2_16k: [OpenAIModelName.GPT3_16k],
+    OpenAIModelName.GPT3_v4: [OpenAIModelName.GPT3_ROLLING],
+    OpenAIModelName.GPT4_v1: [OpenAIModelName.GPT4_v2, OpenAIModelName.GPT4_ROLLING],
+    OpenAIModelName.GPT4_v1_32k: [
         OpenAIModelName.GPT4_v2_32k,
+        OpenAIModelName.GPT4_32k,
     ],
-    OpenAIModelName.GPT4_TURBO: [OpenAIModelName.GPT4_v3, OpenAIModelName.GPT4_v4],
+    OpenAIModelName.GPT4_TURBO: [
+        OpenAIModelName.GPT4_v3,
+        OpenAIModelName.GPT4_v3_VISION,
+        OpenAIModelName.GPT4_v4,
+        OpenAIModelName.GPT4_VISION,
+    ],
 }
 for base, copies in chat_model_mapping.items():
     for copy in copies:
-        copy_info = ChatModelInfo(**OPEN_AI_CHAT_MODELS[base].__dict__)
-        copy_info.name = copy
+        copy_info = OPEN_AI_CHAT_MODELS[base].copy(update={"name": copy})
         OPEN_AI_CHAT_MODELS[copy] = copy_info
         if copy.endswith(("-0301", "-0314")):
             copy_info.has_function_call_api = False
@@ -424,7 +462,12 @@ class OpenAIProvider(
             except Exception as e:
                 self._logger.warning(f"Parsing attempt #{attempts} failed: {e}")
                 self._logger.debug(f"Parsing failed on response: '''{assistant_msg}'''")
+                sentry_sdk.capture_exception(
+                    error=e,
+                    extras={"assistant_msg": assistant_msg, "i_attempt": attempts},
+                )
                 if attempts < self._configuration.fix_failed_parse_tries:
+                    model_prompt.append(assistant_msg)
                     model_prompt.append(
                         ChatMessage.system(f"ERROR PARSING YOUR RESPONSE:\n\n{e}")
                     )
@@ -490,9 +533,8 @@ class OpenAIProvider(
                 _functions_compat_fix_kwargs(functions, kwargs)
 
         if extra_headers := self._configuration.extra_request_headers:
-            kwargs["extra_headers"] = kwargs.get("extra_headers", {}).update(
-                extra_headers.copy()
-            )
+            kwargs["extra_headers"] = kwargs.get("extra_headers", {})
+            kwargs["extra_headers"].update(extra_headers.copy())
 
         return kwargs
 
@@ -514,9 +556,8 @@ class OpenAIProvider(
         kwargs.update(self._credentials.get_model_access_kwargs(model_name))
 
         if extra_headers := self._configuration.extra_request_headers:
-            kwargs["extra_headers"] = kwargs.get("extra_headers", {}).update(
-                extra_headers.copy()
-            )
+            kwargs["extra_headers"] = kwargs.get("extra_headers", {})
+            kwargs["extra_headers"].update(extra_headers.copy())
 
         return kwargs
 
@@ -530,7 +571,10 @@ class OpenAIProvider(
             messages: list[ChatMessage], *_, **kwargs
         ) -> ChatCompletion:
             raw_messages = [
-                message.dict(include={"role", "content", "tool_calls", "name"})
+                message.dict(
+                    include={"role", "content", "tool_calls", "name"},
+                    exclude_none=True,
+                )
                 for message in messages
             ]
             return await self._client.chat.completions.create(
@@ -715,6 +759,7 @@ def _functions_compat_fix_kwargs(
 def _tool_calls_compat_extract_calls(response: str) -> Iterator[AssistantToolCall]:
     import json
     import re
+    import uuid
 
     logging.debug(f"Trying to extract tool calls from response:\n{response}")
 
@@ -727,6 +772,7 @@ def _tool_calls_compat_extract_calls(response: str) -> Iterator[AssistantToolCal
         tool_calls: list[AssistantToolCallDict] = json.loads(block.group(1))
 
     for t in tool_calls:
+        t["id"] = str(uuid.uuid4())
         t["function"]["arguments"] = str(t["function"]["arguments"])  # HACK
 
         yield AssistantToolCall.parse_obj(t)

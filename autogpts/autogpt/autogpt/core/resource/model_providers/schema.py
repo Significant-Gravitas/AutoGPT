@@ -44,15 +44,13 @@ class ChatMessage(BaseModel):
         SYSTEM = "system"
         ASSISTANT = "assistant"
 
+        TOOL = "tool"
+        """May be used for the result of tool calls"""
         FUNCTION = "function"
         """May be used for the return value of function calls"""
 
     role: Role
     content: str
-
-    @staticmethod
-    def assistant(content: str) -> "ChatMessage":
-        return ChatMessage(role=ChatMessage.Role.ASSISTANT, content=content)
 
     @staticmethod
     def user(content: str) -> "ChatMessage":
@@ -79,13 +77,13 @@ class AssistantFunctionCallDict(TypedDict):
 
 
 class AssistantToolCall(BaseModel):
-    # id: str
+    id: str
     type: Literal["function"]
     function: AssistantFunctionCall
 
 
 class AssistantToolCallDict(TypedDict):
-    # id: str
+    id: str
     type: Literal["function"]
     function: AssistantFunctionCallDict
 
@@ -93,7 +91,7 @@ class AssistantToolCallDict(TypedDict):
 class AssistantChatMessage(ChatMessage):
     role: Literal["assistant"] = "assistant"
     content: Optional[str]
-    tool_calls: Optional[list[AssistantToolCall]]
+    tool_calls: Optional[list[AssistantToolCall]] = None
 
 
 class AssistantChatMessageDict(TypedDict, total=False):

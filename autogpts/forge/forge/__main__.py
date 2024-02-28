@@ -45,5 +45,13 @@ if __name__ == "__main__":
         host="localhost",
         port=int(port),
         log_level="error",
+        # Reload on changes to code or .env
         reload=True,
+        reload_dirs=os.path.dirname(os.path.dirname(__file__)),
+        reload_excludes="*.py",  # Cancel default *.py include pattern
+        reload_includes=[
+            f"{os.path.basename(os.path.dirname(__file__))}/**/*.py",
+            ".*",
+            ".env",
+        ],
     )

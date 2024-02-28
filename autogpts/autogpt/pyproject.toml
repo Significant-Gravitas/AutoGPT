@@ -24,7 +24,7 @@ serve = "autogpt.app.cli:serve"
 python = "^3.10"
 auto-gpt-plugin-template = {git = "https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template", rev = "0.1.0"}
 # autogpt-forge = { path = "../forge" }
-autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", rev = "b238aba", subdirectory = "autogpts/forge"}
+autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", rev = "ab05b7ae70754c063909", subdirectory = "autogpts/forge"}
 beautifulsoup4 = "^4.12.2"
 boto3 = "^1.33.6"
 charset-normalizer = "^3.1.0"
@@ -34,7 +34,7 @@ distro = "^1.8.0"
 docker = "*"
 duckduckgo-search = "^4.0.0"
 en-core-web-sm = {url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl"}
-fastapi = "*"
+fastapi = "^0.109.1"
 ftfy = "^6.1.1"
 gitpython = "^3.1.32"
 google-api-python-client = "*"
@@ -59,6 +59,7 @@ readability-lxml = "^0.8.1"
 redis = "*"
 requests = "*"
 selenium = "^4.11.2"
+sentry-sdk = "^1.40.4"
 spacy = "^3.0.0"
 tenacity = "^8.2.2"
 tiktoken = "^0.5.0"

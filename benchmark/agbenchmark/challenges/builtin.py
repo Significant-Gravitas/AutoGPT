@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import Any, ClassVar, Iterator, Literal, Optional
 
 import pytest
-from agent_protocol_client import AgentApi, ApiClient, Configuration as ClientConfig
+from agent_protocol_client import (
+    AgentApi,
+    ApiClient,
+    Configuration as ClientConfig,
+    Step,
+)
 from colorama import Fore, Style
 from openai import _load_client as get_openai_client
 from pydantic import BaseModel, constr, Field, validator
@@ -160,10 +165,10 @@ class BuiltinChallenge(BaseChallenge):
         request: pytest.FixtureRequest,
         i_attempt: int,
     ) -> None:
-        if os.environ.get("HELICONE_API_KEY"):
-            from helicone.lock import HeliconeLockManager
+        # if os.environ.get("HELICONE_API_KEY"):
+        #     from helicone.lock import HeliconeLockManager
 
-            HeliconeLockManager.write_custom_property("challenge", self.info.name)
+        #     HeliconeLockManager.write_custom_property("challenge", self.info.name)
 
         timeout = self._spec.cutoff or 60
 
@@ -173,18 +178,31 @@ class BuiltinChallenge(BaseChallenge):
             timeout = int(cutoff)  # type: ignore
 
         task_id = ""
+        n_steps = 0
         timed_out = None
+        agent_task_cost = None
+        steps: list[Step] = []
         try:
-            async for step in self.run_challenge(config, timeout):
+            async for step in self.run_challenge(
+                config, timeout, mock=request.config.getoption("--mock")
+            ):
                 if not task_id:
                     task_id = step.task_id
-                if request.config.getoption("--mock"):
-                    # Run only one step in mock mode
-                    break
+
+                n_steps += 1
+                steps.append(step.copy())
+                if step.additional_output:
+                    agent_task_cost = step.additional_output.get(
+                        "task_total_cost",
+                        step.additional_output.get("task_cumulative_cost"),
+                    )
             timed_out = False
         except TimeoutError:
             timed_out = True
+        request.node.user_properties.append(("steps", steps))
+        request.node.user_properties.append(("n_steps", n_steps))
         request.node.user_properties.append(("timed_out", timed_out))
+        request.node.user_properties.append(("agent_task_cost", agent_task_cost))
 
         agent_client_config = ClientConfig(host=config.host)
         async with ApiClient(agent_client_config) as api_client:
@@ -230,15 +248,6 @@ class BuiltinChallenge(BaseChallenge):
 
     @classmethod
     def evaluate_workspace_content(cls, workspace: Path) -> Iterator[EvalResult]:
-        if cls._spec.task == "" and os.getenv("IS_MOCK"):
-            yield EvalResult(
-                result="This is a mock answer",
-                result_source="step_output",
-                score=1.0,
-                passed=True,
-            )
-            return
-
         result_ground = cls._spec.ground
         outputs_for_eval = cls.get_outputs_for_eval(workspace, result_ground)
 
@@ -253,6 +262,15 @@ class BuiltinChallenge(BaseChallenge):
                         score=score,
                         passed=score > 0.9,  # FIXME: arbitrary threshold
                     )
+
+        if result_ground.eval.type in ("python", "pytest"):
+            for py_file, output in outputs_for_eval:
+                yield EvalResult(
+                    result=output,
+                    result_source=str(py_file),
+                    score=float(not output.startswith("Error:")),
+                    passed=not output.startswith("Error:"),
+                )
 
         if result_ground.eval.type == "llm":
             combined_results = "\n".join(output[1] for output in outputs_for_eval)
@@ -290,7 +308,16 @@ class BuiltinChallenge(BaseChallenge):
                 # Otherwise, it is a specific file
                 matching_files = [os.path.join(script_dir, file_pattern)]
 
+            logger.debug(
+                f"Files to evaluate for pattern `{file_pattern}`: {matching_files}"
+            )
+
             for file_path in matching_files:
+                relative_file_path = Path(file_path).relative_to(workspace)
+                logger.debug(
+                    f"Evaluating {relative_file_path} "
+                    f"(eval type: {ground.eval.type})..."
+                )
                 if ground.eval.type == "python":
                     result = subprocess.run(
                         [sys.executable, file_path],
@@ -299,15 +326,12 @@ class BuiltinChallenge(BaseChallenge):
                         text=True,
                     )
                     if "error" in result.stderr or result.returncode != 0:
-                        print(result.stderr)
-                        assert False, result.stderr
-                    yield (
-                        Path(file_path).relative_to(workspace),
-                        f"Output: {result.stdout}\n",
-                    )
+                        yield relative_file_path, f"Error: {result.stderr}\n"
+                    else:
+                        yield relative_file_path, f"Output: {result.stdout}\n"
                 else:
                     with open(file_path, "r") as f:
-                        yield Path(file_path).relative_to(workspace), f.read()
+                        yield relative_file_path, f.read()
         else:
             if ground.eval.type == "pytest":
                 result = subprocess.run(
@@ -317,9 +341,9 @@ class BuiltinChallenge(BaseChallenge):
                     text=True,
                 )
                 if "error" in result.stderr or result.returncode != 0:
-                    print(result.stderr)
-                    assert False, result.stderr
-                yield "pytest", f"Output: {result.stdout}\n"
+                    yield "pytest", f"Error: {result.stderr}\n"
+                else:
+                    yield "pytest", f"Output: {result.stdout}\n"
 
     @staticmethod
     def score_result(content: str, ground: BuiltinChallengeSpec.Ground) -> float | None:
@@ -358,9 +382,9 @@ class BuiltinChallenge(BaseChallenge):
 
     @classmethod
     def score_result_with_llm(
-        cls, content: str, ground: BuiltinChallengeSpec.Ground
+        cls, content: str, ground: BuiltinChallengeSpec.Ground, *, mock: bool = False
     ) -> float:
-        if os.getenv("IS_MOCK"):
+        if mock:
             return 1.0
 
         # the validation for this is done in the Eval BaseModel

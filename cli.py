@@ -274,12 +274,20 @@ def start(agent_name, no_setup):
     if os.path.exists(agent_dir) and os.path.isfile(run_command) and os.path.isfile(run_bench_command):
         os.chdir(agent_dir)
         if not no_setup:
+            click.echo(f"⌛ Running setup for agent '{agent_name}'...")
             setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
             setup_process.wait()
+            click.echo()
+
         subprocess.Popen(["./run_benchmark", "serve"], cwd=agent_dir)
-        click.echo(f"Benchmark Server starting please wait...")
+        click.echo("⌛ (Re)starting benchmark server...")
+        wait_until_conn_ready(8080)
+        click.echo()
+
         subprocess.Popen(["./run"], cwd=agent_dir)
-        click.echo(f"Agent '{agent_name}' starting please wait...")
+        click.echo(f"⌛ (Re)starting agent '{agent_name}'...")
+        wait_until_conn_ready(8000)
+        click.echo("✅ Agent application started and available on port 8000")
     elif not os.path.exists(agent_dir):
         click.echo(
             click.style(
@@ -888,6 +896,19 @@ def update(agent_name, hash, branch):
                 fg="green",
             )
         )
+
+
+def wait_until_conn_ready(port: int = 8000):
+    """Polls localhost:{port} until it is available for connections"""
+    import time
+    import socket
+
+    while True:
+        time.sleep(0.5)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(('localhost', port)) == 0:
+                break
+
 
 if __name__ == "__main__":
     cli()
