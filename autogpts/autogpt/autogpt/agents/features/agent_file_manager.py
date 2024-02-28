@@ -3,13 +3,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..base import BaseAgent, Config
+    from ..base import BaseAgent
 
 import logging
 
 from autogpt.agents.utils.file_manager import FileManager
 
-from ..base import BaseAgent, BaseAgentSettings
+from ..base import BaseAgentSettings
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class AgentFileManagerMixin:
 
         if "file_storage" not in kwargs:
             raise ValueError(
-                "AgentFileManagerMixin requires a file_storage argument in the constructor."
+                "AgentFileManagerMixin requires a file_storage in the constructor."
             )
 
         state: BaseAgentSettings = getattr(self, "state")

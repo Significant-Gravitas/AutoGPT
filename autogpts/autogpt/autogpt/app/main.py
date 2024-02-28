@@ -317,7 +317,8 @@ async def run_auto_gpt(
             or agent_id
         )
         if save_as_id and save_as_id != agent_id:
-            # HACK this shouldn't be done this way, preferably agents should not change their ID
+            # HACK this shouldn't be done this way
+            # preferably agents should not change their ID
             # this just replaces the agent file space with a new one
             agent.files = FileManager(agent._file_storage, f"agents/{save_as_id}/")
             # TODO: clone workspace if user wants that

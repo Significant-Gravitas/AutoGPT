@@ -176,7 +176,8 @@ class FileStorage(ABC):
 
         if self.restrict_to_root and not full_path.is_relative_to(self.root):
             raise ValueError(
-                f"Attempted to access path '{full_path}' outside of storage '{self.root}'."
+                f"Attempted to access path '{full_path}' "
+                f"outside of storage '{self.root}'."
             )
 
         return full_path

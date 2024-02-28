@@ -6,14 +6,14 @@ from autogpt.file_storage.base import FileStorage
 
 
 class FileManager:
-    """Uses existing FileStorage object to manage file operations.
-    This way one FileStorage object can be used in multiple places with custom root folders.
+    """Uses existing FileStorage object to manage file operations,
+    so a FileStorage object can be used in multiple places with custom root folders.
     """
 
     def __init__(self, file_storage: FileStorage, path: Path = "."):
         """
         Args:
-            file_storage (FileStorage): The file storage object to use for file operations.
+            file_storage (FileStorage): The file storage to use for file operations.
             path (Path): The suffix for FileStorage root."""
         self.file_storage = file_storage
         self._root = path

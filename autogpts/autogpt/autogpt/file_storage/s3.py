@@ -139,7 +139,8 @@ class S3FileStorage(FileStorage):
             Prefix=prefix, Delimiter=delimiter
         ):
             if delimiter:
-                # If a delimiter is used, we're not listing recursively, so include common prefixes
+                # If a delimiter is used, we're not listing recursively,
+                # so include common prefixes
                 response = obj_summary.bucket.meta.client.list_objects_v2(
                     Bucket=self.bucket.name, Prefix=prefix, Delimiter=delimiter
                 )
@@ -148,7 +149,8 @@ class S3FileStorage(FileStorage):
                         Path(prefix_info["Prefix"]).relative_to(Path(prefix)).parent
                     )
             else:
-                # For a recursive list, add all unique 'folder' paths by splitting object keys
+                # For a recursive list, add all unique
+                # 'folder' paths by splitting object keys
                 folder_path = Path(obj_summary.key).parent
                 if folder_path != Path(prefix).parent:
                     folder_names.add(folder_path.relative_to(Path(prefix).parent))
@@ -176,7 +178,8 @@ class S3FileStorage(FileStorage):
             return True
         except botocore.exceptions.ClientError as e:
             if int(e.response["ResponseMetadata"]["HTTPStatusCode"]) == 404:
-                # If the object does not exist, check for objects with the prefix (folder)
+                # If the object does not exist,
+                # check for objects with the prefix (folder)
                 prefix = f"{path_str.rstrip('/')}/"
                 objs = list(self._bucket.objects.filter(Prefix=prefix, MaxKeys=1))
                 return len(objs) > 0  # True if any objects exist with the prefix

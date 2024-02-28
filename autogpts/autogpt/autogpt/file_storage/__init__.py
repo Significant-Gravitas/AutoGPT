@@ -1,6 +1,5 @@
 import enum
 from pathlib import Path
-from typing import Optional
 
 from .base import FileStorage
 

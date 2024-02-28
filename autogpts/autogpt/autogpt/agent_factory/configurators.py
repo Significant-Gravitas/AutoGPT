@@ -63,7 +63,8 @@ def _configure_agent(
 ) -> Agent:
     if not (state or agent_id and task and ai_profile and directives):
         raise TypeError(
-            "Either (state) or (agent_id, task, ai_profile, directives) must be specified"
+            "Either (state) or (agent_id, task, ai_profile, directives)"
+            " must be specified"
         )
 
     app_config.plugins = scan_plugins(app_config)
