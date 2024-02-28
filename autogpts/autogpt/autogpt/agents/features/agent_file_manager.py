@@ -3,12 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from ..base import BaseAgent, Config
 
 import logging
-from pathlib import Path
 
 from autogpt.agents.utils.file_manager import FileManager
 
@@ -62,13 +59,16 @@ class AgentFileManagerMixin:
             self._logs_cache = self.files.read_file(self.LOGS_FILE).split("\n")
 
     async def log_operation(self, content: str) -> None:
+        """Log an operation to the agent's log file."""
         logger.debug(f"Logging operation: {content}")
         self._logs_cache.append(content)
-        await self.files.write_file(self.LOGS_FILE, self._logs_cache.join("\n") + "\n")
+        await self.files.write_file(self.LOGS_FILE, "\n".join(self._logs_cache) + "\n")
 
     def get_logs(self) -> list[str]:
+        """Get the agent's logs."""
         return self._logs_cache
 
     async def save_state(self) -> None:
+        """Save the agent's state to the state file."""
         state: BaseAgentSettings = getattr(self, "state")
         await self.files.write_file(self.files.root / self.STATE_FILE, state.json())

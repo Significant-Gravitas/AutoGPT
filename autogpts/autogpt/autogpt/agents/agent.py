@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from autogpt.config import Config
     from autogpt.models.command_registry import CommandRegistry
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
