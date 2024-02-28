@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from autogpt.processing.text import summarize_text
 from autogpt.prompts.utils import format_numbered_list, indent
+# from autogpt.agents.base import CommandArgs, CommandName
 
 if TYPE_CHECKING:
     from autogpt.config.config import Config
@@ -158,6 +159,14 @@ class EpisodicActionHistory(BaseModel):
 
         self.current_episode.result = result
         self.cursor = len(self.episodes)
+
+    def contains_command(
+        self, command_name, arguments
+    ) -> bool:
+        return any(
+            episode.action.name == command_name and episode.action.args == arguments
+            for episode in self.episodes
+        )
 
     def rewind(self, number_of_episodes: int = 0) -> None:
         """Resets the history to an earlier state.
