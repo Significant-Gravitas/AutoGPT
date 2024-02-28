@@ -8,7 +8,7 @@ import os
 from abc import ABC, abstractmethod
 from io import IOBase, TextIOBase
 from pathlib import Path
-from typing import IO, Any, BinaryIO, Callable, Literal, Optional, TextIO, overload
+from typing import IO, Any, BinaryIO, Callable, Literal, TextIO, overload
 
 from autogpt.core.configuration.schema import SystemConfiguration
 
