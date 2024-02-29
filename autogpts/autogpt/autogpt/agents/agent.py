@@ -50,6 +50,7 @@ from .utils.exceptions import (
     AgentException,
     AgentTerminated,
     CommandExecutionError,
+    DuplicateOperationError,
     UnknownCommandError,
 )
 
@@ -185,6 +186,13 @@ class Agent(
             arguments,
             assistant_reply_dict,
         ) = self.prompt_strategy.parse_response_content(llm_response)
+
+        # Check if command_name and arguments are already in the event_history
+        if self.event_history.matches_last_command(command_name, arguments):
+            raise DuplicateOperationError(
+                f"The command {command_name} with arguments {arguments} "
+                f"has been just executed."
+            )
 
         self.log_cycle_handler.log_cycle(
             self.ai_profile.ai_name,
