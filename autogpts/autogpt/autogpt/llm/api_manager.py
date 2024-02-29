@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from openai import OpenAI, AzureOpenAI
+from openai import AzureOpenAI, OpenAI
 from openai.types import Model
 
 from autogpt.core.resource.model_providers.openai import (
