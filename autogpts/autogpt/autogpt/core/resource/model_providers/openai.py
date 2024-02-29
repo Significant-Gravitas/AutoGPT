@@ -9,6 +9,11 @@ import sentry_sdk
 import tenacity
 import tiktoken
 import yaml
+from openai._exceptions import APIStatusError, RateLimitError
+from openai.types import CreateEmbeddingResponse
+from openai.types.chat import ChatCompletion
+from pydantic import SecretStr
+
 from autogpt.core.configuration import Configurable, UserConfigurable
 from autogpt.core.resource.model_providers.schema import (
     AssistantChatMessage,
@@ -33,10 +38,6 @@ from autogpt.core.resource.model_providers.schema import (
     ModelTokenizer,
 )
 from autogpt.core.utils.json_schema import JSONSchema
-from openai._exceptions import APIStatusError, RateLimitError
-from openai.types import CreateEmbeddingResponse
-from openai.types.chat import ChatCompletion
-from pydantic import SecretStr
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")

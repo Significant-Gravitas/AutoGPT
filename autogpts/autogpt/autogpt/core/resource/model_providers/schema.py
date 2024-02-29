@@ -12,6 +12,8 @@ from typing import (
     TypeVar,
 )
 
+from pydantic import BaseModel, Field, SecretStr, validator
+
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.resource.schema import (
     Embedding,
@@ -22,7 +24,6 @@ from autogpt.core.resource.schema import (
     ResourceType,
 )
 from autogpt.core.utils.json_schema import JSONSchema
-from pydantic import BaseModel, Field, SecretStr, validator
 
 
 class ModelProviderService(str, enum.Enum):

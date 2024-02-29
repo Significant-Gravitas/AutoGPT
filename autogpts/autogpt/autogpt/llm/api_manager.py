@@ -5,7 +5,6 @@ from typing import List, Optional
 
 from openai import OpenAI, AzureOpenAI
 from openai.types import Model
-from pydantic import SecretStr
 
 from autogpt.core.resource.model_providers.openai import (
     OPEN_AI_MODELS,
