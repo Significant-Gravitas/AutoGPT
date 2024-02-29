@@ -164,7 +164,12 @@ async def run_auto_gpt(
         if re.match(r"^\d+$", load_existing_agent):
             load_existing_agent = existing_agents[int(load_existing_agent) - 1]
         elif load_existing_agent and load_existing_agent not in existing_agents:
-            raise ValueError(f"Unknown agent '{load_existing_agent}'")
+            logger.info(
+                f"Unknown agent '{load_existing_agent}', "
+                f"creating a new one instead.",
+                extra={"color": Fore.YELLOW},
+            )
+            load_existing_agent = ""
 
     # Either load existing or set up new agent state
     agent = None
