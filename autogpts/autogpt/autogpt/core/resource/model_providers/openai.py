@@ -243,7 +243,8 @@ class OpenAICredentials(ModelProviderCredentials):
         }
         if self.api_type == "azure":
             kwargs["api_version"] = self.api_version
-            kwargs["azure_endpoint"] = self.azure_endpoint
+            assert self.azure_endpoint, "Azure endpoint not configured"
+            kwargs["azure_endpoint"] = self.azure_endpoint.get_secret_value()
         return kwargs
 
     def get_model_access_kwargs(self, model: str) -> dict[str, str]:
