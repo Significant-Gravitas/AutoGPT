@@ -109,12 +109,8 @@ class ApiManager(metaclass=Singleton):
         """
         if self.models is None:
             if openai_credentials.api_type == "azure":
-                args = openai_credentials.get_api_access_kwargs()
-                for key in args:
-                    if isinstance(args[key], SecretStr):
-                        args[key] = args[key].get_secret_value()
                 all_models = (
-                    AzureOpenAI(**args).models.list().data
+                    AzureOpenAI(**openai_credentials.get_api_access_kwargs()).models.list().data
                 )
             else:
                 all_models = (

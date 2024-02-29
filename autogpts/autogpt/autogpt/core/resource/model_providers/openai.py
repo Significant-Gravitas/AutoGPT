@@ -243,7 +243,8 @@ class OpenAICredentials(ModelProviderCredentials):
         }
         if self.api_type == "azure":
             kwargs["api_version"] = self.api_version
-            kwargs["azure_endpoint"] = self.azure_endpoint
+            assert self.azure_endpoint, "Azure endpoint not configured"
+            kwargs["azure_endpoint"] = self.azure_endpoint.get_secret_value()
         return kwargs
 
     def get_model_access_kwargs(self, model: str) -> dict[str, str]:
@@ -330,11 +331,7 @@ class OpenAIProvider(
 
             # API key and org (if configured) are passed, the rest of the required
             # credentials is loaded from the environment by the AzureOpenAI client.
-            args = self._credentials.get_api_access_kwargs()
-            for key in args:
-                if isinstance(args[key], SecretStr):
-                    args[key] = args[key].get_secret_value()
-            self._client = AsyncAzureOpenAI(**args)
+            self._client = AsyncAzureOpenAI(**self._credentials.get_api_access_kwargs())
         else:
             from openai import AsyncOpenAI
 
