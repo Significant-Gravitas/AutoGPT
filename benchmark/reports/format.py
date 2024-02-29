@@ -102,7 +102,8 @@ def print_markdown_report(report_json_file: str):
                 f"in **{attempt.run_time}** "
                 f"and **{quantify('step', attempt.n_steps)}**\n"
             )
-            click.echo(f"   - **Cost:** `${round(attempt.cost, 3)}`")
+            if attempt.cost is not None:
+                click.echo(f"   - **Cost:** `${round(attempt.cost, 3)}`")
             if attempt.fail_reason:
                 click.echo(
                     "   - **Failure reason:**\n"
