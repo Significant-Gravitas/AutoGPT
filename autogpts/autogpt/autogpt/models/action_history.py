@@ -159,11 +159,12 @@ class EpisodicActionHistory(BaseModel):
         self.current_episode.result = result
         self.cursor = len(self.episodes)
 
-    def contains_command(self, command_name, arguments) -> bool:
-        return any(
-            episode.action.name == command_name and episode.action.args == arguments
-            for episode in self.episodes
-        )
+    def matches_last_command(self, command_name, arguments) -> bool:
+        """Check if the last command matches the given name and arguments."""
+        if len(self.episodes) > 0:
+            last_command = self.episodes[-1].action
+            return last_command.name == command_name and last_command.args == arguments
+        return False
 
     def rewind(self, number_of_episodes: int = 0) -> None:
         """Resets the history to an earlier state.

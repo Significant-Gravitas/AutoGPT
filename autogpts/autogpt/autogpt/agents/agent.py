@@ -188,10 +188,10 @@ class Agent(
         ) = self.prompt_strategy.parse_response_content(llm_response)
 
         # Check if command_name and arguments are already in the event_history
-        if self.event_history.contains_command(command_name, arguments):
+        if self.event_history.matches_last_command(command_name, arguments):
             raise DuplicateOperationError(
-                f"The command {command_name} with args {arguments} "
-                f"has been already executed."
+                f"The command {command_name} with arguments {arguments} "
+                f"has been just executed."
             )
 
         self.log_cycle_handler.log_cycle(
