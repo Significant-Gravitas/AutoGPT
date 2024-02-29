@@ -14,7 +14,7 @@
 
 Since agents can read and write files, it is important to keep them restricted to a specific workspace. This happens by default *unless* RESTRICT_TO_WORKSPACE is set to False.
 
-We do not recommend disabling RESTRICT_TO_WORKSPACE, unless AutoGPT is running in a sandbox environment where it couldn't do any damage (e.g. Docker or a VM).
+We do not recommend disabling RESTRICT_TO_WORKSPACE but, if you need to, run AutoGPT in a sandbox environment to mitigate the risks (e.g. Docker or a VM).
 
 ### Untrusted inputs
 
