@@ -110,11 +110,15 @@ class ApiManager(metaclass=Singleton):
         if self.models is None:
             if openai_credentials.api_type == "azure":
                 all_models = (
-                    AzureOpenAI(**openai_credentials.get_api_access_kwargs()).models.list().data
+                    AzureOpenAI(**openai_credentials.get_api_access_kwargs())
+                    .models.list()
+                    .data
                 )
             else:
                 all_models = (
-                    OpenAI(**openai_credentials.get_api_access_kwargs()).models.list().data
+                    OpenAI(**openai_credentials.get_api_access_kwargs())
+                    .models.list()
+                    .data
                 )
             self.models = [model for model in all_models if "gpt" in model.id]
 
