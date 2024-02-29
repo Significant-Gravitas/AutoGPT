@@ -1,0 +1,133 @@
+name: Arena intake
+
+on:
+  # We recommend `pull_request_target` so that github secrets are available.
+  # In `pull_request` we wouldn't be able to change labels of fork PRs
+  pull_request_target:
+    types: [ opened, synchronize ]
+    paths:
+      - 'arena/**'
+
+jobs:
+  check:
+    permissions:
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+
+    - name: Check Arena entry
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+
+          const pr = context.payload.pull_request;
+          const isFork = pr.head.repo.fork;
+          const prFilesChanged = (await github.rest.pulls.listFiles({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: pr.number,
+          })).data;
+          const arenaFilesChanged = prFilesChanged.filter(
+            ({ filename: file }) => file.startsWith('arena/') && file.endsWith('.json')
+          );
+          const hasChangesInAutogptsFolder = prFilesChanged.some(
+            ({ filename }) => filename.startsWith('autogpts/')
+          );
+
+          if (arenaFilesChanged.length === 0) {
+            // If no files in `arena/` are changed, this job does not need to run.
+            return;
+          }
+
+          let close = false;
+          let flagForManualCheck = false;
+          let issues = [];
+
+          if (isFork) {
+            if (arenaFilesChanged.length > 1) {
+              // Impacting multiple entries in `arena/` is not allowed
+              issues.append('This pull request impacts multiple arena entries');
+            }
+            if (hasChangesInAutogptsFolder) {
+              // PRs that include the custom agent are generally not allowed
+              issues.append(
+                'This pull request includes changes in `autogpts/`.\n'
+                + 'Please make sure to only submit your arena entry (`arena/*.json`), '
+                + 'and not to accidentally include your custom agent itself.'
+              );
+            }
+          }
+
+          if (arenaFilesChanged.length === 1) {
+            const newArenaFile = arenaFilesChanged[0]
+            const newArenaFileName = path.basename(newArenaFile.filename)
+
+            if (pr.mergeable) {
+              const newArenaEntry = JSON.parse(fs.readFileSync(newArenaFile.filename));
+              const allArenaFiles = await (await glob.create('arena/*.json')).glob();
+
+              for (const file of allArenaFiles) {
+                if (
+                  path.basename(file) === newArenaFileName
+                  && newArenaFile.status != 'added'
+                ) {
+                  flagForManualCheck = true;
+                  break;
+                }
+
+                const arenaEntry = JSON.parse(fs.readFileSync(file));
+                if (arenaEntry.github_repo_url === newArenaEntry.github_repo_url) {
+                  issues.append(
+                    `The github_repo_url specified in __${newArenaFileName}__ `
+                    + `already exists in __${file}__. `
+                    + `This PR will be closed as duplicate.`
+                  )
+                  close = true;
+                }
+              }
+            } else {
+              issues.append(
+                `__${newArenaFileName}__ conflicts with existing entry with the same name`
+              )
+              close = true;
+            }
+          }  // end if (arenaFilesChanged.length === 1)
+
+          if (issues.length == 0) {
+            await github.rest.pulls.createReview({
+              owner: github.context.repo.owner,
+              repo: github.context.repo.repo,
+              pull_number: pr.number,
+              event: 'APPROVE',
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: github.context.repo.owner,
+              repo: github.context.repo.repo,
+              issue_number: pr.number,
+              body: `Our automation found one or more issues with this submission:\n`
+                + issues.map(i => `- ${i.replace('\n', '\n  ')}`).join('\n'),
+            });
+
+            if (close) {
+              await github.rest.pulls.update({
+                owner: github.context.repo.owner,
+                repo: github.context.repo.repo,
+                pull_number: pr.number,
+                state: 'closed',
+              });
+            } else if (flagForManualCheck) {
+              await github.rest.pulls.requestReviewers({
+                owner: github.context.repo.owner,
+                repo: github.context.repo.repo,
+                pull_number: pr.number,
+                team_reviewers: ['maintainers'],
+              });
+            }
+          }  // end else
