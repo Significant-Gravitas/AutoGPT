@@ -83,22 +83,23 @@ jobs:
 
               console.log(`➡️ Checking ${newArenaFileName} against existing entries...`);
               for (const file of allArenaFiles) {
+                const existingEntryName = path.basename(file);
                 if (
-                  path.basename(file) === newArenaFileName
+                  existingEntryName === newArenaFileName
                   && newArenaFile.status != 'added'
                 ) {
                   flagForManualCheck = true;
                   continue;
                 }
 
-                console.debug(`Checking against ${file}...`);
+                console.debug(`Checking against ${existingEntryName}...`);
 
                 const arenaEntry = JSON.parse(fs.readFileSync(file));
                 if (arenaEntry.github_repo_url === newArenaEntry.github_repo_url) {
-                  console.log('⚠️ Duplicate detected: ${file}');
+                  console.log('⚠️ Duplicate detected: ${existingEntryName}');
                   issues.push(
-                    `The github_repo_url specified in __${newArenaFileName}__ `
-                    + `already exists in __${file}__. `
+                    `The \`github_repo_url\` specified in __${newArenaFileName}__ `
+                    + `already exists in __${existingEntryName}__. `
                     + `This PR will be closed as duplicate.`
                   )
                   close = true;
