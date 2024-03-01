@@ -42,14 +42,15 @@ class AgentFileManagerMixin:
             )
 
         state: BaseAgentSettings = getattr(self, "state")
-        if not state.agent_id or not state.agent_data_dir:
-            raise ValueError("Agent must have an ID and a data directory.")
+        if not state.agent_id:
+            raise ValueError("Agent must have an ID.")
 
         file_storage: FileStorage = kwargs["file_storage"]
         self.files = file_storage.clone_with_subroot(f"agents/{state.agent_id}/")
         self.workspace = file_storage.clone_with_subroot(
             f"agents/{state.agent_id}/workspace"
         )
+        self._file_storage = file_storage
         # Read and cache logs
         self._file_logs_cache = []
         if self.files.exists(self.LOGS_FILE):
@@ -71,3 +72,15 @@ class AgentFileManagerMixin:
         """Save the agent's state to the state file."""
         state: BaseAgentSettings = getattr(self, "state")
         await self.files.write_file(self.files.root / self.STATE_FILE, state.json())
+
+    def change_agent_id(self, new_id: str):
+        """Change the agent's ID and update the file storage accordingly."""
+        state: BaseAgentSettings = getattr(self, "state")
+        # Rename the agent's files and workspace
+        self._file_storage.rename(f"agents/{state.agent_id}", f"agents/{new_id}")
+        # Update the file storage objects
+        self.files = self._file_storage.clone_with_subroot(f"agents/{new_id}/")
+        self.workspace = self._file_storage.clone_with_subroot(
+            f"agents/{new_id}/workspace"
+        )
+        state.agent_id = new_id

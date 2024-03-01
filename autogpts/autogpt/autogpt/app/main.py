@@ -317,12 +317,8 @@ async def run_auto_gpt(
             or agent_id
         )
         if save_as_id and save_as_id != agent_id:
-            # HACK this shouldn't be done this way
-            # preferably agents should not change their ID
-            # this just replaces the agent file space with a new one
-            agent.files = file_storage.clone_with_subroot(f"agents/{save_as_id}/")
-            # TODO: clone workspace if user wants that
-            # TODO: ... OR allow many-to-one relations of agents and workspaces
+            agent.change_agent_id(save_as_id)
+            # TODO: allow many-to-one relations of agents and workspaces
 
         await agent.save_state()
 

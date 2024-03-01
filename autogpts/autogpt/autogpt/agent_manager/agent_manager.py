@@ -4,10 +4,8 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from autogpt.agents.agent import AgentSettings
 from autogpt.file_storage.base import FileStorage
-
-if TYPE_CHECKING:
-    from autogpt.agents.agent import AgentSettings
 
 
 class AgentManager:
