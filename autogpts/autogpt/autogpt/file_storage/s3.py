@@ -11,7 +11,7 @@ import logging
 import os
 from io import IOBase, TextIOWrapper
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 import boto3
 import botocore.exceptions
@@ -93,14 +93,16 @@ class S3FileStorage(FileStorage):
             obj.load()
         return obj
 
-    def open_file(self, path: str | Path, binary: bool = False) -> IOBase:
+    def open_file(
+        self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
+    ) -> IOBase:
         """Open a file in the storage."""
         obj = self._get_obj(path)
         return obj.get()["Body"] if binary else TextIOWrapper(obj.get()["Body"])
 
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
         """Read a file in the storage."""
-        return self.open_file(path, binary).read()
+        return self.open_file(path, binary=binary).read()
 
     async def write_file(self, path: str | Path, content: str | bytes) -> None:
         """Write to a file in the storage."""

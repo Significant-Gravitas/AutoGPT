@@ -7,7 +7,7 @@ from __future__ import annotations
 import inspect
 import logging
 from pathlib import Path
-from typing import IO
+from typing import IO, Literal
 
 from .base import FileStorage, FileStorageConfiguration
 
@@ -41,11 +41,13 @@ class LocalFileStorage(FileStorage):
     def initialize(self) -> None:
         self.root.mkdir(exist_ok=True, parents=True)
 
-    def open_file(self, path: str | Path, binary: bool = False) -> IO:
+    def open_file(
+        self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
+    ) -> IO:
         """Open a file in the storage."""
-        return self._open_file(path, "rb" if binary else "r")
+        return self._open_file(path, f"{mode}b" if binary else mode)
 
-    def _open_file(self, path: str | Path, mode: str = "r") -> IO:
+    def _open_file(self, path: str | Path, mode: str) -> IO:
         full_path = self.get_path(path)
         return open(full_path, mode)  # type: ignore
 

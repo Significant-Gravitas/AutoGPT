@@ -9,6 +9,7 @@ import inspect
 import logging
 from io import IOBase
 from pathlib import Path
+from typing import Literal
 
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
@@ -67,15 +68,17 @@ class GCSFileStorage(FileStorage):
         path = self.get_path(path)
         return self._bucket.blob(str(path))
 
-    def open_file(self, path: str | Path, binary: bool = False) -> IOBase:
+    def open_file(
+        self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
+    ) -> IOBase:
         """Open a file in the storage."""
         blob = self._get_blob(path)
         blob.reload()  # pin revision number to prevent version mixing while reading
-        return blob.open("rb" if binary else "r")
+        return blob.open(f"{mode}b" if binary else mode)
 
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
         """Read a file in the storage."""
-        return self.open_file(path, binary).read()
+        return self.open_file(path, "r", binary).read()
 
     async def write_file(self, path: str | Path, content: str | bytes) -> None:
         """Write to a file in the storage."""

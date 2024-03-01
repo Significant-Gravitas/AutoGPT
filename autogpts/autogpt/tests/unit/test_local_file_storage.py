@@ -42,6 +42,18 @@ _INACCESSIBLE_PATHS = (
     ]
 )
 
+_TEST_FILES = [
+    Path("test_file.txt"),
+    Path("dir/test_file.txt"),
+    Path("dir/test_file2.txt"),
+    Path("dir/sub_dir/test_file.txt"),
+]
+
+_TEST_DIRS = [
+    Path("dir"),
+    Path("dir/sub_dir"),
+]
+
 
 @pytest.fixture()
 def storage_root(tmp_path):
@@ -55,6 +67,11 @@ def storage(storage_root):
     )
 
 
+@pytest.fixture()
+def content():
+    return "test content"
+
+
 @pytest.fixture(params=_ACCESSIBLE_PATHS)
 def accessible_path(request):
     return request.param
@@ -63,6 +80,103 @@ def accessible_path(request):
 @pytest.fixture(params=_INACCESSIBLE_PATHS)
 def inaccessible_path(request):
     return request.param
+
+
+@pytest.fixture(params=_TEST_FILES)
+def file_path(request):
+    return request.param
+
+
+@pytest.mark.asyncio
+async def test_open_file(file_path: Path, content: str, storage: LocalFileStorage):
+    if file_path.parent:
+        storage.make_dir(file_path.parent)
+    await storage.write_file(file_path, content)
+    file = storage.open_file(file_path)
+    assert file.read() == content
+    file.close()
+    storage.delete_file(file_path)
+
+
+@pytest.mark.asyncio
+async def test_write_read_file(content: str, storage: LocalFileStorage):
+    await storage.write_file("test_file.txt", content)
+    assert storage.read_file("test_file.txt") == content
+
+
+@pytest.mark.asyncio
+async def test_list_files(content: str, storage: LocalFileStorage):
+    storage.make_dir("dir")
+    storage.make_dir("dir/sub_dir")
+    await storage.write_file("test_file.txt", content)
+    await storage.write_file("dir/test_file.txt", content)
+    await storage.write_file("dir/test_file2.txt", content)
+    await storage.write_file("dir/sub_dir/test_file.txt", content)
+    files = storage.list_files()
+    assert Path("test_file.txt") in files
+    assert Path("dir/test_file.txt") in files
+    assert Path("dir/test_file2.txt") in files
+    assert Path("dir/sub_dir/test_file.txt") in files
+    storage.delete_file("test_file.txt")
+    storage.delete_file("dir/test_file.txt")
+    storage.delete_file("dir/test_file2.txt")
+    storage.delete_file("dir/sub_dir/test_file.txt")
+    storage.delete_dir("dir/sub_dir")
+    storage.delete_dir("dir")
+
+
+@pytest.mark.asyncio
+async def test_list_folders(content: str, storage: LocalFileStorage):
+    storage.make_dir("dir")
+    storage.make_dir("dir/sub_dir")
+    await storage.write_file("dir/test_file.txt", content)
+    await storage.write_file("dir/sub_dir/test_file.txt", content)
+    folders = storage.list_folders(recursive=False)
+    folders_recursive = storage.list_folders(recursive=True)
+    assert Path("dir") in folders
+    assert Path("dir/sub_dir") not in folders
+    assert Path("dir") in folders_recursive
+    assert Path("dir/sub_dir") in folders_recursive
+    storage.delete_file("dir/test_file.txt")
+    storage.delete_file("dir/sub_dir/test_file.txt")
+    storage.delete_dir("dir/sub_dir")
+    storage.delete_dir("dir")
+
+
+@pytest.mark.asyncio
+async def test_exists_delete_file(
+    file_path: Path, content: str, storage: LocalFileStorage
+):
+    if file_path.parent:
+        storage.make_dir(file_path.parent)
+    await storage.write_file(file_path, content)
+    assert storage.exists(file_path)
+    storage.delete_file(file_path)
+    assert not storage.exists(file_path)
+
+
+@pytest.fixture(params=_TEST_DIRS)
+def test_make_delete_dir(request, storage: LocalFileStorage):
+    storage.make_dir(request)
+    assert storage.exists(request)
+    storage.delete_dir(request)
+    assert not storage.exists(request)
+
+
+@pytest.mark.asyncio
+async def test_rename(file_path: Path, content: str, storage: LocalFileStorage):
+    if file_path.parent:
+        storage.make_dir(file_path.parent)
+    await storage.write_file(file_path, content)
+    assert storage.exists(file_path)
+    storage.rename(file_path, Path(str(file_path) + "_renamed"))
+    assert not storage.exists(file_path)
+    assert storage.exists(Path(str(file_path) + "_renamed"))
+
+
+def test_clone_with_subroot(storage: LocalFileStorage):
+    subroot = storage.clone_with_subroot("dir")
+    assert subroot.root == storage.root / "dir"
 
 
 def test_get_path_accessible(accessible_path: Path, storage: LocalFileStorage):

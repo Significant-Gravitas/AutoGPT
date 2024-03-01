@@ -58,19 +58,27 @@ class FileStorage(ABC):
     @overload
     @abstractmethod
     def open_file(
-        self, path: str | Path, binary: Literal[False] = False
+        self,
+        path: str | Path,
+        mode: Literal["w", "r"] = "r",
+        binary: Literal[False] = False,
     ) -> TextIO | TextIOBase:
         """Returns a readable text file-like object representing the file."""
 
     @overload
     @abstractmethod
     def open_file(
-        self, path: str | Path, binary: Literal[True] = True
+        self,
+        path: str | Path,
+        mode: Literal["w", "r"] = "r",
+        binary: Literal[True] = True,
     ) -> BinaryIO | IOBase:
         """Returns a readable binary file-like object representing the file."""
 
     @abstractmethod
-    def open_file(self, path: str | Path, binary: bool = False) -> IO | IOBase:
+    def open_file(
+        self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
+    ) -> IO | IOBase:
         """Returns a readable file-like object representing the file."""
 
     @overload

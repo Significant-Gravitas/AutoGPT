@@ -1,6 +1,5 @@
 import os
 import re
-from io import TextIOWrapper
 from pathlib import Path
 
 import pytest
@@ -50,24 +49,6 @@ def test_file_path(test_file_name: Path, storage: FileStorage):
 
 
 @pytest.fixture()
-def test_file(test_file_path: Path):
-    file = open(test_file_path, "w")
-    yield file
-    if not file.closed:
-        file.close()
-
-
-@pytest.fixture()
-def test_file_with_content_path(test_file: TextIOWrapper, file_content, agent: Agent):
-    test_file.write(file_content)
-    test_file.close()
-    file_ops.log_operation(
-        "write", Path(test_file.name), agent, file_ops.text_checksum(file_content)
-    )
-    return Path(test_file.name)
-
-
-@pytest.fixture()
 def test_directory(storage: FileStorage):
     return storage.get_path("test_directory")
 
@@ -77,7 +58,7 @@ def test_nested_file(storage: FileStorage):
     return storage.get_path("nested/test_file.txt")
 
 
-def test_file_operations_log(test_file: TextIOWrapper):
+def test_file_operations_log():
     all_logs = (
         "File Operation Logger\n"
         "write: path/to/file1.txt #checksum1\n"
@@ -167,13 +148,18 @@ async def test_log_operation_with_checksum(agent: Agent):
     assert "log_test: path/to/test #ABCDEF" in log_entry
 
 
-def test_read_file(
+@pytest.mark.asyncio
+async def test_read_file(
     mock_MemoryItem_from_text,
-    test_file_with_content_path: Path,
+    test_file_path: Path,
     file_content,
     agent: Agent,
 ):
-    content = file_ops.read_file(test_file_with_content_path, agent=agent)
+    await agent.workspace.write_file(test_file_path.name, file_content)
+    await file_ops.log_operation(
+        "write", Path(test_file_path.name), agent, file_ops.text_checksum(file_content)
+    )
+    content = file_ops.read_file(test_file_path.name, agent=agent)
     assert content.replace("\r", "") == file_content
 
 
@@ -225,10 +211,14 @@ async def test_write_file_fails_if_content_exists(test_file_name: Path, agent: A
 
 @pytest.mark.asyncio
 async def test_write_file_succeeds_if_content_different(
-    test_file_with_content_path: Path, agent: Agent
+    test_file_path: Path, file_content: str, agent: Agent
 ):
+    await agent.workspace.write_file(test_file_path.name, file_content)
+    await file_ops.log_operation(
+        "write", Path(test_file_path.name), agent, file_ops.text_checksum(file_content)
+    )
     new_content = "This is different content.\n"
-    await file_ops.write_to_file(test_file_with_content_path, new_content, agent=agent)
+    await file_ops.write_to_file(test_file_path.name, new_content, agent=agent)
 
 
 @pytest.mark.asyncio
