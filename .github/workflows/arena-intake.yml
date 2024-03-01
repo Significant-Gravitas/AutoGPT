@@ -76,7 +76,7 @@ jobs:
             const newArenaFileName = path.basename(newArenaFile.filename)
             console.log(`🗒️ Arena entry in PR: ${newArenaFile}`);
 
-            if (pr.mergeable) {
+            if (pr.mergeable != false) {
               const newArenaEntry = JSON.parse(fs.readFileSync(newArenaFile.filename));
               const allArenaFiles = await (await glob.create('arena/*.json')).glob();
               console.debug(newArenaEntry);
@@ -104,7 +104,7 @@ jobs:
                   close = true;
                 }
               }
-            } else if (pr.mergeable == false) {
+            } else {
               console.log('⚠️ PR has conflicts');
               issues.push(
                 `__${newArenaFileName}__ conflicts with existing entry with the same name`
