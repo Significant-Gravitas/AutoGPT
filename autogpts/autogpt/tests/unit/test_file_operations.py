@@ -147,7 +147,7 @@ def test_is_duplicate_operation(agent: Agent, mocker: MockerFixture):
 @pytest.mark.asyncio
 async def test_log_operation(agent: Agent):
     await file_ops.log_operation("log_test", Path("path/to/test"), agent=agent)
-    log_entry = agent.get_logs()[-1]
+    log_entry = agent.get_file_operation_lines()[-1]
     assert "log_test: path/to/test" in log_entry
 
 
@@ -163,7 +163,7 @@ async def test_log_operation_with_checksum(agent: Agent):
     await file_ops.log_operation(
         "log_test", Path("path/to/test"), agent=agent, checksum="ABCDEF"
     )
-    log_entry = agent.get_logs()[-1]
+    log_entry = agent.get_file_operation_lines()[-1]
     assert "log_test: path/to/test #ABCDEF" in log_entry
 
 
@@ -206,7 +206,7 @@ async def test_write_file_logs_checksum(test_file_name: Path, agent: Agent):
     new_content = "This is new content.\n"
     new_checksum = file_ops.text_checksum(new_content)
     await file_ops.write_to_file(test_file_name, new_content, agent=agent)
-    log_entry = agent.get_logs()[-1]
+    log_entry = agent.get_file_operation_lines()[-1]
     assert log_entry == f"write: {test_file_name} #{new_checksum}"
 
 

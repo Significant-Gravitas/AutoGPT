@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ..base import BaseAgent
-
 import logging
+from typing import TYPE_CHECKING
 
 from autogpt.agents.utils.file_manager import FileManager
 
 from ..base import BaseAgentSettings
+
+if TYPE_CHECKING:
+    from ..base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
@@ -54,19 +53,21 @@ class AgentFileManagerMixin:
         self.files = FileManager(file_storage, f"agents/{state.agent_id}/")
         self.workspace = FileManager(file_storage, f"agents/{state.agent_id}/workspace")
         # Read and cache logs
-        self._logs_cache = []
+        self._file_logs_cache = []
         if self.files.exists(self.LOGS_FILE):
-            self._logs_cache = self.files.read_file(self.LOGS_FILE).split("\n")
+            self._file_logs_cache = self.files.read_file(self.LOGS_FILE).split("\n")
 
-    async def log_operation(self, content: str) -> None:
-        """Log an operation to the agent's log file."""
+    async def log_file_operation(self, content: str) -> None:
+        """Log a file operation to the agent's log file."""
         logger.debug(f"Logging operation: {content}")
-        self._logs_cache.append(content)
-        await self.files.write_file(self.LOGS_FILE, "\n".join(self._logs_cache) + "\n")
+        self._file_logs_cache.append(content)
+        await self.files.write_file(
+            self.LOGS_FILE, "\n".join(self._file_logs_cache) + "\n"
+        )
 
-    def get_logs(self) -> list[str]:
-        """Get the agent's logs."""
-        return self._logs_cache
+    def get_file_operation_lines(self) -> list[str]:
+        """Get the agent's file operation logs as list of strings."""
+        return self._file_logs_cache
 
     async def save_state(self) -> None:
         """Save the agent's state to the state file."""

@@ -45,5 +45,5 @@ class AgentManager:
         if not self.file_manager.exists(state_file_path):
             raise FileNotFoundError(f"Agent with ID '{agent_id}' has no state.json")
 
-        text = self.file_manager.read_file(state_file_path)
-        return AgentSettings.parse_raw(text)
+        state = self.file_manager.read_file(state_file_path)
+        return AgentSettings.parse_raw(state)

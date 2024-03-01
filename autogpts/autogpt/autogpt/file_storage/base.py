@@ -1,6 +1,7 @@
 """
 The FileStorage class provides an interface for interacting with a file storage.
 """
+
 from __future__ import annotations
 
 import logging
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class FileStorageConfiguration(SystemConfiguration):
     restrict_to_root: bool = True
-    root: Path = Path(".")
+    root: Path = Path("/")
 
 
 class FileStorage(ABC):
@@ -168,9 +169,9 @@ class FileStorage(ABC):
 
         full_path = self.root / relative_path
         if self.is_local:
-            full_path = self.root.joinpath(relative_path).resolve()
-
-        full_path = Path(os.path.normpath(full_path))
+            full_path = full_path.resolve()
+        else:
+            full_path = Path(os.path.normpath(full_path))
 
         logger.debug(f"Joined paths as '{full_path}'")
 

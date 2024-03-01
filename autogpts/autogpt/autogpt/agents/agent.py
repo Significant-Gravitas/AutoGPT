@@ -6,12 +6,6 @@ import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from autogpt.file_storage.base import FileStorage
-
-if TYPE_CHECKING:
-    from autogpt.config import Config
-    from autogpt.models.command_registry import CommandRegistry
-
 import sentry_sdk
 from pydantic import Field
 
@@ -22,6 +16,7 @@ from autogpt.core.resource.model_providers import (
     ChatMessage,
     ChatModelProvider,
 )
+from autogpt.file_storage.base import FileStorage
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
@@ -54,6 +49,10 @@ from .utils.exceptions import (
     CommandExecutionError,
     UnknownCommandError,
 )
+
+if TYPE_CHECKING:
+    from autogpt.config import Config
+    from autogpt.models.command_registry import CommandRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -143,11 +142,15 @@ class Agent(
                 + (
                     " BUDGET EXCEEDED! SHUT DOWN!\n\n"
                     if remaining_budget == 0
-                    else " Budget very nearly exceeded! Shut down gracefully!\n\n"
-                    if remaining_budget < 0.005
-                    else " Budget nearly exceeded. Finish up.\n\n"
-                    if remaining_budget < 0.01
-                    else ""
+                    else (
+                        " Budget very nearly exceeded! Shut down gracefully!\n\n"
+                        if remaining_budget < 0.005
+                        else (
+                            " Budget nearly exceeded. Finish up.\n\n"
+                            if remaining_budget < 0.01
+                            else ""
+                        )
+                    )
                 ),
             )
             logger.debug(budget_msg)

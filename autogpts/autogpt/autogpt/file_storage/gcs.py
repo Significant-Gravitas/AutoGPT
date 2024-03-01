@@ -2,6 +2,7 @@
 The GCSWorkspace class provides an interface for interacting with a file workspace, and
 stores the files in a Google Cloud Storage bucket.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -134,9 +135,7 @@ class GCSFileStorage(FileStorage):
 
     def exists(self, path: str | Path) -> bool:
         """Check if a file or folder exists in GCS storage."""
-        path = self.get_path(
-            path
-        )  # Assuming this method returns a Path object or a string path
+        path = self.get_path(path)
         # Check for exact blob match (file)
         blob = self._bucket.blob(str(path))
         if blob.exists():
