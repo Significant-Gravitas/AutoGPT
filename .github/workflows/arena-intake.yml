@@ -91,7 +91,7 @@ jobs:
                   continue;
                 }
 
-                console.debug(`Checking against ${file}`...)
+                console.debug(`Checking against ${file}...`);
 
                 const arenaEntry = JSON.parse(fs.readFileSync(file));
                 if (arenaEntry.github_repo_url === newArenaEntry.github_repo_url) {
@@ -113,12 +113,12 @@ jobs:
             }
           }  // end if (arenaFilesChanged.length === 1)
 
-          console.log('ℹ️ Finished checking against existing entries')
+          console.log('ℹ️ Finished checking against existing entries');
 
           if (issues.length == 0) {
             console.log('✅ No issues detected');
             if (flagForManualCheck) {
-              console.log('ℹ️ Requesting review from maintainers...')
+              console.log('ℹ️ Requesting review from maintainers...');
               await github.rest.pulls.requestReviewers({
                 owner: github.context.repo.owner,
                 repo: github.context.repo.repo,
@@ -137,7 +137,7 @@ jobs:
           } else {
             console.log(`⚠️ ${issues.length} issues detected`);
 
-            console.log('ℹ️ Posting comment indicating issues...')
+            console.log('ℹ️ Posting comment indicating issues...');
             await github.rest.issues.createComment({
               owner: github.context.repo.owner,
               repo: github.context.repo.repo,
@@ -146,7 +146,7 @@ jobs:
                 + issues.map(i => `- ${i.replace('\n', '\n  ')}`).join('\n'),
             });
 
-            console.log("ℹ️ Applying label 'invalid'...")
+            console.log("ℹ️ Applying label 'invalid'...");
             await github.rest.issues.addLabels({
               owner: github.context.repo.owner,
               repo: github.context.repo.repo,
@@ -155,7 +155,7 @@ jobs:
             });
 
             if (close) {
-              console.log('ℹ️ Auto-closing PR...')
+              console.log('ℹ️ Auto-closing PR...');
               await github.rest.pulls.update({
                 owner: github.context.repo.owner,
                 repo: github.context.repo.repo,
