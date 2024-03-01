@@ -31,7 +31,7 @@ jobs:
           const pr = context.payload.pull_request;
           const isFork = pr.head.repo.fork;
 
-          console.log('↔️ Fetching PR diff metadata...');
+          console.log('🔄️ Fetching PR diff metadata...');
           const prFilesChanged = (await github.rest.pulls.listFiles({
             owner: context.repo.owner,
             repo: context.repo.repo,
@@ -45,7 +45,7 @@ jobs:
             ({ filename }) => filename.startsWith('autogpts/')
           );
 
-          console.log(`ℹ️ ${arenaFilesChanged.length} arena entries affected`);
+          console.log(`🗒️ ${arenaFilesChanged.length} arena entries affected`);
           console.debug(arenaFilesChanged);
           if (arenaFilesChanged.length === 0) {
             // If no files in `arena/` are changed, this job does not need to run.
@@ -74,14 +74,14 @@ jobs:
           if (arenaFilesChanged.length === 1) {
             const newArenaFile = arenaFilesChanged[0]
             const newArenaFileName = path.basename(newArenaFile.filename)
-            console.log(`ℹ️ Arena entry in PR: ${newArenaFile}`);
+            console.log(`🗒️ Arena entry in PR: ${newArenaFile}`);
 
             if (pr.mergeable) {
               const newArenaEntry = JSON.parse(fs.readFileSync(newArenaFile.filename));
               const allArenaFiles = await (await glob.create('arena/*.json')).glob();
               console.debug(newArenaEntry);
 
-              console.log(`ℹ️ Checking ${newArenaFileName} against existing entries...`);
+              console.log(`➡️ Checking ${newArenaFileName} against existing entries...`);
               for (const file of allArenaFiles) {
                 if (
                   path.basename(file) === newArenaFileName
@@ -113,23 +113,23 @@ jobs:
             }
           }  // end if (arenaFilesChanged.length === 1)
 
-          console.log('ℹ️ Finished checking against existing entries');
+          console.log('🏁 Finished checking against existing entries');
 
           if (issues.length == 0) {
             console.log('✅ No issues detected');
             if (flagForManualCheck) {
-              console.log('ℹ️ Requesting review from maintainers...');
+              console.log('🤔 Requesting review from maintainers...');
               await github.rest.pulls.requestReviewers({
-                owner: github.context.repo.owner,
-                repo: github.context.repo.repo,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
                 pull_number: pr.number,
                 team_reviewers: ['maintainers'],
               });
             } else {
-              console.log('ℹ️ Approving PR...');
+              console.log('➡️ Approving PR...');
               await github.rest.pulls.createReview({
-                owner: github.context.repo.owner,
-                repo: github.context.repo.repo,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
                 pull_number: pr.number,
                 event: 'APPROVE',
               });
@@ -137,28 +137,28 @@ jobs:
           } else {
             console.log(`⚠️ ${issues.length} issues detected`);
 
-            console.log('ℹ️ Posting comment indicating issues...');
+            console.log('➡️ Posting comment indicating issues...');
             await github.rest.issues.createComment({
-              owner: github.context.repo.owner,
-              repo: github.context.repo.repo,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
               issue_number: pr.number,
               body: `Our automation found one or more issues with this submission:\n`
                 + issues.map(i => `- ${i.replace('\n', '\n  ')}`).join('\n'),
             });
 
-            console.log("ℹ️ Applying label 'invalid'...");
+            console.log("➡️ Applying label 'invalid'...");
             await github.rest.issues.addLabels({
-              owner: github.context.repo.owner,
-              repo: github.context.repo.repo,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
               issue_number: pr.number,
               labels: ['invalid'],
             });
 
             if (close) {
-              console.log('ℹ️ Auto-closing PR...');
+              console.log('➡️ Auto-closing PR...');
               await github.rest.pulls.update({
-                owner: github.context.repo.owner,
-                repo: github.context.repo.repo,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
                 pull_number: pr.number,
                 state: 'closed',
               });
