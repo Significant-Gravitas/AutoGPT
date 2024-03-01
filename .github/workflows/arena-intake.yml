@@ -23,16 +23,21 @@ jobs:
       uses: actions/github-script@v7
       with:
         script: |
+          console.log('⚙️ Setting up...');
+
           const fs = require('fs');
           const path = require('path');
 
           const pr = context.payload.pull_request;
           const isFork = pr.head.repo.fork;
+
+          console.log('↔️ Fetching PR diff metadata...');
           const prFilesChanged = (await github.rest.pulls.listFiles({
             owner: context.repo.owner,
             repo: context.repo.repo,
             pull_number: pr.number,
           })).data;
+          console.debug(prFilesChanged);
           const arenaFilesChanged = prFilesChanged.filter(
             ({ filename: file }) => file.startsWith('arena/') && file.endsWith('.json')
           );
@@ -40,6 +45,8 @@ jobs:
             ({ filename }) => filename.startsWith('autogpts/')
           );
 
+          console.log(`ℹ️ ${arenaFilesChanged.length} arena entries affected`);
+          console.debug(arenaFilesChanged);
           if (arenaFilesChanged.length === 0) {
             // If no files in `arena/` are changed, this job does not need to run.
             return;
@@ -67,21 +74,28 @@ jobs:
           if (arenaFilesChanged.length === 1) {
             const newArenaFile = arenaFilesChanged[0]
             const newArenaFileName = path.basename(newArenaFile.filename)
+            console.log(`ℹ️ Arena entry in PR: ${newArenaFile}`);
 
             if (pr.mergeable) {
               const newArenaEntry = JSON.parse(fs.readFileSync(newArenaFile.filename));
               const allArenaFiles = await (await glob.create('arena/*.json')).glob();
+              console.debug(newArenaEntry);
 
+              console.log(`ℹ️ Checking ${newArenaFileName} against existing entries...`);
               for (const file of allArenaFiles) {
                 if (
                   path.basename(file) === newArenaFileName
                   && newArenaFile.status != 'added'
                 ) {
                   flagForManualCheck = true;
+                  continue;
                 }
+
+                console.debug(`Checking against ${file}`...)
 
                 const arenaEntry = JSON.parse(fs.readFileSync(file));
                 if (arenaEntry.github_repo_url === newArenaEntry.github_repo_url) {
+                  console.log('⚠️ Duplicate detected: ${file}');
                   issues.push(
                     `The github_repo_url specified in __${newArenaFileName}__ `
                     + `already exists in __${file}__. `
@@ -91,6 +105,7 @@ jobs:
                 }
               }
             } else {
+              console.log('⚠️ PR has conflicts');
               issues.push(
                 `__${newArenaFileName}__ conflicts with existing entry with the same name`
               )
@@ -98,8 +113,12 @@ jobs:
             }
           }  // end if (arenaFilesChanged.length === 1)
 
+          console.log('ℹ️ Finished checking against existing entries')
+
           if (issues.length == 0) {
+            console.log('✅ No issues detected');
             if (flagForManualCheck) {
+              console.log('ℹ️ Requesting review from maintainers...')
               await github.rest.pulls.requestReviewers({
                 owner: github.context.repo.owner,
                 repo: github.context.repo.repo,
@@ -107,6 +126,7 @@ jobs:
                 team_reviewers: ['maintainers'],
               });
             } else {
+              console.log('ℹ️ Approving PR...');
               await github.rest.pulls.createReview({
                 owner: github.context.repo.owner,
                 repo: github.context.repo.repo,
@@ -115,6 +135,9 @@ jobs:
               });
             }
           } else {
+            console.log(`⚠️ ${issues.length} issues detected`);
+
+            console.log('ℹ️ Posting comment indicating issues...')
             await github.rest.issues.createComment({
               owner: github.context.repo.owner,
               repo: github.context.repo.repo,
@@ -122,6 +145,8 @@ jobs:
               body: `Our automation found one or more issues with this submission:\n`
                 + issues.map(i => `- ${i.replace('\n', '\n  ')}`).join('\n'),
             });
+
+            console.log("ℹ️ Applying label 'invalid'...")
             await github.rest.issues.addLabels({
               owner: github.context.repo.owner,
               repo: github.context.repo.repo,
@@ -130,6 +155,7 @@ jobs:
             });
 
             if (close) {
+              console.log('ℹ️ Auto-closing PR...')
               await github.rest.pulls.update({
                 owner: github.context.repo.owner,
                 repo: github.context.repo.repo,
