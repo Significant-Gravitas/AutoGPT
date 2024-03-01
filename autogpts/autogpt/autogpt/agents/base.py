@@ -125,7 +125,6 @@ class BaseAgentConfiguration(SystemConfiguration):
 
 class BaseAgentSettings(SystemSettings):
     agent_id: str = ""
-    agent_data_dir: Optional[Path] = None
 
     ai_profile: AIProfile = Field(default_factory=lambda: AIProfile(ai_name="AutoGPT"))
     """The AI profile or "personality" of the agent."""
@@ -145,10 +144,6 @@ class BaseAgentSettings(SystemSettings):
 
     history: EpisodicActionHistory = Field(default_factory=EpisodicActionHistory)
     """(STATE) The action history of the agent."""
-
-    @validator("agent_data_dir", always=True)
-    def _validate_agent_data_dir(cls, v: Optional[Path], values: dict[str, Any]):
-        return values["agent_id"] if v is None else v
 
 
 class BaseAgent(Configurable[BaseAgentSettings], ABC):
@@ -221,12 +216,14 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
         response = await self.llm_provider.create_chat_completion(
             prompt.messages,
-            functions=get_openai_command_specs(
-                self.command_registry.list_available_commands(self)
-            )
-            + list(self._prompt_scratchpad.commands.values())
-            if self.config.use_functions_api
-            else [],
+            functions=(
+                get_openai_command_specs(
+                    self.command_registry.list_available_commands(self)
+                )
+                + list(self._prompt_scratchpad.commands.values())
+                if self.config.use_functions_api
+                else []
+            ),
             model_name=self.llm.name,
             completion_parser=lambda r: self.parse_and_process_response(
                 r,
