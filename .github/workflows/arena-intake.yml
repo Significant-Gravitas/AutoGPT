@@ -76,6 +76,10 @@ jobs:
             const newArenaFileName = path.basename(newArenaFile.filename)
             console.log(`🗒️ Arena entry in PR: ${newArenaFile}`);
 
+            if (newArenaFile.status != 'added') {
+              flagForManualCheck = true;
+            }
+
             if (pr.mergeable != false) {
               const newArenaEntry = JSON.parse(fs.readFileSync(newArenaFile.filename));
               const allArenaFiles = await (await glob.create('arena/*.json')).glob();
@@ -84,11 +88,8 @@ jobs:
               console.log(`➡️ Checking ${newArenaFileName} against existing entries...`);
               for (const file of allArenaFiles) {
                 const existingEntryName = path.basename(file);
-                if (
-                  existingEntryName === newArenaFileName
-                  && newArenaFile.status != 'added'
-                ) {
-                  flagForManualCheck = true;
+
+                if (existingEntryName === newArenaFileName) {
                   continue;
                 }
 
@@ -96,7 +97,7 @@ jobs:
 
                 const arenaEntry = JSON.parse(fs.readFileSync(file));
                 if (arenaEntry.github_repo_url === newArenaEntry.github_repo_url) {
-                  console.log('⚠️ Duplicate detected: ${existingEntryName}');
+                  console.log(`⚠️ Duplicate detected: ${existingEntryName}`);
                   issues.push(
                     `The \`github_repo_url\` specified in __${newArenaFileName}__ `
                     + `already exists in __${existingEntryName}__. `
