@@ -125,7 +125,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 pull_number: pr.number,
-                team_reviewers: ['maintainers'],
+                team_reviewers: ['Significant-Gravitas/maintainers'],
               });
             } else {
               console.log('➡️ Approving PR...');
