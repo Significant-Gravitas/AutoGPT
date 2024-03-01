@@ -2,6 +2,7 @@
 The S3Workspace class provides an interface for interacting with a file workspace, and
 stores the files in an S3 bucket.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -46,9 +47,11 @@ class S3FileStorage(FileStorage):
         # https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html
         self._s3 = boto3.resource(
             "s3",
-            endpoint_url=config.s3_endpoint_url.get_secret_value()
-            if config.s3_endpoint_url
-            else None,
+            endpoint_url=(
+                config.s3_endpoint_url.get_secret_value()
+                if config.s3_endpoint_url
+                else None
+            ),
         )
 
         super().__init__()
@@ -190,6 +193,19 @@ class S3FileStorage(FileStorage):
         """Create a directory in the storage if doesn't exist."""
         # S3 does not have directories, so we don't need to do anything
         pass
+
+    def clone_with_subroot(self, subroot: str | Path) -> S3FileStorage:
+        """Create a new S3FileStorage with a subroot of the current storage."""
+        file_storage = S3FileStorage(
+            S3FileStorageConfiguration(
+                bucket=self._bucket_name,
+                root=self.get_path(subroot),
+                s3_endpoint_url=self._s3.meta.client.meta.endpoint_url,
+            )
+        )
+        file_storage._s3 = self._s3
+        file_storage._bucket = self._bucket
+        return file_storage
 
     def __repr__(self) -> str:
         return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self._root})"

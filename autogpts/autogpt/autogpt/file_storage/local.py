@@ -1,6 +1,7 @@
 """
 The LocalFileStorage class implements a FileStorage that works with local files.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -104,3 +105,12 @@ class LocalFileStorage(FileStorage):
         """Create a directory in the storage if doesn't exist."""
         full_path = self.get_path(path)
         full_path.mkdir(exist_ok=True, parents=True)
+
+    def clone_with_subroot(self, subroot: str | Path) -> FileStorage:
+        """Create a new LocalFileStorage with a subroot of the current storage."""
+        return LocalFileStorage(
+            FileStorageConfiguration(
+                root=self.get_path(subroot),
+                restrict_to_root=self.restrict_to_root,
+            )
+        )

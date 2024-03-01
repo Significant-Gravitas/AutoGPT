@@ -152,5 +152,17 @@ class GCSFileStorage(FileStorage):
         # GCS does not have directories, so we don't need to do anything
         pass
 
+    def clone_with_subroot(self, subroot: str | Path) -> GCSFileStorage:
+        """Create a new GCSFileStorage with a subroot of the current storage."""
+        file_storage = GCSFileStorage(
+            GCSFileStorageConfiguration(
+                root=self.get_path(subroot),
+                bucket=self._bucket_name,
+            )
+        )
+        file_storage._gcs = self._gcs
+        file_storage._bucket = self._bucket
+        return file_storage
+
     def __repr__(self) -> str:
         return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self._root})"

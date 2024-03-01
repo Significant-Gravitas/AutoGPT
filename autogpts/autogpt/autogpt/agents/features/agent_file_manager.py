@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
 from autogpt.agents.utils.file_manager import FileManager
 
 from ..base import BaseAgentSettings
-
-if TYPE_CHECKING:
-    from ..base import BaseAgent
+from ..base import BaseAgent
 
 logger = logging.getLogger(__name__)
 

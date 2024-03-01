@@ -119,6 +119,10 @@ class FileStorage(ABC):
     def make_dir(self, path: str | Path) -> None:
         """Create a directory in the storage if doesn't exist."""
 
+    @abstractmethod
+    def clone_with_subroot(self, subroot: str | Path) -> FileStorage:
+        """Create a new FileStorage with a subroot of the current storage."""
+
     def get_path(self, relative_path: str | Path) -> Path:
         """Get the full path for an item in the storage.
 
