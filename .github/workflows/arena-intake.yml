@@ -78,7 +78,6 @@ jobs:
                   && newArenaFile.status != 'added'
                 ) {
                   flagForManualCheck = true;
-                  break;
                 }
 
                 const arenaEntry = JSON.parse(fs.readFileSync(file));
@@ -100,12 +99,21 @@ jobs:
           }  // end if (arenaFilesChanged.length === 1)
 
           if (issues.length == 0) {
-            await github.rest.pulls.createReview({
-              owner: github.context.repo.owner,
-              repo: github.context.repo.repo,
-              pull_number: pr.number,
-              event: 'APPROVE',
-            });
+            if (flagForManualCheck) {
+              await github.rest.pulls.requestReviewers({
+                owner: github.context.repo.owner,
+                repo: github.context.repo.repo,
+                pull_number: pr.number,
+                team_reviewers: ['maintainers'],
+              });
+            } else {
+              await github.rest.pulls.createReview({
+                owner: github.context.repo.owner,
+                repo: github.context.repo.repo,
+                pull_number: pr.number,
+                event: 'APPROVE',
+              });
+            }
           } else {
             await github.rest.issues.createComment({
               owner: github.context.repo.owner,
@@ -113,6 +121,12 @@ jobs:
               issue_number: pr.number,
               body: `Our automation found one or more issues with this submission:\n`
                 + issues.map(i => `- ${i.replace('\n', '\n  ')}`).join('\n'),
+            });
+            await github.rest.issues.addLabels({
+              owner: github.context.repo.owner,
+              repo: github.context.repo.repo,
+              issue_number: pr.number,
+              labels: ['invalid'],
             });
 
             if (close) {
@@ -122,12 +136,5 @@ jobs:
                 pull_number: pr.number,
                 state: 'closed',
               });
-            } else if (flagForManualCheck) {
-              await github.rest.pulls.requestReviewers({
-                owner: github.context.repo.owner,
-                repo: github.context.repo.repo,
-                pull_number: pr.number,
-                team_reviewers: ['maintainers'],
-              });
             }
-          }  // end else
+          }
