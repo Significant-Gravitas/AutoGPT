@@ -107,6 +107,12 @@ class LocalFileStorage(FileStorage):
         full_path = self.get_path(path)
         full_path.mkdir(exist_ok=True, parents=True)
 
+    def rename(self, old_path: str | Path, new_path: str | Path) -> None:
+        """Rename a file or folder in the storage."""
+        old_path = self.get_path(old_path)
+        new_path = self.get_path(new_path)
+        old_path.rename(new_path)
+
     def clone_with_subroot(self, subroot: str | Path) -> FileStorage:
         """Create a new LocalFileStorage with a subroot of the current storage."""
         return LocalFileStorage(

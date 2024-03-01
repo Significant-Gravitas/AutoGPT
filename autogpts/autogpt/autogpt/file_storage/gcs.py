@@ -152,6 +152,14 @@ class GCSFileStorage(FileStorage):
         # GCS does not have directories, so we don't need to do anything
         pass
 
+    def rename(self, old_path: str | Path, new_path: str | Path) -> None:
+        """Rename a file or folder in the storage."""
+        old_path = self.get_path(old_path)
+        new_path = self.get_path(new_path)
+        for blob in self._bucket.list_blobs(prefix=f"{old_path}/"):
+            new_name = str(new_path / Path(blob.name))
+            self._bucket.rename_blob(blob, new_name=new_name)
+
     def clone_with_subroot(self, subroot: str | Path) -> GCSFileStorage:
         """Create a new GCSFileStorage with a subroot of the current storage."""
         file_storage = GCSFileStorage(

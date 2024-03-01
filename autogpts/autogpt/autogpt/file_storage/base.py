@@ -116,6 +116,10 @@ class FileStorage(ABC):
         """Check if a file or folder exists in the storage."""
 
     @abstractmethod
+    def rename(self, old_path: str | Path, new_path: str | Path) -> None:
+        """Rename a file or folder in the storage."""
+
+    @abstractmethod
     def make_dir(self, path: str | Path) -> None:
         """Create a directory in the storage if doesn't exist."""
 

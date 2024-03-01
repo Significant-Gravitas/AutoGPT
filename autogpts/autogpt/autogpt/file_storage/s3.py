@@ -194,6 +194,14 @@ class S3FileStorage(FileStorage):
         # S3 does not have directories, so we don't need to do anything
         pass
 
+    def rename(self, old_path: str | Path, new_path: str | Path) -> None:
+        """Rename a file or folder in the storage."""
+        old_path = self.get_path(old_path)
+        new_path = self.get_path(new_path)
+        obj = self._s3.Object(self._bucket_name, str(old_path))
+        obj.copy_from(CopySource=self._bucket_name + str(old_path))
+        obj.delete()
+
     def clone_with_subroot(self, subroot: str | Path) -> S3FileStorage:
         """Create a new S3FileStorage with a subroot of the current storage."""
         file_storage = S3FileStorage(
