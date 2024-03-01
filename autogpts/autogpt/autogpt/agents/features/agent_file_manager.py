@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import logging
 
-from autogpt.agents.utils.file_manager import FileManager
+from autogpt.file_storage.base import FileStorage
 
-from ..base import BaseAgentSettings
-from ..base import BaseAgent
+from ..base import BaseAgent, BaseAgentSettings
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +13,11 @@ class AgentFileManagerMixin:
     """Mixin that adds file manager (e.g. Agent state)
     and workspace manager (e.g. Agent output files) support."""
 
-    files: FileManager = None
+    files: FileStorage = None
     """Agent-related files, e.g. state, logs.
     Use `workspace` to access the agent's workspace files."""
 
-    workspace: FileManager = None
+    workspace: FileStorage = None
     """Workspace that the agent has access to, e.g. for reading/writing files.
     Use `files` to access agent-related files, e.g. state, logs."""
 
@@ -46,9 +45,11 @@ class AgentFileManagerMixin:
         if not state.agent_id or not state.agent_data_dir:
             raise ValueError("Agent must have an ID and a data directory.")
 
-        file_storage = kwargs["file_storage"]
-        self.files = FileManager(file_storage, f"agents/{state.agent_id}/")
-        self.workspace = FileManager(file_storage, f"agents/{state.agent_id}/workspace")
+        file_storage: FileStorage = kwargs["file_storage"]
+        self.files = file_storage.clone_with_subroot(f"agents/{state.agent_id}/")
+        self.workspace = file_storage.clone_with_subroot(
+            f"agents/{state.agent_id}/workspace"
+        )
         # Read and cache logs
         self._file_logs_cache = []
         if self.files.exists(self.LOGS_FILE):

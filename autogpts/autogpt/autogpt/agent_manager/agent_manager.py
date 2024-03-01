@@ -4,7 +4,6 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from autogpt.agents.utils.file_manager import FileManager
 from autogpt.file_storage.base import FileStorage
 
 if TYPE_CHECKING:
@@ -13,7 +12,7 @@ if TYPE_CHECKING:
 
 class AgentManager:
     def __init__(self, file_storage: FileStorage):
-        self.file_manager = FileManager(file_storage, "agents")
+        self.file_manager = file_storage.clone_with_subroot("agents")
 
     @staticmethod
     def generate_id(agent_name: str) -> str:

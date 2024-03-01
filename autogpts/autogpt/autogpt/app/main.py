@@ -1,6 +1,7 @@
 """
 The application entry point. Can be invoked by a CLI or any other front end application.
 """
+
 import enum
 import logging
 import math
@@ -15,7 +16,6 @@ from typing import TYPE_CHECKING, Optional
 from colorama import Fore, Style
 from forge.sdk.db import AgentDB
 
-from autogpt.agents.utils.file_manager import FileManager
 from autogpt.file_storage import FileStorageBackendName, get_storage
 
 if TYPE_CHECKING:
@@ -320,7 +320,7 @@ async def run_auto_gpt(
             # HACK this shouldn't be done this way
             # preferably agents should not change their ID
             # this just replaces the agent file space with a new one
-            agent.files = FileManager(agent._file_storage, f"agents/{save_as_id}/")
+            agent.files = file_storage.clone_with_subroot(f"agents/{save_as_id}/")
             # TODO: clone workspace if user wants that
             # TODO: ... OR allow many-to-one relations of agents and workspaces
 

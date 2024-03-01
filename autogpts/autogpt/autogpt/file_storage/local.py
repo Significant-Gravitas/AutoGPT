@@ -20,6 +20,7 @@ class LocalFileStorage(FileStorage):
     def __init__(self, config: FileStorageConfiguration):
         self._root = config.root.resolve()
         self._restrict_to_root = config.restrict_to_root
+        self.make_dir(self.root)
         super().__init__()
 
     @property
