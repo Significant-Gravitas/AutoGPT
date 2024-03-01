@@ -125,7 +125,8 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 pull_number: pr.number,
-                team_reviewers: ['@Significant-Gravitas/maintainers'],
+                reviewers: ['Pwuts'],
+                // team_reviewers: ['maintainers'],  // doesn't work: https://stackoverflow.com/a/64977184/4751645
               });
             } else {
               console.log('➡️ Approving PR...');
