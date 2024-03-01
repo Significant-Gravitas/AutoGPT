@@ -52,11 +52,11 @@ jobs:
           if (isFork) {
             if (arenaFilesChanged.length > 1) {
               // Impacting multiple entries in `arena/` is not allowed
-              issues.append('This pull request impacts multiple arena entries');
+              issues.push('This pull request impacts multiple arena entries');
             }
             if (hasChangesInAutogptsFolder) {
               // PRs that include the custom agent are generally not allowed
-              issues.append(
+              issues.push(
                 'This pull request includes changes in `autogpts/`.\n'
                 + 'Please make sure to only submit your arena entry (`arena/*.json`), '
                 + 'and not to accidentally include your custom agent itself.'
@@ -82,7 +82,7 @@ jobs:
 
                 const arenaEntry = JSON.parse(fs.readFileSync(file));
                 if (arenaEntry.github_repo_url === newArenaEntry.github_repo_url) {
-                  issues.append(
+                  issues.push(
                     `The github_repo_url specified in __${newArenaFileName}__ `
                     + `already exists in __${file}__. `
                     + `This PR will be closed as duplicate.`
@@ -91,7 +91,7 @@ jobs:
                 }
               }
             } else {
-              issues.append(
+              issues.push(
                 `__${newArenaFileName}__ conflicts with existing entry with the same name`
               )
               close = true;
