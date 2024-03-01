@@ -104,7 +104,7 @@ jobs:
                   close = true;
                 }
               }
-            } else {
+            } else if (pr.mergeable == false) {
               console.log('⚠️ PR has conflicts');
               issues.push(
                 `__${newArenaFileName}__ conflicts with existing entry with the same name`
