@@ -43,7 +43,7 @@ However, even when running on trusted networks, it is important to always encryp
 
 ### Multi-Tenant environments
 
-If you intend to run multiple AutoGPT brains in parallel, it is your responsibility to ensure the models do not interact or access each other's data. Besides beware that if the instances are using the same API KEY, they will share the same limits.
+If you intend to run multiple AutoGPT brains in parallel, it is your responsibility to ensure the models do not interact or access each other's data.
 
 The primary areas of concern are tenant isolation, resource allocation, model sharing and hardware attacks.
 
