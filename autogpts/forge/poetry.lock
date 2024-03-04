@@ -37,11 +37,8 @@ types-requests = "^2.31.0.1"
 uvicorn = "^0.23.2"
 
 [package.source]
-type = "git"
-url = "https://github.com/Significant-Gravitas/AutoGPT.git"
-reference = "HEAD"
-resolved_reference = "3a170111293a72118e1f4cb28632af07faaae0ac"
-subdirectory = "benchmark"
+type = "directory"
+url = "../../benchmark"
 
 [[package]]
 name = "agent-protocol-client"
@@ -5017,4 +5014,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "7055c043f4af92c81045e17ea8d10e76cbe6d788bf1a51fc631936c37337101d"
+content-hash = "039811d669129bc7d18daec367c6a1cf72fa648cc264244717b39898e23d233e"

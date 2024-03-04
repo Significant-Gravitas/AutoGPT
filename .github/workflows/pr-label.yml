@@ -52,6 +52,14 @@ jobs:
           l_label: 'size/l'
           l_max_size: 500
           xl_label: 'size/xl'
-          message_if_xl: >
-            This PR exceeds the recommended size of 500 lines.
-            Please make sure you are NOT addressing multiple issues with one PR.
+
+  scope:
+    if: ${{ github.event_name == 'pull_request_target' }}
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          sync-labels: true
