@@ -77,37 +77,47 @@ After executing the above commands, running `./run setup` should work successful
 
 #### Store Project Files within the WSL File System
 If you continue to experience issues, consider storing your project files within the WSL file system instead of the Windows file system. This method avoids issues related to path translations and permissions and provides a more consistent development environment.
-    
-    You can keep running the command to get feedback on where you are up to with your setup. 
-    When setup has been completed, the command will return an output like this:
 
-   ![Setup Complete](docs/content/imgs/quickstart/006_setup_complete.png)
+You can keep running the command to get feedback on where you are up to with your setup. 
+When setup has been completed, the command will return an output like this:
+
+![Setup Complete](docs/content/imgs/quickstart/006_setup_complete.png)
 
 ## Creating Your Agent
 
-    Now setup has been completed its time to create your agent template. 
-    Do so by running the `./run agent create YOUR_AGENT_NAME` replacing YOUR_AGENT_NAME with a name of your choice. Examples of valid names: swiftyosgpt or SwiftyosAgent or swiftyos_agent
+After completing the setup, the next step is to create your agent template.
+Execute the command `./run agent create YOUR_AGENT_NAME`, where `YOUR_AGENT_NAME` should be replaced with a name of your choosing.
 
-   ![Create an Agent](docs/content/imgs/quickstart/007_create_agent.png)
+Tips for naming your agent:
+* Give it its own unique name, or name it after yourself
+* Include an important aspect of your agent in the name, such as its purpose
 
-    Upon creating your agent its time to officially enter the Arena!
-    Do so by running `./run arena enter YOUR_AGENT_NAME`
+Examples: `SwiftyosAssistant`, `PwutsPRAgent`, `Narvis`, `evo.ninja`
 
-   ![Enter the Arena](docs/content/imgs/quickstart/008_enter_arena.png)
+![Create an Agent](docs/content/imgs/quickstart/007_create_agent.png)
 
-   > Note: for advanced users, create a new branch and create a file called YOUR_AGENT_NAME.json in the arena directory. Then commit this and create a PR to merge into the main repo. Only single file entries will be permitted. The json file needs the following format. 
-   ```json
-   {
-    "github_repo_url": "https://github.com/Swiftyos/YourAgentName",
-    "timestamp": "2023-09-18T10:03:38.051498",
-    "commit_hash_to_benchmark": "ac36f7bfc7f23ad8800339fa55943c1405d80d5e",
-    "branch_to_benchmark": "master"
-   }
-   ```
-   - github_repo_url: the url to your fork
-   - timestamp: timestamp of the last update of this file
-   - commit_hash_to_benchmark: the commit hash of your entry. You update each time you have an something ready to be officially entered into the hackathon
-   - branch_to_benchmark: the branch you are using to develop your agent on, default is master.
+### Optional: Entering the Arena
+
+Entering the Arena is an optional step intended for those who wish to actively participate in the agent leaderboard. If you decide to participate, you can enter the Arena by running `./run arena enter YOUR_AGENT_NAME`. This step is not mandatory for the development or testing of your agent.
+
+Entries with names like `agent`, `ExampleAgent`, `test_agent` or `MyExampleGPT` will NOT be merged. We also don't accept copycat entries that use the name of other projects, like `AutoGPT` or `evo.ninja`.
+
+![Enter the Arena](docs/content/imgs/quickstart/008_enter_arena.png)
+
+> **Note**  
+> For advanced users, create a new branch and create a file called YOUR_AGENT_NAME.json in the arena directory. Then commit this and create a PR to merge into the main repo. Only single file entries will be permitted. The json file needs the following format:
+> ```json
+> {
+>   "github_repo_url": "https://github.com/Swiftyos/YourAgentName",
+>   "timestamp": "2023-09-18T10:03:38.051498",
+>   "commit_hash_to_benchmark": "ac36f7bfc7f23ad8800339fa55943c1405d80d5e",
+>   "branch_to_benchmark": "master"
+> }
+> ```
+> - `github_repo_url`: the url to your fork
+> - `timestamp`: timestamp of the last update of this file
+> - `commit_hash_to_benchmark`: the commit hash of your entry. You update each time you have an something ready to be officially entered into the hackathon
+> - `branch_to_benchmark`: the branch you are using to develop your agent on, default is master.
 
 
 ## Running your Agent
