@@ -132,35 +132,24 @@ class S3FileStorage(FileStorage):
         self, path: str | Path = ".", recursive: bool = False
     ) -> list[Path]:
         """List 'directories' directly in a given path or recursively in the storage."""
-        path_str = str(path)
-        prefix = f"{path_str.strip('/')}/" if path_str != "." else ""
-        delimiter = "/" if not recursive else None
-
-        # Initialize an empty set to hold unique folder names
+        path = self.get_path(path)
         folder_names = set()
 
         # List objects with the specified prefix and delimiter
-        for obj_summary in self.bucket.objects.filter(
-            Prefix=prefix, Delimiter=delimiter
-        ):
-            if delimiter:
-                # If a delimiter is used, we're not listing recursively,
-                # so include common prefixes
-                response = obj_summary.bucket.meta.client.list_objects_v2(
-                    Bucket=self.bucket.name, Prefix=prefix, Delimiter=delimiter
-                )
-                for prefix_info in response.get("CommonPrefixes", []):
-                    folder_names.add(
-                        Path(prefix_info["Prefix"]).relative_to(Path(prefix)).parent
-                    )
+        for obj_summary in self._bucket.objects.filter(Prefix=str(path)):
+            # Remove path prefix and the object name (last part)
+            folder = Path(obj_summary.key).relative_to(path).parent
+            if not folder or folder == Path("."):
+                continue
+            # For non-recursive, only add the first level of folders
+            if not recursive:
+                folder_names.add(folder.parts[0])
             else:
-                # For a recursive list, add all unique
-                # 'folder' paths by splitting object keys
-                folder_path = Path(obj_summary.key).parent
-                if folder_path != Path(prefix).parent:
-                    folder_names.add(folder_path.relative_to(Path(prefix).parent))
+                # For recursive, need to add all nested folders
+                for i in range(len(folder.parts)):
+                    folder_names.add("/".join(folder.parts[: i + 1]))
 
-        return list(folder_names)
+        return [Path(f) for f in folder_names]
 
     def delete_file(self, path: str | Path) -> None:
         """Delete a file in the storage."""
@@ -175,17 +164,16 @@ class S3FileStorage(FileStorage):
 
     def exists(self, path: str | Path) -> bool:
         """Check if a file or folder exists in S3 storage."""
-        path_str = str(path)
-        # Check for exact object match (file)
-        obj = self._bucket.Object(path_str)
+        path = self.get_path(path)
         try:
-            obj.load()  # Will succeed if the object exists
+            # Check for exact object match (file)
+            self._s3.meta.client.head_object(Bucket=self._bucket_name, Key=str(path))
             return True
         except botocore.exceptions.ClientError as e:
             if int(e.response["ResponseMetadata"]["HTTPStatusCode"]) == 404:
                 # If the object does not exist,
                 # check for objects with the prefix (folder)
-                prefix = f"{path_str.rstrip('/')}/"
+                prefix = f"{str(path).rstrip('/')}/"
                 objs = list(self._bucket.objects.filter(Prefix=prefix, MaxKeys=1))
                 return len(objs) > 0  # True if any objects exist with the prefix
             else:
@@ -198,11 +186,36 @@ class S3FileStorage(FileStorage):
 
     def rename(self, old_path: str | Path, new_path: str | Path) -> None:
         """Rename a file or folder in the storage."""
-        old_path = self.get_path(old_path)
-        new_path = self.get_path(new_path)
-        obj = self._s3.Object(self._bucket_name, str(old_path))
-        obj.copy_from(CopySource=self._bucket_name + str(old_path))
-        obj.delete()
+        old_path = str(self.get_path(old_path))
+        new_path = str(self.get_path(new_path))
+
+        try:
+            # If file exists, rename it
+            self._s3.meta.client.head_object(Bucket=self._bucket_name, Key=old_path)
+            self._s3.meta.client.copy_object(
+                CopySource={"Bucket": self._bucket_name, "Key": old_path},
+                Bucket=self._bucket_name,
+                Key=new_path,
+            )
+            self._s3.meta.client.delete_object(Bucket=self._bucket_name, Key=old_path)
+        except botocore.exceptions.ClientError as e:
+            if int(e.response["ResponseMetadata"]["HTTPStatusCode"]) == 404:
+                # If the object does not exist,
+                # it may be a folder
+                prefix = f"{old_path.rstrip('/')}/"
+                objs = list(self._bucket.objects.filter(Prefix=prefix))
+                for obj in objs:
+                    new_key = new_path + obj.key[len(old_path) :]
+                    self._s3.meta.client.copy_object(
+                        CopySource={"Bucket": self._bucket_name, "Key": obj.key},
+                        Bucket=self._bucket_name,
+                        Key=new_key,
+                    )
+                    self._s3.meta.client.delete_object(
+                        Bucket=self._bucket_name, Key=obj.key
+                    )
+            else:
+                raise  # Re-raise for any other client errors
 
     def clone_with_subroot(self, subroot: str | Path) -> S3FileStorage:
         """Create a new S3FileStorage with a subroot of the current storage."""
