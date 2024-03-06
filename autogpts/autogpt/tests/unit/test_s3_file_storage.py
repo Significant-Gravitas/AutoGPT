@@ -18,10 +18,15 @@ def s3_bucket_name() -> str:
 
 
 @pytest.fixture
-def s3_storage_uninitialized(s3_bucket_name: str) -> S3FileStorage:
+def s3_root() -> Path:
+    return Path("/workspaces/AutoGPT-some-unique-task-id")
+
+
+@pytest.fixture
+def s3_storage_uninitialized(s3_bucket_name: str, s3_root: str) -> S3FileStorage:
     os.environ["STORAGE_BUCKET"] = s3_bucket_name
     storage_config = S3FileStorageConfiguration.from_env()
-    storage_config.root = Path("/workspaces/AutoGPT-some-unique-task-id")
+    storage_config.root = s3_root
     storage = S3FileStorage(storage_config)
     yield storage  # type: ignore
     del os.environ["STORAGE_BUCKET"]
@@ -159,3 +164,11 @@ def test_rename_dir(s3_storage_with_files: S3FileStorage):
     s3_storage_with_files.rename(NESTED_DIR, "existing/test/dir_renamed")
     assert s3_storage_with_files.exists("existing/test/dir_renamed")
     assert not s3_storage_with_files.exists(NESTED_DIR)
+
+
+def test_clone(s3_storage_with_files: S3FileStorage, s3_root: Path):
+    cloned = s3_storage_with_files.clone_with_subroot("existing/test")
+    assert cloned.root == s3_root / Path("existing/test")
+    assert cloned._bucket.name == s3_storage_with_files._bucket.name
+    assert cloned.exists("dir")
+    assert cloned.exists("dir/test_file_4")

@@ -62,6 +62,9 @@ class GCSFileStorage(FileStorage):
             self._bucket = self._gcs.create_bucket(self._bucket_name)
 
     def get_path(self, relative_path: str | Path) -> Path:
+        # We set GCS root with "/" at the beginning
+        # but relative_to("/") will remove it
+        # because we don't actually want it in the storage filenames
         return super().get_path(relative_path).relative_to("/")
 
     def _get_blob(self, path: str | Path) -> storage.Blob:
@@ -116,14 +119,24 @@ class GCSFileStorage(FileStorage):
         self, path: str | Path = ".", recursive: bool = False
     ) -> list[Path]:
         """List 'directories' directly in a given path or recursively in the storage."""
-        path = str(path)
-        prefix = f"{path}/" if path != "." else ""
-        delimiter = "/" if not recursive else None
-        iterator = self._bucket.list_blobs(prefix=prefix, delimiter=delimiter)
-        prefixes = set()
-        for page in iterator.pages:
-            prefixes.update(page.prefixes)
-        return [Path(p).relative_to(Path(prefix)) for p in prefixes]
+        path = self.get_path(path)
+        folder_names = set()
+
+        # List objects with the specified prefix and delimiter
+        for blob in self._bucket.list_blobs(prefix=path):
+            # Remove path prefix and the object name (last part)
+            folder = Path(blob.name).relative_to(path).parent
+            if not folder or folder == Path("."):
+                continue
+            # For non-recursive, only add the first level of folders
+            if not recursive:
+                folder_names.add(folder.parts[0])
+            else:
+                # For recursive, need to add all nested folders
+                for i in range(len(folder.parts)):
+                    folder_names.add("/".join(folder.parts[: i + 1]))
+
+        return [Path(f) for f in folder_names]
 
     def delete_file(self, path: str | Path) -> None:
         """Delete a file in the storage."""
@@ -146,9 +159,7 @@ class GCSFileStorage(FileStorage):
         # Check for any blobs with prefix (folder)
         prefix = f"{str(path).rstrip('/')}/"
         blobs = self._bucket.list_blobs(prefix=prefix, max_results=1)
-        for _ in blobs:
-            return True  # If there is at least one object, the folder exists
-        return False
+        return next(blobs, None) is not None
 
     def make_dir(self, path: str | Path) -> None:
         """Create a directory in the storage if doesn't exist."""
@@ -160,14 +171,14 @@ class GCSFileStorage(FileStorage):
         old_path = self.get_path(old_path)
         new_path = self.get_path(new_path)
         for blob in self._bucket.list_blobs(prefix=f"{old_path}/"):
-            new_name = str(new_path / Path(blob.name))
+            new_name = str(new_path / blob.namez)
             self._bucket.rename_blob(blob, new_name=new_name)
 
     def clone_with_subroot(self, subroot: str | Path) -> GCSFileStorage:
         """Create a new GCSFileStorage with a subroot of the current storage."""
         file_storage = GCSFileStorage(
             GCSFileStorageConfiguration(
-                root=self.get_path(subroot),
+                root=Path("/").joinpath(self.get_path(subroot)),
                 bucket=self._bucket_name,
             )
         )

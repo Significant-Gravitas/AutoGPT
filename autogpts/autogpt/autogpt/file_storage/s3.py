@@ -83,6 +83,9 @@ class S3FileStorage(FileStorage):
             self._bucket = self._s3.create_bucket(Bucket=self._bucket_name)
 
     def get_path(self, relative_path: str | Path) -> Path:
+        # We set S3 root with "/" at the beginning
+        # but relative_to("/") will remove it
+        # because we don't actually want it in the storage filenames
         return super().get_path(relative_path).relative_to("/")
 
     def _get_obj(self, path: str | Path) -> mypy_boto3_s3.service_resource.Object:
@@ -222,7 +225,7 @@ class S3FileStorage(FileStorage):
         file_storage = S3FileStorage(
             S3FileStorageConfiguration(
                 bucket=self._bucket_name,
-                root=self.get_path(subroot),
+                root=Path("/").joinpath(self.get_path(subroot)),
                 s3_endpoint_url=self._s3.meta.client.meta.endpoint_url,
             )
         )
