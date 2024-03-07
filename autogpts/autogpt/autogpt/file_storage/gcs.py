@@ -170,8 +170,14 @@ class GCSFileStorage(FileStorage):
         """Rename a file or folder in the storage."""
         old_path = self.get_path(old_path)
         new_path = self.get_path(new_path)
+        blob = self._bucket.blob(str(old_path))
+        # If the blob with exact name exists, rename it
+        if blob.exists():
+            self._bucket.rename_blob(blob, new_name=str(new_path))
+            return
+        # Otherwise, rename all blobs with the prefix (folder)
         for blob in self._bucket.list_blobs(prefix=f"{old_path}/"):
-            new_name = str(new_path / blob.namez)
+            new_name = str(blob.name).replace(str(old_path), str(new_path), 1)
             self._bucket.rename_blob(blob, new_name=new_name)
 
     def clone_with_subroot(self, subroot: str | Path) -> GCSFileStorage:
