@@ -30,7 +30,6 @@ from sentry_sdk import set_user
 from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
-from autogpt.agents.agent import Agent
 from autogpt.commands.system import finish
 from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
