@@ -384,7 +384,7 @@ class AgentProtocolServer:
         return TaskArtifactsListResponse(artifacts=artifacts, pagination=pagination)
 
     async def create_artifact(
-        self, agent: Agent, task_id: str, file: UploadFile, relative_path: str
+        self, task_id: str, file: UploadFile, relative_path: str
     ) -> Artifact:
         """
         Create an artifact for the task.
@@ -399,7 +399,8 @@ class AgentProtocolServer:
         else:
             file_path = os.path.join(relative_path, file_name)
 
-        await agent.workspace.write_file(file_path, data)
+        workspace = self._get_task_agent_file_workspace(task_id)
+        await workspace.write_file(file_path, data)
 
         artifact = await self.db.create_artifact(
             task_id=task_id,
@@ -409,19 +410,18 @@ class AgentProtocolServer:
         )
         return artifact
 
-    async def get_artifact(
-        self, agent: Agent, task_id: str, artifact_id: str
-    ) -> StreamingResponse:
+    async def get_artifact(self, task_id: str, artifact_id: str) -> StreamingResponse:
         """
         Download a task artifact by ID.
         """
         try:
+            workspace = self._get_task_agent_file_workspace(task_id)
             artifact = await self.db.get_artifact(artifact_id)
             if artifact.file_name not in artifact.relative_path:
                 file_path = os.path.join(artifact.relative_path, artifact.file_name)
             else:
                 file_path = artifact.relative_path
-            retrieved_artifact = agent.workspace.read_file(file_path, binary=True)
+            retrieved_artifact = workspace.read_file(file_path, binary=True)
         except NotFoundError:
             raise
         except FileNotFoundError:
@@ -434,6 +434,10 @@ class AgentProtocolServer:
                 "Content-Disposition": f'attachment; filename="{artifact.file_name}"'
             },
         )
+
+    def _get_task_agent_file_workspace(self, task_id: str | int) -> FileStorage:
+        agent_id = task_agent_id(task_id)
+        return self.file_storage.clone_with_subroot(f"agents/{agent_id}/workspace")
 
     def _get_task_llm_provider(
         self, task: Task, step_id: str = ""
