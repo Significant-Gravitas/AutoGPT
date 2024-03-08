@@ -78,8 +78,14 @@ async def run_auto_gpt(
 ):
     config = ConfigBuilder.build_config_from_env()
 
+    # Set up logging module
+    configure_logging(
+        **config.logging.dict(),
+        tts_config=config.tts_config,
+    )
+
     # TODO: fill in llm values here
-    assert_config_has_openai_api_key(config)
+    await assert_config_has_openai_api_key(config)
 
     apply_overrides_to_config(
         config=config,
@@ -98,12 +104,6 @@ async def run_auto_gpt(
         browser_name=browser_name,
         allow_downloads=allow_downloads,
         skip_news=skip_news,
-    )
-
-    # Set up logging module
-    configure_logging(
-        **config.logging.dict(),
-        tts_config=config.tts_config,
     )
 
     llm_provider = _configure_openai_provider(config)
