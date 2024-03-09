@@ -30,6 +30,7 @@ from sentry_sdk import set_user
 from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
+from autogpt.app.utils import is_port_free
 from autogpt.commands.system import finish
 from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
@@ -65,6 +66,14 @@ class AgentProtocolServer:
     async def start(self, port: int = 8000, router: APIRouter = base_router):
         """Start the agent server."""
         logger.debug("Starting the agent server...")
+        if not is_port_free(port):
+            logger.error(f"Port {port} is already in use.")
+            logger.info(
+                "You can specify a port by either setting the AP_SERVER_PORT "
+                "environment variable or defining AP_SERVER_PORT in the .env file."
+            )
+            return
+
         config = HypercornConfig()
         config.bind = [f"localhost:{port}"]
         app = FastAPI(
