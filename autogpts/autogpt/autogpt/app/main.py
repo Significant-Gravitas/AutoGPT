@@ -15,6 +15,11 @@ from typing import TYPE_CHECKING, Optional
 from colorama import Fore, Style
 from forge.sdk.db import AgentDB
 
+from autogpt.commands.execute_code import (
+    is_docker_available,
+    we_are_running_in_a_docker_container,
+)
+
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
 
@@ -140,6 +145,14 @@ async def run_auto_gpt(
             print_attribute("Using Prompt Settings File", prompt_settings)
         if config.allow_downloads:
             print_attribute("Native Downloading", "ENABLED")
+        if we_are_running_in_a_docker_container() or is_docker_available():
+            print_attribute("Code Execution", "ENABLED")
+        else:
+            print_attribute(
+                "Code Execution",
+                "DISABLED (Docker unavailable)",
+                title_color=Fore.YELLOW,
+            )
 
     if install_plugin_deps:
         install_plugin_dependencies()
