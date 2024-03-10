@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from openai import AuthenticationError, AzureOpenAI, OpenAI
+from openai import APIError, AzureOpenAI, OpenAI
 from openai.types import Model
 
 from autogpt.core.resource.model_providers.openai import (
@@ -123,7 +123,7 @@ class ApiManager(metaclass=Singleton):
                     .data
                 )
             self.models = [model for model in all_models if "gpt" in model.id]
-        except AuthenticationError as e:
+        except APIError as e:
             logger.error(e.message)
             exit(1)
 
