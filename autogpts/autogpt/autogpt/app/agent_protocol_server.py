@@ -36,11 +36,7 @@ from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.resource.model_providers.schema import ModelProviderBudget
-from autogpt.file_workspace import (
-    FileWorkspace,
-    FileWorkspaceBackendName,
-    get_workspace,
-)
+from autogpt.file_storage import FileStorage
 from autogpt.logs.utils import fmt_kwargs
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
 
@@ -54,12 +50,14 @@ class AgentProtocolServer:
         self,
         app_config: Config,
         database: AgentDB,
+        file_storage: FileStorage,
         llm_provider: ChatModelProvider,
     ):
         self.app_config = app_config
         self.db = database
+        self.file_storage = file_storage
         self.llm_provider = llm_provider
-        self.agent_manager = AgentManager(app_data_dir=app_config.app_data_dir)
+        self.agent_manager = AgentManager(file_storage)
         self._task_budgets = {}
 
     async def start(self, port: int = 8000, router: APIRouter = base_router):
@@ -134,16 +132,13 @@ class AgentProtocolServer:
         )
         logger.debug(f"Creating agent for task: '{task.input}'")
         task_agent = await generate_agent_for_task(
+            agent_id=task_agent_id(task.task_id),
             task=task.input,
             app_config=self.app_config,
+            file_storage=self.file_storage,
             llm_provider=self._get_task_llm_provider(task),
         )
-
-        # Assign an ID and a folder to the Agent and persist it
-        agent_id = task_agent.state.agent_id = task_agent_id(task.task_id)
-        logger.debug(f"New agent ID: {agent_id}")
-        task_agent.attach_fs(self.app_config.app_data_dir / "agents" / agent_id)
-        task_agent.state.save_to_json_file(task_agent.file_manager.state_file_path)
+        await task_agent.save_state()
 
         return task
 
@@ -182,8 +177,9 @@ class AgentProtocolServer:
         # Restore Agent instance
         task = await self.get_task(task_id)
         agent = configure_agent_with_state(
-            state=self.agent_manager.retrieve_state(task_agent_id(task_id)),
+            state=self.agent_manager.load_agent_state(task_agent_id(task_id)),
             app_config=self.app_config,
+            file_storage=self.file_storage,
             llm_provider=self._get_task_llm_provider(task),
         )
 
@@ -346,7 +342,7 @@ class AgentProtocolServer:
             additional_output=additional_output,
         )
 
-        agent.state.save_to_json_file(agent.file_manager.state_file_path)
+        await agent.save_state()
         return step
 
     async def _on_agent_write_file(
@@ -405,7 +401,7 @@ class AgentProtocolServer:
         else:
             file_path = os.path.join(relative_path, file_name)
 
-        workspace = self._get_task_agent_file_workspace(task_id, self.agent_manager)
+        workspace = self._get_task_agent_file_workspace(task_id)
         await workspace.write_file(file_path, data)
 
         artifact = await self.db.create_artifact(
@@ -421,12 +417,12 @@ class AgentProtocolServer:
         Download a task artifact by ID.
         """
         try:
+            workspace = self._get_task_agent_file_workspace(task_id)
             artifact = await self.db.get_artifact(artifact_id)
             if artifact.file_name not in artifact.relative_path:
                 file_path = os.path.join(artifact.relative_path, artifact.file_name)
             else:
                 file_path = artifact.relative_path
-            workspace = self._get_task_agent_file_workspace(task_id, self.agent_manager)
             retrieved_artifact = workspace.read_file(file_path, binary=True)
         except NotFoundError:
             raise
@@ -441,28 +437,9 @@ class AgentProtocolServer:
             },
         )
 
-    def _get_task_agent_file_workspace(
-        self,
-        task_id: str | int,
-        agent_manager: AgentManager,
-    ) -> FileWorkspace:
-        use_local_ws = (
-            self.app_config.workspace_backend == FileWorkspaceBackendName.LOCAL
-        )
+    def _get_task_agent_file_workspace(self, task_id: str | int) -> FileStorage:
         agent_id = task_agent_id(task_id)
-        workspace = get_workspace(
-            backend=self.app_config.workspace_backend,
-            id=agent_id if not use_local_ws else "",
-            root_path=agent_manager.get_agent_dir(
-                agent_id=agent_id,
-                must_exist=True,
-            )
-            / "workspace"
-            if use_local_ws
-            else None,
-        )
-        workspace.initialize()
-        return workspace
+        return self.file_storage.clone_with_subroot(f"agents/{agent_id}/workspace")
 
     def _get_task_llm_provider(
         self, task: Task, step_id: str = ""

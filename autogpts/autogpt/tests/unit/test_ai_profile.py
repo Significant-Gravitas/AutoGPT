@@ -1,4 +1,5 @@
 from autogpt.config.ai_profile import AIProfile
+from autogpt.file_storage.base import FileStorage
 
 """
 Test cases for the AIProfile class, which handles loads the AI configuration
@@ -45,10 +46,10 @@ api_budget: 0.0
     assert ai_settings_file.read_text() == yaml_content2
 
 
-def test_ai_profile_file_not_exists(workspace):
+def test_ai_profile_file_not_exists(storage: FileStorage):
     """Test if file does not exist."""
 
-    ai_settings_file = workspace.get_path("ai_settings.yaml")
+    ai_settings_file = storage.get_path("ai_settings.yaml")
 
     ai_profile = AIProfile.load(str(ai_settings_file))
     assert ai_profile.ai_name == ""
@@ -57,10 +58,10 @@ def test_ai_profile_file_not_exists(workspace):
     assert ai_profile.api_budget == 0.0
 
 
-def test_ai_profile_file_is_empty(workspace):
+def test_ai_profile_file_is_empty(storage: FileStorage):
     """Test if file does not exist."""
 
-    ai_settings_file = workspace.get_path("ai_settings.yaml")
+    ai_settings_file = storage.get_path("ai_settings.yaml")
     ai_settings_file.write_text("")
 
     ai_profile = AIProfile.load(str(ai_settings_file))
