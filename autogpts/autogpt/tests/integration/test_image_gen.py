@@ -18,11 +18,11 @@ def image_size(request):
 
 @pytest.mark.requires_openai_api_key
 @pytest.mark.vcr
-def test_dalle(agent: Agent, workspace, image_size, cached_openai_client):
+def test_dalle(agent: Agent, storage, image_size, cached_openai_client):
     """Test DALL-E image generation."""
     generate_and_validate(
         agent,
-        workspace,
+        storage,
         image_provider="dalle",
         image_size=image_size,
     )
@@ -37,11 +37,11 @@ def test_dalle(agent: Agent, workspace, image_size, cached_openai_client):
     "image_model",
     ["CompVis/stable-diffusion-v1-4", "stabilityai/stable-diffusion-2-1"],
 )
-def test_huggingface(agent: Agent, workspace, image_size, image_model):
+def test_huggingface(agent: Agent, storage, image_size, image_model):
     """Test HuggingFace image generation."""
     generate_and_validate(
         agent,
-        workspace,
+        storage,
         image_provider="huggingface",
         image_size=image_size,
         hugging_face_image_model=image_model,
@@ -49,18 +49,18 @@ def test_huggingface(agent: Agent, workspace, image_size, image_model):
 
 
 @pytest.mark.xfail(reason="SD WebUI call does not work.")
-def test_sd_webui(agent: Agent, workspace, image_size):
+def test_sd_webui(agent: Agent, storage, image_size):
     """Test SD WebUI image generation."""
     generate_and_validate(
         agent,
-        workspace,
+        storage,
         image_provider="sd_webui",
         image_size=image_size,
     )
 
 
 @pytest.mark.xfail(reason="SD WebUI call does not work.")
-def test_sd_webui_negative_prompt(agent: Agent, workspace, image_size):
+def test_sd_webui_negative_prompt(agent: Agent, storage, image_size):
     gen_image = functools.partial(
         generate_image_with_sd_webui,
         prompt="astronaut riding a horse",
@@ -91,7 +91,7 @@ def lst(txt):
 
 def generate_and_validate(
     agent: Agent,
-    workspace,
+    storage,
     image_size,
     image_provider,
     hugging_face_image_model=None,
@@ -125,7 +125,7 @@ def generate_and_validate(
 )
 @pytest.mark.parametrize("delay", [10, 0])
 def test_huggingface_fail_request_with_delay(
-    agent: Agent, workspace, image_size, image_model, return_text, delay
+    agent: Agent, storage, image_size, image_model, return_text, delay
 ):
     return_text = return_text.replace("[model]", image_model).replace(
         "[delay]", str(delay)
