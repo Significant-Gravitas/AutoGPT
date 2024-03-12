@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
@@ -39,6 +38,7 @@ from autogpt.core.resource.model_providers.openai import (
     OpenAIModelName,
 )
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
+from autogpt.file_storage.base import FileStorage
 from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.models.action_history import (
     ActionResult,
@@ -46,8 +46,6 @@ from autogpt.models.action_history import (
     EpisodicActionHistory,
 )
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
-
-from .utils.agent_file_manager import AgentFileManager
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +128,6 @@ class BaseAgentConfiguration(SystemConfiguration):
 
 class BaseAgentSettings(SystemSettings):
     agent_id: str = ""
-    agent_data_dir: Optional[Path] = None
 
     ai_profile: AIProfile = Field(default_factory=lambda: AIProfile(ai_name="AutoGPT"))
     """The AI profile or "personality" of the agent."""
@@ -151,14 +148,6 @@ class BaseAgentSettings(SystemSettings):
     history: EpisodicActionHistory = Field(default_factory=EpisodicActionHistory)
     """(STATE) The action history of the agent."""
 
-    def save_to_json_file(self, file_path: Path) -> None:
-        with file_path.open("w") as f:
-            f.write(self.json())
-
-    @classmethod
-    def load_from_json_file(cls, file_path: Path):
-        return cls.parse_file(file_path)
-
 
 class BaseAgent(Configurable[BaseAgentSettings], ABC):
     """Base class for all AutoGPT agent classes."""
@@ -176,6 +165,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         llm_provider: ChatModelProvider,
         prompt_strategy: PromptStrategy,
         command_registry: CommandRegistry,
+        file_storage: FileStorage,
         legacy_config: Config,
     ):
         self.state = settings
@@ -186,12 +176,6 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
 
         self.legacy_config = legacy_config
         """LEGACY: Monolithic application configuration."""
-
-        self.file_manager: AgentFileManager = (
-            AgentFileManager(settings.agent_data_dir)
-            if settings.agent_data_dir
-            else None
-        )  # type: ignore
 
         # In case the agent is resumed, cursor is set to the last episode
         if self.event_history:
@@ -215,21 +199,6 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
 
         logger.debug(f"Created {__class__} '{self.ai_profile.ai_name}'")
 
-    def set_id(self, new_id: str, new_agent_dir: Optional[Path] = None):
-        self.state.agent_id = new_id
-        if self.state.agent_data_dir:
-            if not new_agent_dir:
-                raise ValueError(
-                    "new_agent_dir must be specified if one is currently configured"
-                )
-            self.attach_fs(new_agent_dir)
-
-    def attach_fs(self, agent_dir: Path) -> AgentFileManager:
-        self.file_manager = AgentFileManager(agent_dir)
-        self.file_manager.initialize()
-        self.state.agent_data_dir = agent_dir
-        return self.file_manager
-
     @property
     def llm(self) -> ChatModelInfo:
         """The LLM that the agent uses to think."""
@@ -248,10 +217,6 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         Returns:
             The command name and arguments, if any, and the agent's thoughts.
         """
-        assert self.file_manager, (
-            f"Agent has no FileManager: call {__class__.__name__}.attach_fs()"
-            " before trying to run the agent."
-        )
 
         # Scratchpad as surrogate PromptGenerator for plugin hooks
         self._prompt_scratchpad = PromptScratchpad()
