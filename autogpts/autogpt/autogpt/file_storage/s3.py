@@ -42,7 +42,9 @@ class S3FileStorage(FileStorage):
     def __init__(self, config: S3FileStorageConfiguration):
         self._bucket_name = config.bucket
         self._root = config.root
-        assert self._root.is_absolute()
+        # Add / at the beginning of the root path
+        if not self._root.is_absolute():
+            self._root = Path("/").joinpath(self._root)
 
         # https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html
         self._s3 = boto3.resource(
