@@ -1,6 +1,7 @@
 """
 The application entry point. Can be invoked by a CLI or any other front end application.
 """
+
 import enum
 import logging
 import math
@@ -19,6 +20,7 @@ from autogpt.commands.execute_code import (
     is_docker_available,
     we_are_running_in_a_docker_container,
 )
+from autogpt.file_storage import FileStorageBackendName, get_storage
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
@@ -81,7 +83,15 @@ async def run_auto_gpt(
     best_practices: Optional[list[str]] = None,
     override_directives: bool = False,
 ):
+    # Set up configuration
     config = ConfigBuilder.build_config_from_env()
+    # Storage
+    local = config.file_storage_backend == FileStorageBackendName.LOCAL
+    restrict_to_root = not local or config.restrict_to_workspace
+    file_storage = get_storage(
+        config.file_storage_backend, root_path="data", restrict_to_root=restrict_to_root
+    )
+    file_storage.initialize()
 
     # TODO: fill in llm values here
     assert_config_has_openai_api_key(config)
@@ -161,7 +171,7 @@ async def run_auto_gpt(
     configure_chat_plugins(config)
 
     # Let user choose an existing agent to run
-    agent_manager = AgentManager(config.app_data_dir)
+    agent_manager = AgentManager(file_storage)
     existing_agents = agent_manager.list_agents()
     load_existing_agent = ""
     if existing_agents:
@@ -192,7 +202,7 @@ async def run_auto_gpt(
     # Resume an Existing Agent #
     ############################
     if load_existing_agent:
-        agent_state = agent_manager.retrieve_state(load_existing_agent)
+        agent_state = agent_manager.load_agent_state(load_existing_agent)
         while True:
             answer = await clean_input(config, "Resume? [Y/n]")
             if answer.lower() == "y":
@@ -207,6 +217,7 @@ async def run_auto_gpt(
         agent = configure_agent_with_state(
             state=agent_state,
             app_config=config,
+            file_storage=file_storage,
             llm_provider=llm_provider,
         )
         apply_overrides_to_ai_settings(
@@ -287,13 +298,14 @@ async def run_auto_gpt(
             logger.info("AI config overrides specified through CLI; skipping revision")
 
         agent = create_agent(
+            agent_id=agent_manager.generate_id(ai_profile.ai_name),
             task=task,
             ai_profile=ai_profile,
             directives=ai_directives,
             app_config=config,
+            file_storage=file_storage,
             llm_provider=llm_provider,
         )
-        agent.attach_fs(agent_manager.get_agent_dir(agent.state.agent_id))
 
         if not agent.config.allow_fs_access:
             logger.info(
@@ -322,14 +334,10 @@ async def run_auto_gpt(
             or agent_id
         )
         if save_as_id and save_as_id != agent_id:
-            agent.set_id(
-                new_id=save_as_id,
-                new_agent_dir=agent_manager.get_agent_dir(save_as_id),
-            )
-            # TODO: clone workspace if user wants that
-            # TODO: ... OR allow many-to-one relations of agents and workspaces
+            agent.change_agent_id(save_as_id)
+            # TODO: allow many-to-one relations of agents and workspaces
 
-        agent.state.save_to_json_file(agent.file_manager.state_file_path)
+        await agent.save_state()
 
 
 @coroutine
@@ -348,6 +356,14 @@ async def run_auto_gpt_server(
     from .agent_protocol_server import AgentProtocolServer
 
     config = ConfigBuilder.build_config_from_env()
+
+    # Storage
+    local = config.file_storage_backend == FileStorageBackendName.LOCAL
+    restrict_to_root = not local or config.restrict_to_workspace
+    file_storage = get_storage(
+        config.file_storage_backend, root_path="data", restrict_to_root=restrict_to_root
+    )
+    file_storage.initialize()
 
     # TODO: fill in llm values here
     assert_config_has_openai_api_key(config)
@@ -385,7 +401,10 @@ async def run_auto_gpt_server(
     )
     port: int = int(os.getenv("AP_SERVER_PORT", default=8000))
     server = AgentProtocolServer(
-        app_config=config, database=database, llm_provider=llm_provider
+        app_config=config,
+        database=database,
+        file_storage=file_storage,
+        llm_provider=llm_provider,
     )
     await server.start(port=port)
 

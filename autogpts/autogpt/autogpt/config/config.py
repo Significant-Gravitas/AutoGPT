@@ -20,7 +20,7 @@ from autogpt.core.resource.model_providers.openai import (
     OPEN_AI_CHAT_MODELS,
     OpenAICredentials,
 )
-from autogpt.file_workspace import FileWorkspaceBackendName
+from autogpt.file_storage import FileStorageBackendName
 from autogpt.logs.config import LoggingConfig
 from autogpt.plugins.plugins_config import PluginsConfig
 from autogpt.speech import TTSConfig
@@ -57,11 +57,11 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     tts_config: TTSConfig = TTSConfig()
     logging: LoggingConfig = LoggingConfig()
 
-    # Workspace
-    workspace_backend: FileWorkspaceBackendName = UserConfigurable(
-        default=FileWorkspaceBackendName.LOCAL,
-        from_env=lambda: FileWorkspaceBackendName(v)
-        if (v := os.getenv("WORKSPACE_BACKEND"))
+    # File storage
+    file_storage_backend: FileStorageBackendName = UserConfigurable(
+        default=FileStorageBackendName.LOCAL,
+        from_env=lambda: FileStorageBackendName(v)
+        if (v := os.getenv("FILE_STORAGE_BACKEND"))
         else None,
     )
 

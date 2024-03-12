@@ -6,10 +6,6 @@ import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-if TYPE_CHECKING:
-    from autogpt.config import Config
-    from autogpt.models.command_registry import CommandRegistry
-
 import sentry_sdk
 from pydantic import Field
 
@@ -20,6 +16,7 @@ from autogpt.core.resource.model_providers import (
     ChatMessage,
     ChatModelProvider,
 )
+from autogpt.file_storage.base import FileStorage
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
@@ -39,8 +36,8 @@ from autogpt.models.command import CommandOutput
 from autogpt.models.context_item import ContextItem
 
 from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
+from .features.agent_file_manager import AgentFileManagerMixin
 from .features.context import ContextMixin
-from .features.file_workspace import FileWorkspaceMixin
 from .features.watchdog import WatchdogMixin
 from .prompt_strategies.one_shot import (
     OneShotAgentPromptConfiguration,
@@ -53,6 +50,10 @@ from .utils.exceptions import (
     DuplicateOperationError,
     UnknownCommandError,
 )
+
+if TYPE_CHECKING:
+    from autogpt.config import Config
+    from autogpt.models.command_registry import CommandRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ class AgentSettings(BaseAgentSettings):
 
 class Agent(
     ContextMixin,
-    FileWorkspaceMixin,
+    AgentFileManagerMixin,
     WatchdogMixin,
     BaseAgent,
     Configurable[AgentSettings],
@@ -91,6 +92,7 @@ class Agent(
         settings: AgentSettings,
         llm_provider: ChatModelProvider,
         command_registry: CommandRegistry,
+        file_storage: FileStorage,
         legacy_config: Config,
     ):
         prompt_strategy = OneShotAgentPromptStrategy(
@@ -102,6 +104,7 @@ class Agent(
             llm_provider=llm_provider,
             prompt_strategy=prompt_strategy,
             command_registry=command_registry,
+            file_storage=file_storage,
             legacy_config=legacy_config,
         )
 
