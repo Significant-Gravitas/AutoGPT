@@ -311,12 +311,16 @@ class AgentProtocolServer:
                         "name": execute_command,
                         "args": execute_command_args,
                         "result": (
-                            orjson.loads(execute_result.json())
-                            if not isinstance(execute_result, ActionErrorResult)
-                            else {
-                                "error": str(execute_result.error),
-                                "reason": execute_result.reason,
-                            }
+                            ""
+                            if execute_result is None
+                            else (
+                                orjson.loads(execute_result.json())
+                                if not isinstance(execute_result, ActionErrorResult)
+                                else {
+                                    "error": str(execute_result.error),
+                                    "reason": execute_result.reason,
+                                }
+                            )
                         ),
                     },
                 }
