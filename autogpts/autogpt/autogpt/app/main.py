@@ -190,16 +190,14 @@ async def run_auto_gpt(
     # Resume an Existing Agent #
     ############################
     if load_existing_agent:
-        agent_state = agent_manager.load_agent_state(load_existing_agent)
+        agent_state = None
         while True:
             answer = await clean_input(config, "Resume? [Y/n]")
-            if answer.lower() == "y":
+            if answer == "" or answer.lower() == "y":
+                agent_state = agent_manager.load_agent_state(load_existing_agent)
                 break
             elif answer.lower() == "n":
-                agent_state = None
                 break
-            else:
-                print("Please respond with 'y' or 'n'")
 
     if agent_state:
         agent = configure_agent_with_state(
