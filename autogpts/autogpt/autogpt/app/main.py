@@ -16,8 +16,6 @@ from typing import TYPE_CHECKING, Optional
 from colorama import Fore, Style
 from forge.sdk.db import AgentDB
 
-from autogpt.file_storage import FileStorageBackendName, get_storage
-
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
 
@@ -26,6 +24,7 @@ from autogpt.agent_factory.profile_generator import generate_agent_profile_for_t
 from autogpt.agent_manager import AgentManager
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
 from autogpt.agents.utils.exceptions import AgentTerminated, InvalidAgentResponseError
+from autogpt.commands.system import finish
 from autogpt.config import (
     AIDirectives,
     AIProfile,
@@ -35,8 +34,10 @@ from autogpt.config import (
 )
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.runner.client_lib.utils import coroutine
+from autogpt.file_storage import FileStorageBackendName, get_storage
 from autogpt.logs.config import configure_chat_plugins, configure_logging
 from autogpt.logs.helpers import print_attribute, speak
+from autogpt.models.action_history import ActionInterruptedByHuman
 from autogpt.plugins import scan_plugins
 from scripts.install_plugin_deps import install_plugin_dependencies
 
@@ -216,6 +217,21 @@ async def run_auto_gpt(
             best_practices=best_practices,
             replace_directives=override_directives,
         )
+
+        if (
+            agent.event_history.current_episode
+            and agent.event_history.current_episode.action.name == finish.__name__
+            and not agent.event_history.current_episode.result
+        ):
+            # Agent was resumed after `finish` -> rewrite result of `finish` action
+            finish_reason = agent.event_history.current_episode.action.args["reason"]
+            print(f"Agent previously self-terminated; reason: '{finish_reason}'")
+            new_assignment = await clean_input(
+                config, "Please give a follow-up question or assignment:"
+            )
+            agent.event_history.register_result(
+                ActionInterruptedByHuman(feedback=new_assignment)
+            )
 
         # If any of these are specified as arguments,
         #  assume the user doesn't want to revise them
