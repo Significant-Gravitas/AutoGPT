@@ -1,6 +1,7 @@
 """
 The application entry point. Can be invoked by a CLI or any other front end application.
 """
+
 import enum
 import logging
 import math
@@ -237,11 +238,21 @@ async def run_auto_gpt(
         )
         base_ai_directives = AIDirectives.from_file(config.prompt_settings_file)
 
-        ai_profile, task_oriented_ai_directives = await generate_agent_profile_for_task(
-            task,
-            app_config=config,
-            llm_provider=llm_provider,
-        )
+        try:
+            ai_profile, task_oriented_ai_directives = (
+                await generate_agent_profile_for_task(
+                    task=task,
+                    app_config=config,
+                    llm_provider=llm_provider,
+                )
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to generate AI profile for task '{task}': {e}",
+                extra={"color": Fore.RED},
+            )
+            return
+
         ai_directives = base_ai_directives + task_oriented_ai_directives
         apply_overrides_to_ai_settings(
             ai_profile=ai_profile,
