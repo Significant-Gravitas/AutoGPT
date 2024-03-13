@@ -177,14 +177,6 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         self.legacy_config = legacy_config
         """LEGACY: Monolithic application configuration."""
 
-        # In case the agent is resumed, cursor is set to the last episode
-        if self.event_history:
-            # To prevent errors, when the last action is "finish", we register a result
-            # And move cursor to the next action
-            if self.event_history.current_episode.action.name == "finish":
-                self.event_history.register_result(ActionSuccessResult())
-                self.event_history.cursor = len(self.event_history)
-
         self.llm_provider = llm_provider
 
         self.prompt_strategy = prompt_strategy
