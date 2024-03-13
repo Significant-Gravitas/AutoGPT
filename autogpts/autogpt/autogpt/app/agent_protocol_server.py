@@ -30,6 +30,7 @@ from sentry_sdk import set_user
 from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
+from autogpt.agents.utils.exceptions import AgentFinished
 from autogpt.commands.system import finish
 from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
@@ -230,26 +231,6 @@ class AgentProtocolServer:
                 task=task, step=step, relative_path=path
             )
 
-            if step.is_last and execute_command == finish.__name__:
-                assert execute_command_args
-
-                additional_output = {}
-                task_total_cost = agent.llm_provider.get_incurred_cost()
-                if task_total_cost > 0:
-                    additional_output["task_total_cost"] = task_total_cost
-                    logger.info(
-                        f"Total LLM cost for task {task_id}: "
-                        f"${round(task_total_cost, 2)}"
-                    )
-
-                step = await self.db.update_step(
-                    task_id=task_id,
-                    step_id=step.step_id,
-                    output=execute_command_args["reason"],
-                    additional_output=additional_output,
-                )
-                return step
-
             if execute_command == ask_user.__name__:  # HACK
                 execute_result = ActionSuccessResult(outputs=user_input)
                 agent.event_history.register_result(execute_result)
@@ -261,11 +242,31 @@ class AgentProtocolServer:
                     step_id=step.step_id,
                     status="running",
                 )
-                # Execute previously proposed action
-                execute_result = await agent.execute(
-                    command_name=execute_command,
-                    command_args=execute_command_args,
-                )
+
+                try:
+                    # Execute previously proposed action
+                    execute_result = await agent.execute(
+                        command_name=execute_command,
+                        command_args=execute_command_args,
+                    )
+                except AgentFinished:
+                    additional_output = {}
+                    task_total_cost = agent.llm_provider.get_incurred_cost()
+                    if task_total_cost > 0:
+                        additional_output["task_total_cost"] = task_total_cost
+                        logger.info(
+                            f"Total LLM cost for task {task_id}: "
+                            f"${round(task_total_cost, 2)}"
+                        )
+
+                    step = await self.db.update_step(
+                        task_id=task_id,
+                        step_id=step.step_id,
+                        output=execute_command_args["reason"],
+                        additional_output=additional_output,
+                    )
+                    await agent.save_state()
+                    return step
             else:
                 assert user_input
                 execute_result = await agent.execute(

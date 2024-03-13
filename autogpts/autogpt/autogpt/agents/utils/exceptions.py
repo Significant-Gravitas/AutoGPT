@@ -18,6 +18,10 @@ class AgentTerminated(AgentException):
     """The agent terminated or was terminated"""
 
 
+class AgentFinished(AgentTerminated):
+    """The agent self-terminated"""
+
+
 class ConfigurationError(AgentException):
     """Error caused by invalid, incompatible or otherwise incorrect configuration"""
 
