@@ -239,12 +239,13 @@ async def run_auto_gpt(
         base_ai_directives = AIDirectives.from_file(config.prompt_settings_file)
 
         try:
-            ai_profile, task_oriented_ai_directives = (
-                await generate_agent_profile_for_task(
-                    task=task,
-                    app_config=config,
-                    llm_provider=llm_provider,
-                )
+            (
+                ai_profile,
+                task_oriented_ai_directives,
+            ) = await generate_agent_profile_for_task(
+                task=task,
+                app_config=config,
+                llm_provider=llm_provider,
             )
         except Exception as e:
             logger.error(
