@@ -40,11 +40,7 @@ from autogpt.core.resource.model_providers.openai import (
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.file_storage.base import FileStorage
 from autogpt.llm.providers.openai import get_openai_command_specs
-from autogpt.models.action_history import (
-    ActionResult,
-    ActionSuccessResult,
-    EpisodicActionHistory,
-)
+from autogpt.models.action_history import ActionResult, EpisodicActionHistory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 logger = logging.getLogger(__name__)
