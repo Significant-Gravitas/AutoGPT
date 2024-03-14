@@ -256,11 +256,14 @@ async def run_auto_gpt(
     # Set up a new Agent #
     ######################
     if not agent:
-        task = await clean_input(
-            config,
-            "Enter the task that you want AutoGPT to execute,"
-            " with as much detail as possible:",
-        )
+        task = ""
+        while task.strip() == "":
+            task = await clean_input(
+                config,
+                "Enter the task that you want AutoGPT to execute,"
+                " with as much detail as possible:",
+            )
+
         base_ai_directives = AIDirectives.from_file(config.prompt_settings_file)
 
         ai_profile, task_oriented_ai_directives = await generate_agent_profile_for_task(
