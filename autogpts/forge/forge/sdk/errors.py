@@ -37,7 +37,7 @@ class DuplicateOperationError(AgentException):
 
 
 class CommandExecutionError(AgentException):
-    """An error occured when trying to execute the command"""
+    """An error occurred when trying to execute the command"""
 
 
 class InvalidArgumentError(CommandExecutionError):
