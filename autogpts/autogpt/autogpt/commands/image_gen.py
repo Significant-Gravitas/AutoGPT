@@ -15,6 +15,7 @@ from PIL import Image
 from autogpt.agents.agent import Agent
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
+from autogpt.json_utils.utilities import json_loads
 
 COMMAND_CATEGORY = "text_to_image"
 COMMAND_CATEGORY_TITLE = "Text to Image"
@@ -102,7 +103,7 @@ def generate_image_with_hf(prompt: str, output_file: Path, agent: Agent) -> str:
                 break
         else:
             try:
-                error = json.loads(response.text)
+                error = json_loads(response.text)
                 if "estimated_time" in error:
                     delay = error["estimated_time"]
                     logger.debug(response.text)

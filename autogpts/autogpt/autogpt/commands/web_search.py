@@ -12,6 +12,7 @@ from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import ConfigurationError
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
+from autogpt.json_utils.utilities import json_loads
 
 COMMAND_CATEGORY = "web_search"
 COMMAND_CATEGORY_TITLE = "Web Search"
@@ -134,7 +135,7 @@ def google(query: str, agent: Agent, num_results: int = 8) -> str | list[str]:
 
     except HttpError as e:
         # Handle errors in the API call
-        error_details = json.loads(e.content.decode())
+        error_details = json_loads(e.content.decode())
 
         # Check if the error is related to an invalid or missing API key
         if error_details.get("error", {}).get(

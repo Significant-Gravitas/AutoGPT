@@ -64,6 +64,7 @@ spacy = "^3.0.0"
 tenacity = "^8.2.2"
 tiktoken = "^0.5.0"
 webdriver-manager = "*"
+demjson3 = "^3.0.0"
 
 # OpenAI and Generic plugins import
 openapi-python-client = "^0.14.0"
