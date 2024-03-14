@@ -3,7 +3,6 @@
 import io
 import logging
 import re
-from json import JSONDecodeError
 from typing import Any
 
 import demjson3

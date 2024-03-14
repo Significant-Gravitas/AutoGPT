@@ -759,7 +759,6 @@ def _functions_compat_fix_kwargs(
 
 
 def _tool_calls_compat_extract_calls(response: str) -> Iterator[AssistantToolCall]:
-    import json
     import re
     import uuid
 
