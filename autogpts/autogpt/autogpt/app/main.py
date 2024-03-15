@@ -16,12 +16,6 @@ from typing import TYPE_CHECKING, Optional
 from colorama import Fore, Style
 from forge.sdk.db import AgentDB
 
-from autogpt.commands.execute_code import (
-    is_docker_available,
-    we_are_running_in_a_docker_container,
-)
-from autogpt.file_storage import FileStorageBackendName, get_storage
-
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
 
@@ -30,6 +24,10 @@ from autogpt.agent_factory.profile_generator import generate_agent_profile_for_t
 from autogpt.agent_manager import AgentManager
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
 from autogpt.agents.utils.exceptions import AgentTerminated, InvalidAgentResponseError
+from autogpt.commands.execute_code import (
+    is_docker_available,
+    we_are_running_in_a_docker_container,
+)
 from autogpt.commands.system import finish
 from autogpt.config import (
     AIDirectives,
