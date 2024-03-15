@@ -275,7 +275,7 @@ def set_env_config_value(key: str, value: str) -> None:
         file.truncate()
 
 
-def is_port_free(port, host="127.0.0.1"):
+def is_port_free(port: int, host: str = "127.0.0.1"):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.bind((host, port))  # Try to bind to the port
