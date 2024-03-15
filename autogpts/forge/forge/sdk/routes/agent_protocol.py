@@ -31,6 +31,7 @@ from fastapi.responses import FileResponse
 from forge.sdk.errors import *
 from forge.sdk.forge_log import ForgeLogger
 from forge.sdk.model import *
+from forge.sdk.utils import get_detailed_traceback, get_exception_message
 
 base_router = APIRouter()
 
@@ -92,7 +93,13 @@ async def create_agent_task(request: Request, task_request: TaskRequestBody) -> 
     except Exception:
         LOG.exception(f"Error whilst trying to create a task: {task_request}")
         return Response(
-            content=json.dumps({"error": "Internal server error"}),
+            content=json.dumps(
+                {
+                    "error": "Internal server error",
+                    "exception": get_exception_message(),
+                    "traceback": get_detailed_traceback(),
+                }
+            ),
             status_code=500,
             media_type="application/json",
         )
@@ -157,7 +164,13 @@ async def list_agent_tasks(
     except Exception:
         LOG.exception("Error whilst trying to list tasks")
         return Response(
-            content=json.dumps({"error": "Internal server error"}),
+            content=json.dumps(
+                {
+                    "error": "Internal server error",
+                    "exception": get_exception_message(),
+                    "traceback": get_detailed_traceback(),
+                }
+            ),
             status_code=500,
             media_type="application/json",
         )
@@ -218,6 +231,7 @@ async def get_agent_task(request: Request, task_id: str) -> Task:
     agent = request["agent"]
     try:
         task = await agent.get_task(task_id)
+
         return Response(
             content=task.json(),
             status_code=200,
@@ -233,14 +247,22 @@ async def get_agent_task(request: Request, task_id: str) -> Task:
     except Exception:
         LOG.exception(f"Error whilst trying to get task: {task_id}")
         return Response(
-            content=json.dumps({"error": "Internal server error"}),
+            content=json.dumps(
+                {
+                    "error": "Internal server error",
+                    "exception": get_exception_message(),
+                    "traceback": get_detailed_traceback(),
+                }
+            ),
             status_code=500,
             media_type="application/json",
         )
 
 
 @base_router.get(
-    "/agent/tasks/{task_id}/steps", tags=["agent"], response_model=TaskStepsListResponse
+    "/agent/tasks/{task_id}/steps",
+    tags=["agent"],
+    response_model=TaskStepsListResponse,
 )
 async def list_agent_task_steps(
     request: Request,
@@ -300,7 +322,13 @@ async def list_agent_task_steps(
     except Exception:
         LOG.exception("Error whilst trying to list steps")
         return Response(
-            content=json.dumps({"error": "Internal server error"}),
+            content=json.dumps(
+                {
+                    "error": "Internal server error",
+                    "exception": get_exception_message(),
+                    "traceback": get_detailed_traceback(),
+                }
+            ),
             status_code=500,
             media_type="application/json",
         )
@@ -356,6 +384,7 @@ async def execute_agent_task_step(
             step = StepRequestBody(input="y")
 
         step = await agent.execute_step(task_id, step)
+
         return Response(
             content=step.json(),
             status_code=200,
@@ -368,10 +397,16 @@ async def execute_agent_task_step(
             status_code=404,
             media_type="application/json",
         )
-    except Exception as e:
+    except Exception:
         LOG.exception(f"Error whilst trying to execute a task step: {task_id}")
         return Response(
-            content=json.dumps({"error": "Internal server error"}),
+            content=json.dumps(
+                {
+                    "error": "Internal server error",
+                    "exception": get_exception_message(),
+                    "traceback": get_detailed_traceback(),
+                }
+            ),
             status_code=500,
             media_type="application/json",
         )
@@ -406,6 +441,7 @@ async def get_agent_task_step(request: Request, task_id: str, step_id: str) -> S
     agent = request["agent"]
     try:
         step = await agent.get_step(task_id, step_id)
+
         return Response(content=step.json(), status_code=200)
     except NotFoundError:
         LOG.exception(f"Error whilst trying to get step: {step_id}")
@@ -417,7 +453,13 @@ async def get_agent_task_step(request: Request, task_id: str, step_id: str) -> S
     except Exception:
         LOG.exception(f"Error whilst trying to get step: {step_id}")
         return Response(
-            content=json.dumps({"error": "Internal server error"}),
+            content=json.dumps(
+                {
+                    "error": "Internal server error",
+                    "exception": get_exception_message(),
+                    "traceback": get_detailed_traceback(),
+                }
+            ),
             status_code=500,
             media_type="application/json",
         )
@@ -481,7 +523,13 @@ async def list_agent_task_artifacts(
     except Exception:
         LOG.exception("Error whilst trying to list artifacts")
         return Response(
-            content=json.dumps({"error": "Internal server error"}),
+            content=json.dumps(
+                {
+                    "error": "Internal server error",
+                    "exception": get_exception_message(),
+                    "traceback": get_detailed_traceback(),
+                }
+            ),
             status_code=500,
             media_type="application/json",
         )
@@ -538,14 +586,22 @@ async def upload_agent_task_artifacts(
     except Exception:
         LOG.exception(f"Error whilst trying to upload artifact: {task_id}")
         return Response(
-            content=json.dumps({"error": "Internal server error"}),
+            content=json.dumps(
+                {
+                    "error": "Internal server error",
+                    "exception": get_exception_message(),
+                    "traceback": get_detailed_traceback(),
+                }
+            ),
             status_code=500,
             media_type="application/json",
         )
 
 
 @base_router.get(
-    "/agent/tasks/{task_id}/artifacts/{artifact_id}", tags=["agent"], response_model=str
+    "/agent/tasks/{task_id}/artifacts/{artifact_id}",
+    tags=["agent"],
+    response_model=str,
 )
 async def download_agent_task_artifact(
     request: Request, task_id: str, artifact_id: str
@@ -576,7 +632,8 @@ async def download_agent_task_artifact(
         return Response(
             content=json.dumps(
                 {
-                    "error": f"Artifact not found - task_id: {task_id}, artifact_id: {artifact_id}"
+                    "error": f"Artifact not found "
+                    "- task_id: {task_id}, artifact_id: {artifact_id}"
                 }
             ),
             status_code=404,
@@ -587,7 +644,10 @@ async def download_agent_task_artifact(
         return Response(
             content=json.dumps(
                 {
-                    "error": f"Internal server error - task_id: {task_id}, artifact_id: {artifact_id}"
+                    "error": f"Internal server error "
+                    "- task_id: {task_id}, artifact_id: {artifact_id}",
+                    "exception": get_exception_message(),
+                    "traceback": get_detailed_traceback(),
                 }
             ),
             status_code=500,

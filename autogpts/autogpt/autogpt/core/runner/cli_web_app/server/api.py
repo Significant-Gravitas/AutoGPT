@@ -89,9 +89,11 @@ def bootstrap_agent(task, continuous_mode) -> Agent:
         ai_role="a multi-purpose AI assistant.",
         ai_goals=[task],
     )
+    # FIXME this won't work - ai_profile and triggering_prompt is not a valid argument,
+    # lacks file_storage, settings and llm_provider
     return Agent(
         command_registry=command_registry,
         ai_profile=ai_profile,
-        config=config,
+        legacy_config=config,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
     )

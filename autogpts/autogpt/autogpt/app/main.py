@@ -1,6 +1,7 @@
 """
 The application entry point. Can be invoked by a CLI or any other front end application.
 """
+
 import enum
 import logging
 import math
@@ -23,6 +24,7 @@ from autogpt.agent_factory.profile_generator import generate_agent_profile_for_t
 from autogpt.agent_manager import AgentManager
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
 from autogpt.agents.utils.exceptions import AgentTerminated, InvalidAgentResponseError
+from autogpt.commands.system import finish
 from autogpt.config import (
     AIDirectives,
     AIProfile,
@@ -32,8 +34,10 @@ from autogpt.config import (
 )
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.runner.client_lib.utils import coroutine
+from autogpt.file_storage import FileStorageBackendName, get_storage
 from autogpt.logs.config import configure_chat_plugins, configure_logging
 from autogpt.logs.helpers import print_attribute, speak
+from autogpt.models.action_history import ActionInterruptedByHuman
 from autogpt.plugins import scan_plugins
 from scripts.install_plugin_deps import install_plugin_dependencies
 
@@ -76,7 +80,15 @@ async def run_auto_gpt(
     best_practices: Optional[list[str]] = None,
     override_directives: bool = False,
 ):
+    # Set up configuration
     config = ConfigBuilder.build_config_from_env()
+    # Storage
+    local = config.file_storage_backend == FileStorageBackendName.LOCAL
+    restrict_to_root = not local or config.restrict_to_workspace
+    file_storage = get_storage(
+        config.file_storage_backend, root_path="data", restrict_to_root=restrict_to_root
+    )
+    file_storage.initialize()
 
     # TODO: fill in llm values here
     assert_config_has_openai_api_key(config)
@@ -148,7 +160,7 @@ async def run_auto_gpt(
     configure_chat_plugins(config)
 
     # Let user choose an existing agent to run
-    agent_manager = AgentManager(config.app_data_dir)
+    agent_manager = AgentManager(file_storage)
     existing_agents = agent_manager.list_agents()
     load_existing_agent = ""
     if existing_agents:
@@ -179,21 +191,20 @@ async def run_auto_gpt(
     # Resume an Existing Agent #
     ############################
     if load_existing_agent:
-        agent_state = agent_manager.retrieve_state(load_existing_agent)
+        agent_state = None
         while True:
             answer = await clean_input(config, "Resume? [Y/n]")
-            if answer.lower() == "y":
+            if answer == "" or answer.lower() == "y":
+                agent_state = agent_manager.load_agent_state(load_existing_agent)
                 break
             elif answer.lower() == "n":
-                agent_state = None
                 break
-            else:
-                print("Please respond with 'y' or 'n'")
 
     if agent_state:
         agent = configure_agent_with_state(
             state=agent_state,
             app_config=config,
+            file_storage=file_storage,
             llm_provider=llm_provider,
         )
         apply_overrides_to_ai_settings(
@@ -206,6 +217,21 @@ async def run_auto_gpt(
             best_practices=best_practices,
             replace_directives=override_directives,
         )
+
+        if (
+            agent.event_history.current_episode
+            and agent.event_history.current_episode.action.name == finish.__name__
+            and not agent.event_history.current_episode.result
+        ):
+            # Agent was resumed after `finish` -> rewrite result of `finish` action
+            finish_reason = agent.event_history.current_episode.action.args["reason"]
+            print(f"Agent previously self-terminated; reason: '{finish_reason}'")
+            new_assignment = await clean_input(
+                config, "Please give a follow-up question or assignment:"
+            )
+            agent.event_history.register_result(
+                ActionInterruptedByHuman(feedback=new_assignment)
+            )
 
         # If any of these are specified as arguments,
         #  assume the user doesn't want to revise them
@@ -230,11 +256,14 @@ async def run_auto_gpt(
     # Set up a new Agent #
     ######################
     if not agent:
-        task = await clean_input(
-            config,
-            "Enter the task that you want AutoGPT to execute,"
-            " with as much detail as possible:",
-        )
+        task = ""
+        while task.strip() == "":
+            task = await clean_input(
+                config,
+                "Enter the task that you want AutoGPT to execute,"
+                " with as much detail as possible:",
+            )
+
         base_ai_directives = AIDirectives.from_file(config.prompt_settings_file)
 
         ai_profile, task_oriented_ai_directives = await generate_agent_profile_for_task(
@@ -274,13 +303,14 @@ async def run_auto_gpt(
             logger.info("AI config overrides specified through CLI; skipping revision")
 
         agent = create_agent(
+            agent_id=agent_manager.generate_id(ai_profile.ai_name),
             task=task,
             ai_profile=ai_profile,
             directives=ai_directives,
             app_config=config,
+            file_storage=file_storage,
             llm_provider=llm_provider,
         )
-        agent.attach_fs(agent_manager.get_agent_dir(agent.state.agent_id))
 
         if not agent.config.allow_fs_access:
             logger.info(
@@ -309,14 +339,10 @@ async def run_auto_gpt(
             or agent_id
         )
         if save_as_id and save_as_id != agent_id:
-            agent.set_id(
-                new_id=save_as_id,
-                new_agent_dir=agent_manager.get_agent_dir(save_as_id),
-            )
-            # TODO: clone workspace if user wants that
-            # TODO: ... OR allow many-to-one relations of agents and workspaces
+            agent.change_agent_id(save_as_id)
+            # TODO: allow many-to-one relations of agents and workspaces
 
-        agent.state.save_to_json_file(agent.file_manager.state_file_path)
+        await agent.save_state()
 
 
 @coroutine
@@ -335,6 +361,14 @@ async def run_auto_gpt_server(
     from .agent_protocol_server import AgentProtocolServer
 
     config = ConfigBuilder.build_config_from_env()
+
+    # Storage
+    local = config.file_storage_backend == FileStorageBackendName.LOCAL
+    restrict_to_root = not local or config.restrict_to_workspace
+    file_storage = get_storage(
+        config.file_storage_backend, root_path="data", restrict_to_root=restrict_to_root
+    )
+    file_storage.initialize()
 
     # TODO: fill in llm values here
     assert_config_has_openai_api_key(config)
@@ -372,7 +406,10 @@ async def run_auto_gpt_server(
     )
     port: int = int(os.getenv("AP_SERVER_PORT", default=8000))
     server = AgentProtocolServer(
-        app_config=config, database=database, llm_provider=llm_provider
+        app_config=config,
+        database=database,
+        file_storage=file_storage,
+        llm_provider=llm_provider,
     )
     await server.start(port=port)
 
