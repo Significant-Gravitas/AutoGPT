@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.config import AIDirectives, AIProfile
 from autogpt.core.configuration.schema import SystemConfiguration, UserConfigurable
+from autogpt.core.json_utils.utils import extract_dict_from_json, json_loads
 from autogpt.core.prompting import (
     ChatPrompt,
     LanguageModelClassification,
@@ -26,7 +27,6 @@ from autogpt.core.resource.model_providers.schema import (
     CompletionModelFunction,
 )
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.json_utils.utilities import extract_dict_from_response, json_loads
 from autogpt.prompts.utils import format_numbered_list, indent
 
 
@@ -386,7 +386,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 else f" '{response.content}'"
             )
         )
-        assistant_reply_dict = extract_dict_from_response(response.content)
+        assistant_reply_dict = extract_dict_from_json(response.content)
         self.logger.debug(
             "Validating object extracted from LLM response:\n"
             f"{json.dumps(assistant_reply_dict, indent=4)}"

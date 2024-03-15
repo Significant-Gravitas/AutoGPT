@@ -6,13 +6,13 @@ from typing import Iterator, Optional, TypeVar
 import spacy
 
 from autogpt.config import Config
+from autogpt.core.json_utils.utils import extract_list_from_json
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
     ChatMessage,
     ChatModelProvider,
     ModelTokenizer,
 )
-from autogpt.json_utils.utilities import extract_list_from_response
 
 logger = logging.getLogger(__name__)
 
@@ -161,9 +161,7 @@ async def _process_text(
             temperature=0.5,
             max_tokens=max_result_tokens,
             completion_parser=lambda s: (
-                extract_list_from_response(s.content)
-                if output_type is not str
-                else None
+                extract_list_from_json(s.content) if output_type is not str else None
             ),
         )
 
