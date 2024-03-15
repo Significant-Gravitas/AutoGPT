@@ -33,7 +33,9 @@ class GCSFileStorage(FileStorage):
     def __init__(self, config: GCSFileStorageConfiguration):
         self._bucket_name = config.bucket
         self._root = config.root
-        assert self._root.is_absolute()
+        # Add / at the beginning of the root path
+        if not self._root.is_absolute():
+            self._root = Path("/").joinpath(self._root)
 
         self._gcs = storage.Client()
         super().__init__()
