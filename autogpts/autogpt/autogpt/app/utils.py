@@ -2,6 +2,7 @@ import contextlib
 import logging
 import os
 import re
+import socket
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -272,3 +273,12 @@ def set_env_config_value(key: str, value: str) -> None:
             file.write(f"{key}={value}\n")
 
         file.truncate()
+
+
+def is_port_free(port: int, host: str = "127.0.0.1"):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((host, port))  # Try to bind to the port
+            return True  # If successful, the port is free
+        except OSError:
+            return False  # If failed, the port is likely in use
