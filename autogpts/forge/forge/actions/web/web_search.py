@@ -6,6 +6,8 @@ from itertools import islice
 
 from duckduckgo_search import DDGS
 
+from forge.sdk.agent import Agent
+
 from ..registry import ActionParameter, action
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3
@@ -24,7 +26,7 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
     ],
     output_type="list[str]",
 )
-async def web_search(agent, task_id: str, query: str) -> str:
+async def web_search(agent: Agent, task_id: str, query: str) -> str:
     """Return the results of a Google search
 
     Args:

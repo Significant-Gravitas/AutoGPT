@@ -1,3 +1,4 @@
+from forge.sdk.agent import Agent
 from forge.sdk.forge_log import ForgeLogger
 
 from .registry import ActionParameter, action
@@ -21,7 +22,7 @@ logger = ForgeLogger(__name__)
     output_type="None",
 )
 async def finish(
-    agent,
+    agent: Agent,
     task_id: str,
     reason: str,
 ) -> str:

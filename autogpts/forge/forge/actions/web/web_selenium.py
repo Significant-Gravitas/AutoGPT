@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from forge.sdk.agent import Agent
+
 COMMAND_CATEGORY = "web_browse"
 COMMAND_CATEGORY_TITLE = "Web Browsing"
 
@@ -202,7 +204,7 @@ class BrowsingError(CommandExecutionError):
 )
 @validate_url
 async def read_webpage(
-    agent, task_id: str, url: str, question: str = ""
+    agent: Agent, task_id: str, url: str, question: str = ""
 ) -> Tuple(str, list[str]):
     """Browse a website and return the answer and links to the user
 
