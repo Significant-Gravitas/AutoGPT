@@ -112,9 +112,11 @@ class ActionRegister:
                 "__init__.py",
                 "registry.py",
             ]:
-                action = os.path.relpath(
-                    action_path, os.path.dirname(__file__)
-                ).replace("/", ".")
+                action = (
+                    os.path.relpath(action_path, os.path.dirname(__file__))
+                    .replace("\\", "/")
+                    .replace("/", ".")
+                )
                 try:
                     module = importlib.import_module(
                         f".{action[:-3]}", package="forge.actions"
