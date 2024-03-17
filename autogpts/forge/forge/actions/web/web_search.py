@@ -6,7 +6,7 @@ from itertools import islice
 
 from duckduckgo_search import DDGS
 
-from ..registry import action
+from ..registry import ActionParameter, action
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3
 
@@ -15,12 +15,12 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
     name="web_search",
     description="Searches the web",
     parameters=[
-        {
-            "name": "query",
-            "description": "The search query",
-            "type": "string",
-            "required": True,
-        }
+        ActionParameter(
+            name="query",
+            description="The search query",
+            type="string",
+            required=True,
+        )
     ],
     output_type="list[str]",
 )

@@ -1,6 +1,6 @@
 from forge.sdk.forge_log import ForgeLogger
 
-from .registry import action
+from .registry import ActionParameter, action
 
 logger = ForgeLogger(__name__)
 
@@ -11,12 +11,12 @@ logger = ForgeLogger(__name__)
     " or when there are insurmountable problems that make it impossible"
     " for you to finish your task.",
     parameters=[
-        {
-            "name": "reason",
-            "description": "A summary to the user of how the goals were accomplished",
-            "type": "string",
-            "required": True,
-        }
+        ActionParameter(
+            name="reason",
+            description="A summary to the user of how the goals were accomplished",
+            type="string",
+            required=True,
+        )
     ],
     output_type="None",
 )
@@ -34,5 +34,6 @@ async def finish(
         A result string from create chat completion. A list of suggestions to
             improve the code.
     """
+
     logger.info(reason, extra={"title": "Shutting down...\n"})
     return reason
