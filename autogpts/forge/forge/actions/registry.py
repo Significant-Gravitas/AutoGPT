@@ -188,8 +188,11 @@ class ActionRegister:
 
 if __name__ == "__main__":
     import sys
+    import asyncio
 
-    sys.path.append("/Users/swifty/dev/forge/forge")
-    register = ActionRegister(agent=None)
-    print(register.abilities_description())
-    print(register.run_action("abc", "list_files", "/Users/swifty/dev/forge/forge"))
+    async def run():
+        register = ActionRegister(agent=None)
+        print(register.abilities_description())
+        print(await register.run_action("abc", "finish", "./registry.py"))
+
+    asyncio.run(run())
