@@ -108,6 +108,7 @@ class PromptEngine:
             template = os.path.join(self.model, template)
             if self.debug_enabled:
                 LOG.debug(f"Loading template: {template}")
+            template = template.replace("\\", "/")
             template = self.env.get_template(f"{template}.j2")
             if self.debug_enabled:
                 LOG.debug(f"Rendering template: {template} with args: {kwargs}")
