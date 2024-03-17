@@ -129,7 +129,7 @@ class ForgeAgent(Agent):
         )
         task = await self.db.get_task(task_id)
 
-        self.workspace.write(task_id=task_id, path="output.txt", data=b"Washington D.C")
+        # self.workspace.write(task_id=task_id, path="output.txt", data=b"Washington D.C")
 
         # await self.db.create_artifact(
         #     task_id=task_id,
