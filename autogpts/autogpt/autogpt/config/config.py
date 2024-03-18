@@ -306,7 +306,7 @@ async def assert_config_has_openai_api_key(config: Config) -> None:
     key_pattern = r"^sk-\w{48}"
     openai_api_key = (
         config.openai_credentials.api_key.get_secret_value()
-        if config.openai_credentials and config.openai_credentials.api_key
+        if config.openai_credentials
         else ""
     )
 
@@ -319,25 +319,24 @@ async def assert_config_has_openai_api_key(config: Config) -> None:
             "You can get your key from https://platform.openai.com/account/api-keys"
         )
         openai_api_key = await clean_input(
-            config, "If you do have the key, please enter your OpenAI API key now:"
+            config, "Please enter your OpenAI API key if you have it:"
         )
         openai_api_key = openai_api_key.strip()
         if re.search(key_pattern, openai_api_key):
             os.environ["OPENAI_API_KEY"] = openai_api_key
-            config.openai_credentials = OpenAICredentials(
-                api_key=SecretStr(openai_api_key)
-            )
-            logger.info(
-                "OpenAI API key successfully set!",
-                extra={"color": Fore.GREEN},
-            )
-            logger.info(
-                "NOTE: The API key you've set is only temporary. "
-                "For longer sessions, please set it in .env file",
-                extra={"color": Fore.YELLOW},
+            if config.openai_credentials:
+                config.openai_credentials.api_key = SecretStr(openai_api_key)
+            else:
+                config.openai_credentials = OpenAICredentials(
+                    api_key=SecretStr(openai_api_key)
+                )
+            print(f"OpenAI API key successfully set!")
+            print(
+                f"{Fore.YELLOW}NOTE: The API key you've set is only temporary. "
+                f"For longer sessions, please set it in the .env file{Fore.RESET}"
             )
         else:
-            logger.error("Invalid OpenAI API key!")
+            print(f"{Fore.RED}Invalid OpenAI API key{Fore.RESET}")
             exit(1)
     # If key is set, but it looks invalid
     elif not re.search(key_pattern, openai_api_key):

@@ -337,7 +337,7 @@ async def run_auto_gpt_server(
     config = ConfigBuilder.build_config_from_env()
 
     # TODO: fill in llm values here
-    assert_config_has_openai_api_key(config)
+    await assert_config_has_openai_api_key(config)
 
     apply_overrides_to_config(
         config=config,
