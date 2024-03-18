@@ -330,7 +330,7 @@ async def assert_config_has_openai_api_key(config: Config) -> None:
                 config.openai_credentials = OpenAICredentials(
                     api_key=SecretStr(openai_api_key)
                 )
-            print(f"OpenAI API key successfully set!")
+            print("OpenAI API key successfully set!")
             print(
                 f"{Fore.YELLOW}NOTE: The API key you've set is only temporary. "
                 f"For longer sessions, please set it in the .env file{Fore.RESET}"
