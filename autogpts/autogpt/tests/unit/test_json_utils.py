@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from autogpt.core.json_utils.utils import json_loads
+from autogpt.core.json_utils import json_loads
 
 _JSON_FIXABLE: list[tuple[str, str]] = [
     # Missing comma

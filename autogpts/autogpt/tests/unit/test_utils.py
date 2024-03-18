@@ -14,7 +14,7 @@ from autogpt.app.utils import (
     get_latest_bulletin,
     set_env_config_value,
 )
-from autogpt.core.json_utils.utils import extract_dict_from_json
+from autogpt.core.json_utils import extract_dict_from_json
 from autogpt.utils import validate_yaml_file
 from tests.utils import skip_in_ci
 
