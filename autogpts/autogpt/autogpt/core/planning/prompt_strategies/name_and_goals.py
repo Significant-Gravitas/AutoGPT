@@ -1,7 +1,7 @@
 import logging
 
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
-from autogpt.core.json_utils import json_loads
+from autogpt.core.utils.json_utils import json_loads
 from autogpt.core.prompting import PromptStrategy
 from autogpt.core.prompting.schema import ChatPrompt, LanguageModelClassification
 from autogpt.core.resource.model_providers import (

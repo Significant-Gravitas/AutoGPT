@@ -15,7 +15,7 @@ from openai.types.chat import ChatCompletion
 from pydantic import SecretStr
 
 from autogpt.core.configuration import Configurable, UserConfigurable
-from autogpt.core.json_utils import json_loads
+from autogpt.core.utils.json_utils import json_loads
 from autogpt.core.resource.model_providers.schema import (
     AssistantChatMessage,
     AssistantToolCall,

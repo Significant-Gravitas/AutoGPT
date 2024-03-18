@@ -1,4 +1,5 @@
 """Text processing functions"""
+
 import logging
 import math
 from typing import Iterator, Optional, TypeVar
@@ -6,7 +7,7 @@ from typing import Iterator, Optional, TypeVar
 import spacy
 
 from autogpt.config import Config
-from autogpt.core.json_utils import extract_list_from_json
+from autogpt.core.utils.json_utils import extract_list_from_json
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
     ChatMessage,

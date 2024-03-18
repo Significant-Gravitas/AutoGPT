@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.config import AIDirectives, AIProfile
 from autogpt.core.configuration.schema import SystemConfiguration, UserConfigurable
-from autogpt.core.json_utils import extract_dict_from_json, json_loads
+from autogpt.core.utils.json_utils import extract_dict_from_json, json_loads
 from autogpt.core.prompting import (
     ChatPrompt,
     LanguageModelClassification,
