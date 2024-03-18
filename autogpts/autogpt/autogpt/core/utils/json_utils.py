@@ -64,7 +64,7 @@ def extract_dict_from_json(json_str: str) -> dict[str, Any]:
     result = json_loads(json_str)
     if not isinstance(result, dict):
         raise ValueError(
-            f"Response '''{json_str}''' evaluated to " f"non-dict value {repr(result)}"
+            f"Response '''{json_str}''' evaluated to non-dict value {repr(result)}"
         )
     return result
 
@@ -87,6 +87,6 @@ def extract_list_from_json(json_str: str) -> list[Any]:
     result = json_loads(json_str)
     if not isinstance(result, list):
         raise ValueError(
-            f"Response '''{json_str}''' evaluated to " f"non-list value {repr(result)}"
+            f"Response '''{json_str}''' evaluated to non-list value {repr(result)}"
         )
     return result
