@@ -24,6 +24,10 @@ from autogpt.agent_factory.profile_generator import generate_agent_profile_for_t
 from autogpt.agent_manager import AgentManager
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
 from autogpt.agents.utils.exceptions import AgentTerminated, InvalidAgentResponseError
+from autogpt.commands.execute_code import (
+    is_docker_available,
+    we_are_running_in_a_docker_container,
+)
 from autogpt.commands.system import finish
 from autogpt.config import (
     AIDirectives,
@@ -152,6 +156,14 @@ async def run_auto_gpt(
             print_attribute("Using Prompt Settings File", prompt_settings)
         if config.allow_downloads:
             print_attribute("Native Downloading", "ENABLED")
+        if we_are_running_in_a_docker_container() or is_docker_available():
+            print_attribute("Code Execution", "ENABLED")
+        else:
+            print_attribute(
+                "Code Execution",
+                "DISABLED (Docker unavailable)",
+                title_color=Fore.YELLOW,
+            )
 
     if install_plugin_deps:
         install_plugin_dependencies()
