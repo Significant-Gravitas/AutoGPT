@@ -7,13 +7,13 @@ from typing import Iterator, Optional, TypeVar
 import spacy
 
 from autogpt.config import Config
-from autogpt.core.utils.json_utils import extract_list_from_json
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
     ChatMessage,
     ChatModelProvider,
     ModelTokenizer,
 )
+from autogpt.core.utils.json_utils import extract_list_from_json
 
 logger = logging.getLogger(__name__)
 

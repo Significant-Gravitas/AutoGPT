@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.config import AIDirectives, AIProfile
 from autogpt.core.configuration.schema import SystemConfiguration, UserConfigurable
-from autogpt.core.utils.json_utils import extract_dict_from_json, json_loads
 from autogpt.core.prompting import (
     ChatPrompt,
     LanguageModelClassification,
@@ -27,6 +26,7 @@ from autogpt.core.resource.model_providers.schema import (
     CompletionModelFunction,
 )
 from autogpt.core.utils.json_schema import JSONSchema
+from autogpt.core.utils.json_utils import extract_dict_from_json, json_loads
 from autogpt.prompts.utils import format_numbered_list, indent
 
 
