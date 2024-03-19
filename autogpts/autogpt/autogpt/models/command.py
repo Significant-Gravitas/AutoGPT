@@ -6,9 +6,8 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgent
     from autogpt.config import Config
-
-from autogpt.agents.agent import Agent
-from autogpt.agents.base import CommandArgs
+    from autogpt.agents.agent import Agent
+    from autogpt.agents.base import CommandArgs
 
 from .command_parameter import CommandParameter
 from .context_item import ContextItem

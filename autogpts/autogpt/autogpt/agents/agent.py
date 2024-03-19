@@ -48,6 +48,7 @@ from .utils.exceptions import (
     AgentTerminated,
     CommandExecutionError,
     DuplicateOperationError,
+    InvalidOperationError,
     UnknownCommandError,
 )
 
@@ -143,11 +144,15 @@ class Agent(
                 + (
                     " BUDGET EXCEEDED! SHUT DOWN!\n\n"
                     if remaining_budget == 0
-                    else " Budget very nearly exceeded! Shut down gracefully!\n\n"
-                    if remaining_budget < 0.005
-                    else " Budget nearly exceeded. Finish up.\n\n"
-                    if remaining_budget < 0.01
-                    else ""
+                    else (
+                        " Budget very nearly exceeded! Shut down gracefully!\n\n"
+                        if remaining_budget < 0.005
+                        else (
+                            " Budget nearly exceeded. Finish up.\n\n"
+                            if remaining_budget < 0.01
+                            else ""
+                        )
+                    )
                 ),
             )
             logger.debug(budget_msg)
@@ -190,12 +195,11 @@ class Agent(
             assistant_reply_dict,
         ) = self.prompt_strategy.parse_response_content(llm_response)
 
-        # Check if command_name and arguments are already in the event_history
-        if self.event_history.matches_last_command(command_name, arguments):
-            raise DuplicateOperationError(
-                f"The command {command_name} with arguments {arguments} "
-                f"has been just executed."
-            )
+        command = self.command_registry.get_command(command_name)
+        if command:
+            is_valid, reason = command.is_valid(self, arguments)
+            if not is_valid:
+                raise InvalidOperationError(reason)
 
         self.log_cycle_handler.log_cycle(
             self.ai_profile.ai_name,

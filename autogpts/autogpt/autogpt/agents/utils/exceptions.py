@@ -40,6 +40,10 @@ class DuplicateOperationError(AgentException):
     """The proposed operation has already been executed"""
 
 
+class InvalidOperationError(AgentException):
+    """The operation is not valid"""
+
+
 class CommandExecutionError(AgentException):
     """An error occurred when trying to execute the command"""
 
