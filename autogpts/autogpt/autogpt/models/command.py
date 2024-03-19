@@ -7,6 +7,9 @@ if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgent
     from autogpt.config import Config
 
+from autogpt.agents.agent import Agent
+from autogpt.agents.base import CommandArgs
+
 from .command_parameter import CommandParameter
 from .context_item import ContextItem
 
@@ -33,6 +36,10 @@ class Command:
         disabled_reason: Optional[str] = None,
         aliases: list[str] = [],
         available: Literal[True] | Callable[[BaseAgent], bool] = True,
+        is_valid: Callable[[Agent, CommandArgs], tuple[bool, str]] = lambda a, c: (
+            True,
+            "",
+        ),
     ):
         self.name = name
         self.description = description
@@ -42,6 +49,7 @@ class Command:
         self.disabled_reason = disabled_reason
         self.aliases = aliases
         self.available = available
+        self.is_valid = is_valid
 
     @property
     def is_async(self) -> bool:
