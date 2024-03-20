@@ -269,11 +269,6 @@ jobs:
           fetch-depth: 0
           submodules: true
 
-      - name: Configure git user Auto-GPT-Bot
-        run: |
-          git config --global user.name "Auto-GPT-Bot"
-          git config --global user.email "github-bot@agpt.co"
-
       - name: Checkout cassettes
         if: ${{ startsWith(github.event_name, 'pull_request') }}
         env:
@@ -368,11 +363,6 @@ jobs:
         with:
           fetch-depth: 0
           submodules: true
-
-      - name: Configure git user Auto-GPT-Bot
-        run: |
-          git config --global user.name "Auto-GPT-Bot"
-          git config --global user.email "github-bot@agpt.co"
 
       - name: Checkout cassettes
         if: ${{ startsWith(github.event_name, 'pull_request') }}
