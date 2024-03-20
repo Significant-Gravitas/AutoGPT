@@ -322,6 +322,9 @@ jobs:
       - name: Install Python dependencies
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
+
+          PATH="$HOME/.local/bin:$PATH"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
           poetry install
 
       - name: Run pytest with coverage
@@ -419,8 +422,13 @@ jobs:
         run: |
           Invoke-WebRequest -Uri https://install.python-poetry.org -OutFile install-poetry.py
           python install-poetry.py
-          poetry install
           rm install-poetry.py
+
+          $pyPath = "$env:APPDATA\Python\Scripts"
+          $env:PATH += ";$pyPath"
+          echo "$pyPath" >> $GITHUB_PATH
+
+          poetry install
 
       - name: Run pytest with coverage
         run: |
