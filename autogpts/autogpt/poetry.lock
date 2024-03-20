@@ -4589,7 +4589,7 @@ files = [
 name = "prompt-toolkit"
 version = "3.0.43"
 description = "Library for building powerful interactive command lines in Python"
-optional = false
+optional = true
 python-versions = ">=3.7.0"
 files = [
     {file = "prompt_toolkit-3.0.43-py3-none-any.whl", hash = "sha256:a11a29cb3bf0a28a387fe5122cdb649816a957cd9261dcedf8c9f1fef33eacf6"},
@@ -7248,4 +7248,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "f693821e204aaf64d946ac45d7c0e447f02c2a3f173f939dac2fcc8e797a142f"
+content-hash = "a09e20daaf94e05457ded6a9989585cd37edf96a036c5f9e505f0b2456403a25"
