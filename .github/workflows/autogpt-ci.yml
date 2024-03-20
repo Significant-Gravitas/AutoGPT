@@ -420,13 +420,10 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          Invoke-WebRequest -Uri https://install.python-poetry.org -OutFile install-poetry.py
-          python install-poetry.py
-          rm install-poetry.py
+          (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
 
-          $pyPath = "$env:APPDATA\Python\Scripts"
-          $env:PATH += ";$pyPath"
-          echo "$pyPath" >> $env:GITHUB_PATH
+          $env:PATH += ";$env:APPDATA\Python\Scripts"
+          echo "$env:APPDATA\Python\Scripts" >> $env:GITHUB_PATH
 
           poetry install
 
