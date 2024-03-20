@@ -178,6 +178,7 @@ jobs:
 
       - id: setup_git_auth
         name: Set up git token authentication
+        # Cassettes may be pushed even when tests fail
         if: success() || failure()
         run: |
           config_key="http.${{ github.server_url }}/.extraheader"
