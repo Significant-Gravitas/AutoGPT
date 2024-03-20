@@ -32,7 +32,7 @@ class Command:
         enabled: Literal[True] | Callable[[Config], bool] = True,
         disabled_reason: Optional[str] = None,
         aliases: list[str] = [],
-        available: Literal[True] | Callable[[BaseAgent], bool] = True,
+        available: bool | Callable[[BaseAgent], bool] = True,
     ):
         self.name = name
         self.description = description
@@ -55,7 +55,7 @@ class Command:
                 )
             raise RuntimeError(f"Command '{self.name}' is disabled")
 
-        if callable(self.available) and not self.available(agent):
+        if not self.available or callable(self.available) and not self.available(agent):
             raise RuntimeError(f"Command '{self.name}' is not available")
 
         return self.method(*args, **kwargs, agent=agent)
