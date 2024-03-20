@@ -20,6 +20,7 @@ concurrency:
 
 defaults:
   run:
+    shell: bash
     working-directory: autogpts/autogpt
 
 jobs:
@@ -77,23 +78,35 @@ jobs:
   test:
     permissions:
       contents: read
-    runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.10"]
-
-    services:
-      minio:
-        image: minio/minio:edge-cicd
-        ports:
-          - 9000:9000
-        options: >
-          --health-interval=10s --health-timeout=5s --health-retries=3
-          --health-cmd="curl -f http://localhost:9000/minio/health/live"
+        platform-os: [ubuntu, macos, windows]
+    runs-on: ${{ matrix.platform-os }}-latest
 
     steps:
+      # Quite slow on macOS (2~4 minutes to set up Docker)
+      # - name: Set up Docker (macOS)
+      #   if: runner.os == 'macOS'
+      #   uses: crazy-max/ghaction-setup-docker@v3
+
+      - name: Start MinIO service (Linux)
+        if: runner.os == 'Linux'
+        working-directory: '.'
+        run: |
+          docker pull minio/minio:edge-cicd
+          docker run -d -p 9000:9000 minio/minio:edge-cicd
+
+      - name: Start MinIO service (macOS)
+        if: runner.os == 'macOS'
+        working-directory: ${{ runner.temp }}
+        run: |
+          brew install minio/stable/minio
+          mkdir data
+          minio server ./data &
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -148,13 +161,30 @@ jobs:
       - name: Set up Python dependency cache
         uses: actions/cache@v4
         with:
-          path: ~/.cache/pypoetry
-          key: ${{ runner.os }}-poetry-${{ hashFiles('autogpts/autogpt/pyproject.toml') }}-${{ steps.get_date.outputs.date }}
+          path: ${{ runner.os == 'Windows' && 'C:\Users\runneradmin\AppData\Local\pypoetry\Cache' || '~/.cache/pypoetry' }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpts/autogpt/poetry.lock') }}
 
-      - name: Install Python dependencies
+      - name: Install Poetry (Unix)
+        if: runner.os != 'Windows'
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
-          poetry install
+
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+          fi
+
+      - name: Install Poetry (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
+
+          $env:PATH += ";$env:APPDATA\Python\Scripts"
+          echo "$env:APPDATA\Python\Scripts" >> $env:GITHUB_PATH
+
+      - name: Install Python dependencies
+        run: poetry install
 
       - name: Run pytest with coverage
         run: |
@@ -166,7 +196,7 @@ jobs:
           CI: true
           PLAIN_OUTPUT: True
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          S3_ENDPOINT_URL: http://localhost:9000
+          S3_ENDPOINT_URL: ${{ runner.os != 'Windows' && 'http://127.0.0.1:9000' || '' }}
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
 
@@ -182,7 +212,11 @@ jobs:
         if: success() || failure()
         run: |
           config_key="http.${{ github.server_url }}/.extraheader"
-          base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
+          if [ "${{ runner.os }}" = 'macOS' ]; then
+            base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64)
+          else
+            base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
+          fi
 
           git config "$config_key" \
             "Authorization: Basic $base64_pat"
@@ -243,199 +277,8 @@ jobs:
             echo "Adding label and comment..."
             echo $TOKEN | gh auth login --with-token
             gh issue edit $PR_NUMBER --add-label "behaviour change"
-            gh issue comment $PR_NUMBER --body "You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
+            gh issue comment $PR_NUMBER --body "You changed AutoGPT's behaviour on ${{ runner.os }}. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
           fi
-
-      - name: Upload logs to artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-logs
-          path: autogpts/autogpt/logs/
-
-  test-macos:
-    permissions:
-      contents: read
-    runs-on: macos-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.10"]
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: true
-
-      - name: Checkout cassettes
-        if: ${{ startsWith(github.event_name, 'pull_request') }}
-        env:
-          PR_BASE: ${{ github.event.pull_request.base.ref }}
-          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: |
-          cassette_branch="${PR_AUTHOR}-${PR_BRANCH}"
-          cassette_base_branch="${PR_BASE}"
-          cd tests/vcr_cassettes
-
-          if ! git ls-remote --exit-code --heads origin $cassette_base_branch ; then
-            cassette_base_branch="master"
-          fi
-
-          if git ls-remote --exit-code --heads origin $cassette_branch ; then
-            git fetch origin $cassette_branch
-            git fetch origin $cassette_base_branch
-
-            git checkout $cassette_branch
-
-            # Pick non-conflicting cassette updates from the base branch
-            git merge --no-commit --strategy-option=ours origin/$cassette_base_branch
-            echo "Using cassettes from mirror branch '$cassette_branch'," \
-              "synced to upstream branch '$cassette_base_branch'."
-          else
-            git checkout -b $cassette_branch
-            echo "Branch '$cassette_branch' does not exist in cassette submodule." \
-              "Using cassettes from '$cassette_base_branch'."
-          fi
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - id: get_date
-        name: Get date
-        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-      - name: Set up Python dependency cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pypoetry
-          key: ${{ runner.os }}-poetry-${{ hashFiles('autogpts/autogpt/pyproject.toml') }}-${{ steps.get_date.outputs.date }}
-
-      - name: Install Python dependencies
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-
-          PATH="$HOME/.local/bin:$PATH"
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-          poetry install
-
-      - name: Run pytest with coverage
-        run: |
-          poetry run pytest -vv \
-            --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
-            --numprocesses=logical --durations=10 \
-            tests/unit tests/integration
-        env:
-          CI: true
-          PLAIN_OUTPUT: True
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          flags: autogpt-agent,${{ runner.os }}
-
-      - name: Upload logs to artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-logs
-          path: autogpts/autogpt/logs/
-
-  test-windows:
-    permissions:
-      contents: read
-    runs-on: windows-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.10"]
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: true
-
-      - name: Checkout cassettes
-        if: ${{ startsWith(github.event_name, 'pull_request') }}
-        env:
-          PR_BASE: ${{ github.event.pull_request.base.ref }}
-          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: |
-          $cassette_branch="${env:PR_AUTHOR}-${env:PR_BRANCH}"
-          $cassette_base_branch="${env:PR_BASE}"
-          cd tests\vcr_cassettes
-
-          if (!(git ls-remote --exit-code --heads origin $cassette_base_branch)) {
-            $cassette_base_branch="master"
-          }
-
-          if (git ls-remote --exit-code --heads origin $cassette_branch) {
-            git fetch origin $cassette_branch
-            git fetch origin $cassette_base_branch
-
-            git checkout $cassette_branch
-
-            # Pick non-conflicting cassette updates from the base branch
-            git merge --no-commit --strategy-option=ours origin/$cassette_base_branch
-            Write-Host "Using cassettes from mirror branch '$cassette_branch'," `
-              "synced to upstream branch '$cassette_base_branch'."
-          } else {
-            git checkout -b $cassette_branch
-            Write-Host "Branch '$cassette_branch' does not exist in cassette submodule." `
-              "Using cassettes from '$cassette_base_branch'."
-          }
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - id: get_date
-        name: Get date
-        run: echo "date=$(Get-Date -Format 'yyyy-MM-dd')" >> $Env:GITHUB_OUTPUT
-
-      - name: Set up Python dependency cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pypoetry
-          key: ${{ runner.os }}-poetry-${{ hashFiles('autogpts/autogpt/pyproject.toml') }}-${{ steps.get_date.outputs.date }}
-
-      - name: Install Python dependencies
-        run: |
-          (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
-
-          $env:PATH += ";$env:APPDATA\Python\Scripts"
-          echo "$env:APPDATA\Python\Scripts" >> $env:GITHUB_PATH
-
-          poetry install
-
-      - name: Run pytest with coverage
-        run: |
-          poetry run pytest -vv `
-            --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml `
-            --numprocesses=logical --durations=10 `
-            tests/unit tests/integration
-        env:
-          CI: true
-          PLAIN_OUTPUT: True
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          flags: autogpt-agent,${{ runner.os }}
 
       - name: Upload logs to artifact
         if: always()
