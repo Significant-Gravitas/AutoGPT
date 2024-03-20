@@ -432,9 +432,9 @@ jobs:
 
       - name: Run pytest with coverage
         run: |
-          poetry run pytest -vv \
-            --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
-            --numprocesses=logical --durations=10 \
+          poetry run pytest -vv `
+            --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml `
+            --numprocesses=logical --durations=10 `
             tests/unit tests/integration
         env:
           CI: true
