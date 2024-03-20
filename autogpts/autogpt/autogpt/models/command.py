@@ -17,6 +17,8 @@ CommandOutput = CommandReturnValue | tuple[CommandReturnValue, ContextItem]
 
 
 class ValidityResult(NamedTuple):
+    """Command `is_valid` result"""
+
     is_valid: bool
     reason: str = ""
 
@@ -42,7 +44,7 @@ class Command:
         available: Literal[True] | Callable[[BaseAgent], bool] = True,
         is_valid: Callable[
             [Agent, CommandArgs], ValidityResult
-        ] = lambda a, c: ValidityResult(True, ""),
+        ] = lambda a, c: ValidityResult(True),
     ):
         self.name = name
         self.description = description

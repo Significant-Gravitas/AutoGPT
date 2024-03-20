@@ -35,7 +35,7 @@ def command(
     available: Literal[True] | Callable[[BaseAgent], bool] = True,
     is_valid: Callable[
         [Agent, CommandArgs], ValidityResult
-    ] = lambda a, c: ValidityResult(True, ""),
+    ] = lambda a, c: ValidityResult(True),
 ) -> Callable[[Callable[P, CO]], Callable[P, CO]]:
     """
     The command decorator is used to create Command objects from ordinary functions.

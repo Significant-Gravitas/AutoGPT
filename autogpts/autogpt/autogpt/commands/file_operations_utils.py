@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 
 class ParserStrategy(ABC):
     @abstractmethod
-    def read(self, file: IO) -> str: ...
+    def read(self, file: IO) -> str:
+        ...
 
 
 # Basic text file reading

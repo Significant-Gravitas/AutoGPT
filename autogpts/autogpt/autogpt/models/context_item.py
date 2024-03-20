@@ -6,11 +6,9 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from autogpt.commands.file_operations_utils import decode_textual_file
 from autogpt.agents.base import BaseAgent
-from autogpt.agents.features.agent_file_manager import (
-    AgentFileManagerMixin,
-)
+from autogpt.agents.features.agent_file_manager import AgentFileManagerMixin
+from autogpt.commands.file_operations_utils import decode_textual_file
 
 logger = logging.getLogger(__name__)
 

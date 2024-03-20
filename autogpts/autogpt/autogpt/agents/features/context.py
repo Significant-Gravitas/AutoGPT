@@ -2,15 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional
 
-
 if TYPE_CHECKING:
     from autogpt.core.prompting import ChatPrompt
     from autogpt.models.context_item import ContextItem
 
-    from ..base import BaseAgent
-
-from autogpt.agents.agent import Agent
 from autogpt.core.resource.model_providers import ChatMessage
+
+from ..base import BaseAgent
 
 
 class AgentContext:

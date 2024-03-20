@@ -13,8 +13,8 @@ from autogpt.agents.utils.exceptions import (
 )
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.context_item import FileContextItem, FolderContextItem
 from autogpt.models.command import ValidityResult
+from autogpt.models.context_item import FileContextItem, FolderContextItem
 
 from .decorators import sanitize_path_arg
 
@@ -31,9 +31,10 @@ def agent_implements_context(agent: BaseAgent) -> bool:
 
 
 def is_in_context(agent: Agent, source: str) -> ValidityResult:
-    assert (agent_context := get_agent_context(agent))
+    if not isinstance(agent, ContextMixin):
+        return ValidityResult(False, f"{agent} does not implement the ContextMixin")
 
-    if agent_context.uses_source(source):
+    if agent.context.uses_source(source):
         return ValidityResult(
             False, f"{source} is already loaded into the agent context"
         )

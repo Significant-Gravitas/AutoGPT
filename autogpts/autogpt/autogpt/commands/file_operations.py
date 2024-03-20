@@ -7,7 +7,7 @@ import logging
 import os
 import os.path
 from pathlib import Path
-from typing import Iterator, Literal
+from typing import TYPE_CHECKING, Iterator, Literal
 
 from autogpt.agents.agent import Agent
 from autogpt.agents.base import BaseAgent, CommandArgs
