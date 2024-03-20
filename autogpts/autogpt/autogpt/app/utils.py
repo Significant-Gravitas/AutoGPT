@@ -2,24 +2,23 @@ import contextlib
 import logging
 import os
 import re
+import socket
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import click
 import requests
 from colorama import Fore, Style
 from git import InvalidGitRepositoryError, Repo
-from prompt_toolkit import ANSI, PromptSession
-from prompt_toolkit.history import InMemoryHistory
 
 if TYPE_CHECKING:
     from autogpt.config import Config
 
 logger = logging.getLogger(__name__)
-session = PromptSession(history=InMemoryHistory())
 
 
-async def clean_input(config: "Config", prompt: str = ""):
+def clean_input(config: "Config", prompt: str = ""):
     try:
         if config.chat_messages_enabled:
             for plugin in config.plugins:
@@ -52,11 +51,9 @@ async def clean_input(config: "Config", prompt: str = ""):
         # ask for input, default when just pressing Enter is y
         logger.debug("Asking user via keyboard...")
 
-        # handle_sigint must be set to False, so the signal handler in the
-        # autogpt/main.py could be employed properly. This referes to
-        # https://github.com/Significant-Gravitas/AutoGPT/pull/4799/files/3966cdfd694c2a80c0333823c3bc3da090f85ed3#r1264278776
-        answer = await session.prompt_async(ANSI(prompt + " "), handle_sigint=False)
-        return answer
+        return click.prompt(
+            text=prompt, prompt_suffix=" ", default="", show_default=False
+        )
     except KeyboardInterrupt:
         logger.info("You interrupted AutoGPT")
         logger.info("Quitting...")
@@ -272,3 +269,12 @@ def set_env_config_value(key: str, value: str) -> None:
             file.write(f"{key}={value}\n")
 
         file.truncate()
+
+
+def is_port_free(port: int, host: str = "127.0.0.1"):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((host, port))  # Try to bind to the port
+            return True  # If successful, the port is free
+        except OSError:
+            return False  # If failed, the port is likely in use

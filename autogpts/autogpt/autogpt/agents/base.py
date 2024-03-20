@@ -40,11 +40,7 @@ from autogpt.core.resource.model_providers.openai import (
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.file_storage.base import FileStorage
 from autogpt.llm.providers.openai import get_openai_command_specs
-from autogpt.models.action_history import (
-    ActionResult,
-    ActionSuccessResult,
-    EpisodicActionHistory,
-)
+from autogpt.models.action_history import ActionResult, EpisodicActionHistory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -176,14 +172,6 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
 
         self.legacy_config = legacy_config
         """LEGACY: Monolithic application configuration."""
-
-        # In case the agent is resumed, cursor is set to the last episode
-        if self.event_history:
-            # To prevent errors, when the last action is "finish", we register a result
-            # And move cursor to the next action
-            if self.event_history.current_episode.action.name == "finish":
-                self.event_history.register_result(ActionSuccessResult())
-                self.event_history.cursor = len(self.event_history)
 
         self.llm_provider = llm_provider
 

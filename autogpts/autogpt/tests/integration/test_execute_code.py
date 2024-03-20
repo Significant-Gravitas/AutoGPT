@@ -44,6 +44,9 @@ def random_string():
 
 
 def test_execute_python_file(python_test_file: Path, random_string: str, agent: Agent):
+    if not (sut.is_docker_available() or sut.we_are_running_in_a_docker_container()):
+        pytest.skip("Docker is not available")
+
     result: str = sut.execute_python_file(python_test_file, agent=agent)
     assert result.replace("\r", "") == f"Hello {random_string}!\n"
 
@@ -51,6 +54,9 @@ def test_execute_python_file(python_test_file: Path, random_string: str, agent: 
 def test_execute_python_file_args(
     python_test_args_file: Path, random_string: str, agent: Agent
 ):
+    if not (sut.is_docker_available() or sut.we_are_running_in_a_docker_container()):
+        pytest.skip("Docker is not available")
+
     random_args = [random_string] * 2
     random_args_string = " ".join(random_args)
     result = sut.execute_python_file(
@@ -60,6 +66,9 @@ def test_execute_python_file_args(
 
 
 def test_execute_python_code(random_code: str, random_string: str, agent: Agent):
+    if not (sut.is_docker_available() or sut.we_are_running_in_a_docker_container()):
+        pytest.skip("Docker is not available")
+
     result: str = sut.execute_python_code(random_code, agent=agent)
     assert result.replace("\r", "") == f"Hello {random_string}!\n"
 

@@ -25,7 +25,7 @@ def command(
     enabled: Literal[True] | Callable[[Config], bool] = True,
     disabled_reason: Optional[str] = None,
     aliases: list[str] = [],
-    available: Literal[True] | Callable[[BaseAgent], bool] = True,
+    available: bool | Callable[[BaseAgent], bool] = True,
 ) -> Callable[[Callable[P, CO]], Callable[P, CO]]:
     """
     The command decorator is used to create Command objects from ordinary functions.
