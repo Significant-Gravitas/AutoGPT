@@ -70,7 +70,7 @@ def is_docker_available() -> bool:
     disabled_reason="To execute python code agent "
     "must be running in a Docker container or "
     "Docker must be available on the system.",
-    available=we_are_running_in_a_docker_container() or is_docker_available(),
+    available=lambda _: we_are_running_in_a_docker_container() or is_docker_available(),
 )
 def execute_python_code(code: str, agent: Agent) -> str:
     """
@@ -121,7 +121,7 @@ def execute_python_code(code: str, agent: Agent) -> str:
     disabled_reason="To execute python code agent "
     "must be running in a Docker container or "
     "Docker must be available on the system.",
-    available=we_are_running_in_a_docker_container() or is_docker_available(),
+    available=lambda _: we_are_running_in_a_docker_container() or is_docker_available(),
 )
 @sanitize_path_arg("filename")
 def execute_python_file(

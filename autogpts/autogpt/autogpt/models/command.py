@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
+from typing import TYPE_CHECKING, Any, Callable, Literal, NamedTuple, Optional
 
 if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgent
@@ -14,6 +14,11 @@ from .context_item import ContextItem
 
 CommandReturnValue = Any
 CommandOutput = CommandReturnValue | tuple[CommandReturnValue, ContextItem]
+
+
+class ValidityResult(NamedTuple):
+    is_valid: bool
+    reason: str = ""
 
 
 class Command:
@@ -35,10 +40,9 @@ class Command:
         disabled_reason: Optional[str] = None,
         aliases: list[str] = [],
         available: Literal[True] | Callable[[BaseAgent], bool] = True,
-        is_valid: Callable[[Agent, CommandArgs], tuple[bool, str]] = lambda a, c: (
-            True,
-            "",
-        ),
+        is_valid: Callable[
+            [Agent, CommandArgs], ValidityResult
+        ] = lambda a, c: ValidityResult(True, ""),
     ):
         self.name = name
         self.description = description

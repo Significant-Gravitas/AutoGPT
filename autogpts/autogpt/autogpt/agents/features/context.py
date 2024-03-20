@@ -2,26 +2,31 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional
 
+
 if TYPE_CHECKING:
     from autogpt.core.prompting import ChatPrompt
     from autogpt.models.context_item import ContextItem
 
     from ..base import BaseAgent
 
+from autogpt.agents.agent import Agent
 from autogpt.core.resource.model_providers import ChatMessage
 
 
 class AgentContext:
-    items: list[ContextItem]
-
-    def __init__(self, items: Optional[list[ContextItem]] = None):
+    def __init__(self, agent: BaseAgent, items: Optional[list[ContextItem]] = None):
+        self.agent = agent
         self.items = items or []
 
     def __bool__(self) -> bool:
         return len(self.items) > 0
 
+    # TODO: this and uses_source won't work for multiple StaticContextItems with None source
     def __contains__(self, item: ContextItem) -> bool:
         return any([i.source == item.source for i in self.items])
+
+    def uses_source(self, source: str) -> bool:
+        return any([i.source == source for i in self.items])
 
     def add(self, item: ContextItem) -> None:
         self.items.append(item)
@@ -33,7 +38,9 @@ class AgentContext:
         self.items.clear()
 
     def format_numbered(self) -> str:
-        return "\n\n".join([f"{i}. {c.fmt()}" for i, c in enumerate(self.items, 1)])
+        return "\n\n".join(
+            [f"{i}. {c.fmt(self.agent)}" for i, c in enumerate(self.items, 1)]
+        )
 
 
 class ContextMixin:
@@ -42,7 +49,11 @@ class ContextMixin:
     context: AgentContext
 
     def __init__(self, **kwargs: Any):
-        self.context = AgentContext()
+        if not isinstance(self, BaseAgent):
+            raise NotImplementedError(
+                f"{__class__.__name__} can only be applied to BaseAgent derivatives"
+            )
+        self.context = AgentContext(self)
 
         super(ContextMixin, self).__init__(**kwargs)
 

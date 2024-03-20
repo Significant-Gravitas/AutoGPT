@@ -47,7 +47,6 @@ from .utils.exceptions import (
     AgentException,
     AgentTerminated,
     CommandExecutionError,
-    DuplicateOperationError,
     InvalidOperationError,
     UnknownCommandError,
 )
@@ -195,6 +194,7 @@ class Agent(
             assistant_reply_dict,
         ) = self.prompt_strategy.parse_response_content(llm_response)
 
+        # Check if the command is valid, e.g. isn't duplicating a previous command
         command = self.command_registry.get_command(command_name)
         if command:
             is_valid, reason = command.is_valid(self, arguments)

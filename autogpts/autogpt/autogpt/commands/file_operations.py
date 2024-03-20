@@ -11,10 +11,10 @@ from typing import Iterator, Literal
 
 from autogpt.agents.agent import Agent
 from autogpt.agents.base import BaseAgent, CommandArgs
-from autogpt.agents.utils.exceptions import DuplicateOperationError
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.memory.vector import MemoryItemFactory, VectorMemory
+from autogpt.models.command import ValidityResult
 
 from .decorators import sanitize_path_arg
 from .file_operations_utils import decode_textual_file
@@ -27,25 +27,25 @@ from .file_context import open_file, open_folder  # NOQA
 
 logger = logging.getLogger(__name__)
 
-Operation = Literal["write", "append", "delete"]
-
 
 def text_checksum(text: str) -> str:
     """Get the hex checksum for the given text."""
     return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
-def _is_write_valid(agent: Agent, arguments: CommandArgs) -> tuple[bool, str]:
+def _is_write_valid(agent: Agent, arguments: CommandArgs) -> ValidityResult:
     if not agent.workspace.exists(arguments["filename"]):
-        return True, ""
+        return ValidityResult(True)
 
     if agent.workspace.read_file(arguments["filename"]):
         if text_checksum(arguments["contents"]) == text_checksum(
             agent.workspace.read_file(arguments["filename"])
         ):
-            return False, "Trying to write the same content to the same file."
+            return ValidityResult(
+                False, "Trying to write the same content to the same file."
+            )
 
-    return True, ""
+    return ValidityResult(True)
 
 
 @command(
