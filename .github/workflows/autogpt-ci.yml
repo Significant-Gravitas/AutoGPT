@@ -77,12 +77,11 @@ jobs:
   test:
     permissions:
       contents: read
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.10"]
 
     services:
@@ -106,8 +105,8 @@ jobs:
           git config --global user.name "Auto-GPT-Bot"
           git config --global user.email "github-bot@agpt.co"
 
-      - name: Checkout cassettes (Unix)
-        if: ${{ startsWith(github.event_name, 'pull_request') && runner.os != 'Windows' }}
+      - name: Checkout cassettes
+        if: ${{ startsWith(github.event_name, 'pull_request') }}
         env:
           PR_BASE: ${{ github.event.pull_request.base.ref }}
           PR_BRANCH: ${{ github.event.pull_request.head.ref }}
@@ -137,69 +136,24 @@ jobs:
               "Using cassettes from '$cassette_base_branch'."
           fi
 
-      - name: Checkout cassettes (Windows)
-        if: ${{ startsWith(github.event_name, 'pull_request') && runner.os == 'Windows' }}
-        env:
-          PR_BASE: ${{ github.event.pull_request.base.ref }}
-          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: |
-          $cassette_branch="${env:PR_AUTHOR}-${env:PR_BRANCH}"
-          $cassette_base_branch="${env:PR_BASE}"
-          cd tests\vcr_cassettes
-
-          if (!(git ls-remote --exit-code --heads origin $cassette_base_branch)) {
-            $cassette_base_branch="master"
-          }
-
-          if (git ls-remote --exit-code --heads origin $cassette_branch) {
-            git fetch origin $cassette_branch
-            git fetch origin $cassette_base_branch
-
-            git checkout $cassette_branch
-
-            # Pick non-conflicting cassette updates from the base branch
-            git merge --no-commit --strategy-option=ours origin/$cassette_base_branch
-            Write-Host "Using cassettes from mirror branch '$cassette_branch'," `
-              "synced to upstream branch '$cassette_base_branch'."
-          } else {
-            git checkout -b $cassette_branch
-            Write-Host "Branch '$cassette_branch' does not exist in cassette submodule." `
-              "Using cassettes from '$cassette_base_branch'."
-          }
-
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      - id: get_date_unix
-        name: Get date (Unix)
-        if: runner.os != 'Windows'
+      - id: get_date
+        name: Get date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-      - id: get_date_windows
-        name: Get date (Windows)
-        if: runner.os == 'Windows'
-        run: echo "date=$(Get-Date -Format 'yyyy-MM-dd')" >> $Env:GITHUB_OUTPUT
 
       - name: Set up Python dependency cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/pypoetry
-          key: ${{ runner.os }}-poetry-${{ hashFiles('autogpts/autogpt/pyproject.toml') }}-${{ steps.get_date_unix.outputs.date || steps.get_date_windows.outputs.date }}
+          key: ${{ runner.os }}-poetry-${{ hashFiles('autogpts/autogpt/pyproject.toml') }}-${{ steps.get_date.outputs.date }}
 
-      - name: Install Python dependencies (Unix)
-        if: runner.os != 'Windows'
+      - name: Install Python dependencies
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
-          poetry install
-
-      - name: Install Python dependencies (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          Invoke-WebRequest -Uri https://install.python-poetry.org -OutFile install-poetry.py
-          python install-poetry.py
           poetry install
 
       - name: Run pytest with coverage
@@ -221,9 +175,9 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
-      - id: setup_git_auth_unix
-        name: Set up git token authentication (Unix)
-        if: (success() || failure()) && runner.os != 'Windows'
+      - id: setup_git_auth
+        name: Set up git token authentication
+        if: success() || failure()
         run: |
           config_key="http.${{ github.server_url }}/.extraheader"
           base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
@@ -236,22 +190,6 @@ jobs:
             "Authorization: Basic $base64_pat"
 
           echo "config_key=$config_key" >> $GITHUB_OUTPUT
-
-      - id: setup_git_auth_windows
-        name: Set up git token authentication (Windows)
-        if: (success() || failure()) && runner.os == 'Windows'
-        run: |
-          $config_key="http.${{ github.server_url }}/.extraheader"
-          $base64_pat=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("pat:${{ secrets.PAT_REVIEW }}"))
-
-          git config "$config_key" \
-            "Authorization: Basic $base64_pat"
-
-          cd tests/vcr_cassettes
-          git config "$config_key" \
-            "Authorization: Basic $base64_pat"
-
-          echo "config_key=$config_key" >> $Env:GITHUB_OUTPUT
 
       - id: push_cassettes
         name: Push updated cassettes
@@ -287,13 +225,13 @@ jobs:
           fi
 
       - name: Post Set up git token auth
-        if: steps.setup_git_auth_unix.outcome == 'success' || steps.setup_git_auth_windows.outcome == 'success'
+        if: steps.setup_git_auth.outcome == 'success'
         run: |
-          git config --unset-all '${{ steps.setup_git_auth_unix.outputs.config_key || steps.setup_git_auth_windows.outputs.config_key }}'
-          git submodule foreach git config --unset-all '${{ steps.setup_git_auth_unix.outputs.config_key || steps.setup_git_auth_windows.outputs.config_key }}'
+          git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
+          git submodule foreach git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
 
-      - name: Apply "behaviour change" label and comment on PR (Unix)
-        if: ${{ startsWith(github.event_name, 'pull_request') }} && runner.os != 'Windows'
+      - name: Apply "behaviour change" label and comment on PR
+        if: ${{ startsWith(github.event_name, 'pull_request') }}
         run: |
           PR_NUMBER="${{ github.event.pull_request.number }}"
           TOKEN="${{ secrets.PAT_REVIEW }}"
@@ -306,19 +244,199 @@ jobs:
             gh issue comment $PR_NUMBER --body "You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
           fi
 
-      - name: Apply "behaviour change" label and comment on PR (Windows)
-        if: ${{ startsWith(github.event_name, 'pull_request') }} && runner.os == 'Windows'
-        run: |
-          $PR_NUMBER="${{ github.event.pull_request.number }}"
-          $TOKEN="${{ secrets.PAT_REVIEW }}"
-          $REPO="${{ github.repository }}"
+      - name: Upload logs to artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: autogpts/autogpt/logs/
 
-          if ("${{ steps.push_cassettes.outputs.updated }}" -eq "true") {
-            Write-Host "Adding label and comment..."
-            echo $TOKEN | gh auth login --with-token
-            gh issue edit $PR_NUMBER --add-label "behaviour change"
-            gh issue comment $PR_NUMBER --body "You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
+  test-macos:
+    permissions:
+      contents: read
+    runs-on: macos-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Configure git user Auto-GPT-Bot
+        run: |
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
+
+      - name: Checkout cassettes
+        if: ${{ startsWith(github.event_name, 'pull_request') }}
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          cassette_branch="${PR_AUTHOR}-${PR_BRANCH}"
+          cassette_base_branch="${PR_BASE}"
+          cd tests/vcr_cassettes
+
+          if ! git ls-remote --exit-code --heads origin $cassette_base_branch ; then
+            cassette_base_branch="master"
+          fi
+
+          if git ls-remote --exit-code --heads origin $cassette_branch ; then
+            git fetch origin $cassette_branch
+            git fetch origin $cassette_base_branch
+
+            git checkout $cassette_branch
+
+            # Pick non-conflicting cassette updates from the base branch
+            git merge --no-commit --strategy-option=ours origin/$cassette_base_branch
+            echo "Using cassettes from mirror branch '$cassette_branch'," \
+              "synced to upstream branch '$cassette_base_branch'."
+          else
+            git checkout -b $cassette_branch
+            echo "Branch '$cassette_branch' does not exist in cassette submodule." \
+              "Using cassettes from '$cassette_base_branch'."
+          fi
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - id: get_date
+        name: Get date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-${{ hashFiles('autogpts/autogpt/pyproject.toml') }}-${{ steps.get_date.outputs.date }}
+
+      - name: Install Python dependencies
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          poetry install
+
+      - name: Run pytest with coverage
+        run: |
+          poetry run pytest -vv \
+            --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
+            --numprocesses=logical --durations=10 \
+            tests/unit tests/integration
+        env:
+          CI: true
+          PLAIN_OUTPUT: True
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload logs to artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: autogpts/autogpt/logs/
+
+  test-windows:
+    permissions:
+      contents: read
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Configure git user Auto-GPT-Bot
+        run: |
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
+
+      - name: Checkout cassettes
+        if: ${{ startsWith(github.event_name, 'pull_request') }}
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          $cassette_branch="${env:PR_AUTHOR}-${env:PR_BRANCH}"
+          $cassette_base_branch="${env:PR_BASE}"
+          cd tests\vcr_cassettes
+
+          if (!(git ls-remote --exit-code --heads origin $cassette_base_branch)) {
+            $cassette_base_branch="master"
           }
+
+          if (git ls-remote --exit-code --heads origin $cassette_branch) {
+            git fetch origin $cassette_branch
+            git fetch origin $cassette_base_branch
+
+            git checkout $cassette_branch
+
+            # Pick non-conflicting cassette updates from the base branch
+            git merge --no-commit --strategy-option=ours origin/$cassette_base_branch
+            Write-Host "Using cassettes from mirror branch '$cassette_branch'," `
+              "synced to upstream branch '$cassette_base_branch'."
+          } else {
+            git checkout -b $cassette_branch
+            Write-Host "Branch '$cassette_branch' does not exist in cassette submodule." `
+              "Using cassettes from '$cassette_base_branch'."
+          }
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - id: get_date
+        name: Get date
+        run: echo "date=$(Get-Date -Format 'yyyy-MM-dd')" >> $Env:GITHUB_OUTPUT
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-${{ hashFiles('autogpts/autogpt/pyproject.toml') }}-${{ steps.get_date.outputs.date }}
+
+      - name: Install Python dependencies
+        run: |
+          Invoke-WebRequest -Uri https://install.python-poetry.org -OutFile install-poetry.py
+          python install-poetry.py
+          poetry install
+          rm install-poetry.py
+
+      - name: Run pytest with coverage
+        run: |
+          poetry run pytest -vv \
+            --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
+            --numprocesses=logical --durations=10 \
+            tests/unit tests/integration
+        env:
+          CI: true
+          PLAIN_OUTPUT: True
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload logs to artifact
         if: always()
