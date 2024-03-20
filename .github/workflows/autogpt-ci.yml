@@ -426,7 +426,7 @@ jobs:
 
           $pyPath = "$env:APPDATA\Python\Scripts"
           $env:PATH += ";$pyPath"
-          echo "$pyPath" >> $GITHUB_PATH
+          echo "$pyPath" >> $env:GITHUB_PATH
 
           poetry install
 
