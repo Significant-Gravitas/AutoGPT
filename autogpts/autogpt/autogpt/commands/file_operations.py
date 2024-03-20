@@ -92,9 +92,9 @@ def is_duplicate_operation(
         True if the operation has already been performed on the file
     """
     state = file_operations_state(agent.get_file_operation_lines())
-    if operation == "delete" and str(file_path) not in state:
+    if operation == "delete" and file_path.as_posix() not in state:
         return True
-    if operation == "write" and state.get(str(file_path)) == checksum:
+    if operation == "write" and state.get(file_path.as_posix()) == checksum:
         return True
     return False
 
@@ -113,11 +113,14 @@ async def log_operation(
         file_path: The name of the file the operation was performed on
         checksum: The checksum of the contents to be written
     """
-    log_entry = f"{operation}: {file_path}"
+    log_entry = (
+        f"{operation}: "
+        f"{file_path.as_posix() if isinstance(file_path, Path) else file_path}"
+    )
     if checksum is not None:
         log_entry += f" #{checksum}"
     logger.debug(f"Logging file operation: {log_entry}")
-    await agent.log_file_operation(f"{log_entry}")
+    await agent.log_file_operation(log_entry)
 
 
 @command(
