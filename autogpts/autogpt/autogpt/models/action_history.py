@@ -9,7 +9,6 @@ from autogpt.processing.text import summarize_text
 from autogpt.prompts.utils import format_numbered_list, indent
 
 if TYPE_CHECKING:
-    from autogpt.agents.base import CommandArgs, CommandName
     from autogpt.config.config import Config
     from autogpt.core.resource.model_providers import ChatModelProvider
 

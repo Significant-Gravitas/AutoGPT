@@ -7,16 +7,14 @@ import logging
 import os
 import os.path
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Literal
 
 from autogpt.agents.agent import Agent
-from autogpt.agents.base import BaseAgent, CommandArgs
+from autogpt.agents.base import CommandArgs
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.memory.vector import MemoryItemFactory, VectorMemory
 from autogpt.models.command import ValidityResult
 
-from .decorators import sanitize_path_arg
 from .file_operations_utils import decode_textual_file
 
 COMMAND_CATEGORY = "file_operations"

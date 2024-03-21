@@ -19,7 +19,6 @@ class AgentContext:
     def __bool__(self) -> bool:
         return len(self.items) > 0
 
-    # TODO: this and uses_source won't work for multiple StaticContextItems with None source
     def __contains__(self, item: ContextItem) -> bool:
         return any([i.source == item.source for i in self.items])
 

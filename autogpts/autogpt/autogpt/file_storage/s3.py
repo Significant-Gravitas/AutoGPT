@@ -9,9 +9,9 @@ import contextlib
 import inspect
 import logging
 import os
-from io import IOBase, TextIOWrapper
+from io import TextIOWrapper
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, BinaryIO, Literal, Optional, TextIO
+from typing import IO, TYPE_CHECKING, Literal, Optional
 
 import boto3
 import botocore.exceptions

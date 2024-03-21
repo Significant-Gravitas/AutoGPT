@@ -36,10 +36,6 @@ class UnknownCommandError(AgentException):
     hint = "Do not try to use this command again."
 
 
-class DuplicateOperationError(AgentException):
-    """The proposed operation has already been executed"""
-
-
 class InvalidOperationError(AgentException):
     """The operation is not valid"""
 

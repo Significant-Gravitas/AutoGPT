@@ -7,7 +7,6 @@ from __future__ import annotations
 import logging
 import os
 from abc import ABC, abstractmethod
-from io import IOBase, TextIOBase
 from pathlib import Path
 from typing import IO, Any, BinaryIO, Callable, Literal, TextIO, overload
 

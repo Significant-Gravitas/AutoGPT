@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import inspect
 import logging
-from io import IOBase
 from pathlib import Path
 from typing import BinaryIO, Literal, TextIO
 

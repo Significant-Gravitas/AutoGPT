@@ -7,10 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from autogpt.agents.features.context import ContextMixin, get_agent_context
-from autogpt.agents.utils.exceptions import (
-    CommandExecutionError,
-    DuplicateOperationError,
-)
+from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import ValidityResult
@@ -57,7 +54,7 @@ def is_in_context(agent: Agent, source: str) -> ValidityResult:
     is_valid=lambda agent, args: is_in_context(agent, args["file_path"]),
 )
 @sanitize_path_arg("file_path")
-def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
+async def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
     """Open a file and return a context item
 
     Args:
@@ -72,20 +69,14 @@ def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
     with contextlib.suppress(ValueError):
         relative_file_path = file_path.relative_to(agent.workspace.root)
 
-    assert (agent_context := get_agent_context(agent)) is not None
-
     created = False
     if not agent.workspace.exists(file_path):
-        file_path.touch()
+        await agent.workspace.write_file(file_path, "")
         created = True
-    elif not file_path.is_file():
-        raise CommandExecutionError(f"{file_path} exists but is not a file")
 
     file_path = relative_file_path or file_path
 
-    file = FileContextItem(path=file_path, workspace=agent.workspace)
-    # if file in agent_context:
-    #     raise DuplicateOperationError(f"The file {file_path} is already open")
+    file = FileContextItem(path=file_path)
 
     return (
         f"File {file_path}{' created,' if created else ''} has been opened"
@@ -123,22 +114,11 @@ def open_folder(path: Path, agent: Agent) -> tuple[str, FolderContextItem]:
     with contextlib.suppress(ValueError):
         relative_path = path.relative_to(agent.workspace.root)
 
-    # assert (agent_context := get_agent_context(agent)) is not None
-
-    # if not path.exists():
-    # elif not path.is_dir():
-    #     raise CommandExecutionError(f"{path} exists but is not a folder")
-
     if not agent.workspace.exists(path):
         raise FileNotFoundError(f"open_folder {path} failed: no such file or directory")
 
     path = relative_path or path
 
-    folder = FolderContextItem(
-        path=path,
-        workspace=agent.workspace,
-    )
-    # if folder in agent_context:
-    #     raise DuplicateOperationError(f"The folder {path} is already open")
+    folder = FolderContextItem(path=path)
 
     return f"Folder {path} has been opened and added to the context ✅", folder
