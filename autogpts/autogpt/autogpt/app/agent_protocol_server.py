@@ -30,17 +30,15 @@ from sentry_sdk import set_user
 from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
+from autogpt.agents.utils.exceptions import AgentFinished
+from autogpt.app.utils import is_port_free
 from autogpt.commands.system import finish
 from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.resource.model_providers.schema import ModelProviderBudget
-from autogpt.file_workspace import (
-    FileWorkspace,
-    FileWorkspaceBackendName,
-    get_workspace,
-)
+from autogpt.file_storage import FileStorage
 from autogpt.logs.utils import fmt_kwargs
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
 
@@ -54,17 +52,27 @@ class AgentProtocolServer:
         self,
         app_config: Config,
         database: AgentDB,
+        file_storage: FileStorage,
         llm_provider: ChatModelProvider,
     ):
         self.app_config = app_config
         self.db = database
+        self.file_storage = file_storage
         self.llm_provider = llm_provider
-        self.agent_manager = AgentManager(app_data_dir=app_config.app_data_dir)
+        self.agent_manager = AgentManager(file_storage)
         self._task_budgets = {}
 
     async def start(self, port: int = 8000, router: APIRouter = base_router):
         """Start the agent server."""
         logger.debug("Starting the agent server...")
+        if not is_port_free(port):
+            logger.error(f"Port {port} is already in use.")
+            logger.info(
+                "You can specify a port by either setting the AP_SERVER_PORT "
+                "environment variable or defining AP_SERVER_PORT in the .env file."
+            )
+            return
+
         config = HypercornConfig()
         config.bind = [f"localhost:{port}"]
         app = FastAPI(
@@ -134,16 +142,13 @@ class AgentProtocolServer:
         )
         logger.debug(f"Creating agent for task: '{task.input}'")
         task_agent = await generate_agent_for_task(
+            agent_id=task_agent_id(task.task_id),
             task=task.input,
             app_config=self.app_config,
+            file_storage=self.file_storage,
             llm_provider=self._get_task_llm_provider(task),
         )
-
-        # Assign an ID and a folder to the Agent and persist it
-        agent_id = task_agent.state.agent_id = task_agent_id(task.task_id)
-        logger.debug(f"New agent ID: {agent_id}")
-        task_agent.attach_fs(self.app_config.app_data_dir / "agents" / agent_id)
-        task_agent.state.save_to_json_file(task_agent.file_manager.state_file_path)
+        await task_agent.save_state()
 
         return task
 
@@ -182,8 +187,9 @@ class AgentProtocolServer:
         # Restore Agent instance
         task = await self.get_task(task_id)
         agent = configure_agent_with_state(
-            state=self.agent_manager.retrieve_state(task_agent_id(task_id)),
+            state=self.agent_manager.load_agent_state(task_agent_id(task_id)),
             app_config=self.app_config,
+            file_storage=self.file_storage,
             llm_provider=self._get_task_llm_provider(task),
         )
 
@@ -234,26 +240,6 @@ class AgentProtocolServer:
                 task=task, step=step, relative_path=path
             )
 
-            if step.is_last and execute_command == finish.__name__:
-                assert execute_command_args
-
-                additional_output = {}
-                task_total_cost = agent.llm_provider.get_incurred_cost()
-                if task_total_cost > 0:
-                    additional_output["task_total_cost"] = task_total_cost
-                    logger.info(
-                        f"Total LLM cost for task {task_id}: "
-                        f"${round(task_total_cost, 2)}"
-                    )
-
-                step = await self.db.update_step(
-                    task_id=task_id,
-                    step_id=step.step_id,
-                    output=execute_command_args["reason"],
-                    additional_output=additional_output,
-                )
-                return step
-
             if execute_command == ask_user.__name__:  # HACK
                 execute_result = ActionSuccessResult(outputs=user_input)
                 agent.event_history.register_result(execute_result)
@@ -265,11 +251,31 @@ class AgentProtocolServer:
                     step_id=step.step_id,
                     status="running",
                 )
-                # Execute previously proposed action
-                execute_result = await agent.execute(
-                    command_name=execute_command,
-                    command_args=execute_command_args,
-                )
+
+                try:
+                    # Execute previously proposed action
+                    execute_result = await agent.execute(
+                        command_name=execute_command,
+                        command_args=execute_command_args,
+                    )
+                except AgentFinished:
+                    additional_output = {}
+                    task_total_cost = agent.llm_provider.get_incurred_cost()
+                    if task_total_cost > 0:
+                        additional_output["task_total_cost"] = task_total_cost
+                        logger.info(
+                            f"Total LLM cost for task {task_id}: "
+                            f"${round(task_total_cost, 2)}"
+                        )
+
+                    step = await self.db.update_step(
+                        task_id=task_id,
+                        step_id=step.step_id,
+                        output=execute_command_args["reason"],
+                        additional_output=additional_output,
+                    )
+                    await agent.save_state()
+                    return step
             else:
                 assert user_input
                 execute_result = await agent.execute(
@@ -315,12 +321,16 @@ class AgentProtocolServer:
                         "name": execute_command,
                         "args": execute_command_args,
                         "result": (
-                            orjson.loads(execute_result.json())
-                            if not isinstance(execute_result, ActionErrorResult)
-                            else {
-                                "error": str(execute_result.error),
-                                "reason": execute_result.reason,
-                            }
+                            ""
+                            if execute_result is None
+                            else (
+                                orjson.loads(execute_result.json())
+                                if not isinstance(execute_result, ActionErrorResult)
+                                else {
+                                    "error": str(execute_result.error),
+                                    "reason": execute_result.reason,
+                                }
+                            )
                         ),
                     },
                 }
@@ -346,7 +356,7 @@ class AgentProtocolServer:
             additional_output=additional_output,
         )
 
-        agent.state.save_to_json_file(agent.file_manager.state_file_path)
+        await agent.save_state()
         return step
 
     async def _on_agent_write_file(
@@ -405,7 +415,7 @@ class AgentProtocolServer:
         else:
             file_path = os.path.join(relative_path, file_name)
 
-        workspace = self._get_task_agent_file_workspace(task_id, self.agent_manager)
+        workspace = self._get_task_agent_file_workspace(task_id)
         await workspace.write_file(file_path, data)
 
         artifact = await self.db.create_artifact(
@@ -421,12 +431,12 @@ class AgentProtocolServer:
         Download a task artifact by ID.
         """
         try:
+            workspace = self._get_task_agent_file_workspace(task_id)
             artifact = await self.db.get_artifact(artifact_id)
             if artifact.file_name not in artifact.relative_path:
                 file_path = os.path.join(artifact.relative_path, artifact.file_name)
             else:
                 file_path = artifact.relative_path
-            workspace = self._get_task_agent_file_workspace(task_id, self.agent_manager)
             retrieved_artifact = workspace.read_file(file_path, binary=True)
         except NotFoundError:
             raise
@@ -441,28 +451,9 @@ class AgentProtocolServer:
             },
         )
 
-    def _get_task_agent_file_workspace(
-        self,
-        task_id: str | int,
-        agent_manager: AgentManager,
-    ) -> FileWorkspace:
-        use_local_ws = (
-            self.app_config.workspace_backend == FileWorkspaceBackendName.LOCAL
-        )
+    def _get_task_agent_file_workspace(self, task_id: str | int) -> FileStorage:
         agent_id = task_agent_id(task_id)
-        workspace = get_workspace(
-            backend=self.app_config.workspace_backend,
-            id=agent_id if not use_local_ws else "",
-            root_path=agent_manager.get_agent_dir(
-                agent_id=agent_id,
-                must_exist=True,
-            )
-            / "workspace"
-            if use_local_ws
-            else None,
-        )
-        workspace.initialize()
-        return workspace
+        return self.file_storage.clone_with_subroot(f"agents/{agent_id}/workspace")
 
     def _get_task_llm_provider(
         self, task: Task, step_id: str = ""

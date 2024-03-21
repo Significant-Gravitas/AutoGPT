@@ -6,7 +6,6 @@ import inspect
 import json
 import logging
 import os
-import sys
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, List
@@ -220,21 +219,21 @@ def scan_plugins(config: Config) -> List[AutoGPTPluginTemplate]:
 
     plugins_config = config.plugins_config
     # Directory-based plugins
-    for plugin_path in [f.path for f in os.scandir(config.plugins_dir) if f.is_dir()]:
+    for plugin_path in [f for f in Path(config.plugins_dir).iterdir() if f.is_dir()]:
         # Avoid going into __pycache__ or other hidden directories
-        if plugin_path.startswith("__"):
+        if plugin_path.name.startswith("__"):
             continue
 
-        plugin_module_path = plugin_path.split(os.path.sep)
-        plugin_module_name = plugin_module_path[-1]
-        qualified_module_name = ".".join(plugin_module_path)
+        plugin_module_name = plugin_path.name
+        qualified_module_name = ".".join(plugin_path.parts)
 
         try:
-            __import__(qualified_module_name)
-        except ImportError:
-            logger.error(f"Failed to load {qualified_module_name}")
+            plugin = importlib.import_module(qualified_module_name)
+        except ImportError as e:
+            logger.error(
+                f"Failed to load {qualified_module_name} from {plugin_path}: {e}"
+            )
             continue
-        plugin = sys.modules[qualified_module_name]
 
         if not plugins_config.is_enabled(plugin_module_name):
             logger.warning(
@@ -261,8 +260,8 @@ def scan_plugins(config: Config) -> List[AutoGPTPluginTemplate]:
                 zipped_package = zipimporter(str(plugin))
                 try:
                     zipped_module = zipped_package.load_module(str(module.parent))
-                except ZipImportError:
-                    logger.error(f"Failed to load {str(module.parent)}")
+                except ZipImportError as e:
+                    logger.error(f"Failed to load {module.parent} from {plugin}: {e}")
                     continue
 
                 for key in dir(zipped_module):

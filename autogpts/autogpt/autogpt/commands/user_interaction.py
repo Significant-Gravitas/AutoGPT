@@ -28,5 +28,5 @@ COMMAND_CATEGORY_TITLE = "User Interaction"
 )
 async def ask_user(question: str, agent: Agent) -> str:
     print(f"\nQ: {question}")
-    resp = await clean_input(agent.legacy_config, "A:")
+    resp = clean_input(agent.legacy_config, "A:")
     return f"The user's answer: '{resp}'"
