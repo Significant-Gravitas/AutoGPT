@@ -301,7 +301,7 @@ class ConfigBuilder(Configurable[Config]):
         return config
 
 
-async def assert_config_has_openai_api_key(config: Config) -> None:
+def assert_config_has_openai_api_key(config: Config) -> None:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
     key_pattern = r"^sk-\w{48}"
     openai_api_key = (
@@ -318,7 +318,7 @@ async def assert_config_has_openai_api_key(config: Config) -> None:
         logger.info(
             "You can get your key from https://platform.openai.com/account/api-keys"
         )
-        openai_api_key = await clean_input(
+        openai_api_key = clean_input(
             config, "Please enter your OpenAI API key if you have it:"
         )
         openai_api_key = openai_api_key.strip()
