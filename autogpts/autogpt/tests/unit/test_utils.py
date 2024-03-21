@@ -14,7 +14,7 @@ from autogpt.app.utils import (
     get_latest_bulletin,
     set_env_config_value,
 )
-from autogpt.json_utils.utilities import extract_dict_from_response
+from autogpt.core.utils.json_utils import extract_dict_from_json
 from autogpt.utils import validate_yaml_file
 from tests.utils import skip_in_ci
 
@@ -199,34 +199,26 @@ def test_get_current_git_branch_failure(mock_repo):
 
 def test_extract_json_from_response(valid_json_response: dict):
     emulated_response_from_openai = json.dumps(valid_json_response)
-    assert (
-        extract_dict_from_response(emulated_response_from_openai) == valid_json_response
-    )
+    assert extract_dict_from_json(emulated_response_from_openai) == valid_json_response
 
 
 def test_extract_json_from_response_wrapped_in_code_block(valid_json_response: dict):
     emulated_response_from_openai = "```" + json.dumps(valid_json_response) + "```"
-    assert (
-        extract_dict_from_response(emulated_response_from_openai) == valid_json_response
-    )
+    assert extract_dict_from_json(emulated_response_from_openai) == valid_json_response
 
 
 def test_extract_json_from_response_wrapped_in_code_block_with_language(
     valid_json_response: dict,
 ):
     emulated_response_from_openai = "```json" + json.dumps(valid_json_response) + "```"
-    assert (
-        extract_dict_from_response(emulated_response_from_openai) == valid_json_response
-    )
+    assert extract_dict_from_json(emulated_response_from_openai) == valid_json_response
 
 
 def test_extract_json_from_response_json_contained_in_string(valid_json_response: dict):
     emulated_response_from_openai = (
         "sentence1" + json.dumps(valid_json_response) + "sentence2"
     )
-    assert (
-        extract_dict_from_response(emulated_response_from_openai) == valid_json_response
-    )
+    assert extract_dict_from_json(emulated_response_from_openai) == valid_json_response
 
 
 @pytest.fixture
