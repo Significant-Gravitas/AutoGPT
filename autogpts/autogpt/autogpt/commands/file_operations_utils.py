@@ -68,7 +68,7 @@ class XMLParser(ParserStrategy):
 # Reading as dictionary and returning string format
 class YAMLParser(ParserStrategy):
     def read(self, file: BinaryIO) -> str:
-        data = yaml.load(file, Loader=yaml.FullLoader)
+        data = yaml.load(file, Loader=yaml.SafeLoader)
         text = str(data)
         return text
 
