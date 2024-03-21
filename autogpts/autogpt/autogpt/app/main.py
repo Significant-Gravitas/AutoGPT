@@ -385,7 +385,7 @@ async def run_auto_gpt_server(
     configure_logging(
         **config.logging.dict(),
         tts_config=config.tts_config,
-    )    
+    )
 
     # TODO: fill in llm values here
     assert_config_has_openai_api_key(config)
