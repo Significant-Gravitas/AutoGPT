@@ -107,6 +107,12 @@ jobs:
           mkdir data
           minio server ./data &
 
+      # No MinIO on Windows:
+      # - Windows doesn't support running Linux Docker containers
+      # - It doesn't seem possible to start background processes on Windows. They are
+      #   killed after the step returns.
+      #   See: https://github.com/actions/runner/issues/598#issuecomment-2011890429
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
