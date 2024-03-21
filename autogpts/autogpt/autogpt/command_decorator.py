@@ -32,7 +32,7 @@ def command(
     enabled: Literal[True] | Callable[[Config], bool] = True,
     disabled_reason: Optional[str] = None,
     aliases: list[str] = [],
-    available: Literal[True] | Callable[[BaseAgent], bool] = True,
+    available: bool | Callable[[BaseAgent], bool] = True,
     is_valid: Callable[
         [Agent, CommandArgs], ValidityResult
     ] = lambda a, c: ValidityResult(True),

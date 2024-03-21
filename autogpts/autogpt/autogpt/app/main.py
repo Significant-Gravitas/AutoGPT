@@ -180,7 +180,7 @@ async def run_auto_gpt(
             "Existing agents\n---------------\n"
             + "\n".join(f"{i} - {id}" for i, id in enumerate(existing_agents, 1))
         )
-        load_existing_agent = await clean_input(
+        load_existing_agent = clean_input(
             config,
             "Enter the number or name of the agent to run,"
             " or hit enter to create a new one:",
@@ -205,7 +205,7 @@ async def run_auto_gpt(
     if load_existing_agent:
         agent_state = None
         while True:
-            answer = await clean_input(config, "Resume? [Y/n]")
+            answer = clean_input(config, "Resume? [Y/n]")
             if answer == "" or answer.lower() == "y":
                 agent_state = agent_manager.load_agent_state(load_existing_agent)
                 break
@@ -238,7 +238,7 @@ async def run_auto_gpt(
             # Agent was resumed after `finish` -> rewrite result of `finish` action
             finish_reason = agent.event_history.current_episode.action.args["reason"]
             print(f"Agent previously self-terminated; reason: '{finish_reason}'")
-            new_assignment = await clean_input(
+            new_assignment = clean_input(
                 config, "Please give a follow-up question or assignment:"
             )
             agent.event_history.register_result(
@@ -270,7 +270,7 @@ async def run_auto_gpt(
     if not agent:
         task = ""
         while task.strip() == "":
-            task = await clean_input(
+            task = clean_input(
                 config,
                 "Enter the task that you want AutoGPT to execute,"
                 " with as much detail as possible:",
@@ -343,7 +343,7 @@ async def run_auto_gpt(
 
         # Allow user to Save As other ID
         save_as_id = (
-            await clean_input(
+            clean_input(
                 config,
                 f"Press enter to save as '{agent_id}',"
                 " or enter a different ID to save to:",
@@ -725,9 +725,9 @@ async def get_user_feedback(
     while user_feedback is None:
         # Get input from user
         if config.chat_messages_enabled:
-            console_input = await clean_input(config, "Waiting for your response...")
+            console_input = clean_input(config, "Waiting for your response...")
         else:
-            console_input = await clean_input(
+            console_input = clean_input(
                 config, Fore.MAGENTA + "Input:" + Style.RESET_ALL
             )
 
