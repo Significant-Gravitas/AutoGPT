@@ -6,8 +6,10 @@ import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from autogpt.agents.features.context import ContextMixin, get_agent_context
-from autogpt.agents.utils.exceptions import CommandExecutionError
+if TYPE_CHECKING:
+    from autogpt.agents import Agent, BaseAgent
+
+from autogpt.agents.features.context import ContextMixin
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import ValidityResult
@@ -17,10 +19,6 @@ from .decorators import sanitize_path_arg
 
 COMMAND_CATEGORY = "file_operations"
 COMMAND_CATEGORY_TITLE = "File Operations"
-
-
-if TYPE_CHECKING:
-    from autogpt.agents import Agent, BaseAgent
 
 
 def agent_implements_context(agent: BaseAgent) -> bool:
