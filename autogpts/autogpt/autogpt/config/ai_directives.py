@@ -32,7 +32,7 @@ class AIDirectives(BaseModel):
             raise RuntimeError(f"File validation failed: {message}")
 
         with open(prompt_settings_file, encoding="utf-8") as file:
-            config_params = yaml.load(file, Loader=yaml.FullLoader)
+            config_params = yaml.load(file, Loader=yaml.SafeLoader)
 
         return AIDirectives(
             constraints=config_params.get("constraints", []),

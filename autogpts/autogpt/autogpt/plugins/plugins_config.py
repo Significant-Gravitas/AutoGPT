@@ -72,7 +72,7 @@ class PluginsConfig(BaseModel):
             )
 
         with open(plugins_config_file, "r") as f:
-            plugins_config = yaml.load(f, Loader=yaml.FullLoader)
+            plugins_config = yaml.load(f, Loader=yaml.SafeLoader)
 
         plugins = {}
         for name, plugin in plugins_config.items():
