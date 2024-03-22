@@ -167,7 +167,7 @@ jobs:
       - name: Set up Python dependency cache
         uses: actions/cache@v4
         with:
-          path: ${{ runner.os == 'Windows' && 'C:\Users\runneradmin\AppData\Local\pypoetry\Cache' || '~/.cache/pypoetry' }}
+          path: ${{ runner.os == 'Windows' && '~\AppData\Local\pypoetry\Cache' || runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
           key: poetry-${{ runner.os }}-${{ hashFiles('autogpts/autogpt/poetry.lock') }}
 
       - name: Install Poetry (Unix)
