@@ -24,7 +24,7 @@ defaults:
 
 env:
   IMAGE_NAME: auto-gpt
-  DEPLOY_IMAGE_NAME: ${{ secrets.DOCKER_USER }}/auto-gpt
+  DEPLOY_IMAGE_NAME: ${{ secrets.DOCKER_USER && format('{0}/', secrets.DOCKER_USER) || '' }}auto-gpt
   DEV_IMAGE_TAG: latest-dev
 
 jobs:
