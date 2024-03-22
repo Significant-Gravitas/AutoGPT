@@ -185,9 +185,12 @@ async def run_auto_gpt(
             "Enter the number or name of the agent to run,"
             " or hit enter to create a new one:",
         )
-        if re.match(r"^\d+$", load_existing_agent):
+        if re.match(r"^\d+$", load_existing_agent.strip()) and 0 < int(
+            load_existing_agent
+        ) <= len(existing_agents):
             load_existing_agent = existing_agents[int(load_existing_agent) - 1]
-        elif load_existing_agent and load_existing_agent not in existing_agents:
+
+        if load_existing_agent not in existing_agents:
             logger.info(
                 f"Unknown agent '{load_existing_agent}', "
                 f"creating a new one instead.",
