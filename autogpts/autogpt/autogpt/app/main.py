@@ -24,6 +24,10 @@ from autogpt.agent_factory.profile_generator import generate_agent_profile_for_t
 from autogpt.agent_manager import AgentManager
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
 from autogpt.agents.utils.exceptions import AgentTerminated, InvalidAgentResponseError
+from autogpt.commands.execute_code import (
+    is_docker_available,
+    we_are_running_in_a_docker_container,
+)
 from autogpt.commands.system import finish
 from autogpt.config import (
     AIDirectives,
@@ -90,6 +94,12 @@ async def run_auto_gpt(
     )
     file_storage.initialize()
 
+    # Set up logging module
+    configure_logging(
+        **config.logging.dict(),
+        tts_config=config.tts_config,
+    )
+
     # TODO: fill in llm values here
     assert_config_has_openai_api_key(config)
 
@@ -110,12 +120,6 @@ async def run_auto_gpt(
         browser_name=browser_name,
         allow_downloads=allow_downloads,
         skip_news=skip_news,
-    )
-
-    # Set up logging module
-    configure_logging(
-        **config.logging.dict(),
-        tts_config=config.tts_config,
     )
 
     llm_provider = _configure_openai_provider(config)
@@ -152,6 +156,14 @@ async def run_auto_gpt(
             print_attribute("Using Prompt Settings File", prompt_settings)
         if config.allow_downloads:
             print_attribute("Native Downloading", "ENABLED")
+        if we_are_running_in_a_docker_container() or is_docker_available():
+            print_attribute("Code Execution", "ENABLED")
+        else:
+            print_attribute(
+                "Code Execution",
+                "DISABLED (Docker unavailable)",
+                title_color=Fore.YELLOW,
+            )
 
     if install_plugin_deps:
         install_plugin_dependencies()
@@ -168,7 +180,7 @@ async def run_auto_gpt(
             "Existing agents\n---------------\n"
             + "\n".join(f"{i} - {id}" for i, id in enumerate(existing_agents, 1))
         )
-        load_existing_agent = await clean_input(
+        load_existing_agent = clean_input(
             config,
             "Enter the number or name of the agent to run,"
             " or hit enter to create a new one:",
@@ -193,7 +205,7 @@ async def run_auto_gpt(
     if load_existing_agent:
         agent_state = None
         while True:
-            answer = await clean_input(config, "Resume? [Y/n]")
+            answer = clean_input(config, "Resume? [Y/n]")
             if answer == "" or answer.lower() == "y":
                 agent_state = agent_manager.load_agent_state(load_existing_agent)
                 break
@@ -226,7 +238,7 @@ async def run_auto_gpt(
             # Agent was resumed after `finish` -> rewrite result of `finish` action
             finish_reason = agent.event_history.current_episode.action.args["reason"]
             print(f"Agent previously self-terminated; reason: '{finish_reason}'")
-            new_assignment = await clean_input(
+            new_assignment = clean_input(
                 config, "Please give a follow-up question or assignment:"
             )
             agent.event_history.register_result(
@@ -258,7 +270,7 @@ async def run_auto_gpt(
     if not agent:
         task = ""
         while task.strip() == "":
-            task = await clean_input(
+            task = clean_input(
                 config,
                 "Enter the task that you want AutoGPT to execute,"
                 " with as much detail as possible:",
@@ -331,7 +343,7 @@ async def run_auto_gpt(
 
         # Allow user to Save As other ID
         save_as_id = (
-            await clean_input(
+            clean_input(
                 config,
                 f"Press enter to save as '{agent_id}',"
                 " or enter a different ID to save to:",
@@ -361,7 +373,6 @@ async def run_auto_gpt_server(
     from .agent_protocol_server import AgentProtocolServer
 
     config = ConfigBuilder.build_config_from_env()
-
     # Storage
     local = config.file_storage_backend == FileStorageBackendName.LOCAL
     restrict_to_root = not local or config.restrict_to_workspace
@@ -369,6 +380,12 @@ async def run_auto_gpt_server(
         config.file_storage_backend, root_path="data", restrict_to_root=restrict_to_root
     )
     file_storage.initialize()
+
+    # Set up logging module
+    configure_logging(
+        **config.logging.dict(),
+        tts_config=config.tts_config,
+    )
 
     # TODO: fill in llm values here
     assert_config_has_openai_api_key(config)
@@ -384,12 +401,6 @@ async def run_auto_gpt_server(
         gpt4only=gpt4only,
         browser_name=browser_name,
         allow_downloads=allow_downloads,
-    )
-
-    # Set up logging module
-    configure_logging(
-        **config.logging.dict(),
-        tts_config=config.tts_config,
     )
 
     llm_provider = _configure_openai_provider(config)
@@ -713,9 +724,9 @@ async def get_user_feedback(
     while user_feedback is None:
         # Get input from user
         if config.chat_messages_enabled:
-            console_input = await clean_input(config, "Waiting for your response...")
+            console_input = clean_input(config, "Waiting for your response...")
         else:
-            console_input = await clean_input(
+            console_input = clean_input(
                 config, Fore.MAGENTA + "Input:" + Style.RESET_ALL
             )
 
