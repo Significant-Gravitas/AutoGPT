@@ -8,7 +8,6 @@ from autogpt.core.prompting import (
     LanguageModelClassification,
     PromptStrategy,
 )
-from autogpt.core.prompting.utils import json_loads
 from autogpt.core.resource.model_providers.schema import (
     AssistantChatMessage,
     ChatMessage,
@@ -16,6 +15,7 @@ from autogpt.core.resource.model_providers.schema import (
     CompletionModelFunction,
 )
 from autogpt.core.utils.json_schema import JSONSchema
+from autogpt.core.utils.json_utils import json_loads
 
 logger = logging.getLogger(__name__)
 

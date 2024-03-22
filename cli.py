@@ -98,14 +98,10 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
             )
         )
         click.echo(
-            click.style(
-                '  git config --global user.name "Your (user)name"', fg="red"
-            )
+            click.style('  git config --global user.name "Your (user)name"', fg="red")
         )
         click.echo(
-            click.style(
-                '  git config --global user.email "Your email"', fg="red"
-            )
+            click.style('  git config --global user.email "Your email"', fg="red")
         )
         install_error = True
 
@@ -181,7 +177,9 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
             click.style("\t2. Navigate to https://github.com/settings/tokens", fg="red")
         )
         click.echo(click.style("\t3. Click on 'Generate new token'.", fg="red"))
-        click.echo(click.style("\t4. Click on 'Generate new token (classic)'.", fg="red"))
+        click.echo(
+            click.style("\t4. Click on 'Generate new token (classic)'.", fg="red")
+        )
         click.echo(
             click.style(
                 "\t5. Fill out the form to generate a new token. Ensure you select the 'repo' scope.",
@@ -236,7 +234,10 @@ def create(agent_name):
 
         existing_arena_files = [name.lower() for name in os.listdir("./arena/")]
 
-        if not os.path.exists(new_agent_dir) and not new_agent_name in existing_arena_files:
+        if (
+            not os.path.exists(new_agent_dir)
+            and not new_agent_name in existing_arena_files
+        ):
             shutil.copytree("./autogpts/forge", new_agent_dir)
             click.echo(
                 click.style(
@@ -271,7 +272,11 @@ def start(agent_name, no_setup):
     agent_dir = os.path.join(script_dir, f"autogpts/{agent_name}")
     run_command = os.path.join(agent_dir, "run")
     run_bench_command = os.path.join(agent_dir, "run_benchmark")
-    if os.path.exists(agent_dir) and os.path.isfile(run_command) and os.path.isfile(run_bench_command):
+    if (
+        os.path.exists(agent_dir)
+        and os.path.isfile(run_command)
+        and os.path.isfile(run_bench_command)
+    ):
         os.chdir(agent_dir)
         if not no_setup:
             click.echo(f"⌛ Running setup for agent '{agent_name}'...")
@@ -330,6 +335,7 @@ def stop():
                 os.kill(int(pid), signal.SIGTERM)
     except subprocess.CalledProcessError:
         click.echo("No process is running on port 8080")
+
 
 @agent.command()
 def list():
@@ -417,7 +423,7 @@ def benchmark_categories_list():
     )
     # Use it as the base for the glob pattern, excluding 'deprecated' directory
     for data_file in glob.glob(glob_path, recursive=True):
-        if 'deprecated' not in data_file:
+        if "deprecated" not in data_file:
             with open(data_file, "r") as f:
                 try:
                     data = json.load(f)
@@ -461,7 +467,7 @@ def benchmark_tests_list():
     )
     # Use it as the base for the glob pattern, excluding 'deprecated' directory
     for data_file in glob.glob(glob_path, recursive=True):
-        if 'deprecated' not in data_file:
+        if "deprecated" not in data_file:
             with open(data_file, "r") as f:
                 try:
                     data = json.load(f)
@@ -597,6 +603,7 @@ def benchmark_tests_details(test_name):
             except IOError:
                 print(f"IOError: file could not be read: {data_file}")
                 continue
+
 
 @cli.group()
 def arena():
@@ -760,7 +767,7 @@ def enter(agent_name, branch):
 
         # Create a PR into the parent repository
         g = Github(github_access_token)
-        repo_name = github_repo_url.replace("https://github.com/", '')
+        repo_name = github_repo_url.replace("https://github.com/", "")
         repo = g.get_repo(repo_name)
         parent_repo = repo.parent
         if parent_repo:
@@ -838,8 +845,8 @@ Hey there amazing builders! We're thrilled to have you join this exciting journe
 def update(agent_name, hash, branch):
     import json
     import os
-    from datetime import datetime
     import subprocess
+    from datetime import datetime
 
     # Check if the agent_name.json file exists in the arena directory
     agent_json_file = f"./arena/{agent_name}.json"
@@ -898,16 +905,28 @@ def update(agent_name, hash, branch):
         )
 
 
-def wait_until_conn_ready(port: int = 8000):
-    """Polls localhost:{port} until it is available for connections"""
-    import time
-    import socket
+def wait_until_conn_ready(port: int = 8000, timeout: int = 30):
+    """
+    Polls localhost:{port} until it is available for connections
 
+    Params:
+        port: The port for which to wait until it opens
+        timeout: Timeout in seconds; maximum amount of time to wait
+
+    Raises:
+        TimeoutError: If the timeout (seconds) expires before the port opens
+    """
+    import socket
+    import time
+
+    start = time.time()
     while True:
         time.sleep(0.5)
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            if s.connect_ex(('localhost', port)) == 0:
+            if s.connect_ex(("localhost", port)) == 0:
                 break
+        if time.time() > start + timeout:
+            raise TimeoutError(f"Port {port} did not open within {timeout} seconds")
 
 
 if __name__ == "__main__":

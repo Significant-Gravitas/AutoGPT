@@ -1617,6 +1617,16 @@ files = [
 ]
 
 [[package]]
+name = "demjson3"
+version = "3.0.6"
+description = "encoder, decoder, and lint/validator for JSON (JavaScript Object Notation) compliant with RFC 7159"
+optional = false
+python-versions = "*"
+files = [
+    {file = "demjson3-3.0.6.tar.gz", hash = "sha256:37c83b0c6eb08d25defc88df0a2a4875d58a7809a9650bd6eee7afd8053cdbac"},
+]
+
+[[package]]
 name = "deprecated"
 version = "1.2.14"
 description = "Python @deprecated decorator to deprecate old python classes, functions or methods."
@@ -7248,4 +7258,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "a09e20daaf94e05457ded6a9989585cd37edf96a036c5f9e505f0b2456403a25"
+content-hash = "9e28a0449253ec931297aa655fcd09da5e9f5d57bd73863419ce4f477018ef8a"
