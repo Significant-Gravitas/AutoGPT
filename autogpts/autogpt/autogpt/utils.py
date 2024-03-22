@@ -7,7 +7,7 @@ from colorama import Fore
 def validate_yaml_file(file: str | Path):
     try:
         with open(file, encoding="utf-8") as fp:
-            yaml.load(fp.read(), Loader=yaml.FullLoader)
+            yaml.load(fp.read(), Loader=yaml.SafeLoader)
     except FileNotFoundError:
         return (False, f"The file {Fore.CYAN}`{file}`{Fore.RESET} wasn't found")
     except yaml.YAMLError as e:
