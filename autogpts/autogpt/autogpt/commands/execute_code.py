@@ -274,8 +274,12 @@ def validate_command(command_line: str, config: Config) -> tuple[bool, bool]:
     if not command_line:
         return False, False
 
-    wildcard_shell_denylist = [x for x in config.shell_denylist if any(c in x for c in "*[]?")]
-    wildcard_shell_allowlist = [x for x in config.shell_allowlist if any(c in x for c in "*[]?")]
+    wildcard_shell_denylist = [
+        cmd for cmd in config.shell_denylist if any(c in cmd for c in "*[]?")
+    ]
+    wildcard_shell_allowlist = [
+        cmd for cmd in config.shell_allowlist if any(c in cmd for c in "*[]?")
+    ]
 
     command_name = command.split()[0]
 
