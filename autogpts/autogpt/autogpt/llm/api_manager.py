@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from openai import AzureOpenAI, OpenAI
+from openai import APIError, AzureOpenAI, OpenAI
 from openai.types import Model
 
 from autogpt.core.resource.model_providers.openai import (
@@ -106,7 +106,10 @@ class ApiManager(metaclass=Singleton):
         Returns:
             list[Model]: List of available GPT models.
         """
-        if self.models is None:
+        if self.models is not None:
+            return self.models
+
+        try:
             if openai_credentials.api_type == "azure":
                 all_models = (
                     AzureOpenAI(**openai_credentials.get_api_access_kwargs())
@@ -120,5 +123,8 @@ class ApiManager(metaclass=Singleton):
                     .data
                 )
             self.models = [model for model in all_models if "gpt" in model.id]
+        except APIError as e:
+            logger.error(e.message)
+            exit(1)
 
         return self.models

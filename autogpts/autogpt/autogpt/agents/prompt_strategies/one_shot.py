@@ -26,7 +26,7 @@ from autogpt.core.resource.model_providers.schema import (
     CompletionModelFunction,
 )
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.json_utils.utilities import extract_dict_from_response
+from autogpt.core.utils.json_utils import extract_dict_from_json, json_loads
 from autogpt.prompts.utils import format_numbered_list, indent
 
 
@@ -386,7 +386,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 else f" '{response.content}'"
             )
         )
-        assistant_reply_dict = extract_dict_from_response(response.content)
+        assistant_reply_dict = extract_dict_from_json(response.content)
         self.logger.debug(
             "Validating object extracted from LLM response:\n"
             f"{json.dumps(assistant_reply_dict, indent=4)}"
@@ -439,7 +439,7 @@ def extract_command(
             raise InvalidAgentResponseError("No 'tool_calls' in assistant reply")
         assistant_reply_json["command"] = {
             "name": assistant_reply.tool_calls[0].function.name,
-            "args": json.loads(assistant_reply.tool_calls[0].function.arguments),
+            "args": json_loads(assistant_reply.tool_calls[0].function.arguments),
         }
     try:
         if not isinstance(assistant_reply_json, dict):

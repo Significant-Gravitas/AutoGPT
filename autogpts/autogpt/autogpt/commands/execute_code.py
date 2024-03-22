@@ -44,14 +44,15 @@ def we_are_running_in_a_docker_container() -> bool:
 
 
 def is_docker_available() -> bool:
-    """Check if Docker is available
+    """Check if Docker is available and supports Linux containers
 
     Returns:
-        bool: True if Docker is available, False otherwise"""
+        bool: True if Docker is available and supports Linux containers, False otherwise
+    """
     try:
         client = docker.from_env()
-        client.ping()
-        return True
+        docker_info = client.info()
+        return docker_info["OSType"] == "linux"
     except Exception:
         return False
 
