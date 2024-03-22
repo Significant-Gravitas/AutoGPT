@@ -280,14 +280,12 @@ def validate_command(command_line: str, config: Config) -> tuple[bool, bool]:
     command_name = command.split()[0]
 
     if config.shell_command_control == ALLOWLIST_CONTROL:
-        if any(wildcard_shell_allowlist):
-            if any(fnmatch(command_name, pattern) for pattern in wildcard_shell_allowlist):
-                return True, False
+        if any(fnmatch(command_name, pattern) for pattern in wildcard_shell_allowlist):
+            return True, False
         return command_name in config.shell_allowlist, False
     elif config.shell_command_control == DENYLIST_CONTROL:
-        if any(wildcard_shell_denylist):
-            if any(fnmatch(command_name, pattern) for pattern in wildcard_shell_denylist):
-                return False, False
+        if any(fnmatch(command_name, pattern) for pattern in wildcard_shell_denylist):
+            return False, False
         return command_name not in config.shell_denylist, False
     else:
         return True, True
