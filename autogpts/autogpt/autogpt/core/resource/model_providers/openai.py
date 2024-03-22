@@ -38,6 +38,7 @@ from autogpt.core.resource.model_providers.schema import (
     ModelTokenizer,
 )
 from autogpt.core.utils.json_schema import JSONSchema
+from autogpt.core.utils.json_utils import json_loads
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
@@ -758,19 +759,18 @@ def _functions_compat_fix_kwargs(
 
 
 def _tool_calls_compat_extract_calls(response: str) -> Iterator[AssistantToolCall]:
-    import json
     import re
     import uuid
 
     logging.debug(f"Trying to extract tool calls from response:\n{response}")
 
     if response[0] == "[":
-        tool_calls: list[AssistantToolCallDict] = json.loads(response)
+        tool_calls: list[AssistantToolCallDict] = json_loads(response)
     else:
         block = re.search(r"```(?:tool_calls)?\n(.*)\n```\s*$", response, re.DOTALL)
         if not block:
             raise ValueError("Could not find tool_calls block in response")
-        tool_calls: list[AssistantToolCallDict] = json.loads(block.group(1))
+        tool_calls: list[AssistantToolCallDict] = json_loads(block.group(1))
 
     for t in tool_calls:
         t["id"] = str(uuid.uuid4())
