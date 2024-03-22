@@ -83,8 +83,8 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10"]
-        platform-os: [ubuntu, macos, windows]
-    runs-on: ${{ matrix.platform-os }}-latest
+        platform-os: [ubuntu, macos, macos-arm64, windows]
+    runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
 
     steps:
       # Quite slow on macOS (2~4 minutes to set up Docker)
@@ -165,9 +165,11 @@ jobs:
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
       - name: Set up Python dependency cache
+        # On Windows, unpacking cached dependencies takes longer than just installing them
+        if: runner.os != 'Windows'
         uses: actions/cache@v4
         with:
-          path: ${{ runner.os == 'Windows' && 'C:\Users\runneradmin\AppData\Local\pypoetry\Cache' || '~/.cache/pypoetry' }}
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
           key: poetry-${{ runner.os }}-${{ hashFiles('autogpts/autogpt/poetry.lock') }}
 
       - name: Install Poetry (Unix)
