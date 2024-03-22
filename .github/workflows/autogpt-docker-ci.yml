@@ -105,7 +105,8 @@ jobs:
         with:
           submodules: true
 
-      - name: Log in to Docker hub
+      - if: github.event_name == 'push'
+        name: Log in to Docker hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USER }}
