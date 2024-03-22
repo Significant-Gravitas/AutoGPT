@@ -10,7 +10,6 @@ from openai._utils import is_given
 from pytest_mock import MockerFixture
 
 from .vcr_filter import (
-    PROXY,
     before_record_request,
     before_record_response,
     freeze_request_body,
@@ -20,15 +19,6 @@ DEFAULT_RECORD_MODE = "new_episodes"
 BASE_VCR_CONFIG = {
     "before_record_request": before_record_request,
     "before_record_response": before_record_response,
-    "filter_headers": [
-        "Authorization",
-        "AGENT-MODE",
-        "AGENT-TYPE",
-        "Cookie",
-        "OpenAI-Organization",
-        "X-OpenAI-Client-User-Agent",
-        "User-Agent",
-    ],
     "match_on": ["method", "headers"],
 }
 
@@ -69,10 +59,6 @@ def cached_openai_client(mocker: MockerFixture) -> OpenAI:
         options.headers = headers
         data: dict = options.json_data
 
-        if PROXY:
-            headers["AGENT-MODE"] = os.environ.get("AGENT_MODE", Omit())
-            headers["AGENT-TYPE"] = os.environ.get("AGENT_TYPE", Omit())
-
         logging.getLogger("cached_openai_client").debug(
             f"Outgoing API request: {headers}\n{data if data else None}"
         )
@@ -82,8 +68,6 @@ def cached_openai_client(mocker: MockerFixture) -> OpenAI:
             freeze_request_body(data), usedforsecurity=False
         ).hexdigest()
 
-    if PROXY:
-        client.base_url = f"{PROXY}/v1"
     mocker.patch.object(
         client,
         "_prepare_options",
