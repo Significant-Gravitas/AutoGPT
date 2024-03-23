@@ -1,27 +1,34 @@
-import os
-import sys
+import logging
 import time
-from typing import Any, Dict, Optional
+from pathlib import Path
+from typing import AsyncIterator, Optional
 
-from agent_protocol_client import AgentApi, ApiClient, Configuration, TaskRequestBody
+from agent_protocol_client import (
+    AgentApi,
+    ApiClient,
+    Configuration,
+    Step,
+    TaskRequestBody,
+)
 
 from agbenchmark.agent_interface import get_list_of_file_paths
-from agbenchmark.utils.data_types import ChallengeData
+from agbenchmark.config import AgentBenchmarkConfig
+
+logger = logging.getLogger(__name__)
 
 
 async def run_api_agent(
-    task: ChallengeData, config: Dict[str, Any], artifacts_location: str, timeout: int
-) -> None:
-    host_value = None
-
-    for arg in sys.argv:
-        if arg.startswith("--host="):
-            _, host_value = arg.split("=")
-            break
-    configuration = Configuration(host=host_value)
+    task: str,
+    config: AgentBenchmarkConfig,
+    timeout: int,
+    artifacts_location: Optional[Path] = None,
+    *,
+    mock: bool = False,
+) -> AsyncIterator[Step]:
+    configuration = Configuration(host=config.host)
     async with ApiClient(configuration) as api_client:
         api_instance = AgentApi(api_client)
-        task_request_body = TaskRequestBody(input=task.task)
+        task_request_body = TaskRequestBody(input=task)
 
         start_time = time.time()
         response = await api_instance.create_agent_task(
@@ -29,52 +36,76 @@ async def run_api_agent(
         )
         task_id = response.task_id
 
-        await upload_artifacts(
-            api_instance, artifacts_location, task_id, "artifacts_in"
-        )
+        if artifacts_location:
+            logger.debug("Uploading task input artifacts to agent...")
+            await upload_artifacts(
+                api_instance, artifacts_location, task_id, "artifacts_in"
+            )
 
-        i = 1
-        steps_remaining = True
-        while steps_remaining:
+        logger.debug("Running agent until finished or timeout...")
+        while True:
             step = await api_instance.execute_agent_task_step(task_id=task_id)
-            print(f"[{task.name}] - step {step.name} ({i}. request)")
-            i += 1
+            yield step
 
             if time.time() - start_time > timeout:
                 raise TimeoutError("Time limit exceeded")
+            if step and mock:
+                step.is_last = True
             if not step or step.is_last:
-                steps_remaining = False
-        if "--mock" in sys.argv:
-            await upload_artifacts(
-                api_instance, artifacts_location, task_id, "artifacts_out"
-            )
+                break
 
-        artifacts = await api_instance.list_agent_task_artifacts(task_id=task_id)
-        for artifact in artifacts:
-
-            if artifact.relative_path:
-                folder_path = os.path.join(config["workspace"], artifact.relative_path)
-            else:
-                folder_path = os.path.join(config["workspace"])
-
-            with open(os.path.join(folder_path, artifact.file_name), "wb") as f:
-                content = await api_instance.download_agent_task_artifact(
-                    task_id=task_id, artifact_id=artifact.artifact_id
+        if artifacts_location:
+            # In "mock" mode, we cheat by giving the correct artifacts to pass the test
+            if mock:
+                logger.debug("Uploading mock artifacts to agent...")
+                await upload_artifacts(
+                    api_instance, artifacts_location, task_id, "artifacts_out"
                 )
 
-                f.write(content)
+            logger.debug("Downloading agent artifacts...")
+            await download_agent_artifacts_into_folder(
+                api_instance, task_id, config.temp_folder
+            )
+
+
+async def download_agent_artifacts_into_folder(
+    api_instance: AgentApi, task_id: str, folder: Path
+):
+    artifacts = await api_instance.list_agent_task_artifacts(task_id=task_id)
+
+    for artifact in artifacts.artifacts:
+        # current absolute path of the directory of the file
+        if artifact.relative_path:
+            path: str = (
+                artifact.relative_path
+                if not artifact.relative_path.startswith("/")
+                else artifact.relative_path[1:]
+            )
+            folder = (folder / path).parent
+
+        if not folder.exists():
+            folder.mkdir(parents=True)
+
+        file_path = folder / artifact.file_name
+        logger.debug(f"Downloading agent artifact {artifact.file_name} to {folder}")
+        with open(file_path, "wb") as f:
+            content = await api_instance.download_agent_task_artifact(
+                task_id=task_id, artifact_id=artifact.artifact_id
+            )
+
+            f.write(content)
 
 
 async def upload_artifacts(
-    api_instance: ApiClient, artifacts_location: str, task_id: str, type: str
+    api_instance: AgentApi, artifacts_location: Path, task_id: str, type: str
 ) -> None:
     for file_path in get_list_of_file_paths(artifacts_location, type):
         relative_path: Optional[str] = "/".join(
-            file_path.split(f"{type}/", 1)[-1].split("/")[:-1]
+            str(file_path).split(f"{type}/", 1)[-1].split("/")[:-1]
         )
         if not relative_path:
             relative_path = None
 
         await api_instance.upload_agent_task_artifacts(
-            task_id=task_id, file=file_path, relative_path=relative_path
+            task_id=task_id, file=str(file_path), relative_path=relative_path
         )

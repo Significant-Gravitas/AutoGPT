@@ -1,7 +1,6 @@
 import pytest
-from pydantic import ValidationError
-
 from abstract_class import ShipPlacement, Turn
+from pydantic import ValidationError
 
 
 def test_ship_placement_out_of_bounds(battleship_game):
@@ -51,9 +50,7 @@ def test_cant_hit_before_ships_placed(battleship_game):
 
 
 def test_cant_place_ship_after_all_ships_placed(battleship_game, initialized_game_id):
-    game = battleship_game.get_game(
-        initialized_game_id
-    )
+    game = battleship_game.get_game(initialized_game_id)
     additional_ship = ShipPlacement(
         ship_type="carrier", start={"row": 2, "column": "E"}, direction="horizontal"
     )

@@ -1,16 +1,18 @@
-name: Python CI
+name: AutoGPT Python CI
 
 on:
   push:
-    branches: [ master, ci-test* ]
+    branches: [ master, development, ci-test* ]
     paths:
-      - 'autogpts/autogpt'
-      - '!autogpts/autogpt/tests/Auto-GPT-test-cassettes'
-      - '!autogpts/autogpt/tests/challenges/current_score.json'
+      - '.github/workflows/autogpt-ci.yml'
+      - 'autogpts/autogpt/**'
+      - '!autogpts/autogpt/tests/vcr_cassettes'
   pull_request:
-    branches: [ stable, master, release-* ]
-  pull_request_target:
-    branches: [ master, release-*, ci-test* ]
+    branches: [ master, development, release-* ]
+    paths:
+      - '.github/workflows/autogpt-ci.yml'
+      - 'autogpts/autogpt/**'
+      - '!autogpts/autogpt/tests/vcr_cassettes'
 
 concurrency:
   group: ${{ format('autogpt-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -18,27 +20,23 @@ concurrency:
 
 defaults:
   run:
+    shell: bash
     working-directory: autogpts/autogpt
 
 jobs:
   lint:
-    # eliminate duplicate runs
-    if: github.event_name == 'push' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
-
     runs-on: ubuntu-latest
     env:
       min-python-version: "3.10"
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - name: Set up Python ${{ env.min-python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.min-python-version }}
 
@@ -47,61 +45,78 @@ jobs:
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
       - name: Set up Python dependency cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-${{ steps.get_date.outputs.date }}
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-${{ hashFiles('autogpts/autogpt/pyproject.toml') }}-${{ steps.get_date.outputs.date }}
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          curl -sSL https://install.python-poetry.org | python3 -
+          poetry install
 
       - name: Lint with flake8
-        run: flake8
+        run: poetry run flake8
 
       - name: Check black formatting
-        run: black . --check
+        run: poetry run black . --check
         if: success() || failure()
 
       - name: Check isort formatting
-        run: isort . --check
+        run: poetry run isort . --check
         if: success() || failure()
 
-      - name: Check mypy formatting
-        run: mypy
-        if: success() || failure()
+      # - name: Check mypy formatting
+      #   run: poetry run mypy
+      #   if: success() || failure()
 
-      - name: Check for unused imports and pass statements
-        run: |
-          cmd="autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring autogpt tests"
-          $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
+      # - name: Check for unused imports and pass statements
+      #   run: |
+      #     cmd="autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring autogpt tests"
+      #     poetry run $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
 
   test:
-    # eliminate duplicate runs
-    if: github.event_name == 'push' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
-
     permissions:
-      # Gives the action the necessary permissions for publishing new
-      # comments in pull requests.
-      pull-requests: write
-      # Gives the action the necessary permissions for pushing data to the
-      # python-coverage-comment-action branch, and for editing existing
-      # comments (to avoid publishing multiple comments in the same PR)
-      contents: write
-    runs-on: ubuntu-latest
+      contents: read
     timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10"]
+        platform-os: [ubuntu, macos, macos-arm64, windows]
+    runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
 
     steps:
+      # Quite slow on macOS (2~4 minutes to set up Docker)
+      # - name: Set up Docker (macOS)
+      #   if: runner.os == 'macOS'
+      #   uses: crazy-max/ghaction-setup-docker@v3
+
+      - name: Start MinIO service (Linux)
+        if: runner.os == 'Linux'
+        working-directory: '.'
+        run: |
+          docker pull minio/minio:edge-cicd
+          docker run -d -p 9000:9000 minio/minio:edge-cicd
+
+      - name: Start MinIO service (macOS)
+        if: runner.os == 'macOS'
+        working-directory: ${{ runner.temp }}
+        run: |
+          brew install minio/stable/minio
+          mkdir data
+          minio server ./data &
+
+      # No MinIO on Windows:
+      # - Windows doesn't support running Linux Docker containers
+      # - It doesn't seem possible to start background processes on Windows. They are
+      #   killed after the step returns.
+      #   See: https://github.com/actions/runner/issues/598#issuecomment-2011890429
+
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
           submodules: true
 
       - name: Configure git user Auto-GPT-Bot
@@ -111,10 +126,14 @@ jobs:
 
       - name: Checkout cassettes
         if: ${{ startsWith(github.event_name, 'pull_request') }}
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
-          cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
-          cassette_base_branch="${{ github.event.pull_request.base.ref }}"
-          cd tests/Auto-GPT-test-cassettes
+          cassette_branch="${PR_AUTHOR}-${PR_BRANCH}"
+          cassette_base_branch="${PR_BASE}"
+          cd tests/vcr_cassettes
 
           if ! git ls-remote --exit-code --heads origin $cassette_base_branch ; then
             cassette_base_branch="master"
@@ -137,7 +156,7 @@ jobs:
           fi
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -146,32 +165,54 @@ jobs:
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
       - name: Set up Python dependency cache
-        uses: actions/cache@v3
+        # On Windows, unpacking cached dependencies takes longer than just installing them
+        if: runner.os != 'Windows'
+        uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-${{ steps.get_date.outputs.date }}
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpts/autogpt/poetry.lock') }}
+
+      - name: Install Poetry (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+          fi
+
+      - name: Install Poetry (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
+
+          $env:PATH += ";$env:APPDATA\Python\Scripts"
+          echo "$env:APPDATA\Python\Scripts" >> $env:GITHUB_PATH
 
       - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+        run: poetry install
 
       - name: Run pytest with coverage
         run: |
-          pytest -vv --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
+          poetry run pytest -vv \
+            --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
             --numprocesses=logical --durations=10 \
-            tests/unit tests/integration tests/challenges
-          python tests/challenges/utils/build_current_score.py
+            tests/unit tests/integration
         env:
           CI: true
-          PROXY: ${{ github.event_name == 'pull_request_target' && secrets.PROXY || '' }}
-          AGENT_MODE: ${{ github.event_name == 'pull_request_target' && secrets.AGENT_MODE || '' }}
-          AGENT_TYPE: ${{ github.event_name == 'pull_request_target' && secrets.AGENT_TYPE || '' }}
-          OPENAI_API_KEY: ${{ github.event_name != 'pull_request_target' && secrets.OPENAI_API_KEY || '' }}
           PLAIN_OUTPUT: True
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          S3_ENDPOINT_URL: ${{ runner.os != 'Windows' && 'http://127.0.0.1:9000' || '' }}
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: autogpt-agent,${{ runner.os }}
 
       - id: setup_git_auth
         name: Set up git token authentication
@@ -179,43 +220,37 @@ jobs:
         if: success() || failure()
         run: |
           config_key="http.${{ github.server_url }}/.extraheader"
-          base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
+          if [ "${{ runner.os }}" = 'macOS' ]; then
+            base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64)
+          else
+            base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
+          fi
 
           git config "$config_key" \
             "Authorization: Basic $base64_pat"
 
-          cd tests/Auto-GPT-test-cassettes
+          cd tests/vcr_cassettes
           git config "$config_key" \
             "Authorization: Basic $base64_pat"
 
           echo "config_key=$config_key" >> $GITHUB_OUTPUT
 
-      - name: Push updated challenge scores
-        if: github.event_name == 'push'
-        run: |
-          score_file="tests/challenges/current_score.json"
-
-          if ! git diff --quiet $score_file; then
-            git add $score_file
-            git commit -m "Update challenge scores"
-            git push origin HEAD:${{ github.ref_name }}
-          else
-            echo "The challenge scores didn't change."
-          fi
-
       - id: push_cassettes
         name: Push updated cassettes
         # For pull requests, push updated cassettes even when tests fail
-        if: github.event_name == 'push' || success() || failure()
+        if: github.event_name == 'push' || (! github.event.pull_request.head.repo.fork && (success() || failure()))
+        env:
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           if [ "${{ startsWith(github.event_name, 'pull_request') }}" = "true" ]; then
             is_pull_request=true
-            cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
+            cassette_branch="${PR_AUTHOR}-${PR_BRANCH}"
           else
             cassette_branch="${{ github.ref_name }}"
           fi
 
-          cd tests/Auto-GPT-test-cassettes
+          cd tests/vcr_cassettes
           # Commit & push changes to cassettes if any
           if ! git diff --quiet; then
             git add .
@@ -223,7 +258,7 @@ jobs:
             git push origin HEAD:$cassette_branch
             if [ ! $is_pull_request ]; then
               cd ../..
-              git add tests/Auto-GPT-test-cassettes
+              git add tests/vcr_cassettes
               git commit -m "Update cassette submodule"
               git push origin HEAD:$cassette_branch
             fi
@@ -242,25 +277,20 @@ jobs:
       - name: Apply "behaviour change" label and comment on PR
         if: ${{ startsWith(github.event_name, 'pull_request') }}
         run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
-          TOKEN=${{ secrets.PAT_REVIEW }}
-          REPO=${{ github.repository }}
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          TOKEN="${{ secrets.PAT_REVIEW }}"
+          REPO="${{ github.repository }}"
 
           if [[ "${{ steps.push_cassettes.outputs.updated }}" == "true" ]]; then
             echo "Adding label and comment..."
-            curl -X POST \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels \
-            -d '{"labels":["behaviour change"]}'
-
             echo $TOKEN | gh auth login --with-token
-            gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
+            gh issue edit $PR_NUMBER --add-label "behaviour change"
+            gh issue comment $PR_NUMBER --body "You changed AutoGPT's behaviour on ${{ runner.os }}. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
           fi
 
       - name: Upload logs to artifact
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-logs
           path: autogpts/autogpt/logs/

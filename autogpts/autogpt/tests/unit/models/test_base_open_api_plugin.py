@@ -73,7 +73,7 @@ def test_dummy_plugin_default_methods(dummy_plugin):
     assert isinstance(pre_command, tuple)
     assert len(pre_command) == 2
     assert pre_command[0] == "evolve"
-    assert pre_command[1]["continuously"] == True
+    assert pre_command[1]["continuously"] is True
     post_command = dummy_plugin.post_command("evolve", "upgraded successfully!")
     assert isinstance(post_command, str)
     assert post_command == "upgraded successfully!"
