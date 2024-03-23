@@ -126,9 +126,7 @@ class LocalFileStorage(FileStorage):
             for file in source.rglob("*"):
                 if file.is_file():
                     target = destination / file.relative_to(source)
-                    target.parent.mkdir(
-                        exist_ok=True, parents=True
-                    )
+                    target.parent.mkdir(exist_ok=True, parents=True)
                     target.write_bytes(file.read_bytes())
 
     def clone_with_subroot(self, subroot: str | Path) -> FileStorage:
