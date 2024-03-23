@@ -7,7 +7,8 @@ from autogpt.core.configuration import Configurable, SystemConfiguration, System
 from autogpt.core.memory.base import Memory
 from autogpt.core.plugin.simple import SimplePluginService
 from autogpt.core.resource.model_providers import (
-    LanguageModelProvider,
+    ChatModelProvider,
+    CompletionModelFunction,
     ModelProviderName,
 )
 from autogpt.core.workspace.base import Workspace
@@ -41,14 +42,14 @@ class SimpleAbilityRegistry(AbilityRegistry, Configurable):
         logger: logging.Logger,
         memory: Memory,
         workspace: Workspace,
-        model_providers: dict[ModelProviderName, LanguageModelProvider],
+        model_providers: dict[ModelProviderName, ChatModelProvider],
     ):
         self._configuration = settings.configuration
         self._logger = logger
         self._memory = memory
         self._workspace = workspace
         self._model_providers = model_providers
-        self._abilities = []
+        self._abilities: list[Ability] = []
         for (
             ability_name,
             ability_configuration,
@@ -79,11 +80,11 @@ class SimpleAbilityRegistry(AbilityRegistry, Configurable):
 
     def list_abilities(self) -> list[str]:
         return [
-            f"{ability.name()}: {ability.description()}" for ability in self._abilities
+            f"{ability.name()}: {ability.description}" for ability in self._abilities
         ]
 
-    def dump_abilities(self) -> list[dict]:
-        return [ability.dump() for ability in self._abilities]
+    def dump_abilities(self) -> list[CompletionModelFunction]:
+        return [ability.spec for ability in self._abilities]
 
     def get_ability(self, ability_name: str) -> Ability:
         for ability in self._abilities:

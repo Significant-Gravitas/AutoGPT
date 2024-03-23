@@ -2,33 +2,35 @@
 
 from __future__ import annotations
 
-from enum import Enum
-
-COMMAND_CATEGORY = "file_operations"
-COMMAND_CATEGORY_TITLE = "File Operations"
-
-import contextlib
 import hashlib
 import logging
 import os
 import os.path
+from enum import Enum
 from pathlib import Path
-from typing import Iterator, Literal, Optional
+from typing import Callable, Iterator, Literal
 
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import (
     CommandExecutionError,
     DuplicateOperationError,
-    InvalidArgumentError
+    InvalidArgumentError,
 )
 from autogpt.command_decorator import command
-from autogpt.memory.vector import MemoryItem, VectorMemory
+from autogpt.core.utils.json_schema import JSONSchema
+from autogpt.memory.vector import MemoryItemFactory, VectorMemory
 
 from .decorators import sanitize_path_arg
+from .file_operations_utils import decode_textual_file
+
+COMMAND_CATEGORY = "file_operations"
+COMMAND_CATEGORY_TITLE = "File Operations"
+
+
 from .file_context import open_file, open_folder  # NOQA
-from .file_operations_utils import read_textual_file
 
 logger = logging.getLogger(__name__)
+
 
 class Operations(Enum):
     WRITE = "write"
@@ -42,15 +44,19 @@ def text_checksum(text: str) -> str:
 
 
 def operations_from_log(
-    log_path: str | Path,
-) -> Iterator[tuple[Operations, str, str] | tuple[Literal[Operations.DELETE], str, None]]:
-    """Parse the file operations log and return a tuple containing the log entries"""
-    try:
-        log = open(log_path, "r", encoding="utf-8")
-    except FileNotFoundError:
-        return
+    logs: list[str],
+) -> Iterator[
+    tuple[Operations, str, str] | tuple[Literal[Operations.DELETE], str, None]
+]:
+    """
+    Parse logs and return a tuple containing the log entries
 
-    for line in log:
+    Yields:
+        Operations: The operation recorded in the log entry
+        str: The file path affected
+        str | None: The checksum of the file if written, None if deleted
+    """
+    for line in logs:
         line = line.replace("File Operation Logger", "").strip()
         if not line:
             continue
@@ -66,25 +72,22 @@ def operations_from_log(
         elif operation == Operations.DELETE:
             yield (Operations.DELETE, tail.strip(), None)
 
-    log.close()
 
+def file_operations_state(logs: list[str]) -> dict[str, str]:
+    """Iterates over the operations and returns the expected state.
 
-def file_operations_state(log_path: str | Path) -> dict[str, Optional[str]]:
-    """Iterates over the operations log and returns the expected state.
-
-    Parses a log file at config.file_logger_path to construct a dictionary that maps
-    each file path written or appended to its checksum. Deleted files are removed
-    from the dictionary.
+    Constructs a dictionary that maps each written or appended file to its checksum.
+    Deleted files are removed from the dictionary.
 
     Returns:
         A dictionary mapping file paths to their checksums.
 
     Raises:
-        FileNotFoundError: If config.file_logger_path is not found.
+        FileNotFoundError: If file_manager.file_ops_log_path is not found.
         ValueError: If the log file content is not in the expected format.
     """
     state = {}
-    for operation, path, checksum in operations_from_log(log_path):
+    for operation, path, checksum in operations_from_log(logs):
         if operation in (Operations.WRITE, Operations.APPEND):
             state[path] = checksum
         elif operation == Operations.DELETE:
@@ -92,7 +95,7 @@ def file_operations_state(log_path: str | Path) -> dict[str, Optional[str]]:
     return state
 
 
-@sanitize_path_arg("file_path")
+@sanitize_path_arg("file_path", make_relative=True)
 def is_duplicate_operation(
     operation: Operations, file_path: Path, agent: Agent, checksum: str | None = None
 ) -> bool:
@@ -107,55 +110,50 @@ def is_duplicate_operation(
     Returns:
         True if the operation has already been performed on the file
     """
-    # Make the file path into a relative path if possible
-    with contextlib.suppress(ValueError):
-        file_path = file_path.relative_to(agent.workspace.root)
-
-    state = file_operations_state(agent.config.file_logger_path)
-    if operation == Operations.DELETE and str(file_path) not in state:
+    state = file_operations_state(agent.get_file_operation_lines())
+    if operation == Operations.DELETE and file_path.as_posix() not in state:
         return True
-    if operation == Operations.WRITE and state.get(str(file_path)) == checksum:
+    if operation == Operations.WRITE and state.get(file_path.as_posix()) == checksum:
         return True
     return False
 
 
-@sanitize_path_arg("file_path")
-def log_operation(
-    operation: Operations, file_path: Path, agent: Agent, checksum: str | None = None
+@sanitize_path_arg("file_path", make_relative=True)
+async def log_operation(
+    operation: Operations,
+    file_path: str | Path,
+    agent: Agent,
+    checksum: str | None = None,
 ) -> None:
-    """Log the file operation to the file_logger.txt
+    """Log the file operation to the file_logger.log
 
     Args:
         operation: The operation to log
         file_path: The name of the file the operation was performed on
         checksum: The checksum of the contents to be written
     """
-    # Make the file path into a relative path if possible
-    with contextlib.suppress(ValueError):
-        file_path = file_path.relative_to(agent.workspace.root)
-
-    log_entry = f"{operation.value}: {file_path}"
+    log_entry = (
+        f"{operation.value}: "
+        f"{file_path.as_posix() if isinstance(file_path, Path) else file_path}"
+    )
     if checksum is not None:
         log_entry += f" #{checksum}"
     logger.debug(f"Logging file operation: {log_entry}")
-    append_to_file(
-        agent.config.file_logger_path, f"{log_entry}\n", agent, should_log=False
-    )
+    await agent.log_file_operation(log_entry)
 
 
 @command(
     "read_file",
     "Read an existing file",
     {
-        "filename": {
-            "type": "string",
-            "description": "The path of the file to read",
-            "required": True,
-        }
+        "filename": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The path of the file to read",
+            required=True,
+        )
     },
 )
-@sanitize_path_arg("filename")
-def read_file(filename: Path, agent: Agent) -> str:
+def read_file(filename: str | Path, agent: Agent) -> str:
     """Read a file and return the contents
 
     Args:
@@ -164,7 +162,8 @@ def read_file(filename: Path, agent: Agent) -> str:
     Returns:
         str: The contents of the file
     """
-    content = read_textual_file(filename, logger)
+    file = agent.workspace.open_file(filename, binary=True)
+    content = decode_textual_file(file, os.path.splitext(filename)[1], logger)
 
     # # TODO: invalidate/update memory when file is edited
     # file_memory = MemoryItem.from_text_file(content, str(filename), agent.config)
@@ -191,39 +190,41 @@ def ingest_file(
         content = read_file(filename)
 
         # TODO: differentiate between different types of files
-        file_memory = MemoryItem.from_text_file(content, filename)
+        file_memory = MemoryItemFactory.from_text_file(content, filename)
         logger.debug(f"Created memory: {file_memory.dump(True)}")
         memory.add(file_memory)
 
         logger.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
     except Exception as err:
-        logger.warn(f"Error while ingesting file '{filename}': {err}")
+        logger.warning(f"Error while ingesting file '{filename}': {err}")
 
 
 @command(
     "write_file",
     "Write a file, creating it if necessary.",
     {
-        "filename": {
-            "type": "string",
-            "description": "The name of the file to write to",
-            "required": True,
-        },
-        "contents": {
-            "type": "string",
-            "description": "The contents to write to the file",
-            "required": True,
-        },
-        "if_exists": {
-            "type": "string",
-            "description": "One of 'overwrite', 'prepend', 'append', 'skip' or 'fail'",
-            "required": True,
-        },
+        "filename": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The name of the file to write to",
+            required=True,
+        ),
+        "contents": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The contents to write to the file",
+            required=True,
+        ),
+        "if_exists": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="What to do if the file already exists",
+            enum=["overwrite", "prepend", "append", "skip", "fail"],
+            required=True,
+        ),
     },
-    aliases=["write_file", "create_file"],
+    aliases=["create_file"],
 )
-@sanitize_path_arg("filename")
-def write_to_file(filename: Path, contents: str, if_exists: str, agent: Agent) -> str:
+async def write_to_file(
+    filename: str | Path, contents: str, if_exists: str, agent: Agent
+) -> str:
     """Write contents to a file
 
     Args:
@@ -234,32 +235,35 @@ def write_to_file(filename: Path, contents: str, if_exists: str, agent: Agent) -
     Returns:
         str: A message indicating success or failure
     """
-    ACTIONS = {
-        "overwrite": (lambda p, _txt: p.write_text(_txt, encoding="utf-8")),
-        "prepend": lambda p, _txt: p.write_text(_txt + p.read_text(encoding="utf-8")),
-        "append": lambda p, _txt: open(p, "a", encoding="utf-8").write(_txt),
+    ACTIONS: dict[str, Callable[[str | Path, str], str | None | Exception]] = {
+        "overwrite": lambda p, _txt: await agent.workspace.write_file(p, _txt),
+        "prepend": lambda p, _txt: (
+            await agent.workspace.write_file(p, _txt + agent.workspace.read_file(p))
+        ),
+        "append": lambda p, _txt: (
+            await agent.workspace.write_file(p, agent.workspace.read_file(p) + _txt)
+        ),
         "skip": (
             lambda p, _txt: "File exists, skipping."
-            if p.exists()
-            else p.write_text(_txt, encoding="utf-8")
+            if agent.workspace.exists(p)
+            else await agent.workspace.write_file(p, _txt)
         ),
         "fail": (
             lambda p, _txt: CommandExecutionError("File exists")
-            if p.exists()
-            else p.write_text(_txt, encoding="utf-8")
+            if agent.workspace.exists(p)
+            else await agent.workspace.write_file(p, _txt)
         ),
     }
 
     checksum = text_checksum(contents)
-    if is_duplicate_operation(Operations.WRITE, filename, agent, checksum):
-        raise DuplicateOperationError(f"File {filename.name} has already been updated.")
+    if is_duplicate_operation(Operations.WRITE, Path(filename), agent, checksum):
+        raise DuplicateOperationError(f"File {filename} has already been updated.")
 
-    directory = filename.parent
-    os.makedirs(directory, exist_ok=True)
+    if directory := os.path.dirname(filename):
+        agent.workspace.make_dir(directory)
 
     if if_exists not in ACTIONS:
         raise InvalidArgumentError("Invalid value for 'if_exists'")
-
     result = ACTIONS.get(if_exists)(filename, contents)
 
     if isinstance(result, str):  # If the result is a string, return it
@@ -267,45 +271,22 @@ def write_to_file(filename: Path, contents: str, if_exists: str, agent: Agent) -
     if isinstance(result, Exception):
         raise result
 
-    log_operation(Operations.WRITE, filename, agent, checksum)
-    return f"File {filename.name} has been written successfully."
-
-
-@sanitize_path_arg("filename")
-def append_to_file(
-    filename: Path, text: str, agent: Agent, should_log: bool = True
-) -> None:
-    """Append text to a file
-
-    Args:
-        filename (Path): The name of the file to append to
-        text (str): The text to append to the file
-        should_log (bool): Should log output
-    """
-    directory = os.path.dirname(filename)
-    os.makedirs(directory, exist_ok=True)
-    with open(filename, "a", encoding="utf-8") as f:
-        f.write(text)
-
-    if should_log:
-        with open(filename, "r", encoding="utf-8") as f:
-            checksum = text_checksum(f.read())
-        log_operation(Operations.APPEND, filename, agent, checksum=checksum)
+    await log_operation(Operations.WRITE, filename, agent, checksum)
+    return f"File {filename} has been written successfully."
 
 
 @command(
     "list_folder",
     "List the items in a folder",
     {
-        "folder": {
-            "type": "string",
-            "description": "The folder to list files in",
-            "required": True,
-        }
+        "folder": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The folder to list files in",
+            required=True,
+        )
     },
 )
-@sanitize_path_arg("folder")
-def list_folder(folder: Path, agent: Agent) -> list[str]:
+def list_folder(folder: str | Path, agent: Agent) -> list[str]:
     """Lists files in a folder recursively
 
     Args:
@@ -314,15 +295,4 @@ def list_folder(folder: Path, agent: Agent) -> list[str]:
     Returns:
         list[str]: A list of files found in the folder
     """
-    found_files = []
-
-    for root, _, files in os.walk(folder):
-        for file in files:
-            if file.startswith("."):
-                continue
-            relative_path = os.path.relpath(
-                os.path.join(root, file), agent.config.workspace_path
-            )
-            found_files.append(relative_path)
-
-    return found_files
+    return [str(p) for p in agent.workspace.list_files(folder)]

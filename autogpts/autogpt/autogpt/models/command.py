@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 if TYPE_CHECKING:
@@ -31,7 +32,7 @@ class Command:
         enabled: Literal[True] | Callable[[Config], bool] = True,
         disabled_reason: Optional[str] = None,
         aliases: list[str] = [],
-        available: Literal[True] | Callable[[BaseAgent], bool] = True,
+        available: bool | Callable[[BaseAgent], bool] = True,
     ):
         self.name = name
         self.description = description
@@ -42,22 +43,30 @@ class Command:
         self.aliases = aliases
         self.available = available
 
+    @property
+    def is_async(self) -> bool:
+        return inspect.iscoroutinefunction(self.method)
+
     def __call__(self, *args, agent: BaseAgent, **kwargs) -> Any:
-        if callable(self.enabled) and not self.enabled(agent.config):
+        if callable(self.enabled) and not self.enabled(agent.legacy_config):
             if self.disabled_reason:
                 raise RuntimeError(
                     f"Command '{self.name}' is disabled: {self.disabled_reason}"
                 )
             raise RuntimeError(f"Command '{self.name}' is disabled")
 
-        if callable(self.available) and not self.available(agent):
+        if not self.available or callable(self.available) and not self.available(agent):
             raise RuntimeError(f"Command '{self.name}' is not available")
 
         return self.method(*args, **kwargs, agent=agent)
 
     def __str__(self) -> str:
         params = [
-            f"{param.name}: {param.type if param.required else f'Optional[{param.type}]'}"
+            f"{param.name}: "
+            + ("%s" if param.spec.required else "Optional[%s]") % param.spec.type.value
             for param in self.parameters
         ]
-        return f"{self.name}: {self.description.rstrip('.')}. Params: ({', '.join(params)})"
+        return (
+            f"{self.name}: {self.description.rstrip('.')}. "
+            f"Params: ({', '.join(params)})"
+        )

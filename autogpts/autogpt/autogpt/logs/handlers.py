@@ -8,10 +8,10 @@ import time
 from typing import TYPE_CHECKING
 
 from autogpt.logs.utils import remove_color_codes
-from autogpt.speech.say import say_text
+from autogpt.speech import TextToSpeechProvider
 
 if TYPE_CHECKING:
-    from autogpt.config import Config
+    from autogpt.speech import TTSConfig
 
 
 class TypingConsoleHandler(logging.StreamHandler):
@@ -50,9 +50,10 @@ class TypingConsoleHandler(logging.StreamHandler):
 class TTSHandler(logging.Handler):
     """Output messages to the configured TTS engine (if any)"""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: TTSConfig):
         super().__init__()
         self.config = config
+        self.tts_provider = TextToSpeechProvider(config)
 
     def format(self, record: logging.LogRecord) -> str:
         if getattr(record, "title", ""):
@@ -67,7 +68,7 @@ class TTSHandler(logging.Handler):
             return
 
         message = self.format(record)
-        say_text(message, self.config)
+        self.tts_provider.say(message)
 
 
 class JsonFileHandler(logging.FileHandler):
