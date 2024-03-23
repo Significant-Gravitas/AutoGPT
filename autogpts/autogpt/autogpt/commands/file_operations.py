@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import logging
 import os
 import os.path
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Iterator, Literal
+from typing import Awaitable, Callable, Iterator, Literal
 
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import (
@@ -235,25 +236,29 @@ async def write_to_file(
     Returns:
         str: A message indicating success or failure
     """
-    ACTIONS: dict[str, Callable[[str | Path, str], str | None | Exception]] = {
-        "overwrite": lambda p, _txt: await agent.workspace.write_file(p, _txt),
+    ACTIONS: dict[
+        str, Callable[[str | Path, str], str | None | Exception | Awaitable[None]]
+    ] = {
+        "overwrite": lambda p, _txt: agent.workspace.write_file(p, _txt),
         "prepend": lambda p, _txt: (
-            await agent.workspace.write_file(p, _txt + agent.workspace.read_file(p))
+            agent.workspace.write_file(p, _txt + agent.workspace.read_file(p))
         ),
         "append": lambda p, _txt: (
-            await agent.workspace.write_file(p, agent.workspace.read_file(p) + _txt)
+            agent.workspace.write_file(p, agent.workspace.read_file(p) + _txt)
         ),
         "skip": (
             lambda p, _txt: "File exists, skipping."
             if agent.workspace.exists(p)
-            else await agent.workspace.write_file(p, _txt)
+            else agent.workspace.write_file(p, _txt)
         ),
         "fail": (
             lambda p, _txt: CommandExecutionError("File exists")
             if agent.workspace.exists(p)
-            else await agent.workspace.write_file(p, _txt)
+            else agent.workspace.write_file(p, _txt)
         ),
     }
+    if if_exists not in ACTIONS:
+        raise InvalidArgumentError("Invalid value for 'if_exists'")
 
     checksum = text_checksum(contents)
     if is_duplicate_operation(Operations.WRITE, Path(filename), agent, checksum):
@@ -262,9 +267,9 @@ async def write_to_file(
     if directory := os.path.dirname(filename):
         agent.workspace.make_dir(directory)
 
-    if if_exists not in ACTIONS:
-        raise InvalidArgumentError("Invalid value for 'if_exists'")
-    result = ACTIONS.get(if_exists)(filename, contents)
+    result = ACTIONS[if_exists](filename, contents)
+    if inspect.isawaitable(result):
+        await result
 
     if isinstance(result, str):  # If the result is a string, return it
         return result
