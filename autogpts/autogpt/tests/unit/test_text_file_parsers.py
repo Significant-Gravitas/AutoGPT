@@ -1,14 +1,19 @@
 import json
 import logging
+import os.path
 import tempfile
 from pathlib import Path
 from xml.etree import ElementTree
 
 import docx
+import pytest
 import yaml
 from bs4 import BeautifulSoup
 
-from autogpt.commands.file_operations_utils import is_file_binary_fn, read_textual_file
+from autogpt.commands.file_operations_utils import (
+    decode_textual_file,
+    is_file_binary_fn,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +44,8 @@ def mock_pdf_file():
         # Write the page object
         f.write(b"2 0 obj\n")
         f.write(
-            b"<< /Type /Page /Parent 1 0 R /Resources << /Font << /F1 3 0 R >> >> /MediaBox [0 0 612 792] /Contents 4 0 R >>\n"
+            b"<< /Type /Page /Parent 1 0 R /Resources << /Font << /F1 3 0 R >> >> "
+            b"/MediaBox [0 0 612 792] /Contents 4 0 R >>\n"
         )
         f.write(b"endobj\n")
         # Write the font object
@@ -103,7 +109,10 @@ def mock_yaml_file():
 
 def mock_html_file():
     html = BeautifulSoup(
-        f"<html><head><title>This is a test</title></head><body><p>{plain_text_str}</p></body></html>",
+        "<html>"
+        "<head><title>This is a test</title></head>"
+        f"<body><p>{plain_text_str}</p></body>"
+        "</html>",
         "html.parser",
     )
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".html") as f:
@@ -119,7 +128,12 @@ def mock_md_file():
 
 def mock_latex_file():
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".tex") as f:
-        latex_str = rf"\documentclass{{article}}\begin{{document}}{plain_text_str}\end{{document}}"
+        latex_str = (
+            r"\documentclass{article}"
+            r"\begin{document}"
+            f"{plain_text_str}"
+            r"\end{document}"
+        )
         f.write(latex_str)
     return f.name
 
@@ -139,15 +153,18 @@ respective_file_creation_functions = {
 binary_files_extensions = [".pdf", ".docx"]
 
 
-def test_parsers():
-    for (
-        file_extension,
-        c_file_creator,
-    ) in respective_file_creation_functions.items():
-        created_file_path = Path(c_file_creator())
-        loaded_text = read_textual_file(created_file_path, logger)
+@pytest.mark.parametrize(
+    "file_extension, c_file_creator",
+    respective_file_creation_functions.items(),
+)
+def test_parsers(file_extension, c_file_creator):
+    created_file_path = Path(c_file_creator())
+    with open(created_file_path, "rb") as file:
+        loaded_text = decode_textual_file(file, os.path.splitext(file.name)[1], logger)
 
         assert plain_text_str in loaded_text
 
         should_be_binary = file_extension in binary_files_extensions
-        assert should_be_binary == is_file_binary_fn(created_file_path)
+        assert should_be_binary == is_file_binary_fn(file)
+
+    created_file_path.unlink()  # cleanup

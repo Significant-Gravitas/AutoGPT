@@ -1,13 +1,20 @@
 import logging
 import os
+from typing import ClassVar
 
 from autogpt.core.ability.base import Ability, AbilityConfiguration
 from autogpt.core.ability.schema import AbilityResult, ContentType, Knowledge
+from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.core.workspace import Workspace
 
 
 class ReadFile(Ability):
     default_configuration = AbilityConfiguration(
+        location=PluginLocation(
+            storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+            storage_route="autogpt.core.ability.builtins.ReadFile",
+        ),
         packages_required=["unstructured"],
         workspace_required=True,
     )
@@ -20,18 +27,14 @@ class ReadFile(Ability):
         self._logger = logger
         self._workspace = workspace
 
-    @property
-    def description(self) -> str:
-        return "Read and parse all text from a file."
+    description: ClassVar[str] = "Read and parse all text from a file."
 
-    @property
-    def arguments(self) -> dict:
-        return {
-            "filename": {
-                "type": "string",
-                "description": "The name of the file to read.",
-            },
-        }
+    parameters: ClassVar[dict[str, JSONSchema]] = {
+        "filename": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The name of the file to read.",
+        ),
+    }
 
     def _check_preconditions(self, filename: str) -> AbilityResult | None:
         message = ""
@@ -92,6 +95,10 @@ class ReadFile(Ability):
 
 class WriteFile(Ability):
     default_configuration = AbilityConfiguration(
+        location=PluginLocation(
+            storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+            storage_route="autogpt.core.ability.builtins.WriteFile",
+        ),
         packages_required=["unstructured"],
         workspace_required=True,
     )
@@ -104,22 +111,18 @@ class WriteFile(Ability):
         self._logger = logger
         self._workspace = workspace
 
-    @property
-    def description(self) -> str:
-        return "Write text to a file."
+    description: ClassVar[str] = "Write text to a file."
 
-    @property
-    def arguments(self) -> dict:
-        return {
-            "filename": {
-                "type": "string",
-                "description": "The name of the file to write.",
-            },
-            "contents": {
-                "type": "string",
-                "description": "The contents of the file to write.",
-            },
-        }
+    parameters: ClassVar[dict[str, JSONSchema]] = {
+        "filename": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The name of the file to write.",
+        ),
+        "contents": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The contents of the file to write.",
+        ),
+    }
 
     def _check_preconditions(
         self, filename: str, contents: str
