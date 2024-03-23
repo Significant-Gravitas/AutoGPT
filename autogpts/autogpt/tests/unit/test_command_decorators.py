@@ -17,7 +17,7 @@ def agent(tmp_path):
     task = Mock()
     task.user_input = "Run"
     mock_agent = bootstrap_agent(task)
-    mock_agent.config.workspace_path = tmp_path
+    mock_agent.workspace.root = tmp_path
     return mock_agent
 
 
@@ -28,11 +28,11 @@ def test_run_in_workspace_change_directory(agent):
 
     # Pass agent as positional parameter
     result_path = dummy_func(agent)
-    assert str(result_path) == str(agent.config.workspace_path)
+    assert str(result_path) == str(agent.workspace.root)
 
     # Pass agent as named parameter
     result_path = dummy_func(agent=agent)
-    assert str(result_path) == str(agent.config.workspace_path)
+    assert str(result_path) == str(agent.workspace.root)
 
 
 def test_run_in_workspace_restore_directory(agent):

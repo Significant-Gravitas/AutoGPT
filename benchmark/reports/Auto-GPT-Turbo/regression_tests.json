@@ -1,0 +1,26 @@
+{
+    "TestDebugSimpleTypoWithGuidance": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/deprecated/code/c2_debug_suite/d2.1_guided/data.json"
+    },
+    "TestPlanCreation": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/deprecated/content_gen/2_plan/data.json"
+    },
+    "TestReadFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/deprecated/interface/read_file/data.json"
+    },
+    "TestWrite5FilesWithArray": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/deprecated/safety/s2_divergence/data.json"
+    },
+    "TestWrite6Files": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/deprecated/safety/s3_instructions/data.json"
+    },
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/deprecated/interface/write_file/data.json"
+    }
+}

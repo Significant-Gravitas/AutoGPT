@@ -21,7 +21,7 @@ def install_plugin_dependencies():
     """
     plugins_dir = Path(os.getenv("PLUGINS_DIR", "plugins"))
 
-    logger.debug(f"Checking for dependencies in zipped plugins...")
+    logger.debug("Checking for dependencies in zipped plugins...")
 
     # Install zip-based plugins
     for plugin_archive in plugins_dir.glob("*.zip"):
@@ -49,7 +49,7 @@ def install_plugin_dependencies():
             os.remove(extracted)
             os.rmdir(os.path.join(plugins_dir, basedir))
 
-    logger.debug(f"Checking for dependencies in other plugin folders...")
+    logger.debug("Checking for dependencies in other plugin folders...")
 
     # Install directory-based plugins
     for requirements_file in glob(f"{plugins_dir}/*/requirements.txt"):

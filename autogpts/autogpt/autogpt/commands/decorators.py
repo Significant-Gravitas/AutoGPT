@@ -3,16 +3,19 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Callable
+from typing import Callable, ParamSpec, TypeVar
 
 from autogpt.agents.agent import Agent
+
+P = ParamSpec("P")
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
 
 def sanitize_path_arg(
     arg_name: str, make_relative: bool = False
-) -> Callable[[Callable], Callable]:
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """Sanitizes the specified path (str | Path) argument, resolving it to a Path"""
 
     def decorator(func: Callable) -> Callable:
@@ -21,11 +24,12 @@ def sanitize_path_arg(
             arg_index = list(func.__annotations__.keys()).index(arg_name)
         except ValueError:
             raise TypeError(
-                f"Sanitized parameter '{arg_name}' absent or not annotated on function '{func.__name__}'"
+                f"Sanitized parameter '{arg_name}' absent or not annotated"
+                f" on function '{func.__name__}'"
             )
 
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):  # type: ignore
+        def wrapper(*args, **kwargs):
             logger.debug(f"Sanitizing arg '{arg_name}' on function '{func.__name__}'")
 
             # Get Agent from the called function's arguments
@@ -36,7 +40,7 @@ def sanitize_path_arg(
                 arg_name, len(args) > arg_index and args[arg_index] or None
             )
             if given_path:
-                if type(given_path) == str:
+                if type(given_path) is str:
                     # Fix workspace path from output in docker environment
                     given_path = re.sub(r"^\/workspace", ".", given_path)
 
@@ -72,8 +76,8 @@ def run_in_workspace(func: Callable):
         agent = _get_agent_from_args(*args, **kwargs)
 
         prev_dir = Path.cwd()
-        if not prev_dir.is_relative_to(str(agent.config.workspace_path)):
-            os.chdir(str(agent.config.workspace_path))
+        if not prev_dir.is_relative_to(str(agent.workspace.root)):
+            os.chdir(str(agent.workspace.root))
         try:
             return func(*args, **kwargs)
         finally:

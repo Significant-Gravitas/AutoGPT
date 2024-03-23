@@ -42,7 +42,7 @@ class JSONFileMemory(VectorMemoryProvider):
             self.load_index()
             logger.debug(f"Loaded {len(self.memories)} MemoryItems from file")
         except Exception as e:
-            logger.warn(f"Could not load MemoryItems from file: {e}")
+            logger.warning(f"Could not load MemoryItems from file: {e}")
             self.save_index()
 
     def __iter__(self) -> Iterator[MemoryItem]:
@@ -63,7 +63,7 @@ class JSONFileMemory(VectorMemoryProvider):
     def discard(self, item: MemoryItem):
         try:
             self.remove(item)
-        except:
+        except ValueError:  # item not in memory
             pass
 
     def clear(self):
@@ -80,9 +80,13 @@ class JSONFileMemory(VectorMemoryProvider):
             logger.debug(f"Loading memories from index file '{self.file_path}'")
             json_index = orjson.loads(f.read())
             for memory_item_dict in json_index:
-                self.memories.append(MemoryItem(**memory_item_dict))
+                self.memories.append(MemoryItem.parse_obj(memory_item_dict))
 
     def save_index(self):
         logger.debug(f"Saving memory index to file {self.file_path}")
         with self.file_path.open("wb") as f:
-            return f.write(orjson.dumps(self.memories, option=self.SAVE_OPTIONS))
+            return f.write(
+                orjson.dumps(
+                    [m.dict() for m in self.memories], option=self.SAVE_OPTIONS
+                )
+            )

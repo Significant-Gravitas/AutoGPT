@@ -19,7 +19,11 @@ from autogpt.core.plugin.simple import (
     PluginStorageFormat,
     SimplePluginService,
 )
-from autogpt.core.resource.model_providers import OpenAIProvider, OpenAISettings
+from autogpt.core.resource.model_providers import (
+    CompletionModelFunction,
+    OpenAIProvider,
+    OpenAISettings,
+)
 from autogpt.core.workspace.simple import SimpleWorkspace, WorkspaceSettings
 
 
@@ -88,7 +92,9 @@ class SimpleAgent(Agent, Configurable):
                 ),
                 openai_provider=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-                    storage_route="autogpt.core.resource.model_providers.OpenAIProvider",
+                    storage_route=(
+                        "autogpt.core.resource.model_providers.OpenAIProvider"
+                    ),
                 ),
                 planning=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
@@ -178,15 +184,15 @@ class SimpleAgent(Agent, Configurable):
             agent_goals=self._configuration.goals,
             abilities=self._ability_registry.list_abilities(),
         )
-        tasks = [Task.parse_obj(task) for task in plan.content["task_list"]]
+        tasks = [Task.parse_obj(task) for task in plan.parsed_result["task_list"]]
 
-        # TODO: Should probably do a step to evaluate the quality of the generated tasks,
+        # TODO: Should probably do a step to evaluate the quality of the generated tasks
         #  and ensure that they have actionable ready and acceptance criteria
 
         self._task_queue.extend(tasks)
         self._task_queue.sort(key=lambda t: t.priority, reverse=True)
         self._task_queue[-1].context.status = TaskStatus.READY
-        return plan.content
+        return plan.parsed_result
 
     async def determine_next_ability(self, *args, **kwargs):
         if not self._task_queue:
@@ -202,7 +208,7 @@ class SimpleAgent(Agent, Configurable):
             self._ability_registry.dump_abilities(),
         )
         self._current_task = task
-        self._next_ability = next_ability.content
+        self._next_ability = next_ability.parsed_result
         return self._current_task, self._next_ability
 
     async def execute_next_ability(self, user_input: str, *args, **kwargs):
@@ -231,23 +237,29 @@ class SimpleAgent(Agent, Configurable):
         else:
             self._logger.debug(f"Evaluating task {task} and adding relevant context.")
             # TODO: Look up relevant memories (need working memory system)
-            # TODO: Evaluate whether there is enough information to start the task (language model call).
+            # TODO: Eval whether there is enough information to start the task (w/ LLM).
             task.context.enough_info = True
             task.context.status = TaskStatus.IN_PROGRESS
             return task
 
-    async def _choose_next_ability(self, task: Task, ability_schema: list[dict]):
+    async def _choose_next_ability(
+        self,
+        task: Task,
+        ability_specs: list[CompletionModelFunction],
+    ):
         """Choose the next ability to use for the task."""
         self._logger.debug(f"Choosing next ability for task {task}.")
         if task.context.cycle_count > self._configuration.max_task_cycle_count:
-            # Don't hit the LLM, just set the next action as "breakdown_task" with an appropriate reason
+            # Don't hit the LLM, just set the next action as "breakdown_task"
+            #  with an appropriate reason
             raise NotImplementedError
         elif not task.context.enough_info:
-            # Don't ask the LLM, just set the next action as "breakdown_task" with an appropriate reason
+            # Don't ask the LLM, just set the next action as "breakdown_task"
+            #  with an appropriate reason
             raise NotImplementedError
         else:
             next_ability = await self._planning.determine_next_ability(
-                task, ability_schema
+                task, ability_specs
             )
             return next_ability
 
@@ -328,7 +340,7 @@ class SimpleAgent(Agent, Configurable):
             user_objective,
         )
 
-        return model_response.content
+        return model_response.parsed_result
 
     @classmethod
     def provision_agent(
@@ -370,7 +382,8 @@ class SimpleAgent(Agent, Configurable):
 
 def _prune_empty_dicts(d: dict) -> dict:
     """
-    Prune branches from a nested dictionary if the branch only contains empty dictionaries at the leaves.
+    Prune branches from a nested dictionary if the branch only contains empty
+    dictionaries at the leaves.
 
     Args:
         d: The dictionary to prune.

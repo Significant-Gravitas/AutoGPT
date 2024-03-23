@@ -1,7 +1,7 @@
 import asyncio
 import functools
 from bdb import BdbQuit
-from typing import Callable, ParamSpec, TypeVar
+from typing import Any, Callable, Coroutine, ParamSpec, TypeVar
 
 import click
 
@@ -17,9 +17,10 @@ def handle_exceptions(
 
     This is intended to be used as a wrapper for the main function of a CLI application.
     It will catch all errors and drop a user into a debugger if the error is not a
-    KeyboardInterrupt. If the error is a KeyboardInterrupt, it will raise the error.
-    If the error is not a KeyboardInterrupt, it will log the error and drop a user into a
-    debugger if with_debugger is True. If with_debugger is False, it will raise the error.
+    `KeyboardInterrupt`. If the error is a `KeyboardInterrupt`, it will raise the error.
+    If the error is not a `KeyboardInterrupt`, it will log the error and drop a user
+    into a debugger if `with_debugger` is `True`.
+    If `with_debugger` is `False`, it will raise the error.
 
     Parameters
     ----------
@@ -53,9 +54,9 @@ def handle_exceptions(
     return wrapped
 
 
-def coroutine(f):
+def coroutine(f: Callable[P, Coroutine[Any, Any, T]]) -> Callable[P, T]:
     @functools.wraps(f)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: P.args, **kwargs: P.kwargs):
         return asyncio.run(f(*args, **kwargs))
 
     return wrapper

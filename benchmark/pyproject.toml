@@ -1,0 +1,95 @@
+[tool.poetry]
+name = "agbenchmark"
+version = "0.0.10"
+description = "Benchmarking the performance of agents far and wide, regardless of how they are set up and how they work"
+authors = ["Silen Naihin <silen.naihin@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{ include = "agbenchmark" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pytest = "^7.3.2"
+requests = "^2.31.0"
+openai = "^1.7.2"
+pydantic = "^1.10.9"
+python-dotenv = "^1.0.0"
+click = "^8.1.3"
+types-requests = "^2.31.0.1"
+pexpect = "^4.8.0"
+psutil = "^5.9.5"
+matplotlib = "^3.7.2"
+pandas = "^2.0.3"
+gitpython = "^3.1.32"
+networkx = "^3.1"
+colorama = "^0.4.6"
+pyvis = "^0.3.2"
+selenium = "^4.11.2"
+pytest-asyncio = "^0.21.1"
+uvicorn = "^0.23.2"
+fastapi = "^0.109.1"
+python-multipart = "^0.0.7"
+toml = "^0.10.2"
+# helicone = "^1.0.9"  # incompatible with openai@^1.0.0
+httpx = "^0.24.0"
+agent-protocol-client = "^1.1.0"
+click-default-group = "^1.2.4"
+tabulate = "^0.9.0"
+
+[tool.poetry.group.dev.dependencies]
+flake8 = "^3.9.2"
+isort = "^5.9.3"
+black = "22.3"
+autoflake = "^1.4"
+pandas = "^2.0.3"
+gspread = "^5.10.0"
+oauth2client = "^4.1.3"
+pre-commit = "^3.3.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests", "agbenchmark",
+]
+asyncio_mode = "auto"
+markers = [
+    "interface",
+    "code",
+    "memory",
+    "iterate",
+    "adaptability",
+    "safety",
+    "content_gen",
+    "product_advisor"
+]
+filterwarnings = [
+    "ignore::pytest.PytestAssertRewriteWarning",
+    "ignore::matplotlib.MatplotlibDeprecationWarning"
+]
+
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+packages = ["autogpt"]
+extend-exclude = '(/dist|/.venv|/venv|/build|/agent|agbenchmark/challenges)/'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+line_length = 88
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+skip_glob = [".tox", "__pycache__", "*.pyc", "venv*/*", "reports", "venv", "env", "node_modules", ".env", ".venv", "dist", "agent/*", "agbenchmark/challenges/*"]
+
+[tool.poetry.scripts]
+agbenchmark = "agbenchmark.__main__:cli"
