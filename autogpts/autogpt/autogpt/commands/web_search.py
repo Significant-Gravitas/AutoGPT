@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "web_search"
-COMMAND_CATEGORY_TITLE = "Web Search"
-
 import json
 import time
 from itertools import islice
@@ -14,6 +11,11 @@ from duckduckgo_search import DDGS
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import ConfigurationError
 from autogpt.command_decorator import command
+from autogpt.core.utils.json_schema import JSONSchema
+
+COMMAND_CATEGORY = "web_search"
+COMMAND_CATEGORY_TITLE = "Web Search"
+
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3
 
@@ -22,11 +24,11 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
     "web_search",
     "Searches the web",
     {
-        "query": {
-            "type": "string",
-            "description": "The search query",
-            "required": True,
-        }
+        "query": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The search query",
+            required=True,
+        )
     },
     aliases=["search"],
 )
@@ -56,7 +58,27 @@ def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
         time.sleep(1)
         attempts += 1
 
-    results = json.dumps(search_results, ensure_ascii=False, indent=4)
+    search_results = [
+        {
+            "title": r["title"],
+            "url": r["href"],
+            **({"exerpt": r["body"]} if r.get("body") else {}),
+        }
+        for r in search_results
+    ]
+
+    results = (
+        "## Search results\n"
+        # "Read these results carefully."
+        # " Extract the information you need for your task from the list of results"
+        # " if possible. Otherwise, choose a webpage from the list to read entirely."
+        # "\n\n"
+    ) + "\n\n".join(
+        f"### \"{r['title']}\"\n"
+        f"**URL:** {r['url']}  \n"
+        "**Excerpt:** " + (f'"{exerpt}"' if (exerpt := r.get("exerpt")) else "N/A")
+        for r in search_results
+    )
     return safe_google_results(results)
 
 
@@ -64,11 +86,11 @@ def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
     "google",
     "Google Search",
     {
-        "query": {
-            "type": "string",
-            "description": "The search query",
-            "required": True,
-        }
+        "query": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The search query",
+            required=True,
+        )
     },
     lambda config: bool(config.google_api_key)
     and bool(config.google_custom_search_engine_id),
@@ -91,8 +113,8 @@ def google(query: str, agent: Agent, num_results: int = 8) -> str | list[str]:
 
     try:
         # Get the Google API key and Custom Search Engine ID from the config file
-        api_key = agent.config.google_api_key
-        custom_search_engine_id = agent.config.google_custom_search_engine_id
+        api_key = agent.legacy_config.google_api_key
+        custom_search_engine_id = agent.legacy_config.google_custom_search_engine_id
 
         # Initialize the Custom Search API service
         service = build("customsearch", "v1", developerKey=api_key)

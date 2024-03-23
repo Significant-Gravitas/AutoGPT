@@ -1,0 +1,10 @@
+{
+    "TestPlanCreation": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/deprecated/content_gen/2_plan/data.json"
+    },
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/deprecated/interface/write_file/data.json"
+    }
+}

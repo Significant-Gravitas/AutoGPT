@@ -11,12 +11,27 @@ import pytest
 if TYPE_CHECKING:
     from autogpt.agents import Agent, BaseAgent
 
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command, CommandParameter
 from autogpt.models.command_registry import CommandRegistry
 
 PARAMETERS = [
-    CommandParameter("arg1", "int", description="Argument 1", required=True),
-    CommandParameter("arg2", "str", description="Argument 2", required=False),
+    CommandParameter(
+        "arg1",
+        spec=JSONSchema(
+            type=JSONSchema.Type.INTEGER,
+            description="Argument 1",
+            required=True,
+        ),
+    ),
+    CommandParameter(
+        "arg2",
+        spec=JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="Argument 2",
+            required=False,
+        ),
+    ),
 ]
 
 
@@ -39,7 +54,8 @@ def test_command_creation():
     assert cmd.description == "Example command"
     assert cmd.method == example_command_method
     assert (
-        str(cmd) == "example: Example command. Params: (arg1: int, arg2: Optional[str])"
+        str(cmd)
+        == "example: Example command. Params: (arg1: integer, arg2: Optional[string])"
     )
 
 
@@ -185,10 +201,11 @@ def test_import_mock_commands_module():
 
     registry.import_command_module(mock_commands_module)
 
-    assert "function_based" in registry
-    assert registry.commands["function_based"].name == "function_based"
+    assert "function_based_cmd" in registry
+    assert registry.commands["function_based_cmd"].name == "function_based_cmd"
     assert (
-        registry.commands["function_based"].description == "Function-based test command"
+        registry.commands["function_based_cmd"].description
+        == "Function-based test command"
     )
 
 
@@ -214,8 +231,9 @@ def test_import_temp_command_file_module(tmp_path: Path):
     # Remove the temp directory from sys.path
     sys.path.remove(str(tmp_path))
 
-    assert "function_based" in registry
-    assert registry.commands["function_based"].name == "function_based"
+    assert "function_based_cmd" in registry
+    assert registry.commands["function_based_cmd"].name == "function_based_cmd"
     assert (
-        registry.commands["function_based"].description == "Function-based test command"
+        registry.commands["function_based_cmd"].description
+        == "Function-based test command"
     )
