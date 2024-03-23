@@ -1,7 +1,6 @@
 ## Original ignores
 autogpt/keys.py
 autogpt/*.json
-auto_gpt_workspace/*
 *.mpeg
 .env
 azure.yaml
@@ -17,6 +16,7 @@ log-ingestion.txt
 *.mp3
 mem.sqlite3
 venvAutoGPT
+data/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -31,7 +31,7 @@ __pycache__/
 build/
 develop-eggs/
 dist/
-/plugins/
+/plugins/*
 plugins_config.yaml
 downloads/
 eggs/
@@ -161,9 +161,9 @@ openai/
 # news
 CURRENT_BULLETIN.md
 
-# AgBenchmark
-agbenchmark/reports/
-
 # Nodejs
 package-lock.json
 package.json
+
+# Keep
+!.keep

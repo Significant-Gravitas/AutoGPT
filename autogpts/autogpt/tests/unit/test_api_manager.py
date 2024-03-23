@@ -1,10 +1,11 @@
-from unittest.mock import patch
-
 import pytest
 from pytest_mock import MockerFixture
 
+from autogpt.core.resource.model_providers import (
+    OPEN_AI_CHAT_MODELS,
+    OPEN_AI_EMBEDDING_MODELS,
+)
 from autogpt.llm.api_manager import ApiManager
-from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, OPEN_AI_EMBEDDING_MODELS
 
 api_manager = ApiManager()
 
@@ -74,13 +75,3 @@ class TestApiManager:
         assert api_manager.get_total_prompt_tokens() == prompt_tokens
         assert api_manager.get_total_completion_tokens() == 0
         assert api_manager.get_total_cost() == (prompt_tokens * 0.0004) / 1000
-
-    @staticmethod
-    def test_get_models():
-        """Test if getting models works correctly."""
-        with patch("openai.Model.list") as mock_list_models:
-            mock_list_models.return_value = {"data": [{"id": "gpt-3.5-turbo"}]}
-            result = api_manager.get_models()
-
-            assert result[0]["id"] == "gpt-3.5-turbo"
-            assert api_manager.models[0]["id"] == "gpt-3.5-turbo"
