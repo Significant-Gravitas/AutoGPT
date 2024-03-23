@@ -1,20 +1,34 @@
 {
-  "name": "TestReadFile",
-  "category": ["interface"],
-  "task": "Read the file called file_to_read.txt and write its content to a file called output.txt",
-  "dependencies": ["TestWriteFile"],
-  "cutoff": 60,
-  "ground": {
-    "answer": "The content of output.txt should be 'Hello World!'",
-    "should_contain": ["Hello World!"],
-    "files": ["output.txt"],
-    "eval": {
-      "type": "file"
-    }
-  },
-  "info": {
-    "description": "Tests the ability for an agent to read a file.",
-    "difficulty": "interface",
-    "side_effects": [""]
-  }
+    "category": [
+        "general",
+        "coding",
+        "scrape_synthesize",
+        "data"
+    ],
+    "cutoff": 60,
+    "dependencies": [
+        "TestWriteFile"
+    ],
+    "eval_id": "f219f3d3-a41b-45a9-a3d0-389832086ee8",
+    "ground": {
+        "answer": "The content of output.txt should be 'Hello World!'",
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            "output.txt"
+        ],
+        "should_contain": [
+            "Hello World!"
+        ]
+    },
+    "info": {
+        "description": "Tests if the agent can read a file.",
+        "difficulty": "interface",
+        "side_effects": [
+            ""
+        ]
+    },
+    "name": "ReadFile",
+    "task": "Read the file called file_to_read.txt and write its content to a file called output.txt"
 }

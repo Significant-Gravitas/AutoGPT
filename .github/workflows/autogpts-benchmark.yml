@@ -1,0 +1,97 @@
+name: AutoGPTs Nightly Benchmark
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *'
+
+jobs:
+  benchmark:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        agent-name: [ autogpt ]
+      fail-fast: false
+    timeout-minutes: 120
+    env:
+      min-python-version: '3.10'
+      REPORTS_BRANCH: data/benchmark-reports
+      REPORTS_FOLDER: ${{ format('benchmark/reports/{0}', matrix.agent-name) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Set up Python ${{ env.min-python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.min-python-version }}
+
+      - name: Install Poetry
+        run: curl -sSL https://install.python-poetry.org | python -
+
+      - name: Prepare reports folder
+        run: mkdir -p ${{ env.REPORTS_FOLDER }}
+
+      - run: poetry -C benchmark install
+
+      - name: Benchmark ${{ matrix.agent-name }}
+        run: |
+          ./run agent start ${{ matrix.agent-name }}
+          cd autogpts/${{ matrix.agent-name }}
+
+          set +e  # Do not quit on non-zero exit codes
+          poetry run agbenchmark run -N 3 \
+            --test=ReadFile \
+            --test=BasicRetrieval --test=RevenueRetrieval2 \
+            --test=CombineCsv --test=LabelCsv --test=AnswerQuestionCombineCsv \
+            --test=UrlShortener --test=TicTacToe --test=Battleship \
+            --test=WebArenaTask_0 --test=WebArenaTask_21 --test=WebArenaTask_124 \
+            --test=WebArenaTask_134 --test=WebArenaTask_163
+
+            # Convert exit code 1 (some challenges failed) to exit code 0
+            if [ $? -eq 0 ] || [ $? -eq 1 ]; then
+              exit 0
+            else
+              exit $?
+            fi
+        env:
+          AGENT_NAME: ${{ matrix.agent-name }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
+          REPORTS_FOLDER: ${{ format('../../{0}', env.REPORTS_FOLDER) }}  # account for changed workdir
+
+          TELEMETRY_ENVIRONMENT: autogpt-benchmark-ci
+          TELEMETRY_OPT_IN: ${{ github.ref_name == 'master' }}
+
+      - name: Push reports to data branch
+        run: |
+          # BODGE: Remove success_rate.json and regression_tests.json to avoid conflicts on checkout
+          rm ${{ env.REPORTS_FOLDER }}/*.json
+
+          # Find folder with newest (untracked) report in it
+          report_subfolder=$(find ${{ env.REPORTS_FOLDER }} -type f -name 'report.json' \
+            | xargs -I {} dirname {} \
+            | xargs -I {} git ls-files --others --exclude-standard {} \
+            | xargs -I {} dirname {} \
+            | sort -u)
+          json_report_file="$report_subfolder/report.json"
+
+          # Convert JSON report to Markdown
+          markdown_report_file="$report_subfolder/report.md"
+          poetry -C benchmark run benchmark/reports/format.py "$json_report_file" > "$markdown_report_file"
+          cat "$markdown_report_file" >> $GITHUB_STEP_SUMMARY
+
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'github-actions@agpt.co'
+          git fetch origin ${{ env.REPORTS_BRANCH }}:${{ env.REPORTS_BRANCH }} \
+            && git checkout ${{ env.REPORTS_BRANCH }} \
+            || git checkout --orphan ${{ env.REPORTS_BRANCH }}
+          git reset --hard
+          git add ${{ env.REPORTS_FOLDER }}
+          git commit -m "Benchmark report for ${{ matrix.agent-name }} @ $(date +'%Y-%m-%d')" \
+            && git push origin ${{ env.REPORTS_BRANCH }}

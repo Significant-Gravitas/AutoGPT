@@ -1,245 +1,207 @@
 """Set up the AI and its goals"""
 import logging
-import re
 from typing import Optional
 
-from colorama import Fore, Style
-from jinja2 import Template
-
-from autogpt.app import utils
-from autogpt.config import Config
-from autogpt.config.ai_config import AIConfig
-from autogpt.llm.base import ChatSequence, Message
-from autogpt.llm.utils import create_chat_completion
-from autogpt.logs.helpers import user_friendly_output
-from autogpt.prompts.default_prompts import (
-    DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC,
-    DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC,
-    DEFAULT_USER_DESIRE_PROMPT,
-)
+from autogpt.app.utils import clean_input
+from autogpt.config import AIDirectives, AIProfile, Config
+from autogpt.logs.helpers import print_attribute
 
 logger = logging.getLogger(__name__)
 
 
-def interactive_ai_config_setup(
-    config: Config, ai_config_template: Optional[AIConfig] = None
-) -> AIConfig:
-    """Prompt the user for input
+def apply_overrides_to_ai_settings(
+    ai_profile: AIProfile,
+    directives: AIDirectives,
+    override_name: Optional[str] = "",
+    override_role: Optional[str] = "",
+    replace_directives: bool = False,
+    resources: Optional[list[str]] = None,
+    constraints: Optional[list[str]] = None,
+    best_practices: Optional[list[str]] = None,
+):
+    if override_name:
+        ai_profile.ai_name = override_name
+    if override_role:
+        ai_profile.ai_role = override_role
 
-    Params:
-        config (Config): The Config object
-        ai_config_template (AIConfig): The AIConfig object to use as a template
+    if replace_directives:
+        if resources:
+            directives.resources = resources
+        if constraints:
+            directives.constraints = constraints
+        if best_practices:
+            directives.best_practices = best_practices
+    else:
+        if resources:
+            directives.resources += resources
+        if constraints:
+            directives.constraints += constraints
+        if best_practices:
+            directives.best_practices += best_practices
+
+
+async def interactively_revise_ai_settings(
+    ai_profile: AIProfile,
+    directives: AIDirectives,
+    app_config: Config,
+):
+    """Interactively revise the AI settings.
+
+    Args:
+        ai_profile (AIConfig): The current AI profile.
+        ai_directives (AIDirectives): The current AI directives.
+        app_config (Config): The application configuration.
 
     Returns:
-        AIConfig: The AIConfig object tailored to the user's input
+        AIConfig: The revised AI settings.
     """
+    logger = logging.getLogger("revise_ai_profile")
 
-    # Construct the prompt
-    user_friendly_output(
-        title="Welcome to Auto-GPT! ",
-        message="run with '--help' for more information.",
-        title_color=Fore.GREEN,
-    )
+    revised = False
 
-    ai_config_template_provided = ai_config_template is not None and any(
-        [
-            ai_config_template.ai_goals,
-            ai_config_template.ai_name,
-            ai_config_template.ai_role,
-        ]
-    )
-
-    user_desire = ""
-    if not ai_config_template_provided:
-        # Get user desire if command line overrides have not been passed in
-        user_friendly_output(
-            title="Create an AI-Assistant:",
-            message="input '--manual' to enter manual mode.",
-            title_color=Fore.GREEN,
+    while True:
+        # Print the current AI configuration
+        print_ai_settings(
+            title="Current AI Settings" if not revised else "Revised AI Settings",
+            ai_profile=ai_profile,
+            directives=directives,
+            logger=logger,
         )
 
-        user_desire = utils.clean_input(
-            config, f"{Fore.LIGHTBLUE_EX}I want Auto-GPT to{Style.RESET_ALL}: "
+        if (
+            clean_input(app_config, "Continue with these settings? [Y/n]").lower()
+            or app_config.authorise_key
+        ) == app_config.authorise_key:
+            break
+
+        # Ask for revised ai_profile
+        ai_profile.ai_name = (
+            clean_input(app_config, "Enter AI name (or press enter to keep current):")
+            or ai_profile.ai_name
         )
-
-    if user_desire.strip() == "":
-        user_desire = DEFAULT_USER_DESIRE_PROMPT  # Default prompt
-
-    # If user desire contains "--manual" or we have overridden any of the AI configuration
-    if "--manual" in user_desire or ai_config_template_provided:
-        user_friendly_output(
-            "",
-            title="Manual Mode Selected",
-            title_color=Fore.GREEN,
-        )
-        return generate_aiconfig_manual(config, ai_config_template)
-
-    else:
-        try:
-            return generate_aiconfig_automatic(user_desire, config)
-        except Exception as e:
-            user_friendly_output(
-                title="Unable to automatically generate AI Config based on user desire.",
-                message="Falling back to manual mode.",
-                title_color=Fore.RED,
+        ai_profile.ai_role = (
+            clean_input(
+                app_config, "Enter new AI role (or press enter to keep current):"
             )
-            logger.debug(f"Error during AIConfig generation: {e}")
-
-            return generate_aiconfig_manual(config)
-
-
-def generate_aiconfig_manual(
-    config: Config, ai_config_template: Optional[AIConfig] = None
-) -> AIConfig:
-    """
-    Interactively create an AI configuration by prompting the user to provide the name, role, and goals of the AI.
-
-    This function guides the user through a series of prompts to collect the necessary information to create
-    an AIConfig object. The user will be asked to provide a name and role for the AI, as well as up to five
-    goals. If the user does not provide a value for any of the fields, default values will be used.
-
-    Params:
-        config (Config): The Config object
-        ai_config_template (AIConfig): The AIConfig object to use as a template
-
-    Returns:
-        AIConfig: An AIConfig object containing the user-defined or default AI name, role, and goals.
-    """
-
-    # Manual Setup Intro
-    user_friendly_output(
-        title="Create an AI-Assistant:",
-        message="Enter the name of your AI and its role below. Entering nothing will load"
-        " defaults.",
-        title_color=Fore.GREEN,
-    )
-
-    if ai_config_template and ai_config_template.ai_name:
-        ai_name = ai_config_template.ai_name
-    else:
-        ai_name = ""
-        # Get AI Name from User
-        user_friendly_output(
-            title="Name your AI:",
-            message="For example, 'Entrepreneur-GPT'",
-            title_color=Fore.GREEN,
+            or ai_profile.ai_role
         )
-        ai_name = utils.clean_input(config, "AI Name: ")
-    if ai_name == "":
-        ai_name = "Entrepreneur-GPT"
 
-    user_friendly_output(
-        title=f"{ai_name} here!",
-        message="I am at your service.",
-        title_color=Fore.LIGHTBLUE_EX,
-    )
-
-    if ai_config_template and ai_config_template.ai_role:
-        ai_role = ai_config_template.ai_role
-    else:
-        # Get AI Role from User
-        user_friendly_output(
-            title="Describe your AI's role:",
-            message="For example, 'an AI designed to autonomously develop and run businesses with"
-            " the sole goal of increasing your net worth.'",
-            title_color=Fore.GREEN,
-        )
-        ai_role = utils.clean_input(config, f"{ai_name} is: ")
-    if ai_role == "":
-        ai_role = "an AI designed to autonomously develop and run businesses with the"
-        " sole goal of increasing your net worth."
-
-    if ai_config_template and ai_config_template.ai_goals:
-        ai_goals = ai_config_template.ai_goals
-    else:
-        # Enter up to 5 goals for the AI
-        user_friendly_output(
-            title="Enter up to 5 goals for your AI:",
-            message="For example: \nIncrease net worth, Grow Twitter Account, Develop and manage"
-            " multiple businesses autonomously'",
-            title_color=Fore.GREEN,
-        )
-        logger.info("Enter nothing to load defaults, enter nothing when finished.")
-        ai_goals = []
-        for i in range(5):
-            ai_goal = utils.clean_input(
-                config, f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: "
+        # Revise constraints
+        i = 0
+        while i < len(directives.constraints):
+            constraint = directives.constraints[i]
+            print_attribute(f"Constraint {i+1}:", f'"{constraint}"')
+            new_constraint = (
+                clean_input(
+                    app_config,
+                    f"Enter new constraint {i+1}"
+                    " (press enter to keep current, or '-' to remove):",
+                )
+                or constraint
             )
-            if ai_goal == "":
+
+            if new_constraint == "-":
+                directives.constraints.remove(constraint)
+                continue
+            elif new_constraint:
+                directives.constraints[i] = new_constraint
+
+            i += 1
+
+        # Add new constraints
+        while True:
+            new_constraint = clean_input(
+                app_config,
+                "Press enter to finish, or enter a constraint to add:",
+            )
+            if not new_constraint:
                 break
-            ai_goals.append(ai_goal)
-    if not ai_goals:
-        ai_goals = [
-            "Increase net worth",
-            "Grow Twitter Account",
-            "Develop and manage multiple businesses autonomously",
-        ]
+            directives.constraints.append(new_constraint)
 
-    # Get API Budget from User
-    user_friendly_output(
-        title="Enter your budget for API calls:",
-        message="For example: $1.50",
-        title_color=Fore.GREEN,
-    )
-    logger.info("Enter nothing to let the AI run without monetary limit")
-    api_budget_input = utils.clean_input(
-        config, f"{Fore.LIGHTBLUE_EX}Budget{Style.RESET_ALL}: $"
-    )
-    if api_budget_input == "":
-        api_budget = 0.0
-    else:
-        try:
-            api_budget = float(api_budget_input.replace("$", ""))
-        except ValueError:
-            user_friendly_output(
-                level=logging.WARNING,
-                title="Invalid budget input.",
-                message="Setting budget to unlimited.",
-                title_color=Fore.RED,
+        # Revise resources
+        i = 0
+        while i < len(directives.resources):
+            resource = directives.resources[i]
+            print_attribute(f"Resource {i+1}:", f'"{resource}"')
+            new_resource = (
+                clean_input(
+                    app_config,
+                    f"Enter new resource {i+1}"
+                    " (press enter to keep current, or '-' to remove):",
+                )
+                or resource
             )
-            api_budget = 0.0
+            if new_resource == "-":
+                directives.resources.remove(resource)
+                continue
+            elif new_resource:
+                directives.resources[i] = new_resource
 
-    return AIConfig(ai_name, ai_role, ai_goals, api_budget)
+            i += 1
+
+        # Add new resources
+        while True:
+            new_resource = clean_input(
+                app_config,
+                "Press enter to finish, or enter a resource to add:",
+            )
+            if not new_resource:
+                break
+            directives.resources.append(new_resource)
+
+        # Revise best practices
+        i = 0
+        while i < len(directives.best_practices):
+            best_practice = directives.best_practices[i]
+            print_attribute(f"Best Practice {i+1}:", f'"{best_practice}"')
+            new_best_practice = (
+                clean_input(
+                    app_config,
+                    f"Enter new best practice {i+1}"
+                    " (press enter to keep current, or '-' to remove):",
+                )
+                or best_practice
+            )
+            if new_best_practice == "-":
+                directives.best_practices.remove(best_practice)
+                continue
+            elif new_best_practice:
+                directives.best_practices[i] = new_best_practice
+
+            i += 1
+
+        # Add new best practices
+        while True:
+            new_best_practice = clean_input(
+                app_config,
+                "Press enter to finish, or add a best practice to add:",
+            )
+            if not new_best_practice:
+                break
+            directives.best_practices.append(new_best_practice)
+
+        revised = True
+
+    return ai_profile, directives
 
 
-def generate_aiconfig_automatic(user_prompt: str, config: Config) -> AIConfig:
-    """Generates an AIConfig object from the given string.
+def print_ai_settings(
+    ai_profile: AIProfile,
+    directives: AIDirectives,
+    logger: logging.Logger,
+    title: str = "AI Settings",
+):
+    print_attribute(title, "")
+    print_attribute("-" * len(title), "")
+    print_attribute("Name :", ai_profile.ai_name)
+    print_attribute("Role :", ai_profile.ai_role)
 
-    Returns:
-    AIConfig: The AIConfig object tailored to the user's input
-    """
-
-    system_prompt = DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC
-    prompt_ai_config_automatic = Template(
-        DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC
-    ).render(user_prompt=user_prompt)
-    # Call LLM with the string as user input
-    output = create_chat_completion(
-        ChatSequence.for_model(
-            config.fast_llm,
-            [
-                Message("system", system_prompt),
-                Message("user", prompt_ai_config_automatic),
-            ],
-        ),
-        config,
-    ).content
-
-    # Debug LLM Output
-    logger.debug(f"AI Config Generator Raw Output: {output}")
-
-    # Parse the output
-    ai_name = re.search(r"Name(?:\s*):(?:\s*)(.*)", output, re.IGNORECASE).group(1)
-    ai_role = (
-        re.search(
-            r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)",
-            output,
-            re.IGNORECASE | re.DOTALL,
-        )
-        .group(1)
-        .strip()
-    )
-    ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
-    api_budget = 0.0  # TODO: parse api budget using a regular expression
-
-    return AIConfig(ai_name, ai_role, ai_goals, api_budget)
+    print_attribute("Constraints:", "" if directives.constraints else "(none)")
+    for constraint in directives.constraints:
+        logger.info(f"- {constraint}")
+    print_attribute("Resources:", "" if directives.resources else "(none)")
+    for resource in directives.resources:
+        logger.info(f"- {resource}")
+    print_attribute("Best practices:", "" if directives.best_practices else "(none)")
+    for best_practice in directives.best_practices:
+        logger.info(f"- {best_practice}")

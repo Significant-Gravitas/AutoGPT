@@ -28,7 +28,8 @@ class SimplePluginService(PluginService):
             )
         else:
             raise NotImplementedError(
-                f"Plugin storage format {plugin_location.storage_format} is not implemented."
+                "Plugin storage format %s is not implemented."
+                % plugin_location.storage_format
             )
 
     ####################################
@@ -39,7 +40,7 @@ class SimplePluginService(PluginService):
         """Load a plugin from a file path."""
         # TODO: Define an on disk storage format and implement this.
         #   Can pull from existing zip file loading implementation
-        raise NotImplemented("Loading from file path is not implemented.")
+        raise NotImplementedError("Loading from file path is not implemented.")
 
     @staticmethod
     def load_from_import_path(plugin_route: PluginStorageRoute) -> "PluginType":
@@ -56,7 +57,7 @@ class SimplePluginService(PluginService):
         #   storage locations. E.g. if we know that path_type is a file path, we can
         #   search the workspace for it. If it's an import path, we can check the core
         #   system and the auto_gpt_plugins package.
-        raise NotImplemented("Resolving plugin name to path is not implemented.")
+        raise NotImplementedError("Resolving plugin name to path is not implemented.")
 
     #####################################
     # High-level storage format loaders #
