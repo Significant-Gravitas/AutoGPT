@@ -1,4 +1,4 @@
-agbenchmark/workspace/
+agbenchmark_config/workspace/
 backend/backend_stdout.txt
 reports/df*.pkl
 reports/raw*
@@ -166,5 +166,9 @@ cython_debug/
 .DS_Store
 ```
 secrets.json
-challenges_already_beaten.json
-agbenchmark/challenges/pri_*
+agbenchmark_config/challenges_already_beaten.json
+agbenchmark_config/challenges/pri_*
+agbenchmark_config/updates.json
+agbenchmark_config/reports/*
+agbenchmark_config/reports/success_rate.json
+agbenchmark_config/reports/regression_tests.json

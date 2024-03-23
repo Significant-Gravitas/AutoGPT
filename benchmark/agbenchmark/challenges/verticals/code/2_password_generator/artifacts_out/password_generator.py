@@ -1,8 +1,9 @@
 import random
 import string
+import sys
 
 
-def generate_password(length: int) -> str:
+def generate_password(length: int = 8) -> str:
     if length < 8 or length > 16:
         raise ValueError("Password length must be between 8 and 16 characters.")
 
@@ -19,5 +20,8 @@ def generate_password(length: int) -> str:
 
 
 if __name__ == "__main__":
-    password_length = random.randint(8, 16)
+    password_length = (
+        int(sys.argv[sys.argv.index("--length") + 1])
+        if "--length" in sys.argv else 8
+    )
     print(generate_password(password_length))

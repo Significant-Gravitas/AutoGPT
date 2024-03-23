@@ -1,12 +1,15 @@
+import logging
 import os
 from hashlib import sha256
 
-import openai.api_requestor
 import pytest
+from openai import OpenAI
+from openai._models import FinalRequestOptions
+from openai._types import Omit
+from openai._utils import is_given
 from pytest_mock import MockerFixture
 
 from .vcr_filter import (
-    PROXY,
     before_record_request,
     before_record_response,
     freeze_request_body,
@@ -16,14 +19,6 @@ DEFAULT_RECORD_MODE = "new_episodes"
 BASE_VCR_CONFIG = {
     "before_record_request": before_record_request,
     "before_record_response": before_record_response,
-    "filter_headers": [
-        "Authorization",
-        "AGENT-MODE",
-        "AGENT-TYPE",
-        "OpenAI-Organization",
-        "X-OpenAI-Client-User-Agent",
-        "User-Agent",
-    ],
     "match_on": ["method", "headers"],
 }
 
@@ -47,33 +42,25 @@ def get_base_vcr_config(request):
 @pytest.fixture()
 def vcr_cassette_dir(request):
     test_name = os.path.splitext(request.node.name)[0]
-    return os.path.join("tests/Auto-GPT-test-cassettes", test_name)
-
-
-def patch_api_base(requestor: openai.api_requestor.APIRequestor):
-    new_api_base = f"{PROXY}/v1"
-    requestor.api_base = new_api_base
-    return requestor
+    return os.path.join("tests/vcr_cassettes", test_name)
 
 
 @pytest.fixture
-def patched_api_requestor(mocker: MockerFixture):
-    init_requestor = openai.api_requestor.APIRequestor.__init__
-    prepare_request = openai.api_requestor.APIRequestor._prepare_request_raw
+def cached_openai_client(mocker: MockerFixture) -> OpenAI:
+    client = OpenAI()
+    _prepare_options = client._prepare_options
 
-    def patched_init_requestor(requestor, *args, **kwargs):
-        init_requestor(requestor, *args, **kwargs)
-        patch_api_base(requestor)
+    def _patched_prepare_options(self, options: FinalRequestOptions):
+        _prepare_options(options)
 
-    def patched_prepare_request(self, *args, **kwargs):
-        url, headers, data = prepare_request(self, *args, **kwargs)
+        headers: dict[str, str | Omit] = (
+            {**options.headers} if is_given(options.headers) else {}
+        )
+        options.headers = headers
+        data: dict = options.json_data
 
-        if PROXY:
-            headers["AGENT-MODE"] = os.environ.get("AGENT_MODE")
-            headers["AGENT-TYPE"] = os.environ.get("AGENT_TYPE")
-
-        print(
-            f"[DEBUG] Outgoing API request: {headers}\n{data.decode() if data else None}"
+        logging.getLogger("cached_openai_client").debug(
+            f"Outgoing API request: {headers}\n{data if data else None}"
         )
 
         # Add hash header for cheap & fast matching on cassette playback
@@ -81,16 +68,10 @@ def patched_api_requestor(mocker: MockerFixture):
             freeze_request_body(data), usedforsecurity=False
         ).hexdigest()
 
-        return url, headers, data
-
-    if PROXY:
-        mocker.patch.object(
-            openai.api_requestor.APIRequestor,
-            "__init__",
-            new=patched_init_requestor,
-        )
     mocker.patch.object(
-        openai.api_requestor.APIRequestor,
-        "_prepare_request_raw",
-        new=patched_prepare_request,
+        client,
+        "_prepare_options",
+        new=_patched_prepare_options,
     )
+
+    return client

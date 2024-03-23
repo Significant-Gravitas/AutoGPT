@@ -1,4 +1,6 @@
 .*
+**/.venv*
+**/__pycache__
 *.template
 *.yaml
 *.yml
@@ -6,9 +8,7 @@
 
 data/*
 logs/*
-agbenchmark/logs/*
-agbenchmark/reports/*
+agbenchmark_config/logs/*
+agbenchmark_config/reports/*
 
-*.md
 *.png
-!BULLETIN.md

@@ -136,7 +136,8 @@ class SimpleWorkspace(Configurable, Workspace):
 
         if relative_path.is_absolute():
             raise ValueError(
-                f"Attempted to access absolute path '{relative_path}' in workspace '{root}'."
+                f"Attempted to access absolute path '{relative_path}' "
+                f"in workspace '{root}'."
             )
         full_path = root.joinpath(relative_path).resolve()
 

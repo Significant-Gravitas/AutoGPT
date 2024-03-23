@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "user_interaction"
-COMMAND_CATEGORY_TITLE = "User Interaction"
-
 from autogpt.agents.agent import Agent
 from autogpt.app.utils import clean_input
 from autogpt.command_decorator import command
+from autogpt.core.utils.json_schema import JSONSchema
+
+COMMAND_CATEGORY = "user_interaction"
+COMMAND_CATEGORY_TITLE = "User Interaction"
 
 
 @command(
@@ -17,14 +18,15 @@ from autogpt.command_decorator import command
         " you can ask the user for input"
     ),
     {
-        "question": {
-            "type": "string",
-            "description": "The question or prompt to the user",
-            "required": True,
-        }
+        "question": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The question or prompt to the user",
+            required=True,
+        )
     },
     enabled=lambda config: not config.noninteractive_mode,
 )
-def ask_user(question: str, agent: Agent) -> str:
-    resp = clean_input(agent.config, f"{agent.ai_config.ai_name} asks: '{question}': ")
+async def ask_user(question: str, agent: Agent) -> str:
+    print(f"\nQ: {question}")
+    resp = clean_input(agent.legacy_config, "A:")
     return f"The user's answer: '{resp}'"
