@@ -76,8 +76,14 @@ class AgentFileManagerMixin:
             temp_id = state.agent_id
             state.agent_id = save_as
             self._file_storage.make_dir(f"agents/{save_as}")
+            # Save state
             await self._file_storage.write_file(
                 f"agents/{save_as}/{self.STATE_FILE}", state.json()
+            )
+            # Copy workspace
+            self._file_storage.copy(
+                f"agents/{temp_id}/workspace",
+                f"agents/{save_as}/workspace",
             )
             state.agent_id = temp_id
         else:
