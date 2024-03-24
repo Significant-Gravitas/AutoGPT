@@ -3,10 +3,19 @@ from __future__ import annotations
 import logging
 
 from autogpt.file_storage.base import FileStorage
+from autogpt.agents.components import CommandProvider, Component, ComponentSystemError, PipelineError, ProposeAction
+from autogpt.models.command import Command
 
 from ..base import BaseAgent, BaseAgentSettings
 
 logger = logging.getLogger(__name__)
+
+
+class FileManagerComponent(Component, CommandProvider):
+
+    def get_commands(self, commands: list[Command]) -> list[Command]:
+        #TODO provide file operations commands
+        return commands
 
 
 class AgentFileManagerMixin:

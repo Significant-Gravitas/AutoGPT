@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import copy
 import logging
-from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Optional
+from abc import ABC, ABCMeta, abstractmethod
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from pydantic import Field, validator
+
 
 if TYPE_CHECKING:
     from autogpt.config import Config
@@ -18,6 +20,14 @@ if TYPE_CHECKING:
     )
     from autogpt.models.command_registry import CommandRegistry
 
+from autogpt.models.command import Command
+from autogpt.agents.components import (
+    BuildPrompt,
+    CommandProvider,
+    Component,
+    ComponentError,
+    PipelineError,
+)
 from autogpt.agents.utils.prompt_scratchpad import PromptScratchpad
 from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
@@ -145,6 +155,186 @@ class BaseAgentSettings(SystemSettings):
     """(STATE) The action history of the agent."""
 
 
+class AgentMeta(type):
+    def __call__(cls, *args, **kwargs):
+        # Create instance of the class (Agent or BaseAgent)
+        instance = super().__call__(*args, **kwargs)
+        # Automatically collect modules after the instance is created
+        instance._collect_components(instance)
+        return instance
+
+
+class CombinedMeta(ABCMeta, AgentMeta):
+    def __new__(cls, name, bases, namespace, **kwargs):
+        return super().__new__(cls, name, bases, namespace, **kwargs)
+
+
+class ComponentAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
+    # TODO kcze change to named tuple?
+    ThoughtProcessOutput = tuple[CommandName, CommandArgs, AgentThoughts]
+
+    def __init__(
+        self,
+        settings: BaseAgentSettings,
+        llm_provider: ChatModelProvider,
+        command_registry: CommandRegistry,
+        legacy_config: Config,
+    ):
+        self.state = settings
+        self.components = []
+        self.llm_provider = llm_provider
+        # TODO for backwards compatibility
+        # Commands should be provider by CommandProviders
+        self.command_registry = command_registry
+        self.config = settings.config
+
+    def _collect_components(self):
+        self.components = [
+            getattr(self, attr)
+            for attr in dir(self)
+            if isinstance(getattr(self, attr), Component)
+        ]
+        self.components = self._topological_sort()
+
+    def _topological_sort(self) -> list[Component]:
+        visited = set()
+        stack = []
+
+        def visit(node: Component):
+            if node in visited:
+                return
+            visited.add(node)
+            for neighbor_class in node.__class__.get_dependencies():
+                # Find the instance of neighbor_class in self.components
+                neighbor = next(
+                    (m for m in self.components if isinstance(m, neighbor_class)), None
+                )
+                if neighbor:
+                    visit(neighbor)
+            stack.append(node)
+
+        for component in self.components:
+            visit(component)
+
+        return stack
+
+    @property
+    def llm(self) -> ChatModelInfo:
+        """The LLM that the agent uses to think."""
+        llm_name = (
+            self.config.smart_llm if self.config.big_brain else self.config.fast_llm
+        )
+        return OPEN_AI_CHAT_MODELS[llm_name]
+
+    #TODO method_name type unsafe!
+    def _foreach_components(self, method_name: str, *args, retry_limit: int = 3):
+        original_args = copy.deepcopy(args)  # Clone parameters to revert on failure
+        pipeline_attempts = 0
+
+        while pipeline_attempts < retry_limit:
+            try:
+                for component in self.components:
+                    component_attempts = 0
+                    method = getattr(component, method_name, None)
+                    if not callable(method):
+                        continue
+                    while component_attempts < retry_limit:
+                        try:
+                            new_args = copy.deepcopy(args)
+                            new_args = method(*new_args)
+                            # Update args only if method successfully completes
+                            if new_args is not None:
+                                args = new_args
+                        except ComponentError:
+                            # Retry the same component on ComponentError
+                            component_attempts += 1
+                            continue
+                        break
+                # If execution reaches here without errors, break the loop
+                break
+            except PipelineError:
+                # Restart from the beginning on PipelineError
+                args = copy.deepcopy(original_args)  # Revert to original parameters
+                pipeline_attempts += 1
+                continue  # Start the loop over
+            except Exception as e:
+                #TODO pass pipeline info to exception
+                raise e
+
+    #TODO this probably to Agent
+    async def propose_action(self) -> ThoughtProcessOutput:
+        """Proposes the next action to execute, based on the task and current state.
+
+        Returns:
+            The command name and arguments, if any, and the agent's thoughts.
+        """
+
+        # Scratchpad as surrogate PromptGenerator for plugin hooks
+        self._prompt_scratchpad = PromptScratchpad()
+
+        # Execute build prompt_data
+        prompt_data: BuildPrompt.Result = BuildPrompt.Result()
+        self._foreach_components("build_prompt", prompt_data)
+
+        # Get final prompt
+        prompt = ChatPrompt(messages=[])
+        self._foreach_components("get_prompt", prompt)
+
+        # Get commands
+        commands: list[Command] = []
+        self._foreach_components("get_commands", commands)
+
+        # prompt = self.on_before_think(prompt, scratchpad=self._prompt_scratchpad)
+
+        # logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
+        response = await self.llm_provider.create_chat_completion(
+            prompt.messages,
+            functions=(
+                get_openai_command_specs(
+                    # TODO backwards compatibility
+                    list(self.command_registry.list_available_commands())
+                    + commands
+                )
+                + list(self._prompt_scratchpad.commands.values())
+                if self.config.use_functions_api
+                else []
+            ),
+            model_name=self.llm.name,
+            completion_parser=lambda r: self.parse_and_process_response(
+                r,
+                prompt,
+                scratchpad=self._prompt_scratchpad,
+            ),
+        )
+        self.config.cycle_count += 1
+
+        return response.parsed_result
+    
+    #TODO backwards compatibility
+    @abstractmethod
+    def parse_and_process_response(
+        self,
+        llm_response: AssistantChatMessage,
+        prompt: ChatPrompt,
+        scratchpad: PromptScratchpad,
+    ) -> ThoughtProcessOutput:
+        """Validate, parse & process the LLM's response.
+
+        Must be implemented by derivative classes: no base implementation is provided,
+        since the implementation depends on the role of the derivative Agent.
+
+        Params:
+            llm_response: The raw response from the chat model.
+            prompt: The prompt that was executed.
+            scratchpad: An object containing additional prompt elements from plugins.
+                (E.g. commands, constraints, best practices)
+
+        Returns:
+            The parsed command name and command args, if any, and the agent thoughts.
+        """
+        pass
+
+
 class BaseAgent(Configurable[BaseAgentSettings], ABC):
     """Base class for all AutoGPT agent classes."""
 
@@ -235,6 +425,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
             prompt=prompt,
             scratchpad=self._prompt_scratchpad,
         )
+        
 
     @abstractmethod
     async def execute(
@@ -272,8 +463,6 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         """
         if not extra_commands:
             extra_commands = []
-        if not extra_messages:
-            extra_messages = []
 
         # Apply additions from plugins
         for plugin in self.config.plugins:

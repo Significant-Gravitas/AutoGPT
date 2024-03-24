@@ -98,7 +98,7 @@ class CommandRegistry:
             return command(**kwargs, agent=agent)
         raise KeyError(f"Command '{command_name}' not found in registry")
 
-    def list_available_commands(self, agent: BaseAgent) -> Iterator[Command]:
+    def list_available_commands(self, agent: BaseAgent | None = None) -> Iterator[Command]:
         """Iterates over all registered commands and yields those that are available.
 
         Params:
@@ -110,7 +110,7 @@ class CommandRegistry:
 
         for cmd in self.commands.values():
             available = cmd.available
-            if callable(cmd.available):
+            if callable(cmd.available) and agent:
                 available = cmd.available(agent)
             if available:
                 yield cmd

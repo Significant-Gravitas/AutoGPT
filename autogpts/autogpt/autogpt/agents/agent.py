@@ -35,10 +35,10 @@ from autogpt.models.action_history import (
 from autogpt.models.command import CommandOutput
 from autogpt.models.context_item import ContextItem
 
-from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
+from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings, ComponentAgent
 from .features.agent_file_manager import AgentFileManagerMixin
-from .features.context import ContextMixin
-from .features.watchdog import WatchdogMixin
+from .features.context import ContextComponent, ContextMixin
+from .features.watchdog import WatchdogComponent, WatchdogMixin
 from .prompt_strategies.one_shot import (
     OneShotAgentPromptConfiguration,
     OneShotAgentPromptStrategy,
@@ -69,6 +69,20 @@ class AgentSettings(BaseAgentSettings):
             lambda: OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
         )
     )
+
+
+class SimpleAgent(ComponentAgent, Configurable[AgentSettings]):
+    def __init__(
+        self,
+        settings: AgentSettings,
+        llm_provider: ChatModelProvider,
+        command_registry: CommandRegistry,
+        file_storage: FileStorage,
+        legacy_config: Config,
+    ):
+        super().__init__(settings, llm_provider, command_registry, legacy_config)
+        self.context = ContextComponent()
+        self.watchdog = WatchdogComponent(settings.config, settings.history)
 
 
 class Agent(
