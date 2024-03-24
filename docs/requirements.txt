@@ -1,0 +1,4 @@
+mkdocs
+mkdocs-material
+mkdocs-table-reader-plugin
+pymdown-extensions

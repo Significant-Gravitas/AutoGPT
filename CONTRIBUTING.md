@@ -1,14 +1,34 @@
-We maintain a knowledgebase at this [wiki](https://github.com/Significant-Gravitas/Nexus/wiki)
+# AutoGPT Contribution Guide
+If you are reading this, you are probably looking for our **[contribution guide]**,
+which is part of our [knowledge base].
 
-We would like to say "We value all contributions". After all, we are an open-source project, so we should say something fluffy like this, right?
+You can find our immediate priorities and their progress on our public [kanban board].
 
-However the reality is that some contributions are SUPER-valuable, while others create more trouble than they are worth and actually _create_ work for the core team.
+[contribution guide]: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing
+[knowledge base]: https://github.com/Significant-Gravitas/Nexus/wiki
+[kanban board]: https://github.com/orgs/Significant-Gravitas/projects/1
 
-If you wish to contribute, please look through the wiki [contributing](https://github.com/Significant-Gravitas/Nexus/wiki/Contributing) page.
+## In short
+1. Avoid duplicate work, issues, PRs etc.
+2. We encourage you to collaborate with fellow community members on some of our bigger
+   [todo's][kanban board]!
+   * We highly recommend to post your idea and discuss it in the [dev channel].
+4. Create a draft PR when starting work on bigger changes.
+3. Please also consider contributing something other than code; see the
+   [contribution guide] for options.
+5. Clearly explain your changes when submitting a PR.
+6. Don't submit stuff that's broken.
+7. Avoid making unnecessary changes, especially if they're purely based on your personal
+   preferences. Doing so is the maintainers' job. ;-)
 
-If you wish to involve with the project (beyond just contributing PRs), please read the wiki [catalyzing](https://github.com/Significant-Gravitas/Nexus/wiki/Catalyzing) page.
+[dev channel]: https://discord.com/channels/1092243196446249134/1095817829405704305
 
-In fact, why not just look through the whole wiki (it's only a few pages) and hop on our discord (you'll find it in the wiki).
+If you wish to involve with the project (beyond just contributing PRs), please read the
+wiki [catalyzing](https://github.com/Significant-Gravitas/Nexus/wiki/Catalyzing) page.
 
-❤️ & 🔆
-The team @ Auto-GPT
+In fact, why not just look through the whole wiki (it's only a few pages) and
+hop on our Discord. See you there! :-)
+
+❤️ & 🔆  
+The team @ AutoGPT  
+https://discord.gg/autogpt

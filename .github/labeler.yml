@@ -1,0 +1,23 @@
+AutoGPT Agent:
+- changed-files:
+  - any-glob-to-any-file: autogpts/autogpt/**
+
+Forge:
+- changed-files:
+  - any-glob-to-any-file: autogpts/forge/**
+
+Benchmark:
+- changed-files:
+  - any-glob-to-any-file: benchmark/**
+
+Frontend:
+- changed-files:
+  - any-glob-to-any-file: frontend/**
+
+Arena:
+- changed-files:
+  - any-glob-to-any-file: arena/**
+
+documentation:
+- changed-files:
+  - any-glob-to-any-file: docs/**

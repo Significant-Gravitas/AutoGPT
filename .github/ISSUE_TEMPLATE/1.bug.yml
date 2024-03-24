@@ -1,5 +1,5 @@
 name: Bug report 🐛
-description: Create a bug report for Auto-GPT.
+description: Create a bug report for AutoGPT.
 labels: ['status: needs triage']
 body:
   - type: markdown
@@ -13,16 +13,16 @@ body:
         [backlog]: https://github.com/orgs/Significant-Gravitas/projects/1
         [roadmap]: https://github.com/orgs/Significant-Gravitas/projects/2  
         [discord]: https://discord.gg/autogpt
-        [discussions]: https://github.com/Significant-Gravitas/Auto-GPT/discussions
+        [discussions]: https://github.com/Significant-Gravitas/AutoGPT/discussions
         [#tech-support]: https://discord.com/channels/1092243196446249134/1092275629602394184
-        [existing issues]: https://github.com/Significant-Gravitas/Auto-GPT/issues?q=is%3Aissue
+        [existing issues]: https://github.com/Significant-Gravitas/AutoGPT/issues?q=is%3Aissue
         [wiki page on Contributing]: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing
 
   - type: checkboxes
     attributes:
       label: ⚠️ Search for existing issues first ⚠️
       description: >
-        Please [search the history](https://github.com/Torantulino/Auto-GPT/issues)
+        Please [search the history](https://github.com/Significant-Gravitas/AutoGPT/issues)
         to see if an issue already exists for the same problem.
       options:
         - label: I have searched the existing issues, and there is no existing issue for my problem
@@ -35,8 +35,8 @@ body:
         A good rule of thumb: What would you type if you were searching for the issue?
         
         For example:
-        BAD - my auto-gpt keeps looping
-        GOOD - After performing execute_python_file, auto-gpt goes into a loop where it keeps trying to execute the file.
+        BAD - my AutoGPT keeps looping
+        GOOD - After performing execute_python_file, AutoGPT goes into a loop where it keeps trying to execute the file.
         
         ⚠️ SUPER-busy repo, please help the volunteer maintainers.
         The less time we spend here, the more time we can spend building AutoGPT.
@@ -54,7 +54,7 @@ body:
     attributes:
       label: Which Operating System are you using?
       description: >
-        Please select the operating system you were using to run Auto-GPT when this problem occurred.
+        Please select the operating system you were using to run AutoGPT when this problem occurred.
       options:
         - Windows
         - Linux
@@ -73,12 +73,12 @@ body:
 
   - type: dropdown
     attributes:
-      label: Which version of Auto-GPT are you using?
+      label: Which version of AutoGPT are you using?
       description: |
-        Please select which version of Auto-GPT you were using when this issue occurred.
-        If you downloaded the code from the [releases page](https://github.com/Significant-Gravitas/Auto-GPT/releases/) make sure you were using the latest code. 
-        **If you weren't please try with the [latest code](https://github.com/Significant-Gravitas/Auto-GPT/releases/)**.
-        If installed with git you can run `git branch` to see which version of Auto-GPT you are running.
+        Please select which version of AutoGPT you were using when this issue occurred.
+        If you downloaded the code from the [releases page](https://github.com/Significant-Gravitas/AutoGPT/releases/) make sure you were using the latest code. 
+        **If you weren't please try with the [latest code](https://github.com/Significant-Gravitas/AutoGPT/releases/)**.
+        If installed with git you can run `git branch` to see which version of AutoGPT you are running.
       options:
         - Latest Release
         - Stable (branch)
@@ -90,8 +90,8 @@ body:
     attributes:
       label: Do you use OpenAI GPT-3 or GPT-4?
       description: >
-        If you are using Auto-GPT with `--gpt3only`, your problems may be caused by
-        the [limitations](https://github.com/Significant-Gravitas/Auto-GPT/issues?q=is%3Aissue+label%3A%22AI+model+limitation%22) of GPT-3.5.
+        If you are using AutoGPT with `--gpt3only`, your problems may be caused by
+        the [limitations](https://github.com/Significant-Gravitas/AutoGPT/issues?q=is%3Aissue+label%3A%22AI+model+limitation%22) of GPT-3.5.
       options:
         - GPT-3.5
         - GPT-4
@@ -129,7 +129,7 @@ body:
   - type: textarea
     attributes:
       label: Describe your issue.
-      description: Describe the problem you are experiencing. Try to describe only the issue and phrase it short but clear. ⚠️ Provide NO other data in this field  
+      description: Describe the problem you are experiencing. Try to describe only the issue and phrase it short but clear. ⚠️ Provide NO other data in this field
     validations:
       required: true
 
@@ -139,16 +139,16 @@ body:
       value: |
         ⚠️The following is OPTIONAL, please keep in mind that the log files may contain personal information such as credentials.⚠️
         
-        "The log files are located in the folder 'logs' inside the main auto-gpt folder."
+        "The log files are located in the folder 'logs' inside the main AutoGPT folder."
 
   - type: textarea
     attributes:
       label: Upload Activity Log Content
       description: |
         Upload the activity log content, this can help us understand the issue better. 
-        To do this, go to the folder logs in your main auto-gpt folder, open activity.log and copy/paste the contents to this field. 
-        ⚠️ The activity log may contain personal data given to auto-gpt by you in prompt or input as well as 
-        any personal information that auto-gpt collected out of files during last run. Do not add the activity log if you are not comfortable with sharing it. ⚠️
+        To do this, go to the folder logs in your main AutoGPT folder, open activity.log and copy/paste the contents to this field. 
+        ⚠️ The activity log may contain personal data given to AutoGPT by you in prompt or input as well as 
+        any personal information that AutoGPT collected out of files during last run. Do not add the activity log if you are not comfortable with sharing it. ⚠️
     validations:
       required: false
 
@@ -157,8 +157,8 @@ body:
       label: Upload Error Log Content
       description: |
         Upload the error log content, this will help us understand the issue better. 
-        To do this, go to the folder logs in your main auto-gpt folder, open error.log and copy/paste the contents to this field. 
-        ⚠️ The error log may contain personal data given to auto-gpt by you in prompt or input as well as 
-        any personal information that auto-gpt collected out of files during last run. Do not add the activity log if you are not comfortable with sharing it. ⚠️
+        To do this, go to the folder logs in your main AutoGPT folder, open error.log and copy/paste the contents to this field. 
+        ⚠️ The error log may contain personal data given to AutoGPT by you in prompt or input as well as 
+        any personal information that AutoGPT collected out of files during last run. Do not add the activity log if you are not comfortable with sharing it. ⚠️
     validations:
       required: false

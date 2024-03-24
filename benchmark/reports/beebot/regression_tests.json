@@ -1,0 +1,46 @@
+{
+    "TestBasicMemory": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/deprecated/memory/m1_id/data.json"
+    },
+    "TestBasicRetrieval": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/deprecated/retrieval/r1_book_price/data.json"
+    },
+    "TestDebugSimpleTypoWithGuidance": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/deprecated/code/c2_debug_suite/d2.1_guided/data.json"
+    },
+    "TestDebugSimpleTypoWithoutGuidance": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/deprecated/code/c2_debug_suite/d2.2_vague/data.json"
+    },
+    "TestReadFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/deprecated/interface/read_file/data.json"
+    },
+    "TestRememberMultipleIds": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/deprecated/memory/m2_multiple/data.json"
+    },
+    "TestReturnCode_Simple": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/deprecated/code/c1_writing_suite_1/1_return/data.json"
+    },
+    "TestSearch": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/deprecated/interface/search/data.json"
+    },
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/deprecated/interface/write_file/data.json"
+    },
+    "TestPasswordGenerator_Easy": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/deprecated/code/c4_writing_cli_suite_3/1_password_generator/data.json"
+    },
+    "TestWritingCLI_FileOrganizer": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/deprecated/code/c4_writing_cli_suite_3/2_file_organizer/data.json"
+    }
+}
