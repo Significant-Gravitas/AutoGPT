@@ -1,49 +1,31 @@
-<!-- ⚠️ At the moment any non-essential commands are not being merged.
-If you want to add non-essential commands to Auto-GPT, please create a plugin instead.
-We are expecting to ship plugin support within the week (PR #757).
-Resources:
-* https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template
+### Background
+
+<!-- Clearly explain the need for these changes: -->
+
+### Changes 🏗️
+
+<!-- Concisely describe all of the changes made in this pull request: -->
+
+### PR Quality Scorecard ✨
+
+<!--
+Check out our contribution guide:
+https://github.com/Significant-Gravitas/Nexus/wiki/Contributing
+
+1. Avoid duplicate work, issues, PRs etc.
+2. Also consider contributing something other than code; see the [contribution guide]
+   for options.
+3. Clearly explain your changes.
+4. Avoid making unnecessary changes, especially if they're purely based on personal
+   preferences. Doing so is the maintainers' job. ;-)
 -->
 
-<!-- 📢 Announcement
-We've recently noticed an increase in pull requests focusing on combining multiple changes. While the intentions behind these PRs are appreciated, it's essential to maintain a clean and manageable git history. To ensure the quality of our repository, we kindly ask you to adhere to the following guidelines when submitting PRs:
-
-Focus on a single, specific change.
-Do not include any unrelated or "extra" modifications.
-Provide clear documentation and explanations of the changes made.
-Ensure diffs are limited to the intended lines — no applying preferred formatting styles or line endings (unless that's what the PR is about).
-For guidance on committing only the specific lines you have changed, refer to this helpful video: https://youtu.be/8-hSNHHbiZg
-
-Check out our [wiki page on Contributing](https://github.com/Significant-Gravitas/Nexus/wiki/Contributing)
-
-By following these guidelines, your PRs are more likely to be merged quickly after testing, as long as they align with the project's overall direction. -->
-
-### Background
-<!-- Provide a concise overview of the rationale behind this change. Include relevant context, prior discussions, or links to related issues. Ensure that the change aligns with the project's overall direction. -->
-
-### Changes
-<!-- Describe the specific, focused change made in this pull request. Detail the modifications clearly and avoid any unrelated or "extra" changes. -->
-
-### Documentation
-<!-- Explain how your changes are documented, such as in-code comments or external documentation. Ensure that the documentation is clear, concise, and easy to understand. -->
-
-### Test Plan
-<!-- Describe how you tested this functionality. Include steps to reproduce, relevant test cases, and any other pertinent information. -->
-
-### PR Quality Checklist
-- [ ] My pull request is atomic and focuses on a single change.
-- [ ] I have thoroughly tested my changes with multiple different prompts.
-- [ ] I have considered potential risks and mitigations for my changes.
-- [ ] I have documented my changes clearly and comprehensively.
-- [ ] I have not snuck in any "extra" small tweaks changes. <!-- Submit these as separate Pull Requests, they are the easiest to merge! -->
-- [ ] I have run the following commands against my code to ensure it passes our linters:
-    ```shell
-    black .
-    isort .
-    mypy
-    autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring autogpt tests --in-place
-    ```
-
-<!-- If you haven't added tests, please explain why. If you have, check the appropriate box. If you've ensured your PR is atomic and well-documented, check the corresponding boxes. -->
-
-<!-- By submitting this, I agree that my pull request should be closed if I do not fill this out or follow the guidelines. -->
+- [x] Have you used the PR description template? &ensp; `+2 pts`
+- [ ] Is your pull request atomic, focusing on a single change? &ensp; `+5 pts`
+- [ ] Have you linked the GitHub issue(s) that this PR addresses? &ensp; `+5 pts`
+- [ ] Have you documented your changes clearly and comprehensively? &ensp; `+5 pts`
+- [ ] Have you changed or added a feature? &ensp; `-4 pts`
+  - [ ] Have you added/updated corresponding documentation? &ensp; `+4 pts`
+  - [ ] Have you added/updated corresponding integration tests? &ensp; `+5 pts`
+- [ ] Have you changed the behavior of AutoGPT? &ensp; `-5 pts`
+  - [ ] Have you also run `agbenchmark` to verify that these changes do not regress performance? &ensp; `+10 pts`

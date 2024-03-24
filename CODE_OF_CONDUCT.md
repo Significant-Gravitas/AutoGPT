@@ -1,12 +1,12 @@
-# Code of Conduct for Auto-GPT
+# Code of Conduct for AutoGPT
 
 ## 1. Purpose
 
-The purpose of this Code of Conduct is to provide guidelines for contributors to the auto-gpt project on GitHub. We aim to create a positive and inclusive environment where all participants can contribute and collaborate effectively. By participating in this project, you agree to abide by this Code of Conduct.
+The purpose of this Code of Conduct is to provide guidelines for contributors to the AutoGPT projects on GitHub. We aim to create a positive and inclusive environment where all participants can contribute and collaborate effectively. By participating in this project, you agree to abide by this Code of Conduct.
 
 ## 2. Scope
 
-This Code of Conduct applies to all contributors, maintainers, and users of the auto-gpt project. It extends to all project spaces, including but not limited to issues, pull requests, code reviews, comments, and other forms of communication within the project.
+This Code of Conduct applies to all contributors, maintainers, and users of the AutoGPT project. It extends to all project spaces, including but not limited to issues, pull requests, code reviews, comments, and other forms of communication within the project.
 
 ## 3. Our Standards
 
@@ -36,4 +36,5 @@ This Code of Conduct is adapted from the [Contributor Covenant](https://www.cont
 
 ## 6. Contact
 
-If you have any questions or concerns, please contact the project maintainers.
+If you have any questions or concerns, please contact the project maintainers on Discord:
+https://discord.gg/autogpt

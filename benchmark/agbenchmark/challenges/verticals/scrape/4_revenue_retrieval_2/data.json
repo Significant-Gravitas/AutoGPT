@@ -1,0 +1,46 @@
+{
+    "category": [
+        "scrape_synthesize"
+    ],
+    "cutoff": 60,
+    "dependencies": [
+        "TestRevenueRetrieval"
+    ],
+    "eval_id": "552bdf23-db40-4bd1-b123-4ed820886cc1",
+    "ground": {
+        "answer": "15 Millions\n112 Millions\n117 Millions\n204 Millions\n413 Millions\n2,014 Millions\n3,198 Millions\n4,046 Millions\n7,000 Millions\n11,759 Millions\n21,461 Millions\n24,578 Millions\n31,536 Millions\n53,823 Millions\n81,462 Millions",
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            ".txt"
+        ],
+        "should_contain": [
+            "15",
+            "112",
+            "117",
+            "204",
+            "413",
+            "2,0",
+            "3,198",
+            "4,046",
+            "7,000",
+            "11,759",
+            "21,461",
+            "24,578",
+            "31,536",
+            "53,823",
+            "81,462"
+        ],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can retrieve all the revenues of Tesla since its creation.",
+        "difficulty": "intermediate",
+        "side_effects": [
+            "tests if there is in fact an LLM attached"
+        ]
+    },
+    "name": "RevenueRetrieval2",
+    "task": "Write tesla's revenue every year since its creation into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 million)."
+}
