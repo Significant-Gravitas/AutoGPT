@@ -76,7 +76,7 @@ This folder contains all the files you want the agent to have in its workspace B
 ### artifacts_out
 
 This folder contains all the files you would like the agent to generate. This folder is used to mock the agent.
-This allows to run agbenchmark start --test=TestExample --mock and make sure our challenge actually works.
+This allows to run agbenchmark --test=TestExample --mock and make sure our challenge actually works.
 
 ### custom_python
 

@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "web_browse"
-COMMAND_CATEGORY_TITLE = "Web Browsing"
-
+import asyncio
 import logging
 import re
 from pathlib import Path
 from sys import platform
 from typing import TYPE_CHECKING, Optional, Type
+from urllib.request import urlretrieve
 
 from bs4 import BeautifulSoup
 from selenium.common.exceptions import WebDriverException
@@ -33,21 +32,26 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
-if TYPE_CHECKING:
-    from autogpt.config import Config
-    from autogpt.agents.agent import Agent
-
-from autogpt.agents.utils.exceptions import CommandExecutionError
+from autogpt.agents.utils.exceptions import CommandExecutionError, TooMuchOutputError
 from autogpt.command_decorator import command
-from autogpt.llm.utils import count_string_tokens
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
-from autogpt.processing.text import summarize_text
+from autogpt.processing.text import extract_information, summarize_text
 from autogpt.url_utils.validators import validate_url
+
+COMMAND_CATEGORY = "web_browse"
+COMMAND_CATEGORY_TITLE = "Web Browsing"
+
+
+if TYPE_CHECKING:
+    from autogpt.agents.agent import Agent
+    from autogpt.config import Config
+
 
 logger = logging.getLogger(__name__)
 
 FILE_DIR = Path(__file__).parent.parent
-TOKENS_TO_TRIGGER_SUMMARY = 50
+MAX_RAW_CONTENT_LENGTH = 500
 LINKS_TO_RETURN = 20
 
 
@@ -57,20 +61,51 @@ class BrowsingError(CommandExecutionError):
 
 @command(
     "read_webpage",
-    "Read a webpage, and extract specific information from it if a question is specified."
-    " If you are looking to extract specific information from the webpage, you should"
-    " specify a question.",
+    (
+        "Read a webpage, and extract specific information from it."
+        " You must specify either topics_of_interest, a question, or get_raw_content."
+    ),
     {
-        "url": {"type": "string", "description": "The URL to visit", "required": True},
-        "question": {
-            "type": "string",
-            "description": "A question that you want to answer using the content of the webpage.",
-            "required": False,
-        },
+        "url": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The URL to visit",
+            required=True,
+        ),
+        "topics_of_interest": JSONSchema(
+            type=JSONSchema.Type.ARRAY,
+            items=JSONSchema(type=JSONSchema.Type.STRING),
+            description=(
+                "A list of topics about which you want to extract information "
+                "from the page."
+            ),
+            required=False,
+        ),
+        "question": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description=(
+                "A question that you want to answer using the content of the webpage."
+            ),
+            required=False,
+        ),
+        "get_raw_content": JSONSchema(
+            type=JSONSchema.Type.BOOLEAN,
+            description=(
+                "If true, the unprocessed content of the webpage will be returned. "
+                "This consumes a lot of tokens, so use it with caution."
+            ),
+            required=False,
+        ),
     },
 )
 @validate_url
-def read_webpage(url: str, agent: Agent, question: str = "") -> str:
+async def read_webpage(
+    url: str,
+    agent: Agent,
+    *,
+    topics_of_interest: list[str] = [],
+    get_raw_content: bool = False,
+    question: str = "",
+) -> str:
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -82,7 +117,7 @@ def read_webpage(url: str, agent: Agent, question: str = "") -> str:
     """
     driver = None
     try:
-        driver = open_page_in_browser(url, agent.config)
+        driver = await open_page_in_browser(url, agent.legacy_config)
 
         text = scrape_text_with_selenium(driver)
         links = scrape_links_with_selenium(driver, url)
@@ -91,9 +126,19 @@ def read_webpage(url: str, agent: Agent, question: str = "") -> str:
         summarized = False
         if not text:
             return f"Website did not contain any text.\n\nLinks: {links}"
-        elif count_string_tokens(text, agent.llm.name) > TOKENS_TO_TRIGGER_SUMMARY:
-            text = summarize_memorize_webpage(
-                url, text, question or None, agent, driver
+        elif get_raw_content:
+            if (
+                output_tokens := agent.llm_provider.count_tokens(text, agent.llm.name)
+            ) > MAX_RAW_CONTENT_LENGTH:
+                oversize_factor = round(output_tokens / MAX_RAW_CONTENT_LENGTH, 1)
+                raise TooMuchOutputError(
+                    f"Page content is {oversize_factor}x the allowed length "
+                    "for `get_raw_content=true`"
+                )
+            return text + (f"\n\nLinks: {links}" if links else "")
+        else:
+            text = await summarize_memorize_webpage(
+                url, text, question or None, topics_of_interest, agent, driver
             )
             return_literal_content = bool(question)
             summarized = True
@@ -103,11 +148,12 @@ def read_webpage(url: str, agent: Agent, question: str = "") -> str:
             links = links[:LINKS_TO_RETURN]
 
         text_fmt = f"'''{text}'''" if "\n" in text else f"'{text}'"
+        links_fmt = "\n".join(f"- {link}" for link in links)
         return (
             f"Page content{' (summary)' if summarized else ''}:"
             if return_literal_content
             else "Answer gathered from webpage:"
-        ) + f" {text_fmt}\n\nLinks: {links}"
+        ) + f" {text_fmt}\n\nLinks:\n{links_fmt}"
 
     except WebDriverException as e:
         # These errors are often quite long and include lots of context.
@@ -115,8 +161,8 @@ def read_webpage(url: str, agent: Agent, question: str = "") -> str:
         msg = e.msg.split("\n")[0]
         if "net::" in msg:
             raise BrowsingError(
-                f"A networking error occurred while trying to load the page: "
-                + re.sub(r"^unknown error: ", "", msg)
+                "A networking error occurred while trying to load the page: %s"
+                % re.sub(r"^unknown error: ", "", msg)
             )
         raise CommandExecutionError(msg)
     finally:
@@ -169,7 +215,7 @@ def scrape_links_with_selenium(driver: WebDriver, base_url: str) -> list[str]:
     return format_hyperlinks(hyperlinks)
 
 
-def open_page_in_browser(url: str, config: Config) -> WebDriver:
+async def open_page_in_browser(url: str, config: Config) -> WebDriver:
     """Open a browser window and load a web page using Selenium
 
     Params:
@@ -189,26 +235,24 @@ def open_page_in_browser(url: str, config: Config) -> WebDriver:
     }
 
     options: BrowserOptions = options_available[config.selenium_web_browser]()
-    options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
-    )
+    options.add_argument(f"user-agent={config.user_agent}")
 
-    if config.selenium_web_browser == "firefox":
+    if isinstance(options, FirefoxOptions):
         if config.selenium_headless:
             options.headless = True
             options.add_argument("--disable-gpu")
         driver = FirefoxDriver(
             service=GeckoDriverService(GeckoDriverManager().install()), options=options
         )
-    elif config.selenium_web_browser == "edge":
+    elif isinstance(options, EdgeOptions):
         driver = EdgeDriver(
             service=EdgeDriverService(EdgeDriverManager().install()), options=options
         )
-    elif config.selenium_web_browser == "safari":
-        # Requires a bit more setup on the users end
-        # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
+    elif isinstance(options, SafariOptions):
+        # Requires a bit more setup on the users end.
+        # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari  # noqa: E501
         driver = SafariDriver(options=options)
-    else:
+    elif isinstance(options, ChromeOptions):
         if platform == "linux" or platform == "linux2":
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--remote-debugging-port=9222")
@@ -218,21 +262,54 @@ def open_page_in_browser(url: str, config: Config) -> WebDriver:
             options.add_argument("--headless=new")
             options.add_argument("--disable-gpu")
 
-        chromium_driver_path = Path("/usr/bin/chromedriver")
+        _sideload_chrome_extensions(options, config.app_data_dir / "assets" / "crx")
 
-        driver = ChromeDriver(
-            service=ChromeDriverService(str(chromium_driver_path))
-            if chromium_driver_path.exists()
-            else ChromeDriverService(ChromeDriverManager().install()),
-            options=options,
-        )
+        if (chromium_driver_path := Path("/usr/bin/chromedriver")).exists():
+            chrome_service = ChromeDriverService(str(chromium_driver_path))
+        else:
+            try:
+                chrome_driver = ChromeDriverManager().install()
+            except AttributeError as e:
+                if "'NoneType' object has no attribute 'split'" in str(e):
+                    # https://github.com/SergeyPirogov/webdriver_manager/issues/649
+                    logger.critical(
+                        "Connecting to browser failed: is Chrome or Chromium installed?"
+                    )
+                raise
+            chrome_service = ChromeDriverService(chrome_driver)
+        driver = ChromeDriver(service=chrome_service, options=options)
+
     driver.get(url)
 
+    # Wait for page to be ready, sleep 2 seconds, wait again until page ready.
+    # This allows the cookiewall squasher time to get rid of cookie walls.
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.TAG_NAME, "body"))
+    )
+    await asyncio.sleep(2)
     WebDriverWait(driver, 10).until(
         EC.presence_of_element_located((By.TAG_NAME, "body"))
     )
 
     return driver
+
+
+def _sideload_chrome_extensions(options: ChromeOptions, dl_folder: Path) -> None:
+    crx_download_url_template = "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=49.0&acceptformat=crx3&x=id%3D{crx_id}%26installsource%3Dondemand%26uc"  # noqa
+    cookiewall_squasher_crx_id = "edibdbjcniadpccecjdfdjjppcpchdlm"
+    adblocker_crx_id = "cjpalhdlnbpafiamejdnhcphjbkeiagm"
+
+    # Make sure the target folder exists
+    dl_folder.mkdir(parents=True, exist_ok=True)
+
+    for crx_id in (cookiewall_squasher_crx_id, adblocker_crx_id):
+        crx_path = dl_folder / f"{crx_id}.crx"
+        if not crx_path.exists():
+            logger.debug(f"Downloading CRX {crx_id}...")
+            crx_download_url = crx_download_url_template.format(crx_id=crx_id)
+            urlretrieve(crx_download_url, crx_path)
+            logger.debug(f"Downloaded {crx_path.name}")
+        options.add_extension(str(crx_path))
 
 
 def close_browser(driver: WebDriver) -> None:
@@ -247,10 +324,11 @@ def close_browser(driver: WebDriver) -> None:
     driver.quit()
 
 
-def summarize_memorize_webpage(
+async def summarize_memorize_webpage(
     url: str,
     text: str,
     question: str | None,
+    topics_of_interest: list[str],
     agent: Agent,
     driver: Optional[WebDriver] = None,
 ) -> str:
@@ -269,12 +347,33 @@ def summarize_memorize_webpage(
         raise ValueError("No text to summarize")
 
     text_length = len(text)
-    logger.info(f"Text length: {text_length} characters")
+    logger.debug(f"Web page content length: {text_length} characters")
 
-    # memory = get_memory(agent.config)
+    # memory = get_memory(agent.legacy_config)
 
-    # new_memory = MemoryItem.from_webpage(text, url, agent.config, question=question)
+    # new_memory = MemoryItem.from_webpage(
+    #     content=text,
+    #     url=url,
+    #     config=agent.legacy_config,
+    #     question=question,
+    # )
     # memory.add(new_memory)
 
-    summary, _ = summarize_text(text, question=question, config=agent.config)
-    return summary
+    result = None
+    information = None
+    if topics_of_interest:
+        information = await extract_information(
+            text,
+            topics_of_interest=topics_of_interest,
+            llm_provider=agent.llm_provider,
+            config=agent.legacy_config,
+        )
+        return "\n".join(f"* {i}" for i in information)
+    else:
+        result, _ = await summarize_text(
+            text,
+            question=question,
+            llm_provider=agent.llm_provider,
+            config=agent.legacy_config,
+        )
+        return result

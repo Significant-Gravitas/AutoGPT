@@ -1,61 +1,27 @@
 # radio charts, logs, helper functions for tests, anything else relevant.
+import json
+import logging
 import os
 import re
-import sys
-from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Callable, Iterable, Optional, TypeVar, overload
 
-import git
+import click
 from dotenv import load_dotenv
+from pydantic import BaseModel
+
+from agbenchmark.reports.processing.report_types import Test
+from agbenchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel
 
 load_dotenv()
 
-from agbenchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel
-
 AGENT_NAME = os.getenv("AGENT_NAME")
-REPORT_LOCATION = os.getenv("REPORT_LOCATION", None)
 
+logger = logging.getLogger(__name__)
 
-def calculate_info_test_path(base_path: Path) -> str:
-    """
-    Calculates the path to the directory where the test report will be saved.
-    """
-    # Ensure the reports path exists
-    base_path.mkdir(parents=True, exist_ok=True)
-
-    # Get current UTC date-time stamp
-    date_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-
-    # Default run name
-    run_name = "full_run"
-
-    # Map command-line arguments to their respective labels
-    arg_labels = {
-        "--test": None,
-        "--suite": None,
-        "--category": None,
-        "--maintain": "maintain",
-        "--improve": "improve",
-        "--explore": "explore",
-    }
-
-    # Identify the relevant command-line argument
-    for arg, label in arg_labels.items():
-        if arg in sys.argv:
-            test_arg = sys.argv[sys.argv.index(arg) + 1] if label is None else None
-            run_name = arg.strip("--")
-            if test_arg:
-                run_name = f"{run_name}_{test_arg}"
-            break
-
-    # Create the full new directory path with ISO standard UTC date-time stamp
-    report_path = base_path / f"{date_stamp}_{run_name}"
-
-    # Ensure the new directory is created
-    report_path.mkdir(exist_ok=True)
-
-    return str(report_path)
+T = TypeVar("T")
+E = TypeVar("E", bound=Enum)
 
 
 def replace_backslash(value: Any) -> Any:
@@ -71,24 +37,13 @@ def replace_backslash(value: Any) -> Any:
         return value
 
 
-def calculate_success_percentage(results: list[bool]) -> float:
-    # Take the last 10 results or all if less than 10
-    last_results = results[-10:] if len(results) > 10 else results
-    success_count = last_results.count(True)
-    total_count = len(last_results)
-    if total_count == 0:
-        return 0
-    success_percentage = (success_count / total_count) * 100  # as a percentage
-    return round(success_percentage, 2)
-
-
 def get_test_path(json_file: str | Path) -> str:
     if isinstance(json_file, str):
         json_file = Path(json_file)
 
     # Find the index of "agbenchmark" in the path parts
     try:
-        agbenchmark_index = json_file.parts.index("agbenchmark")
+        agbenchmark_index = json_file.parts.index("benchmark")
     except ValueError:
         raise ValueError("Invalid challenge location.")
 
@@ -103,41 +58,41 @@ def get_test_path(json_file: str | Path) -> str:
 
 
 def get_highest_success_difficulty(
-    data: dict, just_string: Optional[bool] = None
+    data: dict[str, Test], just_string: Optional[bool] = None
 ) -> str:
     highest_difficulty = None
     highest_difficulty_level = 0
 
     for test_name, test_data in data.items():
         try:
-            if test_data.get("tests", None):
-                highest_difficulty_str = test_data["metrics"]["highest_difficulty"]
+            if any(r.success for r in test_data.results):
+                difficulty_str = test_data.difficulty
+                if not difficulty_str:
+                    continue
+
                 try:
-                    highest_difficulty = DifficultyLevel[highest_difficulty_str]
-                    highest_difficulty_level = DIFFICULTY_MAP[highest_difficulty]
+                    difficulty_enum = DifficultyLevel[difficulty_str.lower()]
+                    difficulty_level = DIFFICULTY_MAP[difficulty_enum]
+
+                    if difficulty_level > highest_difficulty_level:
+                        highest_difficulty = difficulty_enum
+                        highest_difficulty_level = difficulty_level
                 except KeyError:
-                    print(
-                        f"Unexpected difficulty level '{highest_difficulty_str}' in test '{test_name}'"
+                    logger.warning(
+                        f"Unexpected difficulty level '{difficulty_str}' "
+                        f"in test '{test_name}'"
                     )
                     continue
-            else:
-                if test_data["metrics"]["success"]:
-                    difficulty_str = test_data["metrics"]["difficulty"]
-
-                    try:
-                        difficulty_enum = DifficultyLevel[difficulty_str.lower()]
-                        difficulty_level = DIFFICULTY_MAP[difficulty_enum]
-
-                        if difficulty_level > highest_difficulty_level:
-                            highest_difficulty = difficulty_enum
-                            highest_difficulty_level = difficulty_level
-                    except KeyError:
-                        print(
-                            f"Unexpected difficulty level '{difficulty_str}' in test '{test_name}'"
-                        )
-                        continue
-        except Exception:
-            print(f"Make sure you selected the right test, no reports were generated.")
+        except Exception as e:
+            logger.warning(
+                "An unexpected error [1] occurred while analyzing report [2]."
+                "Please notify a maintainer.\n"
+                f"Report data [1]: {data}\n"
+                f"Error [2]: {e}"
+            )
+            logger.warning(
+                "Make sure you selected the right test, no reports were generated."
+            )
             break
 
     if highest_difficulty is not None:
@@ -152,144 +107,106 @@ def get_highest_success_difficulty(
     return "No successful tests"
 
 
-def assign_paths(folder_path: Path) -> tuple[str, str, str, str, str]:
-    CONFIG_PATH = str(folder_path / "config.json")
+# def get_git_commit_sha(directory: Path) -> Optional[str]:
+#     try:
+#         repo = git.Repo(directory)
+#         remote_url = repo.remotes.origin.url
+#         if remote_url.endswith(".git"):
+#             remote_url = remote_url[:-4]
+#         git_commit_sha = f"{remote_url}/tree/{repo.head.commit.hexsha}"
 
-    reports_location = folder_path / "reports"
-
-    # if the user has a locally defined challenges path that they've added tests to
-    CHALLENGES_PATH = str(folder_path / "challenges")
-    if not os.path.exists(CHALLENGES_PATH):
-        CHALLENGES_PATH = str(Path(__file__).parent.parent / "challenges")
-
-    if not os.path.exists(reports_location):
-        os.makedirs(reports_location)
-
-    # from the ci
-    if REPORT_LOCATION:
-        reports_location = Path.cwd() / REPORT_LOCATION
-
-    REPORTS_PATH = calculate_info_test_path(reports_location)
-
-    REGRESSION_TESTS_PATH = str(reports_location / "regression_tests.json")
-
-    SUCCESS_RATE_PATH = str(reports_location / "success_rate.json")
-
-    return (
-        CONFIG_PATH,
-        REGRESSION_TESTS_PATH,
-        REPORTS_PATH,
-        SUCCESS_RATE_PATH,
-        CHALLENGES_PATH,
-    )
+#         # logger.debug(f"GIT_COMMIT_SHA: {git_commit_sha}")
+#         return git_commit_sha
+#     except Exception:
+#         # logger.error(f"{directory} is not a git repository!")
+#         return None
 
 
-def calculate_dynamic_paths() -> tuple[Path, str, str, str, str, str]:
-    # the default home is where you're running from
-    HOME_DIRECTORY = Path(os.getcwd())
-
-    if os.path.join("Auto-GPT-Benchmarks", "backend") in str(
-        HOME_DIRECTORY
-    ):  # accounting for backend calls
-        HOME_DIRECTORY = HOME_DIRECTORY.parent
-
-    benchmarks_folder_path = HOME_DIRECTORY / "agbenchmark"
-
-    if AGENT_NAME and not os.path.join("Auto-GPT-Benchmarks", "agent") in str(
-        HOME_DIRECTORY
-    ):
-        # if the agent name is defined but the run is not from the agent repo, then home is the agent repo
-        # used for development of both a benchmark and an agent
-        HOME_DIRECTORY = HOME_DIRECTORY / "agent" / AGENT_NAME
-        benchmarks_folder_path = HOME_DIRECTORY / "agbenchmark"
-
-        (
-            CONFIG_PATH,
-            REGRESSION_TESTS_PATH,
-            REPORTS_PATH,
-            SUCCESS_RATE_PATH,
-            CHALLENGES_PATH,
-        ) = assign_paths(benchmarks_folder_path)
-    else:
-        # otherwise the default is when home is an agent (running agbenchmark from agent/agent_repo)
-        # used when its just a pip install
-        (
-            CONFIG_PATH,
-            REGRESSION_TESTS_PATH,
-            REPORTS_PATH,
-            SUCCESS_RATE_PATH,
-            CHALLENGES_PATH,
-        ) = assign_paths(benchmarks_folder_path)
-
-    if not benchmarks_folder_path.exists():
-        benchmarks_folder_path.mkdir(exist_ok=True)
-
-    if not os.path.exists(benchmarks_folder_path / "reports"):
-        os.makedirs(benchmarks_folder_path / "reports")
-
-    if not os.path.exists(REGRESSION_TESTS_PATH):
-        with open(REGRESSION_TESTS_PATH, "w"):
-            pass
-
-    if not os.path.exists(SUCCESS_RATE_PATH):
-        with open(SUCCESS_RATE_PATH, "w"):
-            pass
-
-    if not os.path.exists(Path(REPORTS_PATH) / "report.json"):
-        with open(Path(REPORTS_PATH) / "report.json", "w"):
-            pass
-
-    return (
-        HOME_DIRECTORY,
-        CONFIG_PATH,
-        REGRESSION_TESTS_PATH,
-        REPORTS_PATH,
-        SUCCESS_RATE_PATH,
-        CHALLENGES_PATH,
-    )
+def write_pretty_json(data, json_file):
+    sorted_data = deep_sort(data)
+    json_graph = json.dumps(sorted_data, indent=4)
+    with open(json_file, "w") as f:
+        f.write(json_graph)
+        f.write("\n")
 
 
-def get_git_commit_sha(directory: Path) -> Optional[str]:
-    try:
-        repo = git.Repo(directory)
-        remote_url = repo.remotes.origin.url
-        if remote_url.endswith(".git"):
-            remote_url = remote_url[:-4]
-        git_commit_sha = f"{remote_url}/tree/{repo.head.commit.hexsha}"
-
-        # print(f"GIT_COMMIT_SHA: {git_commit_sha}")
-        return git_commit_sha
-    except Exception:
-        # print(f"{directory} is not a git repository!")
-        return None
-
-
-def agent_eligibible_for_optional_categories(
-    optional_challenge_categories: List, agent_categories: List
-) -> bool:
-    for element in optional_challenge_categories:
-        if element not in agent_categories:
-            return False
-    return True
-
-
-def find_absolute_benchmark_path() -> Path:
-    # Find the absolute path to the current working directory
-    current_path = Path.cwd()
-
-    # Find the position of "Auto-GPT-Benchmarks" in the path
-    benchmark_path_index = (
-        current_path.parts.index("Auto-GPT-Benchmarks")
-        if "Auto-GPT-Benchmarks" in current_path.parts
-        else None
-    )
-
-    if benchmark_path_index is not None:
-        # Construct the absolute path starting from "Auto-GPT-Benchmarks"
-        benchmark_path = Path(*current_path.parts[: benchmark_path_index + 1])
-
-        return benchmark_path
-    else:
-        raise ValueError(
-            "The directory 'Auto-GPT-Benchmarks' is not found in the current path."
+def pretty_print_model(model: BaseModel, include_header: bool = True) -> None:
+    indent = ""
+    if include_header:
+        # Try to find the ID and/or name attribute of the model
+        id, name = None, None
+        for attr, value in model.dict().items():
+            if attr == "id" or attr.endswith("_id"):
+                id = value
+            if attr.endswith("name"):
+                name = value
+            if id and name:
+                break
+        identifiers = [v for v in [name, id] if v]
+        click.echo(
+            f"{model.__repr_name__()}{repr(identifiers) if identifiers else ''}:"
         )
+        indent = " " * 2
+
+    k_col_width = max(len(k) for k in model.dict().keys())
+    for k, v in model.dict().items():
+        v_fmt = repr(v)
+        if v is None or v == "":
+            v_fmt = click.style(v_fmt, fg="black")
+        elif type(v) is bool:
+            v_fmt = click.style(v_fmt, fg="green" if v else "red")
+        elif type(v) is str and "\n" in v:
+            v_fmt = f"\n{v}".replace(
+                "\n", f"\n{indent} {click.style('|', fg='black')} "
+            )
+        if isinstance(v, Enum):
+            v_fmt = click.style(v.value, fg="blue")
+        elif type(v) is list and len(v) > 0 and isinstance(v[0], Enum):
+            v_fmt = ", ".join(click.style(lv.value, fg="blue") for lv in v)
+        click.echo(f"{indent}{k: <{k_col_width}}  = {v_fmt}")
+
+
+def deep_sort(obj):
+    """
+    Recursively sort the keys in JSON object
+    """
+    if isinstance(obj, dict):
+        return {k: deep_sort(v) for k, v in sorted(obj.items())}
+    if isinstance(obj, list):
+        return [deep_sort(elem) for elem in obj]
+    return obj
+
+
+@overload
+def sorted_by_enum_index(
+    sortable: Iterable[E],
+    enum: type[E],
+    *,
+    reverse: bool = False,
+) -> list[E]:
+    ...
+
+
+@overload
+def sorted_by_enum_index(
+    sortable: Iterable[T],
+    enum: type[Enum],
+    *,
+    key: Callable[[T], Enum | None],
+    reverse: bool = False,
+) -> list[T]:
+    ...
+
+
+def sorted_by_enum_index(
+    sortable: Iterable[T],
+    enum: type[Enum],
+    *,
+    key: Callable[[T], Enum | None] = lambda x: x,  # type: ignore
+    reverse: bool = False,
+) -> list[T]:
+    return sorted(
+        sortable,
+        key=lambda x: enum._member_names_.index(e.name) if (e := key(x)) else 420e3,
+        reverse=reverse,
+    )

@@ -14,7 +14,7 @@ Save time and money while doing it through smart dependencies. The best part? It
 
 - 1- [Beebot](https://github.com/AutoPackAI/beebot)
 - 2- [mini-agi](https://github.com/muellerberndt/mini-agi)
-- 3- [Auto-GPT](https://github.com/Significant-Gravitas/Auto-GPT)
+- 3- [Auto-GPT](https://github.com/Significant-Gravitas/AutoGPT)
 
 ## Detailed results:
 

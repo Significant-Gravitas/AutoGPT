@@ -1,12 +1,58 @@
-import os
-import json
-import pandas as pd
 import glob
-from gql.transport.aiohttp import AIOHTTPTransport
-from gql import gql, Client
+import json
 import os
+from typing import Dict, List, Optional, Union
 
-from agbenchmark.reports.processing.report_types import Report, SuiteTest
+import pandas as pd
+from gql import Client, gql
+from gql.transport.aiohttp import AIOHTTPTransport
+from pydantic import BaseModel, Field
+
+# from agbenchmark.reports.processing.report_types import Report, SuiteTest
+
+
+class Metrics(BaseModel):
+    difficulty: str
+    success: bool
+    success_percent: float = Field(..., alias="success_%")
+    run_time: Optional[str] = None
+    fail_reason: Optional[str] = None
+    attempted: Optional[bool] = None
+
+
+class MetricsOverall(BaseModel):
+    run_time: str
+    highest_difficulty: str
+    percentage: Optional[float] = None
+
+
+class Test(BaseModel):
+    data_path: str
+    is_regression: bool
+    answer: str
+    description: str
+    metrics: Metrics
+    category: List[str]
+    task: Optional[str] = None
+    reached_cutoff: Optional[bool] = None
+
+
+class SuiteTest(BaseModel):
+    data_path: str
+    metrics: MetricsOverall
+    tests: Dict[str, Test]
+    category: Optional[List[str]] = None
+    task: Optional[str] = None
+    reached_cutoff: Optional[bool] = None
+
+
+class Report(BaseModel):
+    command: str
+    completion_time: str
+    benchmark_start_time: str
+    metrics: MetricsOverall
+    tests: Dict[str, Union[Test, SuiteTest]]
+    config: Dict[str, str | dict[str, str]]
 
 
 def get_reports():
@@ -31,13 +77,21 @@ def get_reports():
         # Check if the item is a directory (an agent directory)
         if os.path.isdir(agent_dir):
             # Construct the path to the report.json file
-            # Use glob to find all run directories in the agent_dir
+            # Get all directories and files, but note that this will also include any file, not just directories.
             run_dirs = glob.glob(os.path.join(agent_dir, "*"))
 
+            # Get all json files starting with 'file'
+            # old_report_files = glob.glob(os.path.join(agent_dir, "file*.json"))
+
             # For each run directory, add the report.json to the end
+            # Only include the path if it's actually a directory
             report_files = [
-                os.path.join(run_dir, "report.json") for run_dir in run_dirs
+                os.path.join(run_dir, "report.json")
+                for run_dir in run_dirs
+                if os.path.isdir(run_dir)
             ]
+            # old_report_files already contains the full paths, so no need to join again
+            # report_files = report_files + old_report_files
             for report_file in report_files:
                 # Check if the report.json file exists
                 if os.path.isfile(report_file):
@@ -45,6 +99,7 @@ def get_reports():
                     with open(report_file, "r") as f:
                         # Load the JSON data from the file
                         json_data = json.load(f)
+                        print(f"Processing {report_file}")
                         report = Report.parse_obj(json_data)
 
                         for test_name, test_data in report.tests.items():
@@ -97,7 +152,7 @@ def get_reports():
                                         ] = suite_data.metrics.difficulty
                                         test_json[
                                             "success_%"
-                                        ] = suite_data.metrics.success_percent
+                                        ] = suite_data.metrics.success_percentage
                                         test_json[
                                             "run_time"
                                         ] = suite_data.metrics.run_time
@@ -116,7 +171,7 @@ def get_reports():
                                 test_json["difficulty"] = test_data.metrics.difficulty
                                 test_json[
                                     "success_%"
-                                ] = test_data.metrics.success_percent
+                                ] = test_data.metrics.success_percentage
                                 test_json["run_time"] = test_data.metrics.run_time
                                 test_json["is_regression"] = test_data.is_regression
 
@@ -265,7 +320,7 @@ df = pd.merge(
     helicone_df,
     reports_df,
     on=["benchmark_start_time", "agent", "challenge"],
-    how="left",
+    how="inner",
 )
 
 df.to_pickle("df.pkl")
