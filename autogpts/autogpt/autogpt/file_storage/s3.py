@@ -9,9 +9,9 @@ import contextlib
 import inspect
 import logging
 import os
-from io import IOBase, TextIOWrapper
+from io import TextIOWrapper
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import IO, TYPE_CHECKING, Literal, Optional
 
 import boto3
 import botocore.exceptions
@@ -100,10 +100,11 @@ class S3FileStorage(FileStorage):
 
     def open_file(
         self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
-    ) -> IOBase:
+    ) -> IO:
         """Open a file in the storage."""
         obj = self._get_obj(path)
-        return obj.get()["Body"] if binary else TextIOWrapper(obj.get()["Body"])
+        body = obj.get()["Body"]
+        return body if binary else TextIOWrapper(body)
 
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
         """Read a file in the storage."""

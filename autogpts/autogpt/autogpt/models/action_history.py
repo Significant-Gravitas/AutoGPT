@@ -9,7 +9,6 @@ from autogpt.processing.text import summarize_text
 from autogpt.prompts.utils import format_numbered_list, indent
 
 if TYPE_CHECKING:
-    from autogpt.agents.base import CommandArgs, CommandName
     from autogpt.config.config import Config
     from autogpt.core.resource.model_providers import ChatModelProvider
 
@@ -159,15 +158,6 @@ class EpisodicActionHistory(BaseModel):
 
         self.current_episode.result = result
         self.cursor = len(self.episodes)
-
-    def matches_last_command(
-        self, command_name: CommandName, arguments: CommandArgs
-    ) -> bool:
-        """Check if the last command matches the given name and arguments."""
-        if len(self.episodes) > 0:
-            last_command = self.episodes[-1].action
-            return last_command.name == command_name and last_command.args == arguments
-        return False
 
     def rewind(self, number_of_episodes: int = 0) -> None:
         """Resets the history to an earlier state.

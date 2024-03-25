@@ -7,9 +7,8 @@ from __future__ import annotations
 
 import inspect
 import logging
-from io import IOBase
 from pathlib import Path
-from typing import Literal
+from typing import BinaryIO, Literal, TextIO
 
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
@@ -75,7 +74,7 @@ class GCSFileStorage(FileStorage):
 
     def open_file(
         self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
-    ) -> IOBase:
+    ) -> TextIO | BinaryIO:
         """Open a file in the storage."""
         blob = self._get_blob(path)
         blob.reload()  # pin revision number to prevent version mixing while reading

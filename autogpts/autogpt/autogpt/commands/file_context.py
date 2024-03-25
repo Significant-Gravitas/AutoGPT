@@ -6,13 +6,13 @@ import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from autogpt.agents.features.context import ContextMixin, get_agent_context
-from autogpt.agents.utils.exceptions import (
-    CommandExecutionError,
-    DuplicateOperationError,
-)
+if TYPE_CHECKING:
+    from autogpt.agents import Agent, BaseAgent
+
+from autogpt.agents.features.context import ContextMixin
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
+from autogpt.models.command import ValidityResult
 from autogpt.models.context_item import FileContextItem, FolderContextItem
 
 from .decorators import sanitize_path_arg
@@ -21,12 +21,19 @@ COMMAND_CATEGORY = "file_operations"
 COMMAND_CATEGORY_TITLE = "File Operations"
 
 
-if TYPE_CHECKING:
-    from autogpt.agents import Agent, BaseAgent
-
-
 def agent_implements_context(agent: BaseAgent) -> bool:
     return isinstance(agent, ContextMixin)
+
+
+def is_in_context(agent: Agent, source: str) -> ValidityResult:
+    if not isinstance(agent, ContextMixin):
+        return ValidityResult(False, f"{agent} does not implement the ContextMixin")
+
+    if agent.context.uses_source(source):
+        return ValidityResult(
+            False, f"{source} is already loaded into the agent context"
+        )
+    return ValidityResult(True)
 
 
 @command(
@@ -42,9 +49,10 @@ def agent_implements_context(agent: BaseAgent) -> bool:
         )
     },
     available=agent_implements_context,
+    is_valid=lambda agent, args: is_in_context(agent, args["file_path"]),
 )
 @sanitize_path_arg("file_path")
-def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
+async def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
     """Open a file and return a context item
 
     Args:
@@ -59,23 +67,14 @@ def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
     with contextlib.suppress(ValueError):
         relative_file_path = file_path.relative_to(agent.workspace.root)
 
-    assert (agent_context := get_agent_context(agent)) is not None
-
     created = False
-    if not file_path.exists():
-        file_path.touch()
+    if not agent.workspace.exists(file_path):
+        await agent.workspace.write_file(file_path, "")
         created = True
-    elif not file_path.is_file():
-        raise CommandExecutionError(f"{file_path} exists but is not a file")
 
     file_path = relative_file_path or file_path
 
-    file = FileContextItem(
-        file_path_in_workspace=file_path,
-        workspace_path=agent.workspace.root,
-    )
-    if file in agent_context:
-        raise DuplicateOperationError(f"The file {file_path} is already open")
+    file = FileContextItem(path=file_path)
 
     return (
         f"File {file_path}{' created,' if created else ''} has been opened"
@@ -95,6 +94,7 @@ def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
         )
     },
     available=agent_implements_context,
+    is_valid=lambda agent, args: is_in_context(agent, args["path"]),
 )
 @sanitize_path_arg("path")
 def open_folder(path: Path, agent: Agent) -> tuple[str, FolderContextItem]:
@@ -112,20 +112,11 @@ def open_folder(path: Path, agent: Agent) -> tuple[str, FolderContextItem]:
     with contextlib.suppress(ValueError):
         relative_path = path.relative_to(agent.workspace.root)
 
-    assert (agent_context := get_agent_context(agent)) is not None
-
-    if not path.exists():
+    if not agent.workspace.exists(path):
         raise FileNotFoundError(f"open_folder {path} failed: no such file or directory")
-    elif not path.is_dir():
-        raise CommandExecutionError(f"{path} exists but is not a folder")
 
     path = relative_path or path
 
-    folder = FolderContextItem(
-        path_in_workspace=path,
-        workspace_path=agent.workspace.root,
-    )
-    if folder in agent_context:
-        raise DuplicateOperationError(f"The folder {path} is already open")
+    folder = FolderContextItem(path=path)
 
     return f"Folder {path} has been opened and added to the context ✅", folder
