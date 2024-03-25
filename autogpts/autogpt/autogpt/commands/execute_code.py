@@ -4,6 +4,7 @@ import logging
 import os
 import shlex
 import subprocess
+from fnmatch import fnmatch
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -273,11 +274,22 @@ def validate_command(command_line: str, config: Config) -> tuple[bool, bool]:
     if not command_line:
         return False, False
 
-    command_name = shlex.split(command_line)[0]
+    wildcard_shell_denylist = [
+        cmd for cmd in config.shell_denylist if any(c in cmd for c in "*[]?")
+    ]
+    wildcard_shell_allowlist = [
+        cmd for cmd in config.shell_allowlist if any(c in cmd for c in "*[]?")
+    ]
+
+    command_name = command.split()[0]
 
     if config.shell_command_control == ALLOWLIST_CONTROL:
+        if any(fnmatch(command_name, pattern) for pattern in wildcard_shell_allowlist):
+            return True, False
         return command_name in config.shell_allowlist, False
     elif config.shell_command_control == DENYLIST_CONTROL:
+        if any(fnmatch(command_name, pattern) for pattern in wildcard_shell_denylist):
+            return False, False
         return command_name not in config.shell_denylist, False
     else:
         return True, True
