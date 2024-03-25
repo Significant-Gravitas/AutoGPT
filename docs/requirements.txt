@@ -1,4 +1,5 @@
 mkdocs
 mkdocs-material
 mkdocs-table-reader-plugin
+sentry-sdk
 pymdown-extensions
