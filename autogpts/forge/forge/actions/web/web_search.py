@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import time
-from itertools import islice
 
 from duckduckgo_search import DDGS
 
