@@ -14,7 +14,7 @@ class PromptEngine:
     def __init__(self, model):
         pass
 
-    def load_prompt(model, prompt_name, prompt_ags) -> str:
+    def load_prompt(model, prompt_name, prompt_args) -> str:
         pass
 """
 
