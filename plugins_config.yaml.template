@@ -1,0 +1,27 @@
+# Plugins config template
+# ====================================
+# Rename this file to `plugins_config.yaml` and enter a config for each plugin in the ./plugins directory
+#
+# For zipped plugins, the key is the class name of the plugin
+# E.g.
+# MyPlugin:
+#   config: {}
+#   enabled: true
+#
+# For unzipped plugins, the key is the name of the plugin directory
+# E.g.
+# my_plugin:
+#   config: {}
+#   enabled: true
+#
+# Plugin config is a dictionary of key-value pairs
+# E.g.
+# MyPlugin:
+#   config:
+#       my_key: my_value
+#   enabled: false
+#
+# Only enabled plugins will be loaded
+# ====================================  
+
+{}
