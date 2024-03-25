@@ -17,8 +17,8 @@ else
             echo "Installing pyenv..."
             curl https://pyenv.run | bash
         fi
-        pyenv install 3.11.5
-        pyenv global 3.11.5
+        pyenv install 3.11.5 
+        pyenv global 3.11.5 
     fi
 
     if ! command -v poetry &> /dev/null
