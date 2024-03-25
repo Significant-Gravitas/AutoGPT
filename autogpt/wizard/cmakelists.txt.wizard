@@ -1,0 +1,27 @@
+{
+    "version": "1.0.0",
+    "name": "CMakeLists.txt Generator",
+    "description": "This wizard will help you generate a CMakeLists.txt stub for your project.",
+    "questions": [
+        {
+            "type": "text",
+            "name": "version",
+            "message": "Enter the <minimum cmake version required>:"
+        },
+        {
+            "type": "text",
+            "name": "project",
+            "message": "Enter the <name of the project>:"
+        },
+        {
+            "type": "text",
+            "name": "binary",
+            "message": "Enter the <name of the binary executable>:"
+        },
+        {
+            "type": "text",
+            "name": "sources",
+            "message": "Enter the <name of the source files, separated by spaces>:"
+        }
+    ]
+}

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        header {
+            background-color: #007bff;
+            color: #fff;
+            padding: 20px;
+            text-align: center;
+        }
+        h1 {
+            margin-top: 0;
+        }
+        section {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f7f7f7;
+        }
+        .stack {
+            padding: 20px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            text-align: center;
+            margin: 20px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>{{ name }}</h1>
+        <p>{{ title }}</p>
+    </header>
+    <section>
+        <div class="stack">
+            <h2>Frontend Stack</h2>
+            <p>{{ frontend }}</p>
+        </div>
+        <div class="stack">
+            <h2>Backend Stack</h2>
+            <p>{{ backend }}</p>
+        </div>
+    </section>
+</body>
+</html>

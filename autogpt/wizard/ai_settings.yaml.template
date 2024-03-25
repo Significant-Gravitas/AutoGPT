@@ -1,0 +1,9 @@
+ai_name:{{name}} 
+ai_role:{{role}}
+ai_goals:
+- {{goal1}}
+- {{goal2}}
+- {{goal3}}
+- {{goal4}}
+- {{goal5}}
+

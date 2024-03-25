@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION {{version}} )
+
+project( {{project}} )
+
+add_executable({{binary}} "{{sources}}")
+
