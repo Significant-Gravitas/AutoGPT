@@ -49,8 +49,7 @@ def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
         if not query:
             return json.dumps(search_results)
 
-        results = DDGS().text(query)
-        search_results = list(islice(results, num_results))
+        search_results = DDGS().text(query, max_results=num_results)
 
         if search_results:
             break
