@@ -13,7 +13,17 @@ To tie these together, we also have a [CLI] at the root of the project.
 
 ---
 
-## 🤖 Agent
+## 🥇 Best Agent: evo.ninja
+
+evo.ninja emerged as a top-performing agent in the recent AutoGPT Arena hackathon, establishing itself as a best open-source generalist agent. You can explore its capabilities at https://evo.ninja.
+
+### Setting Up and Running Evo Ninja.
+
+For a detailed guide, visit the [evo.ninja documentation](https://github.com/polywrap/evo.ninja#readme). For additional support and community interaction, join the [evo.ninja Discord](https://discord.com/invite/r3rwh69cCa).
+
+---
+
+## 🤖 AutoGPT Agent
 
 **[📖 About AutoGPT](AutoGPT/index.md)**
 &ensp;|&ensp;

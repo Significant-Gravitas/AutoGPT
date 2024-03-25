@@ -25,6 +25,21 @@ The AutoGPT Arena Hackathon saw [**evo.ninja**](https://github.com/polywrap/evo.
 
 📈 To challenge evo.ninja, AutoGPT, and others, submit your benchmark run to the [Leaderboard](#-leaderboard), and maybe your agent will be up here next!
 
+
+### How to Run Evo Ninja
+To run Evo Ninja, follow these detailed steps:
+1. **Installation**:
+    - Clone the repository: `git clone https://github.com/Significant-Gravitas/AutoGPT.git`
+    - Run the setup script: `./AutoGPT/autogpts/evo.ninja/setup`
+    - Change directories into the evo.ninja folder: `cd AutoGPT/autogpts/evo.ninja`
+    - Follow this [detailed guide](https://github.com/polywrap/evo.ninja/tree/release/autogpt#installation) skipping the clone step.
+2. **Prompt**
+    - Tell the agent what is your goal and watch it do its magic!
+
+For detailed instructions, visit the [evo.ninja documentation](https://github.com/polywrap/evo.ninja/tree/release/autogpt#readme), and for live support, join the [evo.ninja discord](https://discord.com/invite/r3rwh69cCa)
+
+
+
 ## 🧱 Building blocks
 
 ### 🏗️ Forge
