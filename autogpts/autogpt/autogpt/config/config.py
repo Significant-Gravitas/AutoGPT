@@ -139,6 +139,9 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         default=True,
         from_env=lambda: os.getenv("RESTRICT_TO_WORKSPACE", "True") == "True",
     )
+    wipe_workspace_on_start: bool = UserConfigurable(
+        default=False, from_env="WIPE_WORKSPACE_ON_START"
+    )
     allow_downloads: bool = False
 
     # Shell commands
@@ -275,6 +278,18 @@ class ConfigBuilder(Configurable[Config]):
 
         config = cls.build_agent_configuration()
         config.project_root = project_root
+
+        if config.wipe_workspace_on_start:
+            print("Removing all files inside auto_gpt_workspace...")
+            workspace_path = "autogpt/auto_gpt_workspace"
+            if os.path.isdir(workspace_path):
+                for file_name in os.listdir(workspace_path):
+                    file_path = os.path.join(workspace_path, file_name)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                print("Workspace files wiped successfully.")
+            else:
+                print("Workspace folder does not exist.")
 
         # Make relative paths absolute
         for k in {
