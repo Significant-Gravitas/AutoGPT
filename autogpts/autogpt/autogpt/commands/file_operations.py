@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import logging
 import os
 import os.path
+from enum import Enum
 from pathlib import Path
-from typing import Iterator, Literal
+from typing import Awaitable, Callable, Iterator, Literal
 
 from autogpt.agents.agent import Agent
-from autogpt.agents.utils.exceptions import DuplicateOperationError
+from autogpt.agents.utils.exceptions import (
+    CommandExecutionError,
+    DuplicateOperationError,
+    InvalidArgumentError,
+)
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.memory.vector import MemoryItemFactory, VectorMemory
@@ -26,7 +32,11 @@ from .file_context import open_file, open_folder  # NOQA
 
 logger = logging.getLogger(__name__)
 
-Operation = Literal["write", "append", "delete"]
+
+class Operations(Enum):
+    WRITE = "write"
+    APPEND = "append"
+    DELETE = "delete"
 
 
 def text_checksum(text: str) -> str:
@@ -37,28 +47,38 @@ def text_checksum(text: str) -> str:
 def operations_from_log(
     logs: list[str],
 ) -> Iterator[
-    tuple[Literal["write", "append"], str, str] | tuple[Literal["delete"], str, None]
+    tuple[Operations, str, str] | tuple[Literal[Operations.DELETE], str, None]
 ]:
-    """Parse logs and return a tuple containing the log entries"""
+    """
+    Parse logs and return a tuple containing the log entries
+
+    Yields:
+        Operations: The operation recorded in the log entry
+        str: The file path affected
+        str | None: The checksum of the file if written, None if deleted
+    """
     for line in logs:
         line = line.replace("File Operation Logger", "").strip()
         if not line:
             continue
         operation, tail = line.split(": ", maxsplit=1)
-        operation = operation.strip()
-        if operation in ("write", "append"):
-            path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
+        operation = Operations[operation.strip()]
+        if operation in (Operations.WRITE, Operations.APPEND):
+            try:
+                path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
+            except ValueError:
+                logger.warn(f"File log entry lacks checksum: '{line}'")
+                path, checksum = tail.strip(), None
             yield (operation, path, checksum)
-        elif operation == "delete":
-            yield (operation, tail.strip(), None)
+        elif operation == Operations.DELETE:
+            yield (Operations.DELETE, tail.strip(), None)
 
 
 def file_operations_state(logs: list[str]) -> dict[str, str]:
     """Iterates over the operations and returns the expected state.
 
-    Constructs a dictionary that maps each file path written
-    or appended to its checksum. Deleted files are
-    removed from the dictionary.
+    Constructs a dictionary that maps each written or appended file to its checksum.
+    Deleted files are removed from the dictionary.
 
     Returns:
         A dictionary mapping file paths to their checksums.
@@ -69,16 +89,16 @@ def file_operations_state(logs: list[str]) -> dict[str, str]:
     """
     state = {}
     for operation, path, checksum in operations_from_log(logs):
-        if operation in ("write", "append"):
+        if operation in (Operations.WRITE, Operations.APPEND):
             state[path] = checksum
-        elif operation == "delete":
+        elif operation == Operations.DELETE:
             del state[path]
     return state
 
 
 @sanitize_path_arg("file_path", make_relative=True)
 def is_duplicate_operation(
-    operation: Operation, file_path: Path, agent: Agent, checksum: str | None = None
+    operation: Operations, file_path: Path, agent: Agent, checksum: str | None = None
 ) -> bool:
     """Check if the operation has already been performed
 
@@ -92,16 +112,16 @@ def is_duplicate_operation(
         True if the operation has already been performed on the file
     """
     state = file_operations_state(agent.get_file_operation_lines())
-    if operation == "delete" and file_path.as_posix() not in state:
+    if operation == Operations.DELETE and file_path.as_posix() not in state:
         return True
-    if operation == "write" and state.get(file_path.as_posix()) == checksum:
+    if operation == Operations.WRITE and state.get(file_path.as_posix()) == checksum:
         return True
     return False
 
 
 @sanitize_path_arg("file_path", make_relative=True)
 async def log_operation(
-    operation: Operation,
+    operation: Operations,
     file_path: str | Path,
     agent: Agent,
     checksum: str | None = None,
@@ -114,7 +134,7 @@ async def log_operation(
         checksum: The checksum of the contents to be written
     """
     log_entry = (
-        f"{operation}: "
+        f"{operation.value}: "
         f"{file_path.as_posix() if isinstance(file_path, Path) else file_path}"
     )
     if checksum is not None:
@@ -182,7 +202,7 @@ def ingest_file(
 
 @command(
     "write_file",
-    "Write a file, creating it if necessary. If the file exists, it is overwritten.",
+    "Write a file, creating it if necessary.",
     {
         "filename": JSONSchema(
             type=JSONSchema.Type.STRING,
@@ -194,27 +214,69 @@ def ingest_file(
             description="The contents to write to the file",
             required=True,
         ),
+        "if_exists": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="What to do if the file already exists",
+            enum=["overwrite", "prepend", "append", "skip", "fail"],
+            required=True,
+        ),
     },
     aliases=["create_file"],
 )
-async def write_to_file(filename: str | Path, contents: str, agent: Agent) -> str:
+async def write_to_file(
+    filename: str | Path, contents: str, if_exists: str, agent: Agent
+) -> str:
     """Write contents to a file
 
     Args:
         filename (Path): The name of the file to write to
         contents (str): The contents to write to the file
+        if_exists (str): One of 'overwrite', 'prepend', 'append', 'skip' or 'fail'
 
     Returns:
         str: A message indicating success or failure
     """
+    ACTIONS: dict[
+        str, Callable[[str | Path, str], str | None | Exception | Awaitable[None]]
+    ] = {
+        "overwrite": lambda p, _txt: agent.workspace.write_file(p, _txt),
+        "prepend": lambda p, _txt: (
+            agent.workspace.write_file(p, _txt + agent.workspace.read_file(p))
+        ),
+        "append": lambda p, _txt: (
+            agent.workspace.write_file(p, agent.workspace.read_file(p) + _txt)
+        ),
+        "skip": (
+            lambda p, _txt: "File exists, skipping."
+            if agent.workspace.exists(p)
+            else agent.workspace.write_file(p, _txt)
+        ),
+        "fail": (
+            lambda p, _txt: CommandExecutionError("File exists")
+            if agent.workspace.exists(p)
+            else agent.workspace.write_file(p, _txt)
+        ),
+    }
+    if if_exists not in ACTIONS:
+        raise InvalidArgumentError("Invalid value for 'if_exists'")
+
     checksum = text_checksum(contents)
-    if is_duplicate_operation("write", Path(filename), agent, checksum):
+    if is_duplicate_operation(Operations.WRITE, Path(filename), agent, checksum):
         raise DuplicateOperationError(f"File {filename} has already been updated.")
 
     if directory := os.path.dirname(filename):
         agent.workspace.make_dir(directory)
-    await agent.workspace.write_file(filename, contents)
-    await log_operation("write", filename, agent, checksum)
+
+    result = ACTIONS[if_exists](filename, contents)
+    if inspect.isawaitable(result):
+        await result
+
+    if isinstance(result, str):  # If the result is a string, return it
+        return result
+    if isinstance(result, Exception):
+        raise result
+
+    await log_operation(Operations.WRITE, filename, agent, checksum)
     return f"File {filename} has been written successfully."
 
 
