@@ -140,6 +140,9 @@ class Agent:
     async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
         """
         Create a step for the task.
+
+        Note: this is a placeholder method and must be overridden by the agent with the actions
+        that the agent should perform on one step. Override this method in the ForgeAgent class.
         """
         raise NotImplementedError
 

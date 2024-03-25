@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from forge.sdk.agent import Agent
+
 COMMAND_CATEGORY = "web_browse"
 COMMAND_CATEGORY_TITLE = "Web Browsing"
 
@@ -38,7 +40,7 @@ from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverM
 
 from forge.sdk.errors import CommandExecutionError
 
-from ..registry import action
+from ..registry import ActionParameter, action
 
 
 def extract_hyperlinks(soup: BeautifulSoup, base_url: str) -> list[tuple[str, str]]:
@@ -185,25 +187,25 @@ class BrowsingError(CommandExecutionError):
     name="read_webpage",
     description="Read a webpage, and extract specific information from it if a question is specified. If you are looking to extract specific information from the webpage, you should specify a question.",
     parameters=[
-        {
-            "name": "url",
-            "description": "The URL to visit",
-            "type": "string",
-            "required": True,
-        },
-        {
-            "name": "question",
-            "description": "A question that you want to answer using the content of the webpage.",
-            "type": "string",
-            "required": False,
-        },
+        ActionParameter(
+            name="url",
+            description="The URL to visit",
+            type="string",
+            required=True,
+        ),
+        ActionParameter(
+            name="question",
+            description="A question that you want to answer using the content of the webpage.",
+            type="string",
+            required=False,
+        ),
     ],
     output_type="string",
 )
 @validate_url
 async def read_webpage(
-    agent, task_id: str, url: str, question: str = ""
-) -> Tuple(str, List[str]):
+    agent: Agent, task_id: str, url: str, question: str = ""
+) -> Tuple(str, list[str]):
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -231,7 +233,9 @@ async def read_webpage(
     except WebDriverException as e:
         # These errors are often quite long and include lots of context.
         # Just grab the first line.
-        msg = e.msg.split("\n")[0]
+        msg = "An error occurred while trying to load the page"
+        if e.msg:
+            msg = e.msg.split("\n")[0]
         if "net::" in msg:
             raise BrowsingError(
                 f"A networking error occurred while trying to load the page: "
@@ -340,9 +344,11 @@ def open_page_in_browser(url: str) -> WebDriver:
         chromium_driver_path = Path("/usr/bin/chromedriver")
 
         driver = ChromeDriver(
-            service=ChromeDriverService(str(chromium_driver_path))
-            if chromium_driver_path.exists()
-            else ChromeDriverService(ChromeDriverManager().install()),
+            service=(
+                ChromeDriverService(str(chromium_driver_path))
+                if chromium_driver_path.exists()
+                else ChromeDriverService(ChromeDriverManager().install())
+            ),
             options=options,
         )
     driver.get(url)

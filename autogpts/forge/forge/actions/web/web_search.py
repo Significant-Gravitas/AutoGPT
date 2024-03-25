@@ -5,7 +5,9 @@ import time
 
 from duckduckgo_search import DDGS
 
-from ..registry import action
+from forge.sdk.agent import Agent
+
+from ..registry import ActionParameter, action
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3
 
@@ -14,16 +16,16 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
     name="web_search",
     description="Searches the web",
     parameters=[
-        {
-            "name": "query",
-            "description": "The search query",
-            "type": "string",
-            "required": True,
-        }
+        ActionParameter(
+            name="query",
+            description="The search query",
+            type="string",
+            required=True,
+        )
     ],
     output_type="list[str]",
 )
-async def web_search(agent, task_id: str, query: str) -> str:
+async def web_search(agent: Agent, task_id: str, query: str) -> str:
     """Return the results of a Google search
 
     Args:

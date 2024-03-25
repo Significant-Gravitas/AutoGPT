@@ -112,9 +112,11 @@ class ActionRegister:
                 "__init__.py",
                 "registry.py",
             ]:
-                action = os.path.relpath(
-                    action_path, os.path.dirname(__file__)
-                ).replace("/", ".")
+                action = (
+                    os.path.relpath(action_path, os.path.dirname(__file__))
+                    .replace("\\", "/")
+                    .replace("/", ".")
+                )
                 try:
                     module = importlib.import_module(
                         f".{action[:-3]}", package="forge.actions"
@@ -186,8 +188,11 @@ class ActionRegister:
 
 if __name__ == "__main__":
     import sys
+    import asyncio
 
-    sys.path.append("/Users/swifty/dev/forge/forge")
-    register = ActionRegister(agent=None)
-    print(register.abilities_description())
-    print(register.run_action("abc", "list_files", "/Users/swifty/dev/forge/forge"))
+    async def run():
+        register = ActionRegister(agent=None)
+        print(register.abilities_description())
+        print(await register.run_action("abc", "finish", "./registry.py"))
+
+    asyncio.run(run())
