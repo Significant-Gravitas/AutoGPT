@@ -14,6 +14,18 @@ RUN apt-get update && apt-get install -y \
     curl jq wget git \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && apt-get install -y \
+    libgirepository1.0-dev \
+    gcc \
+    libcairo2-dev \
+    pkg-config \
+    python3-dev \
+    gir1.2-gtk-3.0 \
+    && apt-get clean
+
+RUN pip install pycairo
+RUN pip install PyGObject    
+
 # Set environment variables
 ENV PIP_NO_CACHE_DIR=yes \
     PYTHONUNBUFFERED=1 \
