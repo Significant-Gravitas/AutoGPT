@@ -35,7 +35,7 @@ from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverM
 from autogpt.agents.utils.exceptions import CommandExecutionError, TooMuchOutputError
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
+from autogpt.processing.html import extract_tag_links, format_links
 from autogpt.processing.text import extract_information, summarize_text
 from autogpt.url_utils.validators import validate_url
 
@@ -96,6 +96,7 @@ class BrowsingError(CommandExecutionError):
             required=False,
         ),
     },
+    aliases=["browse"],
 )
 @validate_url
 async def read_webpage(
@@ -119,8 +120,8 @@ async def read_webpage(
     try:
         driver = await open_page_in_browser(url, agent.legacy_config)
 
-        text = scrape_text_with_selenium(driver)
-        links = scrape_links_with_selenium(driver, url)
+        text = scrape_text(driver)
+        links = await scrape_links(url, agent, driver=driver)
 
         return_literal_content = True
         summarized = False
@@ -170,7 +171,7 @@ async def read_webpage(
             close_browser(driver)
 
 
-def scrape_text_with_selenium(driver: WebDriver) -> str:
+def scrape_text(driver: WebDriver) -> str:
     """Scrape text from a browser window using selenium
 
     Args:
@@ -179,7 +180,6 @@ def scrape_text_with_selenium(driver: WebDriver) -> str:
     Returns:
         str: the text scraped from the website
     """
-
     # Get the HTML content directly from the browser's DOM
     page_source = driver.execute_script("return document.body.outerHTML;")
     soup = BeautifulSoup(page_source, "html.parser")
@@ -194,25 +194,130 @@ def scrape_text_with_selenium(driver: WebDriver) -> str:
     return text
 
 
-def scrape_links_with_selenium(driver: WebDriver, base_url: str) -> list[str]:
-    """Scrape links from a website using selenium
+@command(
+    "scrape_links",
+    "Scrapes a Website for Links",
+    {
+        "url": JSONSchema(
+            type=JSONSchema.Type.STRING, description="The URL to visit", required=True
+        ),
+        "include_keywords": JSONSchema(
+            type=JSONSchema.Type.ARRAY,
+            description="Keywords, any of which must appear in the link text",
+            required=False,
+        ),
+        "exclude_keywords": JSONSchema(
+            type=JSONSchema.Type.ARRAY,
+            description="Keywords, none of which may appear in the link text",
+            required=False,
+        ),
+    },
+    aliases=["extract_links", "extract_urls"],
+)
+async def scrape_links(
+    url: str,
+    agent: Agent,
+    include_keywords: list[str] = [],
+    exclude_keywords: list[str] = [],
+    driver: Optional[WebDriver] = None,
+) -> list[str]:
+    """
+    Scrape elements from a website using selenium
 
     Args:
-        driver (WebDriver): A driver object representing the browser window to scrape
-        base_url (str): The base URL to use for resolving relative links
-
-    Returns:
-        List[str]: The links scraped from the website
+        url (str): The url of the website to scrape
+        agent (Agent): The agent to use
+        include_keywords (list[str], optional): Keywords, any of which must appear in the element text. Defaults to [].
+        exclude_keywords (list[str], optional): Keywords, none of which may appear in the element text. Defaults to [].
+        driver (Optional[WebDriver], optional): The webdriver to use. Defaults to None.
     """
-    page_source = driver.page_source
+    return await scrape_tag_links(
+        url, "a", agent, include_keywords, exclude_keywords, driver
+    )
+
+
+@command(
+    "scrape_image_links",
+    "Scrapes a Website for Image Tags and Returns the Image Links",
+    {
+        "url": JSONSchema(
+            type=JSONSchema.Type.STRING, description="The URL to visit", required=True
+        ),
+        "include_keywords": JSONSchema(
+            type=JSONSchema.Type.ARRAY,
+            description="Keywords, any of which must appear in the image srcs",
+            required=False,
+        ),
+        "exclude_keywords": JSONSchema(
+            type=JSONSchema.Type.ARRAY,
+            description="Keywords, none of which may appear in the image srcs",
+            required=False,
+        ),
+    },
+    aliases=[
+        "extract_images",
+        "scrape_images",
+        "extract_image_links",
+        "extract_image_srcs",
+        "scrape_image_sources",
+        "scrape_image_srcs",
+        "scrape_image_urls",
+    ],
+)
+async def scrape_image_links(
+    url: str,
+    agent: Agent,
+    include_keywords: list[str] = [],
+    exclude_keywords: list[str] = [],
+    driver: Optional[WebDriver] = None,
+) -> list[str]:
+    """
+    Scrape image srcs from a website using selenium
+
+    Args:
+        url (str): The url of the website to scrape
+        agent (Agent): The agent to use
+        include_keywords (list[str], optional): Keywords, any of which must appear in the element text. Defaults to [].
+        exclude_keywords (list[str], optional): Keywords, none of which may appear in the element text. Defaults to [].
+        driver (Optional[WebDriver], optional): The webdriver to use. Defaults to None.
+    """
+    return await scrape_tag_links(
+        url, "img", agent, include_keywords, exclude_keywords, driver
+    )
+
+
+@validate_url
+async def scrape_tag_links(
+    url: str,
+    tag_type: str,
+    agent: Agent,
+    include_keywords: list[str] = [],
+    exclude_keywords: list[str] = [],
+    driver: Optional[WebDriver] = None,
+) -> list[str]:
+    """
+    Scrape elements from a website using selenium
+
+    Args:
+        url (str): The url of the website to scrape
+        agent (Agent): The agent to use
+        include_keywords (list[str], optional): Keywords, any of which must appear in the element text. Defaults to [].
+        exclude_keywords (list[str], optional): Keywords, none of which may appear in the element text. Defaults to [].
+        driver (Optional[WebDriver], optional): The webdriver to use. Defaults to None.
+    """
+    if driver is None:
+        driver = await open_page_in_browser(url, agent.legacy_config)
+
+    page_source = driver.execute_script("return document.body.outerHTML;")
     soup = BeautifulSoup(page_source, "html.parser")
 
     for script in soup(["script", "style"]):
         script.extract()
 
-    hyperlinks = extract_hyperlinks(soup, base_url)
-
-    return format_hyperlinks(hyperlinks)
+    elements = extract_tag_links(
+        soup, url, tag_type, include_keywords, exclude_keywords
+    )
+    return format_links(elements)
 
 
 async def open_page_in_browser(url: str, config: Config) -> WebDriver:
