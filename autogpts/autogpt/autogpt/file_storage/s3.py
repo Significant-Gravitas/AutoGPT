@@ -222,6 +222,35 @@ class S3FileStorage(FileStorage):
             else:
                 raise  # Re-raise for any other client errors
 
+    def copy(self, source: str | Path, destination: str | Path) -> None:
+        """Copy a file or folder with all contents in the storage."""
+        source = str(self.get_path(source))
+        destination = str(self.get_path(destination))
+
+        try:
+            # If source is a file, copy it
+            self._s3.meta.client.head_object(Bucket=self._bucket_name, Key=source)
+            self._s3.meta.client.copy_object(
+                CopySource={"Bucket": self._bucket_name, "Key": source},
+                Bucket=self._bucket_name,
+                Key=destination,
+            )
+        except botocore.exceptions.ClientError as e:
+            if int(e.response["ResponseMetadata"]["HTTPStatusCode"]) == 404:
+                # If the object does not exist,
+                # it may be a folder
+                prefix = f"{source.rstrip('/')}/"
+                objs = list(self._bucket.objects.filter(Prefix=prefix))
+                for obj in objs:
+                    new_key = destination + obj.key[len(source) :]
+                    self._s3.meta.client.copy_object(
+                        CopySource={"Bucket": self._bucket_name, "Key": obj.key},
+                        Bucket=self._bucket_name,
+                        Key=new_key,
+                    )
+            else:
+                raise
+
     def clone_with_subroot(self, subroot: str | Path) -> S3FileStorage:
         """Create a new S3FileStorage with a subroot of the current storage."""
         file_storage = S3FileStorage(

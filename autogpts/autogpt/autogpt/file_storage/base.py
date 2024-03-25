@@ -128,6 +128,10 @@ class FileStorage(ABC):
         """Rename a file or folder in the storage."""
 
     @abstractmethod
+    def copy(self, source: str | Path, destination: str | Path) -> None:
+        """Copy a file or folder with all contents in the storage."""
+
+    @abstractmethod
     def make_dir(self, path: str | Path) -> None:
         """Create a directory in the storage if doesn't exist."""
 
