@@ -1,25 +1,20 @@
 from __future__ import annotations
 
 import logging
+from typing import Iterator, Optional
 
 from autogpt.file_storage.base import FileStorage
-from autogpt.agents.components import CommandProvider, Component, ComponentSystemError, PipelineError, ProposeAction
+from autogpt.agents.components import CommandProvider, Component
 from autogpt.models.command import Command
+from autogpt.commands.file_operations import list_folder, read_file, write_to_file
 
-from ..base import BaseAgent, BaseAgentSettings
+from ..base import BaseAgentSettings
 
 logger = logging.getLogger(__name__)
 
 
 class FileManagerComponent(Component, CommandProvider):
-
-    def get_commands(self, commands: list[Command]) -> list[Command]:
-        #TODO provide file operations commands
-        return commands
-
-
-class AgentFileManagerMixin:
-    """Mixin that adds file manager (e.g. Agent state)
+    """Adds general file manager (e.g. Agent state)
     and workspace manager (e.g. Agent output files) support."""
 
     files: FileStorage = None
@@ -36,25 +31,12 @@ class AgentFileManagerMixin:
     LOGS_FILE = "file_logger.log"
     """The name of the file where the agent's logs are stored."""
 
-    def __init__(self, **kwargs):
-        # Initialize other bases first, because we need the config from BaseAgent
-        super(AgentFileManagerMixin, self).__init__(**kwargs)
+    def __init__(self, state: BaseAgentSettings, file_storage: FileStorage):
+        self.state = state
 
-        if not isinstance(self, BaseAgent):
-            raise NotImplementedError(
-                f"{__class__.__name__} can only be applied to BaseAgent derivatives"
-            )
-
-        if "file_storage" not in kwargs:
-            raise ValueError(
-                "AgentFileManagerMixin requires a file_storage in the constructor."
-            )
-
-        state: BaseAgentSettings = getattr(self, "state")
         if not state.agent_id:
             raise ValueError("Agent must have an ID.")
 
-        file_storage: FileStorage = kwargs["file_storage"]
         self.files = file_storage.clone_with_subroot(f"agents/{state.agent_id}/")
         self.workspace = file_storage.clone_with_subroot(
             f"agents/{state.agent_id}/workspace"
@@ -64,6 +46,11 @@ class AgentFileManagerMixin:
         self._file_logs_cache = []
         if self.files.exists(self.LOGS_FILE):
             self._file_logs_cache = self.files.read_file(self.LOGS_FILE).split("\n")
+
+    def get_commands(self) -> Iterator[Command]:
+        yield read_file.command
+        yield write_to_file.command
+        yield list_folder.command
 
     async def log_file_operation(self, content: str) -> None:
         """Log a file operation to the agent's log file."""

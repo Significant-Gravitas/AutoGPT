@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 import distro
 
 if TYPE_CHECKING:
-    from autogpt.agents.agent import Agent
+    from autogpt.agents.agent import SimpleAgent
     from autogpt.models.action_history import Episode
 
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
@@ -374,7 +374,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
     def parse_response_content(
         self,
         response: AssistantChatMessage,
-    ) -> Agent.ThoughtProcessOutput:
+    ) -> SimpleAgent.ThoughtProcessOutput:
         if not response.content:
             raise InvalidAgentResponseError("Assistant response has no text content")
 

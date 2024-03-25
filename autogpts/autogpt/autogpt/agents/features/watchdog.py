@@ -1,24 +1,24 @@
 from __future__ import annotations
 
 import logging
-from contextlib import ExitStack
 from typing import TYPE_CHECKING
-
-
 
 if TYPE_CHECKING:
     from ..base import BaseAgentConfiguration
 
 from autogpt.agents.features.context import ContextComponent
 from autogpt.models.action_history import EpisodicActionHistory
-from autogpt.agents.components import Component, ComponentSystemError, PipelineError, ProposeAction
+from autogpt.agents.components import Component, ComponentSystemError, ProposeAction
 
-from ..base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
 
 class WatchdogComponent(Component, ProposeAction):
+    """
+    Adds a watchdog feature to an agent class. Whenever the agent starts
+    looping, the watchdog will switch from the FAST_LLM to the SMART_LLM and re-think.
+    """
     run_after = [ContextComponent]
 
     def __init__(self, config: BaseAgentConfiguration, event_history: EpisodicActionHistory):
@@ -26,7 +26,7 @@ class WatchdogComponent(Component, ProposeAction):
         self.event_history = event_history
         self.revert_big_brain = False
 
-    def propose_action(self, result: ProposeAction.Result) -> ProposeAction.Result:
+    def propose_action(self, result: ProposeAction.Result) -> None:
         if self.revert_big_brain:
             self.config.big_brain = False
             self.revert_big_brain = False
@@ -53,70 +53,8 @@ class WatchdogComponent(Component, ProposeAction):
 
             if rethink_reason:
                 logger.info(f"{rethink_reason}, re-thinking with SMART_LLM...")
+                self.event_history.rewind()
                 self.big_brain = True
                 self.revert_big_brain = True
                 # This will trigger retry of all pipelines on the method
                 raise ComponentSystemError()
-
-        return result
-
-class WatchdogMixin:
-    """
-    Mixin that adds a watchdog feature to an agent class. Whenever the agent starts
-    looping, the watchdog will switch from the FAST_LLM to the SMART_LLM and re-think.
-    """
-
-    config: BaseAgentConfiguration
-    event_history: EpisodicActionHistory
-
-    def __init__(self, **kwargs) -> None:
-        # Initialize other bases first, because we need the event_history from BaseAgent
-        super(WatchdogMixin, self).__init__(**kwargs)
-
-        if not isinstance(self, BaseAgent):
-            raise NotImplementedError(
-                f"{__class__.__name__} can only be applied to BaseAgent derivatives"
-            )
-
-    async def propose_action(self, *args, **kwargs) -> BaseAgent.ThoughtProcessOutput:
-        command_name, command_args, thoughts = await super(
-            WatchdogMixin, self
-        ).propose_action(*args, **kwargs)
-
-        if not self.config.big_brain and self.config.fast_llm != self.config.smart_llm:
-            previous_command, previous_command_args = None, None
-            if len(self.event_history) > 1:
-                # Detect repetitive commands
-                previous_cycle = self.event_history.episodes[
-                    self.event_history.cursor - 1
-                ]
-                previous_command = previous_cycle.action.name
-                previous_command_args = previous_cycle.action.args
-
-            rethink_reason = ""
-
-            if not command_name:
-                rethink_reason = "AI did not specify a command"
-            elif (
-                command_name == previous_command
-                and command_args == previous_command_args
-            ):
-                rethink_reason = f"Repititive command detected ({command_name})"
-
-            if rethink_reason:
-                logger.info(f"{rethink_reason}, re-thinking with SMART_LLM...")
-                with ExitStack() as stack:
-
-                    @stack.callback
-                    def restore_state() -> None:
-                        # Executed after exiting the ExitStack context
-                        self.config.big_brain = False
-
-                    # Remove partial record of current cycle
-                    self.event_history.rewind()
-
-                    # Switch to SMART_LLM and re-think
-                    self.big_brain = True
-                    return await self.propose_action(*args, **kwargs)
-
-        return command_name, command_args, thoughts

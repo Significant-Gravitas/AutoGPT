@@ -1,4 +1,4 @@
-from typing import Any, Optional, Protocol, Type, TypeVar, cast, runtime_checkable
+from typing import Any, Iterator, Optional, Protocol, Type, TypeVar, cast, runtime_checkable
 from dataclasses import dataclass
 
 from autogpt.core.prompting.schema import ChatPrompt
@@ -28,12 +28,12 @@ class BuildPrompt(Protocol):
         extra_messages: list[ChatMessage] = []
         extra_commands: list = []
 
-    # pass result to the next module
-    def build_prompt(self, result: Result) -> Result:
-        ... # Just build the prompt data
+    def build_prompt(self, result: Result) -> None:
+        ...
 
-    def get_prompt(self, result: Result, prompt: ChatPrompt) -> ChatPrompt:
-        return prompt
+    #TODO move to separate protocol
+    def get_prompt(self, result: Result, prompt: ChatPrompt) -> None:
+        pass
     
 
 @runtime_checkable
@@ -44,17 +44,34 @@ class ProposeAction(Protocol):
         command_args: Any
         thoughts: Any
 
-    def propose_action(self, result: Result) -> Result:
+    def propose_action(self, result: Result) -> None:
         ...
 
 
 @runtime_checkable
 class CommandProvider(Protocol):
-    def get_commands(self, commands: list[Command]) -> list[Command]:
+    def get_commands(self) -> Iterator[Command]:
         ...
 
 
+# @runtime_checkable
+# class ResponseHandler(Protocol):
+#     def parse_process_response(self, llm_repsonse: AssistantChatMessage):
+#         ...
+
+
 @runtime_checkable
-class ResponseHandler(Protocol):
-    def parse_process_response(self, llm_repsonse: AssistantChatMessage):
+class GuidelinesProvider(Protocol):
+    def get_contraints(self) -> list[str]:
+        ...
+
+    def get_resources(self) -> list[str]:
+        ...
+
+    def get_best_practices(self) -> list[str]:
+        ...
+
+@runtime_checkable
+class OnExecute(Protocol):
+    def on_execute(self) -> None:
         ...

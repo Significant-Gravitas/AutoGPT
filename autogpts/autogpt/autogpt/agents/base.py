@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import copy
 import logging
-from abc import ABC, ABCMeta, abstractmethod
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from abc import ABCMeta
+from typing import TYPE_CHECKING, Any, Optional
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from pydantic import Field, validator
@@ -20,15 +20,11 @@ if TYPE_CHECKING:
     )
     from autogpt.models.command_registry import CommandRegistry
 
-from autogpt.models.command import Command
 from autogpt.agents.components import (
-    BuildPrompt,
-    CommandProvider,
     Component,
     ComponentError,
     PipelineError,
 )
-from autogpt.agents.utils.prompt_scratchpad import PromptScratchpad
 from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
@@ -38,19 +34,11 @@ from autogpt.core.configuration import (
     SystemSettings,
     UserConfigurable,
 )
-from autogpt.core.prompting.schema import (
-    ChatMessage,
-    ChatPrompt,
-    CompletionModelFunction,
-)
 from autogpt.core.resource.model_providers.openai import (
     OPEN_AI_CHAT_MODELS,
     OpenAIModelName,
 )
-from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
-from autogpt.file_storage.base import FileStorage
-from autogpt.llm.providers.openai import get_openai_command_specs
-from autogpt.models.action_history import ActionResult, EpisodicActionHistory
+from autogpt.models.action_history import EpisodicActionHistory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -173,22 +161,28 @@ class ComponentAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
     # TODO kcze change to named tuple?
     ThoughtProcessOutput = tuple[CommandName, CommandArgs, AgentThoughts]
 
+    default_settings = BaseAgentSettings(
+        name="BaseAgent",
+        description=__doc__ if __doc__ else "",
+    )
+
     def __init__(
         self,
         settings: BaseAgentSettings,
         llm_provider: ChatModelProvider,
-        command_registry: CommandRegistry,
-        legacy_config: Config,
     ):
         self.state = settings
         self.components = []
-        self.llm_provider = llm_provider
-        # TODO for backwards compatibility
-        # Commands should be provider by CommandProviders
-        self.command_registry = command_registry
+        self.llm_provider = llm_provider#TODO move to SimpleAgent
         self.config = settings.config
 
+        logger.debug(f"Created {__class__} '{self.state.ai_profile.ai_name}'")
+
     def _collect_components(self):
+        # Skip collecting and sort if ordering is explicit
+        if self.components:
+            return
+        
         self.components = [
             getattr(self, attr)
             for attr in dir(self)
@@ -225,9 +219,13 @@ class ComponentAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
             self.config.smart_llm if self.config.big_brain else self.config.fast_llm
         )
         return OPEN_AI_CHAT_MODELS[llm_name]
+    
+    @property
+    def send_token_limit(self) -> int:
+        return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
 
     #TODO method_name type unsafe!
-    def _foreach_components(self, method_name: str, *args, retry_limit: int = 3):
+    def foreach_components(self, method_name: str, *args, retry_limit: int = 3):
         original_args = copy.deepcopy(args)  # Clone parameters to revert on failure
         pipeline_attempts = 0
 
@@ -241,9 +239,10 @@ class ComponentAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
                     while component_attempts < retry_limit:
                         try:
                             new_args = copy.deepcopy(args)
-                            new_args = method(*new_args)
-                            # Update args only if method successfully completes
-                            if new_args is not None:
+                            result = method(*new_args)
+                            if result is not None:
+                                args += result
+                            else:
                                 args = new_args
                         except ComponentError:
                             # Retry the same component on ComponentError
@@ -260,326 +259,3 @@ class ComponentAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
             except Exception as e:
                 #TODO pass pipeline info to exception
                 raise e
-
-    #TODO this probably to Agent
-    async def propose_action(self) -> ThoughtProcessOutput:
-        """Proposes the next action to execute, based on the task and current state.
-
-        Returns:
-            The command name and arguments, if any, and the agent's thoughts.
-        """
-
-        # Scratchpad as surrogate PromptGenerator for plugin hooks
-        self._prompt_scratchpad = PromptScratchpad()
-
-        # Execute build prompt_data
-        prompt_data: BuildPrompt.Result = BuildPrompt.Result()
-        self._foreach_components("build_prompt", prompt_data)
-
-        # Get final prompt
-        prompt = ChatPrompt(messages=[])
-        self._foreach_components("get_prompt", prompt)
-
-        # Get commands
-        commands: list[Command] = []
-        self._foreach_components("get_commands", commands)
-
-        # prompt = self.on_before_think(prompt, scratchpad=self._prompt_scratchpad)
-
-        # logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
-        response = await self.llm_provider.create_chat_completion(
-            prompt.messages,
-            functions=(
-                get_openai_command_specs(
-                    # TODO backwards compatibility
-                    list(self.command_registry.list_available_commands())
-                    + commands
-                )
-                + list(self._prompt_scratchpad.commands.values())
-                if self.config.use_functions_api
-                else []
-            ),
-            model_name=self.llm.name,
-            completion_parser=lambda r: self.parse_and_process_response(
-                r,
-                prompt,
-                scratchpad=self._prompt_scratchpad,
-            ),
-        )
-        self.config.cycle_count += 1
-
-        return response.parsed_result
-    
-    #TODO backwards compatibility
-    @abstractmethod
-    def parse_and_process_response(
-        self,
-        llm_response: AssistantChatMessage,
-        prompt: ChatPrompt,
-        scratchpad: PromptScratchpad,
-    ) -> ThoughtProcessOutput:
-        """Validate, parse & process the LLM's response.
-
-        Must be implemented by derivative classes: no base implementation is provided,
-        since the implementation depends on the role of the derivative Agent.
-
-        Params:
-            llm_response: The raw response from the chat model.
-            prompt: The prompt that was executed.
-            scratchpad: An object containing additional prompt elements from plugins.
-                (E.g. commands, constraints, best practices)
-
-        Returns:
-            The parsed command name and command args, if any, and the agent thoughts.
-        """
-        pass
-
-
-class BaseAgent(Configurable[BaseAgentSettings], ABC):
-    """Base class for all AutoGPT agent classes."""
-
-    ThoughtProcessOutput = tuple[CommandName, CommandArgs, AgentThoughts]
-
-    default_settings = BaseAgentSettings(
-        name="BaseAgent",
-        description=__doc__,
-    )
-
-    def __init__(
-        self,
-        settings: BaseAgentSettings,
-        llm_provider: ChatModelProvider,
-        prompt_strategy: PromptStrategy,
-        command_registry: CommandRegistry,
-        file_storage: FileStorage,
-        legacy_config: Config,
-    ):
-        self.state = settings
-        self.config = settings.config
-        self.ai_profile = settings.ai_profile
-        self.directives = settings.directives
-        self.event_history = settings.history
-
-        self.legacy_config = legacy_config
-        """LEGACY: Monolithic application configuration."""
-
-        self.llm_provider = llm_provider
-
-        self.prompt_strategy = prompt_strategy
-
-        self.command_registry = command_registry
-        """The registry containing all commands available to the agent."""
-
-        self._prompt_scratchpad: PromptScratchpad | None = None
-
-        # Support multi-inheritance and mixins for subclasses
-        super(BaseAgent, self).__init__()
-
-        logger.debug(f"Created {__class__} '{self.ai_profile.ai_name}'")
-
-    @property
-    def llm(self) -> ChatModelInfo:
-        """The LLM that the agent uses to think."""
-        llm_name = (
-            self.config.smart_llm if self.config.big_brain else self.config.fast_llm
-        )
-        return OPEN_AI_CHAT_MODELS[llm_name]
-
-    @property
-    def send_token_limit(self) -> int:
-        return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
-
-    async def propose_action(self) -> ThoughtProcessOutput:
-        """Proposes the next action to execute, based on the task and current state.
-
-        Returns:
-            The command name and arguments, if any, and the agent's thoughts.
-        """
-
-        # Scratchpad as surrogate PromptGenerator for plugin hooks
-        self._prompt_scratchpad = PromptScratchpad()
-
-        prompt: ChatPrompt = self.build_prompt(scratchpad=self._prompt_scratchpad)
-        prompt = self.on_before_think(prompt, scratchpad=self._prompt_scratchpad)
-
-        logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
-        response = await self.llm_provider.create_chat_completion(
-            prompt.messages,
-            functions=get_openai_command_specs(
-                self.command_registry.list_available_commands(self)
-            )
-            + list(self._prompt_scratchpad.commands.values())
-            if self.config.use_functions_api
-            else [],
-            model_name=self.llm.name,
-            completion_parser=lambda r: self.parse_and_process_response(
-                r,
-                prompt,
-                scratchpad=self._prompt_scratchpad,
-            ),
-        )
-        self.config.cycle_count += 1
-
-        return self.on_response(
-            llm_response=response,
-            prompt=prompt,
-            scratchpad=self._prompt_scratchpad,
-        )
-        
-
-    @abstractmethod
-    async def execute(
-        self,
-        command_name: str,
-        command_args: dict[str, str] = {},
-        user_input: str = "",
-    ) -> ActionResult:
-        """Executes the given command, if any, and returns the agent's response.
-
-        Params:
-            command_name: The name of the command to execute, if any.
-            command_args: The arguments to pass to the command, if any.
-            user_input: The user's input, if any.
-
-        Returns:
-            ActionResult: An object representing the result(s) of the command.
-        """
-        ...
-
-    def build_prompt(
-        self,
-        scratchpad: PromptScratchpad,
-        extra_commands: Optional[list[CompletionModelFunction]] = None,
-        extra_messages: Optional[list[ChatMessage]] = None,
-        **extras,
-    ) -> ChatPrompt:
-        """Constructs a prompt using `self.prompt_strategy`.
-
-        Params:
-            scratchpad: An object for plugins to write additional prompt elements to.
-                (E.g. commands, constraints, best practices)
-            extra_commands: Additional commands that the agent has access to.
-            extra_messages: Additional messages to include in the prompt.
-        """
-        if not extra_commands:
-            extra_commands = []
-
-        # Apply additions from plugins
-        for plugin in self.config.plugins:
-            if not plugin.can_handle_post_prompt():
-                continue
-            plugin.post_prompt(scratchpad)
-        ai_directives = self.directives.copy(deep=True)
-        ai_directives.resources += scratchpad.resources
-        ai_directives.constraints += scratchpad.constraints
-        ai_directives.best_practices += scratchpad.best_practices
-        extra_commands += list(scratchpad.commands.values())
-
-        prompt = self.prompt_strategy.build_prompt(
-            task=self.state.task,
-            ai_profile=self.ai_profile,
-            ai_directives=ai_directives,
-            commands=get_openai_command_specs(
-                self.command_registry.list_available_commands(self)
-            )
-            + extra_commands,
-            event_history=self.event_history,
-            max_prompt_tokens=self.send_token_limit,
-            count_tokens=lambda x: self.llm_provider.count_tokens(x, self.llm.name),
-            count_message_tokens=lambda x: self.llm_provider.count_message_tokens(
-                x, self.llm.name
-            ),
-            extra_messages=extra_messages,
-            **extras,
-        )
-
-        return prompt
-
-    def on_before_think(
-        self,
-        prompt: ChatPrompt,
-        scratchpad: PromptScratchpad,
-    ) -> ChatPrompt:
-        """Called after constructing the prompt but before executing it.
-
-        Calls the `on_planning` hook of any enabled and capable plugins, adding their
-        output to the prompt.
-
-        Params:
-            prompt: The prompt that is about to be executed.
-            scratchpad: An object for plugins to write additional prompt elements to.
-                (E.g. commands, constraints, best practices)
-
-        Returns:
-            The prompt to execute
-        """
-        current_tokens_used = self.llm_provider.count_message_tokens(
-            prompt.messages, self.llm.name
-        )
-        plugin_count = len(self.config.plugins)
-        for i, plugin in enumerate(self.config.plugins):
-            if not plugin.can_handle_on_planning():
-                continue
-            plugin_response = plugin.on_planning(scratchpad, prompt.raw())
-            if not plugin_response or plugin_response == "":
-                continue
-            message_to_add = ChatMessage.system(plugin_response)
-            tokens_to_add = self.llm_provider.count_message_tokens(
-                message_to_add, self.llm.name
-            )
-            if current_tokens_used + tokens_to_add > self.send_token_limit:
-                logger.debug(f"Plugin response too long, skipping: {plugin_response}")
-                logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
-                break
-            prompt.messages.insert(
-                -1, message_to_add
-            )  # HACK: assumes cycle instruction to be at the end
-            current_tokens_used += tokens_to_add
-        return prompt
-
-    def on_response(
-        self,
-        llm_response: ChatModelResponse,
-        prompt: ChatPrompt,
-        scratchpad: PromptScratchpad,
-    ) -> ThoughtProcessOutput:
-        """Called upon receiving a response from the chat model.
-
-        Calls `self.parse_and_process_response()`.
-
-        Params:
-            llm_response: The raw response from the chat model.
-            prompt: The prompt that was executed.
-            scratchpad: An object containing additional prompt elements from plugins.
-                (E.g. commands, constraints, best practices)
-
-        Returns:
-            The parsed command name and command args, if any, and the agent thoughts.
-        """
-
-        return llm_response.parsed_result
-
-        # TODO: update memory/context
-
-    @abstractmethod
-    def parse_and_process_response(
-        self,
-        llm_response: AssistantChatMessage,
-        prompt: ChatPrompt,
-        scratchpad: PromptScratchpad,
-    ) -> ThoughtProcessOutput:
-        """Validate, parse & process the LLM's response.
-
-        Must be implemented by derivative classes: no base implementation is provided,
-        since the implementation depends on the role of the derivative Agent.
-
-        Params:
-            llm_response: The raw response from the chat model.
-            prompt: The prompt that was executed.
-            scratchpad: An object containing additional prompt elements from plugins.
-                (E.g. commands, constraints, best practices)
-
-        Returns:
-            The parsed command name and command args, if any, and the agent thoughts.
-        """
-        pass
