@@ -3,17 +3,18 @@ from __future__ import annotations
 import logging
 from typing import Iterator, Optional
 
+from autogpt.agents.components import Component
+# from autogpt.commands.file_operations import list_folder, read_file, write_to_file
 from autogpt.file_storage.base import FileStorage
-from autogpt.agents.components import CommandProvider, Component
-from autogpt.models.command import Command
-from autogpt.commands.file_operations import list_folder, read_file, write_to_file
+# from autogpt.models.command import Command
+# from autogpt.agents.protocols import CommandProvider
 
 from ..base import BaseAgentSettings
 
 logger = logging.getLogger(__name__)
 
 
-class FileManagerComponent(Component, CommandProvider):
+class FileManagerComponent(Component): #TODO, CommandProvider):
     """Adds general file manager (e.g. Agent state)
     and workspace manager (e.g. Agent output files) support."""
 
@@ -47,10 +48,10 @@ class FileManagerComponent(Component, CommandProvider):
         if self.files.exists(self.LOGS_FILE):
             self._file_logs_cache = self.files.read_file(self.LOGS_FILE).split("\n")
 
-    def get_commands(self) -> Iterator[Command]:
-        yield read_file.command
-        yield write_to_file.command
-        yield list_folder.command
+    # def get_commands(self) -> Iterator[Command]:
+    #     yield read_file.command
+    #     yield write_to_file.command
+    #     yield list_folder.command
 
     async def log_file_operation(self, content: str) -> None:
         """Log a file operation to the agent's log file."""

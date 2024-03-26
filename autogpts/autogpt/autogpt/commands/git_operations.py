@@ -10,7 +10,7 @@ from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.url_utils.validators import validate_url
 
-from .decorators import sanitize_path_arg
+# from .decorators import sanitize_path_arg
 
 COMMAND_CATEGORY = "git_operations"
 COMMAND_CATEGORY_TITLE = "Git Operations"
@@ -34,7 +34,7 @@ COMMAND_CATEGORY_TITLE = "Git Operations"
     lambda config: bool(config.github_username and config.github_api_key),
     "Configure github_username and github_api_key.",
 )
-@sanitize_path_arg("clone_path")
+# @sanitize_path_arg("clone_path")
 @validate_url
 def clone_repository(url: str, clone_path: Path, agent: Agent) -> str:
     """Clone a GitHub repository locally.

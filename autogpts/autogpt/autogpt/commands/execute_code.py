@@ -22,7 +22,7 @@ from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.core.utils.json_schema import JSONSchema
 
-from .decorators import sanitize_path_arg
+# from .decorators import sanitize_path_arg
 
 COMMAND_CATEGORY = "execute_code"
 COMMAND_CATEGORY_TITLE = "Execute Code"
@@ -124,7 +124,7 @@ def execute_python_code(code: str, agent: Agent) -> str:
     "Docker must be available on the system.",
     available=we_are_running_in_a_docker_container() or is_docker_available(),
 )
-@sanitize_path_arg("filename")
+# @sanitize_path_arg("filename")
 def execute_python_file(
     filename: Path, agent: Agent, args: list[str] | str = []
 ) -> str:

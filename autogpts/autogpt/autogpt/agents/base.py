@@ -3,28 +3,20 @@ from __future__ import annotations
 import copy
 import logging
 from abc import ABCMeta
-from typing import TYPE_CHECKING, Any, Optional
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Optional, TypeVar
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
-from pydantic import Field, validator
-
+from colorama import Fore
+from pydantic import BaseModel, Field, validator
 
 if TYPE_CHECKING:
-    from autogpt.config import Config
-    from autogpt.core.prompting.base import PromptStrategy
     from autogpt.core.resource.model_providers.schema import (
-        AssistantChatMessage,
         ChatModelInfo,
         ChatModelProvider,
-        ChatModelResponse,
     )
-    from autogpt.models.command_registry import CommandRegistry
 
-from autogpt.agents.components import (
-    Component,
-    ComponentError,
-    PipelineError,
-)
+from autogpt.agents.components import Component, ComponentError, PipelineError
 from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
@@ -148,7 +140,7 @@ class AgentMeta(type):
         # Create instance of the class (Agent or BaseAgent)
         instance = super().__call__(*args, **kwargs)
         # Automatically collect modules after the instance is created
-        instance._collect_components(instance)
+        instance._collect_components()
         return instance
 
 
@@ -157,9 +149,18 @@ class CombinedMeta(ABCMeta, AgentMeta):
         return super().__new__(cls, name, bases, namespace, **kwargs)
 
 
-class ComponentAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
-    # TODO kcze change to named tuple?
-    ThoughtProcessOutput = tuple[CommandName, CommandArgs, AgentThoughts]
+@dataclass
+class ThoughtProcessOutput:
+    command_name: str = ""
+    command_args: dict[str, str] = field(default_factory=dict)
+    thoughts: dict[str, Any] = field(default_factory=dict)
+
+    def __iter__(self):
+        yield from (self.command_name, self.command_args, self.thoughts)
+
+
+class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
+    T = TypeVar("T", bound=Component)
 
     default_settings = BaseAgentSettings(
         name="BaseAgent",
@@ -172,9 +173,13 @@ class ComponentAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
         llm_provider: ChatModelProvider,
     ):
         self.state = settings
-        self.components = []
-        self.llm_provider = llm_provider#TODO move to SimpleAgent
+        self.components: list[Component] = []
+        self.llm_provider = llm_provider  # TODO move to SimpleAgent
         self.config = settings.config
+        self.ai_profile = settings.ai_profile
+        self.directives = settings.directives
+        # Execution data for debugging
+        self._trace: list[str] = []
 
         logger.debug(f"Created {__class__} '{self.state.ai_profile.ai_name}'")
 
@@ -182,7 +187,7 @@ class ComponentAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
         # Skip collecting and sort if ordering is explicit
         if self.components:
             return
-        
+
         self.components = [
             getattr(self, attr)
             for attr in dir(self)
@@ -212,6 +217,14 @@ class ComponentAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
 
         return stack
 
+    def reset_trace(self):
+        self._trace = []
+
+    # Just collect when running foreach_components
+    @property
+    def trace(self) -> list[str]:
+        return self._trace
+
     @property
     def llm(self) -> ChatModelInfo:
         """The LLM that the agent uses to think."""
@@ -219,15 +232,44 @@ class ComponentAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
             self.config.smart_llm if self.config.big_brain else self.config.fast_llm
         )
         return OPEN_AI_CHAT_MODELS[llm_name]
-    
+
     @property
     def send_token_limit(self) -> int:
         return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
 
-    #TODO method_name type unsafe!
-    def foreach_components(self, method_name: str, *args, retry_limit: int = 3):
-        original_args = copy.deepcopy(args)  # Clone parameters to revert on failure
+    # Generic function to get components of a specific type
+    def get_component(self, component_type: type[T]) -> Optional[T]:
+        for component in self.components:
+            if isinstance(component, component_type):
+                return component
+        return None
+    
+    def _selective_copy(self, args: tuple[Any, ...]) -> tuple[Any, ...]:
+        copied_args = []
+        for item in args:
+            print(f"{Fore.CYAN}Copying {item}\n{type(item)}{Fore.RESET}")
+            if isinstance(item, list):
+                # Shallow copy for lists
+                copied_item = item[:]
+            elif isinstance(item, dict):
+                # Shallow copy for dicts
+                copied_item = item.copy()
+            elif isinstance(item, BaseModel):
+                # Deep copy for Pydantic models (deep=True to also copy nested models)
+                copied_item = item.copy(deep=True)
+            else:
+                # Deep copy for other objects
+                copied_item = copy.deepcopy(item)
+            copied_args.append(copied_item)
+        return tuple(copied_args)
+
+    # TODO method_name and return type unsafe!
+    def foreach_components(self, method_name: str, *args, retry_limit: int = 3) -> Any:
+        # Clone parameters to revert on failure
+        original_args = self._selective_copy(args)
         pipeline_attempts = 0
+        method_result: list[Any] | Any = []
+        self._trace.append(f"⬇️  {Fore.BLUE}{method_name}{Fore.RESET}")
 
         while pipeline_attempts < retry_limit:
             try:
@@ -238,24 +280,42 @@ class ComponentAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
                         continue
                     while component_attempts < retry_limit:
                         try:
-                            new_args = copy.deepcopy(args)
-                            result = method(*new_args)
+                            component_args = self._selective_copy(args)
+                            result = method(*component_args)
                             if result is not None:
-                                args += result
-                            else:
-                                args = new_args
+                                if isinstance(result, list):
+                                    method_result.extend(result)
+                                else:
+                                    method_result = result
+                            args = component_args
+                            self._trace.append(
+                                f"✅ {component.__class__.__name__}"
+                            )
+
                         except ComponentError:
+                            self._trace.append(
+                                f"❌ {Fore.YELLOW}ComponentError{Fore.RESET}: "
+                                f"{component.__class__.__name__}"
+                            )
                             # Retry the same component on ComponentError
                             component_attempts += 1
                             continue
+                        # Successful component execution
                         break
-                # If execution reaches here without errors, break the loop
+                # Successful pipeline execution
                 break
             except PipelineError:
+                self._trace.append(
+                    f"❌ {Fore.LIGHTRED_EX}PipelineError{Fore.RESET}: "
+                    f"{component.__class__.__name__}"
+                )
                 # Restart from the beginning on PipelineError
-                args = copy.deepcopy(original_args)  # Revert to original parameters
+                # Revert to original parameters
+                args = self._selective_copy(original_args)
                 pipeline_attempts += 1
                 continue  # Start the loop over
             except Exception as e:
-                #TODO pass pipeline info to exception
+                # TODO pass pipeline info to exception
                 raise e
+
+        return method_result

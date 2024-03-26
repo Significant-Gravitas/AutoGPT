@@ -89,7 +89,6 @@ def _configure_agent(
     return Agent(
         settings=agent_state,
         llm_provider=llm_provider,
-        command_registry=command_registry,
         file_storage=file_storage,
         legacy_config=app_config,
     )

@@ -6,7 +6,6 @@ import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from autogpt.agents.features.context import ContextMixin, get_agent_context
 from autogpt.agents.utils.exceptions import (
     CommandExecutionError,
     DuplicateOperationError,
@@ -15,7 +14,7 @@ from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.context_item import FileContextItem, FolderContextItem
 
-from .decorators import sanitize_path_arg
+# from .decorators import sanitize_path_arg
 
 COMMAND_CATEGORY = "file_operations"
 COMMAND_CATEGORY_TITLE = "File Operations"
@@ -25,8 +24,8 @@ if TYPE_CHECKING:
     from autogpt.agents import Agent, BaseAgent
 
 
-def agent_implements_context(agent: BaseAgent) -> bool:
-    return isinstance(agent, ContextMixin)
+# def agent_implements_context(agent: BaseAgent) -> bool:
+#     return isinstance(agent, ContextMixin)
 
 
 @command(
@@ -41,9 +40,9 @@ def agent_implements_context(agent: BaseAgent) -> bool:
             required=True,
         )
     },
-    available=agent_implements_context,
+    # available=agent_implements_context,
 )
-@sanitize_path_arg("file_path")
+# @sanitize_path_arg("file_path")
 def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
     """Open a file and return a context item
 
@@ -59,7 +58,7 @@ def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
     with contextlib.suppress(ValueError):
         relative_file_path = file_path.relative_to(agent.workspace.root)
 
-    assert (agent_context := get_agent_context(agent)) is not None
+    assert (agent_context := agent.context.context) is not None
 
     created = False
     if not file_path.exists():
@@ -94,9 +93,9 @@ def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
             required=True,
         )
     },
-    available=agent_implements_context,
+    # available=agent_implements_context,
 )
-@sanitize_path_arg("path")
+# @sanitize_path_arg("path")
 def open_folder(path: Path, agent: Agent) -> tuple[str, FolderContextItem]:
     """Open a folder and return a context item
 
@@ -112,7 +111,7 @@ def open_folder(path: Path, agent: Agent) -> tuple[str, FolderContextItem]:
     with contextlib.suppress(ValueError):
         relative_path = path.relative_to(agent.workspace.root)
 
-    assert (agent_context := get_agent_context(agent)) is not None
+    assert (agent_context := agent.context.context) is not None
 
     if not path.exists():
         raise FileNotFoundError(f"open_folder {path} failed: no such file or directory")

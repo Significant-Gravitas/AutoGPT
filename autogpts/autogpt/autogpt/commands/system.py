@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from autogpt.agents.features.context import get_agent_context
 from autogpt.agents.utils.exceptions import AgentFinished, InvalidArgumentError
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
@@ -57,10 +56,10 @@ def finish(reason: str, agent: Agent) -> None:
             required=True,
         )
     },
-    available=lambda a: bool(get_agent_context(a)),
+    # available=lambda a: bool(get_agent_context(a)),
 )
 def close_context_item(number: int, agent: Agent) -> str:
-    assert (context := get_agent_context(agent)) is not None
+    assert (context := agent.context.context) is not None
 
     if number > len(context.items) or number == 0:
         raise InvalidArgumentError(f"Index {number} out of range")

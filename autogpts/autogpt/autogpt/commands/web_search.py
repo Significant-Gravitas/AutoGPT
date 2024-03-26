@@ -94,7 +94,7 @@ def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
     and bool(config.google_custom_search_engine_id),
     "Configure google_api_key and custom_search_engine_id.",
     aliases=["search"],
-    available=False
+    available=False,
 )
 def google(query: str, agent: Agent, num_results: int = 8) -> str | list[str]:
     """Return the results of a Google search using the official Google API
