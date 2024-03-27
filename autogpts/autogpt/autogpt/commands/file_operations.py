@@ -15,14 +15,14 @@ from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.memory.vector import MemoryItemFactory, VectorMemory
 
-from .decorators import sanitize_path_arg
+# from .decorators import sanitize_path_arg
 from .file_operations_utils import decode_textual_file
 
 COMMAND_CATEGORY = "file_operations"
 COMMAND_CATEGORY_TITLE = "File Operations"
 
 
-from .file_context import open_file, open_folder  # NOQA
+from ..components.context.commands import open_file, open_folder  # NOQA
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ def file_operations_state(logs: list[str]) -> dict[str, str]:
     return state
 
 
-@sanitize_path_arg("file_path", make_relative=True)
+# @sanitize_path_arg("file_path", make_relative=True)
 def is_duplicate_operation(
     operation: Operation, file_path: Path, agent: Agent, checksum: str | None = None
 ) -> bool:
@@ -99,7 +99,7 @@ def is_duplicate_operation(
     return False
 
 
-@sanitize_path_arg("file_path", make_relative=True)
+# @sanitize_path_arg("file_path", make_relative=True)
 async def log_operation(
     operation: Operation,
     file_path: str | Path,

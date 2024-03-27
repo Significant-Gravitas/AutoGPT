@@ -28,7 +28,6 @@ from autogpt.commands.execute_code import (
     is_docker_available,
     we_are_running_in_a_docker_container,
 )
-from autogpt.commands.system import finish
 from autogpt.config import (
     AIDirectives,
     AIProfile,
@@ -235,7 +234,8 @@ async def run_auto_gpt(
 
         if (
             agent.event_history.current_episode
-            and agent.event_history.current_episode.action.name == finish.__name__
+            #TODO hardcoded "finish"
+            and agent.event_history.current_episode.action.name == "finish"
             and not agent.event_history.current_episode.result
         ):
             # Agent was resumed after `finish` -> rewrite result of `finish` action

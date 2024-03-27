@@ -4,11 +4,15 @@ import inspect
 import logging
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Iterator, Optional
 
 import sentry_sdk
 from pydantic import Field
 
+from autogpt.agents.components import (
+    Component,
+)
+from autogpt.agents.prompt_strategies.one_shot_component import OneShotComponent
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
@@ -18,6 +22,7 @@ from autogpt.core.resource.model_providers import (
 )
 from autogpt.file_storage.base import FileStorage
 from autogpt.llm.api_manager import ApiManager
+from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.logs.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
@@ -32,13 +37,21 @@ from autogpt.models.action_history import (
     ActionResult,
     ActionSuccessResult,
 )
-from autogpt.models.command import CommandOutput
+from autogpt.models.command import Command, CommandOutput
 from autogpt.models.context_item import ContextItem
+from autogpt.agents.protocols import MessageProvider
+from autogpt.components.system.component import SystemComponent
+from autogpt.components.user_interaction.component import UserInteractionComponent
 
-from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
-from .features.agent_file_manager import AgentFileManagerMixin
-from .features.context import ContextMixin
-from .features.watchdog import WatchdogMixin
+from .base import (
+    BaseAgent,
+    BaseAgentConfiguration,
+    BaseAgentSettings,
+    ThoughtProcessOutput,
+)
+from .features.agent_file_manager import FileManagerComponent
+from ..components.context.component import ContextComponent
+from .features.watchdog import WatchdogComponent
 from .prompt_strategies.one_shot import (
     OneShotAgentPromptConfiguration,
     OneShotAgentPromptStrategy,
@@ -53,7 +66,6 @@ from .utils.exceptions import (
 
 if TYPE_CHECKING:
     from autogpt.config import Config
-    from autogpt.models.command_registry import CommandRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -71,63 +83,14 @@ class AgentSettings(BaseAgentSettings):
     )
 
 
-class Agent(
-    ContextMixin,
-    AgentFileManagerMixin,
-    WatchdogMixin,
-    BaseAgent,
-    Configurable[AgentSettings],
-):
-    """AutoGPT's primary Agent; uses one-shot prompting."""
+class ClockBudgetComponent(Component, MessageProvider):
+    """Clock and budget messages."""
 
-    default_settings: AgentSettings = AgentSettings(
-        name="Agent",
-        description=__doc__,
-    )
-
-    prompt_strategy: OneShotAgentPromptStrategy
-
-    def __init__(
+    def get_messages(
         self,
-        settings: AgentSettings,
-        llm_provider: ChatModelProvider,
-        command_registry: CommandRegistry,
-        file_storage: FileStorage,
-        legacy_config: Config,
-    ):
-        prompt_strategy = OneShotAgentPromptStrategy(
-            configuration=settings.prompt_config,
-            logger=logger,
-        )
-        super().__init__(
-            settings=settings,
-            llm_provider=llm_provider,
-            prompt_strategy=prompt_strategy,
-            command_registry=command_registry,
-            file_storage=file_storage,
-            legacy_config=legacy_config,
-        )
-
-        self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
-        """Timestamp the agent was created; only used for structured debug logging."""
-
-        self.log_cycle_handler = LogCycleHandler()
-        """LogCycleHandler for structured debug logging."""
-
-    def build_prompt(
-        self,
-        *args,
-        extra_messages: Optional[list[ChatMessage]] = None,
-        include_os_info: Optional[bool] = None,
-        **kwargs,
-    ) -> ChatPrompt:
-        if not extra_messages:
-            extra_messages = []
-
+    ) -> Iterator[ChatMessage]:
         # Clock
-        extra_messages.append(
-            ChatMessage.system(f"The current time and date is {time.strftime('%c')}"),
-        )
+        yield ChatMessage.system(f"The current time and date is {time.strftime('%c')}")
 
         # Add budget information (if any) to prompt
         api_manager = ApiManager()
@@ -151,44 +114,129 @@ class Agent(
                 ),
             )
             logger.debug(budget_msg)
-            extra_messages.append(budget_msg)
+            yield budget_msg
 
-        if include_os_info is None:
-            include_os_info = self.legacy_config.execute_local_commands
 
-        return super().build_prompt(
-            *args,
-            extra_messages=extra_messages,
-            include_os_info=include_os_info,
-            **kwargs,
+class Agent(BaseAgent, Configurable[AgentSettings]):
+    default_settings: AgentSettings = AgentSettings(
+        name="Agent",
+        description=__doc__ if __doc__ else "",
+    )
+
+    def __init__(
+        self,
+        settings: AgentSettings,
+        llm_provider: ChatModelProvider,
+        file_storage: FileStorage,
+        legacy_config: Config,
+    ):
+        super().__init__(settings, llm_provider)
+
+        self.system = SystemComponent()
+        self.extra = ClockBudgetComponent()
+        self.user_interaction = UserInteractionComponent(legacy_config)
+        self.file_manager = FileManagerComponent(settings, file_storage)
+        self.context = ContextComponent(self.file_manager.workspace)
+        self.watchdog = WatchdogComponent(settings.config, settings.history)
+        self.prompt_strategy = OneShotComponent(
+            settings, legacy_config, llm_provider, self.send_token_limit, self.llm
         )
 
-    def on_before_think(self, *args, **kwargs) -> ChatPrompt:
-        prompt = super().on_before_think(*args, **kwargs)
+        # Override component ordering
+        self.components = [
+            self.system,
+            self.extra,
+            self.user_interaction,
+            self.file_manager,
+            self.context,
+            self.watchdog,
+            self.prompt_strategy,
+        ]
+
+        self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
+        """Timestamp the agent was created; only used for structured debug logging."""
+
+        self.log_cycle_handler = LogCycleHandler()
+        """LogCycleHandler for structured debug logging."""
+
+        self.event_history = settings.history
+        self.legacy_config = legacy_config
+
+    async def propose_action(self) -> ThoughtProcessOutput:
+        """Proposes the next action to execute, based on the task and current state.
+
+        Returns:
+            The command name and arguments, if any, and the agent's thoughts.
+        """
+        self.reset_trace()
+
+        # TODO kcze update guidelines
+
+        # Get messages
+        messages: list[ChatMessage] = []
+        messages = list(self.foreach_components("get_messages"))
+
+        # Get commands
+        # TODO kcze this is temporary measure to access commands in execute
+        self.commands: list[Command] = []
+        self.commands = list(self.foreach_components("get_commands"))
+
+        print(f"commands: {len(self.commands)}")
+        for command in self.commands:
+            print(f"- {command.name}")
+
+        # Get final prompt
+        prompt: ChatPrompt = ChatPrompt(messages=[])
+        prompt = self.foreach_components("build_prompt", messages, self.commands, prompt)
+
+        # print(f"messages: {len(messages)}")
+        # print(f"prompt: {prompt.raw()}")
 
         self.log_cycle_handler.log_count_within_cycle = 0
         self.log_cycle_handler.log_cycle(
-            self.ai_profile.ai_name,
+            self.state.ai_profile.ai_name,
             self.created_at,
             self.config.cycle_count,
             prompt.raw(),
             CURRENT_CONTEXT_FILE_NAME,
         )
-        return prompt
 
+        # logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
+        response = await self.llm_provider.create_chat_completion(
+            prompt.messages,
+            functions=(
+                get_openai_command_specs(self.commands)
+                if self.config.use_functions_api
+                else []
+            ),
+            model_name=self.llm.name,
+            completion_parser=lambda r: self.parse_and_process_response(
+                r,
+            ),
+        )
+        self.config.cycle_count += 1
+
+        self.foreach_components("propose_action", response.parsed_result)
+        self.print_trace()
+
+        return response.parsed_result
+
+    # TODO kcze legacy function - move to Component
     def parse_and_process_response(
-        self, llm_response: AssistantChatMessage, *args, **kwargs
-    ) -> Agent.ThoughtProcessOutput:
-        for plugin in self.config.plugins:
-            if not plugin.can_handle_post_planning():
-                continue
-            llm_response.content = plugin.post_planning(llm_response.content or "")
-
+        self,
+        llm_response: AssistantChatMessage,
+    ) -> ThoughtProcessOutput:
+        result = ThoughtProcessOutput()
+        result = self.foreach_components("parse_response", result, llm_response)
         (
             command_name,
             arguments,
             assistant_reply_dict,
-        ) = self.prompt_strategy.parse_response_content(llm_response)
+        ) = (
+            result.command_name,
+            result.command_args,
+            result.thoughts,
+        )
 
         # Check if command_name and arguments are already in the event_history
         if self.event_history.matches_last_command(command_name, arguments):
@@ -198,7 +246,7 @@ class Agent(
             )
 
         self.log_cycle_handler.log_cycle(
-            self.ai_profile.ai_name,
+            self.state.ai_profile.ai_name,
             self.created_at,
             self.config.cycle_count,
             assistant_reply_dict,
@@ -214,7 +262,7 @@ class Agent(
                 )
             )
 
-        return command_name, arguments, assistant_reply_dict
+        return result
 
     async def execute(
         self,
@@ -227,7 +275,7 @@ class Agent(
         if command_name == "human_feedback":
             result = ActionInterruptedByHuman(feedback=user_input)
             self.log_cycle_handler.log_cycle(
-                self.ai_profile.ai_name,
+                self.state.ai_profile.ai_name,
                 self.created_at,
                 self.config.cycle_count,
                 user_input,
@@ -235,30 +283,11 @@ class Agent(
             )
 
         else:
-            for plugin in self.config.plugins:
-                if not plugin.can_handle_pre_command():
-                    continue
-                command_name, command_args = plugin.pre_command(
-                    command_name, command_args
-                )
-
             try:
-                return_value = await execute_command(
+                return_value = await self.execute_command(
                     command_name=command_name,
                     arguments=command_args,
-                    agent=self,
                 )
-
-                # Intercept ContextItem if one is returned by the command
-                if type(return_value) is tuple and isinstance(
-                    return_value[1], ContextItem
-                ):
-                    context_item = return_value[1]
-                    return_value = return_value[0]
-                    logger.debug(
-                        f"Command {command_name} returned a ContextItem: {context_item}"
-                    )
-                    self.context.add(context_item)
 
                 result = ActionSuccessResult(outputs=return_value)
             except AgentTerminated:
@@ -277,13 +306,13 @@ class Agent(
                     "Do not execute this command again with the same arguments."
                 )
 
-            for plugin in self.config.plugins:
-                if not plugin.can_handle_post_command():
-                    continue
-                if result.status == "success":
-                    result.outputs = plugin.post_command(command_name, result.outputs)
-                elif result.status == "error":
-                    result.reason = plugin.post_command(command_name, result.reason)
+            # for plugin in self.config.plugins:
+            #     if not plugin.can_handle_post_command():
+            #         continue
+            #     if result.status == "success":
+            #         result.outputs = plugin.post_command(command_name, result.outputs)
+            #     elif result.status == "error":
+            #         result.reason = plugin.post_command(command_name, result.reason)
 
         # Update action history
         self.event_history.register_result(result)
@@ -291,55 +320,50 @@ class Agent(
             self.llm_provider, self.legacy_config
         )
 
+        self.print_trace()
+
         return result
+    
+    def print_trace(self):
+        print("\n".join(self.trace))
 
+    async def execute_command(
+        self,
+        command_name: str,
+        arguments: dict[str, str],
+    ) -> CommandOutput:
+        """Execute the command and return the result
 
-#############
-# Utilities #
-#############
+        Args:
+            command_name (str): The name of the command to execute
+            arguments (dict): The arguments for the command
+            agent (Agent): The agent that is executing the command
 
+        Returns:
+            str: The result of the command
+        """
+        # Execute a native command with the same name or alias, if it exists
+        if command := self.get_command(command_name):
+            try:
+                result = command(**arguments, agent=self)
+                if inspect.isawaitable(result):
+                    return await result
+                return result
+            except AgentException:
+                raise
+            except Exception as e:
+                raise CommandExecutionError(str(e))
 
-async def execute_command(
-    command_name: str,
-    arguments: dict[str, str],
-    agent: Agent,
-) -> CommandOutput:
-    """Execute the command and return the result
+        raise UnknownCommandError(
+            f"Cannot execute command '{command_name}': unknown command."
+        )
 
-    Args:
-        command_name (str): The name of the command to execute
-        arguments (dict): The arguments for the command
-        agent (Agent): The agent that is executing the command
-
-    Returns:
-        str: The result of the command
-    """
-    # Execute a native command with the same name or alias, if it exists
-    if command := agent.command_registry.get_command(command_name):
-        try:
-            result = command(**arguments, agent=agent)
-            if inspect.isawaitable(result):
-                return await result
-            return result
-        except AgentException:
-            raise
-        except Exception as e:
-            raise CommandExecutionError(str(e))
-
-    # Handle non-native commands (e.g. from plugins)
-    if agent._prompt_scratchpad:
-        for name, command in agent._prompt_scratchpad.commands.items():
-            if (
-                command_name == name
-                or command_name.lower() == command.description.lower()
-            ):
-                try:
-                    return command.method(**arguments)
-                except AgentException:
-                    raise
-                except Exception as e:
-                    raise CommandExecutionError(str(e))
-
-    raise UnknownCommandError(
-        f"Cannot execute command '{command_name}': unknown command."
-    )
+    # TODO kcze this isn't ideal
+    def get_command(self, command_name: str) -> Optional[Command]:
+        for command in self.commands:
+            if command.name == command_name:
+                return command
+        for command in self.commands:
+            if command.aliases and command_name in command.aliases:
+                return command
+        return None
