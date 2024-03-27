@@ -4,11 +4,12 @@ import copy
 import logging
 from abc import ABCMeta
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Iterable, Optional, TypeVar
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 from pydantic import BaseModel, Field, validator
+
 
 if TYPE_CHECKING:
     from autogpt.core.resource.model_providers.schema import (
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
         ChatModelProvider,
     )
 
+from autogpt.agents.components import Single
 from autogpt.agents.components import Component, ComponentError, PipelineError
 from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
@@ -243,11 +245,10 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
             if isinstance(component, component_type):
                 return component
         return None
-    
+
     def _selective_copy(self, args: tuple[Any, ...]) -> tuple[Any, ...]:
         copied_args = []
         for item in args:
-            print(f"{Fore.CYAN}Copying {item}\n{type(item)}{Fore.RESET}")
             if isinstance(item, list):
                 # Shallow copy for lists
                 copied_item = item[:]
@@ -263,6 +264,11 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
             copied_args.append(copied_item)
         return tuple(copied_args)
 
+    def is_enabled(self, component: Component) -> bool:
+        if callable(component.enabled):
+            return component.enabled()
+        return component.enabled
+
     # TODO method_name and return type unsafe!
     def foreach_components(self, method_name: str, *args, retry_limit: int = 3) -> Any:
         # Clone parameters to revert on failure
@@ -274,28 +280,32 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
         while pipeline_attempts < retry_limit:
             try:
                 for component in self.components:
+                    # Skip disabled components
                     component_attempts = 0
                     method = getattr(component, method_name, None)
                     if not callable(method):
+                        continue
+                    if not self.is_enabled(component):
+                        self._trace.append(
+                            f"   {Fore.LIGHTBLACK_EX}{component.__class__.__name__}{Fore.RESET}"
+                        )
                         continue
                     while component_attempts < retry_limit:
                         try:
                             component_args = self._selective_copy(args)
                             result = method(*component_args)
                             if result is not None:
-                                if isinstance(result, list):
-                                    method_result.extend(result)
+                                if isinstance(result, Single):
+                                    method_result = result.value
                                 else:
-                                    method_result = result
+                                    method_result.extend(result)
                             args = component_args
-                            self._trace.append(
-                                f"✅ {component.__class__.__name__}"
-                            )
+                            self._trace.append(f"✅ {component.__class__.__name__}")
 
                         except ComponentError:
                             self._trace.append(
-                                f"❌ {Fore.YELLOW}ComponentError{Fore.RESET}: "
-                                f"{component.__class__.__name__}"
+                                f"❌ {Fore.YELLOW}{component.__class__.__name__}: "
+                                f"ComponentError{Fore.RESET}"
                             )
                             # Retry the same component on ComponentError
                             component_attempts += 1
@@ -306,8 +316,8 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
                 break
             except PipelineError:
                 self._trace.append(
-                    f"❌ {Fore.LIGHTRED_EX}PipelineError{Fore.RESET}: "
-                    f"{component.__class__.__name__}"
+                    f"❌ {Fore.LIGHTRED_EX}{component.__class__.__name__}: "
+                    f"PipelineError{Fore.RESET}"
                 )
                 # Restart from the beginning on PipelineError
                 # Revert to original parameters
@@ -317,5 +327,4 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
             except Exception as e:
                 # TODO pass pipeline info to exception
                 raise e
-
         return method_result

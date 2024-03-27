@@ -1,4 +1,4 @@
-from typing import Iterator, Protocol, runtime_checkable
+from typing import Callable, Generic, Iterator, Protocol, TypeVar, runtime_checkable
 
 from autogpt.agents.base import ThoughtProcessOutput
 from autogpt.core.prompting.schema import ChatPrompt
@@ -7,6 +7,7 @@ from autogpt.core.resource.model_providers.schema import (
     ChatMessage,
 )
 from autogpt.models.command import Command
+from autogpt.agents.components import Single
 
 
 
@@ -17,7 +18,7 @@ class BuildPrompt(Protocol):
         messages: list[ChatMessage],
         commands: list[Command],
         prompt: ChatPrompt,
-    ) -> ChatPrompt:
+    ) -> Single[ChatPrompt]:
         ...
 
 
@@ -43,19 +44,19 @@ class CommandProvider(Protocol):
 class ParseResponse(Protocol):
     def parse_response(
         self, result: ThoughtProcessOutput, llm_response: AssistantChatMessage
-    ) -> ThoughtProcessOutput:
+    ) -> Single[ThoughtProcessOutput]:
         ...
 
 
 @runtime_checkable
 class GuidelinesProvider(Protocol):
-    def get_contraints(self) -> list[str]:
+    def get_contraints(self) -> Iterator[str]:
         ...
 
-    def get_resources(self) -> list[str]:
+    def get_resources(self) -> Iterator[str]:
         ...
 
-    def get_best_practices(self) -> list[str]:
+    def get_best_practices(self) -> Iterator[str]:
         ...
 
 

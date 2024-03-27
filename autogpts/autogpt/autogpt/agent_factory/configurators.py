@@ -71,10 +71,10 @@ def _configure_agent(
     configure_chat_plugins(app_config)
 
     # Create a CommandRegistry instance and scan default folder
-    command_registry = CommandRegistry.with_command_modules(
-        modules=COMMAND_CATEGORIES,
-        config=app_config,
-    )
+    # command_registry = CommandRegistry.with_command_modules(
+    #     modules=COMMAND_CATEGORIES,
+    #     config=app_config,
+    # )
 
     agent_state = state or create_agent_state(
         agent_id=agent_id,

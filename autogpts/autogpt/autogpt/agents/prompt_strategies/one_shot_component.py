@@ -2,7 +2,8 @@ import logging
 from typing import TYPE_CHECKING
 
 from autogpt.agents.prompt_strategies.one_shot import OneShotAgentPromptStrategy
-from autogpt.agents.protocols import BuildPrompt, ParseResponse
+from autogpt.agents.protocols import BuildPrompt, ParseResponse, Single
+from autogpt.agents.components import Single
 
 from autogpt.config.config import Config
 from autogpt.core.prompting.schema import ChatPrompt
@@ -45,7 +46,7 @@ class OneShotComponent(Component, BuildPrompt, ParseResponse):
 
     def build_prompt(
         self, messages: list[ChatMessage], commands: list[Command], prompt: ChatPrompt
-    ) -> ChatPrompt:
+    ) -> Single[ChatPrompt]:
         ai_directives = self.settings.directives.copy(deep=True)
         # ai_directives.resources += scratchpad.resources
         # ai_directives.constraints += scratchpad.constraints
@@ -56,7 +57,7 @@ class OneShotComponent(Component, BuildPrompt, ParseResponse):
         include_os_info = self.legacy_config.execute_local_commands
 
         # Override the prompt with the one-shot prompt
-        return self.prompt_strategy.build_prompt(
+        return Single(self.prompt_strategy.build_prompt(
             task=self.settings.task,
             ai_profile=self.settings.ai_profile,
             ai_directives=ai_directives,
@@ -69,11 +70,11 @@ class OneShotComponent(Component, BuildPrompt, ParseResponse):
             ),
             extra_messages=messages,
             include_os_info=include_os_info,
-        )
+        ))
 
     def parse_response(
         self, result: ThoughtProcessOutput, llm_response: AssistantChatMessage
-    ) -> ThoughtProcessOutput:
+    ) -> Single[ThoughtProcessOutput]:
         (
             command_name,
             arguments,
@@ -84,4 +85,4 @@ class OneShotComponent(Component, BuildPrompt, ParseResponse):
         result.command_name = command_name
         result.command_args = arguments
         result.thoughts = assistant_reply_dict
-        return result
+        return Single(result)

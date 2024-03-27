@@ -22,7 +22,7 @@ COMMAND_CATEGORY = "file_operations"
 COMMAND_CATEGORY_TITLE = "File Operations"
 
 
-from .file_context import open_file, open_folder  # NOQA
+from ..components.context.commands import open_file, open_folder  # NOQA
 
 logger = logging.getLogger(__name__)
 

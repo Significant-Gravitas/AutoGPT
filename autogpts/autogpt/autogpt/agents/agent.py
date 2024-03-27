@@ -40,6 +40,8 @@ from autogpt.models.action_history import (
 from autogpt.models.command import Command, CommandOutput
 from autogpt.models.context_item import ContextItem
 from autogpt.agents.protocols import MessageProvider
+from autogpt.components.system.component import SystemComponent
+from autogpt.components.user_interaction.component import UserInteractionComponent
 
 from .base import (
     BaseAgent,
@@ -48,7 +50,7 @@ from .base import (
     ThoughtProcessOutput,
 )
 from .features.agent_file_manager import FileManagerComponent
-from .features.context import ContextComponent
+from ..components.context.component import ContextComponent
 from .features.watchdog import WatchdogComponent
 from .prompt_strategies.one_shot import (
     OneShotAgentPromptConfiguration,
@@ -130,9 +132,11 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
     ):
         super().__init__(settings, llm_provider)
 
+        self.system = SystemComponent()
         self.extra = ClockBudgetComponent()
-        self.context = ContextComponent()
+        self.user_interaction = UserInteractionComponent(legacy_config)
         self.file_manager = FileManagerComponent(settings, file_storage)
+        self.context = ContextComponent(self.file_manager.workspace)
         self.watchdog = WatchdogComponent(settings.config, settings.history)
         self.prompt_strategy = OneShotComponent(
             settings, legacy_config, llm_provider, self.send_token_limit, self.llm
@@ -140,7 +144,9 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
         # Override component ordering
         self.components = [
+            self.system,
             self.extra,
+            self.user_interaction,
             self.file_manager,
             self.context,
             self.watchdog,
@@ -175,8 +181,12 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.commands: list[Command] = []
         self.commands = list(self.foreach_components("get_commands"))
 
+        print(f"commands: {len(self.commands)}")
+        for command in self.commands:
+            print(f"- {command.name}")
+
         # Get final prompt
-        prompt = ChatPrompt(messages=[])
+        prompt: ChatPrompt = ChatPrompt(messages=[])
         prompt = self.foreach_components("build_prompt", messages, self.commands, prompt)
 
         # print(f"messages: {len(messages)}")
@@ -190,8 +200,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             prompt.raw(),
             CURRENT_CONTEXT_FILE_NAME,
         )
-
-        self.print_trace()
 
         # logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
         response = await self.llm_provider.create_chat_completion(
@@ -209,6 +217,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.config.cycle_count += 1
 
         self.foreach_components("propose_action", response.parsed_result)
+        self.print_trace()
 
         return response.parsed_result
 
@@ -279,18 +288,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
                     command_name=command_name,
                     arguments=command_args,
                 )
-
-                # Intercept ContextItem if one is returned by the command
-                # TODO kcze to OnExecute in contextComponent
-                if type(return_value) is tuple and isinstance(
-                    return_value[1], ContextItem
-                ):
-                    context_item = return_value[1]
-                    return_value = return_value[0]
-                    logger.debug(
-                        f"Command {command_name} returned a ContextItem: {context_item}"
-                    )
-                    self.context.context.add(context_item)
 
                 result = ActionSuccessResult(outputs=return_value)
             except AgentTerminated:

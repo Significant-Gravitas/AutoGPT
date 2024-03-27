@@ -12,10 +12,23 @@ This change directly addresses point 2 of the Roadmap [Empowering Agent Builders
 - Simplify Agent and cut out redundant code
 - Make it easy to create new Agents and Components (plugins)
 
+### Extra consequences:
+- Less config and env vars
+- Reduce coupling
+
 ### Tasks
 - [ ] Move more things into components
 - [ ] Restructure `OneShotAgentPromptStrategy` into smaller components
-- [ ] Port all Commands to Components
+- [ ] Port Commands to Components
+  - [x] System
+  - [x] User interaction
+  - [x] Context
+  - [ ] File operations
+  - [ ] Code execution
+  - [ ] Git operations
+  - [ ] Image generation
+  - [ ] Web search
+  - [ ] Selenium
 - [ ] Move Components to forge and build AutoGPT using forge components
 - [ ] Tests
 
@@ -65,7 +78,8 @@ Also that makes it possible to call component/pipeline/function again when faile
 ## Challenges
 - Ordering: previously there was really no ordering, everything was hardcoded (not sure about plugins). Components can be now ordered explicitly or automatically (each component will be sorted according to its `run_after` attribute). This can cause issues with circular dependencies.
 - Efficient and type safe pipelines code
-- There is some of logic that can be challenging to adapt
+- There is some logic that can be challenging to adapt
+- Pipeline logic is tricky, some Protcols return iterables, some single objects, some None
 
 ## Future possibilities
 - Adding or removing components during runtime
