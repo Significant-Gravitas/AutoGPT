@@ -11,7 +11,7 @@
 
 # logger = logging.getLogger(__name__)
 
-
+#TODO kcze remove
 # def sanitize_path_arg(
 #     arg_name: str, make_relative: bool = False
 # ) -> Callable[[Callable[P, T]], Callable[P, T]]:
