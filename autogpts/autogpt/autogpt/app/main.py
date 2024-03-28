@@ -14,6 +14,7 @@ from types import FrameType
 from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
+from autogpt.agents.features.agent_file_manager import FileManagerComponent
 from forge.sdk.db import AgentDB
 
 if TYPE_CHECKING:
@@ -327,11 +328,13 @@ async def run_auto_gpt(
             llm_provider=llm_provider,
         )
 
-        if not agent.config.allow_fs_access:
+        file_manager = agent.get_component(FileManagerComponent)
+
+        if file_manager and not agent.config.allow_fs_access:
             logger.info(
                 f"{Fore.YELLOW}"
                 "NOTE: All files/directories created by this agent can be found "
-                f"inside its workspace at:{Fore.RESET} {agent.workspace.root}",
+                f"inside its workspace at:{Fore.RESET} {file_manager.workspace.root}",
                 extra={"preserve_color": True},
             )
 
@@ -341,23 +344,24 @@ async def run_auto_gpt(
     try:
         await run_interaction_loop(agent)
     except AgentTerminated:
-        agent_id = agent.state.agent_id
-        logger.info(f"Saving state of {agent_id}...")
+        file_manager = agent.get_component(FileManagerComponent)
+        if file_manager:
+            agent_id = agent.state.agent_id
+            logger.info(f"Saving state of {agent_id}...")
 
-        # Allow user to Save As other ID
-        save_as_id = (
-            clean_input(
-                config,
-                f"Press enter to save as '{agent_id}',"
-                " or enter a different ID to save to:",
+            # Allow user to Save As other ID
+            save_as_id = (
+                clean_input(
+                    config,
+                    f"Press enter to save as '{agent_id}',"
+                    " or enter a different ID to save to:",
+                )
+                or agent_id
             )
-            or agent_id
-        )
-        if save_as_id and save_as_id != agent_id:
-            agent.change_agent_id(save_as_id)
-            # TODO: allow many-to-one relations of agents and workspaces
-
-        await agent.save_state()
+            if save_as_id and save_as_id != agent_id:
+                file_manager.change_agent_id(save_as_id)
+                # TODO: allow many-to-one relations of agents and workspaces
+            await file_manager.save_state()
 
 
 @coroutine

@@ -12,7 +12,7 @@ from pydantic import Field
 from autogpt.agents.components import (
     Component,
 )
-from autogpt.agents.prompt_strategies.one_shot_component import OneShotComponent
+from autogpt.components.one_shot_component import OneShotComponent
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
@@ -40,8 +40,8 @@ from autogpt.models.action_history import (
 from autogpt.models.command import Command, CommandOutput
 from autogpt.models.context_item import ContextItem
 from autogpt.agents.protocols import MessageProvider
-from autogpt.components.system.component import SystemComponent
-from autogpt.components.user_interaction.component import UserInteractionComponent
+from autogpt.components.system import SystemComponent
+from autogpt.components.user_interaction import UserInteractionComponent
 
 from .base import (
     BaseAgent,
@@ -50,7 +50,7 @@ from .base import (
     ThoughtProcessOutput,
 )
 from .features.agent_file_manager import FileManagerComponent
-from ..components.context.component import ContextComponent
+from ..components.context import ContextComponent
 from .features.watchdog import WatchdogComponent
 from .prompt_strategies.one_shot import (
     OneShotAgentPromptConfiguration,
@@ -189,9 +189,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         prompt: ChatPrompt = ChatPrompt(messages=[])
         prompt = self.foreach_components("build_prompt", messages, self.commands, prompt)
 
-        # print(f"messages: {len(messages)}")
-        # print(f"prompt: {prompt.raw()}")
-
         self.log_cycle_handler.log_count_within_cycle = 0
         self.log_cycle_handler.log_cycle(
             self.state.ai_profile.ai_name,
@@ -306,14 +303,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
                     "Do not execute this command again with the same arguments."
                 )
 
-            # for plugin in self.config.plugins:
-            #     if not plugin.can_handle_post_command():
-            #         continue
-            #     if result.status == "success":
-            #         result.outputs = plugin.post_command(command_name, result.outputs)
-            #     elif result.status == "error":
-            #         result.reason = plugin.post_command(command_name, result.reason)
-
         # Update action history
         self.event_history.register_result(result)
         await self.event_history.handle_compression(
@@ -337,7 +326,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         Args:
             command_name (str): The name of the command to execute
             arguments (dict): The arguments for the command
-            agent (Agent): The agent that is executing the command
 
         Returns:
             str: The result of the command
@@ -345,6 +333,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         # Execute a native command with the same name or alias, if it exists
         if command := self.get_command(command_name):
             try:
+                #TODO kcze agent not needed
                 result = command(**arguments, agent=self)
                 if inspect.isawaitable(result):
                     return await result

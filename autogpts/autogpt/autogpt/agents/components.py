@@ -8,11 +8,7 @@ class Single(Generic[T]):
 class Component:
     run_after: list[type["Component"]] = []
     enabled: Callable[[], bool] | bool = True
-
-    @classmethod
-    def get_dependencies(cls) -> list[Type["Component"]]:
-        return cls.run_after
-
+    
 
 class ComponentError(Exception):
     pass

@@ -19,6 +19,7 @@ This change directly addresses point 2 of the Roadmap [Empowering Agent Builders
 ### Tasks
 - [ ] Move more things into components
 - [ ] Restructure `OneShotAgentPromptStrategy` into smaller components
+- [ ] User interaction, such as for asking for agent id change, should take into non-interactive envs 
 - [ ] Port Commands to Components
   - [x] System
   - [x] User interaction
@@ -39,14 +40,16 @@ Agent has methods (currently `propose_action` and `execute`) that execute *pipel
 
 This system is simple, flexible, requires basically no configuration, and doesn't hide any data (anything can still be passed or accessed directly from or between components).
 
-Example Protocol:
+Example component [ported](https://github.com/kcze/AutoGPT/blob/kpczerwinski/open-440-modular-agents/autogpts/autogpt/autogpt/components/context/component.py): 
+
+Example Protocol (i.e. interface):
 ```py
 @runtime_checkable
 class MessageProvider(Protocol):
     def get_messages(self) -> Iterator[ChatMessage]:
         ...
 ```
-Component (=plugin) that implements it:
+Component (i.e. plugin) that implements it:
 ```py
 class MyComponent(Component, MessageProvider):
     def get_messages(self) -> Iterator[ChatMessage]:
@@ -74,6 +77,8 @@ Debugging may be easier because we can inspect the exact components that were ca
 ![](../imgs/modular-pipeline.png)
 
 Also that makes it possible to call component/pipeline/function again when failed and recover.
+
+If it's necessary to get a component in a random place, agent provides generic, type safe `get_component(type[T]) -> T | None`
 
 ## Challenges
 - Ordering: previously there was really no ordering, everything was hardcoded (not sure about plugins). Components can be now ordered explicitly or automatically (each component will be sorted according to its `run_after` attribute). This can cause issues with circular dependencies.

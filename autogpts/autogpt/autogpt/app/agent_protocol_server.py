@@ -32,7 +32,7 @@ from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.agents.utils.exceptions import AgentFinished
 from autogpt.app.utils import is_port_free
-from autogpt.components.user_interaction.component import ask_user
+from autogpt.components.user_interaction import ask_user
 from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.core.resource.model_providers.openai import OpenAIProvider

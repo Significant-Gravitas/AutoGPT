@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 from autogpt.agents.base import ThoughtProcessOutput
 from autogpt.agents.protocols import ProposeAction
 from autogpt.agents.components import Component, ComponentSystemError
-from autogpt.components.context.component import ContextComponent
+from autogpt.components.context import ContextComponent
 from autogpt.models.action_history import EpisodicActionHistory
 
 logger = logging.getLogger(__name__)

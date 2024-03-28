@@ -1,4 +1,3 @@
-from __future__ import annotations
 from typing import TYPE_CHECKING, Iterator
 
 if TYPE_CHECKING:
@@ -11,12 +10,6 @@ from autogpt.agents.protocols import CommandProvider
 from autogpt.config.config import Config
 from autogpt.models.command import Command
 from autogpt.models.command_parameter import CommandParameter
-
-
-def ask_user(question: str, agent: Agent) -> str:
-    print(f"\nQ: {question}")
-    resp = clean_input(agent.legacy_config, "A:")
-    return f"The user's answer: '{resp}'"
 
 
 class UserInteractionComponent(Component, CommandProvider):
@@ -42,3 +35,8 @@ class UserInteractionComponent(Component, CommandProvider):
                 )
             ],
         )
+
+def ask_user(question: str, agent: Agent) -> str:
+    print(f"\nQ: {question}")
+    resp = clean_input(agent.legacy_config, "A:")
+    return f"The user's answer: '{resp}'"
