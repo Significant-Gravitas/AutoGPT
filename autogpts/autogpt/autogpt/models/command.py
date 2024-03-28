@@ -1,17 +1,26 @@
 from __future__ import annotations
 
 import inspect
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
+from typing import TYPE_CHECKING, Any, Callable, Literal, NamedTuple, Optional
 
 if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgent
     from autogpt.config import Config
+    from autogpt.agents.agent import Agent
+    from autogpt.agents.base import CommandArgs
 
 from .command_parameter import CommandParameter
 from .context_item import ContextItem
 
 CommandReturnValue = Any
 CommandOutput = CommandReturnValue | tuple[CommandReturnValue, ContextItem]
+
+
+class ValidityResult(NamedTuple):
+    """Command `is_valid` result"""
+
+    is_valid: bool
+    reason: str = ""
 
 
 class Command:
@@ -33,6 +42,9 @@ class Command:
         disabled_reason: Optional[str] = None,
         aliases: list[str] = [],
         available: bool | Callable[[BaseAgent], bool] = True,
+        is_valid: Callable[
+            [Agent, CommandArgs], ValidityResult
+        ] = lambda a, c: ValidityResult(True),
     ):
         self.name = name
         self.description = description
@@ -42,6 +54,7 @@ class Command:
         self.disabled_reason = disabled_reason
         self.aliases = aliases
         self.available = available
+        self.is_valid = is_valid
 
     @property
     def is_async(self) -> bool:

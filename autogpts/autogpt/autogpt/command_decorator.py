@@ -8,8 +8,15 @@ if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgent
     from autogpt.config import Config
 
+from autogpt.agents.agent import Agent
+from autogpt.agents.base import CommandArgs
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.command import Command, CommandOutput, CommandParameter
+from autogpt.models.command import (
+    Command,
+    CommandOutput,
+    CommandParameter,
+    ValidityResult,
+)
 
 # Unique identifier for AutoGPT commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
@@ -26,6 +33,9 @@ def command(
     disabled_reason: Optional[str] = None,
     aliases: list[str] = [],
     available: bool | Callable[[BaseAgent], bool] = True,
+    is_valid: Callable[
+        [Agent, CommandArgs], ValidityResult
+    ] = lambda a, c: ValidityResult(True),
 ) -> Callable[[Callable[P, CO]], Callable[P, CO]]:
     """
     The command decorator is used to create Command objects from ordinary functions.
@@ -48,6 +58,7 @@ def command(
             disabled_reason=disabled_reason,
             aliases=aliases,
             available=available,
+            is_valid=is_valid,
         )
 
         if inspect.iscoroutinefunction(func):
