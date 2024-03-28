@@ -5,9 +5,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from autogpt.agents.base import BaseAgent
-from autogpt.agents.features.agent_file_manager import AgentFileManagerMixin
-from autogpt.commands.file_operations_utils import decode_textual_file
+from autogpt.file_operations_utils import decode_textual_file
+from autogpt.file_storage.base import FileStorage
 
 logger = logging.getLogger(__name__)
 
@@ -26,15 +25,15 @@ class ContextItem(ABC):
         ...
 
     @abstractmethod
-    def get_content(self, agent: BaseAgent) -> str:
+    def get_content(self, workspace: FileStorage) -> str:
         """The content represented by the context item"""
         ...
 
-    def fmt(self, agent: BaseAgent) -> str:
+    def fmt(self, workspace: FileStorage) -> str:
         return (
             f"{self.description} (source: {self.source})\n"
             "```\n"
-            f"{self.get_content(agent)}\n"
+            f"{self.get_content(workspace)}\n"
             "```"
         )
 
@@ -50,11 +49,8 @@ class FileContextItem(BaseModel, ContextItem):
     def source(self) -> str:
         return str(self.path)
 
-    def get_content(self, agent: BaseAgent) -> str:
-        if not isinstance(agent, AgentFileManagerMixin):
-            raise ValueError("Agent must implement AgentFileManagerMixin")
-
-        with agent.workspace.open_file(self.path, "r", True) as file:
+    def get_content(self, workspace: FileStorage) -> str:
+        with workspace.open_file(self.path, "r", True) as file:
             return decode_textual_file(file, self.path.suffix, logger)
 
 
@@ -69,12 +65,9 @@ class FolderContextItem(BaseModel, ContextItem):
     def source(self) -> str:
         return str(self.path)
 
-    def get_content(self, agent: BaseAgent) -> str:
-        if not isinstance(agent, AgentFileManagerMixin):
-            raise ValueError("Agent must implement AgentFileManagerMixin")
-
-        files = [str(p) for p in agent.workspace.list_files(self.path)]
-        folders = [f"{str(p)}/" for p in agent.workspace.list_folders(self.path)]
+    def get_content(self, workspace: FileStorage) -> str:
+        files = [str(p) for p in workspace.list_files(self.path)]
+        folders = [f"{str(p)}/" for p in workspace.list_folders(self.path)]
         items = folders + files
         items.sort()
         return "\n".join(items)

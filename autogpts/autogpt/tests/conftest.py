@@ -20,7 +20,6 @@ from autogpt.file_storage.local import (
 )
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import configure_logging
-from autogpt.models.command_registry import CommandRegistry
 
 pytest_plugins = [
     "tests.integration.agent_factory",
@@ -122,8 +121,6 @@ def agent(
         ai_goals=[],
     )
 
-    command_registry = CommandRegistry()
-
     agent_prompt_config = Agent.default_settings.prompt_config.copy(deep=True)
     agent_prompt_config.use_functions_api = config.openai_functions
 
@@ -146,7 +143,6 @@ def agent(
     agent = Agent(
         settings=agent_settings,
         llm_provider=llm_provider,
-        command_registry=command_registry,
         file_storage=storage,
         legacy_config=config,
     )

@@ -1,0 +1,65 @@
+from pathlib import Path
+from typing import Iterator
+
+from git.repo import Repo
+
+from autogpt.agents.utils.exceptions import CommandExecutionError
+from autogpt.command_decorator import command
+from autogpt.core.utils.json_schema import JSONSchema
+from autogpt.url_utils.validators import validate_url
+from autogpt.agents.components import Component
+from autogpt.agents.protocols import CommandProvider
+from autogpt.config.config import Config
+from autogpt.models.command import Command
+
+COMMAND_CATEGORY = "git_operations"
+COMMAND_CATEGORY_TITLE = "Git Operations"
+
+
+class GitOperationsComponent(Component, CommandProvider):
+    """Provides commands to perform Git operations"""
+
+    def __init__(self, config: Config):
+        self.enabled = bool(config.github_username and config.github_api_key)
+        self.disabled_reason = "Configure github_username and github_api_key."
+        self.legacy_config = config
+
+    def get_commands(self) -> Iterator[Command]:
+        yield self.clone_repository.command
+
+    @command(
+        parameters={
+            "url": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The URL of the repository to clone",
+                required=True,
+            ),
+            "clone_path": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The path to clone the repository to",
+                required=True,
+            ),
+        },
+    )
+    @validate_url
+    def clone_repository(self, url: str, clone_path: Path) -> str:
+        """Clone a GitHub repository locally.
+
+        Args:
+            url (str): The URL of the repository to clone.
+            clone_path (Path): The path to clone the repository to.
+
+        Returns:
+            str: The result of the clone operation.
+        """
+        split_url = url.split("//")
+        auth_repo_url = (
+            f"//{self.legacy_config.github_username}:"
+            f"{self.legacy_config.github_api_key}@".join(split_url)
+        )
+        try:
+            Repo.clone_from(url=auth_repo_url, to_path=clone_path)
+        except Exception as e:
+            raise CommandExecutionError(f"Could not clone repo: {e}")
+
+        return f"""Cloned {url} to {clone_path}"""

@@ -14,7 +14,6 @@ from types import FrameType
 from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
-from autogpt.agents.features.agent_file_manager import FileManagerComponent
 from forge.sdk.db import AgentDB
 
 if TYPE_CHECKING:
@@ -25,7 +24,7 @@ from autogpt.agent_factory.profile_generator import generate_agent_profile_for_t
 from autogpt.agent_manager import AgentManager
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
 from autogpt.agents.utils.exceptions import AgentTerminated, InvalidAgentResponseError
-from autogpt.commands.execute_code import (
+from autogpt.components.code_executor import (
     is_docker_available,
     we_are_running_in_a_docker_container,
 )
@@ -328,7 +327,7 @@ async def run_auto_gpt(
             llm_provider=llm_provider,
         )
 
-        file_manager = agent.get_component(FileManagerComponent)
+        file_manager = agent.file_manager
 
         if file_manager and not agent.config.allow_fs_access:
             logger.info(
@@ -344,7 +343,7 @@ async def run_auto_gpt(
     try:
         await run_interaction_loop(agent)
     except AgentTerminated:
-        file_manager = agent.get_component(FileManagerComponent)
+        file_manager = agent.file_manager
         if file_manager:
             agent_id = agent.state.agent_id
             logger.info(f"Saving state of {agent_id}...")

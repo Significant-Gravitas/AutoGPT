@@ -34,44 +34,46 @@ class Command:
 
     def __init__(
         self,
-        name: str,
+        instance: Any,
+        names: list[str],
         description: str,
         method: Callable[..., CommandOutput],
         parameters: list[CommandParameter],
-        enabled: Literal[True] | Callable[[Config], bool] = True,
-        disabled_reason: Optional[str] = None,
-        aliases: list[str] = [],
-        available: bool | Callable[[BaseAgent], bool] = True,
         is_valid: Callable[
-            [Agent, CommandArgs], ValidityResult
-        ] = lambda a, c: ValidityResult(True),
+            [CommandArgs], ValidityResult
+        ] = lambda a: ValidityResult(True),
     ):
-        self.name = name
+        # Check if all parameters are provided
+        if not self._parameters_match(method, parameters):
+            raise ValueError(
+                f"Command {names[0]} has different parameters than provided schema"
+            )
+        self.instance = instance
+        self.names = names
         self.description = description
         self.method = method
         self.parameters = parameters
-        self.enabled = enabled
-        self.disabled_reason = disabled_reason
-        self.aliases = aliases
-        self.available = available
         self.is_valid = is_valid
 
     @property
     def is_async(self) -> bool:
         return inspect.iscoroutinefunction(self.method)
-
-    def __call__(self, *args, agent: BaseAgent, **kwargs) -> Any:
-        if callable(self.enabled) and not self.enabled(agent.legacy_config):
-            if self.disabled_reason:
-                raise RuntimeError(
-                    f"Command '{self.name}' is disabled: {self.disabled_reason}"
-                )
-            raise RuntimeError(f"Command '{self.name}' is disabled")
-
-        if not self.available or callable(self.available) and not self.available(agent):
-            raise RuntimeError(f"Command '{self.name}' is not available")
-
-        return self.method(*args, **kwargs, agent=agent)
+    
+    def _parameters_match(self, func: Callable, parameters: list[CommandParameter]) -> bool:
+        # Get the function's signature
+        signature = inspect.signature(func)
+        # Extract parameter names, ignoring 'self' for methods
+        func_param_names = [
+            param.name for param in signature.parameters.values() if param.name != 'self'
+        ]
+        names = [param.name for param in parameters]
+        # Check if sorted lists of names/keys are equal
+        return sorted(func_param_names) == sorted(names)
+    
+    def __call__(self, *args, **kwargs) -> Any:
+        if self.instance:
+            return self.method(self.instance, *args, **kwargs)
+        return self.method(*args, **kwargs)
 
     def __str__(self) -> str:
         params = [
@@ -80,6 +82,6 @@ class Command:
             for param in self.parameters
         ]
         return (
-            f"{self.name}: {self.description.rstrip('.')}. "
+            f"{self.names[0]}: {self.description.rstrip('.')}. "
             f"Params: ({', '.join(params)})"
         )

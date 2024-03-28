@@ -17,20 +17,21 @@ This change directly addresses point 2 of the Roadmap [Empowering Agent Builders
 - Reduce coupling
 
 ### Tasks
-- [ ] Move more things into components
+- [ ] Simplify commands
 - [ ] Restructure `OneShotAgentPromptStrategy` into smaller components
-- [ ] User interaction, such as for asking for agent id change, should take into non-interactive envs 
+- [ ] User interaction, such as for asking for agent id change, should consider non-interactive mode 
 - [ ] Port Commands to Components
   - [x] System
   - [x] User interaction
   - [x] Context
-  - [ ] File operations
-  - [ ] Code execution
-  - [ ] Git operations
+  - [x] File operations
+  - [x] Code execution
+  - [x] Git operations
   - [ ] Image generation
-  - [ ] Web search
-  - [ ] Selenium
+  - [x] Web search
+  - [x] Selenium
 - [ ] Move Components to forge and build AutoGPT using forge components
+- [ ] TODOs
 - [ ] Tests
 
 ## How it works

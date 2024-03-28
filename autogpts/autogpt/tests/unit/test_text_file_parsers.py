@@ -10,7 +10,7 @@ import pytest
 import yaml
 from bs4 import BeautifulSoup
 
-from autogpt.commands.file_operations_utils import (
+from autogpt.file_operations_utils import (
     decode_textual_file,
     is_file_binary_fn,
 )

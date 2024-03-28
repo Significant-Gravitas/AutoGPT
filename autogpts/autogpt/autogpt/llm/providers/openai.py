@@ -22,7 +22,8 @@ def get_openai_command_specs(
     """
     return [
         CompletionModelFunction(
-            name=command.name,
+            #TODO kcze this should choose non-obscured name
+            name=command.names[0],
             description=command.description,
             parameters={param.name: param.spec for param in command.parameters},
         )

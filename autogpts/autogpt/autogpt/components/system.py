@@ -1,13 +1,11 @@
-from typing import TYPE_CHECKING, Iterator
+from typing import Iterator
 
-if TYPE_CHECKING:
-    from autogpt.agents import Agent
+from autogpt.command_decorator import command
 
 from autogpt.agents.utils.exceptions import (
     AgentFinished,
 )
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.command_parameter import CommandParameter
 from autogpt.agents.components import (
     Component,
 )
@@ -17,23 +15,19 @@ from autogpt.models.command import Command
 
 class SystemComponent(Component, CommandProvider):
     def get_commands(self) -> Iterator[Command]:
-        yield Command(
-            "finish",
-            "Use this to shut down once you have completed your task,"
-            " or when there are insurmountable problems that make it impossible"
-            " for you to finish your task.",
-            self.finish,
-            [
-                CommandParameter(
-                    "reason",
-                    JSONSchema(
-                        type=JSONSchema.Type.STRING,
-                        description="A summary to the user of how the goals were accomplished",
-                        required=True,
-                    ),
-                ),
-            ],
-        )
+        yield self.finish.command
 
-    def finish(self, reason: str, agent):
+    @command(
+        parameters={
+            "reason": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="A summary to the user of how the goals were accomplished",
+                required=True,
+            ),
+        }
+    )
+    def finish(self, reason: str):
+        """Use this to shut down once you have completed your task,
+        or when there are insurmountable problems that make it impossible
+        for you to finish your task."""
         raise AgentFinished(reason)

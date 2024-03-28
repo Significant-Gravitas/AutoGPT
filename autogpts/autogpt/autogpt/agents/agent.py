@@ -38,10 +38,14 @@ from autogpt.models.action_history import (
     ActionSuccessResult,
 )
 from autogpt.models.command import Command, CommandOutput
-from autogpt.models.context_item import ContextItem
 from autogpt.agents.protocols import MessageProvider
 from autogpt.components.system import SystemComponent
 from autogpt.components.user_interaction import UserInteractionComponent
+from autogpt.components.code_executor import CodeExecutorComponent
+from autogpt.components.git_operations import GitOperationsComponent
+from autogpt.components.image_gen import ImageGeneratorComponent
+from autogpt.components.web_search import WebSearchComponent
+from autogpt.components.web_selenium import WebSeleniumComponent
 
 from .base import (
     BaseAgent,
@@ -49,9 +53,9 @@ from .base import (
     BaseAgentSettings,
     ThoughtProcessOutput,
 )
-from .features.agent_file_manager import FileManagerComponent
+from ..components.file_manager import FileManagerComponent
 from ..components.context import ContextComponent
-from .features.watchdog import WatchdogComponent
+from ..components.watchdog import WatchdogComponent
 from .prompt_strategies.one_shot import (
     OneShotAgentPromptConfiguration,
     OneShotAgentPromptStrategy,
@@ -106,11 +110,15 @@ class ClockBudgetComponent(Component, MessageProvider):
                 + (
                     " BUDGET EXCEEDED! SHUT DOWN!\n\n"
                     if remaining_budget == 0
-                    else " Budget very nearly exceeded! Shut down gracefully!\n\n"
-                    if remaining_budget < 0.005
-                    else " Budget nearly exceeded. Finish up.\n\n"
-                    if remaining_budget < 0.01
-                    else ""
+                    else (
+                        " Budget very nearly exceeded! Shut down gracefully!\n\n"
+                        if remaining_budget < 0.005
+                        else (
+                            " Budget nearly exceeded. Finish up.\n\n"
+                            if remaining_budget < 0.01
+                            else ""
+                        )
+                    )
                 ),
             )
             logger.debug(budget_msg)
@@ -132,10 +140,20 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
     ):
         super().__init__(settings, llm_provider)
 
+        # Components
         self.system = SystemComponent()
         self.extra = ClockBudgetComponent()
         self.user_interaction = UserInteractionComponent(legacy_config)
         self.file_manager = FileManagerComponent(settings, file_storage)
+        self.code_executor = CodeExecutorComponent(
+            self.file_manager.workspace,
+            settings,
+            legacy_config,
+        )
+        self.git_ops = GitOperationsComponent(legacy_config)
+        self.image_gen = ImageGeneratorComponent(self.file_manager.workspace, legacy_config)
+        self.web_search = WebSearchComponent(legacy_config)
+        self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
         self.context = ContextComponent(self.file_manager.workspace)
         self.watchdog = WatchdogComponent(settings.config, settings.history)
         self.prompt_strategy = OneShotComponent(
@@ -148,6 +166,11 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             self.extra,
             self.user_interaction,
             self.file_manager,
+            self.code_executor,
+            self.git_ops,
+            self.image_gen,
+            self.web_search,
+            self.web_selenium,
             self.context,
             self.watchdog,
             self.prompt_strategy,
@@ -183,11 +206,13 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
         print(f"commands: {len(self.commands)}")
         for command in self.commands:
-            print(f"- {command.name}")
+            print(f"- {command.names[0]}")
 
         # Get final prompt
         prompt: ChatPrompt = ChatPrompt(messages=[])
-        prompt = self.foreach_components("build_prompt", messages, self.commands, prompt)
+        prompt = self.foreach_components(
+            "build_prompt", messages, self.commands, prompt
+        )
 
         self.log_cycle_handler.log_count_within_cycle = 0
         self.log_cycle_handler.log_cycle(
@@ -236,11 +261,12 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         )
 
         # Check if the command is valid, e.g. isn't duplicating a previous command
-        command = self.command_registry.get_command(command_name)
-        if command:
-            is_valid, reason = command.is_valid(self, arguments)
-            if not is_valid:
-                raise InvalidOperationError(reason)
+        # TODO kcze
+        # command = self.command_registry.get_command(command_name)
+        # if command:
+        #     is_valid, reason = command.is_valid(self, arguments)
+        #     if not is_valid:
+        #         raise InvalidOperationError(reason)
 
         self.log_cycle_handler.log_cycle(
             self.state.ai_profile.ai_name,
@@ -312,7 +338,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.print_trace()
 
         return result
-    
+
     def print_trace(self):
         print("\n".join(self.trace))
 
@@ -333,8 +359,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         # Execute a native command with the same name or alias, if it exists
         if command := self.get_command(command_name):
             try:
-                #TODO kcze agent not needed
-                result = command(**arguments, agent=self)
+                result = command(**arguments)
                 if inspect.isawaitable(result):
                     return await result
                 return result
@@ -347,12 +372,21 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             f"Cannot execute command '{command_name}': unknown command."
         )
 
-    # TODO kcze this isn't ideal
     def get_command(self, command_name: str) -> Optional[Command]:
-        for command in self.commands:
-            if command.name == command_name:
-                return command
-        for command in self.commands:
-            if command.aliases and command_name in command.aliases:
+        # TODO kcze update this logic to preserve command names as much as possible
+        # currently latter commands just obscure earlier ones
+        for command in reversed(self.commands):
+            if command_name in command.names:
                 return command
         return None
+
+    def find_obscured_commands(self) -> list[Command]:
+        seen_names = set()
+        obscured_commands = []
+        for command in reversed(self.commands):
+            # If all of the command's names have been seen, it's obscured
+            if seen_names.issuperset(command.names):
+                obscured_commands.append(command)
+            else:
+                seen_names.update(command.names)
+        return list(reversed(obscured_commands))

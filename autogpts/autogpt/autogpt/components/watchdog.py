@@ -1,10 +1,7 @@
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from ..base import BaseAgentConfiguration
+from ..agents.base import BaseAgentConfiguration
 
 from autogpt.agents.base import ThoughtProcessOutput
 from autogpt.agents.protocols import ProposeAction

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -149,3 +150,8 @@ def decode_textual_file(file: IO, ext: str, logger: logging.Logger) -> str:
         parser = TXTParser()
     file_context = FileContext(parser, logger)
     return file_context.decode_file(file)
+
+
+def text_checksum(text: str) -> str:
+        """Get the hex checksum for the given text."""
+        return hashlib.md5(text.encode("utf-8")).hexdigest()

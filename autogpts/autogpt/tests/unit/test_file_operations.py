@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from pytest_mock import MockerFixture
 
-import autogpt.commands.file_operations as file_ops
+import autogpt.components.file_manager as file_ops
 from autogpt.agents.agent import Agent
 from autogpt.config import Config
 from autogpt.file_storage import FileStorage

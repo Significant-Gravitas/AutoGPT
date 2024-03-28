@@ -8,6 +8,7 @@ class Single(Generic[T]):
 class Component:
     run_after: list[type["Component"]] = []
     enabled: Callable[[], bool] | bool = True
+    disabled_reason: str = ""
     
 
 class ComponentError(Exception):

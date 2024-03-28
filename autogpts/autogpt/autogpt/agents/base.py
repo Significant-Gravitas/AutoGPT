@@ -186,18 +186,25 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
         logger.debug(f"Created {__class__} '{self.state.ai_profile.ai_name}'")
 
     def _collect_components(self):
-        # Skip collecting and sort if ordering is explicit
-        if self.components:
-            return
-
-        self.components = [
+        components = [
             getattr(self, attr)
             for attr in dir(self)
             if isinstance(getattr(self, attr), Component)
         ]
-        self.components = self._topological_sort()
 
-    def _topological_sort(self) -> list[Component]:
+        if self.components:
+            # Check if any coponent is missed (added to Agent but not to components)
+            for component in components:
+                if component not in self.components:
+                    logger.warning(
+                        f"Component {component.__class__.__name__} "
+                        "is attached to an agent but not added to components list"
+                    )
+            # Skip collecting anf sorting and sort if ordering is explicit
+            return
+        self.components = self._topological_sort(components)
+
+    def _topological_sort(self, components: list[Component]) -> list[Component]:
         visited = set()
         stack = []
 
@@ -205,16 +212,16 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
             if node in visited:
                 return
             visited.add(node)
-            for neighbor_class in node.__class__.get_dependencies():
-                # Find the instance of neighbor_class in self.components
+            for neighbor_class in node.__class__.run_after:
+                # Find the instance of neighbor_class in components
                 neighbor = next(
-                    (m for m in self.components if isinstance(m, neighbor_class)), None
+                    (m for m in components if isinstance(m, neighbor_class)), None
                 )
                 if neighbor:
                     visit(neighbor)
             stack.append(node)
 
-        for component in self.components:
+        for component in components:
             visit(component)
 
         return stack
