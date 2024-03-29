@@ -46,6 +46,8 @@ from autogpt.components.git_operations import GitOperationsComponent
 from autogpt.components.image_gen import ImageGeneratorComponent
 from autogpt.components.web_search import WebSearchComponent
 from autogpt.components.web_selenium import WebSeleniumComponent
+from autogpts.autogpt.autogpt.components.event_history import EventHistoryComponent
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 from .base import (
     BaseAgent,
@@ -56,10 +58,6 @@ from .base import (
 from ..components.file_manager import FileManagerComponent
 from ..components.context import ContextComponent
 from ..components.watchdog import WatchdogComponent
-from .prompt_strategies.one_shot import (
-    OneShotAgentPromptConfiguration,
-    OneShotAgentPromptStrategy,
-)
 from .utils.exceptions import (
     AgentException,
     AgentTerminated,
@@ -78,13 +76,69 @@ class AgentConfiguration(BaseAgentConfiguration):
     pass
 
 
+DEFAULT_RESPONSE_SCHEMA = JSONSchema(
+    type=JSONSchema.Type.OBJECT,
+    properties={
+        "thoughts": JSONSchema(
+            type=JSONSchema.Type.OBJECT,
+            required=True,
+            properties={
+                "observations": JSONSchema(
+                    description=(
+                        "Relevant observations from your last action (if any)"
+                    ),
+                    type=JSONSchema.Type.STRING,
+                    required=False,
+                ),
+                "text": JSONSchema(
+                    description="Thoughts",
+                    type=JSONSchema.Type.STRING,
+                    required=True,
+                ),
+                "reasoning": JSONSchema(
+                    type=JSONSchema.Type.STRING,
+                    required=True,
+                ),
+                "self_criticism": JSONSchema(
+                    description="Constructive self-criticism",
+                    type=JSONSchema.Type.STRING,
+                    required=True,
+                ),
+                "plan": JSONSchema(
+                    description=(
+                        "Short markdown-style bullet list that conveys the "
+                        "long-term plan"
+                    ),
+                    type=JSONSchema.Type.STRING,
+                    required=True,
+                ),
+                "speak": JSONSchema(
+                    description="Summary of thoughts, to say to user",
+                    type=JSONSchema.Type.STRING,
+                    required=True,
+                ),
+            },
+        ),
+        "command": JSONSchema(
+            type=JSONSchema.Type.OBJECT,
+            required=True,
+            properties={
+                "name": JSONSchema(
+                    type=JSONSchema.Type.STRING,
+                    required=True,
+                ),
+                "args": JSONSchema(
+                    type=JSONSchema.Type.OBJECT,
+                    required=True,
+                ),
+            },
+        ),
+    },
+)
+
+
 class AgentSettings(BaseAgentSettings):
     config: AgentConfiguration = Field(default_factory=AgentConfiguration)
-    prompt_config: OneShotAgentPromptConfiguration = Field(
-        default_factory=(
-            lambda: OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
-        )
-    )
 
 
 class ClockBudgetComponent(Component, MessageProvider):
@@ -104,7 +158,7 @@ class ClockBudgetComponent(Component, MessageProvider):
             )
             if remaining_budget < 0:
                 remaining_budget = 0
-
+            #TODO kcze this is repeated similarly in constraints
             budget_msg = ChatMessage.system(
                 f"Your remaining API budget is ${remaining_budget:.3f}"
                 + (
@@ -141,8 +195,9 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         super().__init__(settings, llm_provider)
 
         # Components
-        self.system = SystemComponent()
+        self.system = SystemComponent(legacy_config, settings, self)
         self.extra = ClockBudgetComponent()
+        self.history = EventHistoryComponent(settings.history, self.send_token_limit, )
         self.user_interaction = UserInteractionComponent(legacy_config)
         self.file_manager = FileManagerComponent(settings, file_storage)
         self.code_executor = CodeExecutorComponent(
@@ -151,7 +206,9 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             legacy_config,
         )
         self.git_ops = GitOperationsComponent(legacy_config)
-        self.image_gen = ImageGeneratorComponent(self.file_manager.workspace, legacy_config)
+        self.image_gen = ImageGeneratorComponent(
+            self.file_manager.workspace, legacy_config
+        )
         self.web_search = WebSearchComponent(legacy_config)
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
         self.context = ContextComponent(self.file_manager.workspace)
@@ -167,6 +224,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             self.user_interaction,
             self.file_manager,
             self.code_executor,
+            self.history,
             self.git_ops,
             self.image_gen,
             self.web_search,
@@ -193,25 +251,28 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         """
         self.reset_trace()
 
-        # TODO kcze update guidelines
+        # TODO kcze update directives
 
         # Get messages
         messages: list[ChatMessage] = []
         messages = list(self.foreach_components("get_messages"))
+
+        messages.append(
+            ChatMessage.user(
+                "Determine exactly one command to use next based on the given goals "
+                "and the progress you have made so far, "
+                "and respond using the JSON schema specified previously."
+            )
+        )
 
         # Get commands
         # TODO kcze this is temporary measure to access commands in execute
         self.commands: list[Command] = []
         self.commands = list(self.foreach_components("get_commands"))
 
-        print(f"commands: {len(self.commands)}")
-        for command in self.commands:
-            print(f"- {command.names[0]}")
-
-        # Get final prompt
-        prompt: ChatPrompt = ChatPrompt(messages=[])
-        prompt = self.foreach_components(
-            "build_prompt", messages, self.commands, prompt
+        prompt = ChatPrompt(
+            messages=messages,
+            functions=get_openai_command_specs(self.commands),
         )
 
         self.log_cycle_handler.log_count_within_cycle = 0

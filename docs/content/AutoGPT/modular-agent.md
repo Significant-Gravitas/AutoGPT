@@ -17,22 +17,24 @@ This change directly addresses point 2 of the Roadmap [Empowering Agent Builders
 - Reduce coupling
 
 ### Tasks
-- [ ] Simplify commands
-- [ ] Restructure `OneShotAgentPromptStrategy` into smaller components
+- [x] Simplify commands
+- [x] Restructure `OneShotAgentPromptStrategy` into smaller components
 - [ ] User interaction, such as for asking for agent id change, should consider non-interactive mode 
-- [ ] Port Commands to Components
+- [x] Port Commands to Components
   - [x] System
+  - [x] Event history
   - [x] User interaction
   - [x] Context
   - [x] File operations
   - [x] Code execution
   - [x] Git operations
-  - [ ] Image generation
+  - [x] Image generation
   - [x] Web search
   - [x] Selenium
 - [ ] Move Components to forge and build AutoGPT using forge components
 - [ ] TODOs
 - [ ] Tests
+- [ ] Documentation
 
 ## How it works
 Agent is composed of *components*, and each `Component` implements a range of `Protocol`s (interfaces), each one providing a specific functionality, e.g. additional commands or messages. Each Protocol needs to be handled by BaseAgent's logic, so preferably an exhaustive set of Protocols should be provided.

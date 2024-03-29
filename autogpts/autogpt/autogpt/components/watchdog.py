@@ -1,5 +1,4 @@
 import logging
-from typing import TYPE_CHECKING
 
 from ..agents.base import BaseAgentConfiguration
 
