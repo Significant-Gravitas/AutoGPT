@@ -66,60 +66,72 @@ def command(
             )
             for param_name, spec in parameters.items()
         ]
-        cmd = Command(
-            instance=...,
-            names=command_names,
-            description=command_description,
-            method=func,
-            parameters=typed_parameters,
-            is_valid=is_valid,
-        )
 
-        if inspect.iscoroutinefunction(func):
+        setattr(func, "names", command_names)
+        setattr(func, "description", command_description)
+        setattr(func, "parameters", typed_parameters)
+        setattr(func, "is_valid", is_valid)
 
-            @functools.wraps(func)
-            async def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
-                # Create Command instance here, capturing 'self' if this is a method
-                instance = (
-                    args[0]
-                    if args and inspect.signature(func).parameters.get("self")
-                    else None
-                )
-                cmd = Command(
-                    instance=instance,
-                    names=command_names,
-                    description=command_description,
-                    method=func,
-                    parameters=typed_parameters,
-                    is_valid=is_valid,
-                )
-                setattr(func, "command", cmd)
-                return await func(*args, **kwargs)
+        return func
+        # instance = (
+        #         args[0]
+        #         if args and inspect.signature(func).parameters.get("self")
+        #         else None
+        #     )
+        # cmd = Command(
+        #     instance=...,
+        #     names=command_names,
+        #     description=command_description,
+        #     method=func,
+        #     parameters=typed_parameters,
+        #     is_valid=is_valid,
+        # )
 
-        else:
+        # if inspect.iscoroutinefunction(func):
 
-            @functools.wraps(func)
-            def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
-                # Similar to the async part, create and attach Command instance
-                instance = (
-                    args[0]
-                    if args and inspect.signature(func).parameters.get("self")
-                    else None
-                )
-                cmd = Command(
-                    instance=instance,
-                    names=command_names,
-                    description=command_description,
-                    method=func,
-                    parameters=typed_parameters,
-                    is_valid=is_valid,
-                )
-                setattr(func, "command", cmd)
-                return func(*args, **kwargs)
+        #     @functools.wraps(func)
+        #     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
+        #         # Create Command instance here, capturing 'self' if this is a method
+        #         instance = (
+        #             args[0]
+        #             if args and inspect.signature(func).parameters.get("self")
+        #             else None
+        #         )
+        #         cmd = Command(
+        #             instance=instance,
+        #             names=command_names,
+        #             description=command_description,
+        #             method=func,
+        #             parameters=typed_parameters,
+        #             is_valid=is_valid,
+        #         )
+        #         setattr(func, "command", cmd)
+        #         return await func(*args, **kwargs)
 
-        setattr(wrapper, "command", cmd)
-        setattr(wrapper, AUTO_GPT_COMMAND_IDENTIFIER, True)
+        # else:
 
-        return wrapper
+        #     @functools.wraps(func)
+        #     def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
+        #         # Similar to the async part, create and attach Command instance
+        #         instance = (
+        #             args[0]
+        #             if args and inspect.signature(func).parameters.get("self")
+        #             else None
+        #         )
+        #         cmd = Command(
+        #             instance=instance,
+        #             names=command_names,
+        #             description=command_description,
+        #             method=func,
+        #             parameters=typed_parameters,
+        #             is_valid=is_valid,
+        #         )
+        #         setattr(func, "command", cmd)
+        #         return func(*args, **kwargs)
+
+        # setattr(wrapper, "command", cmd)
+        # setattr(wrapper, AUTO_GPT_COMMAND_IDENTIFIER, True)
+
+        # return wrapper
 
     return decorator

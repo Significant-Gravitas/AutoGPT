@@ -28,10 +28,10 @@ class WebSearchComponent(Component, CommandProvider):
         self.legacy_config = config
 
     def get_commands(self) -> Iterator[Command]:
-        yield self.web_search.command
+        yield Command.from_decorated_function(self.web_search)
 
         if self.legacy_config.google_api_key and self.legacy_config.google_custom_search_engine_id:
-            yield self.google.command
+            yield Command.from_decorated_function(self.google)
         else:
             logger.info("Configure google_api_key and custom_search_engine_id.")
 

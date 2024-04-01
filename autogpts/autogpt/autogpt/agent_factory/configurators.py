@@ -68,12 +68,6 @@ def _configure_agent(
     app_config.plugins = scan_plugins(app_config)
     configure_chat_plugins(app_config)
 
-    # Create a CommandRegistry instance and scan default folder
-    # command_registry = CommandRegistry.with_command_modules(
-    #     modules=COMMAND_CATEGORIES,
-    #     config=app_config,
-    # )
-
     agent_state = state or create_agent_state(
         agent_id=agent_id,
         task=task,
@@ -99,8 +93,6 @@ def create_agent_state(
     directives: AIDirectives,
     app_config: Config,
 ) -> AgentSettings:
-    agent_prompt_config = Agent.default_settings.prompt_config.copy(deep=True)
-    agent_prompt_config.use_functions_api = app_config.openai_functions
 
     return AgentSettings(
         agent_id=agent_id,
@@ -116,6 +108,5 @@ def create_agent_state(
             use_functions_api=app_config.openai_functions,
             plugins=app_config.plugins,
         ),
-        prompt_config=agent_prompt_config,
         history=Agent.default_settings.history.copy(deep=True),
     )

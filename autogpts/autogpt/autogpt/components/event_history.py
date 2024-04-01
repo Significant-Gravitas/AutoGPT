@@ -1,25 +1,33 @@
 from typing import Callable, Iterator, Optional
 
-from autogpts.autogpt.autogpt.agents.components import Component
-from autogpts.autogpt.autogpt.agents.protocols import MessageProvider
-from autogpts.autogpt.autogpt.core.resource.model_providers.schema import ChatMessage
-from autogpts.autogpt.autogpt.models.action_history import (
+from autogpt.agents.base import ThoughtProcessOutput
+from autogpt.agents.components import Component
+from autogpt.agents.protocols import AfterExecution, AfterParsing, MessageProvider
+from autogpt.config.config import Config
+from autogpt.core.resource.model_providers.schema import ChatMessage, ChatModelProvider
+from autogpt.models.action_history import (
+    Action,
+    ActionResult,
     Episode,
     EpisodicActionHistory,
 )
 from autogpt.prompts.utils import indent
 
 
-class EventHistoryComponent(Component, MessageProvider):
+class EventHistoryComponent(Component, MessageProvider, AfterParsing, AfterExecution):
     def __init__(
         self,
         event_history: EpisodicActionHistory,
         max_tokens: int,
         count_tokens: Callable[[str], int],
+        legacy_config: Config,
+        llm_provider: ChatModelProvider,
     ) -> None:
         self.event_history = event_history
         self.max_tokens = max_tokens
         self.count_tokens = count_tokens
+        self.legacy_config = legacy_config
+        self.llm_provider = llm_provider
 
     def get_messages(self) -> Iterator[ChatMessage]:
         yield ChatMessage.system(
@@ -28,6 +36,22 @@ class EventHistoryComponent(Component, MessageProvider):
                 self.max_tokens,
                 self.count_tokens,
             )
+        )
+
+    def after_parsing(self, result: ThoughtProcessOutput) -> None:
+        if result.command_name:
+            self.event_history.register_action(
+                Action(
+                    name=result.command_name,
+                    args=result.command_args,
+                    reasoning=result.thoughts["thoughts"]["reasoning"],
+                )
+            )
+
+    async def after_execution(self, result: ActionResult) -> None:
+        self.event_history.register_result(result)
+        await self.event_history.handle_compression(
+            self.llm_provider, self.legacy_config
         )
 
     def _compile_progress(

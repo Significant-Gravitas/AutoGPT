@@ -63,9 +63,9 @@ class ContextComponent(Component, MessageProvider, CommandProvider):
             )
 
     def get_commands(self) -> Iterator[Command]:
-        yield self.open_file.command
-        yield self.open_folder.command
-        yield self.close_context_item.command
+        yield Command.from_decorated_function(self.open_file)
+        yield Command.from_decorated_function(self.open_folder)
+        yield Command.from_decorated_function(self.close_context_item)
         
     @command(
         parameters={

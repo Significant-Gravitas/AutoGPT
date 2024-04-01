@@ -355,3 +355,13 @@ class ChatModelProvider(ModelProvider):
         **kwargs,
     ) -> ChatModelResponse[_T]:
         ...
+
+    @abc.abstractmethod
+    async def create_chat_completion_raw(
+        self,
+        model_prompt: list[ChatMessage],
+        model_name: str,
+        functions: Optional[list[CompletionModelFunction]] = None,
+        **kwargs,
+    ) -> _T:
+        ...

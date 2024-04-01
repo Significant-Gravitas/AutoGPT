@@ -11,6 +11,7 @@ from pydantic import Field
 
 from autogpt.agents.components import (
     Component,
+    ComponentGroupError,
 )
 from autogpt.components.one_shot_component import OneShotComponent
 from autogpt.core.configuration import Configurable
@@ -46,14 +47,18 @@ from autogpt.components.git_operations import GitOperationsComponent
 from autogpt.components.image_gen import ImageGeneratorComponent
 from autogpt.components.web_search import WebSearchComponent
 from autogpt.components.web_selenium import WebSeleniumComponent
-from autogpts.autogpt.autogpt.components.event_history import EventHistoryComponent
-from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
+from autogpt.components.event_history import EventHistoryComponent
+from autogpt.core.resource.model_providers.schema import (
+    ChatModelResponse,
+)
+from autogpt.core.utils.json_schema import JSONSchema
 
 from .base import (
     BaseAgent,
     BaseAgentConfiguration,
     BaseAgentSettings,
     ThoughtProcessOutput,
+    retry,
 )
 from ..components.file_manager import FileManagerComponent
 from ..components.context import ContextComponent
@@ -72,75 +77,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+#TODO kcze merge config and settings?
 class AgentConfiguration(BaseAgentConfiguration):
     pass
-
-
-DEFAULT_RESPONSE_SCHEMA = JSONSchema(
-    type=JSONSchema.Type.OBJECT,
-    properties={
-        "thoughts": JSONSchema(
-            type=JSONSchema.Type.OBJECT,
-            required=True,
-            properties={
-                "observations": JSONSchema(
-                    description=(
-                        "Relevant observations from your last action (if any)"
-                    ),
-                    type=JSONSchema.Type.STRING,
-                    required=False,
-                ),
-                "text": JSONSchema(
-                    description="Thoughts",
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "reasoning": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "self_criticism": JSONSchema(
-                    description="Constructive self-criticism",
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "plan": JSONSchema(
-                    description=(
-                        "Short markdown-style bullet list that conveys the "
-                        "long-term plan"
-                    ),
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "speak": JSONSchema(
-                    description="Summary of thoughts, to say to user",
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-            },
-        ),
-        "command": JSONSchema(
-            type=JSONSchema.Type.OBJECT,
-            required=True,
-            properties={
-                "name": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "args": JSONSchema(
-                    type=JSONSchema.Type.OBJECT,
-                    required=True,
-                ),
-            },
-        ),
-    },
-)
 
 
 class AgentSettings(BaseAgentSettings):
     config: AgentConfiguration = Field(default_factory=AgentConfiguration)
 
 
+#TODO kcze merge with SystemComponent
 class ClockBudgetComponent(Component, MessageProvider):
     """Clock and budget messages."""
 
@@ -158,7 +104,7 @@ class ClockBudgetComponent(Component, MessageProvider):
             )
             if remaining_budget < 0:
                 remaining_budget = 0
-            #TODO kcze this is repeated similarly in constraints
+            # TODO kcze this is repeated similarly in constraints
             budget_msg = ChatMessage.system(
                 f"Your remaining API budget is ${remaining_budget:.3f}"
                 + (
@@ -197,7 +143,13 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         # Components
         self.system = SystemComponent(legacy_config, settings, self)
         self.extra = ClockBudgetComponent()
-        self.history = EventHistoryComponent(settings.history, self.send_token_limit, )
+        self.history = EventHistoryComponent(
+            settings.history,
+            self.send_token_limit,
+            lambda x: self.llm_provider.count_tokens(x, self.llm.name),
+            legacy_config,
+            llm_provider,
+        )
         self.user_interaction = UserInteractionComponent(legacy_config)
         self.file_manager = FileManagerComponent(settings, file_storage)
         self.code_executor = CodeExecutorComponent(
@@ -253,9 +205,16 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
         # TODO kcze update directives
 
+        # Get commands
+        # TODO kcze self is temporary measure to access commands in execute
+        self.commands: list[Command] = list(
+            await self.foreach_components("get_commands")
+        )
+
         # Get messages
-        messages: list[ChatMessage] = []
-        messages = list(self.foreach_components("get_messages"))
+        messages: list[ChatMessage] = list(
+            await self.foreach_components("get_messages")
+        )
 
         messages.append(
             ChatMessage.user(
@@ -265,16 +224,12 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             )
         )
 
-        # Get commands
-        # TODO kcze this is temporary measure to access commands in execute
-        self.commands: list[Command] = []
-        self.commands = list(self.foreach_components("get_commands"))
-
         prompt = ChatPrompt(
             messages=messages,
             functions=get_openai_command_specs(self.commands),
         )
 
+        # TODO kcze before completion
         self.log_cycle_handler.log_count_within_cycle = 0
         self.log_cycle_handler.log_cycle(
             self.state.ai_profile.ai_name,
@@ -285,66 +240,52 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         )
 
         # logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
-        response = await self.llm_provider.create_chat_completion(
-            prompt.messages,
-            functions=(
-                get_openai_command_specs(self.commands)
-                if self.config.use_functions_api
-                else []
-            ),
-            model_name=self.llm.name,
-            completion_parser=lambda r: self.parse_and_process_response(
-                r,
-            ),
-        )
+        output = await self.complete_and_parse(prompt)
         self.config.cycle_count += 1
 
-        self.foreach_components("propose_action", response.parsed_result)
         self.print_trace()
 
-        return response.parsed_result
+        return output
 
-    # TODO kcze legacy function - move to Component
-    def parse_and_process_response(
-        self,
-        llm_response: AssistantChatMessage,
+    @retry()
+    async def complete_and_parse(
+        self, prompt: ChatPrompt, exception: Optional[Exception] = None
     ) -> ThoughtProcessOutput:
+        if exception:
+            prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
+
+        response: AssistantChatMessage = (
+            await self.llm_provider.create_chat_completion_raw(
+                prompt.messages,
+                functions=(
+                    get_openai_command_specs(self.commands)
+                    if self.config.use_functions_api
+                    else []
+                ),
+                model_name=self.llm.name,
+            )
+        )
         result = ThoughtProcessOutput()
-        result = self.foreach_components("parse_response", result, llm_response)
-        (
-            command_name,
-            arguments,
-            assistant_reply_dict,
-        ) = (
-            result.command_name,
-            result.command_args,
-            result.thoughts,
+        result: ThoughtProcessOutput = await self.foreach_components(
+            "parse_response", result, response
         )
 
         # Check if the command is valid, e.g. isn't duplicating a previous command
-        # TODO kcze
-        # command = self.command_registry.get_command(command_name)
-        # if command:
-        #     is_valid, reason = command.is_valid(self, arguments)
-        #     if not is_valid:
-        #         raise InvalidOperationError(reason)
+        command = self.get_command(result.command_name)
+        if command:
+            is_valid, reason = command.is_valid(result.command_args)
+            if not is_valid:
+                raise InvalidOperationError(reason)
 
         self.log_cycle_handler.log_cycle(
             self.state.ai_profile.ai_name,
             self.created_at,
             self.config.cycle_count,
-            assistant_reply_dict,
+            result.thoughts,
             NEXT_ACTION_FILE_NAME,
         )
 
-        if command_name:
-            self.event_history.register_action(
-                Action(
-                    name=command_name,
-                    args=arguments,
-                    reasoning=assistant_reply_dict["thoughts"]["reasoning"],
-                )
-            )
+        await self.foreach_components("after_parsing", result)
 
         return result
 
@@ -390,11 +331,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
                     "Do not execute this command again with the same arguments."
                 )
 
-        # Update action history
-        self.event_history.register_result(result)
-        await self.event_history.handle_compression(
-            self.llm_provider, self.legacy_config
-        )
+        await self.foreach_components("after_execution", result)
 
         self.print_trace()
 

@@ -32,6 +32,7 @@ This change directly addresses point 2 of the Roadmap [Empowering Agent Builders
   - [x] Web search
   - [x] Selenium
 - [ ] Move Components to forge and build AutoGPT using forge components
+- [ ] Directives
 - [ ] TODOs
 - [ ] Tests
 - [ ] Documentation

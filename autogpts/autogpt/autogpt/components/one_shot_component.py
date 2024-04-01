@@ -12,9 +12,9 @@ from autogpt.core.resource.model_providers.schema import (
 )
 from autogpt.agents.base import ThoughtProcessOutput
 from autogpt.agents.components import Component
-from autogpts.autogpt.autogpt.agents.agent import DEFAULT_RESPONSE_SCHEMA
-from autogpts.autogpt.autogpt.core.utils.json_utils import extract_dict_from_json, json_loads
-from autogpts.forge.forge.sdk.errors import InvalidAgentResponseError
+from autogpt.core.utils.json_utils import extract_dict_from_json, json_loads
+from autogpt.agents.utils.schema import DEFAULT_RESPONSE_SCHEMA
+from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import AgentSettings

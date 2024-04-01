@@ -66,9 +66,9 @@ class FileManagerComponent(Component, CommandProvider):
         state.agent_id = new_id
 
     def get_commands(self) -> Iterator[Command]:
-        yield self.read_file.command
-        yield self.write_to_file.command
-        yield self.list_folder.command
+        yield Command.from_decorated_function(self.read_file)
+        yield Command.from_decorated_function(self.write_to_file)
+        yield Command.from_decorated_function(self.list_folder)
     
     def _is_write_valid(self, arguments: CommandArgs) -> ValidityResult:
         if not self.workspace.exists(arguments["filename"]):
@@ -134,6 +134,7 @@ class FileManagerComponent(Component, CommandProvider):
         Returns:
             str: A message indicating success or failure
         """
+        logger.info(f"self: {self}")
         if directory := os.path.dirname(filename):
             self.workspace.make_dir(directory)
         await self.workspace.write_file(filename, contents)

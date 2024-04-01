@@ -1,8 +1,11 @@
 import platform
 import re
-from typing import Iterator
+from typing import Iterator, TYPE_CHECKING
 
 import distro
+
+if TYPE_CHECKING:
+    from autogpt.agents.agent import AgentSettings
 
 from autogpt.command_decorator import command
 from autogpt.agents.utils.exceptions import (
@@ -14,27 +17,32 @@ from autogpt.agents.components import (
 )
 from autogpt.agents.protocols import CommandProvider, MessageProvider
 from autogpt.models.command import Command
-from autogpts.autogpt.autogpt.agents.agent import DEFAULT_RESPONSE_SCHEMA, AgentSettings
-from autogpts.autogpt.autogpt.config.config import Config
-from autogpts.autogpt.autogpt.core.resource.model_providers.schema import (
+from autogpt.config.config import Config
+from autogpt.core.resource.model_providers.schema import (
     ChatMessage,
 )
-from autogpts.autogpt.autogpt.prompts.utils import format_numbered_list
+from autogpt.prompts.utils import format_numbered_list
+from autogpt.agents.utils.schema import DEFAULT_RESPONSE_SCHEMA
 
 
 class SystemComponent(Component, MessageProvider, CommandProvider):
-    def __init__(self, config: Config, settings: AgentSettings, agent):
+    def __init__(self, config: Config, settings: "AgentSettings", agent):
         self.legacy_config = config
         self.settings = settings
-        #TODO kcze temp to add commands to the messages
+        # TODO kcze temp to add commands to the messages
         self.agent = agent
 
     def get_messages(self) -> Iterator[ChatMessage]:
         ai_profile = self.settings.ai_profile
         ai_directives = self.settings.directives
         task = self.settings.task
-        #TODO kcze!
-        use_functions_api = False
+        # TODO kcze!
+        use_functions_api = self.legacy_config.openai_functions
+
+        constraints = format_numbered_list(
+            ai_directives.constraints
+            + self._generate_budget_constraint(ai_profile.api_budget)
+        )
 
         yield ChatMessage.system(
             f"You are {ai_profile.ai_name}, {ai_profile.ai_role.rstrip('.')}."
@@ -44,10 +52,7 @@ class SystemComponent(Component, MessageProvider, CommandProvider):
             f"{self._generate_os_info()}\n"
             "## Constraints\n"
             "You operate within the following constraints:\n"
-            f"{format_numbered_list( 
-                ai_directives.constraints 
-                + self._generate_budget_constraint(ai_profile.api_budget)
-            )}\n"
+            f"{constraints}\n"
             "## Resources\n"
             "You can leverage access to the following resources:\n"
             f"{format_numbered_list(ai_directives.resources)}\n"
@@ -66,13 +71,13 @@ class SystemComponent(Component, MessageProvider, CommandProvider):
         yield ChatMessage.system(self._response_format_instruction(use_functions_api))
 
     def get_commands(self) -> Iterator[Command]:
-        yield self.finish.command
-    
+        yield Command.from_decorated_function(self.finish)
+
     def _generate_os_info(self) -> str:
         """Generates the OS information part of the prompt."""
         if not self.legacy_config.execute_local_commands:
             return ""
-        
+
         os_name = platform.system()
         os_info = (
             platform.platform(terse=True)
@@ -80,8 +85,8 @@ class SystemComponent(Component, MessageProvider, CommandProvider):
             else distro.name(pretty=True)
         )
         return f"The OS you are running on is: {os_info}"
-    
-    def _generate_budget_constraint(self, api_budget: float) ->list[str]:
+
+    def _generate_budget_constraint(self, api_budget: float) -> list[str]:
         """Generates the budget information part of the prompt."""
         if api_budget > 0.0:
             return [
@@ -89,7 +94,7 @@ class SystemComponent(Component, MessageProvider, CommandProvider):
                 f"Your API budget is ${api_budget:.3f}"
             ]
         return []
-    
+
     def _response_format_instruction(self, use_functions_api: bool) -> str:
         response_schema = DEFAULT_RESPONSE_SCHEMA.copy(deep=True)
         if (

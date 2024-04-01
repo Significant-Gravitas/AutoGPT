@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import inspect
 import logging
 from abc import ABCMeta
 from dataclasses import dataclass, field
@@ -9,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Optional, TypeVar
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 from pydantic import BaseModel, Field, validator
+import sentry_sdk
 
 
 if TYPE_CHECKING:
@@ -17,8 +19,8 @@ if TYPE_CHECKING:
         ChatModelProvider,
     )
 
-from autogpt.agents.components import Single
-from autogpt.agents.components import Component, ComponentError, PipelineError
+from autogpt.agents.components import ComponentGroupError, Single
+from autogpt.agents.components import Component, ComponentError, ProtocolError
 from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
@@ -161,6 +163,28 @@ class ThoughtProcessOutput:
         yield from (self.command_name, self.command_args, self.thoughts)
 
 
+def retry(retry: int = 3, pass_exception: str = "exception"):
+    """Decorator to retry a function multiple times on failure.
+    Can pass the exception to the function as a keyword argument."""
+    def decorator(func):
+        async def wrapper(*args, **kwargs):
+            exception: Optional[Exception] = None
+            attempts = 0
+            while True:
+                try:
+                    if pass_exception in kwargs:
+                        kwargs[pass_exception] = exception
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    attempts += 1
+                    exception = e
+                    sentry_sdk.capture_exception(e, extra={"attempts": attempts})
+                    if attempts >= retry:
+                        raise e
+        return wrapper
+    return decorator
+
+
 class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
     T = TypeVar("T", bound=Component)
 
@@ -277,7 +301,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
         return component.enabled
 
     # TODO method_name and return type unsafe!
-    def foreach_components(self, method_name: str, *args, retry_limit: int = 3) -> Any:
+    async def foreach_components(self, method_name: str, *args, retry_limit: int = 3) -> Any:
         # Clone parameters to revert on failure
         original_args = self._selective_copy(args)
         pipeline_attempts = 0
@@ -300,7 +324,10 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
                     while component_attempts < retry_limit:
                         try:
                             component_args = self._selective_copy(args)
-                            result = method(*component_args)
+                            if inspect.iscoroutinefunction(method):
+                                result = await method(*component_args)
+                            else:
+                                result = method(*component_args)
                             if result is not None:
                                 if isinstance(result, Single):
                                     method_result = result.value
@@ -321,7 +348,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
                         break
                 # Successful pipeline execution
                 break
-            except PipelineError:
+            except ProtocolError:
                 self._trace.append(
                     f"❌ {Fore.LIGHTRED_EX}{component.__class__.__name__}: "
                     f"PipelineError{Fore.RESET}"

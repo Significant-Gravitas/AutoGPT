@@ -25,7 +25,7 @@ class GitOperationsComponent(Component, CommandProvider):
         self.legacy_config = config
 
     def get_commands(self) -> Iterator[Command]:
-        yield self.clone_repository.command
+        yield Command.from_decorated_function(self.clone_repository)
 
     @command(
         parameters={

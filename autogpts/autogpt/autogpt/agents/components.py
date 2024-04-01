@@ -14,12 +14,24 @@ class Component:
     
 
 class ComponentError(Exception):
-    pass
+    def __init__(self, message: str = ""):
+        self.message = message
+        super().__init__(message)
 
 
-class PipelineError(ComponentError):
-    pass
+class ProtocolError(ComponentError):
+    def __init__(self, message: str = ""):
+        self.message = message
+        super().__init__(message)
+
+
+class ComponentGroupError(ComponentError):
+    def __init__(self, message: str = ""):
+        self.message = message
+        super().__init__(message)
 
 
 class ComponentSystemError(ComponentError):
-    pass
+    def __init__(self, message: str = ""):
+        self.message = message
+        super().__init__(message)

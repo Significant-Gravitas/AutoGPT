@@ -34,7 +34,6 @@ class Command:
 
     def __init__(
         self,
-        instance: Any,
         names: list[str],
         description: str,
         method: Callable[..., CommandOutput],
@@ -48,7 +47,6 @@ class Command:
             raise ValueError(
                 f"Command {names[0]} has different parameters than provided schema"
             )
-        self.instance = instance
         self.names = names
         self.description = description
         self.method = method
@@ -58,6 +56,16 @@ class Command:
     @property
     def is_async(self) -> bool:
         return inspect.iscoroutinefunction(self.method)
+    
+    @staticmethod
+    def from_decorated_function(func: Callable) -> Command:
+        return Command(
+            names=getattr(func, "names", [func.__name__]),
+            description=getattr(func, "description", ""),
+            method=func,
+            parameters=getattr(func, "parameters", []),
+            is_valid=getattr(func, "is_valid", lambda a: ValidityResult(True)),
+        )
     
     def _parameters_match(self, func: Callable, parameters: list[CommandParameter]) -> bool:
         # Get the function's signature
@@ -71,8 +79,6 @@ class Command:
         return sorted(func_param_names) == sorted(names)
     
     def __call__(self, *args, **kwargs) -> Any:
-        if self.instance:
-            return self.method(self.instance, *args, **kwargs)
         return self.method(*args, **kwargs)
 
     def __str__(self) -> str:
