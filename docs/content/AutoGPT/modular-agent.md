@@ -19,7 +19,6 @@ This change directly addresses point 2 of the Roadmap [Empowering Agent Builders
 ### Tasks
 - [x] Simplify commands
 - [x] Restructure `OneShotAgentPromptStrategy` into smaller components
-- [ ] User interaction, such as for asking for agent id change, should consider non-interactive mode 
 - [x] Port Commands to Components
   - [x] System
   - [x] Event history
@@ -32,7 +31,6 @@ This change directly addresses point 2 of the Roadmap [Empowering Agent Builders
   - [x] Web search
   - [x] Selenium
 - [ ] Move Components to forge and build AutoGPT using forge components
-- [ ] Directives
 - [ ] TODOs
 - [ ] Tests
 - [ ] Documentation

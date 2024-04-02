@@ -52,6 +52,7 @@ from autogpt.core.resource.model_providers.schema import (
     ChatModelResponse,
 )
 from autogpt.core.utils.json_schema import JSONSchema
+from autogpt.core.prompting.base import PromptStrategy
 
 from .base import (
     BaseAgent,
@@ -77,7 +78,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-#TODO kcze merge config and settings?
+# TODO kcze merge config and settings?
 class AgentConfiguration(BaseAgentConfiguration):
     pass
 
@@ -86,43 +87,12 @@ class AgentSettings(BaseAgentSettings):
     config: AgentConfiguration = Field(default_factory=AgentConfiguration)
 
 
-#TODO kcze merge with SystemComponent
-class ClockBudgetComponent(Component, MessageProvider):
-    """Clock and budget messages."""
+class AgentPromptStrategy(PromptStrategy):
+    def build_prompt(self, *_, **kwargs) -> ChatPrompt: ...
 
-    def get_messages(
-        self,
-    ) -> Iterator[ChatMessage]:
-        # Clock
-        yield ChatMessage.system(f"The current time and date is {time.strftime('%c')}")
-
-        # Add budget information (if any) to prompt
-        api_manager = ApiManager()
-        if api_manager.get_total_budget() > 0.0:
-            remaining_budget = (
-                api_manager.get_total_budget() - api_manager.get_total_cost()
-            )
-            if remaining_budget < 0:
-                remaining_budget = 0
-            # TODO kcze this is repeated similarly in constraints
-            budget_msg = ChatMessage.system(
-                f"Your remaining API budget is ${remaining_budget:.3f}"
-                + (
-                    " BUDGET EXCEEDED! SHUT DOWN!\n\n"
-                    if remaining_budget == 0
-                    else (
-                        " Budget very nearly exceeded! Shut down gracefully!\n\n"
-                        if remaining_budget < 0.005
-                        else (
-                            " Budget nearly exceeded. Finish up.\n\n"
-                            if remaining_budget < 0.01
-                            else ""
-                        )
-                    )
-                ),
-            )
-            logger.debug(budget_msg)
-            yield budget_msg
+    def parse_response_content(
+        self, response_content: AssistantChatMessage
+    ) -> ThoughtProcessOutput: ...
 
 
 class Agent(BaseAgent, Configurable[AgentSettings]):
@@ -141,8 +111,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         super().__init__(settings, llm_provider)
 
         # Components
-        self.system = SystemComponent(legacy_config, settings, self)
-        self.extra = ClockBudgetComponent()
+        self.system = SystemComponent(legacy_config)
         self.history = EventHistoryComponent(
             settings.history,
             self.send_token_limit,
@@ -172,7 +141,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         # Override component ordering
         self.components = [
             self.system,
-            self.extra,
             self.user_interaction,
             self.file_manager,
             self.code_executor,
@@ -203,7 +171,15 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         """
         self.reset_trace()
 
-        # TODO kcze update directives
+        # Get directives
+        constraints: list[str] = list(await self.foreach_components("get_constraints"))
+        resources: list[str] = list(await self.foreach_components("get_resources"))
+        best_practices: list[str] = list(await self.foreach_components("get_best_practices"))
+
+        directives = self.state.directives.copy(deep=True)
+        directives.constraints += constraints
+        directives.resources += resources
+        directives.best_practices += best_practices
 
         # Get commands
         # TODO kcze self is temporary measure to access commands in execute
@@ -216,17 +192,13 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             await self.foreach_components("get_messages")
         )
 
-        messages.append(
-            ChatMessage.user(
-                "Determine exactly one command to use next based on the given goals "
-                "and the progress you have made so far, "
-                "and respond using the JSON schema specified previously."
-            )
-        )
-
-        prompt = ChatPrompt(
-            messages=messages,
-            functions=get_openai_command_specs(self.commands),
+        prompt: ChatPrompt = await self.foreach_components(
+            "build_prompt",
+            messages,
+            self.commands,
+            self.state.task,
+            self.state.ai_profile,
+            directives,
         )
 
         # TODO kcze before completion
@@ -242,8 +214,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         # logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
         output = await self.complete_and_parse(prompt)
         self.config.cycle_count += 1
-
-        self.print_trace()
 
         return output
 

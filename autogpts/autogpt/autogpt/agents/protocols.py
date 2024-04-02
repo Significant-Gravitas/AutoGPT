@@ -8,6 +8,9 @@ from autogpt.core.resource.model_providers.schema import (
 from autogpt.models.command import Command
 from autogpt.agents.components import Single
 from autogpt.models.action_history import ActionResult
+from autogpt.config.ai_directives import AIDirectives
+from autogpt.config.ai_profile import AIProfile
+from autogpt.core.prompting.schema import ChatPrompt
 
 
 @runtime_checkable
@@ -30,6 +33,18 @@ class CommandProvider(Protocol):
 @runtime_checkable
 class MessageProvider(Protocol):
     def get_messages(self) -> Iterator[ChatMessage]: ...
+
+
+@runtime_checkable
+class BuildPrompt(Protocol):
+    def build_prompt(
+        self,
+        messages: list[ChatMessage],
+        commands: list[Command],
+        task: str,
+        profile: AIProfile,
+        directives: AIDirectives,
+    ) -> Single[ChatPrompt]: ...
 
 
 @runtime_checkable
