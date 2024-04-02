@@ -14,7 +14,7 @@ from autogpt.core.prompting.schema import ChatPrompt
 
 
 @runtime_checkable
-class DirectivesProvider(Protocol):
+class DirectiveProvider(Protocol):
     def get_contraints(self) -> Iterator[str]:
         return iter([])
 
@@ -55,10 +55,10 @@ class ParseResponse(Protocol):
 
 
 @runtime_checkable
-class AfterParsing(Protocol):
+class AfterParse(Protocol):
     def after_parsing(self, result: ThoughtProcessOutput) -> None: ...
 
 
 @runtime_checkable
-class AfterExecution(Protocol):
+class AfterExecute(Protocol):
     def after_execution(self, result: ActionResult) -> None: ...

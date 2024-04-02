@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 class OneShotComponent(Component, BuildPrompt, ParseResponse):
+    """Component for one-shot Agents. Builds prompt and parses resonse."""
     def __init__(
         self,
         legacy_config: Config,
@@ -138,7 +139,6 @@ class OneShotComponent(Component, BuildPrompt, ParseResponse):
             assistant_reply_dict, response, self.legacy_config.openai_functions
         )
 
-        # TODO kcze overwrite pipeline result for now
         result.command_name = command_name
         result.command_args = arguments
         result.thoughts = assistant_reply_dict

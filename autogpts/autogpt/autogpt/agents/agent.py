@@ -2,17 +2,12 @@ from __future__ import annotations
 
 import inspect
 import logging
-import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, Optional
 
 import sentry_sdk
 from pydantic import Field
 
-from autogpt.agents.components import (
-    Component,
-    ComponentGroupError,
-)
 from autogpt.components.one_shot_component import OneShotComponent
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
@@ -22,7 +17,6 @@ from autogpt.core.resource.model_providers import (
     ChatModelProvider,
 )
 from autogpt.file_storage.base import FileStorage
-from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.logs.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
@@ -32,14 +26,12 @@ from autogpt.logs.log_cycle import (
 )
 from autogpt.logs.utils import fmt_kwargs
 from autogpt.models.action_history import (
-    Action,
     ActionErrorResult,
     ActionInterruptedByHuman,
     ActionResult,
     ActionSuccessResult,
 )
 from autogpt.models.command import Command, CommandOutput
-from autogpt.agents.protocols import MessageProvider
 from autogpt.components.system import SystemComponent
 from autogpt.components.user_interaction import UserInteractionComponent
 from autogpt.components.code_executor import CodeExecutorComponent
@@ -48,11 +40,8 @@ from autogpt.components.image_gen import ImageGeneratorComponent
 from autogpt.components.web_search import WebSearchComponent
 from autogpt.components.web_selenium import WebSeleniumComponent
 from autogpt.components.event_history import EventHistoryComponent
-from autogpt.core.resource.model_providers.schema import (
-    ChatModelResponse,
-)
-from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.core.prompting.base import PromptStrategy
+from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 
 from .base import (
     BaseAgent,
@@ -135,7 +124,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.context = ContextComponent(self.file_manager.workspace)
         self.watchdog = WatchdogComponent(settings.config, settings.history)
         self.prompt_strategy = OneShotComponent(
-            settings, legacy_config, llm_provider, self.send_token_limit, self.llm
+            legacy_config, llm_provider, self.send_token_limit, self.llm
         )
 
         # Override component ordering
@@ -174,7 +163,9 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         # Get directives
         constraints: list[str] = list(await self.foreach_components("get_constraints"))
         resources: list[str] = list(await self.foreach_components("get_resources"))
-        best_practices: list[str] = list(await self.foreach_components("get_best_practices"))
+        best_practices: list[str] = list(
+            await self.foreach_components("get_best_practices")
+        )
 
         directives = self.state.directives.copy(deep=True)
         directives.constraints += constraints
@@ -182,7 +173,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         directives.best_practices += best_practices
 
         # Get commands
-        # TODO kcze self is temporary measure to access commands in execute
         self.commands: list[Command] = list(
             await self.foreach_components("get_commands")
         )
@@ -201,7 +191,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             directives,
         )
 
-        # TODO kcze before completion
         self.log_cycle_handler.log_count_within_cycle = 0
         self.log_cycle_handler.log_cycle(
             self.state.ai_profile.ai_name,
@@ -211,7 +200,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             CURRENT_CONTEXT_FILE_NAME,
         )
 
-        # logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
+        logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
         output = await self.complete_and_parse(prompt)
         self.config.cycle_count += 1
 

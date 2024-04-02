@@ -10,7 +10,7 @@ from autogpt.models.command import Command
 
 
 class UserInteractionComponent(Component, CommandProvider):
-    """Provides commands to interact with the user"""
+    """Provides commands to interact with the user."""
 
     def __init__(self, config: Config):
         self.config = config

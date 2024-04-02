@@ -9,7 +9,7 @@ from autogpt.agents.utils.exceptions import ConfigurationError
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.agents.components import Component
-from autogpt.agents.protocols import CommandProvider
+from autogpt.agents.protocols import CommandProvider, DirectiveProvider
 from autogpt.config.config import Config
 from autogpt.models.command import Command
 
@@ -21,11 +21,14 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
 logger = logging.getLogger(__name__)
 
 
-class WebSearchComponent(Component, CommandProvider):
-    """Provides commands to search the web"""
+class WebSearchComponent(Component, DirectiveProvider, CommandProvider):
+    """Provides commands to search the web."""
 
     def __init__(self, config: Config):
         self.legacy_config = config
+
+    def get_resources(self) -> Iterator[str]:
+        yield 'Internet access for searches and information gathering.'
 
     def get_commands(self) -> Iterator[Command]:
         yield Command.from_decorated_function(self.web_search)

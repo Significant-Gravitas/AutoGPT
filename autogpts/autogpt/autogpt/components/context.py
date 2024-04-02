@@ -48,6 +48,7 @@ class AgentContext:
 
 
 class ContextComponent(Component, MessageProvider, CommandProvider):
+    """Adds ability to keep files and folders open in the context (prompt)."""
     def __init__(self, workspace: FileStorage):
         self.context = AgentContext()
         self.workspace = workspace

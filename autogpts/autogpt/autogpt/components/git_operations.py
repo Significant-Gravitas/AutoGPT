@@ -17,7 +17,7 @@ COMMAND_CATEGORY_TITLE = "Git Operations"
 
 
 class GitOperationsComponent(Component, CommandProvider):
-    """Provides commands to perform Git operations"""
+    """Provides commands to perform Git operations."""
 
     def __init__(self, config: Config):
         self.enabled = bool(config.github_username and config.github_api_key)

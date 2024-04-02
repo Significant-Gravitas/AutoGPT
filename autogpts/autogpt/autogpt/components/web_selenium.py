@@ -59,7 +59,7 @@ class BrowsingError(CommandExecutionError):
 
 
 class WebSeleniumComponent(Component, CommandProvider):
-    """Provides commands to browse the web using Selenium"""
+    """Provides commands to browse the web using Selenium."""
 
     def __init__(
         self,

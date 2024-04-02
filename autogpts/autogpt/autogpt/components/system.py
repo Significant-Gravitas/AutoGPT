@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class SystemComponent(Component, MessageProvider, CommandProvider):
+    """Component for system messages and commands."""
     def __init__(self, config: Config):
         self.legacy_config = config
 

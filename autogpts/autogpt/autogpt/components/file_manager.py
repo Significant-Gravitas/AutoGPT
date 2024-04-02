@@ -11,7 +11,7 @@ from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import ValidityResult, Command
 from autogpt.agents.components import Component
 from autogpt.file_storage.base import FileStorage
-from autogpt.agents.protocols import CommandProvider
+from autogpt.agents.protocols import CommandProvider, DirectiveProvider
 
 from ..file_operations_utils import decode_textual_file, text_checksum
 from ..agents.base import BaseAgentSettings
@@ -20,10 +20,12 @@ from ..agents.base import BaseAgentSettings
 logger = logging.getLogger(__name__)
 
 
-class FileManagerComponent(Component, CommandProvider):
-    """Adds general file manager (e.g. Agent state), 
+class FileManagerComponent(Component, DirectiveProvider, CommandProvider):
+    """
+    Adds general file manager (e.g. Agent state), 
     workspace manager (e.g. Agent output files) support and 
-    commands to perform operations on files and folders."""
+    commands to perform operations on files and folders.
+    """
 
     files: FileStorage
     """Agent-related files, e.g. state, logs.
@@ -64,6 +66,9 @@ class FileManagerComponent(Component, CommandProvider):
             f"agents/{new_id}/workspace"
         )
         state.agent_id = new_id
+
+    def get_resources(self) -> Iterator[str]:
+        yield 'The ability to read and write files.'
 
     def get_commands(self) -> Iterator[Command]:
         yield Command.from_decorated_function(self.read_file)

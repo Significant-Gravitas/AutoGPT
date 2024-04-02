@@ -56,10 +56,7 @@ def is_docker_available() -> bool:
 
 
 class CodeExecutorComponent(Component, CommandProvider):
-    """Provides commands to execute Python code and shell commands.
-    
-    Implements:
-        CommandProvider"""
+    """Provides commands to execute Python code and shell commands."""
     def __init__(self, workspace: FileStorage, state: BaseAgentSettings, config: Config):
         self.workspace = workspace
         self.state = state

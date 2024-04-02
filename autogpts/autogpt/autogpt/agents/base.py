@@ -162,7 +162,7 @@ class ThoughtProcessOutput:
     def __iter__(self):
         yield from (self.command_name, self.command_args, self.thoughts)
 
-
+#TODO kcze out
 def retry(retry: int = 3, pass_exception: str = "exception"):
     """Decorator to retry a function multiple times on failure.
     Can pass the exception to the function as a keyword argument."""
