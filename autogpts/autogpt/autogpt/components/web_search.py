@@ -5,12 +5,12 @@ from typing import Iterator
 
 from duckduckgo_search import DDGS
 
-from autogpt.agents.utils.exceptions import ConfigurationError
-from autogpt.command_decorator import command
-from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.agents.components import Component
 from autogpt.agents.protocols import CommandProvider, DirectiveProvider
+from autogpt.agents.utils.exceptions import ConfigurationError
+from autogpt.command_decorator import command
 from autogpt.config.config import Config
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command
 
 COMMAND_CATEGORY = "web_search"
@@ -28,12 +28,15 @@ class WebSearchComponent(Component, DirectiveProvider, CommandProvider):
         self.legacy_config = config
 
     def get_resources(self) -> Iterator[str]:
-        yield 'Internet access for searches and information gathering.'
+        yield "Internet access for searches and information gathering."
 
     def get_commands(self) -> Iterator[Command]:
         yield Command.from_decorated_function(self.web_search)
 
-        if self.legacy_config.google_api_key and self.legacy_config.google_custom_search_engine_id:
+        if (
+            self.legacy_config.google_api_key
+            and self.legacy_config.google_custom_search_engine_id
+        ):
             yield Command.from_decorated_function(self.google)
         else:
             logger.info("Configure google_api_key and custom_search_engine_id.")
@@ -90,20 +93,13 @@ class WebSearchComponent(Component, DirectiveProvider, CommandProvider):
             for r in search_results
         ]
 
-        results = (
-            "## Search results\n"
-            # "Read these results carefully."
-            # " Extract the information you need for your task from the list of results"
-            # " if possible. Otherwise, choose a webpage from the list to read entirely."
-            # "\n\n"
-        ) + "\n\n".join(
+        results = ("## Search results\n") + "\n\n".join(
             f"### \"{r['title']}\"\n"
             f"**URL:** {r['url']}  \n"
             "**Excerpt:** " + (f'"{exerpt}"' if (exerpt := r.get("exerpt")) else "N/A")
             for r in search_results
         )
         return self.safe_google_results(results)
-
 
     @command(
         ["google"],
@@ -176,7 +172,6 @@ class WebSearchComponent(Component, DirectiveProvider, CommandProvider):
 
         # Return the list of search result URLs
         return self.safe_google_results(search_results_links)
-
 
     def safe_google_results(self, results: str | list) -> str:
         """

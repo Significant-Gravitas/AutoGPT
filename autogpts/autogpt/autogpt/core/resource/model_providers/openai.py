@@ -395,7 +395,7 @@ class OpenAIProvider(
                     num_tokens += tokens_per_name
         num_tokens += 3  # every reply is primed with <|start|>assistant<|message|>
         return num_tokens
-    
+
     async def create_chat_completion_raw(
         self,
         model_prompt: list[ChatMessage],

@@ -1,6 +1,5 @@
 from autogpt.core.utils.json_schema import JSONSchema
 
-
 DEFAULT_RESPONSE_SCHEMA = JSONSchema(
     type=JSONSchema.Type.OBJECT,
     properties={

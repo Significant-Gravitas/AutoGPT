@@ -153,5 +153,5 @@ def decode_textual_file(file: IO, ext: str, logger: logging.Logger) -> str:
 
 
 def text_checksum(text: str) -> str:
-        """Get the hex checksum for the given text."""
-        return hashlib.md5(text.encode("utf-8")).hexdigest()
+    """Get the hex checksum for the given text."""
+    return hashlib.md5(text.encode("utf-8")).hexdigest()

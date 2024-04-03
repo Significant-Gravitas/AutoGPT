@@ -16,6 +16,7 @@ from autogpt.prompts.utils import indent
 
 class EventHistoryComponent(Component, MessageProvider, AfterParse, AfterExecute):
     """Keeps track of the event history and provides a summary of the steps."""
+
     def __init__(
         self,
         event_history: EpisodicActionHistory,

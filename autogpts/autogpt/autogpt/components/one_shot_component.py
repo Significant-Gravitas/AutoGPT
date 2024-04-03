@@ -5,23 +5,21 @@ import re
 
 import distro
 
-from autogpt.agents.protocols import BuildPrompt, ParseResponse, Single
-from autogpt.agents.components import Single
-
-from autogpt.config.config import Config
-from autogpt.core.resource.model_providers.schema import (
-    AssistantChatMessage,
-    ChatModelInfo,
-)
 from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.agents.components import Component
-from autogpt.core.utils.json_utils import extract_dict_from_json, json_loads
-from autogpt.agents.utils.schema import DEFAULT_RESPONSE_SCHEMA
+from autogpt.agents.components import Component, Single
+from autogpt.agents.protocols import BuildPrompt, ParseResponse
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
+from autogpt.agents.utils.schema import DEFAULT_RESPONSE_SCHEMA
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
+from autogpt.config.config import Config
 from autogpt.core.prompting.schema import ChatPrompt
-from autogpt.core.resource.model_providers.schema import ChatMessage
+from autogpt.core.resource.model_providers.schema import (
+    AssistantChatMessage,
+    ChatMessage,
+    ChatModelInfo,
+)
+from autogpt.core.utils.json_utils import extract_dict_from_json, json_loads
 from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.models.command import Command
 from autogpt.prompts.utils import format_numbered_list
@@ -31,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 class OneShotComponent(Component, BuildPrompt, ParseResponse):
     """Component for one-shot Agents. Builds prompt and parses resonse."""
+
     def __init__(
         self,
         legacy_config: Config,
@@ -53,11 +52,6 @@ class OneShotComponent(Component, BuildPrompt, ParseResponse):
     ) -> Single[ChatPrompt]:
         use_functions_api = self.legacy_config.openai_functions
 
-        constraints = format_numbered_list(
-            directives.constraints
-            + self._generate_budget_constraint(profile.api_budget)
-        )
-
         messages.insert(
             0,
             ChatMessage.system(
@@ -68,13 +62,14 @@ class OneShotComponent(Component, BuildPrompt, ParseResponse):
                 f"{self._generate_os_info()}\n"
                 "## Constraints\n"
                 "You operate within the following constraints:\n"
-                f"{constraints}\n"
+                f"{format_numbered_list(directives.constraints)}\n"
                 "## Resources\n"
                 "You can leverage access to the following resources:\n"
                 f"{format_numbered_list(directives.resources)}\n"
                 "## Commands\n"
                 "These are the ONLY commands you can use."
-                " Any action you perform must be possible through one of these commands:\n"
+                " Any action you perform must be possible"
+                " through one of these commands:\n"
                 f"{format_numbered_list([str(cmd) for cmd in commands])}\n"
                 "## Best practices\n"
                 f"{format_numbered_list(directives.best_practices)}\n"
@@ -156,15 +151,6 @@ class OneShotComponent(Component, BuildPrompt, ParseResponse):
             else distro.name(pretty=True)
         )
         return f"The OS you are running on is: {os_info}"
-
-    def _generate_budget_constraint(self, api_budget: float) -> list[str]:
-        """Generates the budget information part of the prompt."""
-        if api_budget > 0.0:
-            return [
-                f"It takes money to let you run. "
-                f"Your API budget is ${api_budget:.3f}"
-            ]
-        return []
 
     def _response_format_instruction(self, use_functions_api: bool) -> str:
         response_schema = DEFAULT_RESPONSE_SCHEMA.copy(deep=True)

@@ -10,6 +10,9 @@ import docker
 from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
 
+from autogpt.agents.base import BaseAgentSettings
+from autogpt.agents.components import Component
+from autogpt.agents.protocols import CommandProvider
 from autogpt.agents.utils.exceptions import (
     CodeExecutionError,
     CommandExecutionError,
@@ -19,12 +22,8 @@ from autogpt.agents.utils.exceptions import (
 from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.agents.base import BaseAgentSettings
-from autogpt.agents.components import Component
-from autogpt.agents.protocols import CommandProvider
 from autogpt.file_storage.base import FileStorage
 from autogpt.models.command import Command
-
 
 logger = logging.getLogger(__name__)
 
@@ -57,13 +56,15 @@ def is_docker_available() -> bool:
 
 class CodeExecutorComponent(Component, CommandProvider):
     """Provides commands to execute Python code and shell commands."""
-    def __init__(self, workspace: FileStorage, state: BaseAgentSettings, config: Config):
+
+    def __init__(
+        self, workspace: FileStorage, state: BaseAgentSettings, config: Config
+    ):
         self.workspace = workspace
         self.state = state
         self.legacy_config = config
 
     def get_commands(self) -> Iterator[Command]:
-        #TODO kcze better to split into shell and python commands
         if we_are_running_in_a_docker_container() or is_docker_available():
             yield Command.from_decorated_function(self.execute_python_code)
             yield Command.from_decorated_function(self.execute_python_file)
@@ -92,14 +93,15 @@ class CodeExecutorComponent(Component, CommandProvider):
                 description="The Python code to run",
                 required=True,
             ),
-        }
+        },
     )
     def execute_python_code(self, code: str) -> str:
         """
-        Create and execute a Python file in a Docker container and return the STDOUT of the
-        executed code.
+        Create and execute a Python file in a Docker container
+        and return the STDOUT of the executed code.
 
-        If the code generates any data that needs to be captured, use a print statement.
+        If the code generates any data that needs to be captured,
+        use a print statement.
 
         Args:
             code (str): The Python code to run.
@@ -138,11 +140,9 @@ class CodeExecutorComponent(Component, CommandProvider):
                 required=False,
                 items=JSONSchema(type=JSONSchema.Type.STRING),
             ),
-        }
+        },
     )
-    def execute_python_file(
-        self, filename: str, args: list[str] | str = []
-    ) -> str:
+    def execute_python_file(self, filename: str, args: list[str] | str = []) -> str:
         """Execute a Python file in a Docker container and return the output
 
         Args:
@@ -168,7 +168,8 @@ class CodeExecutorComponent(Component, CommandProvider):
             # Mimic the response that you get from the command line to make it
             # intuitively understandable for the LLM
             raise FileNotFoundError(
-                f"python: can't open file '{filename}': [Errno 2] No such file or directory"
+                f"python: can't open file '{filename}': "
+                f"[Errno 2] No such file or directory"
             )
 
         if we_are_running_in_a_docker_container():
@@ -210,7 +211,9 @@ class CodeExecutorComponent(Component, CommandProvider):
                     )
                     # Use the low-level API to stream the pull response
                     low_level_client = docker.APIClient()
-                    for line in low_level_client.pull(image_name, stream=True, decode=True):
+                    for line in low_level_client.pull(
+                        image_name, stream=True, decode=True
+                    ):
                         # Print the status and progress, if available
                         status = line.get("status")
                         progress = line.get("progress")
@@ -267,16 +270,15 @@ class CodeExecutorComponent(Component, CommandProvider):
             )
             raise CommandExecutionError(f"Could not run the script in a container: {e}")
 
-
     def validate_command(self, command_line: str, config: Config) -> tuple[bool, bool]:
         """Check whether a command is allowed and whether it may be executed in a shell.
 
         If shell command control is enabled, we disallow executing in a shell, because
-        otherwise the model could easily circumvent the command filter using shell features.
+        otherwise the model could circumvent the command filter using shell features.
 
         Args:
             command_line (str): The command line to validate
-            config (Config): The application config including shell command control settings
+            config (Config): The app config including shell command control settings
 
         Returns:
             bool: True if the command is allowed, False otherwise
@@ -293,7 +295,6 @@ class CodeExecutorComponent(Component, CommandProvider):
             return command_name not in config.shell_denylist, False
         else:
             return True, True
-
 
     @command(
         ["execute_shell"],
@@ -315,7 +316,9 @@ class CodeExecutorComponent(Component, CommandProvider):
         Returns:
             str: The output of the command
         """
-        allow_execute, allow_shell = self.validate_command(command_line, self.legacy_config)
+        allow_execute, allow_shell = self.validate_command(
+            command_line, self.legacy_config
+        )
         if not allow_execute:
             logger.info(f"Command '{command_line}' not allowed")
             raise OperationNotAllowedError("This shell command is not allowed.")
@@ -341,7 +344,6 @@ class CodeExecutorComponent(Component, CommandProvider):
 
         return output
 
-
     @command(
         ["execute_shell_popen"],
         "Execute a Shell Command, non-interactive commands only",
@@ -363,7 +365,9 @@ class CodeExecutorComponent(Component, CommandProvider):
         Returns:
             str: Description of the fact that the process started and its id
         """
-        allow_execute, allow_shell = self.validate_command(command_line, self.legacy_config)
+        allow_execute, allow_shell = self.validate_command(
+            command_line, self.legacy_config
+        )
         if not allow_execute:
             logger.info(f"Command '{command_line}' not allowed")
             raise OperationNotAllowedError("This shell command is not allowed.")

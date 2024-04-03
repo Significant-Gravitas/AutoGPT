@@ -3,14 +3,14 @@ from typing import Iterator
 
 from git.repo import Repo
 
-from autogpt.agents.utils.exceptions import CommandExecutionError
-from autogpt.command_decorator import command
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.url_utils.validators import validate_url
 from autogpt.agents.components import Component
 from autogpt.agents.protocols import CommandProvider
+from autogpt.agents.utils.exceptions import CommandExecutionError
+from autogpt.command_decorator import command
 from autogpt.config.config import Config
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command
+from autogpt.url_utils.validators import validate_url
 
 COMMAND_CATEGORY = "git_operations"
 COMMAND_CATEGORY_TITLE = "Git Operations"

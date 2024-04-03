@@ -8,14 +8,25 @@ from typing import TYPE_CHECKING, Optional
 import sentry_sdk
 from pydantic import Field
 
+from autogpt.agents.utils.decorators import retry
+from autogpt.components.code_executor import CodeExecutorComponent
+from autogpt.components.event_history import EventHistoryComponent
+from autogpt.components.git_operations import GitOperationsComponent
+from autogpt.components.image_gen import ImageGeneratorComponent
 from autogpt.components.one_shot_component import OneShotComponent
+from autogpt.components.system import SystemComponent
+from autogpt.components.user_interaction import UserInteractionComponent
+from autogpt.components.web_search import WebSearchComponent
+from autogpt.components.web_selenium import WebSeleniumComponent
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
+from autogpt.core.prompting.base import PromptStrategy
 from autogpt.core.resource.model_providers import (
     AssistantChatMessage,
     ChatMessage,
     ChatModelProvider,
 )
+from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.file_storage.base import FileStorage
 from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.logs.log_cycle import (
@@ -32,27 +43,16 @@ from autogpt.models.action_history import (
     ActionSuccessResult,
 )
 from autogpt.models.command import Command, CommandOutput
-from autogpt.components.system import SystemComponent
-from autogpt.components.user_interaction import UserInteractionComponent
-from autogpt.components.code_executor import CodeExecutorComponent
-from autogpt.components.git_operations import GitOperationsComponent
-from autogpt.components.image_gen import ImageGeneratorComponent
-from autogpt.components.web_search import WebSearchComponent
-from autogpt.components.web_selenium import WebSeleniumComponent
-from autogpt.components.event_history import EventHistoryComponent
-from autogpt.core.prompting.base import PromptStrategy
-from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 
+from ..components.context import ContextComponent
+from ..components.file_manager import FileManagerComponent
+from ..components.watchdog import WatchdogComponent
 from .base import (
     BaseAgent,
     BaseAgentConfiguration,
     BaseAgentSettings,
     ThoughtProcessOutput,
-    retry,
 )
-from ..components.file_manager import FileManagerComponent
-from ..components.context import ContextComponent
-from ..components.watchdog import WatchdogComponent
 from .utils.exceptions import (
     AgentException,
     AgentTerminated,
@@ -67,7 +67,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# TODO kcze merge config and settings?
 class AgentConfiguration(BaseAgentConfiguration):
     pass
 
@@ -77,11 +76,13 @@ class AgentSettings(BaseAgentSettings):
 
 
 class AgentPromptStrategy(PromptStrategy):
-    def build_prompt(self, *_, **kwargs) -> ChatPrompt: ...
+    def build_prompt(self, *_, **kwargs) -> ChatPrompt:
+        ...
 
     def parse_response_content(
         self, response_content: AssistantChatMessage
-    ) -> ThoughtProcessOutput: ...
+    ) -> ThoughtProcessOutput:
+        ...
 
 
 class Agent(BaseAgent, Configurable[AgentSettings]):
@@ -100,7 +101,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         super().__init__(settings, llm_provider)
 
         # Components
-        self.system = SystemComponent(legacy_config)
+        self.system = SystemComponent(legacy_config, settings.ai_profile)
         self.history = EventHistoryComponent(
             settings.history,
             self.send_token_limit,
@@ -330,8 +331,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         )
 
     def get_command(self, command_name: str) -> Optional[Command]:
-        # TODO kcze update this logic to preserve command names as much as possible
-        # currently latter commands just obscure earlier ones
         for command in reversed(self.commands):
             if command_name in command.names:
                 return command

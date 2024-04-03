@@ -2,29 +2,33 @@ import logging
 import time
 from typing import Iterator
 
-from autogpt.llm.api_manager import ApiManager
+from autogpt.agents.components import Component
+from autogpt.agents.protocols import CommandProvider, DirectiveProvider, MessageProvider
+from autogpt.agents.utils.exceptions import AgentFinished
 from autogpt.command_decorator import command
-from autogpt.agents.utils.exceptions import (
-    AgentFinished,
-)
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.agents.components import (
-    Component,
-)
-from autogpt.agents.protocols import CommandProvider, MessageProvider
-from autogpt.models.command import Command
+from autogpt.config.ai_profile import AIProfile
 from autogpt.config.config import Config
-from autogpt.core.resource.model_providers.schema import (
-    ChatMessage,
-)
+from autogpt.core.resource.model_providers.schema import ChatMessage
+from autogpt.core.utils.json_schema import JSONSchema
+from autogpt.llm.api_manager import ApiManager
+from autogpt.models.command import Command
 
 logger = logging.getLogger(__name__)
 
 
-class SystemComponent(Component, MessageProvider, CommandProvider):
+class SystemComponent(Component, DirectiveProvider, MessageProvider, CommandProvider):
     """Component for system messages and commands."""
-    def __init__(self, config: Config):
+
+    def __init__(self, config: Config, profile: AIProfile):
         self.legacy_config = config
+        self.profile = profile
+
+    def get_contraints(self) -> Iterator[str]:
+        if self.profile.api_budget > 0.0:
+            yield (
+                f"It takes money to let you run. "
+                f"Your API budget is ${self.profile.api_budget:.3f}"
+            )
 
     def get_messages(self) -> Iterator[ChatMessage]:
         # Clock
@@ -38,7 +42,6 @@ class SystemComponent(Component, MessageProvider, CommandProvider):
             )
             if remaining_budget < 0:
                 remaining_budget = 0
-            # TODO kcze this is repeated similarly in constraints
             budget_msg = ChatMessage.system(
                 f"Your remaining API budget is ${remaining_budget:.3f}"
                 + (

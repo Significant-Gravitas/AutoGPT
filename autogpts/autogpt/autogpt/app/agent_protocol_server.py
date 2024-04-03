@@ -228,7 +228,7 @@ class AgentProtocolServer:
         step = await self.db.create_step(
             task_id=task_id,
             input=step_request,
-            #TODO hardcoded "finish"
+            # TODO hardcoded "finish"
             is_last=execute_command == "finish" and execute_approved,
         )
         agent.llm_provider = self._get_task_llm_provider(task, step.step_id)

@@ -93,7 +93,6 @@ def create_agent_state(
     directives: AIDirectives,
     app_config: Config,
 ) -> AgentSettings:
-
     return AgentSettings(
         agent_id=agent_id,
         name=Agent.default_settings.name,

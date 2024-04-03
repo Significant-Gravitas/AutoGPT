@@ -4,20 +4,20 @@ import io
 import json
 import logging
 import time
-from typing import Iterator
 import uuid
 from base64 import b64decode
 from pathlib import Path
+from typing import Iterator
 
 import requests
 from openai import OpenAI
 from PIL import Image
 
-from autogpt.command_decorator import command
-from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.agents.components import Component
 from autogpt.agents.protocols import CommandProvider
+from autogpt.command_decorator import command
 from autogpt.config.config import Config
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.file_storage.base import FileStorage
 from autogpt.models.command import Command
 
@@ -79,7 +79,6 @@ class ImageGeneratorComponent(Component, CommandProvider):
             return self.generate_image_with_sd_webui(prompt, filename, size)
         return "No Image Provider Set"
 
-
     def generate_image_with_hf(self, prompt: str, output_file: Path) -> str:
         """Generate an image with HuggingFace's API.
 
@@ -137,7 +136,6 @@ class ImageGeneratorComponent(Component, CommandProvider):
 
         return "Error creating image."
 
-
     def generate_image_with_dalle(
         self, prompt: str, output_file: Path, size: int
     ) -> str:
@@ -178,7 +176,6 @@ class ImageGeneratorComponent(Component, CommandProvider):
             png.write(image_data)
 
         return f"Saved to disk: {output_file}"
-
 
     def generate_image_with_sd_webui(
         self,

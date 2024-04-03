@@ -30,8 +30,7 @@ This change directly addresses point 2 of the Roadmap [Empowering Agent Builders
   - [x] Image generation
   - [x] Web search
   - [x] Selenium
-- [ ] Move Components to forge and build AutoGPT using forge components
-- [ ] TODOs
+- [x] TODOs
 - [ ] Tests
 - [ ] Documentation
 
@@ -42,7 +41,7 @@ Agent has methods (currently `propose_action` and `execute`) that execute *pipel
 
 This system is simple, flexible, requires basically no configuration, and doesn't hide any data (anything can still be passed or accessed directly from or between components).
 
-Example component [ported](https://github.com/kcze/AutoGPT/blob/kpczerwinski/open-440-modular-agents/autogpts/autogpt/autogpt/components/context/component.py): 
+Example component [ported](https://github.com/kcze/AutoGPT/blob/kpczerwinski/open-440-modular-agents/autogpts/autogpt/autogpt/components/context.py): 
 
 Example Protocol (i.e. interface):
 ```py

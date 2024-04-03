@@ -3,27 +3,25 @@ import os
 import os.path
 from pathlib import Path
 from typing import Iterator
-import logging
 
 from autogpt.agents.base import CommandArgs
+from autogpt.agents.components import Component
+from autogpt.agents.protocols import CommandProvider, DirectiveProvider
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.command import ValidityResult, Command
-from autogpt.agents.components import Component
 from autogpt.file_storage.base import FileStorage
-from autogpt.agents.protocols import CommandProvider, DirectiveProvider
+from autogpt.models.command import Command, ValidityResult
 
-from ..file_operations_utils import decode_textual_file, text_checksum
 from ..agents.base import BaseAgentSettings
-
+from ..file_operations_utils import decode_textual_file, text_checksum
 
 logger = logging.getLogger(__name__)
 
 
 class FileManagerComponent(Component, DirectiveProvider, CommandProvider):
     """
-    Adds general file manager (e.g. Agent state), 
-    workspace manager (e.g. Agent output files) support and 
+    Adds general file manager (e.g. Agent state),
+    workspace manager (e.g. Agent output files) support and
     commands to perform operations on files and folders.
     """
 
@@ -40,7 +38,7 @@ class FileManagerComponent(Component, DirectiveProvider, CommandProvider):
 
     def __init__(self, state: BaseAgentSettings, file_storage: FileStorage):
         self.state = state
-        
+
         if not state.agent_id:
             raise ValueError("Agent must have an ID.")
 
@@ -68,13 +66,13 @@ class FileManagerComponent(Component, DirectiveProvider, CommandProvider):
         state.agent_id = new_id
 
     def get_resources(self) -> Iterator[str]:
-        yield 'The ability to read and write files.'
+        yield "The ability to read and write files."
 
     def get_commands(self) -> Iterator[Command]:
         yield Command.from_decorated_function(self.read_file)
         yield Command.from_decorated_function(self.write_to_file)
         yield Command.from_decorated_function(self.list_folder)
-    
+
     def _is_write_valid(self, arguments: CommandArgs) -> ValidityResult:
         if not self.workspace.exists(arguments["filename"]):
             return ValidityResult(True)
@@ -114,7 +112,8 @@ class FileManagerComponent(Component, DirectiveProvider, CommandProvider):
 
     @command(
         ["write_file", "create_file"],
-        "Write a file, creating it if necessary. If the file exists, it is overwritten.",
+        "Write a file, creating it if necessary. "
+        "If the file exists, it is overwritten.",
         {
             "filename": JSONSchema(
                 type=JSONSchema.Type.STRING,
@@ -127,7 +126,6 @@ class FileManagerComponent(Component, DirectiveProvider, CommandProvider):
                 required=True,
             ),
         },
-        # is_valid=self._is_write_valid,#TODO kcze fix
     )
     async def write_to_file(self, filename: str | Path, contents: str) -> str:
         """Write contents to a file

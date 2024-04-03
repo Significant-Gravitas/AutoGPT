@@ -189,7 +189,7 @@ async def run_auto_gpt(
         ) <= len(existing_agents):
             load_existing_agent = existing_agents[int(load_existing_agent) - 1]
 
-        if load_existing_agent not in existing_agents:
+        if load_existing_agent != "" and load_existing_agent not in existing_agents:
             logger.info(
                 f"Unknown agent '{load_existing_agent}', "
                 f"creating a new one instead.",
@@ -234,7 +234,7 @@ async def run_auto_gpt(
 
         if (
             agent.event_history.current_episode
-            #TODO hardcoded "finish"
+            # TODO hardcoded "finish"
             and agent.event_history.current_episode.action.name == "finish"
             and not agent.event_history.current_episode.result
         ):

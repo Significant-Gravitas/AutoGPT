@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import inspect
-from typing import TYPE_CHECKING, Any, Callable, Literal, NamedTuple, Optional
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
 if TYPE_CHECKING:
-    from autogpt.agents.base import BaseAgent
-    from autogpt.config import Config
-    from autogpt.agents.agent import Agent
     from autogpt.agents.base import CommandArgs
 
 from .command_parameter import CommandParameter
@@ -38,9 +35,9 @@ class Command:
         description: str,
         method: Callable[..., CommandOutput],
         parameters: list[CommandParameter],
-        is_valid: Callable[
-            [CommandArgs], ValidityResult
-        ] = lambda a: ValidityResult(True),
+        is_valid: Callable[[CommandArgs], ValidityResult] = lambda a: ValidityResult(
+            True
+        ),
     ):
         # Check if all parameters are provided
         if not self._parameters_match(method, parameters):
@@ -56,7 +53,7 @@ class Command:
     @property
     def is_async(self) -> bool:
         return inspect.iscoroutinefunction(self.method)
-    
+
     @staticmethod
     def from_decorated_function(func: Callable) -> Command:
         return Command(
@@ -66,18 +63,22 @@ class Command:
             parameters=getattr(func, "parameters", []),
             is_valid=getattr(func, "is_valid", lambda a: ValidityResult(True)),
         )
-    
-    def _parameters_match(self, func: Callable, parameters: list[CommandParameter]) -> bool:
+
+    def _parameters_match(
+        self, func: Callable, parameters: list[CommandParameter]
+    ) -> bool:
         # Get the function's signature
         signature = inspect.signature(func)
         # Extract parameter names, ignoring 'self' for methods
         func_param_names = [
-            param.name for param in signature.parameters.values() if param.name != 'self'
+            param.name
+            for param in signature.parameters.values()
+            if param.name != "self"
         ]
         names = [param.name for param in parameters]
         # Check if sorted lists of names/keys are equal
         return sorted(func_param_names) == sorted(names)
-    
+
     def __call__(self, *args, **kwargs) -> Any:
         return self.method(*args, **kwargs)
 

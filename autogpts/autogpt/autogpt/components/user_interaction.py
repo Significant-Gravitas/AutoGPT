@@ -1,11 +1,11 @@
 from typing import Iterator
 
-from autogpt.command_decorator import command
-from autogpt.app.utils import clean_input
-from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.agents.components import Component
 from autogpt.agents.protocols import CommandProvider
+from autogpt.app.utils import clean_input
+from autogpt.command_decorator import command
 from autogpt.config.config import Config
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command
 
 
@@ -29,8 +29,8 @@ class UserInteractionComponent(Component, CommandProvider):
         }
     )
     def ask_user(self, question: str) -> str:
-        """"If you need more details or information regarding the given goals, 
-            you can ask the user for input."""
+        """ "If you need more details or information regarding the given goals,
+        you can ask the user for input."""
         print(f"\nQ: {question}")
         resp = clean_input(self.config, "A:")
         return f"The user's answer: '{resp}'"

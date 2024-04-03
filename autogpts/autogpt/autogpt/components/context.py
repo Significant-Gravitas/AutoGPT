@@ -1,25 +1,16 @@
-from typing import TYPE_CHECKING, Iterator, Optional
-
 import contextlib
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Iterator, Optional
 
-# if TYPE_CHECKING:
-from autogpt.models.context_item import ContextItem
-
-from autogpt.agents.utils.exceptions import (
-    InvalidArgumentError,
-)
-from autogpt.command_decorator import command
+from autogpt.agents.components import Component
 from autogpt.agents.protocols import CommandProvider, MessageProvider
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.context_item import FileContextItem, FolderContextItem
-from autogpt.file_storage.base import FileStorage
-from autogpt.agents.components import (
-    Component,
-)
+from autogpt.agents.utils.exceptions import InvalidArgumentError
+from autogpt.command_decorator import command
 from autogpt.core.resource.model_providers import ChatMessage
+from autogpt.core.utils.json_schema import JSONSchema
+from autogpt.file_storage.base import FileStorage
 from autogpt.models.command import Command
+from autogpt.models.context_item import ContextItem, FileContextItem, FolderContextItem
 
 
 class AgentContext:
@@ -44,11 +35,14 @@ class AgentContext:
         self.items.clear()
 
     def format_numbered(self, workspace: FileStorage) -> str:
-        return "\n\n".join([f"{i}. {c.fmt(workspace)}" for i, c in enumerate(self.items, 1)])
+        return "\n\n".join(
+            [f"{i}. {c.fmt(workspace)}" for i, c in enumerate(self.items, 1)]
+        )
 
 
 class ContextComponent(Component, MessageProvider, CommandProvider):
     """Adds ability to keep files and folders open in the context (prompt)."""
+
     def __init__(self, workspace: FileStorage):
         self.context = AgentContext()
         self.workspace = workspace
@@ -67,7 +61,7 @@ class ContextComponent(Component, MessageProvider, CommandProvider):
         yield Command.from_decorated_function(self.open_file)
         yield Command.from_decorated_function(self.open_folder)
         yield Command.from_decorated_function(self.close_context_item)
-        
+
     @command(
         parameters={
             "file_path": JSONSchema(
@@ -78,9 +72,9 @@ class ContextComponent(Component, MessageProvider, CommandProvider):
         }
     )
     async def open_file(self, file_path: Path) -> str:
-        """"Opens a file for editing or continued viewing; 
+        """ "Opens a file for editing or continued viewing;
             creates it if it does not exist yet.
-            Note: If you only need to read or write a file once, 
+            Note: If you only need to read or write a file once,
             use `write_to_file` instead.
 
         Args:
@@ -134,7 +128,9 @@ class ContextComponent(Component, MessageProvider, CommandProvider):
             relative_path = path.relative_to(self.workspace.root)
 
         if not self.workspace.exists(path):
-            raise FileNotFoundError(f"open_folder {path} failed: no such file or directory")
+            raise FileNotFoundError(
+                f"open_folder {path} failed: no such file or directory"
+            )
 
         path = relative_path or path
 
@@ -155,7 +151,7 @@ class ContextComponent(Component, MessageProvider, CommandProvider):
     )
     def close_context_item(self, number: int) -> str:
         """Hide an open file, folder or other context item, to save tokens.
-        
+
         Args:
             number (int): The 1-based index of the context item to hide
 

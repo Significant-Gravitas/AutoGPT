@@ -3,11 +3,7 @@ from typing import Callable, Optional, ParamSpec, TypeVar
 
 from autogpt.agents.base import CommandArgs
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.command import (
-    CommandOutput,
-    CommandParameter,
-    ValidityResult,
-)
+from autogpt.models.command import CommandOutput, CommandParameter, ValidityResult
 
 # Unique identifier for AutoGPT commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"

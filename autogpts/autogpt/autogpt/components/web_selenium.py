@@ -24,24 +24,24 @@ from selenium.webdriver.safari.options import Options as SafariOptions
 from selenium.webdriver.safari.webdriver import WebDriver as SafariDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
-from autogpt.agents.components import Component
-from autogpt.agents.protocols import CommandProvider
-from autogpt.core.resource.model_providers.schema import (
-    ChatModelInfo,
-    ChatModelProvider,
-)
-from autogpt.models.command import Command
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
+from autogpt.agents.components import Component
+from autogpt.agents.protocols import CommandProvider
 from autogpt.agents.utils.exceptions import CommandExecutionError, TooMuchOutputError
 from autogpt.command_decorator import command
+from autogpt.config import Config
+from autogpt.core.resource.model_providers.schema import (
+    ChatModelInfo,
+    ChatModelProvider,
+)
 from autogpt.core.utils.json_schema import JSONSchema
+from autogpt.models.command import Command
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.processing.text import extract_information, summarize_text
 from autogpt.url_utils.validators import validate_url
-from autogpt.config import Config
 
 COMMAND_CATEGORY = "web_browse"
 COMMAND_CATEGORY_TITLE = "Web Browsing"
@@ -78,7 +78,8 @@ class WebSeleniumComponent(Component, CommandProvider):
         ["read_webpage"],
         (
             "Read a webpage, and extract specific information from it."
-            " You must specify either topics_of_interest, a question, or get_raw_content."
+            " You must specify either topics_of_interest,"
+            " a question, or get_raw_content."
         ),
         {
             "url": JSONSchema(
@@ -98,7 +99,7 @@ class WebSeleniumComponent(Component, CommandProvider):
             "question": JSONSchema(
                 type=JSONSchema.Type.STRING,
                 description=(
-                    "A question that you want to answer using the content of the webpage."
+                    "A question you want to answer using the content of the webpage."
                 ),
                 required=False,
             ),
@@ -190,7 +191,8 @@ class WebSeleniumComponent(Component, CommandProvider):
         """Scrape text from a browser window using selenium
 
         Args:
-            driver (WebDriver): A driver object representing the browser window to scrape
+            driver (WebDriver): A driver object representing
+            the browser window to scrape
 
         Returns:
             str: the text scraped from the website
@@ -213,7 +215,8 @@ class WebSeleniumComponent(Component, CommandProvider):
         """Scrape links from a website using selenium
 
         Args:
-            driver (WebDriver): A driver object representing the browser window to scrape
+            driver (WebDriver): A driver object representing
+            the browser window to scrape
             base_url (str): The base URL to use for resolving relative links
 
         Returns:
@@ -237,7 +240,8 @@ class WebSeleniumComponent(Component, CommandProvider):
             config (Config): The applicable application configuration
 
         Returns:
-            driver (WebDriver): A driver object representing the browser window to scrape
+            driver (WebDriver): A driver object representing
+            the browser window to scrape
         """
         logging.getLogger("selenium").setLevel(logging.CRITICAL)
 
@@ -278,7 +282,9 @@ class WebSeleniumComponent(Component, CommandProvider):
                 options.add_argument("--headless=new")
                 options.add_argument("--disable-gpu")
 
-            self._sideload_chrome_extensions(options, config.app_data_dir / "assets" / "crx")
+            self._sideload_chrome_extensions(
+                options, config.app_data_dir / "assets" / "crx"
+            )
 
             if (chromium_driver_path := Path("/usr/bin/chromedriver")).exists():
                 chrome_service = ChromeDriverService(str(chromium_driver_path))
@@ -289,7 +295,8 @@ class WebSeleniumComponent(Component, CommandProvider):
                     if "'NoneType' object has no attribute 'split'" in str(e):
                         # https://github.com/SergeyPirogov/webdriver_manager/issues/649
                         logger.critical(
-                            "Connecting to browser failed: is Chrome or Chromium installed?"
+                            "Connecting to browser failed:"
+                            " is Chrome or Chromium installed?"
                         )
                     raise
                 chrome_service = ChromeDriverService(chrome_driver)
