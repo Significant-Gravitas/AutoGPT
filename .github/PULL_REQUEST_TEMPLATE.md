@@ -21,8 +21,8 @@ https://github.com/Significant-Gravitas/Nexus/wiki/Contributing
 -->
 
 - [x] Have you used the PR description template? &ensp; `+2 pts`
-- [ ] Is your pull request atomic, focusing on a single change? &ensp; `+5 pts`
-- [ ] Have you linked the GitHub issue(s) that this PR addresses? &ensp; `+5 pts`
+- [x] Is your pull request atomic, focusing on a single change? &ensp; `+5 pts`
+- [x] Have you linked the GitHub issue(s) that this PR addresses? &ensp; `+5 pts`
 - [ ] Have you documented your changes clearly and comprehensively? &ensp; `+5 pts`
 - [ ] Have you changed or added a feature? &ensp; `-4 pts`
   - [ ] Have you added/updated corresponding documentation? &ensp; `+4 pts`
