@@ -47,8 +47,11 @@ def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
     while attempts < DUCKDUCKGO_MAX_ATTEMPTS:
         if not query:
             return json.dumps(search_results)
+        ddc_backend = agent.legacy_config.duckduckgo_backend
 
-        search_results = DDGS().text(query, max_results=num_results)
+        search_results = DDGS().text(
+            query, max_results=num_results, backend=ddc_backend
+        )
 
         if search_results:
             break

@@ -237,6 +237,11 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         from_env=lambda: os.getenv("GOOGLE_CUSTOM_SEARCH_ENGINE_ID"),
     )
 
+    # duckduckgo
+    duckduckgo_backend: Optional[str] = UserConfigurable(
+        default="api", from_env="DUCKDUCKGO_BACKEND"
+    )
+
     # Huggingface
     huggingface_api_token: Optional[str] = UserConfigurable(
         from_env="HUGGINGFACE_API_TOKEN"
