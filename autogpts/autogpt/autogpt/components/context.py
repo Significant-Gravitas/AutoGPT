@@ -72,10 +72,10 @@ class ContextComponent(Component, MessageProvider, CommandProvider):
         }
     )
     async def open_file(self, file_path: Path) -> str:
-        """ "Opens a file for editing or continued viewing;
-            creates it if it does not exist yet.
-            Note: If you only need to read or write a file once,
-            use `write_to_file` instead.
+        """Opens a file for editing or continued viewing;
+        creates it if it does not exist yet.
+        Note: If you only need to read or write a file once,
+        use `write_to_file` instead.
 
         Args:
             file_path (Path): The path of the file to open

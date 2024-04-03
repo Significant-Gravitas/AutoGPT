@@ -20,7 +20,6 @@ from autogpt.components.web_search import WebSearchComponent
 from autogpt.components.web_selenium import WebSeleniumComponent
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
-from autogpt.core.prompting.base import PromptStrategy
 from autogpt.core.resource.model_providers import (
     AssistantChatMessage,
     ChatMessage,
@@ -73,16 +72,6 @@ class AgentConfiguration(BaseAgentConfiguration):
 
 class AgentSettings(BaseAgentSettings):
     config: AgentConfiguration = Field(default_factory=AgentConfiguration)
-
-
-class AgentPromptStrategy(PromptStrategy):
-    def build_prompt(self, *_, **kwargs) -> ChatPrompt:
-        ...
-
-    def parse_response_content(
-        self, response_content: AssistantChatMessage
-    ) -> ThoughtProcessOutput:
-        ...
 
 
 class Agent(BaseAgent, Configurable[AgentSettings]):

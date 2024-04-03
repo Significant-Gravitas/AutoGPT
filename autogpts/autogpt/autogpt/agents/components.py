@@ -17,24 +17,33 @@ class Component:
 
 
 class ComponentError(Exception):
+    """Error of a single component."""
+
     def __init__(self, message: str = ""):
         self.message = message
         super().__init__(message)
 
 
 class ProtocolError(ComponentError):
+    """Error of an entire pipeline of one component type."""
+
     def __init__(self, message: str = ""):
         self.message = message
         super().__init__(message)
 
 
 class ComponentGroupError(ComponentError):
+    """Error of a group of component types;
+    multiple pipelines."""
+
     def __init__(self, message: str = ""):
         self.message = message
         super().__init__(message)
 
 
 class ComponentSystemError(ComponentError):
+    """Error of an entire system."""
+
     def __init__(self, message: str = ""):
         self.message = message
         super().__init__(message)
