@@ -261,7 +261,9 @@ async def open_page_in_browser(url: str, config: Config) -> WebDriver:
         if config.selenium_headless:
             options.add_argument("--headless=new")
             options.add_argument("--disable-gpu")
-
+        proxy = config.selenium_proxy
+        if proxy:
+            options.add_argument("--proxy-server=%s" % proxy)
         _sideload_chrome_extensions(options, config.app_data_dir / "assets" / "crx")
 
         if (chromium_driver_path := Path("/usr/bin/chromedriver")).exists():
