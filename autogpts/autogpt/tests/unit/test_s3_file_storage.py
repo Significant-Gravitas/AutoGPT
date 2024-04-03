@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 
 from autogpt.file_storage.s3 import S3FileStorage, S3FileStorageConfiguration
 
-if not os.getenv("S3_ENDPOINT_URL") and not os.getenv("AWS_ACCESS_KEY_ID"):
+if not (os.getenv("S3_ENDPOINT_URL") and os.getenv("AWS_ACCESS_KEY_ID")):
     pytest.skip("S3 environment variables are not set", allow_module_level=True)
 
 
@@ -23,7 +23,7 @@ def s3_root() -> Path:
 
 
 @pytest.fixture
-def s3_storage_uninitialized(s3_bucket_name: str, s3_root: str) -> S3FileStorage:
+def s3_storage_uninitialized(s3_bucket_name: str, s3_root: Path) -> S3FileStorage:
     os.environ["STORAGE_BUCKET"] = s3_bucket_name
     storage_config = S3FileStorageConfiguration.from_env()
     storage_config.root = s3_root

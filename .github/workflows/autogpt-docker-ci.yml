@@ -24,7 +24,7 @@ defaults:
 
 env:
   IMAGE_NAME: auto-gpt
-  DEPLOY_IMAGE_NAME: ${{ secrets.DOCKER_USER }}/auto-gpt
+  DEPLOY_IMAGE_NAME: ${{ secrets.DOCKER_USER && format('{0}/', secrets.DOCKER_USER) || '' }}auto-gpt
   DEV_IMAGE_TAG: latest-dev
 
 jobs:
@@ -105,7 +105,8 @@ jobs:
         with:
           submodules: true
 
-      - name: Log in to Docker hub
+      - if: github.event_name == 'push'
+        name: Log in to Docker hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USER }}
