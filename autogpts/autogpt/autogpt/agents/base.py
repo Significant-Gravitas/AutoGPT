@@ -328,9 +328,9 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
             except ProtocolError:
                 self._trace.append(
                     f"❌ {Fore.LIGHTRED_EX}{component.__class__.__name__}: "
-                    f"PipelineError{Fore.RESET}"
+                    f"ProtocolError{Fore.RESET}"
                 )
-                # Restart from the beginning on PipelineError
+                # Restart from the beginning on ProtocolError
                 # Revert to original parameters
                 args = self._selective_copy(original_args)
                 pipeline_attempts += 1

@@ -32,9 +32,9 @@ class ProtocolError(ComponentError):
         super().__init__(message)
 
 
-class ComponentGroupError(ComponentError):
+class PipelineError(ComponentError):
     """Error of a group of component types;
-    multiple pipelines."""
+    multiple protocols."""
 
     def __init__(self, message: str = ""):
         self.message = message
