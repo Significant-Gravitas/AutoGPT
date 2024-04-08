@@ -9,6 +9,7 @@ from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from autogpt.utils.exceptions import AgentFinished
 from forge.sdk.db import AgentDB
 from forge.sdk.errors import NotFoundError
 from forge.sdk.middlewares import AgentMiddleware
@@ -27,10 +28,10 @@ from hypercorn.asyncio import serve as hypercorn_serve
 from hypercorn.config import Config as HypercornConfig
 from sentry_sdk import set_user
 
+from autogpt.components.system import SystemComponent
 from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
-from autogpt.agents.utils.exceptions import AgentFinished
 from autogpt.app.utils import is_port_free
 from autogpt.components.user_interaction import ask_user
 from autogpt.config import Config
@@ -147,7 +148,7 @@ class AgentProtocolServer:
             file_storage=self.file_storage,
             llm_provider=self._get_task_llm_provider(task),
         )
-        await task_agent.save_state()
+        await task_agent.file_manager.save_state()
 
         return task
 
@@ -228,15 +229,14 @@ class AgentProtocolServer:
         step = await self.db.create_step(
             task_id=task_id,
             input=step_request,
-            # TODO hardcoded "finish"
-            is_last=execute_command == "finish" and execute_approved,
+            is_last=execute_command == SystemComponent.finish.__name__ and execute_approved,
         )
         agent.llm_provider = self._get_task_llm_provider(task, step.step_id)
 
         # Execute previously proposed action
         if execute_command:
             assert execute_command_args is not None
-            agent.workspace.on_write_file = lambda path: self._on_agent_write_file(
+            agent.file_manager.workspace.on_write_file = lambda path: self._on_agent_write_file(
                 task=task, step=step, relative_path=path
             )
 
@@ -274,7 +274,7 @@ class AgentProtocolServer:
                         output=execute_command_args["reason"],
                         additional_output=additional_output,
                     )
-                    await agent.save_state()
+                    await agent.file_manager.save_state()
                     return step
             else:
                 assert user_input
@@ -356,7 +356,7 @@ class AgentProtocolServer:
             additional_output=additional_output,
         )
 
-        await agent.save_state()
+        await agent.file_manager.save_state()
         return step
 
     async def _on_agent_write_file(

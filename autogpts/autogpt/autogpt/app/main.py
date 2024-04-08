@@ -14,16 +14,17 @@ from types import FrameType
 from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
+from autogpt.utils.exceptions import AgentTerminated
 from forge.sdk.db import AgentDB
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
 
+from autogpt.components.system import SystemComponent
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
-from autogpt.agents.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 from autogpt.components.code_executor import (
     is_docker_available,
     we_are_running_in_a_docker_container,
@@ -234,8 +235,7 @@ async def run_auto_gpt(
 
         if (
             agent.event_history.current_episode
-            # TODO hardcoded "finish"
-            and agent.event_history.current_episode.action.name == "finish"
+            and agent.event_history.current_episode.action.name == SystemComponent.finish.__name__
             and not agent.event_history.current_episode.result
         ):
             # Agent was resumed after `finish` -> rewrite result of `finish` action
