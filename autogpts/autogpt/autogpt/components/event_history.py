@@ -1,7 +1,6 @@
 from typing import Callable, Iterator, Optional
 
 from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.agents.components import AgentComponent
 from autogpt.agents.protocols import AfterExecute, AfterParse, MessageProvider
 from autogpt.config.config import Config
 from autogpt.core.resource.model_providers.schema import ChatMessage, ChatModelProvider
@@ -14,7 +13,7 @@ from autogpt.models.action_history import (
 from autogpt.prompts.utils import indent
 
 
-class EventHistoryComponent(AgentComponent, MessageProvider, AfterParse, AfterExecute):
+class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute):
     """Keeps track of the event history and provides a summary of the steps."""
 
     def __init__(

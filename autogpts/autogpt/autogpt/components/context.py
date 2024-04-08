@@ -2,7 +2,6 @@ import contextlib
 from pathlib import Path
 from typing import Iterator, Optional
 
-from autogpt.agents.components import AgentComponent
 from autogpt.agents.protocols import CommandProvider, MessageProvider
 from autogpt.agents.utils.exceptions import InvalidArgumentError
 from autogpt.command_decorator import command
@@ -40,7 +39,7 @@ class AgentContext:
         )
 
 
-class ContextComponent(AgentComponent, MessageProvider, CommandProvider):
+class ContextComponent(MessageProvider, CommandProvider):
     """Adds ability to keep files and folders open in the context (prompt)."""
 
     def __init__(self, workspace: FileStorage):

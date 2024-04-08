@@ -5,7 +5,6 @@ from typing import Iterator
 
 from duckduckgo_search import DDGS
 
-from autogpt.agents.components import AgentComponent
 from autogpt.agents.protocols import CommandProvider, DirectiveProvider
 from autogpt.agents.utils.exceptions import ConfigurationError
 from autogpt.command_decorator import command
@@ -21,7 +20,7 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
 logger = logging.getLogger(__name__)
 
 
-class WebSearchComponent(AgentComponent, DirectiveProvider, CommandProvider):
+class WebSearchComponent(DirectiveProvider, CommandProvider):
     """Provides commands to search the web."""
 
     def __init__(self, config: Config):

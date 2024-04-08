@@ -1,7 +1,8 @@
-from typing import Iterator, Protocol, runtime_checkable
+from abc import abstractmethod
+from typing import Iterator
 
 from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.agents.components import Single
+from autogpt.agents.components import AgentComponent, Single
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
 from autogpt.core.prompting.schema import ChatPrompt
@@ -13,8 +14,7 @@ from autogpt.models.action_history import ActionResult
 from autogpt.models.command import Command
 
 
-@runtime_checkable
-class DirectiveProvider(Protocol):
+class DirectiveProvider(AgentComponent):
     def get_contraints(self) -> Iterator[str]:
         return iter([])
 
@@ -25,20 +25,20 @@ class DirectiveProvider(Protocol):
         return iter([])
 
 
-@runtime_checkable
-class CommandProvider(Protocol):
+class CommandProvider(AgentComponent):
+    @abstractmethod
     def get_commands(self) -> Iterator[Command]:
         ...
 
 
-@runtime_checkable
-class MessageProvider(Protocol):
+class MessageProvider(AgentComponent):
+    @abstractmethod
     def get_messages(self) -> Iterator[ChatMessage]:
         ...
 
 
-@runtime_checkable
-class BuildPrompt(Protocol):
+class BuildPrompt(AgentComponent):
+    @abstractmethod
     def build_prompt(
         self,
         messages: list[ChatMessage],
@@ -50,21 +50,21 @@ class BuildPrompt(Protocol):
         ...
 
 
-@runtime_checkable
-class ParseResponse(Protocol):
+class ParseResponse(AgentComponent):
+    @abstractmethod
     def parse_response(
         self, result: ThoughtProcessOutput, response: AssistantChatMessage
     ) -> Single[ThoughtProcessOutput]:
         ...
 
 
-@runtime_checkable
-class AfterParse(Protocol):
+class AfterParse(AgentComponent):
+    @abstractmethod
     def after_parsing(self, result: ThoughtProcessOutput) -> None:
         ...
 
 
-@runtime_checkable
-class AfterExecute(Protocol):
+class AfterExecute(AgentComponent):
+    @abstractmethod
     def after_execution(self, result: ActionResult) -> None:
         ...

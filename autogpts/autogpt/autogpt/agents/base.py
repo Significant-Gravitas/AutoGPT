@@ -175,7 +175,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
     ):
         self.state = settings
         self.components: list[AgentComponent] = []
-        self.llm_provider = llm_provider  # TODO move to SimpleAgent
+        self.llm_provider = llm_provider  # TODO kcze move to SimpleAgent
         self.config = settings.config
         self.ai_profile = settings.ai_profile
         self.directives = settings.directives

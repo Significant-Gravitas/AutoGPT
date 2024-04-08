@@ -1,3 +1,4 @@
+from abc import ABC
 from typing import Callable, Generic, TypeVar
 
 T = TypeVar("T")
@@ -10,7 +11,7 @@ class Single(Generic[T]):
         self.value = value
 
 
-class AgentComponent:
+class AgentComponent(ABC):
     run_after: list[type["AgentComponent"]] = []
     enabled: Callable[[], bool] | bool = True
     disabled_reason: str = ""

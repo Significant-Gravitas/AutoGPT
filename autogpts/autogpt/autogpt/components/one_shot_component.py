@@ -6,7 +6,7 @@ import re
 import distro
 
 from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.agents.components import AgentComponent, Single
+from autogpt.agents.components import Single
 from autogpt.agents.protocols import BuildPrompt, ParseResponse
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.agents.utils.schema import DEFAULT_RESPONSE_SCHEMA
@@ -27,7 +27,7 @@ from autogpt.prompts.utils import format_numbered_list
 logger = logging.getLogger(__name__)
 
 
-class OneShotComponent(AgentComponent, BuildPrompt, ParseResponse):
+class OneShotComponent(BuildPrompt, ParseResponse):
     """Component for one-shot Agents. Builds prompt and parses resonse."""
 
     def __init__(
