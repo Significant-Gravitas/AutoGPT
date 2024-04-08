@@ -25,7 +25,8 @@ def command(
         names (list[str]): The names of the command.
             If not provided, the function name will be used.
         description (str): A brief description of what the command does.
-            If not provided, the first part of function docstring will be used.
+            If not provided, the docstring until double line break will be used
+            (or entire docstring if no double line break is found)
         parameters (dict[str, JSONSchema]): The parameters of the function
             that the command executes.
         is_valid (Callable[[CommandArgs], ValidityResult]):
@@ -41,15 +42,8 @@ def command(
         if not command_description:
             if not func.__doc__:
                 raise ValueError("Description is required if function has no docstring")
-            # Extract either before [Aa]rgs|[Rr]eturns: or everything
-            pattern = re.compile(r"^(.*?)(?:[Aa]rgs:|[Rr]eturns:)", re.DOTALL)
-            match = pattern.search(doc)
-            if match:
-                # Return the part of the docstring before "Args:" or "Returns:"
-                command_description = match.group(1).strip()
-            else:
-                # Return the entire docstring
-                command_description = doc.strip()
+            # Return the part of the docstring before double line break or everything
+            command_description = doc.split("\n\n")[0].strip()
 
         # Parameters
         typed_parameters = [
