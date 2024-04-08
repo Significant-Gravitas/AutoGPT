@@ -3,14 +3,15 @@ import time
 from typing import Iterator
 
 from autogpt.agents.protocols import CommandProvider, DirectiveProvider, MessageProvider
-from autogpt.agents.utils.exceptions import AgentFinished
-from autogpt.command_decorator import command
+from autogpt.utils.exceptions import AgentFinished
+from autogpt.utils.command_decorator import command
 from autogpt.config.ai_profile import AIProfile
 from autogpt.config.config import Config
 from autogpt.core.resource.model_providers.schema import ChatMessage
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.llm.api_manager import ApiManager
 from autogpt.models.command import Command
+from autogpt.utils.schema import DEFAULT_FINISH_COMMAND
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
         yield Command.from_decorated_function(self.finish)
 
     @command(
+        names=[DEFAULT_FINISH_COMMAND],
         parameters={
             "reason": JSONSchema(
                 type=JSONSchema.Type.STRING,

@@ -29,8 +29,8 @@ from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
 from autogpt.agents.protocols import CommandProvider
-from autogpt.agents.utils.exceptions import CommandExecutionError, TooMuchOutputError
-from autogpt.command_decorator import command
+from autogpt.utils.exceptions import CommandExecutionError, TooMuchOutputError
+from autogpt.utils.command_decorator import command
 from autogpt.config import Config
 from autogpt.core.resource.model_providers.schema import (
     ChatModelInfo,

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from autogpt.utils.exceptions import AgentFinished
+from autogpt.utils.schema import DEFAULT_ASK_COMMAND, DEFAULT_FINISH_COMMAND
 from forge.sdk.db import AgentDB
 from forge.sdk.errors import NotFoundError
 from forge.sdk.middlewares import AgentMiddleware
@@ -28,12 +29,10 @@ from hypercorn.asyncio import serve as hypercorn_serve
 from hypercorn.config import Config as HypercornConfig
 from sentry_sdk import set_user
 
-from autogpt.components.system import SystemComponent
 from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.app.utils import is_port_free
-from autogpt.components.user_interaction import ask_user
 from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
@@ -229,7 +228,7 @@ class AgentProtocolServer:
         step = await self.db.create_step(
             task_id=task_id,
             input=step_request,
-            is_last=execute_command == SystemComponent.finish.__name__ and execute_approved,
+            is_last=execute_command == DEFAULT_FINISH_COMMAND and execute_approved,
         )
         agent.llm_provider = self._get_task_llm_provider(task, step.step_id)
 
@@ -240,7 +239,7 @@ class AgentProtocolServer:
                 task=task, step=step, relative_path=path
             )
 
-            if execute_command == ask_user.__name__:  # HACK
+            if execute_command == DEFAULT_ASK_COMMAND:
                 execute_result = ActionSuccessResult(outputs=user_input)
                 agent.event_history.register_result(execute_result)
             elif not execute_command:

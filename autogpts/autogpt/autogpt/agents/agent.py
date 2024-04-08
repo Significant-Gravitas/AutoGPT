@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Optional
 import sentry_sdk
 from pydantic import Field
 
-from autogpt.agents.utils.decorators import retry
 from autogpt.components.code_executor import CodeExecutorComponent
 from autogpt.components.event_history import EventHistoryComponent
 from autogpt.components.git_operations import GitOperationsComponent
@@ -42,6 +41,14 @@ from autogpt.models.action_history import (
     ActionSuccessResult,
 )
 from autogpt.models.command import Command, CommandOutput
+from autogpt.utils.exceptions import (
+    AgentException,
+    AgentTerminated,
+    CommandExecutionError,
+    InvalidOperationError,
+    UnknownCommandError,
+)
+from autogpt.utils.retry_decorator import retry
 
 from ..components.context import ContextComponent
 from ..components.file_manager import FileManagerComponent
@@ -51,13 +58,6 @@ from .base import (
     BaseAgentConfiguration,
     BaseAgentSettings,
     ThoughtProcessOutput,
-)
-from .utils.exceptions import (
-    AgentException,
-    AgentTerminated,
-    CommandExecutionError,
-    InvalidOperationError,
-    UnknownCommandError,
 )
 
 if TYPE_CHECKING:

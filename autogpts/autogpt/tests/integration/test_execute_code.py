@@ -7,7 +7,7 @@ import pytest
 
 import autogpt.components.code_executor as sut  # system under testing
 from autogpt.agents.agent import Agent
-from autogpt.agents.utils.exceptions import (
+from autogpt.utils.exceptions import (
     InvalidArgumentError,
     OperationNotAllowedError,
 )

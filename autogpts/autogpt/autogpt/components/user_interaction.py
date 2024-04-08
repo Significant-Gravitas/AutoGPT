@@ -2,10 +2,11 @@ from typing import Iterator
 
 from autogpt.agents.protocols import CommandProvider
 from autogpt.app.utils import clean_input
-from autogpt.command_decorator import command
+from autogpt.utils.command_decorator import command
 from autogpt.config.config import Config
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command
+from autogpt.utils.schema import DEFAULT_ASK_COMMAND
 
 
 class UserInteractionComponent(CommandProvider):
@@ -19,6 +20,7 @@ class UserInteractionComponent(CommandProvider):
         yield Command.from_decorated_function(self.ask_user)
 
     @command(
+        names=[DEFAULT_ASK_COMMAND],
         parameters={
             "question": JSONSchema(
                 type=JSONSchema.Type.STRING,

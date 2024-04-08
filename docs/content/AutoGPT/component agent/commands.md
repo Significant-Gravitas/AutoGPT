@@ -24,7 +24,7 @@ The easiest way to provide a command is to use `command` decorator on a componen
 from autogpt.agents.components import Component
 from autogpt.agents.protocols import CommandProvider
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.command_decorator import command
+from autogpt.utils.command_decorator import command
 
 
 ```

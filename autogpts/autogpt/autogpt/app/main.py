@@ -14,13 +14,13 @@ from types import FrameType
 from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
-from autogpt.utils.exceptions import AgentTerminated
 from forge.sdk.db import AgentDB
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
 
-from autogpt.components.system import SystemComponent
+from autogpt.utils.exceptions import AgentTerminated, InvalidAgentResponseError
+from autogpt.utils.schema import DEFAULT_FINISH_COMMAND
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
@@ -235,7 +235,7 @@ async def run_auto_gpt(
 
         if (
             agent.event_history.current_episode
-            and agent.event_history.current_episode.action.name == SystemComponent.finish.__name__
+            and agent.event_history.current_episode.action.name == DEFAULT_FINISH_COMMAND
             and not agent.event_history.current_episode.result
         ):
             # Agent was resumed after `finish` -> rewrite result of `finish` action
@@ -343,24 +343,22 @@ async def run_auto_gpt(
     try:
         await run_interaction_loop(agent)
     except AgentTerminated:
-        file_manager = agent.file_manager
-        if file_manager:
-            agent_id = agent.state.agent_id
-            logger.info(f"Saving state of {agent_id}...")
+        agent_id = agent.state.agent_id
+        logger.info(f"Saving state of {agent_id}...")
 
-            # Allow user to Save As other ID
-            save_as_id = (
-                clean_input(
-                    config,
-                    f"Press enter to save as '{agent_id}',"
-                    " or enter a different ID to save to:",
-                )
-                or agent_id
+        # Allow user to Save As other ID
+        save_as_id = (
+            clean_input(
+                config,
+                f"Press enter to save as '{agent_id}',"
+                " or enter a different ID to save to:",
             )
-            if save_as_id and save_as_id != agent_id:
-                file_manager.change_agent_id(save_as_id)
-                # TODO: allow many-to-one relations of agents and workspaces
-            await file_manager.save_state()
+            or agent_id
+        )
+        if save_as_id and save_as_id != agent_id:
+            file_manager.change_agent_id(save_as_id)
+            # TODO: allow many-to-one relations of agents and workspaces
+        await file_manager.save_state()
 
 
 @coroutine

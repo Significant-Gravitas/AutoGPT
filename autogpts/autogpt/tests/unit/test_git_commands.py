@@ -3,7 +3,7 @@ from git.exc import GitCommandError
 from git.repo.base import Repo
 
 from autogpt.agents.agent import Agent
-from autogpt.agents.utils.exceptions import CommandExecutionError
+from autogpt.utils.exceptions import CommandExecutionError
 from autogpt.components.git_operations import clone_repository
 from autogpt.file_storage.base import FileStorage
 

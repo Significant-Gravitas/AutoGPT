@@ -8,8 +8,7 @@ import distro
 from autogpt.agents.base import ThoughtProcessOutput
 from autogpt.agents.components import Single
 from autogpt.agents.protocols import BuildPrompt, ParseResponse
-from autogpt.agents.utils.exceptions import InvalidAgentResponseError
-from autogpt.agents.utils.schema import DEFAULT_RESPONSE_SCHEMA
+from autogpt.utils.exceptions import InvalidAgentResponseError
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
 from autogpt.config.config import Config
@@ -23,6 +22,7 @@ from autogpt.core.utils.json_utils import extract_dict_from_json, json_loads
 from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.models.command import Command
 from autogpt.prompts.utils import format_numbered_list
+from autogpt.utils.schema import DEFAULT_RESPONSE_SCHEMA
 
 logger = logging.getLogger(__name__)
 

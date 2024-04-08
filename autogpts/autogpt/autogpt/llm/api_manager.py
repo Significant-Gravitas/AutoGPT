@@ -11,7 +11,7 @@ from autogpt.core.resource.model_providers.openai import (
     OpenAICredentials,
 )
 from autogpt.core.resource.model_providers.schema import ChatModelInfo
-from autogpt.singleton import Singleton
+from autogpt.utils.singleton import Singleton
 
 logger = logging.getLogger(__name__)
 

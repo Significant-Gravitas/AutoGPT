@@ -6,8 +6,8 @@ from typing import Iterator
 from duckduckgo_search import DDGS
 
 from autogpt.agents.protocols import CommandProvider, DirectiveProvider
-from autogpt.agents.utils.exceptions import ConfigurationError
-from autogpt.command_decorator import command
+from autogpt.utils.exceptions import ConfigurationError
+from autogpt.utils.command_decorator import command
 from autogpt.config.config import Config
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command

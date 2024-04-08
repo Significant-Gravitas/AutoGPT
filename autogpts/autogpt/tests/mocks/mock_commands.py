@@ -1,4 +1,4 @@
-from autogpt.command_decorator import command
+from autogpt.utils.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
 
 COMMAND_CATEGORY = "mock"

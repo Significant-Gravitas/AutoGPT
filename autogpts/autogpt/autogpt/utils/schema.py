@@ -1,5 +1,8 @@
 from autogpt.core.utils.json_schema import JSONSchema
 
+DEFAULT_FINISH_COMMAND = "finish"
+DEFAULT_ASK_COMMAND = "ask_user"
+
 DEFAULT_RESPONSE_SCHEMA = JSONSchema(
     type=JSONSchema.Type.OBJECT,
     properties={
