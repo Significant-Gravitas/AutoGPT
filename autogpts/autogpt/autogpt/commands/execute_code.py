@@ -1,14 +1,16 @@
 import logging
 import os
+import queue
 import shlex
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
-from tempfile import NamedTemporaryFile
-from typing import Iterator
 
 import docker
 from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
+from jupyter_client.manager import start_new_kernel
+from nbformat.v4 import new_notebook
 
 from autogpt.agents.base import BaseAgentSettings
 from autogpt.agents.protocols import CommandProvider
@@ -62,24 +64,24 @@ class CodeExecutorComponent(CommandProvider):
         self.workspace = workspace
         self.state = state
         self.legacy_config = config
-
         if not we_are_running_in_a_docker_container() and not is_docker_available():
             logger.info(
                 "Docker is not available or does not support Linux containers. "
                 "The code execution commands will not be available."
             )
-
         if not self.legacy_config.execute_local_commands:
             logger.info(
                 "Local shell commands are disabled. To enable them,"
                 " set EXECUTE_LOCAL_COMMANDS to 'True' in your config file."
             )
+        self.notebook = new_notebook()
+        kernel_name = self.notebook.metadata.get("kernelspec", {}).get("name", "python")
+        self.python_kernel = start_new_kernel(kernel_name=kernel_name)[1]
 
     def get_commands(self) -> Iterator[Command]:
         if we_are_running_in_a_docker_container() or is_docker_available():
             yield self.execute_python_code
             yield self.execute_python_file
-
         if self.legacy_config.execute_local_commands:
             yield self.execute_shell
             yield self.execute_shell_popen
@@ -106,24 +108,52 @@ class CodeExecutorComponent(CommandProvider):
 
         Args:
             code (str): The Python code to run.
-            agent (Agent): The Agent executing the command.
 
         Returns:
             str: The STDOUT captured from the code when it ran.
         """
 
-        tmp_code_file = NamedTemporaryFile(
-            "w", dir=self.workspace.root, suffix=".py", encoding="utf-8"
-        )
-        tmp_code_file.write(code)
-        tmp_code_file.flush()
-
         try:
-            return self.execute_python_file(tmp_code_file.name)
+            return self._execute_code_in_agent_python_session(code)
         except Exception as e:
-            raise CommandExecutionError(*e.args)
-        finally:
-            tmp_code_file.close()
+            raise CommandExecutionError(
+                f"An error occurred while executing the code: {str(e)}"
+            )
+
+    def _execute_code_in_agent_python_session(self, code: str) -> str:
+        """
+        This function will run code on python_kernel.`self.python_kernel.execute(code)`
+        does not return stdout and error direclty.The while part
+        will try to get stdout and error result from get_iopub_msg.
+        In here we just process stdout and items that have traceback.
+
+        Args:
+            code (str): The Python code to run.
+
+        Returns:
+            str: The STDOUT captured from the code when it ran.
+        """
+
+        self.python_kernel.execute(code)
+        output_texts = []
+        while True:
+            try:
+                io_msg = self.python_kernel.get_iopub_msg(timeout=1)
+                if (
+                    "name" in io_msg["content"].keys()
+                    and io_msg["content"]["name"] == "stdout"
+                ):
+                    output_texts.append(io_msg["content"]["text"])
+                elif "traceback" in io_msg["content"].keys():
+                    raise IOError(
+                        f"{io_msg['content']['evalue']}\n \
+                            {io_msg['content']['traceback']}"
+                    )
+            except queue.Empty:
+                break
+
+        output = "".join(output_texts)
+        return output
 
     @command(
         ["execute_python_file"],

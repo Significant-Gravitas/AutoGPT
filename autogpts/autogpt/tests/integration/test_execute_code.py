@@ -12,7 +12,11 @@ from autogpt.commands.execute_code import (
     is_docker_available,
     we_are_running_in_a_docker_container,
 )
-from autogpt.utils.exceptions import InvalidArgumentError, OperationNotAllowedError
+from autogpt.utils.exceptions import (
+    CommandExecutionError,
+    InvalidArgumentError,
+    OperationNotAllowedError,
+)
 
 
 @pytest.fixture
@@ -95,6 +99,31 @@ def test_execute_python_code(
 
     result: str = code_executor_component.execute_python_code(random_code)
     assert result.replace("\r", "") == f"Hello {random_string}!\n"
+
+
+def test_execute_python_code_persistent_session(
+    code_executor_component: CodeExecutorComponent, agent: Agent
+):
+    if not (is_docker_available() or we_are_running_in_a_docker_container()):
+        pytest.skip("Docker is not available")
+
+    result: str = code_executor_component.execute_python_code("a=3\nprint(a)")
+    assert result.replace("\r", "") == "3\n"
+    result: str = code_executor_component.execute_python_code("a+=1\nprint(a)")
+    assert result.replace("\r", "") == "4\n"
+
+
+def test_execute_python_code_fresh_session(
+    code_executor_component: CodeExecutorComponent, agent: Agent
+):
+    if not (is_docker_available() or we_are_running_in_a_docker_container()):
+        pytest.skip("Docker is not available")
+
+    with pytest.raises(
+        CommandExecutionError,
+        match=r"name 'a' is not defined",
+    ):
+        code_executor_component.execute_python_code("a+=1")
 
 
 def test_execute_python_file_invalid(
