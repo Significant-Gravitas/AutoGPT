@@ -10,8 +10,8 @@ class Single(Generic[T]):
         self.value = value
 
 
-class Component:
-    run_after: list[type["Component"]] = []
+class AgentComponent:
+    run_after: list[type["AgentComponent"]] = []
     enabled: Callable[[], bool] | bool = True
     disabled_reason: str = ""
 

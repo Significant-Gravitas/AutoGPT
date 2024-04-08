@@ -3,7 +3,7 @@ from typing import Iterator
 
 from git.repo import Repo
 
-from autogpt.agents.components import Component
+from autogpt.agents.components import AgentComponent
 from autogpt.agents.protocols import CommandProvider
 from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.command_decorator import command
@@ -16,7 +16,7 @@ COMMAND_CATEGORY = "git_operations"
 COMMAND_CATEGORY_TITLE = "Git Operations"
 
 
-class GitOperationsComponent(Component, CommandProvider):
+class GitOperationsComponent(AgentComponent, CommandProvider):
     """Provides commands to perform Git operations."""
 
     def __init__(self, config: Config):

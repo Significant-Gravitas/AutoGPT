@@ -2,7 +2,7 @@ import logging
 import time
 from typing import Iterator
 
-from autogpt.agents.components import Component
+from autogpt.agents.components import AgentComponent
 from autogpt.agents.protocols import CommandProvider, DirectiveProvider, MessageProvider
 from autogpt.agents.utils.exceptions import AgentFinished
 from autogpt.command_decorator import command
@@ -16,7 +16,7 @@ from autogpt.models.command import Command
 logger = logging.getLogger(__name__)
 
 
-class SystemComponent(Component, DirectiveProvider, MessageProvider, CommandProvider):
+class SystemComponent(AgentComponent, DirectiveProvider, MessageProvider, CommandProvider):
     """Component for system messages and commands."""
 
     def __init__(self, config: Config, profile: AIProfile):

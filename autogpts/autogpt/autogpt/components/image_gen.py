@@ -13,7 +13,7 @@ import requests
 from openai import OpenAI
 from PIL import Image
 
-from autogpt.agents.components import Component
+from autogpt.agents.components import AgentComponent
 from autogpt.agents.protocols import CommandProvider
 from autogpt.command_decorator import command
 from autogpt.config.config import Config
@@ -28,7 +28,7 @@ COMMAND_CATEGORY_TITLE = "Text to Image"
 logger = logging.getLogger(__name__)
 
 
-class ImageGeneratorComponent(Component, CommandProvider):
+class ImageGeneratorComponent(AgentComponent, CommandProvider):
     """A component that provides commands to generate images from text prompts."""
 
     def __init__(self, workspace: FileStorage, config: Config):

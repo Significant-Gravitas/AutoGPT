@@ -1,7 +1,7 @@
 import logging
 
 from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.agents.components import Component, ComponentSystemError
+from autogpt.agents.components import AgentComponent, ComponentSystemError
 from autogpt.agents.protocols import AfterParse
 from autogpt.components.context import ContextComponent
 from autogpt.models.action_history import EpisodicActionHistory
@@ -11,7 +11,7 @@ from ..agents.base import BaseAgentConfiguration
 logger = logging.getLogger(__name__)
 
 
-class WatchdogComponent(Component, AfterParse):
+class WatchdogComponent(AgentComponent, AfterParse):
     """
     Adds a watchdog feature to an agent class. Whenever the agent starts
     looping, the watchdog will switch from the FAST_LLM to the SMART_LLM and re-think.

@@ -28,7 +28,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
-from autogpt.agents.components import Component
+from autogpt.agents.components import AgentComponent
 from autogpt.agents.protocols import CommandProvider
 from autogpt.agents.utils.exceptions import CommandExecutionError, TooMuchOutputError
 from autogpt.command_decorator import command
@@ -58,7 +58,7 @@ class BrowsingError(CommandExecutionError):
     """An error occurred while trying to browse the page"""
 
 
-class WebSeleniumComponent(Component, CommandProvider):
+class WebSeleniumComponent(AgentComponent, CommandProvider):
     """Provides commands to browse the web using Selenium."""
 
     def __init__(

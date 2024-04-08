@@ -17,7 +17,7 @@ if TYPE_CHECKING:
         ChatModelProvider,
     )
 
-from autogpt.agents.components import Component, ComponentError, ProtocolError, Single
+from autogpt.agents.components import AgentComponent, ComponentError, ProtocolError, Single
 from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
@@ -161,7 +161,7 @@ class ThoughtProcessOutput:
 
 
 class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
-    T = TypeVar("T", bound=Component)
+    T = TypeVar("T", bound=AgentComponent)
 
     default_settings = BaseAgentSettings(
         name="BaseAgent",
@@ -174,7 +174,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
         llm_provider: ChatModelProvider,
     ):
         self.state = settings
-        self.components: list[Component] = []
+        self.components: list[AgentComponent] = []
         self.llm_provider = llm_provider  # TODO move to SimpleAgent
         self.config = settings.config
         self.ai_profile = settings.ai_profile
@@ -188,7 +188,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
         components = [
             getattr(self, attr)
             for attr in dir(self)
-            if isinstance(getattr(self, attr), Component)
+            if isinstance(getattr(self, attr), AgentComponent)
         ]
 
         if self.components:
@@ -203,11 +203,11 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
             return
         self.components = self._topological_sort(components)
 
-    def _topological_sort(self, components: list[Component]) -> list[Component]:
+    def _topological_sort(self, components: list[AgentComponent]) -> list[AgentComponent]:
         visited = set()
         stack = []
 
-        def visit(node: Component):
+        def visit(node: AgentComponent):
             if node in visited:
                 return
             visited.add(node)
@@ -270,7 +270,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
             copied_args.append(copied_item)
         return tuple(copied_args)
 
-    def is_enabled(self, component: Component) -> bool:
+    def is_enabled(self, component: AgentComponent) -> bool:
         if callable(component.enabled):
             return component.enabled()
         return component.enabled

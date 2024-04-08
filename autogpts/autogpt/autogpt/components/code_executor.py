@@ -11,7 +11,7 @@ from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
 
 from autogpt.agents.base import BaseAgentSettings
-from autogpt.agents.components import Component
+from autogpt.agents.components import AgentComponent
 from autogpt.agents.protocols import CommandProvider
 from autogpt.agents.utils.exceptions import (
     CodeExecutionError,
@@ -54,7 +54,7 @@ def is_docker_available() -> bool:
         return False
 
 
-class CodeExecutorComponent(Component, CommandProvider):
+class CodeExecutorComponent(AgentComponent, CommandProvider):
     """Provides commands to execute Python code and shell commands."""
 
     def __init__(

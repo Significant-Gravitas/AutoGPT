@@ -1,6 +1,6 @@
 from typing import Iterator
 
-from autogpt.agents.components import Component
+from autogpt.agents.components import AgentComponent
 from autogpt.agents.protocols import CommandProvider
 from autogpt.app.utils import clean_input
 from autogpt.command_decorator import command
@@ -9,7 +9,7 @@ from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command
 
 
-class UserInteractionComponent(Component, CommandProvider):
+class UserInteractionComponent(AgentComponent, CommandProvider):
     """Provides commands to interact with the user."""
 
     def __init__(self, config: Config):
