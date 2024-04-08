@@ -1,14 +1,5 @@
 from abc import ABC
-from typing import Callable, Generic, TypeVar
-
-T = TypeVar("T")
-
-
-class Single(Generic[T]):
-    """A wrapper for a single result (non-pipeline) of a component function."""
-
-    def __init__(self, value: T):
-        self.value = value
+from typing import Callable
 
 
 class AgentComponent(ABC):

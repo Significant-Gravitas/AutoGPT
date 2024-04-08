@@ -1,10 +1,8 @@
 from abc import abstractmethod
-from typing import Iterator
+from typing import Iterator, Protocol, runtime_checkable
 
 from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.agents.components import AgentComponent, Single
-from autogpt.config.ai_directives import AIDirectives
-from autogpt.config.ai_profile import AIProfile
+from autogpt.agents.components import AgentComponent
 from autogpt.core.prompting.schema import ChatPrompt
 from autogpt.core.resource.model_providers.schema import (
     AssistantChatMessage,
@@ -15,7 +13,7 @@ from autogpt.models.command import Command
 
 
 class DirectiveProvider(AgentComponent):
-    def get_contraints(self) -> Iterator[str]:
+    def get_constraints(self) -> Iterator[str]:
         return iter([])
 
     def get_resources(self) -> Iterator[str]:
@@ -37,24 +35,17 @@ class MessageProvider(AgentComponent):
         ...
 
 
-class BuildPrompt(AgentComponent):
-    @abstractmethod
+@runtime_checkable
+class PromptStrategy(Protocol):
     def build_prompt(
         self,
-        messages: list[ChatMessage],
-        commands: list[Command],
-        task: str,
-        profile: AIProfile,
-        directives: AIDirectives,
-    ) -> Single[ChatPrompt]:
+        **kwargs
+    ) -> ChatPrompt:
         ...
 
-
-class ParseResponse(AgentComponent):
-    @abstractmethod
     def parse_response(
-        self, result: ThoughtProcessOutput, response: AssistantChatMessage
-    ) -> Single[ThoughtProcessOutput]:
+        self, response: AssistantChatMessage
+    ) -> ThoughtProcessOutput:
         ...
 
 

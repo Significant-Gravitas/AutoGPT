@@ -23,7 +23,7 @@ class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
         self.legacy_config = config
         self.profile = profile
 
-    def get_contraints(self) -> Iterator[str]:
+    def get_constraints(self) -> Iterator[str]:
         if self.profile.api_budget > 0.0:
             yield (
                 f"It takes money to let you run. "

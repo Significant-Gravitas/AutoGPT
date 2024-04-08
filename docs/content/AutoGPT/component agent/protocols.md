@@ -14,7 +14,7 @@ Yields constraints, resources and best practices for the agent. This is purely i
 
 ```py
 class DirectiveProvider(Protocol):
-    def get_contraints(self) -> Iterator[str]:
+    def get_constraints(self) -> Iterator[str]:
         return iter([])
 
     def get_resources(self) -> Iterator[str]:

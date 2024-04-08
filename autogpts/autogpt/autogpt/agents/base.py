@@ -17,7 +17,7 @@ if TYPE_CHECKING:
         ChatModelProvider,
     )
 
-from autogpt.agents.components import AgentComponent, ComponentError, ProtocolError, Single
+from autogpt.agents.components import AgentComponent, ComponentError, ProtocolError
 from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
@@ -306,10 +306,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
                             else:
                                 result = method(*component_args)
                             if result is not None:
-                                if isinstance(result, Single):
-                                    method_result = result.value
-                                else:
-                                    method_result.extend(result)
+                                method_result.extend(result)
                             args = component_args
                             self._trace.append(f"✅ {component.__class__.__name__}")
 

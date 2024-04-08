@@ -12,7 +12,6 @@ from autogpt.components.code_executor import CodeExecutorComponent
 from autogpt.components.event_history import EventHistoryComponent
 from autogpt.components.git_operations import GitOperationsComponent
 from autogpt.components.image_gen import ImageGeneratorComponent
-from autogpt.components.one_shot_component import OneShotComponent
 from autogpt.components.system import SystemComponent
 from autogpt.components.user_interaction import UserInteractionComponent
 from autogpt.components.web_search import WebSearchComponent
@@ -49,6 +48,7 @@ from autogpt.utils.exceptions import (
     UnknownCommandError,
 )
 from autogpt.utils.retry_decorator import retry
+from autogpt.components.one_shot import OneShotStrategy
 
 from ..components.context import ContextComponent
 from ..components.file_manager import FileManagerComponent
@@ -113,7 +113,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
         self.context = ContextComponent(self.file_manager.workspace)
         self.watchdog = WatchdogComponent(settings.config, settings.history)
-        self.prompt_strategy = OneShotComponent(
+        self.prompt_strategy = OneShotStrategy(
             legacy_config, llm_provider, self.send_token_limit, self.llm
         )
 
@@ -130,7 +130,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             self.web_selenium,
             self.context,
             self.watchdog,
-            self.prompt_strategy,
         ]
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -172,8 +171,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             await self.foreach_components("get_messages")
         )
 
-        prompt: ChatPrompt = await self.foreach_components(
-            "build_prompt",
+        prompt: ChatPrompt = self.prompt_strategy.build_prompt(
             messages,
             self.commands,
             self.state.task,
@@ -214,10 +212,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
                 model_name=self.llm.name,
             )
         )
-        result = ThoughtProcessOutput()
-        result: ThoughtProcessOutput = await self.foreach_components(
-            "parse_response", result, response
-        )
+        result: ThoughtProcessOutput = self.prompt_strategy.parse_response(response)
 
         # Check if the command is valid, e.g. isn't duplicating a previous command
         command = self.get_command(result.command_name)

@@ -6,8 +6,7 @@ import re
 import distro
 
 from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.agents.components import Single
-from autogpt.agents.protocols import BuildPrompt, ParseResponse
+from autogpt.agents.protocols import PromptStrategy
 from autogpt.utils.exceptions import InvalidAgentResponseError
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
@@ -27,8 +26,8 @@ from autogpt.utils.schema import DEFAULT_RESPONSE_SCHEMA
 logger = logging.getLogger(__name__)
 
 
-class OneShotComponent(BuildPrompt, ParseResponse):
-    """Component for one-shot Agents. Builds prompt and parses resonse."""
+class OneShotStrategy(PromptStrategy):
+    """Component for one-shot Agents. Builds prompt and parses response."""
 
     def __init__(
         self,
@@ -49,7 +48,7 @@ class OneShotComponent(BuildPrompt, ParseResponse):
         task: str,
         profile: AIProfile,
         directives: AIDirectives,
-    ) -> Single[ChatPrompt]:
+    ) -> ChatPrompt:
         use_functions_api = self.legacy_config.openai_functions
 
         messages.insert(
@@ -97,11 +96,11 @@ class OneShotComponent(BuildPrompt, ParseResponse):
             functions=get_openai_command_specs(commands),
         )
 
-        return Single(prompt)
+        return prompt
 
     def parse_response(
-        self, result: ThoughtProcessOutput, response: AssistantChatMessage
-    ) -> Single[ThoughtProcessOutput]:
+        self, response: AssistantChatMessage
+    ) -> ThoughtProcessOutput:
         if not response.content:
             raise InvalidAgentResponseError("Assistant response has no text content")
 
@@ -134,10 +133,7 @@ class OneShotComponent(BuildPrompt, ParseResponse):
             assistant_reply_dict, response, self.legacy_config.openai_functions
         )
 
-        result.command_name = command_name
-        result.command_args = arguments
-        result.thoughts = assistant_reply_dict
-        return Single(result)
+        return ThoughtProcessOutput(command_name, arguments, assistant_reply_dict)
 
     def _generate_os_info(self) -> str:
         """Generates the OS information part of the prompt."""
