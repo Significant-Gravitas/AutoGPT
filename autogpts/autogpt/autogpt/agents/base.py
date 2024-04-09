@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import inspect
 import logging
-from abc import ABCMeta
+from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional, TypeVar
 
@@ -31,7 +31,7 @@ from autogpt.core.resource.model_providers.openai import (
     OPEN_AI_CHAT_MODELS,
     OpenAIModelName,
 )
-from autogpt.models.action_history import EpisodicActionHistory
+from autogpt.models.action_history import ActionResult, EpisodicActionHistory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -335,3 +335,16 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
             except Exception as e:
                 raise e
         return method_result
+
+    @abstractmethod
+    async def propose_action(self) -> ThoughtProcessOutput:
+        ...
+
+    @abstractmethod
+    async def execute(
+        self,
+        command_name: str,
+        command_args: dict[str, str] = {},
+        user_input: str = "",
+    ) -> ActionResult:
+        ...
