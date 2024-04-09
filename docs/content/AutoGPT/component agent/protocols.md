@@ -56,7 +56,7 @@ from autogpt.utils.command_decorator import command
 
 class CalculatorComponent(Component, CommandProvider):
     get_commands(self) -> Iterator[Command]:
-        yield self.add
+        yield self.multiply
 
     @command(parameters={
             "a": JSONSchema(

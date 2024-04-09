@@ -1,0 +1,1 @@
+../../../../docs/content/AutoGPT/component agent/components.md

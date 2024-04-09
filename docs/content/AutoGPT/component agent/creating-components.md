@@ -27,7 +27,7 @@ class MyAgent(Agent):
     self.hello_component = HelloComponent()
 ```
 
-`get_messsages` will called by the agent each time it needs to build a new prompt and the yielded messages will be added accordingly.  
+`get_messages` will called by the agent each time it needs to build a new prompt and the yielded messages will be added accordingly.  
 
 ## Full example
 

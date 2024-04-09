@@ -32,6 +32,10 @@ class UnknownCommandError(AgentException):
     hint = "Do not try to use this command again."
 
 
+class DuplicateOperationError(AgentException):
+    """The proposed operation has already been executed"""
+
+    
 class CommandExecutionError(AgentException):
     """An error occured when trying to execute the command"""
 
