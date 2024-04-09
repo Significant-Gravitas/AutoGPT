@@ -16,6 +16,7 @@ from autogpt.core.resource.model_providers.schema import (
     AssistantChatMessage,
     ChatMessage,
     ChatModelInfo,
+    ChatModelProvider,
 )
 from autogpt.core.utils.json_utils import extract_dict_from_json, json_loads
 from autogpt.llm.providers.openai import get_openai_command_specs
@@ -32,7 +33,7 @@ class OneShotStrategy(PromptStrategy):
     def __init__(
         self,
         legacy_config: Config,
-        llm_provider,
+        llm_provider: ChatModelProvider,
         send_token_limit: int,
         llm: ChatModelInfo,
     ):

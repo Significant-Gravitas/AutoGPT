@@ -396,64 +396,6 @@ class OpenAIProvider(
         num_tokens += 3  # every reply is primed with <|start|>assistant<|message|>
         return num_tokens
 
-    async def create_chat_completion_raw(
-        self,
-        model_prompt: list[ChatMessage],
-        model_name: OpenAIModelName,
-        functions: Optional[list[CompletionModelFunction]] = None,
-        **kwargs,
-    ) -> AssistantChatMessage:
-        """Create a completion using the OpenAI API."""
-
-        completion_kwargs = self._get_completion_kwargs(model_name, functions, **kwargs)
-        tool_calls_compat_mode = functions and "tools" not in completion_kwargs
-        if "messages" in completion_kwargs:
-            model_prompt += completion_kwargs["messages"]
-            del completion_kwargs["messages"]
-
-        cost = 0.0
-
-        _response = await self._create_chat_completion(
-            messages=model_prompt,
-            **completion_kwargs,
-        )
-
-        _assistant_msg = _response.choices[0].message
-        assistant_msg = AssistantChatMessage(
-            content=_assistant_msg.content,
-            tool_calls=(
-                [AssistantToolCall(**tc.dict()) for tc in _assistant_msg.tool_calls]
-                if _assistant_msg.tool_calls
-                else None
-            ),
-        )
-        response = ChatModelResponse(
-            response=assistant_msg,
-            model_info=OPEN_AI_CHAT_MODELS[model_name],
-            prompt_tokens_used=(
-                _response.usage.prompt_tokens if _response.usage else 0
-            ),
-            completion_tokens_used=(
-                _response.usage.completion_tokens if _response.usage else 0
-            ),
-        )
-        cost += self._budget.update_usage_and_cost(response)
-        self._logger.debug(
-            f"Completion usage: {response.prompt_tokens_used} input, "
-            f"{response.completion_tokens_used} output - ${round(cost, 5)}"
-        )
-
-        if (
-            tool_calls_compat_mode
-            and assistant_msg.content
-            and not assistant_msg.tool_calls
-        ):
-            assistant_msg.tool_calls = list(
-                _tool_calls_compat_extract_calls(assistant_msg.content)
-            )
-
-        return assistant_msg
-
     async def create_chat_completion(
         self,
         model_prompt: list[ChatMessage],

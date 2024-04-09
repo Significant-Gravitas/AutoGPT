@@ -49,6 +49,7 @@ from autogpt.utils.exceptions import (
 )
 from autogpt.utils.retry_decorator import retry
 from autogpt.components.one_shot import OneShotStrategy
+from autogpt.core.resource.model_providers.schema import ChatModelResponse
 
 from ..components.context import ContextComponent
 from ..components.file_manager import FileManagerComponent
@@ -201,18 +202,19 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
-        response: AssistantChatMessage = (
-            await self.llm_provider.create_chat_completion_raw(
+        response: ChatModelResponse[ThoughtProcessOutput] = (
+            await self.llm_provider.create_chat_completion(
                 prompt.messages,
+                model_name=self.llm.name,
+                completion_parser=self.prompt_strategy.parse_response,
                 functions=(
                     get_openai_command_specs(self.commands)
                     if self.config.use_functions_api
                     else []
                 ),
-                model_name=self.llm.name,
             )
         )
-        result: ThoughtProcessOutput = self.prompt_strategy.parse_response(response)
+        result = response.parsed_result
 
         # Check if the command is valid, e.g. isn't duplicating a previous command
         command = self.get_command(result.command_name)
