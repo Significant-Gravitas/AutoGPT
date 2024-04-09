@@ -62,7 +62,7 @@ class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
             yield budget_msg
 
     def get_commands(self) -> Iterator[Command]:
-        yield Command.from_decorated_function(self.finish)
+        yield self.finish
 
     @command(
         names=[DEFAULT_FINISH_COMMAND],

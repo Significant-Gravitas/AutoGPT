@@ -30,13 +30,13 @@ class WebSearchComponent(DirectiveProvider, CommandProvider):
         yield "Internet access for searches and information gathering."
 
     def get_commands(self) -> Iterator[Command]:
-        yield Command.from_decorated_function(self.web_search)
+        yield self.web_search
 
         if (
             self.legacy_config.google_api_key
             and self.legacy_config.google_custom_search_engine_id
         ):
-            yield Command.from_decorated_function(self.google)
+            yield self.google
         else:
             logger.info("Configure google_api_key and custom_search_engine_id.")
 

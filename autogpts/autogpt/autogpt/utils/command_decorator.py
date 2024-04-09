@@ -1,9 +1,10 @@
+from functools import wraps
 import re
 from typing import Callable, Optional, ParamSpec, TypeVar
 
 from autogpt.agents.base import CommandArgs
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.command import CommandOutput, CommandParameter, ValidityResult
+from autogpt.models.command import Command, CommandOutput, CommandParameter, ValidityResult
 
 # Unique identifier for AutoGPT commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
@@ -17,9 +18,9 @@ def command(
     description: Optional[str] = None,
     parameters: dict[str, JSONSchema] = {},
     is_valid: Callable[[CommandArgs], ValidityResult] = lambda _: ValidityResult(True),
-) -> Callable[[Callable[P, CO]], Callable[P, CO]]:
+) -> Callable[[Callable[P, CommandOutput]], Command]:
     """
-    The command decorator is used to add command metadata to ordinary functions.
+    The command decorator is used to make a Command from a function.
 
     Args:
         names (list[str]): The names of the command.
@@ -32,14 +33,12 @@ def command(
         is_valid (Callable[[CommandArgs], ValidityResult]):
             A function that checks if the command with provided arguments is valid.
     """
-
-    def decorator(func: Callable[P, CO]) -> Callable[P, CO]:
+    def decorator(func: Callable[P, CO]) -> Command:
         doc = func.__doc__ or ""
         # If names is not provided, use the function name
         command_names = names or [func.__name__]
         # If description is not provided, use the first part of the docstring
-        command_description = description
-        if not command_description:
+        if not (command_description := description):
             if not func.__doc__:
                 raise ValueError("Description is required if function has no docstring")
             # Return the part of the docstring before double line break or everything
@@ -54,11 +53,15 @@ def command(
             for param_name, spec in parameters.items()
         ]
 
-        setattr(func, "names", command_names)
-        setattr(func, "description", command_description)
-        setattr(func, "parameters", typed_parameters)
-        setattr(func, "is_valid", is_valid)
+        # Wrap func with Command
+        command = Command(
+            names=command_names,
+            description=command_description,
+            method=func,
+            parameters=typed_parameters,
+            is_valid=is_valid,
+        )
 
-        return func
+        return command 
 
     return decorator

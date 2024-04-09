@@ -37,7 +37,7 @@ class ImageGeneratorComponent(CommandProvider):
         self.legacy_config = config
 
     def get_commands(self) -> Iterator[Command]:
-        yield Command.from_decorated_function(self.generate_image)
+        yield self.generate_image
 
     @command(
         parameters={

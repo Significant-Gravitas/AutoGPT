@@ -17,7 +17,7 @@ class UserInteractionComponent(CommandProvider):
         self.enabled = not config.noninteractive_mode
 
     def get_commands(self) -> Iterator[Command]:
-        yield Command.from_decorated_function(self.ask_user)
+        yield self.ask_user
 
     @command(
         names=[DEFAULT_ASK_COMMAND],

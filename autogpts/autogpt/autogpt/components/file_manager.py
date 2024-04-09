@@ -68,9 +68,9 @@ class FileManagerComponent(DirectiveProvider, CommandProvider):
         yield "The ability to read and write files."
 
     def get_commands(self) -> Iterator[Command]:
-        yield Command.from_decorated_function(self.read_file)
-        yield Command.from_decorated_function(self.write_to_file)
-        yield Command.from_decorated_function(self.list_folder)
+        yield self.read_file
+        yield self.write_to_file
+        yield self.list_folder
 
     def _is_write_valid(self, arguments: CommandArgs) -> ValidityResult:
         if not self.workspace.exists(arguments["filename"]):

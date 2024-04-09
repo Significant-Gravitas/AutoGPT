@@ -20,6 +20,20 @@ class ValidityResult(NamedTuple):
     reason: str = ""
 
 
+class CommandMetadata:
+    def __init__(
+        self,
+        names: list[str],
+        description: str,
+        parameters: list[CommandParameter],
+        is_valid: Callable[[CommandArgs], ValidityResult],
+    ):
+        self.names = names
+        self.description = description
+        self.parameters = parameters
+        self.is_valid = is_valid
+
+
 class Command:
     """A class representing a command.
 
@@ -54,15 +68,6 @@ class Command:
     def is_async(self) -> bool:
         return inspect.iscoroutinefunction(self.method)
 
-    @staticmethod
-    def from_decorated_function(func: Callable) -> Command:
-        return Command(
-            names=getattr(func, "names", [func.__name__]),
-            description=getattr(func, "description", ""),
-            method=func,
-            parameters=getattr(func, "parameters", []),
-            is_valid=getattr(func, "is_valid", lambda a: ValidityResult(True)),
-        )
 
     def _parameters_match(
         self, func: Callable, parameters: list[CommandParameter]
@@ -91,4 +96,17 @@ class Command:
         return (
             f"{self.names[0]}: {self.description.rstrip('.')}. "
             f"Params: ({', '.join(params)})"
+        )
+
+    def __get__(self, instance, owner):
+        if instance is None:
+            # Accessed on the class, not an instance
+            return self
+        # Bind the method to the instance
+        return Command(
+            self.names,
+            self.description,
+            self.method.__get__(instance, owner),
+            self.parameters,
+            self.is_valid,
         )

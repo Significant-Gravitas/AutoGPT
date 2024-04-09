@@ -71,7 +71,7 @@ class WebSeleniumComponent(CommandProvider):
         self.model_info = model_info
 
     def get_commands(self) -> Iterator[Command]:
-        yield Command.from_decorated_function(self.read_webpage)
+        yield self.read_webpage
 
     @command(
         ["read_webpage"],
