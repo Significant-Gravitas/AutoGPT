@@ -10,7 +10,7 @@ from autogpt.utils.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.file_storage.base import FileStorage
 from autogpt.models.command import Command, ValidityResult
-from autogpt.utils.file_operations_utils import decode_textual_file, text_checksum
+from autogpt.utils.file_operations_utils import decode_textual_file
 
 from ..agents.base import BaseAgentSettings
 
@@ -71,20 +71,6 @@ class FileManagerComponent(DirectiveProvider, CommandProvider):
         yield self.read_file
         yield self.write_to_file
         yield self.list_folder
-
-    def _is_write_valid(self, arguments: CommandArgs) -> ValidityResult:
-        if not self.workspace.exists(arguments["filename"]):
-            return ValidityResult(True)
-
-        if self.workspace.read_file(arguments["filename"]):
-            if text_checksum(arguments["contents"]) == text_checksum(
-                self.workspace.read_file(arguments["filename"])
-            ):
-                return ValidityResult(
-                    False, "Trying to write the same content to the same file."
-                )
-
-        return ValidityResult(True)
 
     @command(
         parameters={

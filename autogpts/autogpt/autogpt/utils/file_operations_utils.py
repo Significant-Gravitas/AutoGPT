@@ -1,8 +1,7 @@
-import hashlib
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import IO
+from typing import BinaryIO
 
 import charset_normalizer
 import docx
@@ -16,13 +15,13 @@ logger = logging.getLogger(__name__)
 
 class ParserStrategy(ABC):
     @abstractmethod
-    def read(self, file: IO) -> str:
+    def read(self, file: BinaryIO) -> str:
         ...
 
 
 # Basic text file reading
 class TXTParser(ParserStrategy):
-    def read(self, file: IO) -> str:
+    def read(self, file: BinaryIO) -> str:
         charset_match = charset_normalizer.from_bytes(file.read()).best()
         logger.debug(
             f"Reading {getattr(file, 'name', 'file')} "
@@ -33,7 +32,7 @@ class TXTParser(ParserStrategy):
 
 # Reading text from binary file using pdf parser
 class PDFParser(ParserStrategy):
-    def read(self, file: IO) -> str:
+    def read(self, file: BinaryIO) -> str:
         parser = pypdf.PdfReader(file)
         text = ""
         for page_idx in range(len(parser.pages)):
@@ -43,7 +42,7 @@ class PDFParser(ParserStrategy):
 
 # Reading text from binary file using docs parser
 class DOCXParser(ParserStrategy):
-    def read(self, file: IO) -> str:
+    def read(self, file: BinaryIO) -> str:
         doc_file = docx.Document(file)
         text = ""
         for para in doc_file.paragraphs:
@@ -53,14 +52,14 @@ class DOCXParser(ParserStrategy):
 
 # Reading as dictionary and returning string format
 class JSONParser(ParserStrategy):
-    def read(self, file: IO) -> str:
+    def read(self, file: BinaryIO) -> str:
         data = json.load(file)
         text = str(data)
         return text
 
 
 class XMLParser(ParserStrategy):
-    def read(self, file: IO) -> str:
+    def read(self, file: BinaryIO) -> str:
         soup = BeautifulSoup(file, "xml")
         text = soup.get_text()
         return text
@@ -68,21 +67,21 @@ class XMLParser(ParserStrategy):
 
 # Reading as dictionary and returning string format
 class YAMLParser(ParserStrategy):
-    def read(self, file: IO) -> str:
+    def read(self, file: BinaryIO) -> str:
         data = yaml.load(file, Loader=yaml.SafeLoader)
         text = str(data)
         return text
 
 
 class HTMLParser(ParserStrategy):
-    def read(self, file: IO) -> str:
+    def read(self, file: BinaryIO) -> str:
         soup = BeautifulSoup(file, "html.parser")
         text = soup.get_text()
         return text
 
 
 class LaTeXParser(ParserStrategy):
-    def read(self, file: IO) -> str:
+    def read(self, file: BinaryIO) -> str:
         latex = file.read().decode()
         text = LatexNodes2Text().latex_to_text(latex)
         return text
@@ -97,7 +96,7 @@ class FileContext:
         self.logger.debug(f"Setting Context Parser to {parser}")
         self.parser = parser
 
-    def decode_file(self, file: IO) -> str:
+    def decode_file(self, file: BinaryIO) -> str:
         self.logger.debug(
             f"Reading {getattr(file, 'name', 'file')} with parser {self.parser}"
         )
@@ -122,7 +121,7 @@ extension_to_parser = {
 }
 
 
-def is_file_binary_fn(file: IO):
+def is_file_binary_fn(file: BinaryIO):
     """Given a file path load all its content and checks if the null bytes is present
 
     Args:
@@ -138,7 +137,7 @@ def is_file_binary_fn(file: IO):
     return False
 
 
-def decode_textual_file(file: IO, ext: str, logger: logging.Logger) -> str:
+def decode_textual_file(file: BinaryIO, ext: str, logger: logging.Logger) -> str:
     if not file.readable():
         raise ValueError(f"{repr(file)} is not readable")
 
@@ -150,8 +149,3 @@ def decode_textual_file(file: IO, ext: str, logger: logging.Logger) -> str:
         parser = TXTParser()
     file_context = FileContext(parser, logger)
     return file_context.decode_file(file)
-
-
-def text_checksum(text: str) -> str:
-    """Get the hex checksum for the given text."""
-    return hashlib.md5(text.encode("utf-8")).hexdigest()

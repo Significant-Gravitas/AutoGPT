@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import os
 from abc import ABC, abstractmethod
+from io import IOBase, TextIOBase
 from pathlib import Path
 from typing import IO, Any, BinaryIO, Callable, Literal, TextIO, overload
 
@@ -61,7 +62,7 @@ class FileStorage(ABC):
         path: str | Path,
         mode: Literal["w", "r"] = "r",
         binary: Literal[False] = False,
-    ) -> TextIO:
+    ) -> TextIO | TextIOBase:
         """Returns a readable text file-like object representing the file."""
 
     @overload
@@ -71,13 +72,13 @@ class FileStorage(ABC):
         path: str | Path,
         mode: Literal["w", "r"] = "r",
         binary: Literal[True] = True,
-    ) -> BinaryIO:
+    ) -> BinaryIO | IOBase:
         """Returns a readable binary file-like object representing the file."""
 
     @abstractmethod
     def open_file(
         self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
-    ) -> IO:
+    ) -> IO | IOBase:
         """Returns a readable file-like object representing the file."""
 
     @overload
