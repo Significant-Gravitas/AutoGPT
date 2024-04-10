@@ -52,6 +52,7 @@ jobs:
           l_label: 'size/l'
           l_max_size: 500
           xl_label: 'size/xl'
+          message_if_xl:
 
   scope:
     if: ${{ github.event_name == 'pull_request_target' }}
