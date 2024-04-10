@@ -250,9 +250,6 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
             if isinstance(component, component_type):
                 return component
         return None
-    
-    def print_trace(self):
-        print("\n".join(self.trace))
 
     def _selective_copy(self, args: tuple[Any, ...]) -> tuple[Any, ...]:
         copied_args = []

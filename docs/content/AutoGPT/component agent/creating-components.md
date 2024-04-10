@@ -2,20 +2,12 @@
 
 ## The minimal component
 
-Let's create a simple component that adds "Hello World!" message to the agent prompt.  
-To create a component you just make a class that inherits from `Component`:
+*Component* is a class that implements one or more *protocols*. Every *protocol* inherits `AgentComponent`, so your class automatically becomes a *component* once you inherit any *protocol*.
+
+Let's create a simple component that adds "Hello World!" message to the agent's prompt. To do this we need to implement `MessageProvider` *protocol* in our component. `MessageProvider` is an interface with `get_messages` method:
 
 ```py
-# We recommend *Component suffix to make the type clear
-class HelloComponent(Component):
-    pass
-```
-
-This is already a valid component but it doesn't have any functionality yet.  
-To make it do something we need to write a method that can be found and called by the agent. To put messages to the agent's prompt we need to implement `MessageProvider` Protocol in our component. `MessageProvider` is an interface with `get_messages` method:
-
-```py
-class HelloComponent(Component, MessageProvider):
+class HelloComponent(MessageProvider):
     def get_messages(self) -> Iterator[ChatMessage]:
         yield ChatMessage.user("Hello World!")
 ```
@@ -28,14 +20,6 @@ class MyAgent(Agent):
 ```
 
 `get_messages` will called by the agent each time it needs to build a new prompt and the yielded messages will be added accordingly.  
-
-## Full example
-
-
-
-```py
-
-```
 
 ## Learn more
 

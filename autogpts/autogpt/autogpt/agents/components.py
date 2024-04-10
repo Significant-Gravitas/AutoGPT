@@ -23,7 +23,3 @@ class ProtocolError(ComponentError):
 class PipelineError(ComponentError):
     """Error of a group of component types;
     multiple protocols."""
-
-
-class ComponentSystemError(ComponentError):
-    """Error of an entire system."""

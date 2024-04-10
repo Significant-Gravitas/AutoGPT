@@ -279,7 +279,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
         await self.foreach_components("after_execution", result)
 
-        self.print_trace()
+        logger.debug("\n".join(self.trace))
 
         return result
 

@@ -13,7 +13,7 @@ Components implementing exclusively order-independent protocols can added in any
 Yields constraints, resources and best practices for the agent. This is purely informational and will be passed to a llm after prompt is ready using `BuildPrompt` protocol.
 
 ```py
-class DirectiveProvider(Protocol):
+class DirectiveProvider(AgentComponent):
     def get_constraints(self) -> Iterator[str]:
         return iter([])
 
@@ -27,7 +27,7 @@ class DirectiveProvider(Protocol):
 **Example** A web-search component can provide a resource information. Keep in mind that this actually doesn't allow the agent to access the internet. To do this a relevant `Command` needs to be provided.
 
 ```py
-class WebSearchComponent(Component, DirectiveProvider):
+class WebSearchComponent(DirectiveProvider):
     def get_resources(self) -> Iterator[str]:
         yield "Internet access for searches and information gathering."
     # We can skip "get_constraints" and "get_best_practices" if they aren't needed
@@ -38,7 +38,7 @@ class WebSearchComponent(Component, DirectiveProvider):
 Provides a command that can be executed by the agent.
 
 ```py
-class CommandProvider(Protocol):
+class CommandProvider(AgentComponent):
     def get_commands(self) -> Iterator[Command]:
         ...
 ```
@@ -54,7 +54,7 @@ from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.utils.command_decorator import command
 
 
-class CalculatorComponent(Component, CommandProvider):
+class CalculatorComponent(CommandProvider):
     get_commands(self) -> Iterator[Command]:
         yield self.multiply
 
@@ -96,7 +96,7 @@ The order of components implementing order-dependent protocols is important beca
 Yields messages that will be added to the agent's prompt. You can use either `ChatMessage.user()`: this will interpreted as a user-sent message or `ChatMessage.system()`: that will be more important.
 
 ```py
-class MessageProvider(Protocol):
+class MessageProvider(AgentComponent):
     def get_messages(self) -> Iterator[ChatMessage]:
         ...
 ```
@@ -104,54 +104,17 @@ class MessageProvider(Protocol):
 **Example** Component that provides a message to the agent's prompt.
 
 ```py
-class HelloComponent(Component, MessageProvider):
+class HelloComponent(MessageProvider):
     def get_messages(self) -> Iterator[ChatMessage]:
         yield ChatMessage.user("Hello World!")
 ```
-
-### `BuildPrompt`
-
-Is responsible to connect messages, commands and directives to the agent's prompt that is ready to be sent to a llm. There usually is only one component implementing this protocol.
-The result of this protocol is a `ChatPrompt` object wrapped inside `Single` for architectural reasons. This may change in the future.
-
-```py
-class BuildPrompt(Protocol):
-    def build_prompt(self, messages: List[ChatMessage], commands: List[Command], directives: List[str]) -> Single[ChatPrompt]:
-        ...
-```
-
-**Example** Component that builds a prompt from messages, commands and directives.
-
-```py
-class PromptBuilderComponent(Component, BuildPrompt):
-    def build_prompt(self, messages: List[ChatMessage], commands: List[Command], task: str, profile: AIProfile, directives: AIDirectives) -> Single[ChatPrompt]:
-        messages.insert(
-            0,
-            ChatMessage.system(
-                f"You are {profile.ai_name}, {profile.ai_role.rstrip('.')}."
-                "## Constraints\n"
-                f"{format_numbered_list(directives.constraints)}\n"
-                "## Resources\n"
-                f"{format_numbered_list(directives.resources)}\n"
-                "## Best practices\n"
-                f"{format_numbered_list(directives.best_practices)}\n"
-            ),
-        )
-        messages.insert(1, ChatMessage.user(f'"""{task}"""'))
-        return Single(ChatPrompt(messages=messages, functions=commands))
-```
-
-### `ParseResponse`
-
-<!-- TODO kcze -->
-*Depracated*
 
 ### `AfterParse`
 
 Protocol called after the response is parsed.
 
 ```py
-class AfterParse(Protocol):
+class AfterParse(AgentComponent):
     def after_parse(self, response: ThoughtProcessOutput) -> None:
         ...
 ```
@@ -159,7 +122,7 @@ class AfterParse(Protocol):
 **Example** Component that logs the response after it's parsed.
 
 ```py
-class LoggerComponent(Component, AfterParse):
+class LoggerComponent(AfterParse):
     def after_parse(self, response: ThoughtProcessOutput) -> None:
         logger.info(f"Response: {response}")
 ```
@@ -169,7 +132,7 @@ class LoggerComponent(Component, AfterParse):
 Protocol called after the command is executed by the agent.
 
 ```py
-class AfterExecute(Protocol):
+class AfterExecute(AgentComponent):
     def after_execute(self, result: ActionResult) -> None:
         ...
 ```
@@ -177,7 +140,7 @@ class AfterExecute(Protocol):
 **Example** Component that logs the result after the command is executed.
 
 ```py
-class LoggerComponent(Component, AfterExecute):
+class LoggerComponent(AfterExecute):
     def after_execute(self, result: ActionResult) -> None:
         logger.info(f"Result: {result}")
 ```
