@@ -4,7 +4,7 @@ from typing import Iterator
 
 from autogpt.agents.protocols import CommandProvider, DirectiveProvider, MessageProvider
 from autogpt.utils.exceptions import AgentFinished
-from autogpt.utils.command_decorator import command
+from autogpt.command_decorator import command
 from autogpt.config.ai_profile import AIProfile
 from autogpt.config.config import Config
 from autogpt.core.resource.model_providers.schema import ChatMessage

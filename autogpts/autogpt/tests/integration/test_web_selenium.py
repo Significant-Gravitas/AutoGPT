@@ -1,7 +1,7 @@
 import pytest
 
 from autogpt.agents.agent import Agent
-from autogpt.components.web_selenium import BrowsingError, read_webpage
+from autogpt.commands.web_selenium import BrowsingError, read_webpage
 
 
 @pytest.mark.vcr

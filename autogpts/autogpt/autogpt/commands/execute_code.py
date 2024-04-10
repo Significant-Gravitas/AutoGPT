@@ -18,7 +18,7 @@ from autogpt.utils.exceptions import (
     InvalidArgumentError,
     OperationNotAllowedError,
 )
-from autogpt.utils.command_decorator import command
+from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.file_storage.base import FileStorage

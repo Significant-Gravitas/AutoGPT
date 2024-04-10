@@ -3,10 +3,10 @@ import logging
 from autogpt.agents.base import ThoughtProcessOutput
 from autogpt.agents.components import ComponentSystemError
 from autogpt.agents.protocols import AfterParse
-from autogpt.components.context import ContextComponent
+from autogpt.agents.features.context import ContextComponent
 from autogpt.models.action_history import EpisodicActionHistory
 
-from ..agents.base import BaseAgentConfiguration
+from ..base import BaseAgentConfiguration
 
 logger = logging.getLogger(__name__)
 

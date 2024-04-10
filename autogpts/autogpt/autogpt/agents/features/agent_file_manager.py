@@ -6,13 +6,13 @@ from typing import Iterator
 
 from autogpt.agents.base import CommandArgs
 from autogpt.agents.protocols import CommandProvider, DirectiveProvider
-from autogpt.utils.command_decorator import command
+from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.file_storage.base import FileStorage
 from autogpt.models.command import Command, ValidityResult
 from autogpt.utils.file_operations_utils import decode_textual_file
 
-from ..agents.base import BaseAgentSettings
+from ..base import BaseAgentSettings
 
 logger = logging.getLogger(__name__)
 

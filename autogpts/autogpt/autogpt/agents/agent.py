@@ -8,14 +8,14 @@ from typing import TYPE_CHECKING, Optional
 import sentry_sdk
 from pydantic import Field
 
-from autogpt.components.code_executor import CodeExecutorComponent
+from autogpt.commands.execute_code import CodeExecutorComponent
 from autogpt.components.event_history import EventHistoryComponent
-from autogpt.components.git_operations import GitOperationsComponent
-from autogpt.components.image_gen import ImageGeneratorComponent
-from autogpt.components.system import SystemComponent
-from autogpt.components.user_interaction import UserInteractionComponent
-from autogpt.components.web_search import WebSearchComponent
-from autogpt.components.web_selenium import WebSeleniumComponent
+from autogpt.commands.git_operations import GitOperationsComponent
+from autogpt.commands.image_gen import ImageGeneratorComponent
+from autogpt.commands.system import SystemComponent
+from autogpt.commands.user_interaction import UserInteractionComponent
+from autogpt.commands.web_search import WebSearchComponent
+from autogpt.commands.web_selenium import WebSeleniumComponent
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
@@ -48,12 +48,12 @@ from autogpt.utils.exceptions import (
     UnknownCommandError,
 )
 from autogpt.utils.retry_decorator import retry
-from autogpt.components.one_shot import OneShotStrategy
+from autogpt.agents.prompt_strategies.one_shot import OneShotStrategy
 from autogpt.core.resource.model_providers.schema import ChatModelResponse
 
-from ..components.context import ContextComponent
-from ..components.file_manager import FileManagerComponent
-from ..components.watchdog import WatchdogComponent
+from .features.context import ContextComponent
+from .features.agent_file_manager import FileManagerComponent
+from .features.watchdog import WatchdogComponent
 from .base import (
     BaseAgent,
     BaseAgentConfiguration,

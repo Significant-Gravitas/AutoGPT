@@ -30,7 +30,7 @@ from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverM
 
 from autogpt.agents.protocols import CommandProvider
 from autogpt.utils.exceptions import CommandExecutionError, TooMuchOutputError
-from autogpt.utils.command_decorator import command
+from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.core.resource.model_providers.schema import (
     ChatModelInfo,

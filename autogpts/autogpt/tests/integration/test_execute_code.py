@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import autogpt.components.code_executor as sut  # system under testing
+import autogpt.commands.execute_code as sut  # system under testing
 from autogpt.agents.agent import Agent
 from autogpt.utils.exceptions import (
     InvalidArgumentError,

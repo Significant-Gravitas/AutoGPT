@@ -25,7 +25,7 @@ from autogpt.agent_factory.configurators import configure_agent_with_state, crea
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
-from autogpt.components.code_executor import (
+from autogpt.commands.execute_code import (
     is_docker_available,
     we_are_running_in_a_docker_container,
 )

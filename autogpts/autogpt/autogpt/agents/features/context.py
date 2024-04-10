@@ -4,7 +4,7 @@ from typing import Iterator, Optional
 
 from autogpt.agents.protocols import CommandProvider, MessageProvider
 from autogpt.utils.exceptions import InvalidArgumentError
-from autogpt.utils.command_decorator import command
+from autogpt.command_decorator import command
 from autogpt.core.resource.model_providers import ChatMessage
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.file_storage.base import FileStorage

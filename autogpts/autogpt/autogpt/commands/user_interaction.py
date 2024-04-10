@@ -2,7 +2,7 @@ from typing import Iterator
 
 from autogpt.agents.protocols import CommandProvider
 from autogpt.app.utils import clean_input
-from autogpt.utils.command_decorator import command
+from autogpt.command_decorator import command
 from autogpt.config.config import Config
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command
