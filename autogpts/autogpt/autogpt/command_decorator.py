@@ -42,7 +42,7 @@ def command(
             if not func.__doc__:
                 raise ValueError("Description is required if function has no docstring")
             # Return the part of the docstring before double line break or everything
-            command_description = doc.split("\n\n")[0].strip()
+            command_description = re.sub(r"\s+", " ", doc.split("\n\n")[0].strip())
 
         # Parameters
         typed_parameters = [

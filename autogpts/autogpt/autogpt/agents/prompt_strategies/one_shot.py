@@ -99,9 +99,7 @@ class OneShotStrategy(PromptStrategy):
 
         return prompt
 
-    def parse_response(
-        self, response: AssistantChatMessage
-    ) -> ThoughtProcessOutput:
+    def parse_response(self, response: AssistantChatMessage) -> ThoughtProcessOutput:
         if not response.content:
             raise InvalidAgentResponseError("Assistant response has no text content")
 
@@ -134,7 +132,11 @@ class OneShotStrategy(PromptStrategy):
             assistant_reply_dict, response, self.legacy_config.openai_functions
         )
 
-        return ThoughtProcessOutput(command_name, arguments, assistant_reply_dict)
+        return ThoughtProcessOutput(
+            command_name=command_name,
+            command_args=arguments,
+            thoughts=assistant_reply_dict,
+        )
 
     def _generate_os_info(self) -> str:
         """Generates the OS information part of the prompt."""

@@ -283,9 +283,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
         return result
 
-    def print_trace(self):
-        print("\n".join(self.trace))
-
     async def execute_command(
         self,
         command_name: str,

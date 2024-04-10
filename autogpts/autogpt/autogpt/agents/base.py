@@ -150,18 +150,17 @@ class CombinedMeta(ABCMeta, AgentMeta):
         return super().__new__(cls, name, bases, namespace, **kwargs)
 
 
-@dataclass
-class ThoughtProcessOutput:
+class ThoughtProcessOutput(BaseModel):
     command_name: str = ""
-    command_args: dict[str, str] = field(default_factory=dict)
-    thoughts: dict[str, Any] = field(default_factory=dict)
+    command_args: dict[str, str] = Field(default_factory=dict)
+    thoughts: dict[str, Any] = Field(default_factory=dict)
 
-    def __iter__(self):
-        yield from (self.command_name, self.command_args, self.thoughts)
+    def to_tuple(self) -> tuple[CommandName, CommandArgs, AgentThoughts]:
+        return self.command_name, self.command_args, self.thoughts
 
 
 class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
-    T = TypeVar("T", bound=AgentComponent)
+    C = TypeVar("C", bound=AgentComponent)
 
     default_settings = BaseAgentSettings(
         name="BaseAgent",
@@ -246,11 +245,14 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
         return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
 
     # Generic function to get components of a specific type
-    def get_component(self, component_type: type[T]) -> Optional[T]:
+    def get_component(self, component_type: type[C]) -> Optional[C]:
         for component in self.components:
             if isinstance(component, component_type):
                 return component
         return None
+    
+    def print_trace(self):
+        print("\n".join(self.trace))
 
     def _selective_copy(self, args: tuple[Any, ...]) -> tuple[Any, ...]:
         copied_args = []

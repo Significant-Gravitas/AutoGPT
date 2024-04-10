@@ -549,7 +549,7 @@ async def run_interaction_loop(
                     command_name,
                     command_args,
                     assistant_reply_dict,
-                ) = await agent.propose_action()
+                ) = (await agent.propose_action()).to_tuple()
             except InvalidAgentResponseError as e:
                 logger.warning(f"The agent's thoughts could not be parsed: {e}")
                 consecutive_failures += 1
