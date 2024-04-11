@@ -4,17 +4,10 @@ import json
 import platform
 import re
 from logging import Logger
-from typing import TYPE_CHECKING, Callable, Optional
 
 import distro
 
 from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.utils.exceptions import InvalidAgentResponseError
-
-if TYPE_CHECKING:
-    from autogpt.agents.agent import Agent
-    from autogpt.models.action_history import Episode
-
 from autogpt.config import AIDirectives, AIProfile
 from autogpt.core.configuration.schema import SystemConfiguration, UserConfigurable
 from autogpt.core.prompting import (
@@ -29,7 +22,8 @@ from autogpt.core.resource.model_providers.schema import (
 )
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.core.utils.json_utils import extract_dict_from_json, json_loads
-from autogpt.prompts.utils import format_numbered_list, indent
+from autogpt.prompts.utils import format_numbered_list
+from autogpt.utils.exceptions import InvalidAgentResponseError
 
 
 class OneShotAgentPromptConfiguration(SystemConfiguration):
@@ -350,7 +344,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         return ThoughtProcessOutput(
             command_name=command_name,
             command_args=arguments,
-            thoughts=assistant_reply_dict
+            thoughts=assistant_reply_dict,
         )
 
 

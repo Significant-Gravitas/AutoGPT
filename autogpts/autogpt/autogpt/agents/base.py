@@ -4,7 +4,6 @@ import copy
 import inspect
 import logging
 from abc import ABCMeta, abstractmethod
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional, TypeVar
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
@@ -198,7 +197,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentABCMeta):
     @property
     def send_token_limit(self) -> int:
         return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
-    
+
     @abstractmethod
     async def propose_action(self) -> ThoughtProcessOutput:
         ...
@@ -221,7 +220,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentABCMeta):
             if isinstance(component, component_type):
                 return component
         return None
-    
+
     def is_enabled(self, component: AgentComponent) -> bool:
         if callable(component.enabled):
             return component.enabled()
@@ -307,7 +306,9 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentABCMeta):
             return
         self.components = self._topological_sort(components)
 
-    def _topological_sort(self, components: list[AgentComponent]) -> list[AgentComponent]:
+    def _topological_sort(
+        self, components: list[AgentComponent]
+    ) -> list[AgentComponent]:
         visited = set()
         stack = []
 

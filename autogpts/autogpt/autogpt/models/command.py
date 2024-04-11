@@ -20,20 +20,6 @@ class ValidityResult(NamedTuple):
     reason: str = ""
 
 
-class CommandMetadata:
-    def __init__(
-        self,
-        names: list[str],
-        description: str,
-        parameters: list[CommandParameter],
-        is_valid: Callable[[CommandArgs], ValidityResult],
-    ):
-        self.names = names
-        self.description = description
-        self.parameters = parameters
-        self.is_valid = is_valid
-
-
 class Command:
     """A class representing a command.
 
@@ -67,7 +53,6 @@ class Command:
     @property
     def is_async(self) -> bool:
         return inspect.iscoroutinefunction(self.method)
-
 
     def _parameters_match(
         self, func: Callable, parameters: list[CommandParameter]

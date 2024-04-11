@@ -1,10 +1,14 @@
-from functools import wraps
 import re
 from typing import Callable, Optional, ParamSpec, TypeVar
 
 from autogpt.agents.base import CommandArgs
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.command import Command, CommandOutput, CommandParameter, ValidityResult
+from autogpt.models.command import (
+    Command,
+    CommandOutput,
+    CommandParameter,
+    ValidityResult,
+)
 
 # Unique identifier for AutoGPT commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
@@ -33,6 +37,7 @@ def command(
         is_valid (Callable[[CommandArgs], ValidityResult]):
             A function that checks if the command with provided arguments is valid.
     """
+
     def decorator(func: Callable[P, CO]) -> Command:
         doc = func.__doc__ or ""
         # If names is not provided, use the function name
@@ -62,6 +67,6 @@ def command(
             is_valid=is_valid,
         )
 
-        return command 
+        return command
 
     return decorator

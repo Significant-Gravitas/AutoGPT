@@ -35,7 +35,7 @@ class UnknownCommandError(AgentException):
 class DuplicateOperationError(AgentException):
     """The proposed operation has already been executed"""
 
-    
+
 class CommandExecutionError(AgentException):
     """An error occured when trying to execute the command"""
 

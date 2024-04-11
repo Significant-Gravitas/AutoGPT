@@ -1,13 +1,9 @@
 from abc import abstractmethod
-from typing import Iterator, Protocol, runtime_checkable
+from typing import Iterator
 
 from autogpt.agents.base import ThoughtProcessOutput
 from autogpt.agents.components import AgentComponent
-from autogpt.core.prompting.schema import ChatPrompt
-from autogpt.core.resource.model_providers.schema import (
-    AssistantChatMessage,
-    ChatMessage,
-)
+from autogpt.core.resource.model_providers.schema import ChatMessage
 from autogpt.models.action_history import ActionResult
 from autogpt.models.command import Command
 

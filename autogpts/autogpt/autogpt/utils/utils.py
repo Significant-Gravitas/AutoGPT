@@ -3,7 +3,6 @@ from pathlib import Path
 import yaml
 from colorama import Fore
 
-
 DEFAULT_FINISH_COMMAND = "finish"
 DEFAULT_ASK_COMMAND = "ask_user"
 

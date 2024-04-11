@@ -1,1 +1,1 @@
-docs/content/AutoGPT/component agent/agents.md
+../../../../docs/content/AutoGPT/component agent/agents.md

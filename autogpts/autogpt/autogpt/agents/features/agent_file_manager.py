@@ -4,12 +4,11 @@ import os.path
 from pathlib import Path
 from typing import Iterator
 
-from autogpt.agents.base import CommandArgs
 from autogpt.agents.protocols import CommandProvider, DirectiveProvider
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.file_storage.base import FileStorage
-from autogpt.models.command import Command, ValidityResult
+from autogpt.models.command import Command
 from autogpt.utils.file_operations_utils import decode_textual_file
 
 from ..base import BaseAgentSettings

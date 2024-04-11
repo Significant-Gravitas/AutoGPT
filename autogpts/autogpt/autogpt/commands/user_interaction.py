@@ -27,7 +27,7 @@ class UserInteractionComponent(CommandProvider):
                 description="The question or prompt to the user",
                 required=True,
             )
-        }
+        },
     )
     def ask_user(self, question: str) -> str:
         """ "If you need more details or information regarding the given goals,

@@ -29,7 +29,6 @@ from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
 from autogpt.agents.protocols import CommandProvider
-from autogpt.utils.exceptions import CommandExecutionError, TooMuchOutputError
 from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.core.resource.model_providers.schema import (
@@ -41,6 +40,7 @@ from autogpt.models.command import Command
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.processing.text import extract_information, summarize_text
 from autogpt.url_utils.validators import validate_url
+from autogpt.utils.exceptions import CommandExecutionError, TooMuchOutputError
 
 COMMAND_CATEGORY = "web_browse"
 COMMAND_CATEGORY_TITLE = "Web Browsing"

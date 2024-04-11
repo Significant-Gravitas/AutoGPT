@@ -6,11 +6,11 @@ from typing import Iterator
 from duckduckgo_search import DDGS
 
 from autogpt.agents.protocols import CommandProvider, DirectiveProvider
-from autogpt.utils.exceptions import ConfigurationError
 from autogpt.command_decorator import command
 from autogpt.config.config import Config
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command
+from autogpt.utils.exceptions import ConfigurationError
 
 COMMAND_CATEGORY = "web_search"
 COMMAND_CATEGORY_TITLE = "Web Search"

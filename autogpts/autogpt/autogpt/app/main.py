@@ -19,8 +19,6 @@ from forge.sdk.db import AgentDB
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
 
-from autogpt.utils.utils import DEFAULT_FINISH_COMMAND
-from autogpt.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
@@ -43,6 +41,8 @@ from autogpt.logs.config import configure_chat_plugins, configure_logging
 from autogpt.logs.helpers import print_attribute, speak
 from autogpt.models.action_history import ActionInterruptedByHuman
 from autogpt.plugins import scan_plugins
+from autogpt.utils.exceptions import AgentTerminated, InvalidAgentResponseError
+from autogpt.utils.utils import DEFAULT_FINISH_COMMAND
 from scripts.install_plugin_deps import install_plugin_dependencies
 
 from .configurator import apply_overrides_to_config
@@ -235,7 +235,8 @@ async def run_auto_gpt(
 
         if (
             agent.event_history.current_episode
-            and agent.event_history.current_episode.action.name == DEFAULT_FINISH_COMMAND
+            and agent.event_history.current_episode.action.name
+            == DEFAULT_FINISH_COMMAND
             and not agent.event_history.current_episode.result
         ):
             # Agent was resumed after `finish` -> rewrite result of `finish` action

@@ -4,12 +4,12 @@ from typing import Iterator
 from git.repo import Repo
 
 from autogpt.agents.protocols import CommandProvider
-from autogpt.utils.exceptions import CommandExecutionError
 from autogpt.command_decorator import command
 from autogpt.config.config import Config
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command
 from autogpt.url_utils.validators import validate_url
+from autogpt.utils.exceptions import CommandExecutionError
 
 COMMAND_CATEGORY = "git_operations"
 COMMAND_CATEGORY_TITLE = "Git Operations"

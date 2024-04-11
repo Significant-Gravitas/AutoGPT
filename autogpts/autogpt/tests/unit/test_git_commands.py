@@ -3,9 +3,9 @@ from git.exc import GitCommandError
 from git.repo.base import Repo
 
 from autogpt.agents.agent import Agent
-from autogpt.utils.exceptions import CommandExecutionError
 from autogpt.commands.git_operations import clone_repository
 from autogpt.file_storage.base import FileStorage
+from autogpt.utils.exceptions import CommandExecutionError
 
 
 @pytest.fixture

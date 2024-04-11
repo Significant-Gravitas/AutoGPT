@@ -1,5 +1,6 @@
 import inspect
 from typing import Optional
+
 import sentry_sdk
 
 

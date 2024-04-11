@@ -8,21 +8,19 @@ from typing import TYPE_CHECKING, Optional
 import sentry_sdk
 from pydantic import Field
 
+from autogpt.agents.prompt_strategies.one_shot import OneShotAgentPromptStrategy
 from autogpt.commands.execute_code import CodeExecutorComponent
-from autogpt.components.event_history import EventHistoryComponent
 from autogpt.commands.git_operations import GitOperationsComponent
 from autogpt.commands.image_gen import ImageGeneratorComponent
 from autogpt.commands.system import SystemComponent
 from autogpt.commands.user_interaction import UserInteractionComponent
 from autogpt.commands.web_search import WebSearchComponent
 from autogpt.commands.web_selenium import WebSeleniumComponent
+from autogpt.components.event_history import EventHistoryComponent
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
-from autogpt.core.resource.model_providers import (
-    AssistantChatMessage,
-    ChatMessage,
-    ChatModelProvider,
-)
+from autogpt.core.resource.model_providers import ChatMessage, ChatModelProvider
+from autogpt.core.resource.model_providers.schema import ChatModelResponse
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.file_storage.base import FileStorage
 from autogpt.llm.providers.openai import get_openai_command_specs
@@ -48,18 +46,16 @@ from autogpt.utils.exceptions import (
     UnknownCommandError,
 )
 from autogpt.utils.retry_decorator import retry
-from autogpt.core.resource.model_providers.schema import ChatModelResponse
-from autogpt.agents.prompt_strategies.one_shot import OneShotAgentPromptStrategy
 
-from .features.context import ContextComponent
-from .features.agent_file_manager import FileManagerComponent
-from .features.watchdog import WatchdogComponent
 from .base import (
     BaseAgent,
     BaseAgentConfiguration,
     BaseAgentSettings,
     ThoughtProcessOutput,
 )
+from .features.agent_file_manager import FileManagerComponent
+from .features.context import ContextComponent
+from .features.watchdog import WatchdogComponent
 
 if TYPE_CHECKING:
     from autogpt.config import Config
@@ -203,17 +199,17 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
-        response: ChatModelResponse[ThoughtProcessOutput] = (
-            await self.llm_provider.create_chat_completion(
-                prompt.messages,
-                model_name=self.llm.name,
-                completion_parser=self.prompt_strategy.parse_response_content,
-                functions=(
-                    get_openai_command_specs(self.commands)
-                    if self.config.use_functions_api
-                    else []
-                ),
-            )
+        response: ChatModelResponse[
+            ThoughtProcessOutput
+        ] = await self.llm_provider.create_chat_completion(
+            prompt.messages,
+            model_name=self.llm.name,
+            completion_parser=self.prompt_strategy.parse_response_content,
+            functions=(
+                get_openai_command_specs(self.commands)
+                if self.config.use_functions_api
+                else []
+            ),
         )
         result = response.parsed_result
 

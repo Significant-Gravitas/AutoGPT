@@ -7,10 +7,7 @@ import pytest
 
 import autogpt.commands.execute_code as sut  # system under testing
 from autogpt.agents.agent import Agent
-from autogpt.utils.exceptions import (
-    InvalidArgumentError,
-    OperationNotAllowedError,
-)
+from autogpt.utils.exceptions import InvalidArgumentError, OperationNotAllowedError
 
 
 @pytest.fixture

@@ -5,12 +5,14 @@ from io import BytesIO
 from uuid import uuid4
 
 import orjson
+from autogpts.autogpt.autogpt.utils.utils import (
+    DEFAULT_ASK_COMMAND,
+    DEFAULT_FINISH_COMMAND,
+)
 from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from autogpt.utils.exceptions import AgentFinished
-from autogpt.utils.schema import DEFAULT_ASK_COMMAND, DEFAULT_FINISH_COMMAND
 from forge.sdk.db import AgentDB
 from forge.sdk.errors import NotFoundError
 from forge.sdk.middlewares import AgentMiddleware
@@ -40,6 +42,7 @@ from autogpt.core.resource.model_providers.schema import ModelProviderBudget
 from autogpt.file_storage import FileStorage
 from autogpt.logs.utils import fmt_kwargs
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
+from autogpt.utils.exceptions import AgentFinished
 
 logger = logging.getLogger(__name__)
 
@@ -235,8 +238,10 @@ class AgentProtocolServer:
         # Execute previously proposed action
         if execute_command:
             assert execute_command_args is not None
-            agent.file_manager.workspace.on_write_file = lambda path: self._on_agent_write_file(
-                task=task, step=step, relative_path=path
+            agent.file_manager.workspace.on_write_file = (
+                lambda path: self._on_agent_write_file(
+                    task=task, step=step, relative_path=path
+                )
             )
 
             if execute_command == DEFAULT_ASK_COMMAND:
@@ -303,13 +308,13 @@ class AgentProtocolServer:
                 + ("\n\n" if "\n" in str(execute_result) else " ")
                 + f"{execute_result}\n\n"
             )
-            if execute_command_args and execute_command != ask_user.__name__
+            if execute_command_args and execute_command != DEFAULT_ASK_COMMAND
             else ""
         )
         output += f"{raw_output['thoughts']['speak']}\n\n"
         output += (
             f"Next Command: {next_command}({fmt_kwargs(next_command_args)})"
-            if next_command != ask_user.__name__
+            if next_command != DEFAULT_ASK_COMMAND
             else next_command_args["question"]
         )
 

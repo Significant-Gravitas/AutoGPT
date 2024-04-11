@@ -3,13 +3,13 @@ from pathlib import Path
 from typing import Iterator, Optional
 
 from autogpt.agents.protocols import CommandProvider, MessageProvider
-from autogpt.utils.exceptions import InvalidArgumentError
 from autogpt.command_decorator import command
 from autogpt.core.resource.model_providers import ChatMessage
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.file_storage.base import FileStorage
 from autogpt.models.command import Command
 from autogpt.models.context_item import ContextItem, FileContextItem, FolderContextItem
+from autogpt.utils.exceptions import InvalidArgumentError
 
 
 class AgentContext:
@@ -59,7 +59,8 @@ class ContextComponent(MessageProvider, CommandProvider):
     def get_commands(self) -> Iterator[Command]:
         yield self.open_file
         yield self.open_folder
-        yield self.close_context_item
+        if self.context:
+            yield self.close_context_item
 
     @command(
         parameters={

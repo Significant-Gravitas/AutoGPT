@@ -2,8 +2,8 @@ import logging
 
 from autogpt.agents.base import ThoughtProcessOutput
 from autogpt.agents.components import PipelineError
-from autogpt.agents.protocols import AfterParse
 from autogpt.agents.features.context import ContextComponent
+from autogpt.agents.protocols import AfterParse
 from autogpt.models.action_history import EpisodicActionHistory
 
 from ..base import BaseAgentConfiguration
