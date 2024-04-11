@@ -145,7 +145,7 @@ class AgentMeta(type):
         return instance
 
 
-class CombinedMeta(ABCMeta, AgentMeta):
+class AgentABCMeta(ABCMeta, AgentMeta):
     def __new__(cls, name, bases, namespace, **kwargs):
         return super().__new__(cls, name, bases, namespace, **kwargs)
 
@@ -159,7 +159,7 @@ class ThoughtProcessOutput(BaseModel):
         return self.command_name, self.command_args, self.thoughts
 
 
-class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
+class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentABCMeta):
     C = TypeVar("C", bound=AgentComponent)
 
     default_settings = BaseAgentSettings(
@@ -183,51 +183,6 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
 
         logger.debug(f"Created {__class__} '{self.state.ai_profile.ai_name}'")
 
-    def _collect_components(self):
-        components = [
-            getattr(self, attr)
-            for attr in dir(self)
-            if isinstance(getattr(self, attr), AgentComponent)
-        ]
-
-        if self.components:
-            # Check if any coponent is missed (added to Agent but not to components)
-            for component in components:
-                if component not in self.components:
-                    logger.warning(
-                        f"Component {component.__class__.__name__} "
-                        "is attached to an agent but not added to components list"
-                    )
-            # Skip collecting anf sorting and sort if ordering is explicit
-            return
-        self.components = self._topological_sort(components)
-
-    def _topological_sort(self, components: list[AgentComponent]) -> list[AgentComponent]:
-        visited = set()
-        stack = []
-
-        def visit(node: AgentComponent):
-            if node in visited:
-                return
-            visited.add(node)
-            for neighbor_class in node.__class__.run_after:
-                # Find the instance of neighbor_class in components
-                neighbor = next(
-                    (m for m in components if isinstance(m, neighbor_class)), None
-                )
-                if neighbor:
-                    visit(neighbor)
-            stack.append(node)
-
-        for component in components:
-            visit(component)
-
-        return stack
-
-    def reset_trace(self):
-        self._trace = []
-
-    # Just collect when running foreach_components
     @property
     def trace(self) -> list[str]:
         return self._trace
@@ -243,6 +198,22 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
     @property
     def send_token_limit(self) -> int:
         return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
+    
+    @abstractmethod
+    async def propose_action(self) -> ThoughtProcessOutput:
+        ...
+
+    @abstractmethod
+    async def execute(
+        self,
+        command_name: str,
+        command_args: dict[str, str] = {},
+        user_input: str = "",
+    ) -> ActionResult:
+        ...
+
+    def reset_trace(self):
+        self._trace = []
 
     # Generic function to get components of a specific type
     def get_component(self, component_type: type[C]) -> Optional[C]:
@@ -250,25 +221,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
             if isinstance(component, component_type):
                 return component
         return None
-
-    def _selective_copy(self, args: tuple[Any, ...]) -> tuple[Any, ...]:
-        copied_args = []
-        for item in args:
-            if isinstance(item, list):
-                # Shallow copy for lists
-                copied_item = item[:]
-            elif isinstance(item, dict):
-                # Shallow copy for dicts
-                copied_item = item.copy()
-            elif isinstance(item, BaseModel):
-                # Deep copy for Pydantic models (deep=True to also copy nested models)
-                copied_item = item.copy(deep=True)
-            else:
-                # Deep copy for other objects
-                copied_item = copy.deepcopy(item)
-            copied_args.append(copied_item)
-        return tuple(copied_args)
-
+    
     def is_enabled(self, component: AgentComponent) -> bool:
         if callable(component.enabled):
             return component.enabled()
@@ -335,15 +288,61 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=CombinedMeta):
                 raise e
         return method_result
 
-    @abstractmethod
-    async def propose_action(self) -> ThoughtProcessOutput:
-        ...
+    def _collect_components(self):
+        components = [
+            getattr(self, attr)
+            for attr in dir(self)
+            if isinstance(getattr(self, attr), AgentComponent)
+        ]
 
-    @abstractmethod
-    async def execute(
-        self,
-        command_name: str,
-        command_args: dict[str, str] = {},
-        user_input: str = "",
-    ) -> ActionResult:
-        ...
+        if self.components:
+            # Check if any coponent is missed (added to Agent but not to components)
+            for component in components:
+                if component not in self.components:
+                    logger.warning(
+                        f"Component {component.__class__.__name__} "
+                        "is attached to an agent but not added to components list"
+                    )
+            # Skip collecting anf sorting and sort if ordering is explicit
+            return
+        self.components = self._topological_sort(components)
+
+    def _topological_sort(self, components: list[AgentComponent]) -> list[AgentComponent]:
+        visited = set()
+        stack = []
+
+        def visit(node: AgentComponent):
+            if node in visited:
+                return
+            visited.add(node)
+            for neighbor_class in node.__class__.run_after:
+                # Find the instance of neighbor_class in components
+                neighbor = next(
+                    (m for m in components if isinstance(m, neighbor_class)), None
+                )
+                if neighbor:
+                    visit(neighbor)
+            stack.append(node)
+
+        for component in components:
+            visit(component)
+
+        return stack
+
+    def _selective_copy(self, args: tuple[Any, ...]) -> tuple[Any, ...]:
+        copied_args = []
+        for item in args:
+            if isinstance(item, list):
+                # Shallow copy for lists
+                copied_item = item[:]
+            elif isinstance(item, dict):
+                # Shallow copy for dicts
+                copied_item = item.copy()
+            elif isinstance(item, BaseModel):
+                # Deep copy for Pydantic models (deep=True to also copy nested models)
+                copied_item = item.copy(deep=True)
+            else:
+                # Deep copy for other objects
+                copied_item = copy.deepcopy(item)
+            copied_args.append(copied_item)
+        return tuple(copied_args)
