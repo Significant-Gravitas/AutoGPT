@@ -11,7 +11,7 @@ from autogpt.core.resource.model_providers.schema import ChatMessage
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.llm.api_manager import ApiManager
 from autogpt.models.command import Command
-from autogpt.utils.schema import DEFAULT_FINISH_COMMAND
+from autogpt.utils.utils import DEFAULT_FINISH_COMMAND
 
 logger = logging.getLogger(__name__)
 

@@ -6,7 +6,7 @@ from autogpt.command_decorator import command
 from autogpt.config.config import Config
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command
-from autogpt.utils.schema import DEFAULT_ASK_COMMAND
+from autogpt.utils.utils import DEFAULT_ASK_COMMAND
 
 
 class UserInteractionComponent(CommandProvider):

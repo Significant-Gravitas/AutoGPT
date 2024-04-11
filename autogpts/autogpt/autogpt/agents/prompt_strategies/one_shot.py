@@ -1,158 +1,233 @@
+from __future__ import annotations
+
 import json
-import logging
 import platform
 import re
+from logging import Logger
+from typing import TYPE_CHECKING, Callable, Optional
 
 import distro
 
 from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.agents.protocols import PromptStrategy
 from autogpt.utils.exceptions import InvalidAgentResponseError
-from autogpt.config.ai_directives import AIDirectives
-from autogpt.config.ai_profile import AIProfile
-from autogpt.config.config import Config
-from autogpt.core.prompting.schema import ChatPrompt
+
+if TYPE_CHECKING:
+    from autogpt.agents.agent import Agent
+    from autogpt.models.action_history import Episode
+
+from autogpt.config import AIDirectives, AIProfile
+from autogpt.core.configuration.schema import SystemConfiguration, UserConfigurable
+from autogpt.core.prompting import (
+    ChatPrompt,
+    LanguageModelClassification,
+    PromptStrategy,
+)
 from autogpt.core.resource.model_providers.schema import (
     AssistantChatMessage,
     ChatMessage,
-    ChatModelInfo,
-    ChatModelProvider,
+    CompletionModelFunction,
 )
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.core.utils.json_utils import extract_dict_from_json, json_loads
-from autogpt.llm.providers.openai import get_openai_command_specs
-from autogpt.models.command import Command
-from autogpt.prompts.utils import format_numbered_list
-from autogpt.utils.schema import DEFAULT_RESPONSE_SCHEMA
-
-logger = logging.getLogger(__name__)
+from autogpt.prompts.utils import format_numbered_list, indent
 
 
-class OneShotStrategy(PromptStrategy):
-    """Component for one-shot Agents. Builds prompt and parses response."""
+class OneShotAgentPromptConfiguration(SystemConfiguration):
+    DEFAULT_BODY_TEMPLATE: str = (
+        "## Constraints\n"
+        "You operate within the following constraints:\n"
+        "{constraints}\n"
+        "\n"
+        "## Resources\n"
+        "You can leverage access to the following resources:\n"
+        "{resources}\n"
+        "\n"
+        "## Commands\n"
+        "These are the ONLY commands you can use."
+        " Any action you perform must be possible through one of these commands:\n"
+        "{commands}\n"
+        "\n"
+        "## Best practices\n"
+        "{best_practices}"
+    )
+
+    DEFAULT_CHOOSE_ACTION_INSTRUCTION: str = (
+        "Determine exactly one command to use next based on the given goals "
+        "and the progress you have made so far, "
+        "and respond using the JSON schema specified previously:"
+    )
+
+    DEFAULT_RESPONSE_SCHEMA = JSONSchema(
+        type=JSONSchema.Type.OBJECT,
+        properties={
+            "thoughts": JSONSchema(
+                type=JSONSchema.Type.OBJECT,
+                required=True,
+                properties={
+                    "observations": JSONSchema(
+                        description=(
+                            "Relevant observations from your last action (if any)"
+                        ),
+                        type=JSONSchema.Type.STRING,
+                        required=False,
+                    ),
+                    "text": JSONSchema(
+                        description="Thoughts",
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                    "reasoning": JSONSchema(
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                    "self_criticism": JSONSchema(
+                        description="Constructive self-criticism",
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                    "plan": JSONSchema(
+                        description=(
+                            "Short markdown-style bullet list that conveys the "
+                            "long-term plan"
+                        ),
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                    "speak": JSONSchema(
+                        description="Summary of thoughts, to say to user",
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                },
+            ),
+            "command": JSONSchema(
+                type=JSONSchema.Type.OBJECT,
+                required=True,
+                properties={
+                    "name": JSONSchema(
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                    "args": JSONSchema(
+                        type=JSONSchema.Type.OBJECT,
+                        required=True,
+                    ),
+                },
+            ),
+        },
+    )
+
+    body_template: str = UserConfigurable(default=DEFAULT_BODY_TEMPLATE)
+    response_schema: dict = UserConfigurable(
+        default_factory=DEFAULT_RESPONSE_SCHEMA.to_dict
+    )
+    choose_action_instruction: str = UserConfigurable(
+        default=DEFAULT_CHOOSE_ACTION_INSTRUCTION
+    )
+    use_functions_api: bool = UserConfigurable(default=False)
+
+    #########
+    # State #
+    #########
+    # progress_summaries: dict[tuple[int, int], str] = Field(
+    #     default_factory=lambda: {(0, 0): ""}
+    # )
+
+
+class OneShotAgentPromptStrategy(PromptStrategy):
+    default_configuration: OneShotAgentPromptConfiguration = (
+        OneShotAgentPromptConfiguration()
+    )
 
     def __init__(
         self,
-        legacy_config: Config,
-        llm_provider: ChatModelProvider,
-        send_token_limit: int,
-        llm: ChatModelInfo,
+        configuration: OneShotAgentPromptConfiguration,
+        logger: Logger,
     ):
-        self.legacy_config = legacy_config
-        self.llm_provider = llm_provider
-        self.send_token_limit = send_token_limit
-        self.llm = llm
+        self.config = configuration
+        self.response_schema = JSONSchema.from_dict(configuration.response_schema)
+        self.logger = logger
+
+    @property
+    def model_classification(self) -> LanguageModelClassification:
+        return LanguageModelClassification.FAST_MODEL  # FIXME: dynamic switching
 
     def build_prompt(
         self,
+        *,
         messages: list[ChatMessage],
-        commands: list[Command],
         task: str,
-        profile: AIProfile,
-        directives: AIDirectives,
+        ai_profile: AIProfile,
+        ai_directives: AIDirectives,
+        commands: list[CompletionModelFunction],
+        include_os_info: bool,
+        **extras,
     ) -> ChatPrompt:
-        use_functions_api = self.legacy_config.openai_functions
-
-        messages.insert(
-            0,
-            ChatMessage.system(
-                f"You are {profile.ai_name}, {profile.ai_role.rstrip('.')}."
-                "Your decisions must always be made independently without seeking "
-                "user assistance. Play to your strengths as an LLM and pursue "
-                "simple strategies with no legal complications."
-                f"{self._generate_os_info()}\n"
-                "## Constraints\n"
-                "You operate within the following constraints:\n"
-                f"{format_numbered_list(directives.constraints)}\n"
-                "## Resources\n"
-                "You can leverage access to the following resources:\n"
-                f"{format_numbered_list(directives.resources)}\n"
-                "## Commands\n"
-                "These are the ONLY commands you can use."
-                " Any action you perform must be possible"
-                " through one of these commands:\n"
-                f"{format_numbered_list([str(cmd) for cmd in commands])}\n"
-                "## Best practices\n"
-                f"{format_numbered_list(directives.best_practices)}\n"
-                "## Your Task\n"
-                "The user will specify a task for you to execute, in triple quotes,"
-                " in the next message. Your job is to complete the task while following"
-                " your directives as given above, and terminate when your task is done."
-            ),
-        )
-        messages.insert(1, ChatMessage.user(f'"""{task}"""'))
-        messages.insert(
-            2, ChatMessage.system(self._response_format_instruction(use_functions_api))
+        """Constructs and returns a prompt with the following structure:
+        1. System prompt
+        3. `cycle_instruction`
+        """
+        system_prompt = self.build_system_prompt(
+            ai_profile=ai_profile,
+            ai_directives=ai_directives,
+            commands=commands,
+            include_os_info=include_os_info,
         )
 
-        messages.append(
-            ChatMessage.user(
-                "Determine exactly one command to use next based on the given goals "
-                "and the progress you have made so far, "
-                "and respond using the JSON schema specified previously."
-            )
+        user_task = f'"""{task}"""'
+
+        response_format_instr = self.response_format_instruction(
+            self.config.use_functions_api
         )
+        messages.append(ChatMessage.system(response_format_instr))
+
+        final_instruction_msg = ChatMessage.user(self.config.choose_action_instruction)
 
         prompt = ChatPrompt(
-            messages=messages,
-            functions=get_openai_command_specs(commands),
+            messages=[
+                ChatMessage.system(system_prompt),
+                ChatMessage.user(user_task),
+                *messages,
+                final_instruction_msg,
+            ],
         )
 
         return prompt
 
-    def parse_response(self, response: AssistantChatMessage) -> ThoughtProcessOutput:
-        if not response.content:
-            raise InvalidAgentResponseError("Assistant response has no text content")
-
-        logger.debug(
-            "LLM response content:"
-            + (
-                f"\n{response.content}"
-                if "\n" in response.content
-                else f" '{response.content}'"
-            )
-        )
-        assistant_reply_dict = extract_dict_from_json(response.content)
-        logger.debug(
-            "Validating object extracted from LLM response:\n"
-            f"{json.dumps(assistant_reply_dict, indent=4)}"
-        )
-
-        _, errors = DEFAULT_RESPONSE_SCHEMA.validate_object(
-            object=assistant_reply_dict,
-            logger=logger,
-        )
-        if errors:
-            raise InvalidAgentResponseError(
-                "Validation of response failed:\n  "
-                + ";\n  ".join([str(e) for e in errors])
-            )
-
-        # Get command name and arguments
-        command_name, arguments = extract_command(
-            assistant_reply_dict, response, self.legacy_config.openai_functions
+    def build_system_prompt(
+        self,
+        ai_profile: AIProfile,
+        ai_directives: AIDirectives,
+        commands: list[CompletionModelFunction],
+        include_os_info: bool,
+    ) -> str:
+        system_prompt_parts = (
+            self._generate_intro_prompt(ai_profile)
+            + (self._generate_os_info() if include_os_info else [])
+            + [
+                self.config.body_template.format(
+                    constraints=format_numbered_list(
+                        ai_directives.constraints
+                        + self._generate_budget_constraint(ai_profile.api_budget)
+                    ),
+                    resources=format_numbered_list(ai_directives.resources),
+                    commands=self._generate_commands_list(commands),
+                    best_practices=format_numbered_list(ai_directives.best_practices),
+                )
+            ]
+            + [
+                "## Your Task\n"
+                "The user will specify a task for you to execute, in triple quotes,"
+                " in the next message. Your job is to complete the task while following"
+                " your directives as given above, and terminate when your task is done."
+            ]
         )
 
-        return ThoughtProcessOutput(
-            command_name=command_name,
-            command_args=arguments,
-            thoughts=assistant_reply_dict,
-        )
+        # Join non-empty parts together into paragraph format
+        return "\n\n".join(filter(None, system_prompt_parts)).strip("\n")
 
-    def _generate_os_info(self) -> str:
-        """Generates the OS information part of the prompt."""
-        if not self.legacy_config.execute_local_commands:
-            return ""
-
-        os_name = platform.system()
-        os_info = (
-            platform.platform(terse=True)
-            if os_name != "Linux"
-            else distro.name(pretty=True)
-        )
-        return f"The OS you are running on is: {os_info}"
-
-    def _response_format_instruction(self, use_functions_api: bool) -> str:
-        response_schema = DEFAULT_RESPONSE_SCHEMA.copy(deep=True)
+    def response_format_instruction(self, use_functions_api: bool) -> str:
+        response_schema = self.response_schema.copy(deep=True)
         if (
             use_functions_api
             and response_schema.properties
@@ -178,6 +253,110 @@ class OneShotStrategy(PromptStrategy):
             "The JSON object should be compatible with the TypeScript type `Response` "
             f"from the following:\n{response_format}"
         )
+
+    def _generate_intro_prompt(self, ai_profile: AIProfile) -> list[str]:
+        """Generates the introduction part of the prompt.
+
+        Returns:
+            list[str]: A list of strings forming the introduction part of the prompt.
+        """
+        return [
+            f"You are {ai_profile.ai_name}, {ai_profile.ai_role.rstrip('.')}.",
+            "Your decisions must always be made independently without seeking "
+            "user assistance. Play to your strengths as an LLM and pursue "
+            "simple strategies with no legal complications.",
+        ]
+
+    def _generate_os_info(self) -> list[str]:
+        """Generates the OS information part of the prompt.
+
+        Params:
+            config (Config): The configuration object.
+
+        Returns:
+            str: The OS information part of the prompt.
+        """
+        os_name = platform.system()
+        os_info = (
+            platform.platform(terse=True)
+            if os_name != "Linux"
+            else distro.name(pretty=True)
+        )
+        return [f"The OS you are running on is: {os_info}"]
+
+    def _generate_budget_constraint(self, api_budget: float) -> list[str]:
+        """Generates the budget information part of the prompt.
+
+        Returns:
+            list[str]: The budget information part of the prompt, or an empty list.
+        """
+        if api_budget > 0.0:
+            return [
+                f"It takes money to let you run. "
+                f"Your API budget is ${api_budget:.3f}"
+            ]
+        return []
+
+    def _generate_commands_list(self, commands: list[CompletionModelFunction]) -> str:
+        """Lists the commands available to the agent.
+
+        Params:
+            agent: The agent for which the commands are being listed.
+
+        Returns:
+            str: A string containing a numbered list of commands.
+        """
+        try:
+            return format_numbered_list([cmd.fmt_line() for cmd in commands])
+        except AttributeError:
+            self.logger.warning(f"Formatting commands failed. {commands}")
+            raise
+
+    def parse_response_content(
+        self,
+        response: AssistantChatMessage,
+    ) -> ThoughtProcessOutput:
+        if not response.content:
+            raise InvalidAgentResponseError("Assistant response has no text content")
+
+        self.logger.debug(
+            "LLM response content:"
+            + (
+                f"\n{response.content}"
+                if "\n" in response.content
+                else f" '{response.content}'"
+            )
+        )
+        assistant_reply_dict = extract_dict_from_json(response.content)
+        self.logger.debug(
+            "Validating object extracted from LLM response:\n"
+            f"{json.dumps(assistant_reply_dict, indent=4)}"
+        )
+
+        _, errors = self.response_schema.validate_object(
+            object=assistant_reply_dict,
+            logger=self.logger,
+        )
+        if errors:
+            raise InvalidAgentResponseError(
+                "Validation of response failed:\n  "
+                + ";\n  ".join([str(e) for e in errors])
+            )
+
+        # Get command name and arguments
+        command_name, arguments = extract_command(
+            assistant_reply_dict, response, self.config.use_functions_api
+        )
+        return ThoughtProcessOutput(
+            command_name=command_name,
+            command_args=arguments,
+            thoughts=assistant_reply_dict
+        )
+
+
+#############
+# Utilities #
+#############
 
 
 def extract_command(

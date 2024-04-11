@@ -48,8 +48,8 @@ from autogpt.utils.exceptions import (
     UnknownCommandError,
 )
 from autogpt.utils.retry_decorator import retry
-from autogpt.agents.prompt_strategies.one_shot import OneShotStrategy
 from autogpt.core.resource.model_providers.schema import ChatModelResponse
+from autogpt.agents.prompt_strategies.one_shot import OneShotAgentPromptStrategy
 
 from .features.context import ContextComponent
 from .features.agent_file_manager import FileManagerComponent
@@ -114,8 +114,8 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
         self.context = ContextComponent(self.file_manager.workspace)
         self.watchdog = WatchdogComponent(settings.config, settings.history)
-        self.prompt_strategy = OneShotStrategy(
-            legacy_config, llm_provider, self.send_token_limit, self.llm
+        self.prompt_strategy = OneShotAgentPromptStrategy(
+            OneShotAgentPromptStrategy.default_configuration, logger
         )
 
         # Override component ordering
@@ -173,11 +173,12 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         )
 
         prompt: ChatPrompt = self.prompt_strategy.build_prompt(
-            messages,
-            self.commands,
-            self.state.task,
-            self.state.ai_profile,
-            directives,
+            messages=messages,
+            task=self.state.task,
+            ai_profile=self.state.ai_profile,
+            ai_directives=directives,
+            commands=get_openai_command_specs(self.commands),
+            include_os_info=self.legacy_config.execute_local_commands,
         )
 
         self.log_cycle_handler.log_count_within_cycle = 0
@@ -206,7 +207,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             await self.llm_provider.create_chat_completion(
                 prompt.messages,
                 model_name=self.llm.name,
-                completion_parser=self.prompt_strategy.parse_response,
+                completion_parser=self.prompt_strategy.parse_response_content,
                 functions=(
                     get_openai_command_specs(self.commands)
                     if self.config.use_functions_api

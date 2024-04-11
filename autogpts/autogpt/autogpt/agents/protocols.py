@@ -35,20 +35,6 @@ class MessageProvider(AgentComponent):
         ...
 
 
-@runtime_checkable
-class PromptStrategy(Protocol):
-    def build_prompt(
-        self,
-        **kwargs
-    ) -> ChatPrompt:
-        ...
-
-    def parse_response(
-        self, response: AssistantChatMessage
-    ) -> ThoughtProcessOutput:
-        ...
-
-
 class AfterParse(AgentComponent):
     @abstractmethod
     def after_parsing(self, result: ThoughtProcessOutput) -> None:

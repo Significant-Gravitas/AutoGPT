@@ -19,8 +19,8 @@ from forge.sdk.db import AgentDB
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
 
+from autogpt.utils.utils import DEFAULT_FINISH_COMMAND
 from autogpt.utils.exceptions import AgentTerminated, InvalidAgentResponseError
-from autogpt.utils.schema import DEFAULT_FINISH_COMMAND
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
