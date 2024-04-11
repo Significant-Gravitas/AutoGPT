@@ -1,14 +1,8 @@
 import re
 from typing import Callable, Optional, ParamSpec, TypeVar
 
-from autogpt.agents.base import CommandArgs
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.command import (
-    Command,
-    CommandOutput,
-    CommandParameter,
-    ValidityResult,
-)
+from autogpt.models.command import Command, CommandOutput, CommandParameter
 
 # Unique identifier for AutoGPT commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
@@ -21,7 +15,6 @@ def command(
     names: list[str] = [],
     description: Optional[str] = None,
     parameters: dict[str, JSONSchema] = {},
-    is_valid: Callable[[CommandArgs], ValidityResult] = lambda _: ValidityResult(True),
 ) -> Callable[[Callable[P, CommandOutput]], Command]:
     """
     The command decorator is used to make a Command from a function.
@@ -34,8 +27,6 @@ def command(
             (or entire docstring if no double line break is found)
         parameters (dict[str, JSONSchema]): The parameters of the function
             that the command executes.
-        is_valid (Callable[[CommandArgs], ValidityResult]):
-            A function that checks if the command with provided arguments is valid.
     """
 
     def decorator(func: Callable[P, CO]) -> Command:
@@ -64,7 +55,6 @@ def command(
             description=command_description,
             method=func,
             parameters=typed_parameters,
-            is_valid=is_valid,
         )
 
         return command

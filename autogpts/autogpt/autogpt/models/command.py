@@ -1,23 +1,13 @@
 from __future__ import annotations
 
 import inspect
-from typing import TYPE_CHECKING, Any, Callable, NamedTuple
-
-if TYPE_CHECKING:
-    from autogpt.agents.base import CommandArgs
+from typing import Any, Callable
 
 from .command_parameter import CommandParameter
 from .context_item import ContextItem
 
 CommandReturnValue = Any
 CommandOutput = CommandReturnValue | tuple[CommandReturnValue, ContextItem]
-
-
-class ValidityResult(NamedTuple):
-    """Command `is_valid` result"""
-
-    is_valid: bool
-    reason: str = ""
 
 
 class Command:
@@ -35,9 +25,6 @@ class Command:
         description: str,
         method: Callable[..., CommandOutput],
         parameters: list[CommandParameter],
-        is_valid: Callable[[CommandArgs], ValidityResult] = lambda a: ValidityResult(
-            True
-        ),
     ):
         # Check if all parameters are provided
         if not self._parameters_match(method, parameters):
@@ -48,7 +35,6 @@ class Command:
         self.description = description
         self.method = method
         self.parameters = parameters
-        self.is_valid = is_valid
 
     @property
     def is_async(self) -> bool:
@@ -93,5 +79,4 @@ class Command:
             self.description,
             self.method.__get__(instance, owner),
             self.parameters,
-            self.is_valid,
         )

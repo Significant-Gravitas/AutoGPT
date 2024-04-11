@@ -42,7 +42,6 @@ from autogpt.utils.exceptions import (
     AgentException,
     AgentTerminated,
     CommandExecutionError,
-    InvalidOperationError,
     UnknownCommandError,
 )
 from autogpt.utils.retry_decorator import retry
@@ -212,13 +211,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             ),
         )
         result = response.parsed_result
-
-        # Check if the command is valid, e.g. isn't duplicating a previous command
-        command = self.get_command(result.command_name)
-        if command:
-            is_valid, reason = command.is_valid(result.command_args)
-            if not is_valid:
-                raise InvalidOperationError(reason)
 
         self.log_cycle_handler.log_cycle(
             self.state.ai_profile.ai_name,
