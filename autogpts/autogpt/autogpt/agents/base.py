@@ -4,7 +4,16 @@ import copy
 import inspect
 import logging
 from abc import ABCMeta, abstractmethod
-from typing import TYPE_CHECKING, Any, Optional, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterator,
+    Optional,
+    ParamSpec,
+    TypeVar,
+    overload,
+)
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
@@ -34,6 +43,9 @@ from autogpt.models.action_history import ActionResult, EpisodicActionHistory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+P = ParamSpec("P")
 
 CommandName = str
 CommandArgs = dict[str, str]
@@ -214,41 +226,61 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentABCMeta):
     def reset_trace(self):
         self._trace = []
 
-    # Generic function to get components of a specific type
-    def get_component(self, component_type: type[C]) -> Optional[C]:
-        for component in self.components:
-            if isinstance(component, component_type):
-                return component
-        return None
-
     def is_enabled(self, component: AgentComponent) -> bool:
         if callable(component.enabled):
             return component.enabled()
         return component.enabled
 
-    async def foreach_components(
-        self, method_name: str, *args, retry_limit: int = 3
-    ) -> Any:
+    @overload
+    async def run_pipeline(
+        self, protocol_method: Callable[P, Iterator[T]], *args, retry_limit: int = 3
+    ) -> list[T]:
+        ...
+
+    @overload
+    async def run_pipeline(
+        self, protocol_method: Callable[P, None], *args, retry_limit: int = 3
+    ) -> list[None]:
+        ...
+
+    async def run_pipeline(
+        self,
+        protocol_method: Callable[P, Iterator[T] | None],
+        *args,
+        retry_limit: int = 3,
+    ) -> list[T] | list[None]:
+        method_name = protocol_method.__name__
+        protocol_name = protocol_method.__qualname__.split(".")[0]
+        protocol_class = globals()[protocol_name]
+        if not issubclass(protocol_class, AgentComponent):
+            raise TypeError(f"{repr(protocol_method)} is not a protocol method")
+
         # Clone parameters to revert on failure
         original_args = self._selective_copy(args)
         pipeline_attempts = 0
-        method_result: list[Any] | Any = []
+        method_result: list[T] = []
         self._trace.append(f"⬇️  {Fore.BLUE}{method_name}{Fore.RESET}")
 
         while pipeline_attempts < retry_limit:
             try:
                 for component in self.components:
-                    # Skip disabled components
-                    component_attempts = 0
-                    method = getattr(component, method_name, None)
-                    if not callable(method):
+                    # Skip other protocols
+                    if not isinstance(component, protocol_class):
                         continue
+
+                    # Skip disabled components
                     if not self.is_enabled(component):
                         self._trace.append(
                             f"   {Fore.LIGHTBLACK_EX}"
                             f"{component.__class__.__name__}{Fore.RESET}"
                         )
                         continue
+
+                    method = getattr(component, method_name, None)
+                    if not callable(method):
+                        continue
+
+                    component_attempts = 0
                     while component_attempts < retry_limit:
                         try:
                             component_args = self._selective_copy(args)

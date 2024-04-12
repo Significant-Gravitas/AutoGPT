@@ -55,6 +55,13 @@ from .base import (
 from .features.agent_file_manager import FileManagerComponent
 from .features.context import ContextComponent
 from .features.watchdog import WatchdogComponent
+from .protocols import (
+    AfterExecute,
+    AfterParse,
+    CommandProvider,
+    DirectiveProvider,
+    MessageProvider,
+)
 
 if TYPE_CHECKING:
     from autogpt.config import Config
@@ -147,26 +154,20 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.reset_trace()
 
         # Get directives
-        constraints: list[str] = list(await self.foreach_components("get_constraints"))
-        resources: list[str] = list(await self.foreach_components("get_resources"))
-        best_practices: list[str] = list(
-            await self.foreach_components("get_best_practices")
-        )
+        resources = await self.run_pipeline(DirectiveProvider.get_resources)
+        constraints = await self.run_pipeline(DirectiveProvider.get_constraints)
+        best_practices = await self.run_pipeline(DirectiveProvider.get_best_practices)
 
         directives = self.state.directives.copy(deep=True)
-        directives.constraints += constraints
         directives.resources += resources
+        directives.constraints += constraints
         directives.best_practices += best_practices
 
         # Get commands
-        self.commands: list[Command] = list(
-            await self.foreach_components("get_commands")
-        )
+        self.commands = await self.run_pipeline(CommandProvider.get_commands)
 
         # Get messages
-        messages: list[ChatMessage] = list(
-            await self.foreach_components("get_messages")
-        )
+        messages = await self.run_pipeline(MessageProvider.get_messages)
 
         prompt: ChatPrompt = self.prompt_strategy.build_prompt(
             messages=messages,
@@ -221,7 +222,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             NEXT_ACTION_FILE_NAME,
         )
 
-        await self.foreach_components("after_parsing", result)
+        await self.run_pipeline(AfterParse.after_parsing, result)
 
         return result
 
@@ -267,7 +268,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
                     "Do not execute this command again with the same arguments."
                 )
 
-        await self.foreach_components("after_execution", result)
+        await self.run_pipeline(AfterExecute.after_execution, result)
 
         logger.debug("\n".join(self.trace))
 
