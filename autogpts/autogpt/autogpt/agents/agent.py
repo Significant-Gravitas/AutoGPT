@@ -48,7 +48,6 @@ from autogpt.utils.exceptions import (
     InvalidArgumentError,
     UnknownCommandError,
 )
-from autogpt.utils.retry_decorator import retry
 
 from .base import (
     BaseAgent,
@@ -197,7 +196,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
         return output
 
-    @retry()
     async def complete_and_parse(
         self, prompt: ChatPrompt, exception: Optional[Exception] = None
     ) -> ThoughtProcessOutput:
