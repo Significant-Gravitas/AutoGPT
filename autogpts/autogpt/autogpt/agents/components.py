@@ -18,18 +18,18 @@ class AgentComponent(ABC):
         return self._disabled_reason
 
 
-class ComponentError(Exception):
-    """Error of a single component."""
+class ComponentEndpointError(Exception):
+    """Error of a single protocol method on a component."""
 
     def __init__(self, message: str = ""):
         self.message = message
         super().__init__(message)
 
 
-class ProtocolError(ComponentError):
-    """Error of an entire pipeline of one component type."""
+class PipelineEndpointError(ComponentEndpointError):
+    """Error of an entire pipline of one endpoint."""
 
 
-class PipelineError(ComponentError):
-    """Error of a group of component types;
-    multiple protocols."""
+class ComponentSystemError(PipelineEndpointError):
+    """Error of a group of pipelines;
+    multiple different enpoints."""

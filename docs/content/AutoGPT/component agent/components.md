@@ -100,14 +100,14 @@ Custom errors are provided which can be used to control the execution flow in ca
 By default agent will retry three times and then re-raise an exception if it's still not resolved. All passed arguments are automatically handled and the values are reverted when needed.
 All errors accept an optional `str` message. There are following errors ordered by increasing broadness:
 
-1. `ComponentError`: A single component failed to execute. Agent will retry the execution of the component.
-2. `ProtocolError`: An entire protocol failed to execute. Agent will retry the execution of the protocol method for all components.
-3. `PipelineError`: An entire pipeline failed to execute. Agent will retry the execution of the pipeline for all protocols.
+1. `ComponentEndpointError`: A single endpoint method failed to execute. Agent will retry the execution of this endpoint on the component.
+2. `PipelineEndpointError`: A pipeline failed to execute. Agent will retry the execution of the endpoint for all components.
+3. `ComponentSystemError`: Multiple pipelines failed.
 
 **Example**
 
 ```py
-from autogpt.agents.components import ComponentError
+from autogpt.agents.components import ComponentEndpointError
 from autogpt.agents.protocols import MessageProvider
 
 # Example of raising an error
@@ -115,5 +115,5 @@ class MyComponent(MessageProvider):
     def get_messages(self) -> Iterator[ChatMessage]:
         # This will cause the component to always fail 
         # and retry 3 times before re-raising the exception
-        raise ComponentError("Component error!")
+        raise ComponentEndpointError("Endpoint error!")
 ```

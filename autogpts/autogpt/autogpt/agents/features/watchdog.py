@@ -1,7 +1,7 @@
 import logging
 
 from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.agents.components import PipelineError
+from autogpt.agents.components import ComponentSystemError
 from autogpt.agents.features.context import ContextComponent
 from autogpt.agents.protocols import AfterParse
 from autogpt.models.action_history import EpisodicActionHistory
@@ -56,5 +56,5 @@ class WatchdogComponent(AfterParse):
                 self.event_history.rewind()
                 self.big_brain = True
                 self.revert_big_brain = True
-                # This will trigger retry of all pipelines on the method
-                raise PipelineError()
+                # Trigger retry of all pipelines prior to this component
+                raise ComponentSystemError()

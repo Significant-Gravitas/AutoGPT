@@ -25,7 +25,11 @@ if TYPE_CHECKING:
         ChatModelProvider,
     )
 
-from autogpt.agents.components import AgentComponent, ComponentError, ProtocolError
+from autogpt.agents.components import (
+    AgentComponent,
+    ComponentEndpointError,
+    PipelineEndpointError,
+)
 from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
@@ -288,24 +292,24 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentABCMeta):
                             args = component_args
                             self._trace.append(f"✅ {component.__class__.__name__}")
 
-                        except ComponentError:
+                        except ComponentEndpointError:
                             self._trace.append(
                                 f"❌ {Fore.YELLOW}{component.__class__.__name__}: "
-                                f"ComponentError{Fore.RESET}"
+                                f"ComponentEndpointError{Fore.RESET}"
                             )
-                            # Retry the same component on ComponentError
+                            # Retry the same component on ComponentEndpointError
                             component_attempts += 1
                             continue
                         # Successful component execution
                         break
                 # Successful pipeline execution
                 break
-            except ProtocolError:
+            except PipelineEndpointError:
                 self._trace.append(
                     f"❌ {Fore.LIGHTRED_EX}{component.__class__.__name__}: "
-                    f"ProtocolError{Fore.RESET}"
+                    f"PipelineEndpointError{Fore.RESET}"
                 )
-                # Restart from the beginning on ProtocolError
+                # Restart from the beginning on PipelineEndpointError
                 # Revert to original parameters
                 args = self._selective_copy(original_args)
                 pipeline_attempts += 1
