@@ -26,10 +26,10 @@ class ComponentEndpointError(Exception):
         super().__init__(message)
 
 
-class PipelineEndpointError(ComponentEndpointError):
+class EndpointPipelineError(ComponentEndpointError):
     """Error of an entire pipline of one endpoint."""
 
 
-class ComponentSystemError(PipelineEndpointError):
+class ComponentSystemError(EndpointPipelineError):
     """Error of a group of pipelines;
     multiple different enpoints."""

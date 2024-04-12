@@ -29,7 +29,7 @@ from autogpt.agents import protocols as _protocols
 from autogpt.agents.components import (
     AgentComponent,
     ComponentEndpointError,
-    PipelineEndpointError,
+    EndpointPipelineError,
 )
 from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
@@ -305,12 +305,12 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentABCMeta):
                         break
                 # Successful pipeline execution
                 break
-            except PipelineEndpointError:
+            except EndpointPipelineError:
                 self._trace.append(
                     f"❌ {Fore.LIGHTRED_EX}{component.__class__.__name__}: "
-                    f"PipelineEndpointError{Fore.RESET}"
+                    f"EndpointPipelineError{Fore.RESET}"
                 )
-                # Restart from the beginning on PipelineEndpointError
+                # Restart from the beginning on EndpointPipelineError
                 # Revert to original parameters
                 args = self._selective_copy(original_args)
                 pipeline_attempts += 1

@@ -127,9 +127,28 @@ class LoggerComponent(AfterParse):
         logger.info(f"Response: {response}")
 ```
 
+### `ExecutionFailure` 
+
+Protocol called when the execution of the command fails.
+
+```py
+class ExecutionFailure(AgentComponent):
+    @abstractmethod
+    def execution_failure(self, error: Exception) -> None:
+        ...
+```
+
+**Example** Component that logs the error when the command fails.
+
+```py
+class LoggerComponent(ExecutionFailure):
+    def execution_failure(self, error: Exception) -> None:
+        logger.error(f"Command execution failed: {error}")
+```
+
 ### `AfterExecute`
 
-Protocol called after the command is executed by the agent.
+Protocol called after the command is successfully executed by the agent.
 
 ```py
 class AfterExecute(AgentComponent):

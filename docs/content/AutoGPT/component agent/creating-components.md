@@ -2,11 +2,19 @@
 
 ## The minimal component
 
-*Component* is a class that implements one or more *protocols*. Every *protocol* inherits `AgentComponent`, so your class automatically becomes a *component* once you inherit any *protocol*.
+*Component* is a class that inherits from `AgentComponent` OR implements one or more *protocols*. Every *protocol* inherits `AgentComponent`, so your class automatically becomes a *component* once you inherit any *protocol*.
+
+```py
+class MyComponent(AgentComponent):
+    pass
+```
+
+This is already a valid component, but it doesn't do anything yet. To add some functionality to it, you need to implement one or more *protocols*.
 
 Let's create a simple component that adds "Hello World!" message to the agent's prompt. To do this we need to implement `MessageProvider` *protocol* in our component. `MessageProvider` is an interface with `get_messages` method:
 
 ```py
+# We no longer need to inherit AgentComponent
 class HelloComponent(MessageProvider):
     def get_messages(self) -> Iterator[ChatMessage]:
         yield ChatMessage.user("Hello World!")

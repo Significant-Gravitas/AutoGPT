@@ -10,21 +10,55 @@ class CommandProvider(Protocol):
 
 ## `command` decorator
 
-The easiest way to provide a command is to use `command` decorator on a component method and then yield `Command.from_decorated_function(...)`. Each command needs a name, description and a parameter schema using `JSONSchema`. By default method name is used as a command name, and first part of docstring for the description (before `Args:` or `Returns:`) and schema can be provided in the decorator.
+The easiest way to provide a command is to use `command` decorator on a component method and then just yield it. Each command needs a name, description and a parameter schema - `JSONSchema`. By default method name is used as a command name, and first part of docstring for the description (before first double newline) and schema can be provided in the decorator.
 
-- Simplified
-- Full
-
-## Direct construction
-
-
-
+### Example usage of `command` decorator
 
 ```py
-from autogpt.agents.components import Component
-from autogpt.agents.protocols import CommandProvider
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.utils.command_decorator import command
+@command(parameters={
+            "a": JSONSchema(
+                type=JSONSchema.Type.INTEGER,
+                description="The first number",
+                required=True,
+            ),
+            "b": JSONSchema(
+                type=JSONSchema.Type.INTEGER,
+                description="The second number",
+                required=True,
+            )})
+    def multiply(self, a: int, b: int) -> str:
+        """
+        Multiplies two numbers.
+        
+        Args:
+            a: First number
+            b: Second number
 
+        Returns:
+            Result of multiplication
+        """
+        return str(a * b)
+```
 
+The agent will be able to call this command, named `multiply` with two arguments and will receive the result. The command description will be: `Multiplies two numbers.`
+
+We can provide `names` and `description` in the decorator, the above command is equivalent to:
+
+```py
+@command(
+    names=["multiply"],
+    description="Multiplies two numbers.",
+    parameters={
+        "a": JSONSchema(
+            type=JSONSchema.Type.INTEGER,
+            description="The first number",
+            required=True,
+        ),
+        "b": JSONSchema(
+            type=JSONSchema.Type.INTEGER,
+            description="The second number",
+            required=True,
+        )})
+    def multiply_command(self, a: int, b: int) -> str:
+        return str(a * b)
 ```

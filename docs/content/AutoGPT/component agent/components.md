@@ -9,12 +9,12 @@ Visit [Built-in Components](./built-in-components.md) to see what components are
 
 ```py
 from autogpt.agents import Agent
-from autogpt.agents.components import Component
+from autogpt.agents.components import AgentComponent
 
 class HelloComponent(AgentComponent):
     pass
 
-class CalculatorComponent(AgentComponent):
+class SomeComponent(AgentComponent):
     def __init__(self, hello_component: HelloComponent):
         self.hello_component = hello_component
 
@@ -22,8 +22,8 @@ class MyAgent(Agent):
     def __init__(self):
         # These components will be automatically discovered and used
         self.hello_component = HelloComponent()
-        # We pass HelloComponent to CalculatorComponent
-        self.calculator_component = CalculatorComponent(self.hello_component)
+        # We pass HelloComponent to SomeComponent
+        self.some_component = SomeComponent(self.hello_component)
 ```
 ## Ordering components
 
@@ -35,7 +35,7 @@ Components can be ordered implicitly by the agent; each component can set `run_a
 
 ```py
 # This component will run after HelloComponent
-class CalculatorComponent(Component):
+class CalculatorComponent(AgentComponent):
     run_after = [HelloComponent]
 ```
 
@@ -101,7 +101,7 @@ By default agent will retry three times and then re-raise an exception if it's s
 All errors accept an optional `str` message. There are following errors ordered by increasing broadness:
 
 1. `ComponentEndpointError`: A single endpoint method failed to execute. Agent will retry the execution of this endpoint on the component.
-2. `PipelineEndpointError`: A pipeline failed to execute. Agent will retry the execution of the endpoint for all components.
+2. `EndpointPipelineError`: A pipeline failed to execute. Agent will retry the execution of the endpoint for all components.
 3. `ComponentSystemError`: Multiple pipelines failed.
 
 **Example**

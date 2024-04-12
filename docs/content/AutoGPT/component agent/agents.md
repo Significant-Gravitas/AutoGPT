@@ -1,13 +1,11 @@
 # 🤖 Agents
 
-Explanation
-is composed of components. It's responsible for executing pipelines and managing the components.
-Inherits from `BaseAgent`
+Agent is composed of [🧩 Components](./components.md) and responsible for executing pipelines and some additional logic. The base class for all agents is `BaseAgent`, it has the necessary logic to collect components and execute protocols.
 
 ## AutoGPT Agent
 
-Explanation
+`Agent` is the main agent provided by AutoGPT. It's a subclass of `BaseAgent`.
 
-### Built-in Pipelines
+### Important methods
 
 `propose_action` and `execute`
