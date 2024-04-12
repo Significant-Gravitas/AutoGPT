@@ -1,12 +1,7 @@
 from typing import Callable, Iterator, Optional
 
 from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.agents.protocols import (
-    AfterExecute,
-    AfterParse,
-    ExecutionFailure,
-    MessageProvider,
-)
+from autogpt.agents.protocols import AfterExecute, AfterParse, MessageProvider
 from autogpt.config.config import Config
 from autogpt.core.resource.model_providers.schema import ChatMessage, ChatModelProvider
 from autogpt.models.action_history import (
@@ -18,9 +13,7 @@ from autogpt.models.action_history import (
 from autogpt.prompts.utils import indent
 
 
-class EventHistoryComponent(
-    MessageProvider, AfterParse, ExecutionFailure, AfterExecute
-):
+class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute):
     """Keeps track of the event history and provides a summary of the steps."""
 
     def __init__(
@@ -55,9 +48,6 @@ class EventHistoryComponent(
                     reasoning=result.thoughts["thoughts"]["reasoning"],
                 )
             )
-
-    def execution_failure(self, error: Exception) -> None:
-        self.event_history.rewind()
 
     async def after_execute(self, result: ActionResult) -> None:
         self.event_history.register_result(result)

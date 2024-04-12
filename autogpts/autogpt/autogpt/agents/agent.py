@@ -60,7 +60,6 @@ from .protocols import (
     AfterParse,
     CommandProvider,
     DirectiveProvider,
-    ExecutionFailure,
     MessageProvider,
 )
 
@@ -299,7 +298,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             except AgentException:
                 raise
             except Exception as e:
-                await self.run_pipeline(ExecutionFailure.execution_failure, e)
                 raise CommandExecutionError(str(e))
 
         raise UnknownCommandError(
