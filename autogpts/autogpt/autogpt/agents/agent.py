@@ -20,7 +20,10 @@ from autogpt.components.event_history import EventHistoryComponent
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import ChatMessage, ChatModelProvider
-from autogpt.core.resource.model_providers.schema import ChatModelResponse
+from autogpt.core.resource.model_providers.schema import (
+    AssistantChatMessage,
+    ChatModelResponse,
+)
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.file_storage.base import FileStorage
 from autogpt.llm.providers.openai import get_openai_command_specs
@@ -42,6 +45,7 @@ from autogpt.utils.exceptions import (
     AgentException,
     AgentTerminated,
     CommandExecutionError,
+    InvalidArgumentError,
     UnknownCommandError,
 )
 from autogpt.utils.retry_decorator import retry
@@ -205,7 +209,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         ] = await self.llm_provider.create_chat_completion(
             prompt.messages,
             model_name=self.llm.name,
-            completion_parser=self.prompt_strategy.parse_response_content,
+            completion_parser=self.parse_and_validate_response,
             functions=(
                 get_openai_command_specs(self.commands)
                 if self.config.use_functions_api
@@ -225,6 +229,28 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         await self.run_pipeline(AfterParse.after_parse, result)
 
         return result
+
+    def parse_and_validate_response(
+        self, llm_response: AssistantChatMessage
+    ) -> ThoughtProcessOutput:
+        parsed_response = self.prompt_strategy.parse_response_content(llm_response)
+
+        # Validate command arguments
+        command_name = parsed_response.command_name
+        command = self._get_command(command_name)
+        if arg_errors := command.validate_args(parsed_response.command_args)[1]:
+            fmt_errors = [
+                f"{'.'.join(str(p) for p in f.path)}: {f.message}"
+                if f.path
+                else f.message
+                for f in arg_errors
+            ]
+            raise InvalidArgumentError(
+                f"The set of arguments supplied for {command_name} is invalid:\n"
+                + "\n".join(fmt_errors)
+            )
+
+        return parsed_response
 
     async def execute(
         self,
@@ -246,7 +272,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
         else:
             try:
-                return_value = await self.execute_command(
+                return_value = await self._execute_command(
                     command_name=command_name,
                     arguments=command_args,
                 )
@@ -274,7 +300,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
         return result
 
-    async def execute_command(
+    async def _execute_command(
         self,
         command_name: str,
         arguments: dict[str, str],
@@ -289,26 +315,25 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             str: The result of the command
         """
         # Execute a native command with the same name or alias, if it exists
-        if command := self.get_command(command_name):
-            try:
-                result = command(**arguments)
-                if inspect.isawaitable(result):
-                    return await result
-                return result
-            except AgentException:
-                raise
-            except Exception as e:
-                raise CommandExecutionError(str(e))
+        command = self._get_command(command_name)
+        try:
+            result = command(**arguments)
+            if inspect.isawaitable(result):
+                return await result
+            return result
+        except AgentException:
+            raise
+        except Exception as e:
+            raise CommandExecutionError(str(e))
+
+    def _get_command(self, command_name: str) -> Command:
+        for command in reversed(self.commands):
+            if command_name in command.names:
+                return command
 
         raise UnknownCommandError(
             f"Cannot execute command '{command_name}': unknown command."
         )
-
-    def get_command(self, command_name: str) -> Optional[Command]:
-        for command in reversed(self.commands):
-            if command_name in command.names:
-                return command
-        return None
 
     def find_obscured_commands(self) -> list[Command]:
         seen_names = set()
