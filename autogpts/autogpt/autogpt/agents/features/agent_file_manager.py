@@ -1,8 +1,7 @@
 import logging
 import os
-import os.path
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Optional
 
 from autogpt.agents.protocols import CommandProvider, DirectiveProvider
 from autogpt.command_decorator import command
@@ -46,10 +45,25 @@ class FileManagerComponent(DirectiveProvider, CommandProvider):
         )
         self._file_storage = file_storage
 
-    async def save_state(self) -> None:
+    async def save_state(self, save_as: Optional[str] = None) -> None:
         """Save the agent's state to the state file."""
         state: BaseAgentSettings = getattr(self, "state")
-        await self.files.write_file(self.files.root / self.STATE_FILE, state.json())
+        if save_as:
+            temp_id = state.agent_id
+            state.agent_id = save_as
+            self._file_storage.make_dir(f"agents/{save_as}")
+            # Save state
+            await self._file_storage.write_file(
+                f"agents/{save_as}/{self.STATE_FILE}", state.json()
+            )
+            # Copy workspace
+            self._file_storage.copy(
+                f"agents/{temp_id}/workspace",
+                f"agents/{save_as}/workspace",
+            )
+            state.agent_id = temp_id
+        else:
+            await self.files.write_file(self.files.root / self.STATE_FILE, state.json())
 
     def change_agent_id(self, new_id: str):
         """Change the agent's ID and update the file storage accordingly."""
