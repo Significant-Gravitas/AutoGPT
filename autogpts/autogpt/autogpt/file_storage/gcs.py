@@ -182,6 +182,21 @@ class GCSFileStorage(FileStorage):
             new_name = str(blob.name).replace(str(old_path), str(new_path), 1)
             self._bucket.rename_blob(blob, new_name=new_name)
 
+    def copy(self, source: str | Path, destination: str | Path) -> None:
+        """Copy a file or folder with all contents in the storage."""
+        source = self.get_path(source)
+        destination = self.get_path(destination)
+        # If the source is a file, copy it
+        if self._bucket.blob(str(source)).exists():
+            self._bucket.copy_blob(
+                self._bucket.blob(str(source)), self._bucket, str(destination)
+            )
+            return
+        # Otherwise, copy all blobs with the prefix (folder)
+        for blob in self._bucket.list_blobs(prefix=f"{source}/"):
+            new_name = str(blob.name).replace(str(source), str(destination), 1)
+            self._bucket.copy_blob(blob, self._bucket, new_name)
+
     def clone_with_subroot(self, subroot: str | Path) -> GCSFileStorage:
         """Create a new GCSFileStorage with a subroot of the current storage."""
         file_storage = GCSFileStorage(

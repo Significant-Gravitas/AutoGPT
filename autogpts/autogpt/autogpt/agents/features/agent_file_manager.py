@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
 from autogpt.file_storage.base import FileStorage
 
@@ -13,11 +14,11 @@ class AgentFileManagerMixin:
     """Mixin that adds file manager (e.g. Agent state)
     and workspace manager (e.g. Agent output files) support."""
 
-    files: FileStorage = None
+    files: FileStorage
     """Agent-related files, e.g. state, logs.
     Use `workspace` to access the agent's workspace files."""
 
-    workspace: FileStorage = None
+    workspace: FileStorage
     """Workspace that the agent has access to, e.g. for reading/writing files.
     Use `files` to access agent-related files, e.g. state, logs."""
 
@@ -68,10 +69,25 @@ class AgentFileManagerMixin:
         """Get the agent's file operation logs as list of strings."""
         return self._file_logs_cache
 
-    async def save_state(self) -> None:
+    async def save_state(self, save_as: Optional[str] = None) -> None:
         """Save the agent's state to the state file."""
         state: BaseAgentSettings = getattr(self, "state")
-        await self.files.write_file(self.files.root / self.STATE_FILE, state.json())
+        if save_as:
+            temp_id = state.agent_id
+            state.agent_id = save_as
+            self._file_storage.make_dir(f"agents/{save_as}")
+            # Save state
+            await self._file_storage.write_file(
+                f"agents/{save_as}/{self.STATE_FILE}", state.json()
+            )
+            # Copy workspace
+            self._file_storage.copy(
+                f"agents/{temp_id}/workspace",
+                f"agents/{save_as}/workspace",
+            )
+            state.agent_id = temp_id
+        else:
+            await self.files.write_file(self.files.root / self.STATE_FILE, state.json())
 
     def change_agent_id(self, new_id: str):
         """Change the agent's ID and update the file storage accordingly."""

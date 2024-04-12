@@ -177,3 +177,24 @@ def test_clone(gcs_storage_with_files: GCSFileStorage, gcs_root: Path):
     assert cloned._bucket.name == gcs_storage_with_files._bucket.name
     assert cloned.exists("dir")
     assert cloned.exists("dir/test_file_4")
+
+
+@pytest.mark.asyncio
+async def test_copy_file(storage: GCSFileStorage):
+    await storage.write_file("test_file.txt", "test content")
+    storage.copy("test_file.txt", "test_file_copy.txt")
+    storage.make_dir("dir")
+    storage.copy("test_file.txt", "dir/test_file_copy.txt")
+    assert storage.read_file("test_file_copy.txt") == "test content"
+    assert storage.read_file("dir/test_file_copy.txt") == "test content"
+
+
+@pytest.mark.asyncio
+async def test_copy_dir(storage: GCSFileStorage):
+    storage.make_dir("dir")
+    storage.make_dir("dir/sub_dir")
+    await storage.write_file("dir/test_file.txt", "test content")
+    await storage.write_file("dir/sub_dir/test_file.txt", "test content")
+    storage.copy("dir", "dir_copy")
+    assert storage.read_file("dir_copy/test_file.txt") == "test content"
+    assert storage.read_file("dir_copy/sub_dir/test_file.txt") == "test content"
