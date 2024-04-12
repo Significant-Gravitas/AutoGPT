@@ -345,19 +345,13 @@ async def run_auto_gpt(
         logger.info(f"Saving state of {agent_id}...")
 
         # Allow user to Save As other ID
-        save_as_id = (
-            clean_input(
-                config,
-                f"Press enter to save as '{agent_id}',"
-                " or enter a different ID to save to:",
-            )
-            or agent_id
+        save_as_id = clean_input(
+            config,
+            f"Press enter to save as '{agent_id}',"
+            " or enter a different ID to save to:",
         )
-        if save_as_id and save_as_id != agent_id:
-            agent.change_agent_id(save_as_id)
-            # TODO: allow many-to-one relations of agents and workspaces
-
-        await agent.save_state()
+        # TODO: allow many-to-one relations of agents and workspaces
+        await agent.save_state(save_as_id if not save_as_id.isspace() else None)
 
 
 @coroutine

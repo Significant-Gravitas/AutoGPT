@@ -188,3 +188,24 @@ def test_get_path_accessible(accessible_path: Path, storage: LocalFileStorage):
 def test_get_path_inaccessible(inaccessible_path: Path, storage: LocalFileStorage):
     with pytest.raises(ValueError):
         storage.get_path(inaccessible_path)
+
+
+@pytest.mark.asyncio
+async def test_copy_file(storage: LocalFileStorage):
+    await storage.write_file("test_file.txt", "test content")
+    storage.copy("test_file.txt", "test_file_copy.txt")
+    storage.make_dir("dir")
+    storage.copy("test_file.txt", "dir/test_file_copy.txt")
+    assert storage.read_file("test_file_copy.txt") == "test content"
+    assert storage.read_file("dir/test_file_copy.txt") == "test content"
+
+
+@pytest.mark.asyncio
+async def test_copy_dir(storage: LocalFileStorage):
+    storage.make_dir("dir")
+    storage.make_dir("dir/sub_dir")
+    await storage.write_file("dir/test_file.txt", "test content")
+    await storage.write_file("dir/sub_dir/test_file.txt", "test content")
+    storage.copy("dir", "dir_copy")
+    assert storage.read_file("dir_copy/test_file.txt") == "test content"
+    assert storage.read_file("dir_copy/sub_dir/test_file.txt") == "test content"
