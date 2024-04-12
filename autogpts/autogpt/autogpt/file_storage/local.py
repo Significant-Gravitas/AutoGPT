@@ -115,6 +115,20 @@ class LocalFileStorage(FileStorage):
         new_path = self.get_path(new_path)
         old_path.rename(new_path)
 
+    def copy(self, source: str | Path, destination: str | Path) -> None:
+        """Copy a file or folder with all contents in the storage."""
+        source = self.get_path(source)
+        destination = self.get_path(destination)
+        if source.is_file():
+            destination.write_bytes(source.read_bytes())
+        else:
+            destination.mkdir(exist_ok=True, parents=True)
+            for file in source.rglob("*"):
+                if file.is_file():
+                    target = destination / file.relative_to(source)
+                    target.parent.mkdir(exist_ok=True, parents=True)
+                    target.write_bytes(file.read_bytes())
+
     def clone_with_subroot(self, subroot: str | Path) -> FileStorage:
         """Create a new LocalFileStorage with a subroot of the current storage."""
         return LocalFileStorage(
