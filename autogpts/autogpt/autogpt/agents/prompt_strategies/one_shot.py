@@ -392,10 +392,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             f"{json.dumps(assistant_reply_dict, indent=4)}"
         )
 
-        _, errors = self.response_schema.validate_object(
-            object=assistant_reply_dict,
-            logger=self.logger,
-        )
+        _, errors = self.response_schema.validate_object(assistant_reply_dict)
         if errors:
             raise InvalidAgentResponseError(
                 "Validation of response failed:\n  "
