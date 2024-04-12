@@ -19,8 +19,8 @@ class GitOperationsComponent(CommandProvider):
     """Provides commands to perform Git operations."""
 
     def __init__(self, config: Config):
-        self.enabled = bool(config.github_username and config.github_api_key)
-        self.disabled_reason = "Configure github_username and github_api_key."
+        self._enabled = bool(config.github_username and config.github_api_key)
+        self._disabled_reason = "Configure github_username and github_api_key."
         self.legacy_config = config
 
     def get_commands(self) -> Iterator[Command]:

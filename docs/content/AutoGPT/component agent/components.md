@@ -56,17 +56,24 @@ class MyAgent(Agent):
 
 ## Disabling components
 
-You can control which components are enabled by setting their `enabled` attribute. You can either provide a `bool` value or a `callable[[], bool]` that will be called each time the component is about to be executed. This way you can dynamically enable or disable components based on some conditions.
-You can also provide a reason for disabling the component by setting `disabled_reason`. The reason will be visible in the debug information.
+You can control which components are enabled by setting their `_enabled` attribute.
+Either provide a `bool` value or a `Callable[[], bool]`, will be checked each time
+the component is about to be executed. This way you can dynamically enable or disable
+components based on some conditions.
+You can also provide a reason for disabling the component by setting `_disabled_reason`.
+The reason will be visible in the debug information.
 
 ```py
 class DisabledComponent(MessageProvider):
     def __init__(self):
         # Disable this component
-        self.enabled = False
-        self.disabled_reason = "This component is disabled because of reasons."
-        # Or disable based on some condition
-        self.enabled = self.some_condition
+        self._enabled = False
+        self._disabled_reason = "This component is disabled because of reasons."
+
+        # Or disable based on some condition, either statically...:
+        self._enabled = self.some_property is not None
+        # ... or dynamically:
+        self._enabled = lambda: self.some_property is not None
 
     # This method will never be called
     def get_messages(self) -> Iterator[ChatMessage]:

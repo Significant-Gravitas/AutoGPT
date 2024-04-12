@@ -14,7 +14,7 @@ class UserInteractionComponent(CommandProvider):
 
     def __init__(self, config: Config):
         self.config = config
-        self.enabled = not config.noninteractive_mode
+        self._enabled = not config.noninteractive_mode
 
     def get_commands(self) -> Iterator[Command]:
         yield self.ask_user

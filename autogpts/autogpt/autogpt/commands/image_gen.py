@@ -31,8 +31,8 @@ class ImageGeneratorComponent(CommandProvider):
     """A component that provides commands to generate images from text prompts."""
 
     def __init__(self, workspace: FileStorage, config: Config):
-        self.enabled = bool(config.image_provider)
-        self.disabled_reason = "No image provider set."
+        self._enabled = bool(config.image_provider)
+        self._disabled_reason = "No image provider set."
         self.workspace = workspace
         self.legacy_config = config
 

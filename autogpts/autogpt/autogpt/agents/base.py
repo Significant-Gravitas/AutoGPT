@@ -226,11 +226,6 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentABCMeta):
     def reset_trace(self):
         self._trace = []
 
-    def is_enabled(self, component: AgentComponent) -> bool:
-        if callable(component.enabled):
-            return component.enabled()
-        return component.enabled
-
     @overload
     async def run_pipeline(
         self, protocol_method: Callable[P, Iterator[T]], *args, retry_limit: int = 3
@@ -269,7 +264,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentABCMeta):
                         continue
 
                     # Skip disabled components
-                    if not self.is_enabled(component):
+                    if not component.enabled:
                         self._trace.append(
                             f"   {Fore.LIGHTBLACK_EX}"
                             f"{component.__class__.__name__}{Fore.RESET}"
