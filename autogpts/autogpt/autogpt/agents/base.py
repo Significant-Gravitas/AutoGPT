@@ -25,6 +25,7 @@ if TYPE_CHECKING:
         ChatModelProvider,
     )
 
+from autogpt.agents import protocols as _protocols
 from autogpt.agents.components import (
     AgentComponent,
     ComponentEndpointError,
@@ -250,7 +251,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentABCMeta):
     ) -> list[T] | list[None]:
         method_name = protocol_method.__name__
         protocol_name = protocol_method.__qualname__.split(".")[0]
-        protocol_class = globals()[protocol_name]
+        protocol_class = getattr(_protocols, protocol_name)
         if not issubclass(protocol_class, AgentComponent):
             raise TypeError(f"{repr(protocol_method)} is not a protocol method")
 
