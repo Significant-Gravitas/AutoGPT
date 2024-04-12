@@ -1,9 +1,8 @@
 import enum
-from logging import Logger
 from textwrap import indent
-from typing import Literal, Optional
+from typing import Optional
 
-from jsonschema import Draft7Validator
+from jsonschema import Draft7Validator, ValidationError
 from pydantic import BaseModel
 
 
@@ -84,27 +83,24 @@ class JSONSchema(BaseModel):
                 v.required = k in schema_node["required"]
         return properties
 
-    def validate_object(
-        self, object: object, logger: Logger
-    ) -> tuple[Literal[True], None] | tuple[Literal[False], list]:
+    def validate_object(self, object: object) -> tuple[bool, list[ValidationError]]:
         """
-        Validates a dictionary object against the JSONSchema.
+        Validates an object or a value against the JSONSchema.
 
         Params:
-            object: The dictionary object to validate.
+            object: The value/object to validate.
             schema (JSONSchema): The JSONSchema to validate against.
 
         Returns:
-            tuple: A tuple where the first element is a boolean indicating whether the
-                object is valid or not, and the second element is a list of errors found
-                in the object, or None if the object is valid.
+            bool: Indicates whether the given value or object is valid for the schema.
+            list[ValidationError]: The issues with the value or object (if any).
         """
         validator = Draft7Validator(self.to_dict())
 
         if errors := sorted(validator.iter_errors(object), key=lambda e: e.path):
             return False, errors
 
-        return True, None
+        return True, []
 
     def to_typescript_object_interface(self, interface_name: str = "") -> str:
         if self.type != JSONSchema.Type.OBJECT:
