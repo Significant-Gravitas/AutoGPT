@@ -109,9 +109,10 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
         self.context = ContextComponent(self.file_manager.workspace)
         self.watchdog = WatchdogComponent(settings.config, settings.history)
-        self.prompt_strategy = OneShotAgentPromptStrategy(
-            OneShotAgentPromptStrategy.default_configuration, logger
-        )
+
+        prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
+        prompt_config.use_functions_api = settings.config.use_functions_api
+        self.prompt_strategy = OneShotAgentPromptStrategy(prompt_config, logger)
 
         # Override component ordering
         self.components = [
