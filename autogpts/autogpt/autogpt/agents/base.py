@@ -168,7 +168,7 @@ class AgentABCMeta(ABCMeta, AgentMeta):
 
 class ThoughtProcessOutput(BaseModel):
     command_name: str = ""
-    command_args: dict[str, str] = Field(default_factory=dict)
+    command_args: dict[str, Any] = Field(default_factory=dict)
     thoughts: dict[str, Any] = Field(default_factory=dict)
 
     def to_tuple(self) -> tuple[CommandName, CommandArgs, AgentThoughts]:
