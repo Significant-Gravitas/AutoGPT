@@ -257,7 +257,7 @@ class OpenAICredentials(ModelProviderCredentials):
 
     def load_azure_config(self, config_file: Path) -> None:
         with open(config_file) as file:
-            config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
+            config_params = yaml.load(file, Loader=yaml.SafeLoader) or {}
 
         try:
             assert config_params.get(

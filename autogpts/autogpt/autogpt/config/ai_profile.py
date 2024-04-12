@@ -35,7 +35,7 @@ class AIProfile(BaseModel):
 
         try:
             with open(ai_settings_file, encoding="utf-8") as file:
-                config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
+                config_params = yaml.load(file, Loader=yaml.SafeLoader) or {}
         except FileNotFoundError:
             config_params = {}
 

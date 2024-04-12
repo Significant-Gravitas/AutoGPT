@@ -88,7 +88,7 @@ def test_create_base_config(config: Config):
 
     # Check the saved config file
     with open(config.plugins_config_file, "r") as saved_config_file:
-        saved_config = yaml.load(saved_config_file, Loader=yaml.FullLoader)
+        saved_config = yaml.load(saved_config_file, Loader=yaml.SafeLoader)
 
     assert saved_config == {
         "a": {"enabled": True, "config": {}},
