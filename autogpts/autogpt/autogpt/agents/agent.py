@@ -296,6 +296,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             except AgentException:
                 raise
             except Exception as e:
+                await self.foreach_components("execution_failure", e)
                 raise CommandExecutionError(str(e))
 
         raise UnknownCommandError(

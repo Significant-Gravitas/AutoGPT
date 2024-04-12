@@ -1,7 +1,12 @@
 from typing import Callable, Iterator, Optional
 
 from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.agents.protocols import AfterExecute, AfterParse, MessageProvider
+from autogpt.agents.protocols import (
+    AfterExecute,
+    AfterParse,
+    CommandExecutionFailure,
+    MessageProvider,
+)
 from autogpt.config.config import Config
 from autogpt.core.resource.model_providers.schema import ChatMessage, ChatModelProvider
 from autogpt.models.action_history import (
@@ -13,7 +18,9 @@ from autogpt.models.action_history import (
 from autogpt.prompts.utils import indent
 
 
-class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute):
+class EventHistoryComponent(
+    MessageProvider, AfterParse, CommandExecutionFailure, AfterExecute
+):
     """Keeps track of the event history and provides a summary of the steps."""
 
     def __init__(
@@ -39,7 +46,7 @@ class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute):
             )
         )
 
-    def after_parsing(self, result: ThoughtProcessOutput) -> None:
+    def after_parse(self, result: ThoughtProcessOutput) -> None:
         if result.command_name:
             self.event_history.register_action(
                 Action(
@@ -49,7 +56,10 @@ class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute):
                 )
             )
 
-    async def after_execution(self, result: ActionResult) -> None:
+    def execution_failure(self, error: Exception) -> None:
+        self.event_history.rewind()
+
+    async def after_execute(self, result: ActionResult) -> None:
         self.event_history.register_result(result)
         await self.event_history.handle_compression(
             self.llm_provider, self.legacy_config

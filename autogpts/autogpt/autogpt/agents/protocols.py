@@ -33,11 +33,17 @@ class MessageProvider(AgentComponent):
 
 class AfterParse(AgentComponent):
     @abstractmethod
-    def after_parsing(self, result: ThoughtProcessOutput) -> None:
+    def after_parse(self, result: ThoughtProcessOutput) -> None:
+        ...
+
+
+class CommandExecutionFailure(AgentComponent):
+    @abstractmethod
+    def execution_failure(self, error: Exception) -> None:
         ...
 
 
 class AfterExecute(AgentComponent):
     @abstractmethod
-    def after_execution(self, result: ActionResult) -> None:
+    def after_execute(self, result: ActionResult) -> None:
         ...

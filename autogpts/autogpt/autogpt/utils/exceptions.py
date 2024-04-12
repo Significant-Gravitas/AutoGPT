@@ -36,10 +36,6 @@ class UnknownCommandError(AgentException):
     hint = "Do not try to use this command again."
 
 
-class InvalidOperationError(AgentException):
-    """The operation is not valid"""
-
-
 class CommandExecutionError(AgentException):
     """An error occurred when trying to execute the command"""
 
