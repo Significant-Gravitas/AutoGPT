@@ -60,6 +60,7 @@ from .protocols import (
     AfterParse,
     CommandProvider,
     DirectiveProvider,
+    ExecutionFailure,
     MessageProvider,
 )
 
@@ -222,7 +223,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             NEXT_ACTION_FILE_NAME,
         )
 
-        await self.run_pipeline(AfterParse.after_parsing, result)
+        await self.run_pipeline(AfterParse.after_parse, result)
 
         return result
 
@@ -268,7 +269,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
                     "Do not execute this command again with the same arguments."
                 )
 
-        await self.run_pipeline(AfterExecute.after_execution, result)
+        await self.run_pipeline(AfterExecute.after_execute, result)
 
         logger.debug("\n".join(self.trace))
 
@@ -298,7 +299,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             except AgentException:
                 raise
             except Exception as e:
-                await self.foreach_components("execution_failure", e)
+                await self.run_pipeline(ExecutionFailure.execution_failure, e)
                 raise CommandExecutionError(str(e))
 
         raise UnknownCommandError(

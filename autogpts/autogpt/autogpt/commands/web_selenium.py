@@ -28,7 +28,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
-from autogpt.agents.protocols import CommandProvider
+from autogpt.agents.protocols import CommandProvider, DirectiveProvider
 from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.core.resource.model_providers.schema import (
@@ -57,7 +57,7 @@ class BrowsingError(CommandExecutionError):
     """An error occurred while trying to browse the page"""
 
 
-class WebSeleniumComponent(CommandProvider):
+class WebSeleniumComponent(DirectiveProvider, CommandProvider):
     """Provides commands to browse the web using Selenium."""
 
     def __init__(
@@ -69,6 +69,9 @@ class WebSeleniumComponent(CommandProvider):
         self.legacy_config = config
         self.llm_provider = llm_provider
         self.model_info = model_info
+
+    def get_resources(self) -> Iterator[str]:
+        yield "Ability to read websites."
 
     def get_commands(self) -> Iterator[Command]:
         yield self.read_webpage

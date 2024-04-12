@@ -26,7 +26,7 @@ class WatchdogComponent(AfterParse):
         self.event_history = event_history
         self.revert_big_brain = False
 
-    def after_parsing(self, result: ThoughtProcessOutput) -> None:
+    def after_parse(self, result: ThoughtProcessOutput) -> None:
         if self.revert_big_brain:
             self.config.big_brain = False
             self.revert_big_brain = False

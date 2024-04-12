@@ -37,7 +37,7 @@ class AfterParse(AgentComponent):
         ...
 
 
-class CommandExecutionFailure(AgentComponent):
+class ExecutionFailure(AgentComponent):
     @abstractmethod
     def execution_failure(self, error: Exception) -> None:
         ...

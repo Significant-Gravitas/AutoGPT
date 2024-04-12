@@ -4,7 +4,7 @@ from autogpt.agents.base import ThoughtProcessOutput
 from autogpt.agents.protocols import (
     AfterExecute,
     AfterParse,
-    CommandExecutionFailure,
+    ExecutionFailure,
     MessageProvider,
 )
 from autogpt.config.config import Config
@@ -19,7 +19,7 @@ from autogpt.prompts.utils import indent
 
 
 class EventHistoryComponent(
-    MessageProvider, AfterParse, CommandExecutionFailure, AfterExecute
+    MessageProvider, AfterParse, ExecutionFailure, AfterExecute
 ):
     """Keeps track of the event history and provides a summary of the steps."""
 
