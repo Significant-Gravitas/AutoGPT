@@ -63,24 +63,26 @@ class CodeExecutorComponent(CommandProvider):
         self.state = state
         self.legacy_config = config
 
-    def get_commands(self) -> Iterator[Command]:
-        if we_are_running_in_a_docker_container() or is_docker_available():
-            yield self.execute_python_code
-            yield self.execute_python_file
-        else:
+        if not we_are_running_in_a_docker_container() and not is_docker_available():
             logger.info(
                 "Docker is not available or does not support Linux containers. "
                 "The code execution commands will not be available."
             )
 
-        if self.legacy_config.execute_local_commands:
-            yield self.execute_shell
-            yield self.execute_shell_popen
-        else:
+        if not self.legacy_config.execute_local_commands:
             logger.info(
                 "Local shell commands are disabled. To enable them,"
                 " set EXECUTE_LOCAL_COMMANDS to 'True' in your config file."
             )
+
+    def get_commands(self) -> Iterator[Command]:
+        if we_are_running_in_a_docker_container() or is_docker_available():
+            yield self.execute_python_code
+            yield self.execute_python_file
+
+        if self.legacy_config.execute_local_commands:
+            yield self.execute_shell
+            yield self.execute_shell_popen
 
     @command(
         ["execute_python_code"],

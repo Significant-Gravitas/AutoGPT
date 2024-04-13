@@ -26,6 +26,15 @@ class WebSearchComponent(DirectiveProvider, CommandProvider):
     def __init__(self, config: Config):
         self.legacy_config = config
 
+        if (
+            not self.legacy_config.google_api_key
+            or not self.legacy_config.google_custom_search_engine_id
+        ):
+            logger.info(
+                "Configure google_api_key and custom_search_engine_id "
+                "to use Google API search."
+            )
+
     def get_resources(self) -> Iterator[str]:
         yield "Internet access for searches and information gathering."
 
@@ -37,8 +46,6 @@ class WebSearchComponent(DirectiveProvider, CommandProvider):
             and self.legacy_config.google_custom_search_engine_id
         ):
             yield self.google
-        else:
-            logger.info("Configure google_api_key and custom_search_engine_id.")
 
     @command(
         ["web_search", "search"],
