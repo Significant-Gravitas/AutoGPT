@@ -152,18 +152,13 @@ class BaseAgentSettings(SystemSettings):
     """(STATE) The action history of the agent."""
 
 
-class AgentMeta(type):
+class AgentMeta(ABCMeta):
     def __call__(cls, *args, **kwargs):
         # Create instance of the class (Agent or BaseAgent)
         instance = super().__call__(*args, **kwargs)
         # Automatically collect modules after the instance is created
         instance._collect_components()
         return instance
-
-
-class AgentABCMeta(ABCMeta, AgentMeta):
-    def __new__(cls, name, bases, namespace, **kwargs):
-        return super().__new__(cls, name, bases, namespace, **kwargs)
 
 
 class ThoughtProcessOutput(BaseModel):
@@ -175,7 +170,7 @@ class ThoughtProcessOutput(BaseModel):
         return self.command_name, self.command_args, self.thoughts
 
 
-class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentABCMeta):
+class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
     C = TypeVar("C", bound=AgentComponent)
 
     default_settings = BaseAgentSettings(
