@@ -181,14 +181,10 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
     def __init__(
         self,
         settings: BaseAgentSettings,
-        llm_provider: ChatModelProvider,
     ):
         self.state = settings
         self.components: list[AgentComponent] = []
-        self.llm_provider = llm_provider  # TODO kcze move to SimpleAgent
         self.config = settings.config
-        self.ai_profile = settings.ai_profile
-        self.directives = settings.directives
         # Execution data for debugging
         self._trace: list[str] = []
 

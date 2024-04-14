@@ -93,7 +93,14 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         file_storage: FileStorage,
         legacy_config: Config,
     ):
-        super().__init__(settings, llm_provider)
+        super().__init__(settings)
+
+        self.llm_provider = llm_provider
+        self.ai_profile = settings.ai_profile
+        self.directives = settings.directives
+        prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
+        prompt_config.use_functions_api = settings.config.use_functions_api
+        self.prompt_strategy = OneShotAgentPromptStrategy(prompt_config, logger)
 
         # Components
         self.system = SystemComponent(legacy_config, settings.ai_profile)
@@ -119,10 +126,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
         self.context = ContextComponent(self.file_manager.workspace)
         self.watchdog = WatchdogComponent(settings.config, settings.history)
-
-        prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
-        prompt_config.use_functions_api = settings.config.use_functions_api
-        self.prompt_strategy = OneShotAgentPromptStrategy(prompt_config, logger)
 
         # Override component ordering
         self.components = [

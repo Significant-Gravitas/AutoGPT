@@ -8,4 +8,5 @@ Agent is composed of [🧩 Components](./components.md) and responsible for exec
 
 ### Important methods
 
+`Agent` implements two important abstract methods from `BaseAgent`:
 `propose_action` and `execute`
