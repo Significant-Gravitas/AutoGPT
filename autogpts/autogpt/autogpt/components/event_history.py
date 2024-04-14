@@ -11,10 +11,12 @@ from autogpt.models.action_history import (
     EpisodicActionHistory,
 )
 from autogpt.prompts.utils import indent
+from autogpt.agents.features.watchdog import WatchdogComponent
 
 
 class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute):
     """Keeps track of the event history and provides a summary of the steps."""
+    run_after = [WatchdogComponent]
 
     def __init__(
         self,

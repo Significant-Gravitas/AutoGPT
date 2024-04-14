@@ -127,21 +127,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.context = ContextComponent(self.file_manager.workspace)
         self.watchdog = WatchdogComponent(settings.config, settings.history)
 
-        # Override component ordering
-        self.components = [
-            self.system,
-            self.user_interaction,
-            self.file_manager,
-            self.code_executor,
-            self.history,
-            self.git_ops,
-            self.image_gen,
-            self.web_search,
-            self.web_selenium,
-            self.context,
-            self.watchdog,
-        ]
-
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         """Timestamp the agent was created; only used for structured debug logging."""
 
