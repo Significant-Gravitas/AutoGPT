@@ -595,7 +595,7 @@ class OpenAIProvider(
 
     async def _create_chat_completion(
         self,
-        openai_messages: list[ChatCompletionMessageParam],
+        messages: list[ChatCompletionMessageParam],
         model: OpenAIModelName,
         *_,
         **kwargs,
@@ -616,15 +616,15 @@ class OpenAIProvider(
 
         @self._retry_api_request
         async def _create_chat_completion_with_retry(
-            openai_messages: list[ChatCompletionMessageParam], **kwargs
+            messages: list[ChatCompletionMessageParam], **kwargs
         ) -> ChatCompletion:
             return await self._client.chat.completions.create(
-                messages=openai_messages,  # type: ignore
+                messages=messages,  # type: ignore
                 **kwargs,
             )
 
         completion = await _create_chat_completion_with_retry(
-            openai_messages, model=model, **kwargs
+            messages, model=model, **kwargs
         )
 
         if completion.usage:
