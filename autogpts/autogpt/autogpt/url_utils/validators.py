@@ -1,7 +1,10 @@
 import functools
+from inspect import signature
 import re
 from typing import Any, Callable, ParamSpec, TypeVar
 from urllib.parse import urljoin, urlparse
+
+from autogpt.models.command import Command
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -14,32 +17,27 @@ def validate_url(func: Callable[P, T]) -> Callable[P, T]:
     """
 
     @functools.wraps(func)
-    def wrapper(url: str, *args, **kwargs) -> Any:
-        """Check if the URL is valid and not a local file accessor.
+    def wrapper(*args, **kwargs):
+        sig = signature(func)
+        bound_args = sig.bind(*args, **kwargs)
+        bound_args.apply_defaults()
 
-        Args:
-            url (str): The URL to check
+        url = bound_args.arguments.get('url')
+        if url is None:
+            raise ValueError("URL is required for this function")
 
-        Returns:
-            the result of the wrapped function
-
-        Raises:
-            ValueError if the url fails any of the validation tests
-        """
-
-        # Most basic check if the URL is valid:
         if not re.match(r"^https?://", url):
-            raise ValueError("Invalid URL format")
+            raise ValueError("Invalid URL format: URL must start with http:// or https://")
         if not is_valid_url(url):
             raise ValueError("Missing Scheme or Network location")
-        # Restrict access to local files
         if check_local_file_access(url):
             raise ValueError("Access to local files is restricted")
-        # Check URL length
         if len(url) > 2000:
             raise ValueError("URL is too long")
 
-        return func(sanitize_url(url), *args, **kwargs)
+        bound_args.arguments['url'] = sanitize_url(url)
+
+        return func(*bound_args.args, **bound_args.kwargs)
 
     return wrapper
 
