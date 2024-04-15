@@ -21,6 +21,7 @@ from pydantic import SecretStr
 from autogpt.core.configuration import Configurable, UserConfigurable
 from autogpt.core.resource.model_providers.schema import (
     AssistantChatMessage,
+    AssistantFunctionCall,
     AssistantToolCall,
     AssistantToolCallDict,
     ChatMessage,
@@ -653,10 +654,35 @@ class OpenAIProvider(
         parse_errors: list[Exception] = []
 
         if assistant_message.tool_calls:
-            tool_calls = [
-                AssistantToolCall(**tc.dict())
-                for tc in assistant_message.tool_calls
-            ]
+            for _tc in assistant_message.tool_calls:
+                try:
+                    parsed_arguments = json_loads(_tc.function.arguments)
+                except Exception as e:
+                    err_message = (
+                        f"Decoding arguments for {_tc.function.name} failed: "
+                        + str(e.args[0])
+                    )
+                    parse_errors.append(
+                        type(e)(err_message, *e.args[1:]).with_traceback(
+                            e.__traceback__
+                        )
+                    )
+                    continue
+
+                tool_calls.append(
+                    AssistantToolCall(
+                        id=_tc.id,
+                        type=_tc.type,
+                        function=AssistantFunctionCall(
+                            name=_tc.function.name,
+                            arguments=parsed_arguments,
+                        ),
+                    )
+                )
+
+            # If parsing of all tool calls succeeds in the end, we ignore any issues
+            if len(tool_calls) == len(assistant_message.tool_calls):
+                parse_errors = []
 
         elif compat_mode and assistant_message.content:
             try:
