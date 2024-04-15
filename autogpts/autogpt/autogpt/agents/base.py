@@ -22,7 +22,6 @@ from pydantic import BaseModel, Field, validator
 if TYPE_CHECKING:
     from autogpt.core.resource.model_providers.schema import (
         ChatModelInfo,
-        ChatModelProvider,
     )
 
 from autogpt.agents import protocols as _protocols

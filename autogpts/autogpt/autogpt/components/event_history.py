@@ -1,6 +1,7 @@
 from typing import Callable, Iterator, Optional
 
 from autogpt.agents.base import ThoughtProcessOutput
+from autogpt.agents.features.watchdog import WatchdogComponent
 from autogpt.agents.protocols import AfterExecute, AfterParse, MessageProvider
 from autogpt.config.config import Config
 from autogpt.core.resource.model_providers.schema import ChatMessage, ChatModelProvider
@@ -11,11 +12,11 @@ from autogpt.models.action_history import (
     EpisodicActionHistory,
 )
 from autogpt.prompts.utils import indent
-from autogpt.agents.features.watchdog import WatchdogComponent
 
 
 class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute):
     """Keeps track of the event history and provides a summary of the steps."""
+
     run_after = [WatchdogComponent]
 
     def __init__(

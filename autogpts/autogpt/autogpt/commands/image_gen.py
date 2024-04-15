@@ -46,14 +46,14 @@ class ImageGeneratorComponent(CommandProvider):
                 description="The prompt used to generate the image",
                 required=True,
             ),
-            # "size": JSONSchema(
-            #     type=JSONSchema.Type.INTEGER,
-            #     description="The size of the image",
-            #     required=False,
-            # ),
+            "size": JSONSchema(
+                type=JSONSchema.Type.INTEGER,
+                description="The size of the image",
+                required=False,
+            ),
         },
     )
-    def generate_image(self, prompt: str) -> str:
+    def generate_image(self, prompt: str, size: int) -> str:
         """Generate an image from a prompt.
 
         Args:
@@ -64,7 +64,6 @@ class ImageGeneratorComponent(CommandProvider):
         Returns:
             str: The filename of the image
         """
-        size = 256
         filename = self.workspace.root / f"{str(uuid.uuid4())}.jpg"
 
         # DALL-E

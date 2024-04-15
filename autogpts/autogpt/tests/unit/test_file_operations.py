@@ -1,5 +1,4 @@
 import os
-import re
 from pathlib import Path
 
 import pytest
@@ -37,6 +36,11 @@ def mock_MemoryItem_from_text(
     )
 
 
+@pytest.fixture
+def file_manager_component(agent: Agent):
+    return agent.file_manager
+
+
 @pytest.fixture()
 def test_file_name():
     return Path("test_file.txt")
@@ -57,77 +61,76 @@ def test_nested_file(storage: FileStorage):
     return storage.get_path("nested/test_file.txt")
 
 
-def test_text_checksum(file_content: str):
-    checksum = file_ops.text_checksum(file_content)
-    different_checksum = file_ops.text_checksum("other content")
-    assert re.match(r"^[a-fA-F0-9]+$", checksum) is not None
-    assert checksum != different_checksum
-
-
 @pytest.mark.asyncio
 async def test_read_file(
-    mock_MemoryItem_from_text,
     test_file_path: Path,
     file_content,
+    file_manager_component,
     agent: Agent,
 ):
-    await agent.workspace.write_file(test_file_path.name, file_content)
-    content = file_ops.read_file(test_file_path.name, agent=agent)
+    await agent.file_manager.workspace.write_file(test_file_path.name, file_content)
+    content = file_manager_component.read_file(test_file_path.name)
     assert content.replace("\r", "") == file_content
 
 
-def test_read_file_not_found(agent: Agent):
+def test_read_file_not_found(file_manager_component):
     filename = "does_not_exist.txt"
     with pytest.raises(FileNotFoundError):
-        file_ops.read_file(filename, agent=agent)
+        file_manager_component.read_file(filename)
 
 
 @pytest.mark.asyncio
-async def test_write_to_file_relative_path(test_file_name: Path, agent: Agent):
+async def test_write_to_file_relative_path(
+    test_file_name: Path, file_manager_component, agent: Agent
+):
     new_content = "This is new content.\n"
-    await file_ops.write_to_file(test_file_name, new_content, agent=agent)
-    with open(agent.workspace.get_path(test_file_name), "r", encoding="utf-8") as f:
+    await file_manager_component.write_to_file(test_file_name, new_content)
+    with open(
+        agent.file_manager.workspace.get_path(test_file_name), "r", encoding="utf-8"
+    ) as f:
         content = f.read()
     assert content == new_content
 
 
 @pytest.mark.asyncio
-async def test_write_to_file_absolute_path(test_file_path: Path, agent: Agent):
+async def test_write_to_file_absolute_path(
+    test_file_path: Path, file_manager_component
+):
     new_content = "This is new content.\n"
-    await file_ops.write_to_file(test_file_path, new_content, agent=agent)
+    await file_manager_component.write_to_file(test_file_path, new_content)
     with open(test_file_path, "r", encoding="utf-8") as f:
         content = f.read()
     assert content == new_content
 
 
 @pytest.mark.asyncio
-async def test_list_files(agent: Agent):
+async def test_list_files(file_manager_component, agent: Agent):
     # Create files A and B
     file_a_name = "file_a.txt"
     file_b_name = "file_b.txt"
     test_directory = Path("test_directory")
 
-    await agent.workspace.write_file(file_a_name, "This is file A.")
-    await agent.workspace.write_file(file_b_name, "This is file B.")
+    await agent.file_manager.workspace.write_file(file_a_name, "This is file A.")
+    await agent.file_manager.workspace.write_file(file_b_name, "This is file B.")
 
     # Create a subdirectory and place a copy of file_a in it
-    agent.workspace.make_dir(test_directory)
-    await agent.workspace.write_file(
+    agent.file_manager.workspace.make_dir(test_directory)
+    await agent.file_manager.workspace.write_file(
         test_directory / file_a_name, "This is file A in the subdirectory."
     )
 
-    files = file_ops.list_folder(".", agent=agent)
+    files = file_manager_component.list_folder(".")
     assert file_a_name in files
     assert file_b_name in files
     assert os.path.join(test_directory, file_a_name) in files
 
     # Clean up
-    agent.workspace.delete_file(file_a_name)
-    agent.workspace.delete_file(file_b_name)
-    agent.workspace.delete_file(test_directory / file_a_name)
-    agent.workspace.delete_dir(test_directory)
+    agent.file_manager.workspace.delete_file(file_a_name)
+    agent.file_manager.workspace.delete_file(file_b_name)
+    agent.file_manager.workspace.delete_file(test_directory / file_a_name)
+    agent.file_manager.workspace.delete_dir(test_directory)
 
     # Case 2: Search for a file that does not exist and make sure we don't throw
     non_existent_file = "non_existent_file.txt"
-    files = file_ops.list_folder("", agent=agent)
+    files = file_manager_component.list_folder("")
     assert non_existent_file not in files
