@@ -101,6 +101,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
         prompt_config.use_functions_api = settings.config.use_functions_api
         self.prompt_strategy = OneShotAgentPromptStrategy(prompt_config, logger)
+        self.commands: list[Command] = []
 
         # Components
         self.system = SystemComponent(legacy_config, settings.ai_profile)
@@ -257,6 +258,9 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             )
 
         else:
+            # Get commands
+            self.commands = await self.run_pipeline(CommandProvider.get_commands)
+
             try:
                 return_value = await self._execute_command(
                     command_name=command_name,

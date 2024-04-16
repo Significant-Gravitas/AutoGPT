@@ -287,7 +287,9 @@ class AgentProtocolServer:
 
         # Propose next action
         try:
-            next_command, next_command_args, raw_output = await agent.propose_action()
+            next_command, next_command_args, raw_output = (
+                await agent.propose_action()
+            ).to_tuple()
             logger.debug(f"AI output: {raw_output}")
         except Exception as e:
             step = await self.db.update_step(
