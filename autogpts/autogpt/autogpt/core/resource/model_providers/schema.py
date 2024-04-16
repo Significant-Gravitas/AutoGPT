@@ -38,6 +38,7 @@ class ModelProviderService(str, enum.Enum):
 
 class ModelProviderName(str, enum.Enum):
     OPENAI = "openai"
+    ANTHROPIC = "anthropic"
 
 
 class ChatMessage(BaseModel):
@@ -94,6 +95,12 @@ class AssistantChatMessage(ChatMessage):
     role: Literal[ChatMessage.Role.ASSISTANT] = ChatMessage.Role.ASSISTANT
     content: Optional[str]
     tool_calls: Optional[list[AssistantToolCall]] = None
+
+
+class ToolResultMessage(ChatMessage):
+    role: Literal[ChatMessage.Role.TOOL] = ChatMessage.Role.TOOL
+    is_error: bool = False
+    tool_call_id: str
 
 
 class AssistantChatMessageDict(TypedDict, total=False):
