@@ -39,7 +39,6 @@ from autogpt.core.resource.model_providers.schema import (
     ModelProviderName,
     ModelProviderService,
     ModelProviderSettings,
-    ModelProviderUsage,
     ModelTokenizer,
 )
 from autogpt.core.utils.json_schema import JSONSchema
@@ -49,7 +48,6 @@ _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
 OpenAIEmbeddingParser = Callable[[Embedding], Embedding]
-OpenAIChatParser = Callable[[str], dict]
 
 
 class OpenAIModelName(str, enum.Enum):
@@ -292,7 +290,6 @@ class OpenAICredentials(ModelProviderCredentials):
 class OpenAISettings(ModelProviderSettings):
     configuration: OpenAIConfiguration
     credentials: Optional[OpenAICredentials]
-    budget: ModelProviderBudget
 
 
 class OpenAIProvider(
@@ -309,11 +306,6 @@ class OpenAIProvider(
             total_budget=math.inf,
             total_cost=0.0,
             remaining_budget=math.inf,
-            usage=ModelProviderUsage(
-                prompt_tokens=0,
-                completion_tokens=0,
-                total_tokens=0,
-            ),
         ),
     )
 
@@ -634,12 +626,9 @@ class OpenAIProvider(
             prompt_tokens_used = completion_tokens_used = 0
 
         cost = self._budget.update_usage_and_cost(
-            ChatModelResponse(
-                response=AssistantChatMessage(content=None),
-                model_info=OPEN_AI_CHAT_MODELS[model],
-                prompt_tokens_used=prompt_tokens_used,
-                completion_tokens_used=completion_tokens_used,
-            )
+            model_info=OPEN_AI_CHAT_MODELS[model],
+            input_tokens_used=prompt_tokens_used,
+            output_tokens_used=completion_tokens_used,
         )
         self._logger.debug(
             f"Completion usage: {prompt_tokens_used} input, "
