@@ -5,7 +5,7 @@ from io import BytesIO
 from uuid import uuid4
 
 import orjson
-from autogpts.autogpt.autogpt.utils.utils import (
+from autogpt.utils.utils import (
     DEFAULT_ASK_COMMAND,
     DEFAULT_FINISH_COMMAND,
 )
