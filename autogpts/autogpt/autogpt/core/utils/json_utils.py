@@ -1,4 +1,3 @@
-import io
 import logging
 import re
 from typing import Any
@@ -32,16 +31,18 @@ def json_loads(json_str: str) -> Any:
     if match:
         json_str = match.group(1).strip()
 
-    error_buffer = io.StringIO()
-    json_result = demjson3.decode(
-        json_str, return_errors=True, write_errors=error_buffer
-    )
+    json_result = demjson3.decode(json_str, return_errors=True)
+    assert json_result is not None  # by virtue of return_errors=True
 
-    if error_buffer.getvalue():
-        logger.debug(f"JSON parse errors:\n{error_buffer.getvalue()}")
+    if json_result.errors:
+        logger.debug(
+            "JSON parse errors:\n" + "\n".join(str(e) for e in json_result.errors)
+        )
 
-    if json_result is None:
-        raise ValueError(f"Failed to parse JSON string: {json_str}")
+    if json_result.object is demjson3.undefined:
+        raise ValueError(
+            f"Failed to parse JSON string: {json_str}", *json_result.errors
+        )
 
     return json_result.object
 

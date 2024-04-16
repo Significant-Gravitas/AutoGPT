@@ -2,6 +2,7 @@ import abc
 import enum
 import math
 from typing import (
+    Any,
     Callable,
     ClassVar,
     Generic,
@@ -68,12 +69,12 @@ class ChatMessageDict(TypedDict):
 
 class AssistantFunctionCall(BaseModel):
     name: str
-    arguments: str
+    arguments: dict[str, Any]
 
 
 class AssistantFunctionCallDict(TypedDict):
     name: str
-    arguments: str
+    arguments: dict[str, Any]
 
 
 class AssistantToolCall(BaseModel):
