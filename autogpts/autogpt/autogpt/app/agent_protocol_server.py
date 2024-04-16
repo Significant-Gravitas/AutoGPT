@@ -5,10 +5,6 @@ from io import BytesIO
 from uuid import uuid4
 
 import orjson
-from autogpt.utils.utils import (
-    DEFAULT_ASK_COMMAND,
-    DEFAULT_FINISH_COMMAND,
-)
 from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
@@ -43,6 +39,7 @@ from autogpt.file_storage import FileStorage
 from autogpt.logs.utils import fmt_kwargs
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
 from autogpt.utils.exceptions import AgentFinished
+from autogpt.utils.utils import DEFAULT_ASK_COMMAND, DEFAULT_FINISH_COMMAND
 
 logger = logging.getLogger(__name__)
 
