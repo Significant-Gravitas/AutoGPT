@@ -157,6 +157,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
         # Get commands
         self.commands = await self.run_pipeline(CommandProvider.get_commands)
+        self._remove_disabled_commands()
 
         # Get messages
         messages = await self.run_pipeline(MessageProvider.get_messages)
@@ -260,6 +261,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         else:
             # Get commands
             self.commands = await self.run_pipeline(CommandProvider.get_commands)
+            self._remove_disabled_commands()
 
             try:
                 return_value = await self._execute_command(
@@ -324,6 +326,15 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         raise UnknownCommandError(
             f"Cannot execute command '{command_name}': unknown command."
         )
+
+    def _remove_disabled_commands(self) -> None:
+        self.commands = [
+            command
+            for command in self.commands
+            if not any(
+                name in self.legacy_config.disabled_commands for name in command.names
+            )
+        ]
 
     def find_obscured_commands(self) -> list[Command]:
         seen_names = set()

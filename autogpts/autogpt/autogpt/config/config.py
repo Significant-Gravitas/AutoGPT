@@ -134,6 +134,11 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         from_env=lambda: _safe_split(os.getenv("DISABLED_COMMAND_CATEGORIES")),
     )
 
+    disabled_commands: list[str] = UserConfigurable(
+        default_factory=list,
+        from_env=lambda: _safe_split(os.getenv("DISABLED_COMMANDS")),
+    )
+
     # File ops
     restrict_to_workspace: bool = UserConfigurable(
         default=True,
