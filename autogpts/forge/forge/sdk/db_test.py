@@ -19,7 +19,7 @@ from forge.sdk.model import (
     Status,
     Step,
     StepRequestBody,
-    Task
+    Task,
 )
 
 
