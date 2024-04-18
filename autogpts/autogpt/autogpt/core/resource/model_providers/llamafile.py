@@ -61,6 +61,9 @@ class LlamafileProvider(OpenAIProvider):
             model_prompt += kwargs["messages"]
             del kwargs["messages"]
 
+        if model_name == OpenAIModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT:
+            model_prompt = self._adapt_chat_messages_for_mistral_instruct(model_prompt)
+
         openai_messages: list[ChatCompletionMessageParam] = [
             message.dict(
                 include={"role", "content", "tool_calls", "name"},
@@ -70,6 +73,43 @@ class LlamafileProvider(OpenAIProvider):
         ]
 
         return openai_messages, kwargs
+
+    def _adapt_chat_messages_for_mistral_instruct(
+            self,
+            messages: list[ChatMessage]
+    ) -> list[ChatMessage]:
+        """
+        Munge the messages to be compatible with the mistral-7b-instruct chat
+        template, which:
+        - only supports 'user' and 'assistant' roles.
+        - expects messages to alternate between user/assistant roles.
+
+        See details here: https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2#instruction-format
+
+        """
+        adapted_messages = []
+        for m in messages:
+            if m.role == ChatMessage.Role.SYSTEM:
+                # convert to 'user' role
+                adapted_messages.append(ChatMessage.user(m.content))
+            else:
+                adapted_messages.append(m)
+
+        # if there are multiple adjacent user messages, glom them together
+        # into a single user message
+        glommed = []
+        i = 0
+        while i < len(adapted_messages):
+            if len(glommed) == 0:
+                glommed.append(adapted_messages[i])
+            elif adapted_messages[i].role != glommed[-1].role:
+                glommed.append(adapted_messages[i])
+            else:
+                glommed[-1].content += " " + adapted_messages[i].content
+            i += 1
+
+        return glommed
+
 
     @overrides
     def _parse_assistant_tool_calls(
