@@ -1,13 +1,16 @@
 import logging
 from typing import Any, Iterator, Optional, TypeVar
 
+import requests
 from openai.types.chat import (
+    ChatCompletion,
     ChatCompletionMessage,
     ChatCompletionMessageParam,
 )
 from overrides import overrides
 
 from autogpt.core.resource.model_providers.openai import (
+    OpenAICredentials,
     OpenAIProvider,
     OpenAIModelName,
     _functions_compat_fix_kwargs
@@ -17,16 +20,99 @@ from autogpt.core.resource.model_providers.schema import (
     AssistantToolCallDict,
     ChatMessage,
     CompletionModelFunction,
+    ModelTokenizer,
 )
 from autogpt.core.utils.json_utils import json_loads
 
 _T = TypeVar("_T")
 
 
+class LlamafileTokenizer(ModelTokenizer):
+
+    def __init__(self, credentials: OpenAICredentials):
+        self._credentials = credentials
+
+    @property
+    def _tokenizer_base_url(self):
+        # The OpenAI-chat-compatible base url should look something like
+        # 'http://localhost:8080/v1' but the tokenizer endpoint is
+        # 'http://localhost:8080/tokenize'. So here we just strip off the '/v1'.
+        api_base = self._credentials.api_base.get_secret_value()
+        return api_base.strip("/v1")
+
+    def encode(self, text: str) -> list[int]:
+        response = requests.post(
+            url=f"{self._tokenizer_base_url}/tokenize",
+            json={"content": text}
+        )
+        response.raise_for_status()
+        return response.json()["tokens"]
+
+    def decode(self, tokens: list[int]) -> str:
+        response = requests.post(
+            url=f"{self._tokenizer_base_url}/detokenize",
+            json={"tokens": tokens}
+        )
+        response.raise_for_status()
+        return response.json()["content"]
+
+
 class LlamafileProvider(OpenAIProvider):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+    @overrides
+    def get_tokenizer(self, model_name: OpenAIModelName) -> ModelTokenizer:
+        return LlamafileTokenizer(self._credentials)
+
+    @overrides
+    def count_tokens(self, text: str, model_name: OpenAIModelName) -> int:
+        return len(self.get_tokenizer(model_name).encode(text))
+
+    @overrides
+    def count_message_tokens(
+        self,
+        messages: ChatMessage | list[ChatMessage],
+        model_name: OpenAIModelName,
+    ) -> int:
+        if isinstance(messages, ChatMessage):
+            messages = [messages]
+
+        if model_name == OpenAIModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT:
+            # For mistral-instruct, num added tokens depends on if the message
+            # is a prompt/instruction or an assistant-generated message.
+            # - prompt gets [INST], [/INST] added and the first instruction
+            # begins with '<s>' ('beginning-of-sentence' token).
+            # - assistant-generated messages get '</s>' added
+            # see: https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2
+            #
+            prompt_added = 1  # one for '<s>' token
+            assistant_num_added = 0
+            ntokens = 0
+            for message in messages:
+                # if message.role == ChatMessage.Role.SYSTEM:
+                #     raise ValueError(f"{model_name} does not support 'system' role")
+                if (
+                        message.role == ChatMessage.Role.USER or
+                        message.role == ChatMessage.Role.SYSTEM  # note that 'system' messages will get converted to 'user' messages before being sent to the model
+                ):
+                    # 5 tokens for [INST], [/INST], which actually get
+                    # tokenized into "[, INST, ]" and "[, /, INST, ]"
+                    # by the mistral tokenizer
+                    prompt_added += 5
+                elif message.role == ChatMessage.Role.ASSISTANT:
+                    assistant_num_added += 1  # for </s>
+                else:
+                    raise ValueError(f"{model_name} does not support role: {message.role}")
+
+                ntokens += self.count_tokens(message.content, model_name)
+
+            total_token_count = prompt_added + assistant_num_added + ntokens
+            return total_token_count
+
+        else:
+            raise NotImplementedError(f"count_message_tokens not implemented for model {model_name}")
 
     @overrides
     def _get_chat_completion_args(
@@ -110,6 +196,25 @@ class LlamafileProvider(OpenAIProvider):
 
         return glommed
 
+    @overrides
+    async def _create_chat_completion(
+        self,
+        messages: list[ChatCompletionMessageParam],
+        model: OpenAIModelName,
+        *_,
+        **kwargs,
+    ) -> tuple[ChatCompletion, float, int, int]:
+        if model == OpenAIModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT:
+            # validate that all messages have roles that are supported by
+            # mistral-7b-instruct
+            for m in messages:
+                if m["role"] not in [
+                    ChatMessage.Role.USER,
+                    ChatMessage.Role.ASSISTANT
+                ]:
+                    raise ValueError(f"Role {m['role']} not supported by model {model}")
+
+        return await super()._create_chat_completion(messages, model, **kwargs)
 
     @overrides
     def _parse_assistant_tool_calls(

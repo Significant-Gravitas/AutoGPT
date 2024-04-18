@@ -196,7 +196,7 @@ OPEN_AI_CHAT_MODELS = {
             #  this value and the server's value match. I use 2048 here bc
             #  that's the value I've been using during testing.
             max_tokens=2048,
-            has_function_call_api=True,
+            has_function_call_api=False,
         ),
     ]
 }
@@ -368,18 +368,15 @@ class OpenAIProvider(
         """Get the token limit for a given model."""
         return OPEN_AI_MODELS[model_name].max_tokens
 
-    @classmethod
-    def get_tokenizer(cls, model_name: OpenAIModelName) -> ModelTokenizer:
+    def get_tokenizer(self, model_name: OpenAIModelName) -> ModelTokenizer:
         return tiktoken.encoding_for_model(model_name)
 
-    @classmethod
-    def count_tokens(cls, text: str, model_name: OpenAIModelName) -> int:
-        encoding = cls.get_tokenizer(model_name)
+    def count_tokens(self, text: str, model_name: OpenAIModelName) -> int:
+        encoding = self.get_tokenizer(model_name)
         return len(encoding.encode(text))
 
-    @classmethod
     def count_message_tokens(
-        cls,
+        self,
         messages: ChatMessage | list[ChatMessage],
         model_name: OpenAIModelName,
     ) -> int:
