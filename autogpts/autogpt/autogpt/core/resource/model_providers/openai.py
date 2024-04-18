@@ -319,15 +319,20 @@ class OpenAIProvider(
 
     _budget: ModelProviderBudget
     _configuration: OpenAIConfiguration
+    _credentials: OpenAICredentials
 
     def __init__(
         self,
-        settings: OpenAISettings,
-        logger: logging.Logger,
+        settings: Optional[OpenAISettings] = None,
+        logger: Optional[logging.Logger] = None,
     ):
+        if not settings:
+            settings = self.default_settings.copy(deep=True)
+        if not settings.credentials:
+            settings.credentials = OpenAICredentials.from_env()
+
         self._settings = settings
 
-        assert settings.credentials, "Cannot create OpenAIProvider without credentials"
         self._configuration = settings.configuration
         self._credentials = settings.credentials
         self._budget = settings.budget
@@ -343,7 +348,7 @@ class OpenAIProvider(
 
             self._client = AsyncOpenAI(**self._credentials.get_api_access_kwargs())
 
-        self._logger = logger
+        self._logger = logger or logging.getLogger(__name__)
 
     def get_token_limit(self, model_name: str) -> int:
         """Get the token limit for a given model."""
