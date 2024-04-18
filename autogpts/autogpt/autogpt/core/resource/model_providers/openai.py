@@ -81,6 +81,9 @@ class OpenAIModelName(str, enum.Enum):
     GPT4 = GPT4_ROLLING
     GPT4_32k = GPT4_ROLLING_32k
 
+    # TODO: added here for convenience, maybe better to move this somewhere else though
+    LLAMAFILE_MISTRAL_7B_INSTRUCT = "mistral-7b-instruct-v0"
+
 
 OPEN_AI_EMBEDDING_MODELS = {
     info.name: info
@@ -177,6 +180,22 @@ OPEN_AI_CHAT_MODELS = {
             prompt_token_cost=0.01 / 1000,
             completion_token_cost=0.03 / 1000,
             max_tokens=128000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT,
+            service=ModelProviderService.CHAT,
+            provider_name=ModelProviderName.LLAMAFILE,
+            prompt_token_cost=0.0,
+            completion_token_cost=0.0,
+            # TODO: the actual mistral model token limit is 32768 but the
+            #  llamafile server has its own max token limit that is configured
+            #  when the server is started bc the full context window might not
+            #  fit in memory depending on the hardware the llamafile is being
+            #  run on. probably need to think about how to set/coordinate s.t.
+            #  this value and the server's value match. I use 2048 here bc
+            #  that's the value I've been using during testing.
+            max_tokens=2048,
             has_function_call_api=True,
         ),
     ]

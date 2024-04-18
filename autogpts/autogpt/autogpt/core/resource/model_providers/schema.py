@@ -37,6 +37,7 @@ class ModelProviderService(str, enum.Enum):
 
 class ModelProviderName(str, enum.Enum):
     OPENAI = "openai"
+    LLAMAFILE = "llamafile"
 
 
 class ChatMessage(BaseModel):

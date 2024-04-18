@@ -128,3 +128,26 @@ class ApiManager(metaclass=Singleton):
             exit(1)
 
         return self.models
+
+    def get_models_llamafile(self, openai_credentials: OpenAICredentials) -> List[Model]:
+        """
+        Same as `get_models` but doesn't filter out non-'gpt' models.
+        TODO: No real reason for this to be a separate method but I don't know
+          what effect it will have on the OpenAI-related to remove the
+          'gpt-only' filter from the original method.
+        """
+        if self.models is not None:
+            return self.models
+
+        try:
+            all_models = (
+                OpenAI(**openai_credentials.get_api_access_kwargs())
+                .models.list()
+                .data
+            )
+            self.models = [model for model in all_models]
+        except APIError as e:
+            logger.error(e.message)
+            exit(1)
+
+        return self.models

@@ -26,6 +26,7 @@ from autogpt.file_storage import FileStorageBackendName
 from autogpt.logs.config import LoggingConfig
 from autogpt.plugins.plugins_config import PluginsConfig
 from autogpt.speech import TTSConfig
+from autogpt.core.resource.model_providers.schema import ModelProviderName
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,14 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     )
 
     # Model configuration
+    # llm_provider: str = UserConfigurable(
+    #     default="openai",
+    #     from_env=lambda: os.getenv("LLM_PROVIDER")
+    # )
+    llm_provider: ModelProviderName = UserConfigurable(
+        default=ModelProviderName.OPENAI,
+        from_env=lambda: ModelProviderName(os.getenv("LLM_PROVIDER"))
+    )
     fast_llm: str = UserConfigurable(
         default="gpt-3.5-turbo-0125",
         from_env=lambda: os.getenv("FAST_LLM"),

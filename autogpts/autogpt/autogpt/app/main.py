@@ -37,6 +37,7 @@ from autogpt.config import (
     assert_config_has_openai_api_key,
 )
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
+from autogpt.core.resource.model_providers.llamafile import LlamafileProvider
 from autogpt.core.runner.client_lib.utils import coroutine
 from autogpt.file_storage import FileStorageBackendName, get_storage
 from autogpt.logs.config import configure_chat_plugins, configure_logging
@@ -441,10 +442,17 @@ def _configure_openai_provider(config: Config) -> OpenAIProvider:
 
     openai_settings = OpenAIProvider.default_settings.copy(deep=True)
     openai_settings.credentials = config.openai_credentials
-    return OpenAIProvider(
-        settings=openai_settings,
-        logger=logging.getLogger("OpenAIProvider"),
-    )
+
+    if config.llm_provider == "llamafile":
+        return LlamafileProvider(
+            settings=openai_settings,
+            logger=logging.getLogger("LlamafileProvider"),
+        )
+    else:
+        return OpenAIProvider(
+            settings=openai_settings,
+            logger=logging.getLogger("OpenAIProvider"),
+        )
 
 
 def _get_cycle_budget(continuous_mode: bool, continuous_limit: int) -> int | float:

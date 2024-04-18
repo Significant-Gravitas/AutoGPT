@@ -16,6 +16,8 @@ from autogpt.logs.config import LogFormatName
 from autogpt.logs.helpers import request_user_double_check
 from autogpt.memory.vector import get_supported_memory_backends
 
+from autogpt.core.resource.model_providers.schema import ModelProviderName
+
 if TYPE_CHECKING:
     from autogpt.core.resource.model_providers.openai import OpenAICredentials
 
@@ -95,30 +97,42 @@ def apply_overrides_to_config(
     if speak:
         config.tts_config.speak_mode = True
 
-    # Set the default LLM models
-    if gpt3only:
-        # --gpt3only should always use gpt-3.5-turbo, despite user's FAST_LLM config
-        config.fast_llm = GPT_3_MODEL
-        config.smart_llm = GPT_3_MODEL
-    elif (
-        gpt4only
-        and check_model(
-            GPT_4_MODEL,
-            model_type="smart_llm",
-            api_credentials=config.openai_credentials,
-        )
-        == GPT_4_MODEL
-    ):
-        # --gpt4only should always use gpt-4, despite user's SMART_LLM config
-        config.fast_llm = GPT_4_MODEL
-        config.smart_llm = GPT_4_MODEL
-    else:
-        config.fast_llm = check_model(
+    if config.llm_provider == ModelProviderName.OPENAI:
+        # Set the default LLM models
+        if gpt3only:
+            # --gpt3only should always use gpt-3.5-turbo, despite user's FAST_LLM config
+            config.fast_llm = GPT_3_MODEL
+            config.smart_llm = GPT_3_MODEL
+        elif (
+            gpt4only
+            and check_model(
+                GPT_4_MODEL,
+                model_type="smart_llm",
+                api_credentials=config.openai_credentials,
+            )
+            == GPT_4_MODEL
+        ):
+            # --gpt4only should always use gpt-4, despite user's SMART_LLM config
+            config.fast_llm = GPT_4_MODEL
+            config.smart_llm = GPT_4_MODEL
+        else:
+            config.fast_llm = check_model(
+                config.fast_llm, "fast_llm", api_credentials=config.openai_credentials
+            )
+            config.smart_llm = check_model(
+                config.smart_llm, "smart_llm", api_credentials=config.openai_credentials
+            )
+
+    elif config.llm_provider == ModelProviderName.LLAMAFILE:
+        config.fast_llm = check_model_llamafile(
             config.fast_llm, "fast_llm", api_credentials=config.openai_credentials
         )
-        config.smart_llm = check_model(
+        config.smart_llm = check_model_llamafile(
             config.smart_llm, "smart_llm", api_credentials=config.openai_credentials
         )
+
+    else:
+        raise NotImplementedError(f"llm_provider: {config.llm_provider} is not supported.")
 
     if memory_type:
         supported_memory = get_supported_memory_backends()
@@ -199,3 +213,35 @@ def check_model(
         f"You don't have access to {model_name}. Setting {model_type} to gpt-3.5-turbo."
     )
     return "gpt-3.5-turbo"
+
+
+def check_model_llamafile(
+    model_name: str,
+    model_type: Literal["smart_llm", "fast_llm"],
+    api_credentials: OpenAICredentials,
+) -> str:
+    """
+    Check if model is available for use. If not, raise exception.
+    """
+    api_manager = ApiManager()
+    models = api_manager.get_models_llamafile(api_credentials)
+    # note: at the moment, llamafile only serves one model at a time (so this
+    # list will only ever have one value). however, in the future, llamafile
+    # may support multiple models, so leaving this method as-is for now.
+
+    # clean up model names
+    # e.g. 'mistral-7b-instruct-v0.2.Q5_K_M.gguf' -> 'mistral-7b-instruct-v0.2'
+    # e.g. '/Users/kate/models/mistral-7b-instruct-v0.2.Q5_K_M.gguf' -> 'mistral-7b-instruct-v0.2
+    available_model_ids = [
+        Path(model.id).name.split(".")[0] for model in models
+    ]
+
+    if any(model_name == m for m in available_model_ids):
+        return model_name
+
+    else:
+        # TODO: feels weird to show a 'secret value' here but is the api base_url really a secret?
+        raise ValueError(
+            f"llamafile server at {api_credentials.api_base.get_secret_value()} does not have access to {model_name}. Please configure {model_type} to use one of {available_model_ids} or use a different llamafile."
+        )
+
