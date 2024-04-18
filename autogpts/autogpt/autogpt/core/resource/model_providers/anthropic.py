@@ -128,9 +128,14 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
 
     def __init__(
         self,
-        settings: AnthropicSettings,
-        logger: logging.Logger,
+        settings: Optional[AnthropicSettings] = None,
+        logger: Optional[logging.Logger] = None,
     ):
+        if not settings:
+            settings = self.default_settings.copy(deep=True)
+        if not settings.credentials:
+            settings.credentials = AnthropicCredentials.from_env()
+
         self._settings = settings
 
         self._configuration = settings.configuration
@@ -140,7 +145,7 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
         from anthropic import AsyncAnthropic
 
         self._client = AsyncAnthropic(**self._credentials.get_api_access_kwargs())
-        self._logger = logger
+        self._logger = logger or logging.getLogger(__name__)
 
     def get_token_limit(self, model_name: str) -> int:
         """Get the token limit for a given model."""
