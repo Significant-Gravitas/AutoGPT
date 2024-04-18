@@ -91,8 +91,6 @@ class LlamafileProvider(OpenAIProvider):
             assistant_num_added = 0
             ntokens = 0
             for message in messages:
-                # if message.role == ChatMessage.Role.SYSTEM:
-                #     raise ValueError(f"{model_name} does not support 'system' role")
                 if (
                         message.role == ChatMessage.Role.USER or
                         message.role == ChatMessage.Role.SYSTEM  # note that 'system' messages will get converted to 'user' messages before being sent to the model
@@ -220,23 +218,16 @@ class LlamafileProvider(OpenAIProvider):
     def _parse_assistant_tool_calls(
         self, assistant_message: ChatCompletionMessage, compat_mode: bool = False
     ):
-        if not assistant_message.content:
-            raise ValueError("Assistant message content is empty")
-        if not compat_mode:
-            raise ValueError("compat_mode must be enabled for LlamafileProvider")
-
         tool_calls: list[AssistantToolCall] = []
         parse_errors: list[Exception] = []
 
-        for tool_call in _tool_calls_compat_extract_calls(assistant_message.content):
-            tool_calls.append(tool_call)
-
-        # try:
-        #     tool_calls = list(
-        #         _tool_calls_compat_extract_calls(assistant_message.content)
-        #     )
-        # except Exception as e:
-        #     parse_errors.append(e)
+        if compat_mode and assistant_message.content:
+            try:
+                tool_calls = list(
+                    _tool_calls_compat_extract_calls(assistant_message.content)
+                )
+            except Exception as e:
+                parse_errors.append(e)
 
         return tool_calls, parse_errors
 
