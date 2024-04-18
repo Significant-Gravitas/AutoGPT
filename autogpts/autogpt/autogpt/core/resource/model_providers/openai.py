@@ -416,12 +416,17 @@ class OpenAIProvider(
         model_name: OpenAIModelName,
         completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
+        max_output_tokens: Optional[int] = None,
         **kwargs,
     ) -> ChatModelResponse[_T]:
         """Create a completion using the OpenAI API."""
 
         openai_messages, completion_kwargs = self._get_chat_completion_args(
-            model_prompt, model_name, functions, **kwargs
+            model_prompt=model_prompt,
+            model_name=model_name,
+            functions=functions,
+            max_tokens=max_output_tokens,
+            **kwargs,
         )
         tool_calls_compat_mode = bool(functions and "tools" not in completion_kwargs)
 
