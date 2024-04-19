@@ -8,7 +8,7 @@ This system is simple, flexible, requires basically no configuration, and doesn'
 
 ### Definitions & Guides
 
-See quick guide [Creating Components](./creating-components.md) to get started! Or you can explore the following topics in detail:
+See [Creating Components](./creating-components.md) to get started! Or you can explore the following topics in detail:
 
 - [🧩 Component](./components.md): a class that implements one or more *protocols*. It can be added to an agent to provide additional functionality. See what's already provided in [Built-in Components](./built-in-components.md).
 - [⚙️ Protocol](./protocols.md): an interface that defines a set of methods that a component must implement. Protocols are used to group related functionality.
