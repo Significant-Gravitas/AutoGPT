@@ -188,14 +188,7 @@ OPEN_AI_CHAT_MODELS = {
             provider_name=ModelProviderName.LLAMAFILE,
             prompt_token_cost=0.0,
             completion_token_cost=0.0,
-            # TODO: the actual mistral model token limit is 32768 but the
-            #  llamafile server has its own max token limit that is configured
-            #  when the server is started bc the full context window might not
-            #  fit in memory depending on the hardware the llamafile is being
-            #  run on. probably need to think about how to set/coordinate s.t.
-            #  this value and the server's value match. I use 2048 here bc
-            #  that's the value I've been using during testing.
-            max_tokens=2048,
+            max_tokens=32768,
             has_function_call_api=False,
         ),
     ]
