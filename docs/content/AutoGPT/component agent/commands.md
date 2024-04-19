@@ -10,7 +10,7 @@ class CommandProvider(Protocol):
 
 ## `command` decorator
 
-The easiest and recommended way to provide a command is to use `command` decorator on a component method and then just yield it in `get_commands`. Each command needs a name, description and a parameter schema - `JSONSchema`. By default method name is used as a command name, and first part of docstring for the description (before first double newline) and schema can be provided in the decorator.
+The easiest and recommended way to provide a command is to use `command` decorator on a component method and then just yield it in `get_commands` as part of your provider. Each command needs a name, description and a parameter schema - `JSONSchema`. By default method name is used as a command name, and first part of docstring for the description (before first double newline) and schema can be provided in the decorator.
 
 ### Example usage of `command` decorator
 

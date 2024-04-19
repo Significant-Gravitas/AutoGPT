@@ -10,7 +10,7 @@ Components implementing exclusively order-independent protocols can added in any
 
 ### `DirectiveProvider`
 
-Yields constraints, resources and best practices for the agent. This is purely informational and will be passed to a llm after prompt is ready using `BuildPrompt` protocol.
+Yields constraints, resources and best practices for the agent. This has no direct impact on other protocols; is purely informational and will be passed to a llm when the prompt is built.
 
 ```py
 class DirectiveProvider(AgentComponent):

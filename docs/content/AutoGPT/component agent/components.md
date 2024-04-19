@@ -2,8 +2,12 @@
 
 Components are the building blocks of [🤖 Agents](./agents.md). They are classes inheriting `AgentComponent` or implementing one or more [⚙️ Protocols](./protocols.md) that give agent additional abilities or processing. 
 
-By default components assigned to attributes (fields) in agent's `__init__` are automatically discovered upon instantiation.
-Each component can implement multiple protocols and can rely on other components if needed.
+Components can be used to implement various functionalities like providing messages to the prompt, executing code, or interacting with external services.
+They can be enabled or disabled, ordered, and can rely on each other.
+
+Components assigned in the agent's `__init__` via `self` are automatically detected upon the agent's instantiation.
+For example inside `__init__`: `self.my_component = MyComponent()`.
+You can use any valid Python variable name, what matters for the component to be detected is its type (`AgentComponent` or any protocol inheriting from it).
 
 Visit [Built-in Components](./built-in-components.md) to see what components are available out of the box.
 
@@ -25,9 +29,10 @@ class MyAgent(Agent):
         # We pass HelloComponent to SomeComponent
         self.some_component = SomeComponent(self.hello_component)
 ```
+
 ## Ordering components
 
-For some protocols, the order of components is important because the latter ones may depend on the results of the former ones.
+The execution order of components is important because the latter ones may depend on the results of the former ones.
 
 ### Implicit order
 
@@ -43,7 +48,8 @@ class CalculatorComponent(AgentComponent):
 
 Sometimes it may be easier to order components explicitly by setting `self.components` list in the agent's `__init__` method. This way you can also ensure there's no circular dependencies and `run_after` is ignored.
 
-> ⚠️ Be sure to include all components - by setting `self.components` list, you're overriding the default behavior of discovering components automatically. Since it's usually not intended agent will inform you in the terminal if some components were skipped.
+!!! warning
+    Be sure to include all components - by setting `self.components` list, you're overriding the default behavior of discovering components automatically. Since it's usually not intended agent will inform you in the terminal if some components were skipped.
 
 ```py
 class MyAgent(Agent):
@@ -84,6 +90,9 @@ class DisabledComponent(MessageProvider):
 ```
 
 If you don't want the component at all, you can just remove it from the agent's `__init__` method. If you want to remove components you inherit from the parent class you can set the relevant attribute to `None`:
+
+!!! Warning
+    Be careful when removing components that are required by other components. This may lead to errors and unexpected behavior.
 
 ```py
 class MyAgent(Agent):
