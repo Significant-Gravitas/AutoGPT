@@ -11,9 +11,6 @@ from autogpt.models.command import Command
 from autogpt.url_utils.validators import validate_url
 from autogpt.utils.exceptions import CommandExecutionError
 
-COMMAND_CATEGORY = "git_operations"
-COMMAND_CATEGORY_TITLE = "Git Operations"
-
 
 class GitOperationsComponent(CommandProvider):
     """Provides commands to perform Git operations."""

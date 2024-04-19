@@ -42,10 +42,6 @@ from autogpt.processing.text import extract_information, summarize_text
 from autogpt.url_utils.validators import validate_url
 from autogpt.utils.exceptions import CommandExecutionError, TooMuchOutputError
 
-COMMAND_CATEGORY = "web_browse"
-COMMAND_CATEGORY_TITLE = "Web Browsing"
-
-
 logger = logging.getLogger(__name__)
 
 FILE_DIR = Path(__file__).parent.parent

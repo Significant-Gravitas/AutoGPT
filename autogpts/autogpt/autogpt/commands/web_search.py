@@ -12,9 +12,6 @@ from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command
 from autogpt.utils.exceptions import ConfigurationError
 
-COMMAND_CATEGORY = "web_search"
-COMMAND_CATEGORY_TITLE = "Web Search"
-
 DUCKDUCKGO_MAX_ATTEMPTS = 3
 
 logger = logging.getLogger(__name__)

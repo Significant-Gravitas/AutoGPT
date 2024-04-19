@@ -20,10 +20,6 @@ from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.file_storage.base import FileStorage
 from autogpt.models.command import Command
 
-COMMAND_CATEGORY = "text_to_image"
-COMMAND_CATEGORY_TITLE = "Text to Image"
-
-
 logger = logging.getLogger(__name__)
 
 

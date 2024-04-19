@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "web_browse"
-COMMAND_CATEGORY_TITLE = "Web Browsing"
-
 import functools
 import logging
 import re
