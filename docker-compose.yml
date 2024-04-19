@@ -1,0 +1,7 @@
+version: '3.8'
+
+services:
+  autogpt:
+    build:
+      context: .
+      dockerfile: Dockerfile
