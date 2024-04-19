@@ -112,56 +112,10 @@ class LlamafileProvider(OpenAIProvider):
         else:
             raise NotImplementedError(f"count_message_tokens not implemented for model {model_name}")
 
-    @overrides
-    def _get_chat_completion_args(
-            self,
-            model_prompt: list[ChatMessage],
-            model_name: OpenAIModelName,
-            functions: Optional[list[CompletionModelFunction]] = None,
-            **kwargs,
-    ) -> tuple[list[ChatCompletionMessageParam], dict[str, Any]]:
-        """Prepare chat completion arguments and keyword arguments for API call.
-
-        Args:
-            model_prompt: List of ChatMessages.
-            model_name: The model to use.
-            functions: Optional list of functions available to the LLM.
-            kwargs: Additional keyword arguments.
-
-        Returns:
-            list[ChatCompletionMessageParam]: Prompt messages for the OpenAI call
-            dict[str, Any]: Any other kwargs for the OpenAI call
-        """
-        kwargs.update(self._credentials.get_model_access_kwargs(model_name))
-
-        if functions:
-            _functions_compat_fix_kwargs(functions, kwargs)
-
-        if extra_headers := self._configuration.extra_request_headers:
-            kwargs["extra_headers"] = kwargs.get("extra_headers", {})
-            kwargs["extra_headers"].update(extra_headers.copy())
-
-        if "messages" in kwargs:
-            model_prompt += kwargs["messages"]
-            del kwargs["messages"]
-
-        if model_name == OpenAIModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT:
-            model_prompt = self._adapt_chat_messages_for_mistral_instruct(model_prompt)
-
-        openai_messages: list[ChatCompletionMessageParam] = [
-            message.dict(
-                include={"role", "content", "tool_calls", "name"},
-                exclude_none=True,
-            )
-            for message in model_prompt
-        ]
-
-        return openai_messages, kwargs
-
     def _adapt_chat_messages_for_mistral_instruct(
             self,
-            messages: list[ChatMessage]
-    ) -> list[ChatMessage]:
+            messages: list[ChatCompletionMessageParam]
+    ) -> list[ChatCompletionMessageParam]:
         """
         Munge the messages to be compatible with the mistral-7b-instruct chat
         template, which:
@@ -172,27 +126,25 @@ class LlamafileProvider(OpenAIProvider):
 
         """
         adapted_messages = []
-        for m in messages:
-            if m.role == ChatMessage.Role.SYSTEM:
-                # convert to 'user' role
-                adapted_messages.append(ChatMessage.user(m.content))
-            else:
-                adapted_messages.append(m)
+        for message in messages:
 
-        # if there are multiple adjacent user messages, glom them together
-        # into a single user message
-        glommed = []
-        i = 0
-        while i < len(adapted_messages):
-            if len(glommed) == 0:
-                glommed.append(adapted_messages[i])
-            elif adapted_messages[i].role != glommed[-1].role:
-                glommed.append(adapted_messages[i])
-            else:
-                glommed[-1].content += " " + adapted_messages[i].content
-            i += 1
+            # convert 'system' role to 'user' role as mistral-7b-instruct does
+            # not support 'system'
+            if message["role"] == ChatMessage.Role.SYSTEM:
+                message["role"] = ChatMessage.Role.USER
 
-        return glommed
+            if len(adapted_messages) == 0:
+                adapted_messages.append(message)
+
+            else:
+                if message["role"] == adapted_messages[-1]["role"]:
+                    # if the curr message has the same role as the previous one,
+                    # concat the current message content to the prev message
+                    adapted_messages[-1]["content"] += " " + message["content"]
+                else:
+                    adapted_messages.append(message)
+
+        return adapted_messages
 
     @overrides
     async def _create_chat_completion(
@@ -203,14 +155,12 @@ class LlamafileProvider(OpenAIProvider):
         **kwargs,
     ) -> tuple[ChatCompletion, float, int, int]:
         if model == OpenAIModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT:
-            # validate that all messages have roles that are supported by
-            # mistral-7b-instruct
-            for m in messages:
-                if m["role"] not in [
-                    ChatMessage.Role.USER,
-                    ChatMessage.Role.ASSISTANT
-                ]:
-                    raise ValueError(f"Role {m['role']} not supported by model {model}")
+            messages = self._adapt_chat_messages_for_mistral_instruct(messages)
+
+        if "seed" not in kwargs:
+            # TODO: temporarily hard-coded for reproducibility, instead the
+            #  seed should be set from config
+            kwargs["seed"] = 0
 
         return await super()._create_chat_completion(messages, model, **kwargs)
 
