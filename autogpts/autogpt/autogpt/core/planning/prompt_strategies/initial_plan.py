@@ -11,7 +11,6 @@ from autogpt.core.resource.model_providers import (
     CompletionModelFunction,
 )
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.core.utils.json_utils import json_loads
 
 logger = logging.getLogger(__name__)
 
@@ -195,9 +194,7 @@ class InitialPlan(PromptStrategy):
                     f"LLM did not call {self._create_plan_function.name} function; "
                     "plan creation failed"
                 )
-            parsed_response: object = json_loads(
-                response_content.tool_calls[0].function.arguments
-            )
+            parsed_response: object = response_content.tool_calls[0].function.arguments
             parsed_response["task_list"] = [
                 Task.parse_obj(task) for task in parsed_response["task_list"]
             ]

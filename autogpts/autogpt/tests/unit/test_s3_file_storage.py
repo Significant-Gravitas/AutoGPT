@@ -23,7 +23,7 @@ def s3_root() -> Path:
 
 
 @pytest.fixture
-def s3_storage_uninitialized(s3_bucket_name: str, s3_root: str) -> S3FileStorage:
+def s3_storage_uninitialized(s3_bucket_name: str, s3_root: Path) -> S3FileStorage:
     os.environ["STORAGE_BUCKET"] = s3_bucket_name
     storage_config = S3FileStorageConfiguration.from_env()
     storage_config.root = s3_root
@@ -172,3 +172,24 @@ def test_clone(s3_storage_with_files: S3FileStorage, s3_root: Path):
     assert cloned._bucket.name == s3_storage_with_files._bucket.name
     assert cloned.exists("dir")
     assert cloned.exists("dir/test_file_4")
+
+
+@pytest.mark.asyncio
+async def test_copy_file(storage: S3FileStorage):
+    await storage.write_file("test_file.txt", "test content")
+    storage.copy("test_file.txt", "test_file_copy.txt")
+    storage.make_dir("dir")
+    storage.copy("test_file.txt", "dir/test_file_copy.txt")
+    assert storage.read_file("test_file_copy.txt") == "test content"
+    assert storage.read_file("dir/test_file_copy.txt") == "test content"
+
+
+@pytest.mark.asyncio
+async def test_copy_dir(storage: S3FileStorage):
+    storage.make_dir("dir")
+    storage.make_dir("dir/sub_dir")
+    await storage.write_file("dir/test_file.txt", "test content")
+    await storage.write_file("dir/sub_dir/test_file.txt", "test content")
+    storage.copy("dir", "dir_copy")
+    assert storage.read_file("dir_copy/test_file.txt") == "test content"
+    assert storage.read_file("dir_copy/sub_dir/test_file.txt") == "test content"
