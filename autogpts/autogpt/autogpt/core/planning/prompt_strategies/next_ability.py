@@ -11,7 +11,6 @@ from autogpt.core.resource.model_providers import (
     CompletionModelFunction,
 )
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.core.utils.json_utils import json_loads
 
 logger = logging.getLogger(__name__)
 
@@ -188,9 +187,7 @@ class NextAbility(PromptStrategy):
                 raise ValueError("LLM did not call any function")
 
             function_name = response_content.tool_calls[0].function.name
-            function_arguments = json_loads(
-                response_content.tool_calls[0].function.arguments
-            )
+            function_arguments = response_content.tool_calls[0].function.arguments
             parsed_response = {
                 "motivation": function_arguments.pop("motivation"),
                 "self_criticism": function_arguments.pop("self_criticism"),
