@@ -206,9 +206,6 @@ class ModelProviderUsage(ProviderUsage):
 
 
 class ModelProviderBudget(ProviderBudget):
-    total_budget: float = UserConfigurable()
-    total_cost: float
-    remaining_budget: float
     usage: defaultdict[str, ModelProviderUsage] = defaultdict(ModelProviderUsage)
 
     def update_usage_and_cost(
@@ -236,7 +233,7 @@ class ModelProviderSettings(ProviderSettings):
     resource_type: ResourceType = ResourceType.MODEL
     configuration: ModelProviderConfiguration
     credentials: ModelProviderCredentials
-    budget: ModelProviderBudget
+    budget: Optional[ModelProviderBudget] = None
 
 
 class ModelProvider(abc.ABC):
@@ -244,8 +241,8 @@ class ModelProvider(abc.ABC):
 
     default_settings: ClassVar[ModelProviderSettings]
 
-    _budget: Optional[ModelProviderBudget]
     _configuration: ModelProviderConfiguration
+    _budget: Optional[ModelProviderBudget] = None
 
     @abc.abstractmethod
     def count_tokens(self, text: str, model_name: str) -> int:
@@ -290,7 +287,7 @@ class ModelTokenizer(Protocol):
 class EmbeddingModelInfo(ModelInfo):
     """Struct for embedding model information."""
 
-    llm_service = ModelProviderService.EMBEDDING
+    service: Literal[ModelProviderService.EMBEDDING] = ModelProviderService.EMBEDDING
     max_tokens: int
     embedding_dimensions: int
 
@@ -328,7 +325,7 @@ class EmbeddingModelProvider(ModelProvider):
 class ChatModelInfo(ModelInfo):
     """Struct for language model information."""
 
-    llm_service = ModelProviderService.CHAT
+    service: Literal[ModelProviderService.CHAT] = ModelProviderService.CHAT
     max_tokens: int
     has_function_call_api: bool = False
 

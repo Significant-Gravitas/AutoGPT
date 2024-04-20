@@ -17,7 +17,6 @@ from autogpt.config import Config, ConfigBuilder
 from autogpt.core.resource.model_providers.schema import (
     ChatModelInfo,
     ModelProviderName,
-    ModelProviderService,
 )
 
 
@@ -208,7 +207,6 @@ async def test_create_config_gpt4only(config: Config) -> None:
     ) as mock_get_models:
         mock_get_models.return_value = [
             ChatModelInfo(
-                service=ModelProviderService.CHAT,
                 name=GPT_4_MODEL,
                 provider_name=ModelProviderName.OPENAI,
                 max_tokens=4096,
@@ -229,7 +227,6 @@ async def test_create_config_gpt3only(config: Config) -> None:
     ) as mock_get_models:
         mock_get_models.return_value = [
             ChatModelInfo(
-                service=ModelProviderService.CHAT,
                 name=GPT_3_MODEL,
                 provider_name=ModelProviderName.OPENAI,
                 max_tokens=4096,

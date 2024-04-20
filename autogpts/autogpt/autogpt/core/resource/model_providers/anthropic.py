@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import enum
 import logging
-import math
 from typing import TYPE_CHECKING, Callable, Optional, ParamSpec, TypeVar
 
 import sentry_sdk
@@ -50,7 +49,6 @@ ANTHROPIC_CHAT_MODELS = {
     for info in [
         ChatModelInfo(
             name=AnthropicModelName.CLAUDE3_OPUS_v1,
-            service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.ANTHROPIC,
             prompt_token_cost=15 / 1e6,
             completion_token_cost=75 / 1e6,
@@ -59,7 +57,6 @@ ANTHROPIC_CHAT_MODELS = {
         ),
         ChatModelInfo(
             name=AnthropicModelName.CLAUDE3_SONNET_v1,
-            service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.ANTHROPIC,
             prompt_token_cost=3 / 1e6,
             completion_token_cost=15 / 1e6,
@@ -68,7 +65,6 @@ ANTHROPIC_CHAT_MODELS = {
         ),
         ChatModelInfo(
             name=AnthropicModelName.CLAUDE3_HAIKU_v1,
-            service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.ANTHROPIC,
             prompt_token_cost=0.25 / 1e6,
             completion_token_cost=1.25 / 1e6,
@@ -105,6 +101,7 @@ class AnthropicCredentials(ModelProviderCredentials):
 class AnthropicSettings(ModelProviderSettings):
     configuration: AnthropicConfiguration
     credentials: Optional[AnthropicCredentials]
+    budget: ModelProviderBudget
 
 
 class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
@@ -115,16 +112,12 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
             retries_per_request=10,
         ),
         credentials=None,
-        budget=ModelProviderBudget(
-            total_budget=math.inf,
-            total_cost=0.0,
-            remaining_budget=math.inf,
-        ),
+        budget=ModelProviderBudget(),
     )
 
-    _budget: ModelProviderBudget
     _configuration: AnthropicConfiguration
     _credentials: AnthropicCredentials
+    _budget: ModelProviderBudget
 
     def __init__(
         self,

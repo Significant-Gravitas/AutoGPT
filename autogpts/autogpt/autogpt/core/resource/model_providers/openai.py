@@ -1,6 +1,5 @@
 import enum
 import logging
-import math
 import os
 from pathlib import Path
 from typing import Any, Callable, Coroutine, Iterator, Optional, ParamSpec, TypeVar
@@ -85,7 +84,6 @@ OPEN_AI_EMBEDDING_MODELS = {
     for info in [
         EmbeddingModelInfo(
             name=OpenAIModelName.EMBEDDING_v2,
-            service=ModelProviderService.EMBEDDING,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.0001 / 1000,
             max_tokens=8191,
@@ -93,7 +91,6 @@ OPEN_AI_EMBEDDING_MODELS = {
         ),
         EmbeddingModelInfo(
             name=OpenAIModelName.EMBEDDING_v3_S,
-            service=ModelProviderService.EMBEDDING,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.00002 / 1000,
             max_tokens=8191,
@@ -101,7 +98,6 @@ OPEN_AI_EMBEDDING_MODELS = {
         ),
         EmbeddingModelInfo(
             name=OpenAIModelName.EMBEDDING_v3_L,
-            service=ModelProviderService.EMBEDDING,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.00013 / 1000,
             max_tokens=8191,
@@ -116,7 +112,6 @@ OPEN_AI_CHAT_MODELS = {
     for info in [
         ChatModelInfo(
             name=OpenAIModelName.GPT3_v1,
-            service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.0015 / 1000,
             completion_token_cost=0.002 / 1000,
@@ -125,7 +120,6 @@ OPEN_AI_CHAT_MODELS = {
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT3_v2_16k,
-            service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.003 / 1000,
             completion_token_cost=0.004 / 1000,
@@ -134,7 +128,6 @@ OPEN_AI_CHAT_MODELS = {
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT3_v3,
-            service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.001 / 1000,
             completion_token_cost=0.002 / 1000,
@@ -143,7 +136,6 @@ OPEN_AI_CHAT_MODELS = {
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT3_v4,
-            service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.0005 / 1000,
             completion_token_cost=0.0015 / 1000,
@@ -152,7 +144,6 @@ OPEN_AI_CHAT_MODELS = {
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT4_v1,
-            service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.03 / 1000,
             completion_token_cost=0.06 / 1000,
@@ -161,7 +152,6 @@ OPEN_AI_CHAT_MODELS = {
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT4_v1_32k,
-            service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.06 / 1000,
             completion_token_cost=0.12 / 1000,
@@ -170,7 +160,6 @@ OPEN_AI_CHAT_MODELS = {
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT4_TURBO,
-            service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.01 / 1000,
             completion_token_cost=0.03 / 1000,
@@ -290,6 +279,7 @@ class OpenAICredentials(ModelProviderCredentials):
 class OpenAISettings(ModelProviderSettings):
     configuration: OpenAIConfiguration
     credentials: Optional[OpenAICredentials]
+    budget: ModelProviderBudget
 
 
 class OpenAIProvider(
@@ -302,16 +292,12 @@ class OpenAIProvider(
             retries_per_request=10,
         ),
         credentials=None,
-        budget=ModelProviderBudget(
-            total_budget=math.inf,
-            total_cost=0.0,
-            remaining_budget=math.inf,
-        ),
+        budget=ModelProviderBudget(),
     )
 
-    _budget: ModelProviderBudget
     _configuration: OpenAIConfiguration
     _credentials: OpenAICredentials
+    _budget: ModelProviderBudget
 
     def __init__(
         self,
