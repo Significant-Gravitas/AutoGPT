@@ -17,7 +17,6 @@ from autogpt.core.resource.model_providers import (
     ChatModelProvider,
 )
 from autogpt.file_storage.base import FileStorage
-from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
@@ -128,30 +127,6 @@ class Agent(
         extra_messages.append(
             ChatMessage.system(f"The current time and date is {time.strftime('%c')}"),
         )
-
-        # Add budget information (if any) to prompt
-        api_manager = ApiManager()
-        if api_manager.get_total_budget() > 0.0:
-            remaining_budget = (
-                api_manager.get_total_budget() - api_manager.get_total_cost()
-            )
-            if remaining_budget < 0:
-                remaining_budget = 0
-
-            budget_msg = ChatMessage.system(
-                f"Your remaining API budget is ${remaining_budget:.3f}"
-                + (
-                    " BUDGET EXCEEDED! SHUT DOWN!\n\n"
-                    if remaining_budget == 0
-                    else " Budget very nearly exceeded! Shut down gracefully!\n\n"
-                    if remaining_budget < 0.005
-                    else " Budget nearly exceeded. Finish up.\n\n"
-                    if remaining_budget < 0.01
-                    else ""
-                ),
-            )
-            logger.debug(budget_msg)
-            extra_messages.append(budget_msg)
 
         if include_os_info is None:
             include_os_info = self.legacy_config.execute_local_commands
