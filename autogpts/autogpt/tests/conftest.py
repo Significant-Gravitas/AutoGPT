@@ -18,7 +18,6 @@ from autogpt.file_storage.local import (
     FileStorageConfiguration,
     LocalFileStorage,
 )
-from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import configure_logging
 from autogpt.models.command_registry import CommandRegistry
 
@@ -100,13 +99,6 @@ def setup_logger(config: Config):
         log_dir=Path(__file__).parent / "logs",
         plain_console_output=True,
     )
-
-
-@pytest.fixture()
-def api_manager() -> ApiManager:
-    if ApiManager in ApiManager._instances:
-        del ApiManager._instances[ApiManager]
-    return ApiManager()
 
 
 @pytest.fixture

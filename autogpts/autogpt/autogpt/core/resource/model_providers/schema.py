@@ -339,6 +339,10 @@ class ChatModelResponse(ModelResponse, Generic[_T]):
 
 class ChatModelProvider(ModelProvider):
     @abc.abstractmethod
+    async def get_available_models(self) -> list[ChatModelInfo]:
+        ...
+
+    @abc.abstractmethod
     def count_message_tokens(
         self,
         messages: ChatMessage | list[ChatMessage],
