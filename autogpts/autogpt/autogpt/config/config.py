@@ -90,7 +90,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     )
     temperature: float = UserConfigurable(default=0, from_env="TEMPERATURE")
     openai_functions: bool = UserConfigurable(
-        default=False, from_env=lambda: os.getenv("OPENAI_FUNCTIONS", "False") == "True"
+        default=True, from_env=lambda: os.getenv("OPENAI_FUNCTIONS", "True") == "True"
     )
     embedding_model: str = UserConfigurable(
         default="text-embedding-3-small", from_env="EMBEDDING_MODEL"
