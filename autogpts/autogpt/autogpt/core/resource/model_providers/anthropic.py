@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Callable, Optional, ParamSpec, TypeVar
 import sentry_sdk
 import tenacity
 import tiktoken
+from anthropic import APIConnectionError, APIStatusError
 from pydantic import SecretStr
 
 from autogpt.core.configuration import Configurable, UserConfigurable
@@ -406,6 +407,12 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
 
     def _retry_api_request(self, func: Callable[_P, _T]) -> Callable[_P, _T]:
         return tenacity.retry(
+            retry=(
+                tenacity.retry_if_exception_type(APIConnectionError)
+                | tenacity.retry_if_exception(
+                    lambda e: isinstance(e, APIStatusError) and e.status_code >= 500
+                )
+            ),
             wait=tenacity.wait_exponential(),
             stop=tenacity.stop_after_attempt(self._configuration.retries_per_request),
             after=tenacity.after_log(self._logger, logging.DEBUG),
