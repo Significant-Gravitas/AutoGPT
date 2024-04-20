@@ -160,7 +160,7 @@ async def _process_text(
             model_prompt=prompt.messages,
             model_name=model,
             temperature=0.5,
-            max_tokens=max_result_tokens,
+            max_output_tokens=max_result_tokens,
             completion_parser=lambda s: (
                 extract_list_from_json(s.content) if output_type is not str else None
             ),
