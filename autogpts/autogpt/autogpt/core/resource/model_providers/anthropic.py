@@ -115,6 +115,7 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
         budget=ModelProviderBudget(),
     )
 
+    _settings: AnthropicSettings
     _configuration: AnthropicConfiguration
     _credentials: AnthropicCredentials
     _budget: ModelProviderBudget
@@ -129,16 +130,11 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
         if not settings.credentials:
             settings.credentials = AnthropicCredentials.from_env()
 
-        self._settings = settings
-
-        self._configuration = settings.configuration
-        self._credentials = settings.credentials
-        self._budget = settings.budget
+        super(AnthropicProvider, self).__init__(settings=settings, logger=logger)
 
         from anthropic import AsyncAnthropic
 
         self._client = AsyncAnthropic(**self._credentials.get_api_access_kwargs())
-        self._logger = logger or logging.getLogger(__name__)
 
     async def get_available_models(self) -> list[ChatModelInfo]:
         return list(ANTHROPIC_CHAT_MODELS.values())

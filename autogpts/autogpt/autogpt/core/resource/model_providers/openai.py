@@ -295,6 +295,7 @@ class OpenAIProvider(
         budget=ModelProviderBudget(),
     )
 
+    _settings: OpenAISettings
     _configuration: OpenAIConfiguration
     _credentials: OpenAICredentials
     _budget: ModelProviderBudget
@@ -309,11 +310,7 @@ class OpenAIProvider(
         if not settings.credentials:
             settings.credentials = OpenAICredentials.from_env()
 
-        self._settings = settings
-
-        self._configuration = settings.configuration
-        self._credentials = settings.credentials
-        self._budget = settings.budget
+        super(OpenAIProvider, self).__init__(settings=settings, logger=logger)
 
         if self._credentials.api_type == "azure":
             from openai import AsyncAzureOpenAI
@@ -325,8 +322,6 @@ class OpenAIProvider(
             from openai import AsyncOpenAI
 
             self._client = AsyncOpenAI(**self._credentials.get_api_access_kwargs())
-
-        self._logger = logger or logging.getLogger(__name__)
 
     async def get_available_models(self) -> list[ChatModelInfo]:
         _models = (await self._client.models.list()).data
