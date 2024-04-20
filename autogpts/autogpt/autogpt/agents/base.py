@@ -33,10 +33,8 @@ from autogpt.core.prompting.schema import (
     ChatPrompt,
     CompletionModelFunction,
 )
-from autogpt.core.resource.model_providers.openai import (
-    OPEN_AI_CHAT_MODELS,
-    OpenAIModelName,
-)
+from autogpt.core.resource.model_providers import CHAT_MODELS, ModelName
+from autogpt.core.resource.model_providers.openai import OpenAIModelName
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.file_storage.base import FileStorage
 from autogpt.llm.providers.openai import get_openai_command_specs
@@ -53,8 +51,8 @@ AgentThoughts = dict[str, Any]
 class BaseAgentConfiguration(SystemConfiguration):
     allow_fs_access: bool = UserConfigurable(default=False)
 
-    fast_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT3_16k)
-    smart_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT4)
+    fast_llm: ModelName = UserConfigurable(default=OpenAIModelName.GPT3_16k)
+    smart_llm: ModelName = UserConfigurable(default=OpenAIModelName.GPT4)
     use_functions_api: bool = UserConfigurable(default=False)
 
     default_cycle_instruction: str = DEFAULT_TRIGGERING_PROMPT
@@ -193,7 +191,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         llm_name = (
             self.config.smart_llm if self.config.big_brain else self.config.fast_llm
         )
-        return OPEN_AI_CHAT_MODELS[llm_name]
+        return CHAT_MODELS[llm_name]
 
     @property
     def send_token_limit(self) -> int:

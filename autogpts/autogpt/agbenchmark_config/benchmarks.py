@@ -5,7 +5,7 @@ from pathlib import Path
 
 from autogpt.agent_manager.agent_manager import AgentManager
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.app.main import _configure_openai_provider, run_interaction_loop
+from autogpt.app.main import _configure_llm_provider, run_interaction_loop
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIProfile, ConfigBuilder
 from autogpt.file_storage import FileStorageBackendName, get_storage
@@ -67,7 +67,7 @@ def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
 
     agent = Agent(
         settings=agent_settings,
-        llm_provider=_configure_openai_provider(config),
+        llm_provider=_configure_llm_provider(config),
         command_registry=command_registry,
         file_storage=file_storage,
         legacy_config=config,

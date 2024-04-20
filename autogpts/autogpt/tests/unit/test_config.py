@@ -203,7 +203,7 @@ def test_azure_config(config_with_azure: Config) -> None:
 @pytest.mark.asyncio
 async def test_create_config_gpt4only(config: Config) -> None:
     with mock.patch(
-        "autogpt.core.resource.model_providers.openai.OpenAIProvider.get_available_models"
+        "autogpt.core.resource.model_providers.multi.MultiProvider.get_available_models"
     ) as mock_get_models:
         mock_get_models.return_value = [
             ChatModelInfo(
@@ -223,7 +223,7 @@ async def test_create_config_gpt4only(config: Config) -> None:
 @pytest.mark.asyncio
 async def test_create_config_gpt3only(config: Config) -> None:
     with mock.patch(
-        "autogpt.core.resource.model_providers.openai.OpenAIProvider.get_available_models"
+        "autogpt.core.resource.model_providers.multi.MultiProvider.get_available_models"
     ) as mock_get_models:
         mock_get_models.return_value = [
             ChatModelInfo(
