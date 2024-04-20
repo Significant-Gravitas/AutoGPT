@@ -2,18 +2,23 @@
 Test cases for the config class, which handles the configuration settings
 for the AI and ensures it behaves as a singleton.
 """
+import asyncio
 import os
 from typing import Any
 from unittest import mock
-from unittest.mock import patch
 
 import pytest
-from openai.pagination import SyncPage
+from openai.pagination import AsyncPage
 from openai.types import Model
 from pydantic import SecretStr
 
 from autogpt.app.configurator import GPT_3_MODEL, GPT_4_MODEL, apply_overrides_to_config
 from autogpt.config import Config, ConfigBuilder
+from autogpt.core.resource.model_providers.schema import (
+    ChatModelInfo,
+    ModelProviderName,
+    ModelProviderService,
+)
 
 
 def test_initial_values(config: Config) -> None:
@@ -82,25 +87,26 @@ def test_set_smart_llm(config: Config) -> None:
     config.smart_llm = smart_llm
 
 
-@patch("openai.resources.models.Models.list")
-def test_fallback_to_gpt3_if_gpt4_not_available(
+@pytest.mark.asyncio
+@mock.patch("openai.resources.models.AsyncModels.list")
+async def test_fallback_to_gpt3_if_gpt4_not_available(
     mock_list_models: Any, config: Config
 ) -> None:
     """
     Test if models update to gpt-3.5-turbo if gpt-4 is not available.
     """
-    fast_llm = config.fast_llm
-    smart_llm = config.smart_llm
-
     config.fast_llm = "gpt-4"
     config.smart_llm = "gpt-4"
 
-    mock_list_models.return_value = SyncPage(
-        data=[Model(id=GPT_3_MODEL, created=0, object="model", owned_by="AutoGPT")],
-        object="Models",  # no idea what this should be, but irrelevant
+    mock_list_models.return_value = asyncio.Future()
+    mock_list_models.return_value.set_result(
+        AsyncPage(
+            data=[Model(id=GPT_3_MODEL, created=0, object="model", owned_by="AutoGPT")],
+            object="Models",  # no idea what this should be, but irrelevant
+        )
     )
 
-    apply_overrides_to_config(
+    await apply_overrides_to_config(
         config=config,
         gpt3only=False,
         gpt4only=False,
@@ -108,10 +114,6 @@ def test_fallback_to_gpt3_if_gpt4_not_available(
 
     assert config.fast_llm == "gpt-3.5-turbo"
     assert config.smart_llm == "gpt-3.5-turbo"
-
-    # Reset config
-    config.fast_llm = fast_llm
-    config.smart_llm = smart_llm
 
 
 def test_missing_azure_config(config: Config) -> None:
@@ -199,12 +201,20 @@ def test_azure_config(config_with_azure: Config) -> None:
     )
 
 
-def test_create_config_gpt4only(config: Config) -> None:
-    with mock.patch("autogpt.llm.api_manager.ApiManager.get_models") as mock_get_models:
+@pytest.mark.asyncio
+async def test_create_config_gpt4only(config: Config) -> None:
+    with mock.patch(
+        "autogpt.core.resource.model_providers.openai.OpenAIProvider.get_available_models"
+    ) as mock_get_models:
         mock_get_models.return_value = [
-            Model(id=GPT_4_MODEL, created=0, object="model", owned_by="AutoGPT")
+            ChatModelInfo(
+                service=ModelProviderService.CHAT,
+                name=GPT_4_MODEL,
+                provider_name=ModelProviderName.OPENAI,
+                max_tokens=4096,
+            )
         ]
-        apply_overrides_to_config(
+        await apply_overrides_to_config(
             config=config,
             gpt4only=True,
         )
@@ -212,10 +222,20 @@ def test_create_config_gpt4only(config: Config) -> None:
         assert config.smart_llm == GPT_4_MODEL
 
 
-def test_create_config_gpt3only(config: Config) -> None:
-    with mock.patch("autogpt.llm.api_manager.ApiManager.get_models") as mock_get_models:
-        mock_get_models.return_value = [{"id": GPT_3_MODEL}]
-        apply_overrides_to_config(
+@pytest.mark.asyncio
+async def test_create_config_gpt3only(config: Config) -> None:
+    with mock.patch(
+        "autogpt.core.resource.model_providers.openai.OpenAIProvider.get_available_models"
+    ) as mock_get_models:
+        mock_get_models.return_value = [
+            ChatModelInfo(
+                service=ModelProviderService.CHAT,
+                name=GPT_3_MODEL,
+                provider_name=ModelProviderName.OPENAI,
+                max_tokens=4096,
+            )
+        ]
+        await apply_overrides_to_config(
             config=config,
             gpt3only=True,
         )

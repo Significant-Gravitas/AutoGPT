@@ -103,7 +103,7 @@ async def run_auto_gpt(
     # TODO: fill in llm values here
     assert_config_has_openai_api_key(config)
 
-    apply_overrides_to_config(
+    await apply_overrides_to_config(
         config=config,
         continuous=continuous,
         continuous_limit=continuous_limit,
@@ -387,7 +387,7 @@ async def run_auto_gpt_server(
     # TODO: fill in llm values here
     assert_config_has_openai_api_key(config)
 
-    apply_overrides_to_config(
+    await apply_overrides_to_config(
         config=config,
         prompt_settings_file=prompt_settings,
         debug=debug,

@@ -21,6 +21,7 @@ from autogpt.core.configuration.schema import (
 from autogpt.core.resource.model_providers.openai import (
     OPEN_AI_CHAT_MODELS,
     OpenAICredentials,
+    OpenAIModelName,
 )
 from autogpt.file_storage import FileStorageBackendName
 from autogpt.logs.config import LoggingConfig
@@ -35,8 +36,8 @@ AZURE_CONFIG_FILE = Path("azure.yaml")
 PLUGINS_CONFIG_FILE = Path("plugins_config.yaml")
 PROMPT_SETTINGS_FILE = Path("prompt_settings.yaml")
 
-GPT_4_MODEL = "gpt-4"
-GPT_3_MODEL = "gpt-3.5-turbo"
+GPT_4_MODEL = OpenAIModelName.GPT4
+GPT_3_MODEL = OpenAIModelName.GPT3
 
 
 class Config(SystemSettings, arbitrary_types_allowed=True):

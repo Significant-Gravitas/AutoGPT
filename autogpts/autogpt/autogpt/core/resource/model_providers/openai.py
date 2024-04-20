@@ -342,6 +342,10 @@ class OpenAIProvider(
 
         self._logger = logger or logging.getLogger(__name__)
 
+    async def get_available_models(self) -> list[ChatModelInfo]:
+        _models = (await self._client.models.list()).data
+        return [OPEN_AI_MODELS[m.id] for m in _models if m.id in OPEN_AI_MODELS]
+
     def get_token_limit(self, model_name: str) -> int:
         """Get the token limit for a given model."""
         return OPEN_AI_MODELS[model_name].max_tokens

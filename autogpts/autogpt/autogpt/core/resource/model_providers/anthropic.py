@@ -147,6 +147,9 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
         self._client = AsyncAnthropic(**self._credentials.get_api_access_kwargs())
         self._logger = logger or logging.getLogger(__name__)
 
+    async def get_available_models(self) -> list[ChatModelInfo]:
+        return list(ANTHROPIC_CHAT_MODELS.values())
+
     def get_token_limit(self, model_name: str) -> int:
         """Get the token limit for a given model."""
         return ANTHROPIC_CHAT_MODELS[model_name].max_tokens
