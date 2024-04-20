@@ -288,7 +288,7 @@ class OpenAIProvider(
         name="openai_provider",
         description="Provides access to OpenAI's API.",
         configuration=OpenAIConfiguration(
-            retries_per_request=10,
+            retries_per_request=7,
         ),
         credentials=None,
         budget=ModelProviderBudget(),
