@@ -110,7 +110,7 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
         name="anthropic_provider",
         description="Provides access to Anthropic's API.",
         configuration=AnthropicConfiguration(
-            retries_per_request=10,
+            retries_per_request=7,
         ),
         credentials=None,
         budget=ModelProviderBudget(),

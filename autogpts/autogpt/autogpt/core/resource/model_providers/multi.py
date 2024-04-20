@@ -37,7 +37,7 @@ class MultiProvider(Configurable[ModelProviderSettings], ChatModelProvider):
             "Provides access to all of the available models, regardless of provider."
         ),
         configuration=ModelProviderConfiguration(
-            retries_per_request=10,
+            retries_per_request=7,
         ),
         budget=ModelProviderBudget(),
     )
