@@ -57,8 +57,7 @@ class LoggingConfig(SystemConfiguration):
 
     # Console output
     log_format: LogFormatName = UserConfigurable(
-        default=LogFormatName.SIMPLE,
-        from_env=lambda: LogFormatName(os.getenv("LOG_FORMAT", "simple")),
+        default=LogFormatName.SIMPLE, from_env="LOG_FORMAT"
     )
     plain_console_output: bool = UserConfigurable(
         default=False,
@@ -69,8 +68,8 @@ class LoggingConfig(SystemConfiguration):
     log_dir: Path = LOG_DIR
     log_file_format: Optional[LogFormatName] = UserConfigurable(
         default=LogFormatName.SIMPLE,
-        from_env=lambda: LogFormatName(
-            os.getenv("LOG_FILE_FORMAT", os.getenv("LOG_FORMAT", "simple"))
+        from_env=lambda: os.getenv(
+            "LOG_FILE_FORMAT", os.getenv("LOG_FORMAT", "simple")
         ),
     )
 
