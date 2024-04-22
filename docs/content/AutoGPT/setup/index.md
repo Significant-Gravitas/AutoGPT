@@ -58,8 +58,8 @@ Since we don't ship AutoGPT as a desktop application, you'll need to download th
 
 ![Screenshot of the dialog to clone or download the repo](get-repo-dialog.png)
 
-* To get the latest bleeding edge version, use `master`.
-* If you're looking for more stability, check out the latest AutoGPT [release][releases].
+- To get the latest bleeding edge version, use `master`.
+- If you're looking for more stability, check out the latest AutoGPT [release][releases].
 
 [project]: https://github.com/Significant-Gravitas/AutoGPT
 [releases]: https://github.com/Significant-Gravitas/AutoGPT/releases
