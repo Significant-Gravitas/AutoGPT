@@ -22,7 +22,7 @@ import glob
 import os
 from difflib import get_close_matches
 from typing import List
-
+from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 from .forge_log import ForgeLogger
@@ -93,7 +93,7 @@ class PromptEngine:
             LOG.error(f"Error finding closest match: {e}")
             raise
 
-    def load_prompt(self, template: str, **kwargs) -> str:
+    def load_prompt(self, template_name: str, **kwargs) -> str:
         """
         Load and populate the specified template.
 
@@ -105,13 +105,13 @@ class PromptEngine:
             str: The populated template.
         """
         try:
-            template = os.path.join(self.model, template)
+            template_name = os.path.join(self.model, template_name)
             if self.debug_enabled:
-                LOG.debug(f"Loading template: {template}")
-            template = template.replace("\\", "/")
-            template = self.env.get_template(f"{template}.j2")
+                LOG.debug(f"Loading template: {template_name}")
+            template_name = Path(template_name).as_posix()
+            template = self.env.get_template(f"{template_name}.j2")
             if self.debug_enabled:
-                LOG.debug(f"Rendering template: {template} with args: {kwargs}")
+                LOG.debug(f"Rendering template: {template_name} with args: {kwargs}")
             return template.render(**kwargs)
         except Exception as e:
             LOG.error(f"Error loading or rendering template: {e}")
