@@ -118,9 +118,9 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Commands #
     ############
     # General
-    disabled_command_categories: list[str] = UserConfigurable(
+    disabled_commands: list[str] = UserConfigurable(
         default_factory=list,
-        from_env=lambda: _safe_split(os.getenv("DISABLED_COMMAND_CATEGORIES")),
+        from_env=lambda: _safe_split(os.getenv("DISABLED_COMMANDS")),
     )
 
     # File ops

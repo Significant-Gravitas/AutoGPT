@@ -1,18 +1,26 @@
-from __future__ import annotations
-
 import logging
-from typing import Optional
+import os
+from pathlib import Path
+from typing import Iterator, Optional
 
+from autogpt.agents.protocols import CommandProvider, DirectiveProvider
+from autogpt.command_decorator import command
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.file_storage.base import FileStorage
+from autogpt.models.command import Command
+from autogpt.utils.file_operations_utils import decode_textual_file
 
-from ..base import BaseAgent, BaseAgentSettings
+from ..base import BaseAgentSettings
 
 logger = logging.getLogger(__name__)
 
 
-class AgentFileManagerMixin:
-    """Mixin that adds file manager (e.g. Agent state)
-    and workspace manager (e.g. Agent output files) support."""
+class FileManagerComponent(DirectiveProvider, CommandProvider):
+    """
+    Adds general file manager (e.g. Agent state),
+    workspace manager (e.g. Agent output files) support and
+    commands to perform operations on files and folders.
+    """
 
     files: FileStorage
     """Agent-related files, e.g. state, logs.
@@ -25,49 +33,17 @@ class AgentFileManagerMixin:
     STATE_FILE = "state.json"
     """The name of the file where the agent's state is stored."""
 
-    LOGS_FILE = "file_logger.log"
-    """The name of the file where the agent's logs are stored."""
+    def __init__(self, state: BaseAgentSettings, file_storage: FileStorage):
+        self.state = state
 
-    def __init__(self, **kwargs):
-        # Initialize other bases first, because we need the config from BaseAgent
-        super(AgentFileManagerMixin, self).__init__(**kwargs)
-
-        if not isinstance(self, BaseAgent):
-            raise NotImplementedError(
-                f"{__class__.__name__} can only be applied to BaseAgent derivatives"
-            )
-
-        if "file_storage" not in kwargs:
-            raise ValueError(
-                "AgentFileManagerMixin requires a file_storage in the constructor."
-            )
-
-        state: BaseAgentSettings = getattr(self, "state")
         if not state.agent_id:
             raise ValueError("Agent must have an ID.")
 
-        file_storage: FileStorage = kwargs["file_storage"]
         self.files = file_storage.clone_with_subroot(f"agents/{state.agent_id}/")
         self.workspace = file_storage.clone_with_subroot(
             f"agents/{state.agent_id}/workspace"
         )
         self._file_storage = file_storage
-        # Read and cache logs
-        self._file_logs_cache = []
-        if self.files.exists(self.LOGS_FILE):
-            self._file_logs_cache = self.files.read_file(self.LOGS_FILE).split("\n")
-
-    async def log_file_operation(self, content: str) -> None:
-        """Log a file operation to the agent's log file."""
-        logger.debug(f"Logging operation: {content}")
-        self._file_logs_cache.append(content)
-        await self.files.write_file(
-            self.LOGS_FILE, "\n".join(self._file_logs_cache) + "\n"
-        )
-
-    def get_file_operation_lines(self) -> list[str]:
-        """Get the agent's file operation logs as list of strings."""
-        return self._file_logs_cache
 
     async def save_state(self, save_as: Optional[str] = None) -> None:
         """Save the agent's state to the state file."""
@@ -100,3 +76,87 @@ class AgentFileManagerMixin:
             f"agents/{new_id}/workspace"
         )
         state.agent_id = new_id
+
+    def get_resources(self) -> Iterator[str]:
+        yield "The ability to read and write files."
+
+    def get_commands(self) -> Iterator[Command]:
+        yield self.read_file
+        yield self.write_to_file
+        yield self.list_folder
+
+    @command(
+        parameters={
+            "filename": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The path of the file to read",
+                required=True,
+            )
+        },
+    )
+    def read_file(self, filename: str | Path) -> str:
+        """Read a file and return the contents
+
+        Args:
+            filename (str): The name of the file to read
+
+        Returns:
+            str: The contents of the file
+        """
+        file = self.workspace.open_file(filename, binary=True)
+        content = decode_textual_file(file, os.path.splitext(filename)[1], logger)
+
+        return content
+
+    @command(
+        ["write_file", "create_file"],
+        "Write a file, creating it if necessary. "
+        "If the file exists, it is overwritten.",
+        {
+            "filename": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The name of the file to write to",
+                required=True,
+            ),
+            "contents": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The contents to write to the file",
+                required=True,
+            ),
+        },
+    )
+    async def write_to_file(self, filename: str | Path, contents: str) -> str:
+        """Write contents to a file
+
+        Args:
+            filename (str): The name of the file to write to
+            contents (str): The contents to write to the file
+
+        Returns:
+            str: A message indicating success or failure
+        """
+        logger.info(f"self: {self}")
+        if directory := os.path.dirname(filename):
+            self.workspace.make_dir(directory)
+        await self.workspace.write_file(filename, contents)
+        return f"File {filename} has been written successfully."
+
+    @command(
+        parameters={
+            "folder": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The folder to list files in",
+                required=True,
+            )
+        },
+    )
+    def list_folder(self, folder: str | Path) -> list[str]:
+        """Lists files in a folder recursively
+
+        Args:
+            folder (str): The folder to search in
+
+        Returns:
+            list[str]: A list of files found in the folder
+        """
+        return [str(p) for p in self.workspace.list_files(folder)]
