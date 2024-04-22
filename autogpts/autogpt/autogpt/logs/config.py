@@ -8,11 +8,9 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from openai._base_client import log as openai_logger
 
 if TYPE_CHECKING:
-    from autogpt.config import Config
     from autogpt.speech import TTSConfig
 
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
@@ -33,8 +31,6 @@ DEBUG_LOG_FORMAT = (
 
 SPEECH_OUTPUT_LOGGER = "VOICE"
 USER_FRIENDLY_OUTPUT_LOGGER = "USER_FRIENDLY_OUTPUT"
-
-_chat_plugins: list[AutoGPTPluginTemplate] = []
 
 
 class LogFormatName(str, enum.Enum):
@@ -214,19 +210,3 @@ def configure_logging(
 
     # Disable debug logging from OpenAI library
     openai_logger.setLevel(logging.WARNING)
-
-
-def configure_chat_plugins(config: Config) -> None:
-    """Configure chat plugins for use by the logging module"""
-
-    logger = logging.getLogger(__name__)
-
-    # Add chat plugins capable of report to logger
-    if config.chat_messages_enabled:
-        if _chat_plugins:
-            _chat_plugins.clear()
-
-        for plugin in config.plugins:
-            if hasattr(plugin, "can_handle_report") and plugin.can_handle_report():
-                logger.debug(f"Loaded plugin into logger: {plugin.__class__.__name__}")
-                _chat_plugins.append(plugin)

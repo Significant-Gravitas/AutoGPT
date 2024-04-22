@@ -15,7 +15,6 @@ from typing import (
     overload,
 )
 
-from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 from pydantic import BaseModel, Field, validator
 
@@ -95,21 +94,6 @@ class BaseAgentConfiguration(SystemConfiguration):
 
     summary_max_tlength: Optional[int] = None
     # TODO: move to ActionHistoryConfiguration
-
-    plugins: list[AutoGPTPluginTemplate] = Field(default_factory=list, exclude=True)
-
-    class Config:
-        arbitrary_types_allowed = True  # Necessary for plugins
-
-    @validator("plugins", each_item=True)
-    def validate_plugins(cls, p: AutoGPTPluginTemplate | Any):
-        assert issubclass(
-            p.__class__, AutoGPTPluginTemplate
-        ), f"{p} does not subclass AutoGPTPluginTemplate"
-        assert (
-            p.__class__.__name__ != "AutoGPTPluginTemplate"
-        ), f"Plugins must subclass AutoGPTPluginTemplate; {p} is a template instance"
-        return p
 
     @validator("use_functions_api")
     def validate_openai_functions(cls, v: bool, values: dict[str, Any]):
