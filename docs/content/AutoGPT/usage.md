@@ -214,16 +214,18 @@ To print out debug logs:
 ./autogpt.sh --debug
 ```
 
-## Disabling Command Categories
+## Disabling Commands
 
-If you want to selectively disable some command groups, you can use the
-`DISABLED_COMMAND_CATEGORIES` config in your `.env`. You can find the list of available
-categories [here][command categories].
+The best way to disable commands is to disable or remove the [component][components] that provides them.
+However, if you want to selectively disable some commands, you can use the `DISABLED_COMMANDS` config in your `.env`.
+Put the names of the commands you want to disable, separated by commas.
+You can find the list of commands in built-in components [here][commands].
 
-For example, to disable coding related features, set it to the value below:
+For example, to disable python coding features, set it to the value below:
 
 ```ini
-DISABLED_COMMAND_CATEGORIES=autogpt.commands.execute_code
+DISABLED_COMMANDS=execute_python_code,execute_python_file
 ```
 
-[command categories]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/autogpt/autogpt/commands/__init__.py
+[components]: ./component%20agent/components.md
+[commands]: ./component%20agent/built-in-components.md
