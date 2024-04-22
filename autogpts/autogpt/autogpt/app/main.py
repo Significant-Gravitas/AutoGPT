@@ -102,6 +102,7 @@ async def run_auto_gpt(
         level=log_level,
         log_format=log_format,
         log_file_format=log_file_format,
+        config=config.logging,
         tts_config=config.tts_config,
     )
 
@@ -384,6 +385,7 @@ async def run_auto_gpt_server(
         level=log_level,
         log_format=log_format,
         log_file_format=log_file_format,
+        config=config.logging,
         tts_config=config.tts_config,
     )
 
