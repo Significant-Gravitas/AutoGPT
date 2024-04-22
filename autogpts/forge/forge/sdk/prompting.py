@@ -99,7 +99,7 @@ class PromptEngine:
         Load and populate the specified template.
 
         Args:
-            template (str): The name of the template to load.
+            template_name (str): The name of the template to load.
             **kwargs: The arguments to populate the template with.
 
         Returns:
