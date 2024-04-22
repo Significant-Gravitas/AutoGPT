@@ -43,7 +43,7 @@ class CommandProvider(AgentComponent):
         ...
 ```
 
-The easiest way to provide a command is to use `command` decorator on a component method and then yield `Command.from_decorated_function(...)`. Each command needs a name, description and a parameter schema using `JSONSchema`. By default method name is used as a command name, and first part of docstring for the description (before `Args:` or `Returns:`) and schema can be provided in the decorator.
+The easiest way to provide a command is to use `command` decorator on a component method and then yield the method. Each command needs a name, description and a parameter schema using `JSONSchema`. By default method name is used as a command name, and first part of docstring for the description (before `Args:` or `Returns:`) and schema can be provided in the decorator.
 
 **Example** Calculator component that can perform multiplication. Agent is able to call this command if it's relevant to a current task and will see the returned result.
 
@@ -89,7 +89,8 @@ To learn more about commands see [🛠️ Commands](./commands.md).
 
 ## Order-dependent protocols
 
-The order of components implementing order-dependent protocols is important because the latter ones may depend on the results of the former ones.
+The order of components implementing order-dependent protocols is important.
+Some components may depend on the results of components before them.
 
 ### `MessageProvider`
 
