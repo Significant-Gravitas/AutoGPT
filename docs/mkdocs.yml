@@ -24,6 +24,11 @@ nav:
         - Running tests: AutoGPT/testing.md
         - Code of Conduct: code-of-conduct.md
           - For Developers: AutoGPT/setup/for-developers.md
+          - Configuration:
+              - Options: AutoGPT/configuration/options.md
+              - Search: AutoGPT/configuration/search.md
+              - Voice: AutoGPT/configuration/voice.md
+              - Image Generation: AutoGPT/configuration/imagegen.md
       - Components:
           - Introduction: AutoGPT/components/introduction.md
           - Agents: AutoGPT/components/agents.md
