@@ -8,7 +8,6 @@ from autogpt.config.ai_profile import AIProfile
 from autogpt.config.config import Config
 from autogpt.core.resource.model_providers.schema import ChatMessage
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.llm.api_manager import ApiManager
 from autogpt.models.command import Command
 from autogpt.utils.exceptions import AgentFinished
 from autogpt.utils.utils import DEFAULT_FINISH_COMMAND
@@ -33,33 +32,6 @@ class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
     def get_messages(self) -> Iterator[ChatMessage]:
         # Clock
         yield ChatMessage.system(f"The current time and date is {time.strftime('%c')}")
-
-        # Add budget information (if any) to prompt
-        api_manager = ApiManager()
-        if api_manager.get_total_budget() > 0.0:
-            remaining_budget = (
-                api_manager.get_total_budget() - api_manager.get_total_cost()
-            )
-            if remaining_budget < 0:
-                remaining_budget = 0
-            budget_msg = ChatMessage.system(
-                f"Your remaining API budget is ${remaining_budget:.3f}"
-                + (
-                    " BUDGET EXCEEDED! SHUT DOWN!\n\n"
-                    if remaining_budget == 0
-                    else (
-                        " Budget very nearly exceeded! Shut down gracefully!\n\n"
-                        if remaining_budget < 0.005
-                        else (
-                            " Budget nearly exceeded. Finish up.\n\n"
-                            if remaining_budget < 0.01
-                            else ""
-                        )
-                    )
-                ),
-            )
-            logger.debug(budget_msg)
-            yield budget_msg
 
     def get_commands(self) -> Iterator[Command]:
         yield self.finish

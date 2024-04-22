@@ -18,7 +18,6 @@ from autogpt.file_storage.local import (
     FileStorageConfiguration,
     LocalFileStorage,
 )
-from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import configure_logging
 
 pytest_plugins = [
@@ -79,8 +78,6 @@ def config(
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
 
-    config.logging.log_dir = Path(__file__).parent / "logs"
-    config.logging.plain_console_output = True
     config.noninteractive_mode = True
 
     # avoid circular dependency
@@ -96,14 +93,11 @@ def config(
 
 @pytest.fixture(scope="session")
 def setup_logger(config: Config):
-    configure_logging(**config.logging.dict())
-
-
-@pytest.fixture()
-def api_manager() -> ApiManager:
-    if ApiManager in ApiManager._instances:
-        del ApiManager._instances[ApiManager]
-    return ApiManager()
+    configure_logging(
+        debug=True,
+        log_dir=Path(__file__).parent / "logs",
+        plain_console_output=True,
+    )
 
 
 @pytest.fixture

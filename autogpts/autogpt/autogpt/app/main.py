@@ -95,26 +95,26 @@ async def run_auto_gpt(
     file_storage.initialize()
 
     # Set up logging module
+    if speak:
+        config.tts_config.speak_mode = True
     configure_logging(
-        **config.logging.dict(),
+        debug=debug,
+        level=log_level,
+        log_format=log_format,
+        log_file_format=log_file_format,
         tts_config=config.tts_config,
     )
 
     # TODO: fill in llm values here
     assert_config_has_openai_api_key(config)
 
-    apply_overrides_to_config(
+    await apply_overrides_to_config(
         config=config,
         continuous=continuous,
         continuous_limit=continuous_limit,
         ai_settings_file=ai_settings,
         prompt_settings_file=prompt_settings,
         skip_reprompt=skip_reprompt,
-        speak=speak,
-        debug=debug,
-        log_level=log_level,
-        log_format=log_format,
-        log_file_format=log_file_format,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
         browser_name=browser_name,
@@ -385,20 +385,19 @@ async def run_auto_gpt_server(
 
     # Set up logging module
     configure_logging(
-        **config.logging.dict(),
+        debug=debug,
+        level=log_level,
+        log_format=log_format,
+        log_file_format=log_file_format,
         tts_config=config.tts_config,
     )
 
     # TODO: fill in llm values here
     assert_config_has_openai_api_key(config)
 
-    apply_overrides_to_config(
+    await apply_overrides_to_config(
         config=config,
         prompt_settings_file=prompt_settings,
-        debug=debug,
-        log_level=log_level,
-        log_format=log_format,
-        log_file_format=log_file_format,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
         browser_name=browser_name,
