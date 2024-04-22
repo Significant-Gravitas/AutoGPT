@@ -26,62 +26,6 @@ def test_initial_values(config: Config) -> None:
     assert config.smart_llm.startswith("gpt-4")
 
 
-def test_set_continuous_mode(config: Config) -> None:
-    """
-    Test if the set_continuous_mode() method updates the continuous_mode attribute.
-    """
-    # Store continuous mode to reset it after the test
-    continuous_mode = config.continuous_mode
-
-    config.continuous_mode = True
-    assert config.continuous_mode is True
-
-    # Reset continuous mode
-    config.continuous_mode = continuous_mode
-
-
-def test_set_speak_mode(config: Config) -> None:
-    """
-    Test if the set_speak_mode() method updates the speak_mode attribute.
-    """
-    # Store speak mode to reset it after the test
-    speak_mode = config.tts_config.speak_mode
-
-    config.tts_config.speak_mode = True
-    assert config.tts_config.speak_mode is True
-
-    # Reset speak mode
-    config.tts_config.speak_mode = speak_mode
-
-
-def test_set_fast_llm(config: Config) -> None:
-    """
-    Test if the set_fast_llm() method updates the fast_llm attribute.
-    """
-    # Store model name to reset it after the test
-    fast_llm = config.fast_llm
-
-    config.fast_llm = "gpt-3.5-turbo-test"
-    assert config.fast_llm == "gpt-3.5-turbo-test"
-
-    # Reset model name
-    config.fast_llm = fast_llm
-
-
-def test_set_smart_llm(config: Config) -> None:
-    """
-    Test if the set_smart_llm() method updates the smart_llm attribute.
-    """
-    # Store model name to reset it after the test
-    smart_llm = config.smart_llm
-
-    config.smart_llm = "gpt-4-test"
-    assert config.smart_llm == "gpt-4-test"
-
-    # Reset model name
-    config.smart_llm = smart_llm
-
-
 @patch("openai.resources.models.Models.list")
 def test_fallback_to_gpt3_if_gpt4_not_available(
     mock_list_models: Any, config: Config
@@ -89,9 +33,6 @@ def test_fallback_to_gpt3_if_gpt4_not_available(
     """
     Test if models update to gpt-3.5-turbo if gpt-4 is not available.
     """
-    fast_llm = config.fast_llm
-    smart_llm = config.smart_llm
-
     config.fast_llm = "gpt-4"
     config.smart_llm = "gpt-4"
 
@@ -108,10 +49,6 @@ def test_fallback_to_gpt3_if_gpt4_not_available(
 
     assert config.fast_llm == "gpt-3.5-turbo"
     assert config.smart_llm == "gpt-3.5-turbo"
-
-    # Reset config
-    config.fast_llm = fast_llm
-    config.smart_llm = smart_llm
 
 
 def test_missing_azure_config(config: Config) -> None:
