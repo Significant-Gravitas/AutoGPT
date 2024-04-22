@@ -1,69 +1,53 @@
-"""Commands to control the internal state of the program"""
-
-from __future__ import annotations
-
 import logging
-from typing import TYPE_CHECKING
+import time
+from typing import Iterator
 
-from autogpt.agents.features.context import get_agent_context
-from autogpt.agents.utils.exceptions import AgentFinished, InvalidArgumentError
+from autogpt.agents.protocols import CommandProvider, DirectiveProvider, MessageProvider
 from autogpt.command_decorator import command
+from autogpt.config.ai_profile import AIProfile
+from autogpt.config.config import Config
+from autogpt.core.resource.model_providers.schema import ChatMessage
 from autogpt.core.utils.json_schema import JSONSchema
-
-COMMAND_CATEGORY = "system"
-COMMAND_CATEGORY_TITLE = "System"
-
-
-if TYPE_CHECKING:
-    from autogpt.agents.agent import Agent
-
+from autogpt.models.command import Command
+from autogpt.utils.exceptions import AgentFinished
+from autogpt.utils.utils import DEFAULT_FINISH_COMMAND
 
 logger = logging.getLogger(__name__)
 
 
-@command(
-    "finish",
-    "Use this to shut down once you have completed your task,"
-    " or when there are insurmountable problems that make it impossible"
-    " for you to finish your task.",
-    {
-        "reason": JSONSchema(
-            type=JSONSchema.Type.STRING,
-            description="A summary to the user of how the goals were accomplished",
-            required=True,
-        )
-    },
-)
-def finish(reason: str, agent: Agent) -> None:
-    """
-    A function that takes in a string and exits the program
+class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
+    """Component for system messages and commands."""
 
-    Parameters:
-        reason (str): A summary to the user of how the goals were accomplished.
-    Returns:
-        A result string from create chat completion. A list of suggestions to
-            improve the code.
-    """
-    raise AgentFinished(reason)
+    def __init__(self, config: Config, profile: AIProfile):
+        self.legacy_config = config
+        self.profile = profile
 
+    def get_constraints(self) -> Iterator[str]:
+        if self.profile.api_budget > 0.0:
+            yield (
+                f"It takes money to let you run. "
+                f"Your API budget is ${self.profile.api_budget:.3f}"
+            )
 
-@command(
-    "hide_context_item",
-    "Hide an open file, folder or other context item, to save memory.",
-    {
-        "number": JSONSchema(
-            type=JSONSchema.Type.INTEGER,
-            description="The 1-based index of the context item to hide",
-            required=True,
-        )
-    },
-    available=lambda a: bool(get_agent_context(a)),
-)
-def close_context_item(number: int, agent: Agent) -> str:
-    assert (context := get_agent_context(agent)) is not None
+    def get_messages(self) -> Iterator[ChatMessage]:
+        # Clock
+        yield ChatMessage.system(f"The current time and date is {time.strftime('%c')}")
 
-    if number > len(context.items) or number == 0:
-        raise InvalidArgumentError(f"Index {number} out of range")
+    def get_commands(self) -> Iterator[Command]:
+        yield self.finish
 
-    context.close(number)
-    return f"Context item {number} hidden ✅"
+    @command(
+        names=[DEFAULT_FINISH_COMMAND],
+        parameters={
+            "reason": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="A summary to the user of how the goals were accomplished",
+                required=True,
+            ),
+        },
+    )
+    def finish(self, reason: str):
+        """Use this to shut down once you have completed your task,
+        or when there are insurmountable problems that make it impossible
+        for you to finish your task."""
+        raise AgentFinished(reason)

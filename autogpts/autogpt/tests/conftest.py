@@ -18,9 +18,7 @@ from autogpt.file_storage.local import (
     FileStorageConfiguration,
     LocalFileStorage,
 )
-from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import configure_logging
-from autogpt.models.command_registry import CommandRegistry
 
 pytest_plugins = [
     "tests.integration.agent_factory",
@@ -80,8 +78,6 @@ def config(
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
 
-    config.logging.log_dir = Path(__file__).parent / "logs"
-    config.logging.plain_console_output = True
     config.noninteractive_mode = True
 
     # avoid circular dependency
@@ -97,14 +93,11 @@ def config(
 
 @pytest.fixture(scope="session")
 def setup_logger(config: Config):
-    configure_logging(**config.logging.dict())
-
-
-@pytest.fixture()
-def api_manager() -> ApiManager:
-    if ApiManager in ApiManager._instances:
-        del ApiManager._instances[ApiManager]
-    return ApiManager()
+    configure_logging(
+        debug=True,
+        log_dir=Path(__file__).parent / "logs",
+        plain_console_output=True,
+    )
 
 
 @pytest.fixture
@@ -122,11 +115,6 @@ def agent(
         ai_goals=[],
     )
 
-    command_registry = CommandRegistry()
-
-    agent_prompt_config = Agent.default_settings.prompt_config.copy(deep=True)
-    agent_prompt_config.use_functions_api = config.openai_functions
-
     agent_settings = AgentSettings(
         name=Agent.default_settings.name,
         description=Agent.default_settings.description,
@@ -139,14 +127,12 @@ def agent(
             use_functions_api=config.openai_functions,
             plugins=config.plugins,
         ),
-        prompt_config=agent_prompt_config,
         history=Agent.default_settings.history.copy(deep=True),
     )
 
     agent = Agent(
         settings=agent_settings,
         llm_provider=llm_provider,
-        command_registry=command_registry,
         file_storage=storage,
         legacy_config=config,
     )

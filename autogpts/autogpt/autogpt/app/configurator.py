@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import Literal, Optional
 
 import click
 from colorama import Back, Fore, Style
@@ -11,29 +11,20 @@ from colorama import Back, Fore, Style
 from autogpt import utils
 from autogpt.config import Config
 from autogpt.config.config import GPT_3_MODEL, GPT_4_MODEL
-from autogpt.llm.api_manager import ApiManager
-from autogpt.logs.config import LogFormatName
+from autogpt.core.resource.model_providers.openai import OpenAIModelName, OpenAIProvider
 from autogpt.logs.helpers import request_user_double_check
 from autogpt.memory.vector import get_supported_memory_backends
-
-if TYPE_CHECKING:
-    from autogpt.core.resource.model_providers.openai import OpenAICredentials
 
 logger = logging.getLogger(__name__)
 
 
-def apply_overrides_to_config(
+async def apply_overrides_to_config(
     config: Config,
     continuous: bool = False,
     continuous_limit: Optional[int] = None,
     ai_settings_file: Optional[Path] = None,
     prompt_settings_file: Optional[Path] = None,
     skip_reprompt: bool = False,
-    speak: bool = False,
-    debug: bool = False,
-    log_level: Optional[str] = None,
-    log_format: Optional[str] = None,
-    log_file_format: Optional[str] = None,
     gpt3only: bool = False,
     gpt4only: bool = False,
     memory_type: Optional[str] = None,
@@ -63,19 +54,6 @@ def apply_overrides_to_config(
         skips_news (bool): Whether to suppress the output of latest news on startup.
     """
     config.continuous_mode = False
-    config.tts_config.speak_mode = False
-
-    # Set log level
-    if debug:
-        config.logging.level = logging.DEBUG
-    elif log_level and type(_level := logging.getLevelName(log_level.upper())) is int:
-        config.logging.level = _level
-
-    # Set log format
-    if log_format and log_format in LogFormatName._value2member_map_:
-        config.logging.log_format = LogFormatName(log_format)
-    if log_file_format and log_file_format in LogFormatName._value2member_map_:
-        config.logging.log_file_format = LogFormatName(log_file_format)
 
     if continuous:
         logger.warning(
@@ -92,9 +70,6 @@ def apply_overrides_to_config(
     if continuous_limit and not continuous:
         raise click.UsageError("--continuous-limit can only be used with --continuous")
 
-    if speak:
-        config.tts_config.speak_mode = True
-
     # Set the default LLM models
     if gpt3only:
         # --gpt3only should always use gpt-3.5-turbo, despite user's FAST_LLM config
@@ -102,23 +77,14 @@ def apply_overrides_to_config(
         config.smart_llm = GPT_3_MODEL
     elif (
         gpt4only
-        and check_model(
-            GPT_4_MODEL,
-            model_type="smart_llm",
-            api_credentials=config.openai_credentials,
-        )
-        == GPT_4_MODEL
+        and (await check_model(GPT_4_MODEL, model_type="smart_llm")) == GPT_4_MODEL
     ):
         # --gpt4only should always use gpt-4, despite user's SMART_LLM config
         config.fast_llm = GPT_4_MODEL
         config.smart_llm = GPT_4_MODEL
     else:
-        config.fast_llm = check_model(
-            config.fast_llm, "fast_llm", api_credentials=config.openai_credentials
-        )
-        config.smart_llm = check_model(
-            config.smart_llm, "smart_llm", api_credentials=config.openai_credentials
-        )
+        config.fast_llm = await check_model(config.fast_llm, "fast_llm")
+        config.smart_llm = await check_model(config.smart_llm, "smart_llm")
 
     if memory_type:
         supported_memory = get_supported_memory_backends()
@@ -183,19 +149,17 @@ def apply_overrides_to_config(
         config.skip_news = True
 
 
-def check_model(
-    model_name: str,
-    model_type: Literal["smart_llm", "fast_llm"],
-    api_credentials: OpenAICredentials,
-) -> str:
+async def check_model(
+    model_name: OpenAIModelName, model_type: Literal["smart_llm", "fast_llm"]
+) -> OpenAIModelName:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
-    api_manager = ApiManager()
-    models = api_manager.get_models(api_credentials)
+    openai = OpenAIProvider()
+    models = await openai.get_available_models()
 
-    if any(model_name == m.id for m in models):
+    if any(model_name == m.name for m in models):
         return model_name
 
     logger.warning(
-        f"You don't have access to {model_name}. Setting {model_type} to gpt-3.5-turbo."
+        f"You don't have access to {model_name}. Setting {model_type} to {GPT_3_MODEL}."
     )
-    return "gpt-3.5-turbo"
+    return GPT_3_MODEL
