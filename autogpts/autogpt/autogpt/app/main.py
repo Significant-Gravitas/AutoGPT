@@ -102,6 +102,7 @@ async def run_auto_gpt(
         level=log_level,
         log_format=log_format,
         log_file_format=log_file_format,
+        config=config.logging,
         tts_config=config.tts_config,
     )
 
@@ -389,6 +390,7 @@ async def run_auto_gpt_server(
         level=log_level,
         log_format=log_format,
         log_file_format=log_file_format,
+        config=config.logging,
         tts_config=config.tts_config,
     )
 
@@ -486,12 +488,13 @@ async def run_interaction_loop(
     legacy_config = agent.legacy_config
     ai_profile = agent.ai_profile
     logger = logging.getLogger(__name__)
-    config = LoggingConfig.from_env()
 
     cycle_budget = cycles_remaining = _get_cycle_budget(
         legacy_config.continuous_mode, legacy_config.continuous_limit
     )
-    spinner = Spinner("Thinking...", plain_output=config.plain_console_output)
+    spinner = Spinner(
+        "Thinking...", plain_output=legacy_config.logging.plain_console_output
+    )
     stop_reason = None
 
     def graceful_agent_interrupt(signum: int, frame: Optional[FrameType]) -> None:
