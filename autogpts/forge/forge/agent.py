@@ -152,7 +152,7 @@ class ForgeAgent(Agent):
         # return step
 
         prompt_engine = PromptEngine(model="gpt-4-turbo-preview")
-        system_prompt = prompt_engine.load_prompt(template="system-format")
+        system_prompt = prompt_engine.load_prompt(template_name="system-format")
         # Define the task parameters
         task_kwargs = {
             "task": task.input,
