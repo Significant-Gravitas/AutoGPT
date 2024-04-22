@@ -12,7 +12,6 @@ from autogpt import utils
 from autogpt.config import Config
 from autogpt.config.config import GPT_3_MODEL, GPT_4_MODEL
 from autogpt.llm.api_manager import ApiManager
-from autogpt.logs.config import LogFormatName
 from autogpt.logs.helpers import request_user_double_check
 from autogpt.memory.vector import get_supported_memory_backends
 
@@ -29,11 +28,6 @@ def apply_overrides_to_config(
     ai_settings_file: Optional[Path] = None,
     prompt_settings_file: Optional[Path] = None,
     skip_reprompt: bool = False,
-    speak: bool = False,
-    debug: bool = False,
-    log_level: Optional[str] = None,
-    log_format: Optional[str] = None,
-    log_file_format: Optional[str] = None,
     gpt3only: bool = False,
     gpt4only: bool = False,
     memory_type: Optional[str] = None,
@@ -63,19 +57,6 @@ def apply_overrides_to_config(
         skips_news (bool): Whether to suppress the output of latest news on startup.
     """
     config.continuous_mode = False
-    config.tts_config.speak_mode = False
-
-    # Set log level
-    if debug:
-        config.logging.level = logging.DEBUG
-    elif log_level and type(_level := logging.getLevelName(log_level.upper())) is int:
-        config.logging.level = _level
-
-    # Set log format
-    if log_format and log_format in LogFormatName._value2member_map_:
-        config.logging.log_format = LogFormatName(log_format)
-    if log_file_format and log_file_format in LogFormatName._value2member_map_:
-        config.logging.log_file_format = LogFormatName(log_file_format)
 
     if continuous:
         logger.warning(
@@ -91,9 +72,6 @@ def apply_overrides_to_config(
     # Check if continuous limit is used without continuous mode
     if continuous_limit and not continuous:
         raise click.UsageError("--continuous-limit can only be used with --continuous")
-
-    if speak:
-        config.tts_config.speak_mode = True
 
     # Set the default LLM models
     if gpt3only:
