@@ -23,6 +23,10 @@ nav:
         - Contribution guide: contributing.md
         - Running tests: AutoGPT/testing.md
         - Code of Conduct: code-of-conduct.md
+      - Introduction: AutoGPT/index.md
+      - Setup:
+          - Setting up AutoGPT: AutoGPT/setup/index.md
+          - Set up with Docker: AutoGPT/setup/docker.md
           - For Developers: AutoGPT/setup/for-developers.md
           - Configuration:
               - Options: AutoGPT/configuration/options.md
@@ -38,6 +42,12 @@ nav:
           - Built in Components: AutoGPT/components/built-in-components.md
           - Creating Components: AutoGPT/components/creating-components.md
           - Advanced: AutoGPT/components/advanced.md
+      - Usage: AutoGPT/usage.md
+      - Help us improve AutoGPT:
+          - Share your debug logs with us: AutoGPT/share-your-logs.md
+          - Contribution guide: contributing.md
+          - Running tests: AutoGPT/testing.md
+          - Code of Conduct: code-of-conduct.md
 
   - Benchmark:
     - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark/README.md
