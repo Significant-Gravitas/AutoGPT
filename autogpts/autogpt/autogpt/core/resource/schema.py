@@ -1,5 +1,6 @@
 import abc
 import enum
+import math
 
 from pydantic import BaseModel, SecretBytes, SecretField, SecretStr
 
@@ -25,9 +26,9 @@ class ProviderUsage(SystemConfiguration, abc.ABC):
 
 
 class ProviderBudget(SystemConfiguration):
-    total_budget: float = UserConfigurable()
-    total_cost: float
-    remaining_budget: float
+    total_budget: float = UserConfigurable(math.inf)
+    total_cost: float = 0
+    remaining_budget: float = math.inf
     usage: ProviderUsage
 
     @abc.abstractmethod
