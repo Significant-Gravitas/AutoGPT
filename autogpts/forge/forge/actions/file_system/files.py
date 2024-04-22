@@ -2,7 +2,7 @@ from typing import List
 
 from forge.sdk.agent import Agent
 
-from ..registry import action, ActionParameter
+from ..registry import ActionParameter, action
 
 
 @action(

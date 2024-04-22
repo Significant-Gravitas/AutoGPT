@@ -187,8 +187,8 @@ class ActionRegister:
 
 
 if __name__ == "__main__":
-    import sys
     import asyncio
+    import sys
 
     async def run():
         register = ActionRegister(agent=None)

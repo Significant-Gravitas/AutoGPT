@@ -32,18 +32,19 @@ from fastapi.responses import FileResponse
 from forge.sdk.errors import NotFoundError
 from forge.sdk.forge_log import ForgeLogger
 from forge.sdk.model import (
-    TaskRequestBody,
-    Task,
-    TaskListResponse,
-    TaskStepsListResponse,
-    StepRequestBody,
-    Step,
-    TaskArtifactsListResponse,
     Artifact,
+    Step,
+    StepRequestBody,
+    Task,
+    TaskArtifactsListResponse,
+    TaskListResponse,
+    TaskRequestBody,
+    TaskStepsListResponse,
 )
 
 if TYPE_CHECKING:
     from forge.sdk.agent import Agent
+
 from forge.sdk.utils import get_detailed_traceback, get_exception_message
 
 base_router = APIRouter()
