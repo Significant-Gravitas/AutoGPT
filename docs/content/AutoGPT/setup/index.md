@@ -46,7 +46,7 @@ Get your OpenAI API key from:
     It's highly recommended that you keep track of your API costs on [the Usage page](https://platform.openai.com/account/usage).
     You can also set limits on how much you spend on [the Usage limits page](https://platform.openai.com/account/billing/limits).
 
-![For OpenAI API key to work, set up paid account at OpenAI API > Billing](/imgs/openai-api-key-billing-paid-account.png)
+![For OpenAI API key to work, set up paid account at OpenAI API > Billing](../../imgs/openai-api-key-billing-paid-account.png)
 
 
 ## Setting up AutoGPT
