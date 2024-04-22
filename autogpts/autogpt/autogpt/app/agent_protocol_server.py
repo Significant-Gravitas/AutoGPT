@@ -1,6 +1,7 @@
 import logging
 import os
 import pathlib
+from collections import defaultdict
 from io import BytesIO
 from uuid import uuid4
 
@@ -60,7 +61,7 @@ class AgentProtocolServer:
         self.file_storage = file_storage
         self.llm_provider = llm_provider
         self.agent_manager = AgentManager(file_storage)
-        self._task_budgets = {}
+        self._task_budgets = defaultdict(ModelProviderBudget)
 
     async def start(self, port: int = 8000, router: APIRouter = base_router):
         """Start the agent server."""
@@ -461,9 +462,7 @@ class AgentProtocolServer:
         """
         Configures the LLM provider with headers to link outgoing requests to the task.
         """
-        task_llm_budget = self._task_budgets.get(
-            task.task_id, self.llm_provider.default_settings.budget.copy(deep=True)
-        )
+        task_llm_budget = self._task_budgets[task.task_id]
 
         task_llm_provider_config = self.llm_provider._configuration.copy(deep=True)
         _extra_request_headers = task_llm_provider_config.extra_request_headers
