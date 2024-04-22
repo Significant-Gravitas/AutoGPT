@@ -79,8 +79,6 @@ def config(
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
 
-    config.logging.log_dir = Path(__file__).parent / "logs"
-    config.logging.plain_console_output = True
     config.noninteractive_mode = True
 
     # avoid circular dependency
@@ -96,7 +94,11 @@ def config(
 
 @pytest.fixture(scope="session")
 def setup_logger(config: Config):
-    configure_logging(**config.logging.dict())
+    configure_logging(
+        debug=True,
+        log_dir=Path(__file__).parent / "logs",
+        plain_console_output=True,
+    )
 
 
 @pytest.fixture

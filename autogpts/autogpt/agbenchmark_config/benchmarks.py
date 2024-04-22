@@ -21,12 +21,13 @@ def run_specific_agent(task: str, continuous_mode: bool = False) -> None:
 
 
 def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
-    config = ConfigBuilder.build_config_from_env()
-    config.logging.level = logging.DEBUG
-    config.logging.log_dir = LOG_DIR
-    config.logging.plain_console_output = True
-    configure_logging(**config.logging.dict())
+    configure_logging(
+        level=logging.DEBUG,
+        log_dir=LOG_DIR,
+        plain_console_output=True,
+    )
 
+    config = ConfigBuilder.build_config_from_env()
     config.continuous_mode = continuous_mode
     config.continuous_limit = 20
     config.noninteractive_mode = True
