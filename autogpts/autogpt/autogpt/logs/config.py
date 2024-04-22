@@ -75,28 +75,58 @@ class LoggingConfig(SystemConfiguration):
 
 
 def configure_logging(
-    level: int = logging.INFO,
-    log_dir: Path = LOG_DIR,
-    log_format: Optional[LogFormatName] = None,
-    log_file_format: Optional[LogFormatName] = None,
-    plain_console_output: bool = False,
+    debug: bool = False,
+    level: Optional[int | str] = None,
+    log_dir: Optional[Path] = None,
+    log_format: Optional[LogFormatName | str] = None,
+    log_file_format: Optional[LogFormatName | str] = None,
+    plain_console_output: Optional[bool] = None,
     tts_config: Optional[TTSConfig] = None,
 ) -> None:
-    """Configure the native logging module.
+    """Configure the native logging module, based on the environment config and any
+    specified overrides.
+
+    Arguments override values specified in the environment.
 
     Should be usable as `configure_logging(**config.logging.dict())`, where
     `config.logging` is a `LoggingConfig` object.
     """
+    if debug and level:
+        raise ValueError("Only one of either 'debug' and 'level' arguments may be set")
 
-    # Auto-adjust default log format based on log level
-    log_format = log_format or (
-        LogFormatName.SIMPLE if level != logging.DEBUG else LogFormatName.DEBUG
+    # Parse arguments
+    if isinstance(level, str):
+        if type(_level := logging.getLevelName(level.upper())) is int:
+            level = _level
+        else:
+            raise ValueError(f"Unknown log level '{level}'")
+    if isinstance(log_format, str):
+        if log_format in LogFormatName._value2member_map_:
+            log_format = LogFormatName(log_format)
+        elif not isinstance(log_format, LogFormatName):
+            raise ValueError(f"Unknown log format '{log_format}'")
+    if isinstance(log_file_format, str):
+        if log_file_format in LogFormatName._value2member_map_:
+            log_file_format = LogFormatName(log_file_format)
+        elif not isinstance(log_file_format, LogFormatName):
+            raise ValueError(f"Unknown log format '{log_format}'")
+
+    config = LoggingConfig.from_env()
+
+    # Aggregate arguments + env config
+    level = logging.DEBUG if debug else level or config.level
+    log_dir = log_dir or config.log_dir
+    log_format = log_format or (LogFormatName.DEBUG if debug else config.log_format)
+    log_file_format = log_file_format or log_format or config.log_file_format
+    plain_console_output = (
+        plain_console_output
+        if plain_console_output is not None
+        else config.plain_console_output
     )
-    log_file_format = log_file_format or log_format
 
-    structured_logging = log_format == LogFormatName.STRUCTURED
-
-    if structured_logging:
+    # Structured logging is used for cloud environments,
+    # where logging to a file makes no sense.
+    if log_format == LogFormatName.STRUCTURED:
         plain_console_output = True
         log_file_format = None
 

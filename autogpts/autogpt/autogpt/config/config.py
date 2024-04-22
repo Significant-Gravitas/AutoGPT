@@ -23,7 +23,6 @@ from autogpt.core.resource.model_providers.openai import (
     OpenAICredentials,
 )
 from autogpt.file_storage import FileStorageBackendName
-from autogpt.logs.config import LoggingConfig
 from autogpt.plugins.plugins_config import PluginsConfig
 from autogpt.speech import TTSConfig
 
@@ -59,7 +58,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
 
     # TTS configuration
     tts_config: TTSConfig = TTSConfig()
-    logging: LoggingConfig = LoggingConfig()
 
     # File storage
     file_storage_backend: FileStorageBackendName = UserConfigurable(
