@@ -23,12 +23,10 @@ from autogpt.agent_factory.configurators import configure_agent_with_state, crea
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
-from autogpt.agents.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 from autogpt.commands.execute_code import (
     is_docker_available,
     we_are_running_in_a_docker_container,
 )
-from autogpt.commands.system import finish
 from autogpt.config import (
     AIDirectives,
     AIProfile,
@@ -39,10 +37,12 @@ from autogpt.config import (
 from autogpt.core.resource.model_providers import MultiProvider
 from autogpt.core.runner.client_lib.utils import coroutine
 from autogpt.file_storage import FileStorageBackendName, get_storage
-from autogpt.logs.config import configure_chat_plugins, configure_logging
+from autogpt.logs.config import LoggingConfig, configure_chat_plugins, configure_logging
 from autogpt.logs.helpers import print_attribute, speak
 from autogpt.models.action_history import ActionInterruptedByHuman
 from autogpt.plugins import scan_plugins
+from autogpt.utils.exceptions import AgentTerminated, InvalidAgentResponseError
+from autogpt.utils.utils import DEFAULT_FINISH_COMMAND
 from scripts.install_plugin_deps import install_plugin_dependencies
 
 from .configurator import apply_overrides_to_config
@@ -102,6 +102,7 @@ async def run_auto_gpt(
         level=log_level,
         log_format=log_format,
         log_file_format=log_file_format,
+        config=config.logging,
         tts_config=config.tts_config,
     )
 
@@ -190,7 +191,7 @@ async def run_auto_gpt(
         ) <= len(existing_agents):
             load_existing_agent = existing_agents[int(load_existing_agent) - 1]
 
-        if load_existing_agent not in existing_agents:
+        if load_existing_agent != "" and load_existing_agent not in existing_agents:
             logger.info(
                 f"Unknown agent '{load_existing_agent}', "
                 f"creating a new one instead.",
@@ -235,7 +236,8 @@ async def run_auto_gpt(
 
         if (
             agent.event_history.current_episode
-            and agent.event_history.current_episode.action.name == finish.__name__
+            and agent.event_history.current_episode.action.name
+            == DEFAULT_FINISH_COMMAND
             and not agent.event_history.current_episode.result
         ):
             # Agent was resumed after `finish` -> rewrite result of `finish` action
@@ -327,11 +329,13 @@ async def run_auto_gpt(
             llm_provider=llm_provider,
         )
 
-        if not agent.config.allow_fs_access:
+        file_manager = agent.file_manager
+
+        if file_manager and not agent.config.allow_fs_access:
             logger.info(
                 f"{Fore.YELLOW}"
                 "NOTE: All files/directories created by this agent can be found "
-                f"inside its workspace at:{Fore.RESET} {agent.workspace.root}",
+                f"inside its workspace at:{Fore.RESET} {file_manager.workspace.root}",
                 extra={"preserve_color": True},
             )
 
@@ -351,7 +355,9 @@ async def run_auto_gpt(
             " or enter a different ID to save to:",
         )
         # TODO: allow many-to-one relations of agents and workspaces
-        await agent.save_state(save_as_id if not save_as_id.isspace() else None)
+        await agent.file_manager.save_state(
+            save_as_id.strip() if not save_as_id.isspace() else None
+        )
 
 
 @coroutine
@@ -384,6 +390,7 @@ async def run_auto_gpt_server(
         level=log_level,
         log_format=log_format,
         log_file_format=log_file_format,
+        config=config.logging,
         tts_config=config.tts_config,
     )
 
@@ -529,7 +536,7 @@ async def run_interaction_loop(
                     command_name,
                     command_args,
                     assistant_reply_dict,
-                ) = await agent.propose_action()
+                ) = (await agent.propose_action()).to_tuple()
             except InvalidAgentResponseError as e:
                 logger.warning(f"The agent's thoughts could not be parsed: {e}")
                 consecutive_failures += 1

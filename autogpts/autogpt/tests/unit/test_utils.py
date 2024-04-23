@@ -15,7 +15,7 @@ from autogpt.app.utils import (
     set_env_config_value,
 )
 from autogpt.core.utils.json_utils import extract_dict_from_json
-from autogpt.utils import validate_yaml_file
+from autogpt.utils.utils import validate_yaml_file
 from tests.utils import skip_in_ci
 
 

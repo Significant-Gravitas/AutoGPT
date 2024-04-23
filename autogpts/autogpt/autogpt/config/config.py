@@ -24,6 +24,7 @@ from autogpt.core.resource.model_providers.openai import (
     OpenAIModelName,
 )
 from autogpt.file_storage import FileStorageBackendName
+from autogpt.logs.config import LoggingConfig
 from autogpt.plugins.plugins_config import PluginsConfig
 from autogpt.speech import TTSConfig
 
@@ -58,6 +59,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     )
 
     # TTS configuration
+    logging: LoggingConfig = LoggingConfig()
     tts_config: TTSConfig = TTSConfig()
 
     # File storage
@@ -118,9 +120,9 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Commands #
     ############
     # General
-    disabled_command_categories: list[str] = UserConfigurable(
+    disabled_commands: list[str] = UserConfigurable(
         default_factory=list,
-        from_env=lambda: _safe_split(os.getenv("DISABLED_COMMAND_CATEGORIES")),
+        from_env=lambda: _safe_split(os.getenv("DISABLED_COMMANDS")),
     )
 
     # File ops

@@ -391,7 +391,7 @@ class OpenAIProvider(
         max_output_tokens: Optional[int] = None,
         **kwargs,
     ) -> ChatModelResponse[_T]:
-        """Create a completion using the OpenAI API."""
+        """Create a completion using the OpenAI API and parse it."""
 
         openai_messages, completion_kwargs = self._get_chat_completion_args(
             model_prompt=model_prompt,
