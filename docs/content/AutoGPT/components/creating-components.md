@@ -94,7 +94,7 @@ To learn more about commands see [🛠️ Commands](./commands.md).
 After components provided all necessary data, the agent needs to build the final prompt that will be send to a llm.
 Currently, `PromptStrategy` (*not* a protocol) is responsible for building the final prompt.
 If you want to change the way the prompt is built, you need to create a new `PromptStrategy` class, and then call relavant methods in your agent class.
-You can have a look at the default strategy used by the AutoGPT Agent: [OneShotAgentPromptStrategy](../../../../autogpts/autogpt/autogpt/agents/prompt_strategies/one_shot.py), and how it's used in the [Agent](../../../../autogpts/autogpt/autogpt/agents/agent.py) (search for `self.prompt_strategy`).
+You can have a look at the default strategy used by the AutoGPT Agent: [OneShotAgentPromptStrategy](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/autogpt/agents/prompt_strategies/one_shot.py), and how it's used in the [Agent](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/autogpt/agents/agent.py) (search for `self.prompt_strategy`).
 
 ## Example `UserInteractionComponent`
 
@@ -102,53 +102,58 @@ Let's create a slighlty simplified version of the component that is used by the 
 It gives an ability for the agent to ask user for input in the terminal.
 
 1. Create a class for the component that inherits from `CommandProvider`.
-```py
-class MyUserInteractionComponent(CommandProvider):
-    """Provides commands to interact with the user."""
-    pass
-```
+
+    ```py
+    class MyUserInteractionComponent(CommandProvider):
+        """Provides commands to interact with the user."""
+        pass
+    ```
 
 2. Implement command method that will ask user for input and return it.
-```py
-def ask_user(self, question: str) -> str:
-    """If you need more details or information regarding the given goals,
-    you can ask the user for input."""
-    print(f"\nQ: {question}")
-    resp = input("A:")
-    return f"The user's answer: '{resp}'"
-```
+
+    ```py
+    def ask_user(self, question: str) -> str:
+        """If you need more details or information regarding the given goals,
+        you can ask the user for input."""
+        print(f"\nQ: {question}")
+        resp = input("A:")
+        return f"The user's answer: '{resp}'"
+    ```
 
 3. The command needs to be decorated with `@command`.
-```py
-@command(
-    parameters={
-        "question": JSONSchema(
-            type=JSONSchema.Type.STRING,
-            description="The question or prompt to the user",
-            required=True,
-        )
-    },
-)
-def ask_user(self, question: str) -> str:
-    """If you need more details or information regarding the given goals,
-    you can ask the user for input."""
-    print(f"\nQ: {question}")
-    resp = input("A:")
-    return f"The user's answer: '{resp}'"
-```
+
+    ```py
+    @command(
+        parameters={
+            "question": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The question or prompt to the user",
+                required=True,
+            )
+        },
+    )
+    def ask_user(self, question: str) -> str:
+        """If you need more details or information regarding the given goals,
+        you can ask the user for input."""
+        print(f"\nQ: {question}")
+        resp = input("A:")
+        return f"The user's answer: '{resp}'"
+    ```
 
 4. We need to implement `CommandProvider`'s `get_commands` method to yield the command.
-```py
-def get_commands(self) -> Iterator[Command]:
-    yield self.ask_user
-```
+
+    ```py
+    def get_commands(self) -> Iterator[Command]:
+        yield self.ask_user
+    ```
 
 5. Since agent isn't always running in the terminal or interactive mode, we need to disable this component by setting `self._enabled` when it's not possible to ask for user input.
-```py
-def __init__(self, config: Config):
-    self.config = config
-    self._enabled = not config.noninteractive_mode
-```
+
+    ```py
+    def __init__(self, config: Config):
+        self.config = config
+        self._enabled = not config.noninteractive_mode
+    ```
 
 The final component should look like this:
 
@@ -228,7 +233,7 @@ class MyAgent(Agent):
 
 ## Learn more
 
-The best place to see more examples is to look at the built-in components in the [autogpt/components](../../../../autogpts/autogpt/autogpt/components/) and [autogpt/commands](../../../../autogpts/autogpt/autogpt/commands/) directories.
+The best place to see more examples is to look at the built-in components in the [autogpt/components](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/autogpt/components/) and [autogpt/commands](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/autogpt/commands/) directories.
 
 Guide on how to extend the built-in agent and build your own: [🤖 Agents](./agents.md)  
 Order of some components matters, see [🧩 Components](./components.md) to learn more about components and how they can be customized.  

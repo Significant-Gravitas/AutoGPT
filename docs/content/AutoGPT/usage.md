@@ -227,5 +227,5 @@ For example, to disable python coding features, set it to the value below:
 DISABLED_COMMANDS=execute_python_code,execute_python_file
 ```
 
-[components]: ./component%20agent/components.md
-[commands]: ./component%20agent/built-in-components.md
+[components]: ./components/components.md
+[commands]: ./components/built-in-components.md
