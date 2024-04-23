@@ -6,32 +6,42 @@ nav:
   - Home: index.md
 
   - AutoGPT Agent:
-    - Introduction: AutoGPT/index.md
-    - Setup:
-        - Setting up AutoGPT: AutoGPT/setup/index.md
-        - Set up with Docker: AutoGPT/setup/docker.md
-    - Usage: AutoGPT/usage.md
-    - Plugins: AutoGPT/plugins.md
-    # - Configuration:
-    #     - Options: AutoGPT/configuration/options.md
-    #     - Search: AutoGPT/configuration/search.md
-    #     - Memory: AutoGPT/configuration/memory.md
-    #     - Voice: AutoGPT/configuration/voice.md
-    #     - Image Generation: AutoGPT/configuration/imagegen.md
-    - Help us improve AutoGPT:
-        - Share your debug logs with us: AutoGPT/share-your-logs.md
-        - Contribution guide: contributing.md
-        - Running tests: AutoGPT/testing.md
-        - Code of Conduct: code-of-conduct.md
+      - Introduction: AutoGPT/index.md
+      - Setup:
+          - Setting up AutoGPT: AutoGPT/setup/index.md
+          - Set up with Docker: AutoGPT/setup/docker.md
+          - For Developers: AutoGPT/setup/for-developers.md
+          - Configuration:
+              - Options: AutoGPT/configuration/options.md
+              - Search: AutoGPT/configuration/search.md
+              - Voice: AutoGPT/configuration/voice.md
+              - Image Generation: AutoGPT/configuration/imagegen.md
+      - Components:
+          - Introduction: AutoGPT/components/introduction.md
+          - Agents: AutoGPT/components/agents.md
+          - Components: AutoGPT/components/components.md
+          - Protocols: AutoGPT/components/protocols.md
+          - Commands: AutoGPT/components/commands.md
+          - Built in Components: AutoGPT/components/built-in-components.md
+          - Creating Components: AutoGPT/components/creating-components.md
+          - Advanced: AutoGPT/components/advanced.md
+      - Usage: AutoGPT/usage.md
+      - Help us improve AutoGPT:
+          - Share your debug logs with us: AutoGPT/share-your-logs.md
+          - Contribution guide: contributing.md
+          - Running tests: AutoGPT/testing.md
+          - Code of Conduct: code-of-conduct.md
 
   - Benchmark:
-    - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark/README.md
+      - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark/README.md
 
   - Forge:
-    - Introduction: forge/get-started.md
+      - Introduction: forge/get-started.md
 
   - Frontend:
-    - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/frontend/README.md
+      - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/frontend/README.md
+
+  - Docs: docs/index.md
 
   # - Challenges:
   #     - Introduction: challenges/introduction.md
@@ -98,8 +108,8 @@ markdown_extensions:
   - pymdownx.caret
   - pymdownx.details
   - pymdownx.emoji:
-      emoji_index: !!python/name:materialx.emoji.twemoji
-      emoji_generator: !!python/name:materialx.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.highlight
   - pymdownx.inlinehilite
   - pymdownx.keys
