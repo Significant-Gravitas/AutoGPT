@@ -46,7 +46,7 @@ Get your OpenAI API key from:
     It's highly recommended that you keep track of your API costs on [the Usage page](https://platform.openai.com/account/usage).
     You can also set limits on how much you spend on [the Usage limits page](https://platform.openai.com/account/billing/limits).
 
-![For OpenAI API key to work, set up paid account at OpenAI API > Billing](/imgs/openai-api-key-billing-paid-account.png)
+![For OpenAI API key to work, set up paid account at OpenAI API > Billing](../../imgs/openai-api-key-billing-paid-account.png)
 
 
 ## Setting up AutoGPT
@@ -58,8 +58,8 @@ Since we don't ship AutoGPT as a desktop application, you'll need to download th
 
 ![Screenshot of the dialog to clone or download the repo](get-repo-dialog.png)
 
-* To get the latest bleeding edge version, use `master`.
-* If you're looking for more stability, check out the latest AutoGPT [release][releases].
+- To get the latest bleeding edge version, use `master`.
+- If you're looking for more stability, check out the latest AutoGPT [release][releases].
 
 [project]: https://github.com/Significant-Gravitas/AutoGPT
 [releases]: https://github.com/Significant-Gravitas/AutoGPT/releases
