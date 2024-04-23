@@ -75,39 +75,73 @@ class LoggingConfig(SystemConfiguration):
 
 
 def configure_logging(
-    level: int = logging.INFO,
-    log_dir: Path = LOG_DIR,
-    log_format: Optional[LogFormatName] = None,
-    log_file_format: Optional[LogFormatName] = None,
-    plain_console_output: bool = False,
+    debug: bool = False,
+    level: Optional[int | str] = None,
+    log_dir: Optional[Path] = None,
+    log_format: Optional[LogFormatName | str] = None,
+    log_file_format: Optional[LogFormatName | str] = None,
+    plain_console_output: Optional[bool] = None,
+    config: Optional[LoggingConfig] = None,
     tts_config: Optional[TTSConfig] = None,
 ) -> None:
-    """Configure the native logging module.
+    """Configure the native logging module, based on the environment config and any
+    specified overrides.
+
+    Arguments override values specified in the environment.
+    Overrides are also applied to `config`, if passed.
 
     Should be usable as `configure_logging(**config.logging.dict())`, where
     `config.logging` is a `LoggingConfig` object.
     """
+    if debug and level:
+        raise ValueError("Only one of either 'debug' and 'level' arguments may be set")
 
-    # Auto-adjust default log format based on log level
-    log_format = log_format or (
-        LogFormatName.SIMPLE if level != logging.DEBUG else LogFormatName.DEBUG
+    # Parse arguments
+    if isinstance(level, str):
+        if type(_level := logging.getLevelName(level.upper())) is int:
+            level = _level
+        else:
+            raise ValueError(f"Unknown log level '{level}'")
+    if isinstance(log_format, str):
+        if log_format in LogFormatName._value2member_map_:
+            log_format = LogFormatName(log_format)
+        elif not isinstance(log_format, LogFormatName):
+            raise ValueError(f"Unknown log format '{log_format}'")
+    if isinstance(log_file_format, str):
+        if log_file_format in LogFormatName._value2member_map_:
+            log_file_format = LogFormatName(log_file_format)
+        elif not isinstance(log_file_format, LogFormatName):
+            raise ValueError(f"Unknown log format '{log_format}'")
+
+    config = config or LoggingConfig.from_env()
+
+    # Aggregate env config + arguments
+    config.level = logging.DEBUG if debug else level or config.level
+    config.log_dir = log_dir or config.log_dir
+    config.log_format = log_format or (
+        LogFormatName.DEBUG if debug else config.log_format
     )
-    log_file_format = log_file_format or log_format
+    config.log_file_format = log_file_format or log_format or config.log_file_format
+    config.plain_console_output = (
+        plain_console_output
+        if plain_console_output is not None
+        else config.plain_console_output
+    )
 
-    structured_logging = log_format == LogFormatName.STRUCTURED
-
-    if structured_logging:
-        plain_console_output = True
-        log_file_format = None
+    # Structured logging is used for cloud environments,
+    # where logging to a file makes no sense.
+    if log_format == LogFormatName.STRUCTURED:
+        config.plain_console_output = True
+        config.log_file_format = None
 
     # create log directory if it doesn't exist
-    if not log_dir.exists():
-        log_dir.mkdir()
+    if not config.log_dir.exists():
+        config.log_dir.mkdir()
 
     log_handlers: list[logging.Handler] = []
 
-    if log_format in (LogFormatName.DEBUG, LogFormatName.SIMPLE):
-        console_format_template = TEXT_LOG_FORMAT_MAP[log_format]
+    if config.log_format in (LogFormatName.DEBUG, LogFormatName.SIMPLE):
+        console_format_template = TEXT_LOG_FORMAT_MAP[config.log_format]
         console_formatter = AutoGptFormatter(console_format_template)
     else:
         console_formatter = StructuredLoggingFormatter()
@@ -115,7 +149,7 @@ def configure_logging(
 
     # Console output handlers
     stdout = logging.StreamHandler(stream=sys.stdout)
-    stdout.setLevel(level)
+    stdout.setLevel(config.level)
     stdout.addFilter(BelowLevelFilter(logging.WARNING))
     stdout.setFormatter(console_formatter)
     stderr = logging.StreamHandler()
@@ -132,7 +166,7 @@ def configure_logging(
     user_friendly_output_logger = logging.getLogger(USER_FRIENDLY_OUTPUT_LOGGER)
     user_friendly_output_logger.setLevel(logging.INFO)
     user_friendly_output_logger.addHandler(
-        typing_console_handler if not plain_console_output else stdout
+        typing_console_handler if not config.plain_console_output else stdout
     )
     if tts_config:
         user_friendly_output_logger.addHandler(TTSHandler(tts_config))
@@ -140,22 +174,26 @@ def configure_logging(
     user_friendly_output_logger.propagate = False
 
     # File output handlers
-    if log_file_format is not None:
-        if level < logging.ERROR:
-            file_output_format_template = TEXT_LOG_FORMAT_MAP[log_file_format]
+    if config.log_file_format is not None:
+        if config.level < logging.ERROR:
+            file_output_format_template = TEXT_LOG_FORMAT_MAP[config.log_file_format]
             file_output_formatter = AutoGptFormatter(
                 file_output_format_template, no_color=True
             )
 
             # INFO log file handler
-            activity_log_handler = logging.FileHandler(log_dir / LOG_FILE, "a", "utf-8")
-            activity_log_handler.setLevel(level)
+            activity_log_handler = logging.FileHandler(
+                config.log_dir / LOG_FILE, "a", "utf-8"
+            )
+            activity_log_handler.setLevel(config.level)
             activity_log_handler.setFormatter(file_output_formatter)
             log_handlers += [activity_log_handler]
             user_friendly_output_logger.addHandler(activity_log_handler)
 
         # ERROR log file handler
-        error_log_handler = logging.FileHandler(log_dir / ERROR_LOG_FILE, "a", "utf-8")
+        error_log_handler = logging.FileHandler(
+            config.log_dir / ERROR_LOG_FILE, "a", "utf-8"
+        )
         error_log_handler.setLevel(logging.ERROR)
         error_log_handler.setFormatter(
             AutoGptFormatter(DEBUG_LOG_FORMAT, no_color=True)
@@ -166,7 +204,7 @@ def configure_logging(
     # Configure the root logger
     logging.basicConfig(
         format=console_format_template,
-        level=level,
+        level=config.level,
         handlers=log_handlers,
     )
 

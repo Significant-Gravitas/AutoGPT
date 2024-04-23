@@ -4,10 +4,8 @@ from agent_protocol import StepHandler, StepResult
 
 from autogpt.agents import Agent
 from autogpt.app.main import UserFeedback
-from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIProfile, ConfigBuilder
 from autogpt.logs.helpers import user_friendly_output
-from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 
@@ -82,7 +80,6 @@ def bootstrap_agent(task, continuous_mode) -> Agent:
     config.logging.plain_console_output = True
     config.continuous_mode = continuous_mode
     config.temperature = 0
-    command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
     config.memory_backend = "no_memory"
     ai_profile = AIProfile(
         ai_name="AutoGPT",
@@ -92,7 +89,6 @@ def bootstrap_agent(task, continuous_mode) -> Agent:
     # FIXME this won't work - ai_profile and triggering_prompt is not a valid argument,
     # lacks file_storage, settings and llm_provider
     return Agent(
-        command_registry=command_registry,
         ai_profile=ai_profile,
         legacy_config=config,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,

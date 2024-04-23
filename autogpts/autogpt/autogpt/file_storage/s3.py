@@ -8,7 +8,6 @@ from __future__ import annotations
 import contextlib
 import inspect
 import logging
-import os
 from io import IOBase, TextIOWrapper
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Optional

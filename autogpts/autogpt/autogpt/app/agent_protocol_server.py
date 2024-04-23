@@ -1,6 +1,7 @@
 import logging
 import os
 import pathlib
+from collections import defaultdict
 from io import BytesIO
 from uuid import uuid4
 
@@ -30,10 +31,7 @@ from sentry_sdk import set_user
 from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
-from autogpt.agents.utils.exceptions import AgentFinished
 from autogpt.app.utils import is_port_free
-from autogpt.commands.system import finish
-from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
@@ -41,6 +39,8 @@ from autogpt.core.resource.model_providers.schema import ModelProviderBudget
 from autogpt.file_storage import FileStorage
 from autogpt.logs.utils import fmt_kwargs
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
+from autogpt.utils.exceptions import AgentFinished
+from autogpt.utils.utils import DEFAULT_ASK_COMMAND, DEFAULT_FINISH_COMMAND
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class AgentProtocolServer:
         self.file_storage = file_storage
         self.llm_provider = llm_provider
         self.agent_manager = AgentManager(file_storage)
-        self._task_budgets = {}
+        self._task_budgets = defaultdict(ModelProviderBudget)
 
     async def start(self, port: int = 8000, router: APIRouter = base_router):
         """Start the agent server."""
@@ -148,7 +148,7 @@ class AgentProtocolServer:
             file_storage=self.file_storage,
             llm_provider=self._get_task_llm_provider(task),
         )
-        await task_agent.save_state()
+        await task_agent.file_manager.save_state()
 
         return task
 
@@ -229,18 +229,20 @@ class AgentProtocolServer:
         step = await self.db.create_step(
             task_id=task_id,
             input=step_request,
-            is_last=execute_command == finish.__name__ and execute_approved,
+            is_last=execute_command == DEFAULT_FINISH_COMMAND and execute_approved,
         )
         agent.llm_provider = self._get_task_llm_provider(task, step.step_id)
 
         # Execute previously proposed action
         if execute_command:
             assert execute_command_args is not None
-            agent.workspace.on_write_file = lambda path: self._on_agent_write_file(
-                task=task, step=step, relative_path=path
+            agent.file_manager.workspace.on_write_file = (
+                lambda path: self._on_agent_write_file(
+                    task=task, step=step, relative_path=path
+                )
             )
 
-            if execute_command == ask_user.__name__:  # HACK
+            if execute_command == DEFAULT_ASK_COMMAND:
                 execute_result = ActionSuccessResult(outputs=user_input)
                 agent.event_history.register_result(execute_result)
             elif not execute_command:
@@ -274,7 +276,7 @@ class AgentProtocolServer:
                         output=execute_command_args["reason"],
                         additional_output=additional_output,
                     )
-                    await agent.save_state()
+                    await agent.file_manager.save_state()
                     return step
             else:
                 assert user_input
@@ -286,7 +288,9 @@ class AgentProtocolServer:
 
         # Propose next action
         try:
-            next_command, next_command_args, raw_output = await agent.propose_action()
+            next_command, next_command_args, raw_output = (
+                await agent.propose_action()
+            ).to_tuple()
             logger.debug(f"AI output: {raw_output}")
         except Exception as e:
             step = await self.db.update_step(
@@ -304,13 +308,13 @@ class AgentProtocolServer:
                 + ("\n\n" if "\n" in str(execute_result) else " ")
                 + f"{execute_result}\n\n"
             )
-            if execute_command_args and execute_command != ask_user.__name__
+            if execute_command_args and execute_command != DEFAULT_ASK_COMMAND
             else ""
         )
         output += f"{raw_output['thoughts']['speak']}\n\n"
         output += (
             f"Next Command: {next_command}({fmt_kwargs(next_command_args)})"
-            if next_command != ask_user.__name__
+            if next_command != DEFAULT_ASK_COMMAND
             else next_command_args["question"]
         )
 
@@ -356,7 +360,7 @@ class AgentProtocolServer:
             additional_output=additional_output,
         )
 
-        await agent.save_state()
+        await agent.file_manager.save_state()
         return step
 
     async def _on_agent_write_file(
@@ -461,9 +465,7 @@ class AgentProtocolServer:
         """
         Configures the LLM provider with headers to link outgoing requests to the task.
         """
-        task_llm_budget = self._task_budgets.get(
-            task.task_id, self.llm_provider.default_settings.budget.copy(deep=True)
-        )
+        task_llm_budget = self._task_budgets[task.task_id]
 
         task_llm_provider_config = self.llm_provider._configuration.copy(deep=True)
         _extra_request_headers = task_llm_provider_config.extra_request_headers

@@ -1,12 +1,5 @@
-from __future__ import annotations
-
-import functools
-import inspect
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, ParamSpec, TypeVar
-
-if TYPE_CHECKING:
-    from autogpt.agents.base import BaseAgent
-    from autogpt.config import Config
+import re
+from typing import Callable, Optional, ParamSpec, TypeVar
 
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command, CommandOutput, CommandParameter
@@ -19,19 +12,35 @@ CO = TypeVar("CO", bound=CommandOutput)
 
 
 def command(
-    name: str,
-    description: str,
-    parameters: dict[str, JSONSchema],
-    enabled: Literal[True] | Callable[[Config], bool] = True,
-    disabled_reason: Optional[str] = None,
-    aliases: list[str] = [],
-    available: bool | Callable[[BaseAgent], bool] = True,
-) -> Callable[[Callable[P, CO]], Callable[P, CO]]:
+    names: list[str] = [],
+    description: Optional[str] = None,
+    parameters: dict[str, JSONSchema] = {},
+) -> Callable[[Callable[P, CommandOutput]], Command]:
     """
-    The command decorator is used to create Command objects from ordinary functions.
+    The command decorator is used to make a Command from a function.
+
+    Args:
+        names (list[str]): The names of the command.
+            If not provided, the function name will be used.
+        description (str): A brief description of what the command does.
+            If not provided, the docstring until double line break will be used
+            (or entire docstring if no double line break is found)
+        parameters (dict[str, JSONSchema]): The parameters of the function
+            that the command executes.
     """
 
-    def decorator(func: Callable[P, CO]) -> Callable[P, CO]:
+    def decorator(func: Callable[P, CO]) -> Command:
+        doc = func.__doc__ or ""
+        # If names is not provided, use the function name
+        command_names = names or [func.__name__]
+        # If description is not provided, use the first part of the docstring
+        if not (command_description := description):
+            if not func.__doc__:
+                raise ValueError("Description is required if function has no docstring")
+            # Return the part of the docstring before double line break or everything
+            command_description = re.sub(r"\s+", " ", doc.split("\n\n")[0].strip())
+
+        # Parameters
         typed_parameters = [
             CommandParameter(
                 name=param_name,
@@ -39,32 +48,15 @@ def command(
             )
             for param_name, spec in parameters.items()
         ]
-        cmd = Command(
-            name=name,
-            description=description,
+
+        # Wrap func with Command
+        command = Command(
+            names=command_names,
+            description=command_description,
             method=func,
             parameters=typed_parameters,
-            enabled=enabled,
-            disabled_reason=disabled_reason,
-            aliases=aliases,
-            available=available,
         )
 
-        if inspect.iscoroutinefunction(func):
-
-            @functools.wraps(func)
-            async def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
-                return await func(*args, **kwargs)
-
-        else:
-
-            @functools.wraps(func)
-            def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
-                return func(*args, **kwargs)
-
-        setattr(wrapper, "command", cmd)
-        setattr(wrapper, AUTO_GPT_COMMAND_IDENTIFIER, True)
-
-        return wrapper
+        return command
 
     return decorator
