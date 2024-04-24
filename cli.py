@@ -123,12 +123,21 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
                 headers = {"Authorization": f"token {github_access_token}"}
                 response = requests.get("https://api.github.com/user", headers=headers)
                 if response.status_code == 200:
-                    scopes = response.headers.get("X-OAuth-Scopes")
+                    o_auth_scopes_header = "X-OAuth-Scopes"
+                    scopes = response.headers.get(o_auth_scopes_header, "")
                     if "public_repo" in scopes or "repo" in scopes:
                         click.echo(
                             click.style(
                                 "✅ GitHub access token has the required permissions.",
                                 fg="green",
+                            )
+                        )
+                    elif o_auth_scopes_header not in response.headers:
+                        install_error = True
+                        click.echo(
+                            click.style(
+                                "❌ Response lack X-OAuth-Scopes, please make sure you use OAuth token.",
+                                fg="red",
                             )
                         )
                     else:
