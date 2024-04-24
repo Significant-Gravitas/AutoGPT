@@ -9,14 +9,17 @@ import sentry_sdk
 from pydantic import Field
 
 from autogpt.agents.prompt_strategies.one_shot import OneShotAgentPromptStrategy
-from autogpt.commands.execute_code import CodeExecutorComponent
-from autogpt.commands.git_operations import GitOperationsComponent
-from autogpt.commands.image_gen import ImageGeneratorComponent
-from autogpt.commands.system import SystemComponent
-from autogpt.commands.user_interaction import UserInteractionComponent
-from autogpt.commands.web_search import WebSearchComponent
-from autogpt.commands.web_selenium import WebSeleniumComponent
-from autogpt.components.event_history import EventHistoryComponent
+from forge.components.code_executor.code_executor import CodeExecutorComponent
+from forge.components.git_operations.git_operations import GitOperationsComponent
+from forge.components.image_gen.image_gen import ImageGeneratorComponent
+from forge.components.system.system import SystemComponent
+from forge.components.user_interaction.user_interaction import UserInteractionComponent
+from forge.components.web_search.web_search import WebSearchComponent
+from forge.components.web_selenium.web_selenium import WebSeleniumComponent
+from forge.components.event_history.event_history import EventHistoryComponent
+from forge.components.file_manager.file_manager import FileManagerComponent
+from forge.components.context.context import ContextComponent
+from forge.components.watchdog.watchdog import WatchdogComponent
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import ChatMessage, ChatModelProvider
@@ -25,7 +28,7 @@ from autogpt.core.resource.model_providers.schema import (
     ChatModelResponse,
 )
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
-from autogpt.file_storage.base import FileStorage
+from forge.file_storage.base import FileStorage
 from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.logs.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
@@ -34,14 +37,14 @@ from autogpt.logs.log_cycle import (
     LogCycleHandler,
 )
 from autogpt.logs.utils import fmt_kwargs
-from autogpt.models.action_history import (
+from forge.components.event_history.action_history import (
     ActionErrorResult,
     ActionInterruptedByHuman,
     ActionResult,
     ActionSuccessResult,
 )
-from autogpt.models.command import Command, CommandOutput
-from autogpt.utils.exceptions import (
+from forge.command.command import Command, CommandOutput
+from forge.exceptions import (
     AgentException,
     AgentTerminated,
     CommandExecutionError,
@@ -55,10 +58,7 @@ from .base import (
     BaseAgentSettings,
     ThoughtProcessOutput,
 )
-from .features.agent_file_manager import FileManagerComponent
-from .features.context import ContextComponent
-from .features.watchdog import WatchdogComponent
-from .protocols import (
+from forge.forge.protocols import (
     AfterExecute,
     AfterParse,
     CommandProvider,

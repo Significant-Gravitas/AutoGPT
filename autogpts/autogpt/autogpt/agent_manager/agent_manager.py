@@ -4,7 +4,7 @@ import uuid
 from pathlib import Path
 
 from autogpt.agents.agent import AgentSettings
-from autogpt.file_storage.base import FileStorage
+from forge.file_storage.base import FileStorage
 
 
 class AgentManager:

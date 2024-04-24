@@ -13,7 +13,7 @@ from autogpt.core.resource.model_providers import (
     ChatModelProvider,
     ModelTokenizer,
 )
-from autogpt.core.utils.json_utils import extract_list_from_json
+from forge.json.parsing import extract_list_from_json
 
 logger = logging.getLogger(__name__)
 

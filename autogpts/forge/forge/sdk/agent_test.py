@@ -1,7 +1,7 @@
 import pytest
 
 from .agent import Agent
-from .db import AgentDB
+from .agent_db import AgentDB
 from .model import StepRequestBody, Task, TaskListResponse, TaskRequestBody
 from .workspace import LocalWorkspace
 

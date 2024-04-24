@@ -4,7 +4,7 @@ core of the Forge.
 """
 from ..llm import chat_completion_request, create_embedding_request, transcribe_audio
 from .agent import Agent
-from .db import AgentDB, Base
+from .agent_db import AgentDB, Base
 from .errors import *
 from .forge_log import ForgeLogger
 from .model import (

@@ -1,6 +1,10 @@
 from typing import Optional
 
 
+class NotFoundError(Exception):
+    pass
+
+
 class AgentException(Exception):
     """Base class for specific exceptions relevant in the execution of Agents"""
 

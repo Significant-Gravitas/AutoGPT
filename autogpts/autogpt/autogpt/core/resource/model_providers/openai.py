@@ -39,8 +39,8 @@ from autogpt.core.resource.model_providers.schema import (
     ModelProviderSettings,
     ModelTokenizer,
 )
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.core.utils.json_utils import json_loads
+from forge.json.schema import JSONSchema
+from forge.json.parsing import json_loads
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")

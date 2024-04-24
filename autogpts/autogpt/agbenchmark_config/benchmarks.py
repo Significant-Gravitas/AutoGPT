@@ -5,7 +5,6 @@ from pathlib import Path
 
 from autogpt.agent_manager.agent_manager import AgentManager
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.agents.prompt_strategies.one_shot import OneShotAgentPromptStrategy
 from autogpt.app.main import _configure_openai_provider, run_interaction_loop
 from autogpt.config import AIProfile, ConfigBuilder
 from autogpt.file_storage import FileStorageBackendName, get_storage
@@ -38,10 +37,6 @@ def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
         ai_goals=[task],
     )
 
-    agent_prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(
-        deep=True
-    )
-    agent_prompt_config.use_functions_api = config.openai_functions
     agent_settings = AgentSettings(
         name=Agent.default_settings.name,
         agent_id=AgentManager.generate_id("AutoGPT-benchmark"),
@@ -53,7 +48,6 @@ def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
             allow_fs_access=not config.restrict_to_workspace,
             use_functions_api=config.openai_functions,
         ),
-        prompt_config=agent_prompt_config,
         history=Agent.default_settings.history.copy(deep=True),
     )
 

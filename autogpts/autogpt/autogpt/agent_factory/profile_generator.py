@@ -14,7 +14,7 @@ from autogpt.core.resource.model_providers.schema import (
     ChatModelProvider,
     CompletionModelFunction,
 )
-from autogpt.core.utils.json_schema import JSONSchema
+from forge.json.schema import JSONSchema
 
 logger = logging.getLogger(__name__)
 

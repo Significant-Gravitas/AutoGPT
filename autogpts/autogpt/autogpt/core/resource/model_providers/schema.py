@@ -25,7 +25,7 @@ from autogpt.core.resource.schema import (
     ProviderUsage,
     ResourceType,
 )
-from autogpt.core.utils.json_schema import JSONSchema
+from forge.json.schema import JSONSchema
 
 
 class ModelProviderService(str, enum.Enum):

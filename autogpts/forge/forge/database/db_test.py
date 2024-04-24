@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from forge.sdk.db import (
+from forge.sdk.agent_db import (
     AgentDB,
     ArtifactModel,
     StepModel,

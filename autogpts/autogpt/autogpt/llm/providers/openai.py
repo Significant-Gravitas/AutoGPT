@@ -4,7 +4,7 @@ import logging
 from typing import TYPE_CHECKING, Callable, Iterable, TypeVar
 
 if TYPE_CHECKING:
-    from autogpt.models.command import Command
+    from forge.command.command import Command
 
 from autogpt.core.resource.model_providers import CompletionModelFunction
 

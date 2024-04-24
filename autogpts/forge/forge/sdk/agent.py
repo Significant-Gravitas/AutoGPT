@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .db import AgentDB
+from .agent_db import AgentDB
 from .errors import NotFoundError
 from .forge_log import ForgeLogger
 from .middlewares import AgentMiddleware

@@ -10,8 +10,8 @@ from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from forge.sdk.db import AgentDB
-from forge.sdk.errors import NotFoundError
+from forge.database.agent_db import AgentDB
+from forge.exceptions import NotFoundError
 from forge.sdk.middlewares import AgentMiddleware
 from forge.sdk.model import (
     Artifact,
@@ -36,11 +36,11 @@ from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.resource.model_providers.schema import ModelProviderBudget
-from autogpt.file_storage import FileStorage
+from forge.file_storage import FileStorage
 from autogpt.logs.utils import fmt_kwargs
-from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
-from autogpt.utils.exceptions import AgentFinished
-from autogpt.utils.utils import DEFAULT_ASK_COMMAND, DEFAULT_FINISH_COMMAND
+from forge.components.event_history.action_history import ActionErrorResult, ActionSuccessResult
+from forge.exceptions import AgentFinished
+from autogpts.autogpt.autogpt.utils.yaml_validator import DEFAULT_ASK_COMMAND, DEFAULT_FINISH_COMMAND
 
 logger = logging.getLogger(__name__)
 

@@ -309,14 +309,11 @@ uvicorn = "^0.23.2"
 webdriver-manager = "^4.0.1"
 
 [package.extras]
-benchmark = ["agbenchmark @ file:///Users/czerwinski/Library/Caches/pypoetry/virtualenvs/agpt-JtDOdZb2-py3.11/src/AutoGPT/benchmark"]
+benchmark = ["agbenchmark @ file:///Users/czerwinski/Projects/AutoGPT/benchmark"]
 
 [package.source]
-type = "git"
-url = "https://github.com/Significant-Gravitas/AutoGPT.git"
-reference = "HEAD"
-resolved_reference = "fd3f8fa5fc86271e4e319258fefdb3065d1aa0d4"
-subdirectory = "autogpts/forge"
+type = "directory"
+url = "../forge"
 
 [[package]]
 name = "backoff"
@@ -7232,4 +7229,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "e6eab5c079d53f075ce701e86a2007e7ebeb635ac067d25f555bfea363bcc630"
+content-hash = "0173d23ac39216f67c5e8280b82f98cbb139e8e98009d99c9d9c26659a684136"

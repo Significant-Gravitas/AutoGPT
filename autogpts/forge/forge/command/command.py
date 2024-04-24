@@ -6,10 +6,8 @@ from typing import Any, Callable
 from autogpt.core.utils.json_schema import JSONSchema
 
 from .command_parameter import CommandParameter
-from .context_item import ContextItem
 
-CommandReturnValue = Any
-CommandOutput = CommandReturnValue | tuple[CommandReturnValue, ContextItem]
+CommandOutput = Any
 
 
 class Command:

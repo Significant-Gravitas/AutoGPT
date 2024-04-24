@@ -8,12 +8,12 @@ from typing import Literal, Optional
 import click
 from colorama import Back, Fore, Style
 
-from autogpt import utils
 from autogpt.config import Config
 from autogpt.config.config import GPT_3_MODEL, GPT_4_MODEL
 from autogpt.core.resource.model_providers.openai import OpenAIModelName, OpenAIProvider
 from autogpt.logs.helpers import request_user_double_check
 from autogpt.memory.vector import get_supported_memory_backends
+from autogpt.utils.yaml_validator import validate_yaml_file
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +107,7 @@ async def apply_overrides_to_config(
         file = ai_settings_file
 
         # Validate file
-        (validated, message) = utils.validate_yaml_file(file)
+        (validated, message) = validate_yaml_file(file)
         if not validated:
             logger.fatal(extra={"title": "FAILED FILE VALIDATION:"}, msg=message)
             request_user_double_check()
@@ -120,7 +120,7 @@ async def apply_overrides_to_config(
         file = prompt_settings_file
 
         # Validate file
-        (validated, message) = utils.validate_yaml_file(file)
+        (validated, message) = validate_yaml_file(file)
         if not validated:
             logger.fatal(extra={"title": "FAILED FILE VALIDATION:"}, msg=message)
             request_user_double_check()

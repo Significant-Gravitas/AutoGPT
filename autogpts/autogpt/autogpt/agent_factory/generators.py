@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from autogpt.config.ai_directives import AIDirectives
-from autogpt.file_storage.base import FileStorage
+from forge.file_storage.base import FileStorage
 
 from .configurators import _configure_agent
 from .profile_generator import generate_agent_profile_for_task

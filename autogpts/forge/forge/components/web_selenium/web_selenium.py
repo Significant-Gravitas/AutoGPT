@@ -28,7 +28,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
-from autogpt.agents.protocols import CommandProvider, DirectiveProvider
+from forge.protocols import CommandProvider, DirectiveProvider
 from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.core.resource.model_providers.schema import (

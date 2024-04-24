@@ -22,7 +22,7 @@ from autogpt.core.resource.model_providers.openai import (
     OpenAICredentials,
     OpenAIModelName,
 )
-from autogpt.file_storage import FileStorageBackendName
+from forge.file_storage import FileStorageBackendName
 from autogpt.logs.config import LoggingConfig
 from autogpt.speech import TTSConfig
 

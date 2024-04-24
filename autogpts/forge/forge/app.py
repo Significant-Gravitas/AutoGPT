@@ -3,7 +3,7 @@ import os
 from forge.agent import ForgeAgent
 from forge.sdk import LocalWorkspace
 
-from .db import ForgeDatabase
+from .database.forge_db import ForgeDatabase
 
 database_name = os.getenv("DATABASE_STRING")
 workspace = LocalWorkspace(os.getenv("AGENT_WORKSPACE"))

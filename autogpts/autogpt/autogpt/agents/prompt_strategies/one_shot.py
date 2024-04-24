@@ -20,10 +20,10 @@ from autogpt.core.resource.model_providers.schema import (
     ChatMessage,
     CompletionModelFunction,
 )
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.core.utils.json_utils import extract_dict_from_json
+from forge.json.schema import JSONSchema
+from forge.json.parsing import extract_dict_from_json
 from autogpt.prompts.utils import format_numbered_list
-from autogpt.utils.exceptions import InvalidAgentResponseError
+from forge.exceptions import InvalidAgentResponseError
 
 
 class OneShotAgentPromptConfiguration(SystemConfiguration):

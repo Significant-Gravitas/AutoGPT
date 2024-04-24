@@ -5,7 +5,7 @@ from googleapiclient.errors import HttpError
 
 from autogpt.agents.agent import Agent
 from autogpt.commands.web_search import WebSearchComponent
-from autogpt.utils.exceptions import ConfigurationError
+from forge.exceptions import ConfigurationError
 
 
 @pytest.fixture

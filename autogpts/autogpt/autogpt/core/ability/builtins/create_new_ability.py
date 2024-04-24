@@ -4,7 +4,7 @@ from typing import ClassVar
 from autogpt.core.ability.base import Ability, AbilityConfiguration
 from autogpt.core.ability.schema import AbilityResult
 from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
-from autogpt.core.utils.json_schema import JSONSchema
+from forge.json.schema import JSONSchema
 
 
 class CreateNewAbility(Ability):

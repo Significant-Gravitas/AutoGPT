@@ -2,7 +2,8 @@ import re
 from typing import Callable, Optional, ParamSpec, TypeVar
 
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.command import Command, CommandOutput, CommandParameter
+
+from .command import Command, CommandOutput, CommandParameter
 
 # Unique identifier for AutoGPT commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"

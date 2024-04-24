@@ -23,8 +23,8 @@ if TYPE_CHECKING:
         ChatModelInfo,
     )
 
-from autogpt.agents import protocols as _protocols
-from autogpt.agents.components import (
+from forge import protocols as _protocols
+from forge.components import (
     AgentComponent,
     ComponentEndpointError,
     EndpointPipelineError,
@@ -42,7 +42,7 @@ from autogpt.core.resource.model_providers.openai import (
     OPEN_AI_CHAT_MODELS,
     OpenAIModelName,
 )
-from autogpt.models.action_history import ActionResult, EpisodicActionHistory
+from forge.components.event_history.action_history import ActionResult, EpisodicActionHistory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 logger = logging.getLogger(__name__)

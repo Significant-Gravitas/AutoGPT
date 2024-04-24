@@ -12,7 +12,7 @@ from autogpt.commands.execute_code import (
     is_docker_available,
     we_are_running_in_a_docker_container,
 )
-from autogpt.utils.exceptions import InvalidArgumentError, OperationNotAllowedError
+from forge.exceptions import InvalidArgumentError, OperationNotAllowedError
 
 
 @pytest.fixture

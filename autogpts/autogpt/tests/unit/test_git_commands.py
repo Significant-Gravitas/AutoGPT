@@ -5,7 +5,7 @@ from git.repo.base import Repo
 from autogpt.agents.agent import Agent
 from autogpt.commands.git_operations import GitOperationsComponent
 from autogpt.file_storage.base import FileStorage
-from autogpt.utils.exceptions import CommandExecutionError
+from forge.exceptions import CommandExecutionError
 
 
 @pytest.fixture

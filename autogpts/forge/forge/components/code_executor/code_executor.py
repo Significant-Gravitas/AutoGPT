@@ -11,7 +11,7 @@ from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
 
 from autogpt.agents.base import BaseAgentSettings
-from autogpt.agents.protocols import CommandProvider
+from forge.protocols import CommandProvider
 from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.core.utils.json_schema import JSONSchema

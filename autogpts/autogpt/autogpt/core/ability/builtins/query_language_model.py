@@ -11,7 +11,7 @@ from autogpt.core.resource.model_providers import (
     ModelProviderName,
     OpenAIModelName,
 )
-from autogpt.core.utils.json_schema import JSONSchema
+from forge.json.schema import JSONSchema
 
 
 class QueryLanguageModel(Ability):

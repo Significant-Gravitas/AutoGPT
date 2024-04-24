@@ -2,7 +2,7 @@ import logging
 import time
 from typing import Iterator
 
-from autogpt.agents.protocols import CommandProvider, DirectiveProvider, MessageProvider
+from forge.protocols import CommandProvider, DirectiveProvider, MessageProvider
 from autogpt.command_decorator import command
 from autogpt.config.ai_profile import AIProfile
 from autogpt.config.config import Config

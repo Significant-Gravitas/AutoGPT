@@ -3,7 +3,7 @@ from typing import Optional
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.config import AIDirectives, AIProfile, Config
 from autogpt.core.resource.model_providers import ChatModelProvider
-from autogpt.file_storage.base import FileStorage
+from forge.file_storage.base import FileStorage
 
 
 def create_agent(
