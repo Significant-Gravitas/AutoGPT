@@ -223,10 +223,47 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
                     anthropic_messages.append(
                         {
                             "role": "user",
-                            "content": (
-                                "ERROR PARSING YOUR RESPONSE:\n\n"
-                                f"{e.__class__.__name__}: {e}"
-                            ),
+                            "content": [
+                                *(
+                                    # tool_result is required if last assistant message
+                                    # had tool_use block(s)
+                                    {
+                                        "type": "tool_result",
+                                        "tool_use_id": tc.id,
+                                        "is_error": True,
+                                        "content": [
+                                            {
+                                                "type": "text",
+                                                "text": "Not executed because parsing "
+                                                "of your last message failed"
+                                                if not tool_call_errors
+                                                else str(e)
+                                                if (
+                                                    e := next(
+                                                        (
+                                                            tce
+                                                            for tce in tool_call_errors
+                                                            if tce.name
+                                                            == tc.function.name
+                                                        ),
+                                                        None,
+                                                    )
+                                                )
+                                                else "Not executed because validation "
+                                                "of tool input failed",
+                                            }
+                                        ],
+                                    }
+                                    for tc in assistant_msg.tool_calls or []
+                                ),
+                                {
+                                    "type": "text",
+                                    "text": (
+                                        "ERROR PARSING YOUR RESPONSE:\n\n"
+                                        f"{e.__class__.__name__}: {e}"
+                                    ),
+                                },
+                            ],
                         }
                     )
                 else:
