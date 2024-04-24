@@ -130,7 +130,7 @@ def configure_logging(
 
     # Structured logging is used for cloud environments,
     # where logging to a file makes no sense.
-    if log_format == LogFormatName.STRUCTURED:
+    if config.log_format == LogFormatName.STRUCTURED:
         config.plain_console_output = True
         config.log_file_format = None
 
