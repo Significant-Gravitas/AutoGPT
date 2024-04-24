@@ -327,7 +327,14 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             f"{json.dumps(assistant_reply_dict, indent=4)}"
         )
 
-        _, errors = self.response_schema.validate_object(assistant_reply_dict)
+        response_schema = self.response_schema.copy(deep=True)
+        if (
+            self.config.use_functions_api
+            and response_schema.properties
+            and "command" in response_schema.properties
+        ):
+            del response_schema.properties["command"]
+        _, errors = response_schema.validate_object(assistant_reply_dict)
         if errors:
             raise InvalidAgentResponseError(
                 "Validation of response failed:\n  "
@@ -372,7 +379,7 @@ def extract_command(
     """
     if use_openai_functions_api:
         if not assistant_reply.tool_calls:
-            raise InvalidAgentResponseError("No 'tool_calls' in assistant reply")
+            raise InvalidAgentResponseError("Assistant did not use any tools")
         assistant_reply_json["command"] = {
             "name": assistant_reply.tool_calls[0].function.name,
             "args": assistant_reply.tool_calls[0].function.arguments,
