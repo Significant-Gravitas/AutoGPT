@@ -42,6 +42,8 @@ from autogpt.core.resource.model_providers.schema import (
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.core.utils.json_utils import json_loads
 
+from .utils import validate_tool_calls
+
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
@@ -422,6 +424,10 @@ class OpenAIProvider(
                 _assistant_msg, tool_calls_compat_mode
             )
             parse_errors += _errors
+
+            # Validate tool calls
+            if not parse_errors and tool_calls and functions:
+                parse_errors += validate_tool_calls(tool_calls, functions)
 
             assistant_msg = AssistantChatMessage(
                 content=_assistant_msg.content,

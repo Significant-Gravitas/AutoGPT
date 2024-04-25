@@ -197,7 +197,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         ] = await self.llm_provider.create_chat_completion(
             prompt.messages,
             model_name=self.llm.name,
-            completion_parser=self.parse_and_validate_response,
+            completion_parser=self.prompt_strategy.parse_response_content,
             functions=(
                 get_openai_command_specs(self.commands)
                 if self.config.use_functions_api
@@ -217,28 +217,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         await self.run_pipeline(AfterParse.after_parse, result)
 
         return result
-
-    def parse_and_validate_response(
-        self, llm_response: AssistantChatMessage
-    ) -> ThoughtProcessOutput:
-        parsed_response = self.prompt_strategy.parse_response_content(llm_response)
-
-        # Validate command arguments
-        command_name = parsed_response.command_name
-        command = self._get_command(command_name)
-        if arg_errors := command.validate_args(parsed_response.command_args)[1]:
-            fmt_errors = [
-                f"{'.'.join(str(p) for p in f.path)}: {f.message}"
-                if f.path
-                else f.message
-                for f in arg_errors
-            ]
-            raise InvalidArgumentError(
-                f"The set of arguments supplied for {command_name} is invalid:\n"
-                + "\n".join(fmt_errors)
-            )
-
-        return parsed_response
 
     async def execute(
         self,

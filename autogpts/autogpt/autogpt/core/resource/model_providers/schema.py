@@ -4,6 +4,7 @@ import logging
 import math
 from collections import defaultdict
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     ClassVar,
@@ -27,6 +28,9 @@ from autogpt.core.resource.schema import (
     ResourceType,
 )
 from autogpt.core.utils.json_schema import JSONSchema
+
+if TYPE_CHECKING:
+    from jsonschema import ValidationError
 
 
 class ModelProviderService(str, enum.Enum):
@@ -149,6 +153,30 @@ class CompletionModelFunction(BaseModel):
             for name, p in self.parameters.items()
         )
         return f"{self.name}: {self.description}. Params: ({params})"
+
+    def validate_call(
+        self, function_call: AssistantFunctionCall
+    ) -> tuple[bool, list["ValidationError"]]:
+        """
+        Validates the given function call against the function's parameter specs
+
+        Returns:
+            bool: Whether the given set of arguments is valid for this command
+            list[ValidationError]: Issues with the set of arguments (if any)
+
+        Raises:
+            ValueError: If the function_call doesn't call this function
+        """
+        if function_call.name != self.name:
+            raise ValueError(
+                f"Can't validate {function_call.name} call using {self.name} spec"
+            )
+
+        params_schema = JSONSchema(
+            type=JSONSchema.Type.OBJECT,
+            properties={name: spec for name, spec in self.parameters.items()},
+        )
+        return params_schema.validate_object(function_call.arguments)
 
 
 class ModelInfo(BaseModel):

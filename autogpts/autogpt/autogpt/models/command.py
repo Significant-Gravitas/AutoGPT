@@ -42,20 +42,6 @@ class Command:
     def is_async(self) -> bool:
         return inspect.iscoroutinefunction(self.method)
 
-    def validate_args(self, args: dict[str, Any]):
-        """
-        Validates the given arguments against the command's parameter specifications
-
-        Returns:
-            bool: Whether the given set of arguments is valid for this command
-            list[ValidationError]: Issues with the set of arguments (if any)
-        """
-        params_schema = JSONSchema(
-            type=JSONSchema.Type.OBJECT,
-            properties={p.name: p.spec for p in self.parameters},
-        )
-        return params_schema.validate_object(args)
-
     def _parameters_match(
         self, func: Callable, parameters: list[CommandParameter]
     ) -> bool:

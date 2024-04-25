@@ -29,6 +29,8 @@ from autogpt.core.resource.model_providers.schema import (
     ToolResultMessage,
 )
 
+from .utils import validate_tool_calls
+
 if TYPE_CHECKING:
     from anthropic.types.beta.tools import MessageCreateParams
     from anthropic.types.beta.tools import ToolsBetaMessage as Message
@@ -204,7 +206,19 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
             # If parsing the response fails, append the error to the prompt, and let the
             # LLM fix its mistake(s).
             attempts += 1
+            tool_call_errors = []
             try:
+                # Validate tool calls
+                if assistant_msg.tool_calls and functions:
+                    tool_call_errors = validate_tool_calls(
+                        assistant_msg.tool_calls, functions
+                    )
+                    if tool_call_errors:
+                        raise ValueError(
+                            "Invalid tool use(s):\n"
+                            + "\n".join(str(e) for e in tool_call_errors)
+                        )
+
                 parsed_result = completion_parser(assistant_msg)
                 break
             except Exception as e:
