@@ -4,12 +4,12 @@ from typing import Iterator
 from git.repo import Repo
 
 from forge.protocols import CommandProvider
-from autogpt.command_decorator import command
+from forge.command.command_decorator import command
 from autogpt.config.config import Config
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.command import Command
-from autogpt.url_utils.validators import validate_url
-from autogpt.utils.exceptions import CommandExecutionError
+from forge.json.schema import JSONSchema
+from forge.command.command import Command
+from forge.url_validator import validate_url
+from forge.exceptions import CommandExecutionError
 
 
 class GitOperationsComponent(CommandProvider):

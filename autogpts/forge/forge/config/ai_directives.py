@@ -5,7 +5,7 @@ import yaml
 from pydantic import BaseModel, Field
 
 from autogpt.logs.helpers import request_user_double_check
-from autogpts.autogpt.autogpt.utils.yaml_validator import validate_yaml_file
+from forge.yaml_validator import validate_yaml_file
 
 logger = logging.getLogger(__name__)
 

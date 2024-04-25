@@ -3,6 +3,10 @@ import sys
 import traceback
 
 
+DEFAULT_FINISH_COMMAND = "finish"
+DEFAULT_ASK_COMMAND = "ask_user"
+
+
 def get_exception_message():
     """Get current exception type and message."""
     exc_type, exc_value, _ = sys.exc_info()

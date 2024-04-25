@@ -1,10 +1,10 @@
 import logging
 
 from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.agents.components import ComponentSystemError
-from autogpt.agents.features.context import ContextComponent
-from autogpt.agents.protocols import AfterParse
-from autogpt.models.action_history import EpisodicActionHistory
+from forge.components import ComponentSystemError
+from forge.components.context.context import ContextComponent
+from forge.protocols import AfterParse
+from forge.components.event_history.event_history import EpisodicActionHistory
 
 from ..base import BaseAgentConfiguration
 

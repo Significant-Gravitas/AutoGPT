@@ -7,9 +7,8 @@ from logging import Logger
 
 import distro
 
-from autogpt.agents.base import ThoughtProcessOutput
+from autogpts.autogpt.autogpt.agents.base import ThoughtProcessOutput
 from autogpt.config import AIDirectives, AIProfile
-from autogpt.core.configuration.schema import SystemConfiguration, UserConfigurable
 from autogpt.core.prompting import (
     ChatPrompt,
     LanguageModelClassification,
@@ -20,6 +19,7 @@ from autogpt.core.resource.model_providers.schema import (
     ChatMessage,
     CompletionModelFunction,
 )
+from forge.config.schema import SystemConfiguration, UserConfigurable
 from forge.json.schema import JSONSchema
 from forge.json.parsing import extract_dict_from_json
 from autogpt.prompts.utils import format_numbered_list

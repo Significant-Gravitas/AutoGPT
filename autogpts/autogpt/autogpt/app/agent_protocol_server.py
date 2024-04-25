@@ -40,7 +40,7 @@ from forge.file_storage import FileStorage
 from autogpt.logs.utils import fmt_kwargs
 from forge.components.event_history.action_history import ActionErrorResult, ActionSuccessResult
 from forge.exceptions import AgentFinished
-from autogpts.autogpt.autogpt.utils.yaml_validator import DEFAULT_ASK_COMMAND, DEFAULT_FINISH_COMMAND
+from forge.yaml_validator import DEFAULT_ASK_COMMAND, DEFAULT_FINISH_COMMAND
 
 logger = logging.getLogger(__name__)
 

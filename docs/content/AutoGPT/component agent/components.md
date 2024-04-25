@@ -117,7 +117,7 @@ All errors accept an optional `str` message. There are following errors ordered 
 
 ```py
 from autogpt.agents.components import ComponentEndpointError
-from autogpt.agents.protocols import MessageProvider
+from forge.protocols import MessageProvider
 
 # Example of raising an error
 class MyComponent(MessageProvider):

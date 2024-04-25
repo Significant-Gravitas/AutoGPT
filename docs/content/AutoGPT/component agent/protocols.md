@@ -49,8 +49,8 @@ The easiest way to provide a command is to use `command` decorator on a componen
 
 ```py
 from autogpt.agents.components import Component
-from autogpt.agents.protocols import CommandProvider
-from autogpt.core.utils.json_schema import JSONSchema
+from forge.protocols import CommandProvider
+from forge.json.schema import JSONSchema
 from autogpt.utils.command_decorator import command
 
 

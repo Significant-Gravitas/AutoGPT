@@ -20,7 +20,7 @@ from forge.components.event_history.event_history import EventHistoryComponent
 from forge.components.file_manager.file_manager import FileManagerComponent
 from forge.components.context.context import ContextComponent
 from forge.components.watchdog.watchdog import WatchdogComponent
-from autogpt.core.configuration import Configurable
+from forge.config.schema import Configurable
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import ChatMessage, ChatModelProvider
 from autogpt.core.resource.model_providers.schema import (

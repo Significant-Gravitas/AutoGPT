@@ -10,9 +10,8 @@ from typing import Any, Optional, Union
 from colorama import Fore
 from pydantic import SecretStr, validator
 
-import autogpt
-from autogpt.app.utils import clean_input
-from autogpt.core.configuration.schema import (
+import forge
+from forge.config.schema import (
     Configurable,
     SystemSettings,
     UserConfigurable,
@@ -28,7 +27,7 @@ from autogpt.speech import TTSConfig
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(autogpt.__file__).parent.parent
+PROJECT_ROOT = Path(forge.__file__).parent.parent
 AI_SETTINGS_FILE = Path("ai_settings.yaml")
 AZURE_CONFIG_FILE = Path("azure.yaml")
 PROMPT_SETTINGS_FILE = Path("prompt_settings.yaml")

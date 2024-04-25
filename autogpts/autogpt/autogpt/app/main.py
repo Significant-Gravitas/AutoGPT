@@ -19,7 +19,7 @@ from forge.database.agent_db import AgentDB
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
 
-from autogpt.agents.base import AgentThoughts, CommandArgs, CommandName
+from autogpts.autogpt.autogpt.agents.base import AgentThoughts, CommandArgs, CommandName
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
@@ -41,7 +41,7 @@ from autogpt.logs.config import configure_logging
 from autogpt.logs.helpers import print_attribute, speak
 from forge.components.event_history.action_history import ActionInterruptedByHuman
 from forge.exceptions import AgentTerminated, InvalidAgentResponseError
-from autogpt.utils.yaml_validator import DEFAULT_FINISH_COMMAND
+from forge.yaml_validator import DEFAULT_FINISH_COMMAND
 
 from .configurator import apply_overrides_to_config
 from .setup import apply_overrides_to_ai_settings, interactively_revise_ai_settings

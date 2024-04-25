@@ -3,14 +3,14 @@ import os
 from pathlib import Path
 from typing import Iterator, Optional
 
-from autogpt.agents.protocols import CommandProvider, DirectiveProvider
-from autogpt.command_decorator import command
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.file_storage.base import FileStorage
-from autogpt.models.command import Command
-from autogpt.utils.file_operations_utils import decode_textual_file
+from forge.protocols import CommandProvider, DirectiveProvider
+from forge.command.command_decorator import command
+from forge.json.schema import JSONSchema
+from forge.file_storage.base import FileStorage
+from forge.command.command import Command
+from forge.file_operations_utils import decode_textual_file
 
-from ..base import BaseAgentSettings
+from autogpt.agents.base import BaseAgentSettings
 
 logger = logging.getLogger(__name__)
 

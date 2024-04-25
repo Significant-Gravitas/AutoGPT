@@ -1,17 +1,17 @@
 from typing import Callable, Iterator, Optional
 
 from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.agents.features.watchdog import WatchdogComponent
-from autogpt.agents.protocols import AfterExecute, AfterParse, MessageProvider
-from autogpt.config.config import Config
 from autogpt.core.resource.model_providers.schema import ChatMessage, ChatModelProvider
-from autogpt.models.action_history import (
+from forge.components.watchdog.watchdog import WatchdogComponent
+from forge.protocols import AfterExecute, AfterParse, MessageProvider
+from autogpt.config.config import Config
+from .action_history import (
     Action,
     ActionResult,
     Episode,
     EpisodicActionHistory,
 )
-from autogpt.prompts.utils import indent
+from forge.prompts.utils import indent
 
 
 class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute):

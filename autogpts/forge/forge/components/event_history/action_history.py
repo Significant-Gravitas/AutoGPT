@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Any, Iterator, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from autogpt.processing.text import summarize_text
-from autogpt.prompts.utils import format_numbered_list, indent
+from forge.processing.text import summarize_text
+from forge.prompts.utils import format_numbered_list, indent
 
 if TYPE_CHECKING:
     from autogpt.config.config import Config

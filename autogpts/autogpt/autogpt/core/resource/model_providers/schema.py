@@ -16,7 +16,7 @@ from typing import (
 
 from pydantic import BaseModel, Field, SecretStr, validator
 
-from autogpt.core.configuration import SystemConfiguration, UserConfigurable
+from forge.config.schema import SystemConfiguration, UserConfigurable
 from autogpt.core.resource.schema import (
     Embedding,
     ProviderBudget,

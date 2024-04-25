@@ -32,7 +32,7 @@ from forge.components import (
 from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
-from autogpt.core.configuration import (
+from forge.config.schema import (
     Configurable,
     SystemConfiguration,
     SystemSettings,

@@ -1,13 +1,13 @@
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Iterator
 
-from autogpt.agents.components import AgentComponent
+from forge.components import AgentComponent
 
 if TYPE_CHECKING:
-    from autogpt.agents.base import ThoughtProcessOutput
-    from autogpt.core.resource.model_providers.schema import ChatMessage
-    from autogpt.models.action_history import ActionResult
-    from autogpt.models.command import Command
+    from autogpts.autogpt.autogpt.agents.base import ThoughtProcessOutput
+    from forge.chat_message import ChatMessage
+    from forge.components.event_history.action_history import ActionResult
+    from forge.command.command import Command
 
 
 class DirectiveProvider(AgentComponent):

@@ -29,18 +29,18 @@ from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
 from forge.protocols import CommandProvider, DirectiveProvider
-from autogpt.command_decorator import command
+from forge.command.command_decorator import command
 from autogpt.config import Config
 from autogpt.core.resource.model_providers.schema import (
     ChatModelInfo,
     ChatModelProvider,
 )
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.command import Command
-from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
-from autogpt.processing.text import extract_information, summarize_text
-from autogpt.url_utils.validators import validate_url
-from autogpt.utils.exceptions import CommandExecutionError, TooMuchOutputError
+from forge.json.schema import JSONSchema
+from forge.command.command import Command
+from forge.processing.html import extract_hyperlinks, format_hyperlinks
+from forge.processing.text import extract_information, summarize_text
+from forge.url_validator import validate_url
+from forge.exceptions import CommandExecutionError, TooMuchOutputError
 
 logger = logging.getLogger(__name__)
 

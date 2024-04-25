@@ -14,11 +14,11 @@ from openai import OpenAI
 from PIL import Image
 
 from forge.protocols import CommandProvider
-from autogpt.command_decorator import command
+from forge.command.command_decorator import command
 from autogpt.config.config import Config
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.file_storage.base import FileStorage
-from autogpt.models.command import Command
+from forge.json.schema import JSONSchema
+from forge.file_storage import FileStorage
+from forge.command.command import Command
 
 logger = logging.getLogger(__name__)
 

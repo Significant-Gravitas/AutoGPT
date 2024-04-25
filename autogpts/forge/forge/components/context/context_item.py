@@ -5,8 +5,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from autogpt.file_storage.base import FileStorage
-from autogpt.utils.file_operations_utils import decode_textual_file
+from forge.file_storage.base import FileStorage
+from forge.file_operations_utils import decode_textual_file
 
 logger = logging.getLogger(__name__)
 

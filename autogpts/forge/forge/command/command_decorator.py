@@ -1,7 +1,7 @@
 import re
 from typing import Callable, Optional, ParamSpec, TypeVar
 
-from autogpt.core.utils.json_schema import JSONSchema
+from forge.json.schema import JSONSchema
 
 from .command import Command, CommandOutput, CommandParameter
 

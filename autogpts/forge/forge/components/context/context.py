@@ -2,14 +2,15 @@ import contextlib
 from pathlib import Path
 from typing import Iterator, Optional
 
-from autogpt.agents.protocols import CommandProvider, MessageProvider
-from autogpt.command_decorator import command
-from autogpt.core.resource.model_providers import ChatMessage
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.file_storage.base import FileStorage
-from autogpt.models.command import Command
-from autogpt.models.context_item import ContextItem, FileContextItem, FolderContextItem
-from autogpt.utils.exceptions import InvalidArgumentError
+from forge.protocols import CommandProvider, MessageProvider
+from forge.command.command_decorator import command
+from forge.chat_message import ChatMessage
+from forge.json.schema import JSONSchema
+from forge.file_storage.base import FileStorage
+from forge.command.command import Command
+from forge.exceptions import InvalidArgumentError
+
+from .context_item import ContextItem, FileContextItem, FolderContextItem
 
 
 class AgentContext:

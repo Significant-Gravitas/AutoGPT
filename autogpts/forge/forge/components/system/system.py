@@ -1,15 +1,15 @@
-import logging
 import time
+import logging
 from typing import Iterator
 
 from forge.protocols import CommandProvider, DirectiveProvider, MessageProvider
-from autogpt.command_decorator import command
-from autogpt.config.ai_profile import AIProfile
+from forge.command.command_decorator import command
+from forge.config.ai_profile import AIProfile
 from autogpt.config.config import Config
 from autogpt.core.resource.model_providers.schema import ChatMessage
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.command import Command
-from autogpt.utils.exceptions import AgentFinished
+from forge.json.schema import JSONSchema
+from forge.command.command import Command
+from forge.exceptions import AgentFinished
 from autogpt.utils.utils import DEFAULT_FINISH_COMMAND
 
 logger = logging.getLogger(__name__)
