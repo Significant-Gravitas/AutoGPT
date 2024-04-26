@@ -69,44 +69,48 @@ async def interactively_revise_ai_settings(
         )
 
         if (
-            await clean_input(app_config, "Continue with these settings? [Y/n]")
+            clean_input(app_config, "Continue with these settings? [Y/n]").lower()
             or app_config.authorise_key
         ) == app_config.authorise_key:
             break
 
         # Ask for revised ai_profile
         ai_profile.ai_name = (
-            await clean_input(
-                app_config, "Enter AI name (or press enter to keep current):"
-            )
+            clean_input(app_config, "Enter AI name (or press enter to keep current):")
             or ai_profile.ai_name
         )
         ai_profile.ai_role = (
-            await clean_input(
+            clean_input(
                 app_config, "Enter new AI role (or press enter to keep current):"
             )
             or ai_profile.ai_role
         )
 
         # Revise constraints
-        for i, constraint in enumerate(directives.constraints):
+        i = 0
+        while i < len(directives.constraints):
+            constraint = directives.constraints[i]
             print_attribute(f"Constraint {i+1}:", f'"{constraint}"')
             new_constraint = (
-                await clean_input(
+                clean_input(
                     app_config,
                     f"Enter new constraint {i+1}"
                     " (press enter to keep current, or '-' to remove):",
                 )
                 or constraint
             )
+
             if new_constraint == "-":
                 directives.constraints.remove(constraint)
+                continue
             elif new_constraint:
                 directives.constraints[i] = new_constraint
 
+            i += 1
+
         # Add new constraints
         while True:
-            new_constraint = await clean_input(
+            new_constraint = clean_input(
                 app_config,
                 "Press enter to finish, or enter a constraint to add:",
             )
@@ -115,10 +119,12 @@ async def interactively_revise_ai_settings(
             directives.constraints.append(new_constraint)
 
         # Revise resources
-        for i, resource in enumerate(directives.resources):
+        i = 0
+        while i < len(directives.resources):
+            resource = directives.resources[i]
             print_attribute(f"Resource {i+1}:", f'"{resource}"')
             new_resource = (
-                await clean_input(
+                clean_input(
                     app_config,
                     f"Enter new resource {i+1}"
                     " (press enter to keep current, or '-' to remove):",
@@ -127,12 +133,15 @@ async def interactively_revise_ai_settings(
             )
             if new_resource == "-":
                 directives.resources.remove(resource)
+                continue
             elif new_resource:
                 directives.resources[i] = new_resource
 
+            i += 1
+
         # Add new resources
         while True:
-            new_resource = await clean_input(
+            new_resource = clean_input(
                 app_config,
                 "Press enter to finish, or enter a resource to add:",
             )
@@ -141,10 +150,12 @@ async def interactively_revise_ai_settings(
             directives.resources.append(new_resource)
 
         # Revise best practices
-        for i, best_practice in enumerate(directives.best_practices):
+        i = 0
+        while i < len(directives.best_practices):
+            best_practice = directives.best_practices[i]
             print_attribute(f"Best Practice {i+1}:", f'"{best_practice}"')
             new_best_practice = (
-                await clean_input(
+                clean_input(
                     app_config,
                     f"Enter new best practice {i+1}"
                     " (press enter to keep current, or '-' to remove):",
@@ -153,12 +164,15 @@ async def interactively_revise_ai_settings(
             )
             if new_best_practice == "-":
                 directives.best_practices.remove(best_practice)
+                continue
             elif new_best_practice:
                 directives.best_practices[i] = new_best_practice
 
+            i += 1
+
         # Add new best practices
         while True:
-            new_best_practice = await clean_input(
+            new_best_practice = clean_input(
                 app_config,
                 "Press enter to finish, or add a best practice to add:",
             )

@@ -21,12 +21,12 @@ from autogpt.core.prompting import (
     PromptStrategy,
 )
 from autogpt.core.resource.model_providers.schema import (
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatMessage,
     CompletionModelFunction,
 )
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.json_utils.utilities import extract_dict_from_response
+from autogpt.core.utils.json_utils import extract_dict_from_json
 from autogpt.prompts.utils import format_numbered_list, indent
 
 
@@ -264,25 +264,16 @@ class OneShotAgentPromptStrategy(PromptStrategy):
 
         steps: list[str] = []
         tokens: int = 0
-        # start: int = len(episode_history)
+        n_episodes = len(episode_history)
 
-        for i, c in reversed(list(enumerate(episode_history))):
-            step = f"### Step {i+1}: Executed `{c.action.format_call()}`\n"
-            step += f'- **Reasoning:** "{c.action.reasoning}"\n'
-            step += (
-                f"- **Status:** `{c.result.status if c.result else 'did_not_finish'}`\n"
-            )
-            if c.result:
-                if c.result.status == "success":
-                    result = str(c.result)
-                    result = "\n" + indent(result) if "\n" in result else result
-                    step += f"- **Output:** {result}"
-                elif c.result.status == "error":
-                    step += f"- **Reason:** {c.result.reason}\n"
-                    if c.result.error:
-                        step += f"- **Error:** {c.result.error}\n"
-                elif c.result.status == "interrupted_by_human":
-                    step += f"- **Feedback:** {c.result.feedback}\n"
+        for i, episode in enumerate(reversed(episode_history)):
+            # Use full format for the latest 4 steps, summary or format for older steps
+            if i < 4 or episode.summary is None:
+                step_content = indent(episode.format(), 2).strip()
+            else:
+                step_content = episode.summary
+
+            step = f"* Step {n_episodes - i}: {step_content}"
 
             if max_tokens and count_tokens:
                 step_tokens = count_tokens(step)
@@ -291,10 +282,6 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 tokens += step_tokens
 
             steps.insert(0, step)
-        #     start = i
-
-        # # TODO: summarize remaining
-        # part = slice(0, start)
 
         return "\n\n".join(steps)
 
@@ -386,17 +373,26 @@ class OneShotAgentPromptStrategy(PromptStrategy):
 
     def parse_response_content(
         self,
-        response: AssistantChatMessageDict,
+        response: AssistantChatMessage,
     ) -> Agent.ThoughtProcessOutput:
-        if "content" not in response:
+        if not response.content:
             raise InvalidAgentResponseError("Assistant response has no text content")
 
-        assistant_reply_dict = extract_dict_from_response(response["content"])
-
-        _, errors = self.response_schema.validate_object(
-            object=assistant_reply_dict,
-            logger=self.logger,
+        self.logger.debug(
+            "LLM response content:"
+            + (
+                f"\n{response.content}"
+                if "\n" in response.content
+                else f" '{response.content}'"
+            )
         )
+        assistant_reply_dict = extract_dict_from_json(response.content)
+        self.logger.debug(
+            "Validating object extracted from LLM response:\n"
+            f"{json.dumps(assistant_reply_dict, indent=4)}"
+        )
+
+        _, errors = self.response_schema.validate_object(assistant_reply_dict)
         if errors:
             raise InvalidAgentResponseError(
                 "Validation of response failed:\n  "
@@ -417,14 +413,14 @@ class OneShotAgentPromptStrategy(PromptStrategy):
 
 def extract_command(
     assistant_reply_json: dict,
-    assistant_reply: AssistantChatMessageDict,
+    assistant_reply: AssistantChatMessage,
     use_openai_functions_api: bool,
 ) -> tuple[str, dict[str, str]]:
     """Parse the response and return the command name and arguments
 
     Args:
         assistant_reply_json (dict): The response object from the AI
-        assistant_reply (ChatModelResponse): The model response from the AI
+        assistant_reply (AssistantChatMessage): The model response from the AI
         config (Config): The config object
 
     Returns:
@@ -436,13 +432,11 @@ def extract_command(
         Exception: If any other error occurs
     """
     if use_openai_functions_api:
-        if not assistant_reply.get("tool_calls"):
+        if not assistant_reply.tool_calls:
             raise InvalidAgentResponseError("No 'tool_calls' in assistant reply")
         assistant_reply_json["command"] = {
-            "name": assistant_reply["tool_calls"][0]["function"]["name"],
-            "args": json.loads(
-                assistant_reply["tool_calls"][0]["function"]["arguments"]
-            ),
+            "name": assistant_reply.tool_calls[0].function.name,
+            "args": assistant_reply.tool_calls[0].function.arguments,
         }
     try:
         if not isinstance(assistant_reply_json, dict):

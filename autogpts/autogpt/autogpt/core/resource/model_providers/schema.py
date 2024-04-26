@@ -1,6 +1,9 @@
 import abc
 import enum
+import math
+from collections import defaultdict
 from typing import (
+    Any,
     Callable,
     ClassVar,
     Generic,
@@ -43,15 +46,13 @@ class ChatMessage(BaseModel):
         SYSTEM = "system"
         ASSISTANT = "assistant"
 
+        TOOL = "tool"
+        """May be used for the result of tool calls"""
         FUNCTION = "function"
         """May be used for the return value of function calls"""
 
     role: Role
     content: str
-
-    @staticmethod
-    def assistant(content: str) -> "ChatMessage":
-        return ChatMessage(role=ChatMessage.Role.ASSISTANT, content=content)
 
     @staticmethod
     def user(content: str) -> "ChatMessage":
@@ -69,30 +70,30 @@ class ChatMessageDict(TypedDict):
 
 class AssistantFunctionCall(BaseModel):
     name: str
-    arguments: str
+    arguments: dict[str, Any]
 
 
 class AssistantFunctionCallDict(TypedDict):
     name: str
-    arguments: str
+    arguments: dict[str, Any]
 
 
 class AssistantToolCall(BaseModel):
-    # id: str
+    id: str
     type: Literal["function"]
     function: AssistantFunctionCall
 
 
 class AssistantToolCallDict(TypedDict):
-    # id: str
+    id: str
     type: Literal["function"]
     function: AssistantFunctionCallDict
 
 
 class AssistantChatMessage(ChatMessage):
-    role: Literal["assistant"]
+    role: Literal[ChatMessage.Role.ASSISTANT] = ChatMessage.Role.ASSISTANT
     content: Optional[str]
-    tool_calls: Optional[list[AssistantToolCall]]
+    tool_calls: Optional[list[AssistantToolCall]] = None
 
 
 class AssistantChatMessageDict(TypedDict, total=False):
@@ -136,7 +137,8 @@ class CompletionModelFunction(BaseModel):
 
     def fmt_line(self) -> str:
         params = ", ".join(
-            f"{name}: {p.type.value}" for name, p in self.parameters.items()
+            f"{name}{'?' if not p.required else ''}: " f"{p.typescript_type}"
+            for name, p in self.parameters.items()
         )
         return f"{self.name}: {self.description}. Params: ({params})"
 
@@ -186,45 +188,45 @@ class ModelProviderUsage(ProviderUsage):
 
     completion_tokens: int = 0
     prompt_tokens: int = 0
-    total_tokens: int = 0
 
     def update_usage(
         self,
-        model_response: ModelResponse,
+        input_tokens_used: int,
+        output_tokens_used: int = 0,
     ) -> None:
-        self.completion_tokens += model_response.completion_tokens_used
-        self.prompt_tokens += model_response.prompt_tokens_used
-        self.total_tokens += (
-            model_response.completion_tokens_used + model_response.prompt_tokens_used
-        )
+        self.prompt_tokens += input_tokens_used
+        self.completion_tokens += output_tokens_used
 
 
 class ModelProviderBudget(ProviderBudget):
-    total_budget: float = UserConfigurable()
-    total_cost: float
-    remaining_budget: float
-    usage: ModelProviderUsage
+    usage: defaultdict[str, ModelProviderUsage] = defaultdict(ModelProviderUsage)
 
     def update_usage_and_cost(
         self,
-        model_response: ModelResponse,
-    ) -> None:
-        """Update the usage and cost of the provider."""
-        model_info = model_response.model_info
-        self.usage.update_usage(model_response)
+        model_info: ModelInfo,
+        input_tokens_used: int,
+        output_tokens_used: int = 0,
+    ) -> float:
+        """Update the usage and cost of the provider.
+
+        Returns:
+            float: The (calculated) cost of the given model response.
+        """
+        self.usage[model_info.name].update_usage(input_tokens_used, output_tokens_used)
         incurred_cost = (
-            model_response.completion_tokens_used * model_info.completion_token_cost
-            + model_response.prompt_tokens_used * model_info.prompt_token_cost
+            output_tokens_used * model_info.completion_token_cost
+            + input_tokens_used * model_info.prompt_token_cost
         )
         self.total_cost += incurred_cost
         self.remaining_budget -= incurred_cost
+        return incurred_cost
 
 
 class ModelProviderSettings(ProviderSettings):
     resource_type: ResourceType = ResourceType.MODEL
     configuration: ModelProviderConfiguration
     credentials: ModelProviderCredentials
-    budget: ModelProviderBudget
+    budget: Optional[ModelProviderBudget] = None
 
 
 class ModelProvider(abc.ABC):
@@ -233,6 +235,7 @@ class ModelProvider(abc.ABC):
     default_settings: ClassVar[ModelProviderSettings]
 
     _configuration: ModelProviderConfiguration
+    _budget: Optional[ModelProviderBudget] = None
 
     @abc.abstractmethod
     def count_tokens(self, text: str, model_name: str) -> int:
@@ -246,9 +249,15 @@ class ModelProvider(abc.ABC):
     def get_token_limit(self, model_name: str) -> int:
         ...
 
-    @abc.abstractmethod
+    def get_incurred_cost(self) -> float:
+        if self._budget:
+            return self._budget.total_cost
+        return 0
+
     def get_remaining_budget(self) -> float:
-        ...
+        if self._budget:
+            return self._budget.remaining_budget
+        return math.inf
 
 
 class ModelTokenizer(Protocol):
@@ -271,7 +280,7 @@ class ModelTokenizer(Protocol):
 class EmbeddingModelInfo(ModelInfo):
     """Struct for embedding model information."""
 
-    llm_service = ModelProviderService.EMBEDDING
+    service: Literal[ModelProviderService.EMBEDDING] = ModelProviderService.EMBEDDING
     max_tokens: int
     embedding_dimensions: int
 
@@ -309,7 +318,7 @@ class EmbeddingModelProvider(ModelProvider):
 class ChatModelInfo(ModelInfo):
     """Struct for language model information."""
 
-    llm_service = ModelProviderService.CHAT
+    service: Literal[ModelProviderService.CHAT] = ModelProviderService.CHAT
     max_tokens: int
     has_function_call_api: bool = False
 
@@ -320,11 +329,15 @@ _T = TypeVar("_T")
 class ChatModelResponse(ModelResponse, Generic[_T]):
     """Standard response struct for a response from a language model."""
 
-    response: AssistantChatMessageDict
+    response: AssistantChatMessage
     parsed_result: _T = None
 
 
 class ChatModelProvider(ModelProvider):
+    @abc.abstractmethod
+    async def get_available_models(self) -> list[ChatModelInfo]:
+        ...
+
     @abc.abstractmethod
     def count_message_tokens(
         self,
@@ -338,8 +351,9 @@ class ChatModelProvider(ModelProvider):
         self,
         model_prompt: list[ChatMessage],
         model_name: str,
-        completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
+        completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
+        max_output_tokens: Optional[int] = None,
         **kwargs,
     ) -> ChatModelResponse[_T]:
         ...

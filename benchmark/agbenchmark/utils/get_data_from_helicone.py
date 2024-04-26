@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from typing import Optional
 
@@ -6,6 +7,8 @@ import requests
 
 from agbenchmark.__main__ import BENCHMARK_START_TIME
 from agbenchmark.agent_interface import HELICONE_GRAPHQL_LOGS
+
+logger = logging.getLogger(__name__)
 
 
 def get_data_from_helicone(challenge: str) -> Optional[float]:
@@ -38,8 +41,8 @@ query ExampleQuery($properties: [PropertyFilter!]){
         ]
     }
     if HELICONE_GRAPHQL_LOGS:
-        print(query)
-        print(json.dumps(variables, indent=4))
+        logger.debug(f"Executing Helicone query:\n{query.strip()}")
+        logger.debug(f"Query variables:\n{json.dumps(variables, indent=4)}")
 
     operation_name = "ExampleQuery"
 
@@ -59,24 +62,22 @@ query ExampleQuery($properties: [PropertyFilter!]){
 
         data = response.json()
     except requests.HTTPError as http_err:
-        print(f"HTTP error occurred: {http_err}")
-        return None  # Re-raise the exception to stop execution
+        logger.error(f"Helicone returned an HTTP error: {http_err}")
+        return None
     except json.JSONDecodeError:
-        print(f"Invalid JSON response: {response.text if response else 'No response'}")
+        raw_response = response.text  # type: ignore
+        logger.error(
+            f"Helicone returned an invalid JSON response: '''{raw_response}'''"
+        )
         return None
     except Exception as err:
-        print(f"Other error occurred: {err}")
+        logger.error(f"Error while trying to get data from Helicone: {err}")
         return None
 
-    try:
-        if data is None or data.get("data") is None:
-            print("Invalid response received from server: no data")
-            return None
-        return (
-            data.get("data", {})
-            .get("aggregatedHeliconeRequest", {})
-            .get("costUSD", None)
-        )
-    except Exception as err:
-        print(f"Error occurred while parsing response: {err}")
+    if data is None or data.get("data") is None:
+        logger.error("Invalid response received from Helicone: no data")
+        logger.error(f"Offending response: {response}")
         return None
+    return (
+        data.get("data", {}).get("aggregatedHeliconeRequest", {}).get("costUSD", None)
+    )

@@ -4,14 +4,12 @@ import orjson
 import pytest
 
 from autogpt.config import Config
-from autogpt.file_workspace import FileWorkspace
+from autogpt.file_storage import FileStorage
 from autogpt.memory.vector import JSONFileMemory, MemoryItem
 
 
-def test_json_memory_init_without_backing_file(
-    config: Config, workspace: FileWorkspace
-):
-    index_file = workspace.root / f"{config.memory_index}.json"
+def test_json_memory_init_without_backing_file(config: Config, storage: FileStorage):
+    index_file = storage.root / f"{config.memory_index}.json"
 
     assert not index_file.exists()
     JSONFileMemory(config)
@@ -19,10 +17,8 @@ def test_json_memory_init_without_backing_file(
     assert index_file.read_text() == "[]"
 
 
-def test_json_memory_init_with_backing_empty_file(
-    config: Config, workspace: FileWorkspace
-):
-    index_file = workspace.root / f"{config.memory_index}.json"
+def test_json_memory_init_with_backing_empty_file(config: Config, storage: FileStorage):
+    index_file = storage.root / f"{config.memory_index}.json"
     index_file.touch()
 
     assert index_file.exists()
@@ -32,9 +28,9 @@ def test_json_memory_init_with_backing_empty_file(
 
 
 def test_json_memory_init_with_backing_invalid_file(
-    config: Config, workspace: FileWorkspace
+    config: Config, storage: FileStorage
 ):
-    index_file = workspace.root / f"{config.memory_index}.json"
+    index_file = storage.root / f"{config.memory_index}.json"
     index_file.touch()
 
     raw_data = {"texts": ["test"]}
@@ -97,7 +93,7 @@ def test_json_memory_load_index(config: Config, memory_item: MemoryItem):
 
 @pytest.mark.vcr
 @pytest.mark.requires_openai_api_key
-def test_json_memory_get_relevant(config: Config, patched_api_requestor: None) -> None:
+def test_json_memory_get_relevant(config: Config, cached_openai_client: None) -> None:
     index = JSONFileMemory(config)
     mem1 = MemoryItem.from_text_file("Sample text", "sample.txt", config)
     mem2 = MemoryItem.from_text_file(

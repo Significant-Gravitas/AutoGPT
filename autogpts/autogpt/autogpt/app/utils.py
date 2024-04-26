@@ -1,21 +1,24 @@
+import contextlib
 import logging
 import os
 import re
+import socket
 import sys
+from pathlib import Path
+from typing import TYPE_CHECKING
 
+import click
 import requests
 from colorama import Fore, Style
 from git import InvalidGitRepositoryError, Repo
-from prompt_toolkit import ANSI, PromptSession
-from prompt_toolkit.history import InMemoryHistory
 
-from autogpt.config import Config
+if TYPE_CHECKING:
+    from autogpt.config import Config
 
 logger = logging.getLogger(__name__)
-session = PromptSession(history=InMemoryHistory())
 
 
-async def clean_input(config: Config, prompt: str = ""):
+def clean_input(config: "Config", prompt: str = ""):
     try:
         if config.chat_messages_enabled:
             for plugin in config.plugins:
@@ -48,11 +51,9 @@ async def clean_input(config: Config, prompt: str = ""):
         # ask for input, default when just pressing Enter is y
         logger.debug("Asking user via keyboard...")
 
-        # handle_sigint must be set to False, so the signal handler in the
-        # autogpt/main.py could be employed properly. This referes to
-        # https://github.com/Significant-Gravitas/AutoGPT/pull/4799/files/3966cdfd694c2a80c0333823c3bc3da090f85ed3#r1264278776
-        answer = await session.prompt_async(ANSI(prompt + " "), handle_sigint=False)
-        return answer
+        return click.prompt(
+            text=prompt, prompt_suffix=" ", default="", show_default=False
+        )
     except KeyboardInterrupt:
         logger.info("You interrupted AutoGPT")
         logger.info("Quitting...")
@@ -77,6 +78,58 @@ def get_current_git_branch() -> str:
         repo = Repo(search_parent_directories=True)
         branch = repo.active_branch
         return branch.name
+    except InvalidGitRepositoryError:
+        return ""
+
+
+def vcs_state_diverges_from_master() -> bool:
+    """
+    Returns whether a git repo is present and contains changes that are not in `master`.
+    """
+    paths_we_care_about = "autogpts/autogpt/autogpt/**/*.py"
+    try:
+        repo = Repo(search_parent_directories=True)
+
+        # Check for uncommitted changes in the specified path
+        uncommitted_changes = repo.index.diff(None, paths=paths_we_care_about)
+        if uncommitted_changes:
+            return True
+
+        # Find OG AutoGPT remote
+        for remote in repo.remotes:
+            if remote.url.endswith(
+                tuple(
+                    # All permutations of old/new repo name and HTTP(S)/Git URLs
+                    f"{prefix}{path}"
+                    for prefix in ("://github.com/", "git@github.com:")
+                    for path in (
+                        f"Significant-Gravitas/{n}.git" for n in ("AutoGPT", "Auto-GPT")
+                    )
+                )
+            ):
+                og_remote = remote
+                break
+        else:
+            # Original AutoGPT remote is not configured: assume local codebase diverges
+            return True
+
+        master_branch = og_remote.refs.master
+        with contextlib.suppress(StopIteration):
+            next(repo.iter_commits(f"HEAD..{master_branch}", paths=paths_we_care_about))
+            # Local repo is one or more commits ahead of OG AutoGPT master branch
+            return True
+
+        # Relevant part of the codebase is on master
+        return False
+    except InvalidGitRepositoryError:
+        # No git repo present: assume codebase is a clean download
+        return False
+
+
+def get_git_user_email() -> str:
+    try:
+        repo = Repo(search_parent_directories=True)
+        return repo.config_reader().get_value("user", "email", default="")
     except InvalidGitRepositoryError:
         return ""
 
@@ -149,7 +202,7 @@ By using the System, you agree to indemnify, defend, and hold harmless the Proje
     return legal_text
 
 
-def print_motd(config: Config, logger: logging.Logger):
+def print_motd(config: "Config", logger: logging.Logger):
     motd, is_new_motd = get_latest_bulletin()
     if motd:
         motd = markdown_to_ansi_style(motd)
@@ -188,3 +241,40 @@ def print_python_version_info(logger: logging.Logger):
             "parts of AutoGPT with this version. "
             "Please consider upgrading to Python 3.10 or higher.",
         )
+
+
+ENV_FILE_PATH = Path(__file__).parent.parent.parent / ".env"
+
+
+def env_file_exists() -> bool:
+    return ENV_FILE_PATH.is_file()
+
+
+def set_env_config_value(key: str, value: str) -> None:
+    """Sets the specified env variable and updates it in .env as well"""
+    os.environ[key] = value
+
+    with ENV_FILE_PATH.open("r+") as file:
+        lines = file.readlines()
+        file.seek(0)
+        key_already_in_file = False
+        for line in lines:
+            if re.match(rf"^(?:# )?{key}=.*$", line):
+                file.write(f"{key}={value}\n")
+                key_already_in_file = True
+            else:
+                file.write(line)
+
+        if not key_already_in_file:
+            file.write(f"{key}={value}\n")
+
+        file.truncate()
+
+
+def is_port_free(port: int, host: str = "127.0.0.1"):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((host, port))  # Try to bind to the port
+            return True  # If successful, the port is free
+        except OSError:
+            return False  # If failed, the port is likely in use

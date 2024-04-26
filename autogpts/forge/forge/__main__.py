@@ -41,5 +41,17 @@ if __name__ == "__main__":
     forge.sdk.forge_log.setup_logger()
 
     uvicorn.run(
-        "forge.app:app", host="localhost", port=port, log_level="error", reload=True
+        "forge.app:app",
+        host="localhost",
+        port=int(port),
+        log_level="error",
+        # Reload on changes to code or .env
+        reload=True,
+        reload_dirs=os.path.dirname(os.path.dirname(__file__)),
+        reload_excludes="*.py",  # Cancel default *.py include pattern
+        reload_includes=[
+            f"{os.path.basename(os.path.dirname(__file__))}/**/*.py",
+            ".*",
+            ".env",
+        ],
     )

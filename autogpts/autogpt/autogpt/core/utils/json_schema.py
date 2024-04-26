@@ -1,10 +1,8 @@
 import enum
-import json
-from logging import Logger
 from textwrap import indent
-from typing import Literal, Optional
+from typing import Optional
 
-from jsonschema import Draft7Validator
+from jsonschema import Draft7Validator, ValidationError
 from pydantic import BaseModel
 
 
@@ -85,37 +83,24 @@ class JSONSchema(BaseModel):
                 v.required = k in schema_node["required"]
         return properties
 
-    def validate_object(
-        self, object: object, logger: Logger
-    ) -> tuple[Literal[True], None] | tuple[Literal[False], list]:
+    def validate_object(self, object: object) -> tuple[bool, list[ValidationError]]:
         """
-        Validates a dictionary object against the JSONSchema.
+        Validates an object or a value against the JSONSchema.
 
         Params:
-            object: The dictionary object to validate.
+            object: The value/object to validate.
             schema (JSONSchema): The JSONSchema to validate against.
 
         Returns:
-            tuple: A tuple where the first element is a boolean indicating whether the
-                object is valid or not, and the second element is a list of errors found
-                in the object, or None if the object is valid.
+            bool: Indicates whether the given value or object is valid for the schema.
+            list[ValidationError]: The issues with the value or object (if any).
         """
         validator = Draft7Validator(self.to_dict())
 
         if errors := sorted(validator.iter_errors(object), key=lambda e: e.path):
-            for error in errors:
-                logger.debug(f"JSON Validation Error: {error}")
-
-            logger.error(json.dumps(object, indent=4))
-            logger.error("The following issues were found:")
-
-            for error in errors:
-                logger.error(f"Error: {error.message}")
             return False, errors
 
-        logger.debug("The JSON object is valid.")
-
-        return True, None
+        return True, []
 
     def to_typescript_object_interface(self, interface_name: str = "") -> str:
         if self.type != JSONSchema.Type.OBJECT:

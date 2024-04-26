@@ -8,9 +8,8 @@ from autogpt.core.prompting import (
     LanguageModelClassification,
     PromptStrategy,
 )
-from autogpt.core.prompting.utils import json_loads
 from autogpt.core.resource.model_providers.schema import (
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatMessage,
     ChatModelProvider,
     CompletionModelFunction,
@@ -186,7 +185,7 @@ class AgentProfileGenerator(PromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> tuple[AIProfile, AIDirectives]:
         """Parse the actual text response from the objective model.
 
@@ -198,16 +197,19 @@ class AgentProfileGenerator(PromptStrategy):
 
         """
         try:
-            arguments = json_loads(
-                response_content["tool_calls"][0]["function"]["arguments"]
-            )
+            if not response_content.tool_calls:
+                raise ValueError(
+                    f"LLM did not call {self._create_agent_function.name} function; "
+                    "agent profile creation failed"
+                )
+            arguments: object = response_content.tool_calls[0].function.arguments
             ai_profile = AIProfile(
                 ai_name=arguments.get("name"),
                 ai_role=arguments.get("description"),
             )
             ai_directives = AIDirectives(
-                best_practices=arguments["directives"].get("best_practices"),
-                constraints=arguments["directives"].get("constraints"),
+                best_practices=arguments.get("directives", {}).get("best_practices"),
+                constraints=arguments.get("directives", {}).get("constraints"),
                 resources=[],
             )
         except KeyError:
@@ -233,18 +235,14 @@ async def generate_agent_profile_for_task(
     prompt = agent_profile_generator.build_prompt(task)
 
     # Call LLM with the string as user input
-    output = (
-        await llm_provider.create_chat_completion(
-            prompt.messages,
-            model_name=app_config.smart_llm,
-            functions=prompt.functions,
-        )
-    ).response
+    output = await llm_provider.create_chat_completion(
+        prompt.messages,
+        model_name=app_config.smart_llm,
+        functions=prompt.functions,
+        completion_parser=agent_profile_generator.parse_response_content,
+    )
 
     # Debug LLM Output
-    logger.debug(f"AI Config Generator Raw Output: {output}")
+    logger.debug(f"AI Config Generator Raw Output: {output.response}")
 
-    # Parse the output
-    ai_profile, ai_directives = agent_profile_generator.parse_response_content(output)
-
-    return ai_profile, ai_directives
+    return output.parsed_result

@@ -117,7 +117,7 @@ class ActionRegister:
                 ).replace("/", ".")
                 try:
                     module = importlib.import_module(
-                        f".{action[:-3]}", package="forge.sdk.abilities"
+                        f".{action[:-3]}", package="forge.actions"
                     )
                     for attr in dir(module):
                         func = getattr(module, attr)

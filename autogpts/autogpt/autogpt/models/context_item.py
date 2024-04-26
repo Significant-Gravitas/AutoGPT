@@ -1,4 +1,5 @@
 import logging
+import os.path
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
@@ -56,8 +57,9 @@ class FileContextItem(BaseModel, ContextItem):
 
     @property
     def content(self) -> str:
+        # TODO: use workspace.open_file()
         with open(self.file_path, "rb") as file:
-            return decode_textual_file(file, logger)
+            return decode_textual_file(file, os.path.splitext(file.name)[1], logger)
 
 
 class FolderContextItem(BaseModel, ContextItem):

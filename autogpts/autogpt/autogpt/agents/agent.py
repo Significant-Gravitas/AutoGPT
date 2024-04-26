@@ -6,26 +6,24 @@ import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-if TYPE_CHECKING:
-    from autogpt.config import Config
-    from autogpt.models.command_registry import CommandRegistry
-
+import sentry_sdk
 from pydantic import Field
 
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
+    AssistantChatMessage,
     ChatMessage,
     ChatModelProvider,
-    ChatModelResponse,
 )
-from autogpt.llm.api_manager import ApiManager
+from autogpt.file_storage.base import FileStorage
 from autogpt.logs.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
+from autogpt.logs.utils import fmt_kwargs
 from autogpt.models.action_history import (
     Action,
     ActionErrorResult,
@@ -37,14 +35,24 @@ from autogpt.models.command import CommandOutput
 from autogpt.models.context_item import ContextItem
 
 from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
+from .features.agent_file_manager import AgentFileManagerMixin
 from .features.context import ContextMixin
-from .features.file_workspace import FileWorkspaceMixin
 from .features.watchdog import WatchdogMixin
 from .prompt_strategies.one_shot import (
     OneShotAgentPromptConfiguration,
     OneShotAgentPromptStrategy,
 )
-from .utils.exceptions import AgentException, CommandExecutionError, UnknownCommandError
+from .utils.exceptions import (
+    AgentException,
+    AgentTerminated,
+    CommandExecutionError,
+    DuplicateOperationError,
+    UnknownCommandError,
+)
+
+if TYPE_CHECKING:
+    from autogpt.config import Config
+    from autogpt.models.command_registry import CommandRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +72,7 @@ class AgentSettings(BaseAgentSettings):
 
 class Agent(
     ContextMixin,
-    FileWorkspaceMixin,
+    AgentFileManagerMixin,
     WatchdogMixin,
     BaseAgent,
     Configurable[AgentSettings],
@@ -76,11 +84,14 @@ class Agent(
         description=__doc__,
     )
 
+    prompt_strategy: OneShotAgentPromptStrategy
+
     def __init__(
         self,
         settings: AgentSettings,
         llm_provider: ChatModelProvider,
         command_registry: CommandRegistry,
+        file_storage: FileStorage,
         legacy_config: Config,
     ):
         prompt_strategy = OneShotAgentPromptStrategy(
@@ -92,6 +103,7 @@ class Agent(
             llm_provider=llm_provider,
             prompt_strategy=prompt_strategy,
             command_registry=command_registry,
+            file_storage=file_storage,
             legacy_config=legacy_config,
         )
 
@@ -115,30 +127,6 @@ class Agent(
         extra_messages.append(
             ChatMessage.system(f"The current time and date is {time.strftime('%c')}"),
         )
-
-        # Add budget information (if any) to prompt
-        api_manager = ApiManager()
-        if api_manager.get_total_budget() > 0.0:
-            remaining_budget = (
-                api_manager.get_total_budget() - api_manager.get_total_cost()
-            )
-            if remaining_budget < 0:
-                remaining_budget = 0
-
-            budget_msg = ChatMessage.system(
-                f"Your remaining API budget is ${remaining_budget:.3f}"
-                + (
-                    " BUDGET EXCEEDED! SHUT DOWN!\n\n"
-                    if remaining_budget == 0
-                    else " Budget very nearly exceeded! Shut down gracefully!\n\n"
-                    if remaining_budget < 0.005
-                    else " Budget nearly exceeded. Finish up.\n\n"
-                    if remaining_budget < 0.01
-                    else ""
-                ),
-            )
-            logger.debug(budget_msg)
-            extra_messages.append(budget_msg)
 
         if include_os_info is None:
             include_os_info = self.legacy_config.execute_local_commands
@@ -164,20 +152,25 @@ class Agent(
         return prompt
 
     def parse_and_process_response(
-        self, llm_response: ChatModelResponse, *args, **kwargs
+        self, llm_response: AssistantChatMessage, *args, **kwargs
     ) -> Agent.ThoughtProcessOutput:
         for plugin in self.config.plugins:
             if not plugin.can_handle_post_planning():
                 continue
-            llm_response.response["content"] = plugin.post_planning(
-                llm_response.response.get("content", "")
-            )
+            llm_response.content = plugin.post_planning(llm_response.content or "")
 
         (
             command_name,
             arguments,
             assistant_reply_dict,
-        ) = self.prompt_strategy.parse_response_content(llm_response.response)
+        ) = self.prompt_strategy.parse_response_content(llm_response)
+
+        # Check if command_name and arguments are already in the event_history
+        if self.event_history.matches_last_command(command_name, arguments):
+            raise DuplicateOperationError(
+                f"The command {command_name} with arguments {arguments} "
+                f"has been just executed."
+            )
 
         self.log_cycle_handler.log_cycle(
             self.ai_profile.ai_name,
@@ -243,8 +236,14 @@ class Agent(
                     self.context.add(context_item)
 
                 result = ActionSuccessResult(outputs=return_value)
+            except AgentTerminated:
+                raise
             except AgentException as e:
                 result = ActionErrorResult.from_exception(e)
+                logger.warning(
+                    f"{command_name}({fmt_kwargs(command_args)}) raised an error: {e}"
+                )
+                sentry_sdk.capture_exception(e)
 
             result_tlength = self.llm_provider.count_tokens(str(result), self.llm.name)
             if result_tlength > self.send_token_limit // 3:
@@ -263,6 +262,9 @@ class Agent(
 
         # Update action history
         self.event_history.register_result(result)
+        await self.event_history.handle_compression(
+            self.llm_provider, self.legacy_config
+        )
 
         return result
 

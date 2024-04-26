@@ -2,7 +2,7 @@ import logging
 import sys
 
 from colorama import Fore, Style
-from openai.util import logger as openai_logger
+from openai._base_client import log as openai_logger
 
 SIMPLE_LOG_FORMAT = "%(asctime)s %(levelname)s  %(message)s"
 DEBUG_LOG_FORMAT = (

@@ -4,9 +4,9 @@ from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.planning.schema import Task
 from autogpt.core.prompting import PromptStrategy
 from autogpt.core.prompting.schema import ChatPrompt, LanguageModelClassification
-from autogpt.core.prompting.utils import json_loads, to_numbered_list
+from autogpt.core.prompting.utils import to_numbered_list
 from autogpt.core.resource.model_providers import (
-    AssistantChatMessageDict,
+    AssistantChatMessage,
     ChatMessage,
     CompletionModelFunction,
 )
@@ -171,7 +171,7 @@ class NextAbility(PromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: AssistantChatMessage,
     ) -> dict:
         """Parse the actual text response from the objective model.
 
@@ -183,10 +183,11 @@ class NextAbility(PromptStrategy):
 
         """
         try:
-            function_name = response_content["tool_calls"][0]["function"]["name"]
-            function_arguments = json_loads(
-                response_content["tool_calls"][0]["function"]["arguments"]
-            )
+            if not response_content.tool_calls:
+                raise ValueError("LLM did not call any function")
+
+            function_name = response_content.tool_calls[0].function.name
+            function_arguments = response_content.tool_calls[0].function.arguments
             parsed_response = {
                 "motivation": function_arguments.pop("motivation"),
                 "self_criticism": function_arguments.pop("self_criticism"),

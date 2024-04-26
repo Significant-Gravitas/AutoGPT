@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
@@ -12,6 +11,7 @@ if TYPE_CHECKING:
     from autogpt.config import Config
     from autogpt.core.prompting.base import PromptStrategy
     from autogpt.core.resource.model_providers.schema import (
+        AssistantChatMessage,
         ChatModelInfo,
         ChatModelProvider,
         ChatModelResponse,
@@ -38,11 +38,10 @@ from autogpt.core.resource.model_providers.openai import (
     OpenAIModelName,
 )
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
+from autogpt.file_storage.base import FileStorage
 from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.models.action_history import ActionResult, EpisodicActionHistory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
-
-from .utils.agent_file_manager import AgentFileManager
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +124,6 @@ class BaseAgentConfiguration(SystemConfiguration):
 
 class BaseAgentSettings(SystemSettings):
     agent_id: str = ""
-    agent_data_dir: Optional[Path] = None
 
     ai_profile: AIProfile = Field(default_factory=lambda: AIProfile(ai_name="AutoGPT"))
     """The AI profile or "personality" of the agent."""
@@ -146,14 +144,6 @@ class BaseAgentSettings(SystemSettings):
     history: EpisodicActionHistory = Field(default_factory=EpisodicActionHistory)
     """(STATE) The action history of the agent."""
 
-    def save_to_json_file(self, file_path: Path) -> None:
-        with file_path.open("w") as f:
-            f.write(self.json())
-
-    @classmethod
-    def load_from_json_file(cls, file_path: Path):
-        return cls.parse_file(file_path)
-
 
 class BaseAgent(Configurable[BaseAgentSettings], ABC):
     """Base class for all AutoGPT agent classes."""
@@ -171,6 +161,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         llm_provider: ChatModelProvider,
         prompt_strategy: PromptStrategy,
         command_registry: CommandRegistry,
+        file_storage: FileStorage,
         legacy_config: Config,
     ):
         self.state = settings
@@ -181,12 +172,6 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
 
         self.legacy_config = legacy_config
         """LEGACY: Monolithic application configuration."""
-
-        self.file_manager: AgentFileManager = (
-            AgentFileManager(settings.agent_data_dir)
-            if settings.agent_data_dir
-            else None
-        )  # type: ignore
 
         self.llm_provider = llm_provider
 
@@ -201,21 +186,6 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         super(BaseAgent, self).__init__()
 
         logger.debug(f"Created {__class__} '{self.ai_profile.ai_name}'")
-
-    def set_id(self, new_id: str, new_agent_dir: Optional[Path] = None):
-        self.state.agent_id = new_id
-        if self.state.agent_data_dir:
-            if not new_agent_dir:
-                raise ValueError(
-                    "new_agent_dir must be specified if one is currently configured"
-                )
-            self.attach_fs(new_agent_dir)
-
-    def attach_fs(self, agent_dir: Path) -> AgentFileManager:
-        self.file_manager = AgentFileManager(agent_dir)
-        self.file_manager.initialize()
-        self.state.agent_data_dir = agent_dir
-        return self.file_manager
 
     @property
     def llm(self) -> ChatModelInfo:
@@ -235,10 +205,6 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         Returns:
             The command name and arguments, if any, and the agent's thoughts.
         """
-        assert self.file_manager, (
-            f"Agent has no FileManager: call {__class__.__name__}.attach_fs()"
-            " before trying to run the agent."
-        )
 
         # Scratchpad as surrogate PromptGenerator for plugin hooks
         self._prompt_scratchpad = PromptScratchpad()
@@ -247,7 +213,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         prompt = self.on_before_think(prompt, scratchpad=self._prompt_scratchpad)
 
         logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
-        raw_response = await self.llm_provider.create_chat_completion(
+        response = await self.llm_provider.create_chat_completion(
             prompt.messages,
             functions=get_openai_command_specs(
                 self.command_registry.list_available_commands(self)
@@ -256,11 +222,16 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
             if self.config.use_functions_api
             else [],
             model_name=self.llm.name,
+            completion_parser=lambda r: self.parse_and_process_response(
+                r,
+                prompt,
+                scratchpad=self._prompt_scratchpad,
+            ),
         )
         self.config.cycle_count += 1
 
         return self.on_response(
-            llm_response=raw_response,
+            llm_response=response,
             prompt=prompt,
             scratchpad=self._prompt_scratchpad,
         )
@@ -397,18 +368,14 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
             The parsed command name and command args, if any, and the agent thoughts.
         """
 
-        return self.parse_and_process_response(
-            llm_response,
-            prompt,
-            scratchpad=scratchpad,
-        )
+        return llm_response.parsed_result
 
         # TODO: update memory/context
 
     @abstractmethod
     def parse_and_process_response(
         self,
-        llm_response: ChatModelResponse,
+        llm_response: AssistantChatMessage,
         prompt: ChatPrompt,
         scratchpad: PromptScratchpad,
     ) -> ThoughtProcessOutput:

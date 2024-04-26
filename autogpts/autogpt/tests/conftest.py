@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import uuid
 from pathlib import Path
@@ -11,12 +13,11 @@ from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.app.main import _configure_openai_provider
 from autogpt.config import AIProfile, Config, ConfigBuilder
 from autogpt.core.resource.model_providers import ChatModelProvider, OpenAIProvider
-from autogpt.file_workspace.local import (
-    FileWorkspace,
-    FileWorkspaceConfiguration,
-    LocalFileWorkspace,
+from autogpt.file_storage.local import (
+    FileStorage,
+    FileStorageConfiguration,
+    LocalFileStorage,
 )
-from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import configure_logging
 from autogpt.models.command_registry import CommandRegistry
 
@@ -40,20 +41,12 @@ def app_data_dir(tmp_project_root: Path) -> Path:
 
 
 @pytest.fixture()
-def agent_data_dir(app_data_dir: Path) -> Path:
-    return app_data_dir / "agents/AutoGPT"
-
-
-@pytest.fixture()
-def workspace_root(agent_data_dir: Path) -> Path:
-    return agent_data_dir / "workspace"
-
-
-@pytest.fixture()
-def workspace(workspace_root: Path) -> FileWorkspace:
-    workspace = LocalFileWorkspace(FileWorkspaceConfiguration(root=workspace_root))
-    workspace.initialize()
-    return workspace
+def storage(app_data_dir: Path) -> FileStorage:
+    storage = LocalFileStorage(
+        FileStorageConfiguration(root=app_data_dir, restrict_to_root=False)
+    )
+    storage.initialize()
+    return storage
 
 
 @pytest.fixture
@@ -70,7 +63,7 @@ def temp_plugins_config_file():
     yield config_file
 
 
-@pytest.fixture()
+@pytest.fixture(scope="function")
 def config(
     temp_plugins_config_file: Path,
     tmp_project_root: Path,
@@ -86,8 +79,6 @@ def config(
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
 
-    config.logging.log_dir = Path(__file__).parent / "logs"
-    config.logging.plain_console_output = True
     config.noninteractive_mode = True
 
     # avoid circular dependency
@@ -103,14 +94,11 @@ def config(
 
 @pytest.fixture(scope="session")
 def setup_logger(config: Config):
-    configure_logging(**config.logging.dict())
-
-
-@pytest.fixture()
-def api_manager() -> ApiManager:
-    if ApiManager in ApiManager._instances:
-        del ApiManager._instances[ApiManager]
-    return ApiManager()
+    configure_logging(
+        debug=True,
+        log_dir=Path(__file__).parent / "logs",
+        plain_console_output=True,
+    )
 
 
 @pytest.fixture
@@ -120,7 +108,7 @@ def llm_provider(config: Config) -> OpenAIProvider:
 
 @pytest.fixture
 def agent(
-    agent_data_dir: Path, config: Config, llm_provider: ChatModelProvider
+    config: Config, llm_provider: ChatModelProvider, storage: FileStorage
 ) -> Agent:
     ai_profile = AIProfile(
         ai_name="Base",
@@ -153,7 +141,7 @@ def agent(
         settings=agent_settings,
         llm_provider=llm_provider,
         command_registry=command_registry,
+        file_storage=storage,
         legacy_config=config,
     )
-    agent.attach_fs(agent_data_dir)
     return agent
