@@ -13,8 +13,8 @@ import requests
 from openai import OpenAI
 from PIL import Image
 
-from forge.protocols import CommandProvider
-from forge.command.command_decorator import command
+from forge.agent.protocols import CommandProvider
+from forge.command.decorator import command
 from autogpt.config.config import Config
 from forge.json.schema import JSONSchema
 from forge.file_storage import FileStorage

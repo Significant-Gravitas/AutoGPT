@@ -58,7 +58,7 @@ from .base import (
     BaseAgentSettings,
     ThoughtProcessOutput,
 )
-from forge.forge.protocols import (
+from forge.agent.protocols import (
     AfterExecute,
     AfterParse,
     CommandProvider,

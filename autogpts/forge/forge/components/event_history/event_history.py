@@ -3,7 +3,7 @@ from typing import Callable, Iterator, Optional
 from autogpt.agents.base import ThoughtProcessOutput
 from autogpt.core.resource.model_providers.schema import ChatMessage, ChatModelProvider
 from forge.components.watchdog.watchdog import WatchdogComponent
-from forge.protocols import AfterExecute, AfterParse, MessageProvider
+from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
 from autogpt.config.config import Config
 from .action_history import (
     Action,

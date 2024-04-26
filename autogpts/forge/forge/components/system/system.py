@@ -2,8 +2,8 @@ import time
 import logging
 from typing import Iterator
 
-from forge.protocols import CommandProvider, DirectiveProvider, MessageProvider
-from forge.command.command_decorator import command
+from forge.agent.protocols import CommandProvider, DirectiveProvider, MessageProvider
+from forge.command.decorator import command
 from forge.config.ai_profile import AIProfile
 from autogpt.config.config import Config
 from autogpt.core.resource.model_providers.schema import ChatMessage

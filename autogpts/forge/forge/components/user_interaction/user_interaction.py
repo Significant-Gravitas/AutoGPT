@@ -1,12 +1,12 @@
 from typing import Iterator
 
-from forge.protocols import CommandProvider
+from forge.agent.protocols import CommandProvider
 from autogpt.app.utils import clean_input
-from forge.command.command_decorator import command
+from forge.command.decorator import command
 from autogpt.config.config import Config
 from forge.json.schema import JSONSchema
 from forge.command.command import Command
-from forge.sdk.utils import DEFAULT_ASK_COMMAND
+from forge.utils.exceptions import DEFAULT_ASK_COMMAND
 
 
 class UserInteractionComponent(CommandProvider):

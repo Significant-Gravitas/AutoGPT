@@ -5,8 +5,8 @@ from typing import Iterator
 
 from duckduckgo_search import DDGS
 
-from forge.protocols import CommandProvider, DirectiveProvider
-from forge.command.command_decorator import command
+from forge.agent.protocols import CommandProvider, DirectiveProvider
+from forge.command.decorator import command
 from autogpt.config.config import Config
 from forge.json.schema import JSONSchema
 from forge.command.command import Command

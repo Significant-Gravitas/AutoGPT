@@ -3,8 +3,8 @@ import os
 from pathlib import Path
 from typing import Iterator, Optional
 
-from forge.protocols import CommandProvider, DirectiveProvider
-from forge.command.command_decorator import command
+from forge.agent.protocols import CommandProvider, DirectiveProvider
+from forge.command.decorator import command
 from forge.json.schema import JSONSchema
 from forge.file_storage.base import FileStorage
 from forge.command.command import Command

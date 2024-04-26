@@ -12,8 +12,8 @@ from docker.models.containers import Container as DockerContainer
 
 from autogpts.autogpt.autogpt.agents.base import BaseAgentSettings
 from autogpts.autogpt.autogpt.config.config import Config
-from forge.protocols import CommandProvider
-from forge.command.command_decorator import command
+from forge.agent.protocols import CommandProvider
+from forge.command.decorator import command
 from forge.json.schema import JSONSchema
 from forge.file_storage.base import FileStorage
 from forge.command.command import Command

@@ -23,7 +23,7 @@ from forge.sdk.model import (
     TaskRequestBody,
     TaskStepsListResponse,
 )
-from forge.sdk.routes.agent_protocol import base_router
+from forge.agent.agent_protocol import base_router
 from hypercorn.asyncio import serve as hypercorn_serve
 from hypercorn.config import Config as HypercornConfig
 from sentry_sdk import set_user

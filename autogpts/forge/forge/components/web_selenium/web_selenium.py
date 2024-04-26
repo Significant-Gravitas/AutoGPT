@@ -28,8 +28,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
-from forge.protocols import CommandProvider, DirectiveProvider
-from forge.command.command_decorator import command
+from forge.agent.protocols import CommandProvider, DirectiveProvider
+from forge.command.decorator import command
 from autogpt.config import Config
 from autogpt.core.resource.model_providers.schema import (
     ChatModelInfo,

@@ -23,8 +23,8 @@ if TYPE_CHECKING:
         ChatModelInfo,
     )
 
-from forge import protocols as _protocols
-from forge.components import (
+from forge.agent import protocols as _protocols
+from forge.agent.components import (
     AgentComponent,
     ComponentEndpointError,
     EndpointPipelineError,

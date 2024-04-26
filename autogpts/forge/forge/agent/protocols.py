@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Iterator
 
-from forge.components import AgentComponent
+from forge.agent.components import AgentComponent
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.agents.base import ThoughtProcessOutput

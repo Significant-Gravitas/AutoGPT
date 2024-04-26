@@ -2,8 +2,8 @@ import contextlib
 from pathlib import Path
 from typing import Iterator, Optional
 
-from forge.protocols import CommandProvider, MessageProvider
-from forge.command.command_decorator import command
+from forge.agent.protocols import CommandProvider, MessageProvider
+from forge.command.decorator import command
 from forge.chat_message import ChatMessage
 from forge.json.schema import JSONSchema
 from forge.file_storage.base import FileStorage

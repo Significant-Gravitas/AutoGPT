@@ -23,7 +23,7 @@ from .model import (
     TaskRequestBody,
     TaskStepsListResponse,
 )
-from .routes.agent_protocol import base_router
+from ..agent.agent_protocol import base_router
 from .workspace import Workspace
 
 LOG = ForgeLogger(__name__)
