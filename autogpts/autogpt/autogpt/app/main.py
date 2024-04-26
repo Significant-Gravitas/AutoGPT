@@ -14,34 +14,35 @@ from types import FrameType
 from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
-from forge.database.agent_db import AgentDB
-
-if TYPE_CHECKING:
-    from autogpt.agents.agent import Agent
-
-from autogpts.autogpt.autogpt.agents.base import AgentThoughts, CommandArgs, CommandName
-from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
-from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
-from autogpt.agent_manager import AgentManager
 from forge.components.code_executor.code_executor import (
     is_docker_available,
     we_are_running_in_a_docker_container,
 )
-from autogpt.config import (
+from forge.components.event_history.action_history import ActionInterruptedByHuman
+from forge.config import (
     AIDirectives,
     AIProfile,
     Config,
     ConfigBuilder,
     assert_config_has_openai_api_key,
 )
+from forge.database.agent_db import AgentDB
+from forge.file_storage import FileStorageBackendName, get_storage
+from forge.utils.const import DEFAULT_FINISH_COMMAND
+from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
+
+if TYPE_CHECKING:
+    from autogpt.agents.agent import Agent
+
+from autogpts.autogpt.autogpt.agents.base import AgentThoughts, CommandArgs, CommandName
+
+from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
+from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
+from autogpt.agent_manager import AgentManager
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.runner.client_lib.utils import coroutine
-from forge.file_storage import FileStorageBackendName, get_storage
 from autogpt.logs.config import configure_logging
 from autogpt.logs.helpers import print_attribute, speak
-from forge.components.event_history.action_history import ActionInterruptedByHuman
-from forge.exceptions import AgentTerminated, InvalidAgentResponseError
-from forge.yaml_validator import DEFAULT_FINISH_COMMAND
 
 from .configurator import apply_overrides_to_config
 from .setup import apply_overrides_to_ai_settings, interactively_revise_ai_settings

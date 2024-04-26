@@ -9,7 +9,6 @@ import docx
 import pytest
 import yaml
 from bs4 import BeautifulSoup
-
 from forge.file_operations_utils import decode_textual_file, is_file_binary_fn
 
 logger = logging.getLogger(__name__)

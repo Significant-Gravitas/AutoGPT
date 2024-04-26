@@ -14,9 +14,10 @@ from typing import (
     TypeVar,
 )
 
+from forge.config.schema import SystemConfiguration, UserConfigurable
+from forge.json.schema import JSONSchema
 from pydantic import BaseModel, Field, SecretStr, validator
 
-from forge.config.schema import SystemConfiguration, UserConfigurable
 from autogpt.core.resource.schema import (
     Embedding,
     ProviderBudget,
@@ -25,7 +26,6 @@ from autogpt.core.resource.schema import (
     ProviderUsage,
     ResourceType,
 )
-from forge.json.schema import JSONSchema
 
 
 class ModelProviderService(str, enum.Enum):

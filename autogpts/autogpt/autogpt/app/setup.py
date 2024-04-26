@@ -2,8 +2,9 @@
 import logging
 from typing import Optional
 
+from forge.config import AIDirectives, AIProfile, Config
+
 from autogpt.app.utils import clean_input
-from autogpt.config import AIDirectives, AIProfile, Config
 from autogpt.logs.helpers import print_attribute
 
 logger = logging.getLogger(__name__)

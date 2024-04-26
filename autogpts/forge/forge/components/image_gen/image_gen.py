@@ -10,15 +10,15 @@ from pathlib import Path
 from typing import Iterator
 
 import requests
+from autogpt.config.config import Config
 from openai import OpenAI
 from PIL import Image
 
 from forge.agent.protocols import CommandProvider
-from forge.command.decorator import command
-from autogpt.config.config import Config
-from forge.json.schema import JSONSchema
-from forge.file_storage import FileStorage
 from forge.command.command import Command
+from forge.command.decorator import command
+from forge.file_storage import FileStorage
+from forge.json.schema import JSONSchema
 
 logger = logging.getLogger(__name__)
 

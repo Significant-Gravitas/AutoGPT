@@ -6,7 +6,7 @@ import threading
 from threading import Semaphore
 from typing import Literal, Optional
 
-from autogpt.core.configuration.schema import SystemConfiguration, UserConfigurable
+from forge.config.schema import SystemConfiguration, UserConfigurable
 
 from .base import VoiceBase
 from .eleven_labs import ElevenLabsConfig, ElevenLabsSpeech

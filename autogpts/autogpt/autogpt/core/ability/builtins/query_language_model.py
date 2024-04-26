@@ -1,6 +1,8 @@
 import logging
 from typing import ClassVar
 
+from forge.json.schema import JSONSchema
+
 from autogpt.core.ability.base import Ability, AbilityConfiguration
 from autogpt.core.ability.schema import AbilityResult
 from autogpt.core.planning.simple import LanguageModelConfiguration
@@ -11,7 +13,6 @@ from autogpt.core.resource.model_providers import (
     ModelProviderName,
     OpenAIModelName,
 )
-from forge.json.schema import JSONSchema
 
 
 class QueryLanguageModel(Ability):

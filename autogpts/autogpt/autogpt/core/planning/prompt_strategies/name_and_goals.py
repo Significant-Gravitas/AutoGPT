@@ -1,5 +1,7 @@
 import logging
 
+from forge.json.schema import JSONSchema
+
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.prompting import PromptStrategy
 from autogpt.core.prompting.schema import ChatPrompt, LanguageModelClassification
@@ -8,7 +10,6 @@ from autogpt.core.resource.model_providers import (
     ChatMessage,
     CompletionModelFunction,
 )
-from forge.json.schema import JSONSchema
 
 logger = logging.getLogger(__name__)
 

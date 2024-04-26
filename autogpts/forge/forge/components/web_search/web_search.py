@@ -3,14 +3,14 @@ import logging
 import time
 from typing import Iterator
 
+from autogpt.config.config import Config
 from duckduckgo_search import DDGS
 
 from forge.agent.protocols import CommandProvider, DirectiveProvider
-from forge.command.decorator import command
-from autogpt.config.config import Config
-from forge.json.schema import JSONSchema
 from forge.command.command import Command
-from forge.exceptions import ConfigurationError
+from forge.command.decorator import command
+from forge.json.schema import JSONSchema
+from forge.utils.exceptions import ConfigurationError
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3
 

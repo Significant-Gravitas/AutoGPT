@@ -16,6 +16,24 @@ from typing import (
 )
 
 from colorama import Fore
+from forge.agent import protocols as _protocols
+from forge.agent.components import (
+    AgentComponent,
+    ComponentEndpointError,
+    EndpointPipelineError,
+)
+from forge.components.event_history.action_history import (
+    ActionResult,
+    EpisodicActionHistory,
+)
+from forge.config import AIDirectives, AIProfile
+from forge.config.schema import (
+    Configurable,
+    SystemConfiguration,
+    SystemSettings,
+    UserConfigurable,
+)
+from forge.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from pydantic import BaseModel, Field, validator
 
 if TYPE_CHECKING:
@@ -23,27 +41,11 @@ if TYPE_CHECKING:
         ChatModelInfo,
     )
 
-from forge.agent import protocols as _protocols
-from forge.agent.components import (
-    AgentComponent,
-    ComponentEndpointError,
-    EndpointPipelineError,
-)
 from autogpt.config import ConfigBuilder
-from autogpt.config.ai_directives import AIDirectives
-from autogpt.config.ai_profile import AIProfile
-from forge.config.schema import (
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-    UserConfigurable,
-)
 from autogpt.core.resource.model_providers.openai import (
     OPEN_AI_CHAT_MODELS,
     OpenAIModelName,
 )
-from forge.components.event_history.action_history import ActionResult, EpisodicActionHistory
-from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 logger = logging.getLogger(__name__)
 

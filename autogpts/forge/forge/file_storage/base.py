@@ -11,7 +11,7 @@ from io import IOBase, TextIOBase
 from pathlib import Path
 from typing import IO, Any, BinaryIO, Callable, Literal, TextIO, overload
 
-from autogpt.core.configuration.schema import SystemConfiguration
+from forge.config.schema import SystemConfiguration
 
 logger = logging.getLogger(__name__)
 

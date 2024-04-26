@@ -8,6 +8,8 @@ import sentry_sdk
 import tenacity
 import tiktoken
 import yaml
+from forge.json.parsing import json_loads
+from forge.json.schema import JSONSchema
 from openai._exceptions import APIStatusError, RateLimitError
 from openai.types import CreateEmbeddingResponse
 from openai.types.chat import (
@@ -39,8 +41,6 @@ from autogpt.core.resource.model_providers.schema import (
     ModelProviderSettings,
     ModelTokenizer,
 )
-from forge.json.schema import JSONSchema
-from forge.json.parsing import json_loads
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")

@@ -6,7 +6,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from forge.file_storage.base import FileStorage
-from forge.file_operations_utils import decode_textual_file
+from forge.utils.file_operations import decode_textual_file
 
 logger = logging.getLogger(__name__)
 

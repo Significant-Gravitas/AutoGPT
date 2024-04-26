@@ -6,7 +6,7 @@ from typing import Iterator
 
 import orjson
 
-from autogpt.config import Config
+from autogpt.config.config import Config
 
 from ..memory_item import MemoryItem
 from .base import VectorMemoryProvider

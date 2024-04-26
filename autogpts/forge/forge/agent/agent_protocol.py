@@ -28,9 +28,9 @@ from typing import Optional
 from fastapi import APIRouter, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
-from forge.sdk.errors import *
 from forge.sdk.forge_log import ForgeLogger
 from forge.sdk.model import *
+from forge.utils.exceptions import *
 from forge.utils.exceptions import get_detailed_traceback, get_exception_message
 
 base_router = APIRouter()

@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 import requests
+from forge.yaml_validator import validate_yaml_file
 from git import InvalidGitRepositoryError
 
 import autogpt.app.utils
@@ -15,7 +16,6 @@ from autogpt.app.utils import (
     set_env_config_value,
 )
 from autogpt.core.utils.json_utils import extract_dict_from_json
-from forge.yaml_validator import validate_yaml_file
 from tests.utils import skip_in_ci
 
 

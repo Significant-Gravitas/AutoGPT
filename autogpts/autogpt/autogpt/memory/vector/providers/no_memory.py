@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Iterator, Optional
 
-from autogpts.autogpt.autogpt.config.config import Config
+from autogpt.config.config import Config
 
 from .. import MemoryItem
 from .base import VectorMemoryProvider

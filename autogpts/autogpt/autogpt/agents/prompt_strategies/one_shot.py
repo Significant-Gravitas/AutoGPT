@@ -6,9 +6,13 @@ import re
 from logging import Logger
 
 import distro
-
 from autogpts.autogpt.autogpt.agents.base import ThoughtProcessOutput
-from autogpt.config import AIDirectives, AIProfile
+from forge.config.schema import SystemConfiguration, UserConfigurable
+from forge.json.parsing import extract_dict_from_json
+from forge.json.schema import JSONSchema
+from forge.prompts.utils import format_numbered_list
+from forge.utils.exceptions import InvalidAgentResponseError
+
 from autogpt.core.prompting import (
     ChatPrompt,
     LanguageModelClassification,
@@ -19,11 +23,6 @@ from autogpt.core.resource.model_providers.schema import (
     ChatMessage,
     CompletionModelFunction,
 )
-from forge.config.schema import SystemConfiguration, UserConfigurable
-from forge.json.schema import JSONSchema
-from forge.json.parsing import extract_dict_from_json
-from autogpt.prompts.utils import format_numbered_list
-from forge.exceptions import InvalidAgentResponseError
 
 
 class OneShotAgentPromptConfiguration(SystemConfiguration):

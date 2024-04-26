@@ -5,9 +5,8 @@ import logging
 import os
 
 import requests
+from forge.config.schema import SystemConfiguration, UserConfigurable
 from playsound import playsound
-
-from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 
 from .base import VoiceBase
 
