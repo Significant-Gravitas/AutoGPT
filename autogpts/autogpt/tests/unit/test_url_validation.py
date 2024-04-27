@@ -1,5 +1,5 @@
 import pytest
-from forge.url_validator import validate_url
+from forge.utils.url_validator import validate_url
 from pytest import raises
 
 

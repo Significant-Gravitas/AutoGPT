@@ -1,11 +1,10 @@
-from autogpt.config.ai_profile import AIProfile
-from autogpt.file_storage.base import FileStorage
+from forge.config.ai_profile import AIProfile
+from forge.file_storage.base import FileStorage
 
 """
 Test cases for the AIProfile class, which handles loads the AI configuration
 settings from a YAML file.
 """
-
 
 def test_goals_are_always_lists_of_strings(tmp_path):
     """Test if the goals attribute is always a list of strings."""

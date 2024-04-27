@@ -4,8 +4,8 @@ from git.exc import GitCommandError
 from git.repo.base import Repo
 
 from autogpt.agents.agent import Agent
-from autogpt.commands.git_operations import GitOperationsComponent
-from autogpt.file_storage.base import FileStorage
+from forge.components.git_operations.git_operations import GitOperationsComponent
+from forge.file_storage.base import FileStorage
 
 
 @pytest.fixture
