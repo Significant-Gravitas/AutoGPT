@@ -5,7 +5,7 @@ from autogpt.config.config import Config
 from autogpt.core.resource.model_providers.schema import ChatMessage, ChatModelProvider
 
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
-from forge.components.watchdog.watchdog import WatchdogComponent
+from forge.components.watchdog import WatchdogComponent
 from forge.prompts.utils import indent
 
 from .action_history import Action, ActionResult, Episode, EpisodicActionHistory

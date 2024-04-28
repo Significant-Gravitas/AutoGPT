@@ -22,7 +22,7 @@ from forge.agent.components import (
     ComponentEndpointError,
     EndpointPipelineError,
 )
-from forge.components.event_history.action_history import (
+from forge.components.event_history import (
     ActionResult,
     EpisodicActionHistory,
 )

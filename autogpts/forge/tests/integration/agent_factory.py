@@ -1,21 +1,8 @@
 import pytest
+from forge.config import AIProfile, Config
+from forge.file_storage import FileStorageBackendName, get_storage
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.config import AIProfile, Config
-from autogpt.file_storage import FileStorageBackendName, get_storage
-from autogpt.memory.vector import get_memory
-
-
-@pytest.fixture
-def memory_json_file(config: Config):
-    was_memory_backend = config.memory_backend
-
-    config.memory_backend = "json_file"
-    memory = get_memory(config)
-    memory.clear()
-    yield memory
-
-    config.memory_backend = was_memory_backend
 
 
 @pytest.fixture

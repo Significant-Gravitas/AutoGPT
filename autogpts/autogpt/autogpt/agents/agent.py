@@ -13,24 +13,24 @@ from forge.agent.protocols import (
     DirectiveProvider,
     MessageProvider,
 )
-from forge.command.command import Command, CommandOutput
-from forge.components.code_executor.code_executor import CodeExecutorComponent
-from forge.components.context.context import ContextComponent
-from forge.components.event_history.action_history import (
+from forge.command import Command, CommandOutput
+from forge.components.code_executor import CodeExecutorComponent
+from forge.components.context import ContextComponent
+from forge.components.event_history import (
     ActionErrorResult,
     ActionInterruptedByHuman,
     ActionResult,
     ActionSuccessResult,
+    EventHistoryComponent,
 )
-from forge.components.event_history.event_history import EventHistoryComponent
-from forge.components.file_manager.file_manager import FileManagerComponent
-from forge.components.git_operations.git_operations import GitOperationsComponent
-from forge.components.image_gen.image_gen import ImageGeneratorComponent
-from forge.components.system.system import SystemComponent
-from forge.components.user_interaction.user_interaction import UserInteractionComponent
-from forge.components.watchdog.watchdog import WatchdogComponent
-from forge.components.web_search.web_search import WebSearchComponent
-from forge.components.web_selenium.web_selenium import WebSeleniumComponent
+from forge.components.file_manager import FileManagerComponent
+from forge.components.git_operations import GitOperationsComponent
+from forge.components.image_gen import ImageGeneratorComponent
+from forge.components.system import SystemComponent
+from forge.components.user_interaction import UserInteractionComponent
+from forge.components.watchdog import WatchdogComponent
+from forge.components.web_search import WebSearchComponent
+from forge.components.web_selenium import WebSeleniumComponent
 from forge.config.schema import Configurable
 from forge.file_storage.base import FileStorage
 from forge.utils.exceptions import (

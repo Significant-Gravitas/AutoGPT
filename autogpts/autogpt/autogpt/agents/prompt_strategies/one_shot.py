@@ -7,6 +7,8 @@ from logging import Logger
 
 import distro
 from autogpts.autogpt.autogpt.agents.base import ThoughtProcessOutput
+from forge.config.ai_directives import AIDirectives
+from forge.config.ai_profile import AIProfile
 from forge.config.schema import SystemConfiguration, UserConfigurable
 from forge.json.parsing import extract_dict_from_json
 from forge.json.schema import JSONSchema

@@ -5,17 +5,17 @@ import uuid
 from pathlib import Path
 
 import pytest
-from pytest_mock import MockerFixture
-
-from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.app.main import _configure_openai_provider
-from autogpt.config import AIProfile, Config, ConfigBuilder
-from autogpt.core.resource.model_providers import ChatModelProvider, OpenAIProvider
 from forge.file_storage.local import (
     FileStorage,
     FileStorageConfiguration,
     LocalFileStorage,
 )
+from pytest_mock import MockerFixture
+
+from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
+from autogpt.app.main import _configure_openai_provider
+from forge.config import AIProfile, Config, ConfigBuilder
+from autogpt.core.resource.model_providers import ChatModelProvider, OpenAIProvider
 from autogpt.logs.config import configure_logging
 
 pytest_plugins = [

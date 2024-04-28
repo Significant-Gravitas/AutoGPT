@@ -6,8 +6,9 @@ from autogpt.app.setup import (
     apply_overrides_to_ai_settings,
     interactively_revise_ai_settings,
 )
-from autogpt.config import AIDirectives, Config
-from autogpt.config.ai_profile import AIProfile
+from autogpt.config.config import Config
+from forge.config.ai_directives import AIDirectives
+from forge.config.ai_profile import AIProfile
 
 
 @pytest.mark.asyncio

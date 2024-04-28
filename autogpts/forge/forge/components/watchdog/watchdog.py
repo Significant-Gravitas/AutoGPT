@@ -4,8 +4,8 @@ from autogpt.agents.base import ThoughtProcessOutput
 
 from forge.agent.components import ComponentSystemError
 from forge.agent.protocols import AfterParse
-from forge.components.context.context import ContextComponent
-from forge.components.event_history.event_history import EpisodicActionHistory
+from forge.components.context import ContextComponent
+from forge.components.event_history import EpisodicActionHistory
 
 from ..base import BaseAgentConfiguration
 

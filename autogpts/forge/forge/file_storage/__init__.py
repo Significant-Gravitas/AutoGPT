@@ -1,10 +1,10 @@
 import enum
 from pathlib import Path
 
-from .base import FileStorage
-from .gcs import GCSFileStorage
+from .base import FileStorage, FileStorageConfiguration
+from .gcs import GCSFileStorage, GCSFileStorageConfiguration
 from .local import LocalFileStorage
-from .s3 import S3FileStorage
+from .s3 import S3FileStorage, S3FileStorageConfiguration
 
 
 class FileStorageBackendName(str, enum.Enum):
