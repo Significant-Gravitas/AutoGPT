@@ -9,10 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .db import AgentDB
 from forge.utils.exceptions import NotFoundError
 
-from .routes.agent_protocol import base_router
+from .db import AgentDB
 from .forge_log import ForgeLogger
 from .middlewares import AgentMiddleware
 from .model import (
@@ -25,6 +24,7 @@ from .model import (
     TaskRequestBody,
     TaskStepsListResponse,
 )
+from .routes.agent_protocol import base_router
 from .workspace import Workspace
 
 LOG = ForgeLogger(__name__)
