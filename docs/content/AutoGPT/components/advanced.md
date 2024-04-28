@@ -1,7 +1,10 @@
-### Other stuff
+# Advanced Components
+
+## General
+
 Debugging may be easier because we can inspect the exact components that were called and where the pipeline failed (current WIP pipeline):
 
-![](../imgs/modular-pipeline.png)
+![Modular Pipeline](../../imgs/modular-pipeline.png)
 
 Also that makes it possible to call component/pipeline/function again when failed and recover.
 

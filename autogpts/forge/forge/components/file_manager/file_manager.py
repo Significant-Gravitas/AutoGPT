@@ -135,7 +135,6 @@ class FileManagerComponent(DirectiveProvider, CommandProvider):
         Returns:
             str: A message indicating success or failure
         """
-        logger.info(f"self: {self}")
         if directory := os.path.dirname(filename):
             self.workspace.make_dir(directory)
         await self.workspace.write_file(filename, contents)

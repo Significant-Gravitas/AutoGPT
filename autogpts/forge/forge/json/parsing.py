@@ -39,7 +39,7 @@ def json_loads(json_str: str) -> Any:
             "JSON parse errors:\n" + "\n".join(str(e) for e in json_result.errors)
         )
 
-    if json_result.object is demjson3.undefined:
+    if json_result.object in (demjson3.syntax_error, demjson3.undefined):
         raise ValueError(
             f"Failed to parse JSON string: {json_str}", *json_result.errors
         )

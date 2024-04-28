@@ -70,9 +70,11 @@ class OpenAIModelName(str, enum.Enum):
     GPT4_v3 = "gpt-4-1106-preview"
     GPT4_v3_VISION = "gpt-4-1106-vision-preview"
     GPT4_v4 = "gpt-4-0125-preview"
+    GPT4_v5 = "gpt-4-turbo-2024-04-09"
     GPT4_ROLLING = "gpt-4"
     GPT4_ROLLING_32k = "gpt-4-32k"
-    GPT4_TURBO = "gpt-4-turbo-preview"
+    GPT4_TURBO = "gpt-4-turbo"
+    GPT4_TURBO_PREVIEW = "gpt-4-turbo-preview"
     GPT4_VISION = "gpt-4-vision-preview"
     GPT4 = GPT4_ROLLING
     GPT4_32k = GPT4_ROLLING_32k
@@ -180,8 +182,10 @@ chat_model_mapping = {
     OpenAIModelName.GPT4_TURBO: [
         OpenAIModelName.GPT4_v3,
         OpenAIModelName.GPT4_v3_VISION,
-        OpenAIModelName.GPT4_v4,
         OpenAIModelName.GPT4_VISION,
+        OpenAIModelName.GPT4_v4,
+        OpenAIModelName.GPT4_TURBO_PREVIEW,
+        OpenAIModelName.GPT4_v5,
     ],
 }
 for base, copies in chat_model_mapping.items():
