@@ -8,7 +8,7 @@ from typing import Literal, Optional
 import click
 from colorama import Back, Fore, Style
 
-from autogpt import utils
+from autogpt.utils import utils
 from autogpt.config import Config
 from autogpt.config.config import GPT_3_MODEL, GPT_4_MODEL
 from autogpt.core.resource.model_providers.openai import OpenAIModelName, OpenAIProvider
