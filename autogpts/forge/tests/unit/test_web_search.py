@@ -1,11 +1,11 @@
 import json
 
 import pytest
-from forge.components.web_search import WebSearchComponent
-from forge.utils.exceptions import ConfigurationError
+from autogpt.agents.agent import Agent
 from googleapiclient.errors import HttpError
 
-from autogpt.agents.agent import Agent
+from forge.components.web_search import WebSearchComponent
+from forge.utils.exceptions import ConfigurationError
 
 
 @pytest.fixture

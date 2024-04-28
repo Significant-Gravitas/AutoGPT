@@ -6,7 +6,6 @@ import re
 from logging import Logger
 
 import distro
-from autogpts.autogpt.autogpt.agents.base import ThoughtProcessOutput
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.schema import SystemConfiguration, UserConfigurable
@@ -15,6 +14,7 @@ from forge.json.schema import JSONSchema
 from forge.prompts.utils import format_numbered_list
 from forge.utils.exceptions import InvalidAgentResponseError
 
+from autogpt.agents.base import ThoughtProcessOutput
 from autogpt.core.prompting import (
     ChatPrompt,
     LanguageModelClassification,

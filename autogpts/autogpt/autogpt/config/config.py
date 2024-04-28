@@ -13,6 +13,7 @@ from forge.config.schema import Configurable, SystemSettings, UserConfigurable
 from forge.file_storage import FileStorageBackendName
 from pydantic import SecretStr, validator
 
+from autogpt.app.utils import clean_input
 from autogpt.core.resource.model_providers.openai import (
     OPEN_AI_CHAT_MODELS,
     OpenAICredentials,

@@ -1,6 +1,6 @@
 import pytest
-
 from autogpt.agents.agent import Agent
+
 from forge.components.web_selenium import BrowsingError, WebSeleniumComponent
 
 

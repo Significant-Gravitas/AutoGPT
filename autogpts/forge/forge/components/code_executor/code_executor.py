@@ -7,8 +7,8 @@ from tempfile import NamedTemporaryFile
 from typing import Iterator
 
 import docker
-from autogpts.autogpt.autogpt.agents.base import BaseAgentSettings
-from autogpts.autogpt.autogpt.config.config import Config
+from autogpt.agents.base import BaseAgentSettings
+from autogpt.config.config import Config
 from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
 

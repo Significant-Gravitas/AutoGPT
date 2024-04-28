@@ -6,10 +6,10 @@ from pathlib import Path
 from typing import Literal, Optional
 
 import click
-from autogpts.autogpt.autogpt.config.config import GPT_3_MODEL, GPT_4_MODEL, Config
 from colorama import Back, Fore, Style
 from forge.utils.yaml_validator import validate_yaml_file
 
+from autogpt.config.config import GPT_3_MODEL, GPT_4_MODEL, Config
 from autogpt.core.resource.model_providers.openai import OpenAIModelName, OpenAIProvider
 from autogpt.logs.helpers import request_user_double_check
 from autogpt.memory.vector import get_supported_memory_backends

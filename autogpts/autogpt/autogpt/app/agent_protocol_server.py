@@ -11,10 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from forge.agent.agent_protocol import base_router
-from forge.components.event_history import (
-    ActionErrorResult,
-    ActionSuccessResult,
-)
+from forge.components.event_history import ActionErrorResult, ActionSuccessResult
 from forge.database.agent_db import AgentDB
 from forge.file_storage import FileStorage
 from forge.sdk.middlewares import AgentMiddleware

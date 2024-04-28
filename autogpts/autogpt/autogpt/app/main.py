@@ -26,7 +26,7 @@ from forge.config import (
     ConfigBuilder,
     assert_config_has_openai_api_key,
 )
-from forge.database.agent_db import AgentDB
+from forge.db import AgentDB
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.utils.const import DEFAULT_FINISH_COMMAND
 from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
@@ -34,11 +34,10 @@ from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
 
-from autogpts.autogpt.autogpt.agents.base import AgentThoughts, CommandArgs, CommandName
-
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
+from autogpt.agents.base import AgentThoughts, CommandArgs, CommandName
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.runner.client_lib.utils import coroutine
 from autogpt.logs.config import configure_logging

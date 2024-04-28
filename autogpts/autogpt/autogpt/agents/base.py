@@ -22,10 +22,7 @@ from forge.agent.components import (
     ComponentEndpointError,
     EndpointPipelineError,
 )
-from forge.components.event_history import (
-    ActionResult,
-    EpisodicActionHistory,
-)
+from forge.components.event_history import ActionResult, EpisodicActionHistory
 from forge.config import AIDirectives, AIProfile
 from forge.config.schema import (
     Configurable,

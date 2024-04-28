@@ -2,9 +2,10 @@ import os
 from pathlib import Path
 
 import pytest
+from autogpt.agents.agent import Agent
+
 from forge.file_storage import FileStorage
 
-from autogpt.agents.agent import Agent
 
 @pytest.fixture()
 def file_content():
