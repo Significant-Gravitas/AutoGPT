@@ -1,6 +1,6 @@
 # AutoGPT Agent
 
-[🔧 **Setup**](./setup)
+[🔧 **Setup**](setup/index.md)
 &ensp;|&ensp;
 [💻 **User guide**](./usage.md)
 &ensp;|&ensp;
