@@ -41,7 +41,6 @@ def dummy_agent(config: Config, llm_provider, memory_json_file):
             fast_llm=config.fast_llm,
             smart_llm=config.smart_llm,
             use_functions_api=config.openai_functions,
-            plugins=config.plugins,
         ),
         prompt_config=agent_prompt_config,
         history=Agent.default_settings.history.copy(deep=True),
