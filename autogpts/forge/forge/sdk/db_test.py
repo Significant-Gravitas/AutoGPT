@@ -13,7 +13,7 @@ from forge.sdk.db import (
     convert_to_step,
     convert_to_task,
 )
-from forge.sdk.errors import NotFoundError as DataNotFoundError
+from forge.utils.exceptions import NotFoundError as DataNotFoundError
 from forge.sdk.model import (
     Artifact,
     Status,

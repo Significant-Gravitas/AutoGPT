@@ -6,7 +6,6 @@ from forge.agent.components import AgentComponent
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.agents.base import ThoughtProcessOutput
 
-    from forge.chat_message import ChatMessage
     from forge.command.command import Command
     from forge.components.event_history.action_history import ActionResult
 
