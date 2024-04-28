@@ -7,9 +7,8 @@ import re
 from pathlib import Path
 from typing import Any, Optional, Union
 
-from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
-from pydantic import Field, SecretStr, validator
+from pydantic import SecretStr, validator
 
 import autogpt
 from autogpt.app.utils import clean_input
@@ -25,7 +24,6 @@ from autogpt.core.resource.model_providers.openai import (
 )
 from autogpt.file_storage import FileStorageBackendName
 from autogpt.logs.config import LoggingConfig
-from autogpt.plugins.plugins_config import PluginsConfig
 from autogpt.speech import TTSConfig
 
 logger = logging.getLogger(__name__)
@@ -33,7 +31,6 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(autogpt.__file__).parent.parent
 AI_SETTINGS_FILE = Path("ai_settings.yaml")
 AZURE_CONFIG_FILE = Path("azure.yaml")
-PLUGINS_CONFIG_FILE = Path("plugins_config.yaml")
 PROMPT_SETTINGS_FILE = Path("prompt_settings.yaml")
 
 GPT_4_MODEL = OpenAIModelName.GPT4
@@ -54,9 +51,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     authorise_key: str = UserConfigurable(default="y", from_env="AUTHORISE_COMMAND_KEY")
     exit_key: str = UserConfigurable(default="n", from_env="EXIT_KEY")
     noninteractive_mode: bool = False
-    chat_messages_enabled: bool = UserConfigurable(
-        default=True, from_env=lambda: os.getenv("CHAT_MESSAGES_ENABLED") == "True"
-    )
 
     # TTS configuration
     logging: LoggingConfig = LoggingConfig()
@@ -181,29 +175,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         from_env="USER_AGENT",
     )
 
-    ###################
-    # Plugin Settings #
-    ###################
-    plugins_dir: str = UserConfigurable("plugins", from_env="PLUGINS_DIR")
-    plugins_config_file: Path = UserConfigurable(
-        default=PLUGINS_CONFIG_FILE, from_env="PLUGINS_CONFIG_FILE"
-    )
-    plugins_config: PluginsConfig = Field(
-        default_factory=lambda: PluginsConfig(plugins={})
-    )
-    plugins: list[AutoGPTPluginTemplate] = Field(default_factory=list, exclude=True)
-    plugins_allowlist: list[str] = UserConfigurable(
-        default_factory=list,
-        from_env=lambda: _safe_split(os.getenv("ALLOWLISTED_PLUGINS")),
-    )
-    plugins_denylist: list[str] = UserConfigurable(
-        default_factory=list,
-        from_env=lambda: _safe_split(os.getenv("DENYLISTED_PLUGINS")),
-    )
-    plugins_openai: list[str] = UserConfigurable(
-        default_factory=list, from_env=lambda: _safe_split(os.getenv("OPENAI_PLUGINS"))
-    )
-
     ###############
     # Credentials #
     ###############
@@ -231,16 +202,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Stable Diffusion
     sd_webui_auth: Optional[str] = UserConfigurable(from_env="SD_WEBUI_AUTH")
 
-    @validator("plugins", each_item=True)
-    def validate_plugins(cls, p: AutoGPTPluginTemplate | Any):
-        assert issubclass(
-            p.__class__, AutoGPTPluginTemplate
-        ), f"{p} does not subclass AutoGPTPluginTemplate"
-        assert (
-            p.__class__.__name__ != "AutoGPTPluginTemplate"
-        ), f"Plugins must subclass AutoGPTPluginTemplate; {p} is a template instance"
-        return p
-
     @validator("openai_functions")
     def validate_openai_functions(cls, v: bool, values: dict[str, Any]):
         if v:
@@ -266,7 +227,6 @@ class ConfigBuilder(Configurable[Config]):
         for k in {
             "ai_settings_file",  # TODO: deprecate or repurpose
             "prompt_settings_file",  # TODO: deprecate or repurpose
-            "plugins_config_file",  # TODO: move from project root
             "azure_config_file",  # TODO: move from project root
         }:
             setattr(config, k, project_root / getattr(config, k))
@@ -277,12 +237,6 @@ class ConfigBuilder(Configurable[Config]):
             and (config_file := config.azure_config_file)
         ):
             config.openai_credentials.load_azure_config(config_file)
-
-        config.plugins_config = PluginsConfig.load_config(
-            config.plugins_config_file,
-            config.plugins_denylist,
-            config.plugins_allowlist,
-        )
 
         return config
 

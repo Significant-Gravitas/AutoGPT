@@ -4,8 +4,6 @@ from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.config import AIDirectives, AIProfile, Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.file_storage.base import FileStorage
-from autogpt.logs.config import configure_chat_plugins
-from autogpt.plugins import scan_plugins
 
 
 def create_agent(
@@ -65,9 +63,6 @@ def _configure_agent(
             " must be specified"
         )
 
-    app_config.plugins = scan_plugins(app_config)
-    configure_chat_plugins(app_config)
-
     agent_state = state or create_agent_state(
         agent_id=agent_id,
         task=task,
@@ -105,7 +100,6 @@ def create_agent_state(
             smart_llm=app_config.smart_llm,
             allow_fs_access=not app_config.restrict_to_workspace,
             use_functions_api=app_config.openai_functions,
-            plugins=app_config.plugins,
         ),
         history=Agent.default_settings.history.copy(deep=True),
     )
