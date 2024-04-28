@@ -8,12 +8,12 @@ from typing import Literal, Optional
 import click
 from colorama import Back, Fore, Style
 
-from autogpt import utils
 from autogpt.config import Config
 from autogpt.config.config import GPT_3_MODEL, GPT_4_MODEL
 from autogpt.core.resource.model_providers.openai import OpenAIModelName, OpenAIProvider
 from autogpt.logs.helpers import request_user_double_check
 from autogpt.memory.vector import get_supported_memory_backends
+from autogpt.utils import utils
 
 logger = logging.getLogger(__name__)
 
