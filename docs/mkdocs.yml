@@ -11,7 +11,6 @@ nav:
         - Setting up AutoGPT: AutoGPT/setup/index.md
         - Set up with Docker: AutoGPT/setup/docker.md
     - Usage: AutoGPT/usage.md
-    - Plugins: AutoGPT/plugins.md
     # - Configuration:
     #     - Options: AutoGPT/configuration/options.md
     #     - Search: AutoGPT/configuration/search.md
