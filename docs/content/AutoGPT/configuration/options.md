@@ -33,7 +33,6 @@ Configuration is controlled through the `Config` object. You can set configurati
 - `OPENAI_API_KEY`: *REQUIRED*- Your [OpenAI API Key](https://platform.openai.com/account/api-keys).
 - `OPENAI_ORGANIZATION`: Organization ID in OpenAI. Optional.
 - `PLAIN_OUTPUT`: Plain output, which disables the spinner. Default: False
-- `PLUGINS_CONFIG_FILE`: Path of the Plugins Config file relative to the AutoGPT root directory. Default: plugins_config.yaml
 - `PROMPT_SETTINGS_FILE`: Location of the Prompt Settings file relative to the AutoGPT root directory. Default: prompt_settings.yaml
 - `REDIS_HOST`: Redis Host. Default: localhost
 - `REDIS_PASSWORD`: Redis Password. Optional. Default:
