@@ -1,4 +1,4 @@
-from .config import configure_chat_plugins, configure_logging
+from .config import configure_logging
 from .helpers import user_friendly_output
 from .log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
@@ -13,7 +13,6 @@ from .log_cycle import (
 
 __all__ = [
     "configure_logging",
-    "configure_chat_plugins",
     "user_friendly_output",
     "CURRENT_CONTEXT_FILE_NAME",
     "NEXT_ACTION_FILE_NAME",
