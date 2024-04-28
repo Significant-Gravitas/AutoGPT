@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import time
-from itertools import islice
 
 from duckduckgo_search import DDGS
 
@@ -42,8 +41,7 @@ async def web_search(agent, task_id: str, query: str) -> str:
         if not query:
             return json.dumps(search_results)
 
-        results = DDGS().text(query)
-        search_results = list(islice(results, num_results))
+        search_results = DDGS().text(query, max_results=num_results)
 
         if search_results:
             break

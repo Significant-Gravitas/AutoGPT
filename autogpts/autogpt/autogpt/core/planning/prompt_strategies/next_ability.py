@@ -4,7 +4,7 @@ from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.planning.schema import Task
 from autogpt.core.prompting import PromptStrategy
 from autogpt.core.prompting.schema import ChatPrompt, LanguageModelClassification
-from autogpt.core.prompting.utils import json_loads, to_numbered_list
+from autogpt.core.prompting.utils import to_numbered_list
 from autogpt.core.resource.model_providers import (
     AssistantChatMessage,
     ChatMessage,
@@ -187,9 +187,7 @@ class NextAbility(PromptStrategy):
                 raise ValueError("LLM did not call any function")
 
             function_name = response_content.tool_calls[0].function.name
-            function_arguments = json_loads(
-                response_content.tool_calls[0].function.arguments
-            )
+            function_arguments = response_content.tool_calls[0].function.arguments
             parsed_response = {
                 "motivation": function_arguments.pop("motivation"),
                 "self_criticism": function_arguments.pop("self_criticism"),

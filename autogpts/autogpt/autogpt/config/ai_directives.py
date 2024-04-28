@@ -5,7 +5,7 @@ import yaml
 from pydantic import BaseModel, Field
 
 from autogpt.logs.helpers import request_user_double_check
-from autogpt.utils import validate_yaml_file
+from autogpt.utils.utils import validate_yaml_file
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class AIDirectives(BaseModel):
             raise RuntimeError(f"File validation failed: {message}")
 
         with open(prompt_settings_file, encoding="utf-8") as file:
-            config_params = yaml.load(file, Loader=yaml.FullLoader)
+            config_params = yaml.load(file, Loader=yaml.SafeLoader)
 
         return AIDirectives(
             constraints=config_params.get("constraints", []),

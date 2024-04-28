@@ -3,7 +3,6 @@ import logging
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.prompting import PromptStrategy
 from autogpt.core.prompting.schema import ChatPrompt, LanguageModelClassification
-from autogpt.core.prompting.utils import json_loads
 from autogpt.core.resource.model_providers import (
     AssistantChatMessage,
     ChatMessage,
@@ -141,9 +140,7 @@ class NameAndGoals(PromptStrategy):
                     f"LLM did not call {self._create_agent_function} function; "
                     "agent profile creation failed"
                 )
-            parsed_response = json_loads(
-                response_content.tool_calls[0].function.arguments
-            )
+            parsed_response = response_content.tool_calls[0].function.arguments
         except KeyError:
             logger.debug(f"Failed to parse this response content: {response_content}")
             raise

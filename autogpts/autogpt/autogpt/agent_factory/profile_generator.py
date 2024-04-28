@@ -8,7 +8,6 @@ from autogpt.core.prompting import (
     LanguageModelClassification,
     PromptStrategy,
 )
-from autogpt.core.prompting.utils import json_loads
 from autogpt.core.resource.model_providers.schema import (
     AssistantChatMessage,
     ChatMessage,
@@ -203,9 +202,7 @@ class AgentProfileGenerator(PromptStrategy):
                     f"LLM did not call {self._create_agent_function.name} function; "
                     "agent profile creation failed"
                 )
-            arguments: object = json_loads(
-                response_content.tool_calls[0].function.arguments
-            )
+            arguments: object = response_content.tool_calls[0].function.arguments
             ai_profile = AIProfile(
                 ai_name=arguments.get("name"),
                 ai_role=arguments.get("description"),

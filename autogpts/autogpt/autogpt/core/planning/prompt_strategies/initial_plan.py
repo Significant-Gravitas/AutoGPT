@@ -4,7 +4,7 @@ from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.planning.schema import Task, TaskType
 from autogpt.core.prompting import PromptStrategy
 from autogpt.core.prompting.schema import ChatPrompt, LanguageModelClassification
-from autogpt.core.prompting.utils import json_loads, to_numbered_list
+from autogpt.core.prompting.utils import to_numbered_list
 from autogpt.core.resource.model_providers import (
     AssistantChatMessage,
     ChatMessage,
@@ -194,9 +194,7 @@ class InitialPlan(PromptStrategy):
                     f"LLM did not call {self._create_plan_function.name} function; "
                     "plan creation failed"
                 )
-            parsed_response: object = json_loads(
-                response_content.tool_calls[0].function.arguments
-            )
+            parsed_response: object = response_content.tool_calls[0].function.arguments
             parsed_response["task_list"] = [
                 Task.parse_obj(task) for task in parsed_response["task_list"]
             ]
