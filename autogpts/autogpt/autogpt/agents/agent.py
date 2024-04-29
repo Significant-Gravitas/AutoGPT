@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+from math import ceil, floor
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
@@ -49,7 +50,6 @@ from autogpt.core.resource.model_providers.schema import (
     AssistantChatMessage,
     ChatModelResponse,
 )
-from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.logs.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
@@ -70,6 +70,25 @@ if TYPE_CHECKING:
     from autogpt.config import Config
 
 logger = logging.getLogger(__name__)
+
+
+SEPARATOR_LENGTH = 42
+
+
+def dump_prompt(prompt: "ChatPrompt") -> str:
+    def separator(text: str):
+        half_sep_len = (SEPARATOR_LENGTH - 2 - len(text)) / 2
+        return f"{floor(half_sep_len)*'-'} {text.upper()} {ceil(half_sep_len)*'-'}"
+
+    formatted_messages = "\n".join(
+        [f"{separator(m.role)}\n{m.content}" for m in prompt.messages]
+    )
+    return f"""
+============== {prompt.__class__.__name__} ==============
+Length: {len(prompt.messages)} messages
+{formatted_messages}
+==========================================
+"""
 
 
 class AgentConfiguration(BaseAgentConfiguration):

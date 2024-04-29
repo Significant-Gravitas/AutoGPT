@@ -4,7 +4,7 @@ import math
 
 from pydantic import BaseModel, SecretBytes, SecretField, SecretStr
 
-from autogpt.core.configuration import (
+from forge.config import (
     SystemConfiguration,
     SystemSettings,
     UserConfigurable,

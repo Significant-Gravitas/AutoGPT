@@ -34,12 +34,12 @@ from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
 
+from autogpt.app.decorators import coroutine
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.agents.base import AgentThoughts, CommandArgs, CommandName
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
-from autogpt.core.runner.client_lib.utils import coroutine
 from autogpt.logs.config import configure_logging
 from autogpt.logs.helpers import print_attribute, speak
 

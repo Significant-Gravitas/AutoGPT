@@ -5,7 +5,9 @@ import re
 import socket
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Coroutine, ParamSpec, TypeVar
+import asyncio
+import functools
 
 import click
 import requests
@@ -15,7 +17,18 @@ from git import InvalidGitRepositoryError, Repo
 if TYPE_CHECKING:
     from forge.config import Config
 
+P = ParamSpec("P")
+T = TypeVar("T")
+
 logger = logging.getLogger(__name__)
+
+
+def coroutine(f: Callable[P, Coroutine[Any, Any, T]]) -> Callable[P, T]:
+    @functools.wraps(f)
+    def wrapper(*args: P.args, **kwargs: P.kwargs):
+        return asyncio.run(f(*args, **kwargs))
+
+    return wrapper
 
 
 def clean_input(config: "Config", prompt: str = ""):
