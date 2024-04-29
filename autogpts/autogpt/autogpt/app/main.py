@@ -37,13 +37,11 @@ from autogpt.config import (
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.runner.client_lib.utils import coroutine
 from autogpt.file_storage import FileStorageBackendName, get_storage
-from autogpt.logs.config import LoggingConfig, configure_chat_plugins, configure_logging
+from autogpt.logs.config import configure_logging
 from autogpt.logs.helpers import print_attribute, speak
 from autogpt.models.action_history import ActionInterruptedByHuman
-from autogpt.plugins import scan_plugins
 from autogpt.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 from autogpt.utils.utils import DEFAULT_FINISH_COMMAND
-from scripts.install_plugin_deps import install_plugin_dependencies
 
 from .configurator import apply_overrides_to_config
 from .setup import apply_overrides_to_ai_settings, interactively_revise_ai_settings
@@ -165,12 +163,6 @@ async def run_auto_gpt(
                 "DISABLED (Docker unavailable)",
                 title_color=Fore.YELLOW,
             )
-
-    if install_plugin_deps:
-        install_plugin_dependencies()
-
-    config.plugins = scan_plugins(config)
-    configure_chat_plugins(config)
 
     # Let user choose an existing agent to run
     agent_manager = AgentManager(file_storage)
@@ -407,11 +399,6 @@ async def run_auto_gpt_server(
     )
 
     llm_provider = _configure_openai_provider(config)
-
-    if install_plugin_deps:
-        install_plugin_dependencies()
-
-    config.plugins = scan_plugins(config)
 
     # Set up & start server
     database = AgentDB(
@@ -726,12 +713,7 @@ async def get_user_feedback(
 
     while user_feedback is None:
         # Get input from user
-        if config.chat_messages_enabled:
-            console_input = clean_input(config, "Waiting for your response...")
-        else:
-            console_input = clean_input(
-                config, Fore.MAGENTA + "Input:" + Style.RESET_ALL
-            )
+        console_input = clean_input(config, Fore.MAGENTA + "Input:" + Style.RESET_ALL)
 
         # Parse user input
         if console_input.lower().strip() == config.authorise_key:
