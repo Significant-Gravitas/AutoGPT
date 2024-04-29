@@ -309,7 +309,7 @@ uvicorn = "^0.23.2"
 webdriver-manager = "^4.0.1"
 
 [package.extras]
-benchmark = ["agbenchmark @ file:///Users/czerwinski/Library/Caches/pypoetry/virtualenvs/agpt-JtDOdZb2-py3.11/src/AutoGPT/benchmark"]
+benchmark = ["agbenchmark @ git+https://github.com/Significant-Gravitas/AutoGPT.git#subdirectory=benchmark"]
 
 [package.source]
 type = "git"
