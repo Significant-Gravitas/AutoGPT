@@ -29,7 +29,6 @@ def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
     config.continuous_mode = continuous_mode
     config.continuous_limit = 20
     config.noninteractive_mode = True
-    config.memory_backend = "no_memory"
 
     ai_profile = AIProfile(
         ai_name="AutoGPT",

@@ -15,6 +15,8 @@ from colorama import Fore, Style
 if TYPE_CHECKING:
     from autogpt.speech import TTSConfig
 
+from autogpt.logs.filters import BelowLevelFilter
+
 from .formatters import AutoGptFormatter, StructuredLoggingFormatter
 from .handlers import TTSHandler, TypingConsoleHandler
 
@@ -111,18 +113,6 @@ class FancyConsoleFormatter(logging.Formatter):
             record.msg = f"{color}{record.msg}{Style.RESET_ALL}"
 
         return super().format(record)
-
-
-class BelowLevelFilter(logging.Filter):
-    """Filter for logging levels below a certain threshold."""
-
-    def __init__(self, below_level: int):
-        super().__init__()
-        self.below_level = below_level
-
-    def filter(self, record: logging.LogRecord):
-        return record.levelno < self.below_level
-
 
 
 def configure_logging(

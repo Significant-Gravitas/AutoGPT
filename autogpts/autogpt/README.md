@@ -75,7 +75,6 @@ Options:
   --debug                         Enable Debug Mode
   --gpt3only                      Enable GPT3.5 Only Mode
   --gpt4only                      Enable GPT4 Only Mode
-  -m, --use-memory TEXT           Defines which Memory backend to use
   -b, --browser-name TEXT         Specifies which web-browser to use when
                                   using selenium to scrape the web.
   --allow-downloads               Dangerous: Allows AutoGPT to download files
@@ -123,7 +122,6 @@ Options:
   --debug                     Enable Debug Mode
   --gpt3only                  Enable GPT3.5 Only Mode
   --gpt4only                  Enable GPT4 Only Mode
-  -m, --use-memory TEXT       Defines which Memory backend to use
   -b, --browser-name TEXT     Specifies which web-browser to use when using
                               selenium to scrape the web.
   --allow-downloads           Dangerous: Allows AutoGPT to download files
