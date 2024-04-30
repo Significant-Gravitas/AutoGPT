@@ -1,12 +1,10 @@
 import logging
 
-from autogpt.agents.base import ThoughtProcessOutput
+from autogpt.agents.base import AgentActionProposal, BaseAgentConfiguration
 from autogpt.agents.components import ComponentSystemError
 from autogpt.agents.features.context import ContextComponent
 from autogpt.agents.protocols import AfterParse
 from autogpt.models.action_history import EpisodicActionHistory
-
-from ..base import BaseAgentConfiguration
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +24,7 @@ class WatchdogComponent(AfterParse):
         self.event_history = event_history
         self.revert_big_brain = False
 
-    def after_parse(self, result: ThoughtProcessOutput) -> None:
+    def after_parse(self, result: AgentActionProposal) -> None:
         if self.revert_big_brain:
             self.config.big_brain = False
             self.revert_big_brain = False
@@ -43,13 +41,13 @@ class WatchdogComponent(AfterParse):
 
             rethink_reason = ""
 
-            if not result.command_name:
+            if not result.use_tool:
                 rethink_reason = "AI did not specify a command"
             elif (
-                result.command_name == previous_command
-                and result.command_args == previous_command_args
+                result.use_tool.name == previous_command
+                and result.use_tool.arguments == previous_command_args
             ):
-                rethink_reason = f"Repititive command detected ({result.command_name})"
+                rethink_reason = f"Repititive command detected ({result.use_tool.name})"
 
             if rethink_reason:
                 logger.info(f"{rethink_reason}, re-thinking with SMART_LLM...")

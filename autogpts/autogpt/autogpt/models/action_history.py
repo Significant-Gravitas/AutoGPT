@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Any, Iterator, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
+from autogpt.models.utils import ModelWithSummary
 from autogpt.processing.text import summarize_text
 from autogpt.prompts.utils import format_numbered_list, indent
 
@@ -16,7 +18,7 @@ if TYPE_CHECKING:
 class Action(BaseModel):
     name: str
     args: dict[str, Any]
-    reasoning: str
+    reasoning: str | AssistantThoughts
 
     def format_call(self) -> str:
         return (
@@ -94,7 +96,12 @@ class Episode(BaseModel):
 
     def format(self):
         step = f"Executed `{self.action.format_call()}`\n"
-        step += f'- **Reasoning:** "{self.action.reasoning}"\n'
+        reasoning = (
+            _r.summary()
+            if isinstance(_r := self.action.reasoning, ModelWithSummary)
+            else _r
+        )
+        step += f'- **Reasoning:** "{reasoning}"\n'
         step += (
             "- **Status:** "
             f"`{self.result.status if self.result else 'did_not_finish'}`\n"

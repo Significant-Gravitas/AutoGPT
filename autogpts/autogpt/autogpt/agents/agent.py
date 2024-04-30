@@ -8,7 +8,10 @@ from typing import TYPE_CHECKING, Optional
 import sentry_sdk
 from pydantic import Field
 
-from autogpt.agents.prompt_strategies.one_shot import OneShotAgentPromptStrategy
+from autogpt.agents.prompt_strategies.one_shot import (
+    OneShotAgentActionProposal,
+    OneShotAgentPromptStrategy,
+)
 from autogpt.commands.execute_code import CodeExecutorComponent
 from autogpt.commands.git_operations import GitOperationsComponent
 from autogpt.commands.image_gen import ImageGeneratorComponent
@@ -19,9 +22,11 @@ from autogpt.commands.web_selenium import WebSeleniumComponent
 from autogpt.components.event_history import EventHistoryComponent
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
-from autogpt.core.resource.model_providers import ChatMessage, ChatModelProvider
-from autogpt.core.resource.model_providers.schema import (
+from autogpt.core.resource.model_providers import (
     AssistantChatMessage,
+    AssistantFunctionCall,
+    ChatMessage,
+    ChatModelProvider,
     ChatModelResponse,
 )
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
@@ -33,12 +38,12 @@ from autogpt.logs.log_cycle import (
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
-from autogpt.logs.utils import fmt_kwargs
 from autogpt.models.action_history import (
     ActionErrorResult,
     ActionInterruptedByHuman,
     ActionResult,
     ActionSuccessResult,
+    EpisodicActionHistory,
 )
 from autogpt.models.command import Command, CommandOutput
 from autogpt.utils.exceptions import (
@@ -49,12 +54,7 @@ from autogpt.utils.exceptions import (
     UnknownCommandError,
 )
 
-from .base import (
-    BaseAgent,
-    BaseAgentConfiguration,
-    BaseAgentSettings,
-    ThoughtProcessOutput,
-)
+from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 from .features.agent_file_manager import FileManagerComponent
 from .features.context import ContextComponent
 from .features.watchdog import WatchdogComponent
@@ -78,6 +78,9 @@ class AgentConfiguration(BaseAgentConfiguration):
 
 class AgentSettings(BaseAgentSettings):
     config: AgentConfiguration = Field(default_factory=AgentConfiguration)
+
+    history: EpisodicActionHistory = Field(default_factory=EpisodicActionHistory)
+    """(STATE) The action history of the agent."""
 
 
 class Agent(BaseAgent, Configurable[AgentSettings]):
@@ -137,7 +140,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.event_history = settings.history
         self.legacy_config = legacy_config
 
-    async def propose_action(self) -> ThoughtProcessOutput:
+    async def propose_action(self) -> OneShotAgentActionProposal:
         """Proposes the next action to execute, based on the task and current state.
 
         Returns:
@@ -188,12 +191,12 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
     async def complete_and_parse(
         self, prompt: ChatPrompt, exception: Optional[Exception] = None
-    ) -> ThoughtProcessOutput:
+    ) -> OneShotAgentActionProposal:
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
         response: ChatModelResponse[
-            ThoughtProcessOutput
+            OneShotAgentActionProposal
         ] = await self.llm_provider.create_chat_completion(
             prompt.messages,
             model_name=self.llm.name,
@@ -210,7 +213,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             self.state.ai_profile.ai_name,
             self.created_at,
             self.config.cycle_count,
-            result.thoughts,
+            result.thoughts.dict(),
             NEXT_ACTION_FILE_NAME,
         )
 
@@ -220,13 +223,13 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
     def parse_and_validate_response(
         self, llm_response: AssistantChatMessage
-    ) -> ThoughtProcessOutput:
+    ) -> OneShotAgentActionProposal:
         parsed_response = self.prompt_strategy.parse_response_content(llm_response)
 
         # Validate command arguments
-        command_name = parsed_response.command_name
+        command_name = parsed_response.use_tool.name
         command = self._get_command(command_name)
-        if arg_errors := command.validate_args(parsed_response.command_args)[1]:
+        if arg_errors := command.validate_args(parsed_response.use_tool.arguments)[1]:
             fmt_errors = [
                 f"{'.'.join(str(p) for p in f.path)}: {f.message}"
                 if f.path
@@ -242,13 +245,15 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
     async def execute(
         self,
-        command_name: str,
-        command_args: dict[str, str] = {},
+        tool_call: AssistantFunctionCall,
         user_input: str = "",
     ) -> ActionResult:
+        tool_name = tool_call.name
+        tool_arguments = tool_call.arguments
+
         result: ActionResult
 
-        if command_name == "human_feedback":
+        if tool_name == "human_feedback":
             result = ActionInterruptedByHuman(feedback=user_input)
             self.log_cycle_handler.log_cycle(
                 self.state.ai_profile.ai_name,
@@ -265,8 +270,8 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
             try:
                 return_value = await self._execute_command(
-                    command_name=command_name,
-                    arguments=command_args,
+                    command_name=tool_name,
+                    arguments=tool_arguments,
                 )
 
                 result = ActionSuccessResult(outputs=return_value)
@@ -274,15 +279,13 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
                 raise
             except AgentException as e:
                 result = ActionErrorResult.from_exception(e)
-                logger.warning(
-                    f"{command_name}({fmt_kwargs(command_args)}) raised an error: {e}"
-                )
+                logger.warning(f"{tool_call} raised an error: {e}")
                 sentry_sdk.capture_exception(e)
 
             result_tlength = self.llm_provider.count_tokens(str(result), self.llm.name)
             if result_tlength > self.send_token_limit // 3:
                 result = ActionErrorResult(
-                    reason=f"Command {command_name} returned too much output. "
+                    reason=f"Command {tool_name} returned too much output. "
                     "Do not execute this command again with the same arguments."
                 )
 

@@ -1,6 +1,6 @@
 from typing import Callable, Iterator, Optional
 
-from autogpt.agents.base import ThoughtProcessOutput
+from autogpt.agents.base import AgentActionProposal
 from autogpt.agents.features.watchdog import WatchdogComponent
 from autogpt.agents.protocols import AfterExecute, AfterParse, MessageProvider
 from autogpt.config.config import Config
@@ -41,15 +41,14 @@ class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute):
         ):
             yield ChatMessage.system(f"## Progress on your Task so far\n\n{progress}")
 
-    def after_parse(self, result: ThoughtProcessOutput) -> None:
-        if result.command_name:
-            self.event_history.register_action(
-                Action(
-                    name=result.command_name,
-                    args=result.command_args,
-                    reasoning=result.thoughts["thoughts"]["reasoning"],
-                )
+    def after_parse(self, result: AgentActionProposal) -> None:
+        self.event_history.register_action(
+            Action(
+                name=result.use_tool.name,
+                args=result.use_tool.arguments,
+                reasoning=result.thoughts,
             )
+        )
 
     async def after_execute(self, result: ActionResult) -> None:
         self.event_history.register_result(result)
