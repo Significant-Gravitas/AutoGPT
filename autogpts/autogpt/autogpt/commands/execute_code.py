@@ -154,9 +154,7 @@ class CodeExecutorComponent(CommandProvider):
         Returns:
             str: The output of the file
         """
-        logger.info(
-            f"Executing python file '{filename}'"
-        )
+        logger.info(f"Executing python file '{filename}'")
 
         if isinstance(args, str):
             args = args.split()  # Convert space-separated string to a list
@@ -198,67 +196,75 @@ class CodeExecutorComponent(CommandProvider):
             image_name = "python:3-alpine"
             container_is_fresh = False
             container_name = f"{self.state.agent_id}_sandbox"
-            try:
-                container: DockerContainer = client.containers.get(
-                    container_name
-                )  # type: ignore
-            except NotFound:
-                try:
-                    client.images.get(image_name)
-                    logger.debug(f"Image '{image_name}' found locally")
-                except ImageNotFound:
-                    logger.info(
-                        f"Image '{image_name}' not found locally,"
-                        " pulling from Docker Hub..."
-                    )
-                    # Use the low-level API to stream the pull response
-                    low_level_client = docker.APIClient()
-                    for line in low_level_client.pull(
-                        image_name, stream=True, decode=True
-                    ):
-                        # Print the status and progress, if available
-                        status = line.get("status")
-                        progress = line.get("progress")
-                        if status and progress:
-                            logger.info(f"{status}: {progress}")
-                        elif status:
-                            logger.info(status)
-
-                logger.debug(f"Creating new {image_name} container...")
-                container: DockerContainer = client.containers.run(
-                    image_name,
-                    ["sleep", "60"],  # Max 60 seconds to prevent permanent hangs
-                    volumes={
-                        str(self.workspace.root): {
-                            "bind": "/workspace",
-                            "mode": "rw",
-                        }
-                    },
-                    working_dir="/workspace",
-                    stderr=True,
-                    stdout=True,
-                    detach=True,
-                    name=container_name,
-                )  # type: ignore
-                container_is_fresh = True
-
-            if not container.status == "running":
-                container.start()
-            elif not container_is_fresh:
-                container.restart()
-
-            logger.debug(f"Running {file_path} in container {container.name}...")
             with self.workspace.mount() as local_path:
+                # Ensure the directory exists
+                directory = (local_path / file_path).parent
+                os.makedirs(directory, exist_ok=True)
+                # Copy the file to the temporary workspace
+                content = self.workspace.read_file(file_path, binary=True)
+                with open(local_path / file_path, "wb") as file:
+                    file.write(content)
+
+                try:
+                    container: DockerContainer = client.containers.get(
+                        container_name
+                    )  # type: ignore
+                except NotFound:
+                    try:
+                        client.images.get(image_name)
+                        logger.debug(f"Image '{image_name}' found locally")
+                    except ImageNotFound:
+                        logger.info(
+                            f"Image '{image_name}' not found locally,"
+                            " pulling from Docker Hub..."
+                        )
+                        # Use the low-level API to stream the pull response
+                        low_level_client = docker.APIClient()
+                        for line in low_level_client.pull(
+                            image_name, stream=True, decode=True
+                        ):
+                            # Print the status and progress, if available
+                            status = line.get("status")
+                            progress = line.get("progress")
+                            if status and progress:
+                                logger.info(f"{status}: {progress}")
+                            elif status:
+                                logger.info(status)
+
+                    logger.debug(f"Creating new {image_name} container...")
+                    container: DockerContainer = client.containers.run(
+                        image_name,
+                        ["sleep", "60"],  # Max 60 seconds to prevent permanent hangs
+                        volumes={
+                            str(local_path): {
+                                "bind": "/workspace",
+                                "mode": "rw",
+                            }
+                        },
+                        working_dir="/workspace",
+                        stderr=True,
+                        stdout=True,
+                        detach=True,
+                        name=container_name,
+                    )  # type: ignore
+                    container_is_fresh = True
+
+                if not container.status == "running":
+                    container.start()
+                elif not container_is_fresh:
+                    container.restart()
+
+                logger.debug(f"Running {file_path} in container {container.name}...")
+
                 exec_result = container.exec_run(
                     [
                         "python",
                         "-B",
-                        file_path.relative_to(local_path).as_posix(),
+                        (Path("/workspace") / file_path).as_posix(),
                     ]
                     + args,
                     stderr=True,
                     stdout=True,
-                    workdir=local_path,
                 )
 
                 if exec_result.exit_code != 0:
