@@ -196,6 +196,22 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
                 f"- ${round(cost, 5)}"
             )
 
+            # Merge prefill into generated response
+            if (_prefill_msg := anthropic_messages[-1])["role"] == "assistant":
+                anthropic_messages.pop(-1)
+                prefill_content = (
+                    _content
+                    if isinstance(_content := _prefill_msg["content"], str)
+                    else getattr(
+                        next(b for b in _content if getattr(b, "type") == "text"),
+                        "text",
+                    )
+                )
+                first_text_block = next(
+                    b for b in _assistant_msg.content if b.type == "text"
+                )
+                first_text_block.text = prefill_content + first_text_block.text
+
             assistant_msg = AssistantChatMessage(
                 content="\n\n".join(
                     b.text for b in _assistant_msg.content if b.type == "text"
