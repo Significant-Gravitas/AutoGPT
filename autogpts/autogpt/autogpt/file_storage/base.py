@@ -9,12 +9,55 @@ import os
 from abc import ABC, abstractmethod
 from io import IOBase, TextIOBase
 from pathlib import Path
-from typing import IO, Any, BinaryIO, Callable, Literal, TextIO, overload
+from typing import IO, Any, BinaryIO, Generator, Callable, Literal, TextIO, overload
+import os
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+from contextlib import contextmanager
+import tempfile
+import shutil
 
 from autogpt.core.configuration.schema import SystemConfiguration
 
 logger = logging.getLogger(__name__)
 
+
+class FileSyncHandler(FileSystemEventHandler):
+    def __init__(self, storage: FileStorage):
+        self.storage = storage
+
+    async def on_modified(self, event):
+        if event.is_directory:
+            return
+    
+        file_path = event.src_path
+        with open(file_path, "rb") as f:
+            content = f.read()
+            assert isinstance(content, bytes)
+            await self.storage.write_file(file_path, content)
+
+    async def on_created(self, event):
+        if event.is_directory:
+            self.storage.make_dir(event.src_path)
+            return
+
+        file_path = event.src_path
+        with open(file_path, "rb") as f:
+            content = f.read()
+            assert isinstance(content, bytes)
+            await self.storage.write_file(file_path, content)
+
+    def on_deleted(self, event):
+        if event.is_directory:
+            self.storage.delete_dir(event.src_path)
+            return
+
+        file_path = event.src_path
+        self.storage.delete_file(file_path)
+
+    def on_moved(self, event):
+        self.storage.rename(event.src_path, event.dest_path)
+        
 
 class FileStorageConfiguration(SystemConfiguration):
     restrict_to_root: bool = True
@@ -149,6 +192,33 @@ class FileStorage(ABC):
             Path: The resolved path relative to the storage.
         """
         return self._sanitize_path(relative_path)
+
+    @contextmanager
+    def mount(self, path: str | Path = ".") -> Generator[str, Any, None]:
+        """Mount the file storage and provide a local path."""
+        local_path = tempfile.mkdtemp()
+        observer = Observer()
+        try:
+            # Copy all files in the path to the local directory
+            files = self.list_files(path)
+            for file in files:
+                file_path = local_path / file.relative_to(path)
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(file_path, "wb") as f:
+                    content = self.read_file(file, binary=True)
+                    assert isinstance(content, bytes)
+                    f.write(content)
+
+            # Sync changes
+            event_handler = FileSyncHandler(self)
+            observer.schedule(event_handler, path, recursive=True)
+            observer.start()
+
+            yield local_path
+        finally:
+            observer.stop()
+            observer.join()
+            shutil.rmtree(local_path)
 
     def _sanitize_path(
         self,

@@ -112,18 +112,19 @@ class CodeExecutorComponent(CommandProvider):
             str: The STDOUT captured from the code when it ran.
         """
 
-        tmp_code_file = NamedTemporaryFile(
-            "w", dir=self.workspace.root, suffix=".py", encoding="utf-8"
-        )
-        tmp_code_file.write(code)
-        tmp_code_file.flush()
+        with self.workspace.mount() as local_path:
+            tmp_code_file = NamedTemporaryFile(
+                "w", dir=local_path, suffix=".py", encoding="utf-8"
+            )
+            tmp_code_file.write(code)
+            tmp_code_file.flush()
 
-        try:
-            return self.execute_python_file(tmp_code_file.name)
-        except Exception as e:
-            raise CommandExecutionError(*e.args)
-        finally:
-            tmp_code_file.close()
+            try:
+                return self.execute_python_file(tmp_code_file.name)
+            except Exception as e:
+                raise CommandExecutionError(*e.args)
+            finally:
+                tmp_code_file.close()
 
     @command(
         ["execute_python_file"],
@@ -154,8 +155,7 @@ class CodeExecutorComponent(CommandProvider):
             str: The output of the file
         """
         logger.info(
-            f"Executing python file '{filename}' "
-            f"in working directory '{self.workspace.root}'"
+            f"Executing python file '{filename}'"
         )
 
         if isinstance(args, str):
@@ -178,16 +178,17 @@ class CodeExecutorComponent(CommandProvider):
                 "AutoGPT is running in a Docker container; "
                 f"executing {file_path} directly..."
             )
-            result = subprocess.run(
-                ["python", "-B", str(file_path)] + args,
-                capture_output=True,
-                encoding="utf8",
-                cwd=str(self.workspace.root),
-            )
-            if result.returncode == 0:
-                return result.stdout
-            else:
-                raise CodeExecutionError(result.stderr)
+            with self.workspace.mount() as local_path:
+                result = subprocess.run(
+                    ["python", "-B", str(file_path)] + args,
+                    capture_output=True,
+                    encoding="utf8",
+                    cwd=str(local_path),
+                )
+                if result.returncode == 0:
+                    return result.stdout
+                else:
+                    raise CodeExecutionError(result.stderr)
 
         logger.debug("AutoGPT is not running in a Docker container")
         try:
@@ -247,21 +248,23 @@ class CodeExecutorComponent(CommandProvider):
                 container.restart()
 
             logger.debug(f"Running {file_path} in container {container.name}...")
-            exec_result = container.exec_run(
-                [
-                    "python",
-                    "-B",
-                    file_path.relative_to(self.workspace.root).as_posix(),
-                ]
-                + args,
-                stderr=True,
-                stdout=True,
-            )
+            with self.workspace.mount() as local_path:
+                exec_result = container.exec_run(
+                    [
+                        "python",
+                        "-B",
+                        file_path.relative_to(local_path).as_posix(),
+                    ]
+                    + args,
+                    stderr=True,
+                    stdout=True,
+                    workdir=local_path,
+                )
 
-            if exec_result.exit_code != 0:
-                raise CodeExecutionError(exec_result.output.decode("utf-8"))
+                if exec_result.exit_code != 0:
+                    raise CodeExecutionError(exec_result.output.decode("utf-8"))
 
-            return exec_result.output.decode("utf-8")
+                return exec_result.output.decode("utf-8")
 
         except DockerException as e:
             logger.warning(

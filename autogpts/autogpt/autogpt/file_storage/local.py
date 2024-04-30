@@ -4,10 +4,11 @@ The LocalFileStorage class implements a FileStorage that works with local files.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import inspect
 import logging
 from pathlib import Path
-from typing import IO, Literal
+from typing import IO, Any, Generator, Literal
 
 from .base import FileStorage, FileStorageConfiguration
 
@@ -137,3 +138,12 @@ class LocalFileStorage(FileStorage):
                 restrict_to_root=self.restrict_to_root,
             )
         )
+    
+    @contextmanager
+    def mount(self, path: str | Path = ".") -> Generator[str, Any, None]:
+        """Mount the file storage and provide a local path."""
+        # No need to do anything for local storage
+        try:
+            yield str(path)
+        finally:
+            pass
