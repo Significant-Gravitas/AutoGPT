@@ -1,6 +1,8 @@
 import logging
 import os
+import random
 import shlex
+import string
 import subprocess
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -96,7 +98,7 @@ class CodeExecutorComponent(CommandProvider):
             ),
         },
     )
-    def execute_python_code(self, code: str) -> str:
+    async def execute_python_code(self, code: str) -> str:
         """
         Create and execute a Python file in a Docker container
         and return the STDOUT of the executed code.
@@ -112,19 +114,19 @@ class CodeExecutorComponent(CommandProvider):
             str: The STDOUT captured from the code when it ran.
         """
 
-        with self.workspace.mount() as local_path:
-            tmp_code_file = NamedTemporaryFile(
-                "w", dir=local_path, suffix=".py", encoding="utf-8"
-            )
-            tmp_code_file.write(code)
-            tmp_code_file.flush()
+        temp_path = Path("")
+        while True:
+            temp_path = f"temp{self._generate_random_string()}.py"
+            if not self.workspace.exists(temp_path):
+                break
+        await self.workspace.write_file(temp_path, code)
 
-            try:
-                return self.execute_python_file(tmp_code_file.name)
-            except Exception as e:
-                raise CommandExecutionError(*e.args)
-            finally:
-                tmp_code_file.close()
+        try:
+            return self.execute_python_file(temp_path)
+        except Exception as e:
+            raise CommandExecutionError(*e.args)
+        finally:
+            self.workspace.delete_file(temp_path)
 
     @command(
         ["execute_python_file"],
@@ -403,3 +405,10 @@ class CodeExecutorComponent(CommandProvider):
         os.chdir(current_dir)
 
         return f"Subprocess started with PID:'{str(process.pid)}'"
+
+    def _generate_random_string(self, length: int = 8):
+        # Create a string of all letters and digits
+        characters = string.ascii_letters + string.digits
+        # Use random.choices to generate a random string
+        random_string = ''.join(random.choices(characters, k=length))
+        return random_string
