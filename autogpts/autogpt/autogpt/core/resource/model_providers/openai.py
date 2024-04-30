@@ -465,8 +465,11 @@ class OpenAIProvider(
                 self._logger.debug(
                     f"Parsing failed on response: '''{_assistant_msg}'''"
                 )
+                parse_errors_fmt = "\n\n".join(
+                    f"{e.__class__.__name__}: {e}" for e in parse_errors
+                )
                 self._logger.warning(
-                    f"Parsing attempt #{attempts} failed: {parse_errors}"
+                    f"Parsing attempt #{attempts} failed: {parse_errors_fmt}"
                 )
                 for e in parse_errors:
                     sentry_sdk.capture_exception(
@@ -480,10 +483,7 @@ class OpenAIProvider(
                         {
                             "role": "system",
                             "content": (
-                                "ERROR PARSING YOUR RESPONSE:\n\n"
-                                + "\n\n".join(
-                                    f"{e.__class__.__name__}: {e}" for e in parse_errors
-                                )
+                                f"ERROR PARSING YOUR RESPONSE:\n\n{parse_errors_fmt}"
                             ),
                         }
                     )
