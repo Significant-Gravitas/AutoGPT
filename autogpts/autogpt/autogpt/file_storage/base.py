@@ -194,7 +194,7 @@ class FileStorage(ABC):
         return self._sanitize_path(relative_path)
 
     @contextmanager
-    def mount(self, path: str | Path = ".") -> Generator[str, Any, None]:
+    def mount(self, path: str | Path = ".") -> Generator[Path, Any, None]:
         """Mount the file storage and provide a local path."""
         local_path = tempfile.mkdtemp()
         observer = Observer()
@@ -204,7 +204,7 @@ class FileStorage(ABC):
             observer.schedule(event_handler, path, recursive=True)
             observer.start()
 
-            yield local_path
+            yield Path(local_path)
         finally:
             observer.stop()
             observer.join()

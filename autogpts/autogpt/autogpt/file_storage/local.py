@@ -140,10 +140,10 @@ class LocalFileStorage(FileStorage):
         )
 
     @contextmanager
-    def mount(self, path: str | Path = ".") -> Generator[str, Any, None]:
+    def mount(self, path: str | Path = ".") -> Generator[Path, Any, None]:
         """Mount the file storage and provide a local path."""
         # No need to do anything for local storage
         try:
-            yield str(path)
+            yield Path(path)
         finally:
             pass

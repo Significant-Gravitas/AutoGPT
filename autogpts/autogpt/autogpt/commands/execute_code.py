@@ -162,8 +162,8 @@ class CodeExecutorComponent(CommandProvider):
         if not str(filename).endswith(".py"):
             raise InvalidArgumentError("Invalid file type. Only .py files are allowed.")
 
-        file_path = Path(filename)
-        if not file_path.is_file():
+        file_path = self.workspace.get_path(filename)
+        if not self.workspace.exists(file_path):
             # Mimic the response that you get from the command line to make it
             # intuitively understandable for the LLM
             raise FileNotFoundError(
@@ -198,11 +198,11 @@ class CodeExecutorComponent(CommandProvider):
             container_name = f"{self.state.agent_id}_sandbox"
             with self.workspace.mount() as local_path:
                 # Ensure the directory exists
-                directory = (local_path / file_path).parent
+                directory = (local_path / filename).parent
                 os.makedirs(directory, exist_ok=True)
                 # Copy the file to the temporary workspace
                 content = self.workspace.read_file(file_path, binary=True)
-                with open(local_path / file_path, "wb") as file:
+                with open(local_path / filename, "wb") as file:
                     file.write(content)
 
                 try:
@@ -236,7 +236,7 @@ class CodeExecutorComponent(CommandProvider):
                         image_name,
                         ["sleep", "60"],  # Max 60 seconds to prevent permanent hangs
                         volumes={
-                            str(local_path): {
+                            str(Path(local_path).absolute()): {
                                 "bind": "/workspace",
                                 "mode": "rw",
                             }
@@ -260,7 +260,7 @@ class CodeExecutorComponent(CommandProvider):
                     [
                         "python",
                         "-B",
-                        (Path("/workspace") / file_path).as_posix(),
+                        filename,
                     ]
                     + args,
                     stderr=True,
