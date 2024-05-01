@@ -3,7 +3,7 @@ from typing import Any, Optional
 
 from colorama import Fore
 
-from .config import SPEECH_OUTPUT_LOGGER, USER_FRIENDLY_OUTPUT_LOGGER, _chat_plugins
+from .config import SPEECH_OUTPUT_LOGGER, USER_FRIENDLY_OUTPUT_LOGGER
 
 
 def user_friendly_output(
@@ -20,10 +20,6 @@ def user_friendly_output(
     2. Text To Speech, if configured
     """
     logger = logging.getLogger(USER_FRIENDLY_OUTPUT_LOGGER)
-
-    if _chat_plugins:
-        for plugin in _chat_plugins:
-            plugin.report(f"{title}: {message}")
 
     logger.log(
         level,

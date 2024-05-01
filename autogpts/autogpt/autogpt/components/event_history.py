@@ -34,13 +34,12 @@ class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute):
         self.llm_provider = llm_provider
 
     def get_messages(self) -> Iterator[ChatMessage]:
-        yield ChatMessage.system(
-            self._compile_progress(
-                self.event_history.episodes,
-                self.max_tokens,
-                self.count_tokens,
-            )
-        )
+        if progress := self._compile_progress(
+            self.event_history.episodes,
+            self.max_tokens,
+            self.count_tokens,
+        ):
+            yield ChatMessage.system(f"## Progress on your Task so far\n\n{progress}")
 
     def after_parse(self, result: ThoughtProcessOutput) -> None:
         if result.command_name:
