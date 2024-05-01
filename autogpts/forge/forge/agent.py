@@ -7,7 +7,6 @@ from forge.sdk import (
     StepRequestBody,
     Task,
     TaskRequestBody,
-    Workspace,
 )
 
 LOG = ForgeLogger(__name__)
