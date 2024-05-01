@@ -33,11 +33,7 @@ from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.app.utils import is_port_free
 from autogpt.config import Config
-from autogpt.core.resource.model_providers import (
-    AssistantFunctionCall,
-    ChatModelProvider,
-    ModelProviderBudget,
-)
+from autogpt.core.resource.model_providers import ChatModelProvider, ModelProviderBudget
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.file_storage import FileStorage
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
@@ -203,7 +199,7 @@ class AgentProtocolServer:
         # To prevent this from interfering with the agent's process, we ignore the input
         #  of this first step request, and just generate the first step proposal.
         is_init_step = not bool(agent.event_history)
-        tool_to_use, tool_result = None, None
+        last_proposal, tool_result = None, None
         execute_approved = False
 
         # HACK: only for compatibility with AGBenchmark
@@ -217,14 +213,11 @@ class AgentProtocolServer:
             and agent.event_history.current_episode
             and not agent.event_history.current_episode.result
         ):
-            tool_to_use = AssistantFunctionCall(
-                name=agent.event_history.current_episode.action.name,
-                arguments=agent.event_history.current_episode.action.args,
-            )
+            last_proposal = agent.event_history.current_episode.action
             execute_approved = not user_input
 
             logger.debug(
-                f"Agent proposed command {tool_to_use})."
+                f"Agent proposed command {last_proposal.use_tool})."
                 f" User input/feedback: {repr(user_input)}"
             )
 
@@ -233,22 +226,22 @@ class AgentProtocolServer:
             task_id=task_id,
             input=step_request,
             is_last=(
-                tool_to_use is not None
-                and tool_to_use.name == DEFAULT_FINISH_COMMAND
+                last_proposal is not None
+                and last_proposal.use_tool.name == DEFAULT_FINISH_COMMAND
                 and execute_approved
             ),
         )
         agent.llm_provider = self._get_task_llm_provider(task, step.step_id)
 
         # Execute previously proposed action
-        if tool_to_use:
+        if last_proposal:
             agent.file_manager.workspace.on_write_file = (
                 lambda path: self._on_agent_write_file(
                     task=task, step=step, relative_path=path
                 )
             )
 
-            if tool_to_use.name == DEFAULT_ASK_COMMAND:
+            if last_proposal.use_tool.name == DEFAULT_ASK_COMMAND:
                 tool_result = ActionSuccessResult(outputs=user_input)
                 agent.event_history.register_result(tool_result)
             elif execute_approved:
@@ -260,7 +253,7 @@ class AgentProtocolServer:
 
                 try:
                     # Execute previously proposed action
-                    tool_result = await agent.execute(tool_to_use)
+                    tool_result = await agent.execute(last_proposal)
                 except AgentFinished:
                     additional_output = {}
                     task_total_cost = agent.llm_provider.get_incurred_cost()
@@ -274,20 +267,14 @@ class AgentProtocolServer:
                     step = await self.db.update_step(
                         task_id=task_id,
                         step_id=step.step_id,
-                        output=tool_to_use.arguments["reason"],
+                        output=last_proposal.use_tool.arguments["reason"],
                         additional_output=additional_output,
                     )
                     await agent.file_manager.save_state()
                     return step
             else:
                 assert user_input
-                tool_result = await agent.execute(
-                    tool_call=AssistantFunctionCall(
-                        name="human_feedback",  # HACK
-                        arguments={},
-                    ),
-                    user_input=user_input,
-                )
+                tool_result = await agent.do_not_execute(last_proposal, user_input)
 
         # Propose next action
         try:
@@ -306,11 +293,11 @@ class AgentProtocolServer:
         # Format step output
         output = (
             (
-                f"`{tool_to_use}` returned:"
+                f"`{last_proposal.use_tool}` returned:"
                 + ("\n\n" if "\n" in str(tool_result) else " ")
                 + f"{tool_result}\n\n"
             )
-            if tool_to_use and tool_to_use.name != DEFAULT_ASK_COMMAND
+            if last_proposal and last_proposal.use_tool.name != DEFAULT_ASK_COMMAND
             else ""
         )
         output += f"{assistant_response.thoughts.speak}\n\n"
@@ -324,8 +311,8 @@ class AgentProtocolServer:
             **(
                 {
                     "last_action": {
-                        "name": tool_to_use.name,
-                        "args": tool_to_use.arguments,
+                        "name": last_proposal.use_tool.name,
+                        "args": last_proposal.use_tool.arguments,
                         "result": (
                             ""
                             if tool_result is None
@@ -340,7 +327,7 @@ class AgentProtocolServer:
                         ),
                     },
                 }
-                if tool_to_use and tool_result
+                if last_proposal and tool_result
                 else {}
             ),
             **assistant_response.dict(),

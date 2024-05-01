@@ -139,7 +139,7 @@ class AgentMeta(ABCMeta):
         return instance
 
 
-class AgentActionProposal(BaseModel):
+class BaseAgentActionProposal(BaseModel):
     thoughts: str | ModelWithSummary
     use_tool: AssistantFunctionCall = None
 
@@ -181,15 +181,22 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
         return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
 
     @abstractmethod
-    async def propose_action(self) -> AgentActionProposal:
+    async def propose_action(self) -> BaseAgentActionProposal:
         ...
 
     @abstractmethod
     async def execute(
         self,
-        command_name: str,
-        command_args: dict[str, str] = {},
-        user_input: str = "",
+        proposal: BaseAgentActionProposal,
+        user_feedback: str = "",
+    ) -> ActionResult:
+        ...
+
+    @abstractmethod
+    async def do_not_execute(
+        self,
+        denied_proposal: BaseAgentActionProposal,
+        user_feedback: str,
     ) -> ActionResult:
         ...
 

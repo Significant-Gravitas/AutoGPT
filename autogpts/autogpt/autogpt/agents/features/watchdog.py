@@ -1,6 +1,6 @@
 import logging
 
-from autogpt.agents.base import AgentActionProposal, BaseAgentConfiguration
+from autogpt.agents.base import BaseAgentActionProposal, BaseAgentConfiguration
 from autogpt.agents.components import ComponentSystemError
 from autogpt.agents.features.context import ContextComponent
 from autogpt.agents.protocols import AfterParse
@@ -18,13 +18,15 @@ class WatchdogComponent(AfterParse):
     run_after = [ContextComponent]
 
     def __init__(
-        self, config: BaseAgentConfiguration, event_history: EpisodicActionHistory
+        self,
+        config: BaseAgentConfiguration,
+        event_history: EpisodicActionHistory[BaseAgentActionProposal],
     ):
         self.config = config
         self.event_history = event_history
         self.revert_big_brain = False
 
-    def after_parse(self, result: AgentActionProposal) -> None:
+    def after_parse(self, result: BaseAgentActionProposal) -> None:
         if self.revert_big_brain:
             self.config.big_brain = False
             self.revert_big_brain = False
@@ -36,8 +38,8 @@ class WatchdogComponent(AfterParse):
                 previous_cycle = self.event_history.episodes[
                     self.event_history.cursor - 1
                 ]
-                previous_command = previous_cycle.action.name
-                previous_command_args = previous_cycle.action.args
+                previous_command = previous_cycle.action.use_tool.name
+                previous_command_args = previous_cycle.action.use_tool.arguments
 
             rethink_reason = ""
 

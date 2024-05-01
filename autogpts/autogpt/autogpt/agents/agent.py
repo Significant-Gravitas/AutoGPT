@@ -8,10 +8,6 @@ from typing import TYPE_CHECKING, Optional
 import sentry_sdk
 from pydantic import Field
 
-from autogpt.agents.prompt_strategies.one_shot import (
-    OneShotAgentActionProposal,
-    OneShotAgentPromptStrategy,
-)
 from autogpt.commands.execute_code import CodeExecutorComponent
 from autogpt.commands.git_operations import GitOperationsComponent
 from autogpt.commands.image_gen import ImageGeneratorComponent
@@ -58,6 +54,10 @@ from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 from .features.agent_file_manager import FileManagerComponent
 from .features.context import ContextComponent
 from .features.watchdog import WatchdogComponent
+from .prompt_strategies.one_shot import (
+    OneShotAgentActionProposal,
+    OneShotAgentPromptStrategy,
+)
 from .protocols import (
     AfterExecute,
     AfterParse,
@@ -79,7 +79,9 @@ class AgentConfiguration(BaseAgentConfiguration):
 class AgentSettings(BaseAgentSettings):
     config: AgentConfiguration = Field(default_factory=AgentConfiguration)
 
-    history: EpisodicActionHistory = Field(default_factory=EpisodicActionHistory)
+    history: EpisodicActionHistory[OneShotAgentActionProposal] = Field(
+        default_factory=EpisodicActionHistory[OneShotAgentActionProposal]
+    )
     """(STATE) The action history of the agent."""
 
 
@@ -245,49 +247,32 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
     async def execute(
         self,
-        tool_call: AssistantFunctionCall,
-        user_input: str = "",
+        proposal: OneShotAgentActionProposal,
+        user_feedback: str = "",
     ) -> ActionResult:
-        tool_name = tool_call.name
-        tool_arguments = tool_call.arguments
+        tool = proposal.use_tool
 
-        result: ActionResult
+        # Get commands
+        self.commands = await self.run_pipeline(CommandProvider.get_commands)
+        self._remove_disabled_commands()
 
-        if tool_name == "human_feedback":
-            result = ActionInterruptedByHuman(feedback=user_input)
-            self.log_cycle_handler.log_cycle(
-                self.state.ai_profile.ai_name,
-                self.created_at,
-                self.config.cycle_count,
-                user_input,
-                USER_INPUT_FILE_NAME,
+        try:
+            return_value = await self._execute_tool(tool)
+
+            result = ActionSuccessResult(outputs=return_value)
+        except AgentTerminated:
+            raise
+        except AgentException as e:
+            result = ActionErrorResult.from_exception(e)
+            logger.warning(f"{tool} raised an error: {e}")
+            sentry_sdk.capture_exception(e)
+
+        result_tlength = self.llm_provider.count_tokens(str(result), self.llm.name)
+        if result_tlength > self.send_token_limit // 3:
+            result = ActionErrorResult(
+                reason=f"Command {tool.name} returned too much output. "
+                "Do not execute this command again with the same arguments."
             )
-
-        else:
-            # Get commands
-            self.commands = await self.run_pipeline(CommandProvider.get_commands)
-            self._remove_disabled_commands()
-
-            try:
-                return_value = await self._execute_command(
-                    command_name=tool_name,
-                    arguments=tool_arguments,
-                )
-
-                result = ActionSuccessResult(outputs=return_value)
-            except AgentTerminated:
-                raise
-            except AgentException as e:
-                result = ActionErrorResult.from_exception(e)
-                logger.warning(f"{tool_call} raised an error: {e}")
-                sentry_sdk.capture_exception(e)
-
-            result_tlength = self.llm_provider.count_tokens(str(result), self.llm.name)
-            if result_tlength > self.send_token_limit // 3:
-                result = ActionErrorResult(
-                    reason=f"Command {tool_name} returned too much output. "
-                    "Do not execute this command again with the same arguments."
-                )
 
         await self.run_pipeline(AfterExecute.after_execute, result)
 
@@ -295,24 +280,37 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
         return result
 
-    async def _execute_command(
-        self,
-        command_name: str,
-        arguments: dict[str, str],
-    ) -> CommandOutput:
+    async def do_not_execute(
+        self, denied_proposal: OneShotAgentActionProposal, user_feedback: str
+    ) -> ActionResult:
+        result = ActionInterruptedByHuman(feedback=user_feedback)
+        self.log_cycle_handler.log_cycle(
+            self.state.ai_profile.ai_name,
+            self.created_at,
+            self.config.cycle_count,
+            user_feedback,
+            USER_INPUT_FILE_NAME,
+        )
+
+        await self.run_pipeline(AfterExecute.after_execute, result)
+
+        logger.debug("\n".join(self.trace))
+
+        return result
+
+    async def _execute_tool(self, tool_call: AssistantFunctionCall) -> CommandOutput:
         """Execute the command and return the result
 
         Args:
-            command_name (str): The name of the command to execute
-            arguments (dict): The arguments for the command
+            tool_call (AssistantFunctionCall): The tool call to execute
 
         Returns:
-            str: The result of the command
+            str: The execution result
         """
         # Execute a native command with the same name or alias, if it exists
-        command = self._get_command(command_name)
+        command = self._get_command(tool_call.name)
         try:
-            result = command(**arguments)
+            result = command(**tool_call.arguments)
             if inspect.isawaitable(result):
                 return await result
             return result

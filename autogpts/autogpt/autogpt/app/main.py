@@ -18,7 +18,7 @@ from forge.sdk.db import AgentDB
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
-    from autogpt.agents.base import AgentActionProposal
+    from autogpt.agents.base import BaseAgentActionProposal
 
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
@@ -229,13 +229,12 @@ async def run_auto_gpt(
         )
 
         if (
-            agent.event_history.current_episode
-            and agent.event_history.current_episode.action.name
-            == DEFAULT_FINISH_COMMAND
-            and not agent.event_history.current_episode.result
+            (current_episode := agent.event_history.current_episode)
+            and current_episode.action.use_tool.name == DEFAULT_FINISH_COMMAND
+            and not current_episode.result
         ):
             # Agent was resumed after `finish` -> rewrite result of `finish` action
-            finish_reason = agent.event_history.current_episode.action.args["reason"]
+            finish_reason = current_episode.action.use_tool.arguments["reason"]
             print(f"Agent previously self-terminated; reason: '{finish_reason}'")
             new_assignment = clean_input(
                 config, "Please give a follow-up question or assignment:"
@@ -565,12 +564,12 @@ async def run_interaction_loop(
         ##################
         handle_stop_signal()
         if cycles_remaining == 1:  # Last cycle
-            user_feedback, user_input, new_cycles_remaining = await get_user_feedback(
+            feedback_type, feedback, new_cycles_remaining = await get_user_feedback(
                 legacy_config,
                 ai_profile,
             )
 
-            if user_feedback == UserFeedback.AUTHORIZE:
+            if feedback_type == UserFeedback.AUTHORIZE:
                 if new_cycles_remaining is not None:
                     # Case 1: User is altering the cycle budget.
                     if cycle_budget > 1:
@@ -594,13 +593,13 @@ async def run_interaction_loop(
                     "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
                     extra={"color": Fore.MAGENTA},
                 )
-            elif user_feedback == UserFeedback.EXIT:
+            elif feedback_type == UserFeedback.EXIT:
                 logger.warning("Exiting...")
                 exit()
             else:  # user_feedback == UserFeedback.TEXT
-                command_name = "human_feedback"
+                pass
         else:
-            user_input = ""
+            feedback = ""
             # First log new-line so user can differentiate sections better in console
             print()
             if cycles_remaining != math.inf:
@@ -615,7 +614,7 @@ async def run_interaction_loop(
         # Decrement the cycle counter first to reduce the likelihood of a SIGINT
         # happening during command execution, setting the cycles remaining to 1,
         # and then having the decrement set it to 0, exiting the application.
-        if action_proposal.use_tool.name != "human_feedback":
+        if not feedback:
             cycles_remaining -= 1
 
         if not action_proposal.use_tool:
@@ -623,23 +622,23 @@ async def run_interaction_loop(
 
         handle_stop_signal()
 
-        if action_proposal.use_tool:
-            result = await agent.execute(action_proposal.use_tool, user_input)
+        if not feedback:
+            result = await agent.execute(action_proposal)
+        else:
+            result = await agent.do_not_execute(action_proposal, feedback)
 
-            if result.status == "success":
-                logger.info(
-                    result, extra={"title": "SYSTEM:", "title_color": Fore.YELLOW}
-                )
-            elif result.status == "error":
-                logger.warning(
-                    f"Command {action_proposal.use_tool.name} returned an error: "
-                    f"{result.error or result.reason}"
-                )
+        if result.status == "success":
+            logger.info(result, extra={"title": "SYSTEM:", "title_color": Fore.YELLOW})
+        elif result.status == "error":
+            logger.warning(
+                f"Command {action_proposal.use_tool.name} returned an error: "
+                f"{result.error or result.reason}"
+            )
 
 
 def update_user(
     ai_profile: AIProfile,
-    action_proposal: "AgentActionProposal",
+    action_proposal: "BaseAgentActionProposal",
     speak_mode: bool = False,
 ) -> None:
     """Prints the assistant's thoughts and the next command to the user.

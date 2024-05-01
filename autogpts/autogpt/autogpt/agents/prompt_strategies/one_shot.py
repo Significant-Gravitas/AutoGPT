@@ -8,7 +8,7 @@ from logging import Logger
 import distro
 from pydantic import Field
 
-from autogpt.agents.base import AgentActionProposal
+from autogpt.agents.base import BaseAgentActionProposal
 from autogpt.config import AIDirectives, AIProfile
 from autogpt.core.configuration.schema import SystemConfiguration, UserConfigurable
 from autogpt.core.prompting import (
@@ -46,7 +46,7 @@ class AssistantThoughts(ModelWithSummary):
         return self.text
 
 
-class OneShotAgentActionProposal(AgentActionProposal):
+class OneShotAgentActionProposal(BaseAgentActionProposal):
     thoughts: AssistantThoughts
 
 
