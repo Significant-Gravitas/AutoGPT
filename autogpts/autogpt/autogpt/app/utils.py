@@ -20,34 +20,6 @@ logger = logging.getLogger(__name__)
 
 def clean_input(config: "Config", prompt: str = ""):
     try:
-        if config.chat_messages_enabled:
-            for plugin in config.plugins:
-                if not hasattr(plugin, "can_handle_user_input"):
-                    continue
-                if not plugin.can_handle_user_input(user_input=prompt):
-                    continue
-                plugin_response = plugin.user_input(user_input=prompt)
-                if not plugin_response:
-                    continue
-                if plugin_response.lower() in [
-                    "yes",
-                    "yeah",
-                    "y",
-                    "ok",
-                    "okay",
-                    "sure",
-                    "alright",
-                ]:
-                    return config.authorise_key
-                elif plugin_response.lower() in [
-                    "no",
-                    "nope",
-                    "n",
-                    "negative",
-                ]:
-                    return config.exit_key
-                return plugin_response
-
         # ask for input, default when just pressing Enter is y
         logger.debug("Asking user via keyboard...")
 
@@ -215,7 +187,7 @@ def print_motd(config: "Config", logger: logging.Logger):
                 },
                 msg=motd_line,
             )
-        if is_new_motd and not config.chat_messages_enabled:
+        if is_new_motd:
             input(
                 Fore.MAGENTA
                 + Style.BRIGHT

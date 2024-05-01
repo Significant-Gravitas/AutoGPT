@@ -28,6 +28,7 @@ from autogpt.core.resource.schema import (
     ResourceType,
 )
 from autogpt.core.utils.json_schema import JSONSchema
+from autogpt.logs.utils import fmt_kwargs
 
 if TYPE_CHECKING:
     from jsonschema import ValidationError
@@ -77,6 +78,9 @@ class ChatMessageDict(TypedDict):
 class AssistantFunctionCall(BaseModel):
     name: str
     arguments: dict[str, Any]
+
+    def __str__(self) -> str:
+        return f"{self.name}({fmt_kwargs(self.arguments)})"
 
 
 class AssistantFunctionCallDict(TypedDict):

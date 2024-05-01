@@ -48,7 +48,6 @@ def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
             smart_llm=config.smart_llm,
             allow_fs_access=not config.restrict_to_workspace,
             use_functions_api=config.openai_functions,
-            plugins=config.plugins,
         ),
         history=Agent.default_settings.history.copy(deep=True),
     )
