@@ -91,6 +91,7 @@ class MultiProvider(Configurable[ModelProviderSettings], ChatModelProvider):
         completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
+        prefill_response: str = "",
         **kwargs,
     ) -> ChatModelResponse[_T]:
         """Create a completion using the Anthropic API."""
@@ -100,6 +101,7 @@ class MultiProvider(Configurable[ModelProviderSettings], ChatModelProvider):
             completion_parser=completion_parser,
             functions=functions,
             max_output_tokens=max_output_tokens,
+            prefill_response=prefill_response,
             **kwargs,
         )
 

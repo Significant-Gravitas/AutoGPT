@@ -104,7 +104,11 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.ai_profile = settings.ai_profile
         self.directives = settings.directives
         prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
-        prompt_config.use_functions_api = settings.config.use_functions_api
+        prompt_config.use_functions_api = (
+            settings.config.use_functions_api
+            # Anthropic currently doesn't support tools + prefilling :(
+            and self.llm.provider_name != "anthropic"
+        )
         self.prompt_strategy = OneShotAgentPromptStrategy(prompt_config, logger)
         self.commands: list[Command] = []
 
@@ -203,11 +207,8 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             prompt.messages,
             model_name=self.llm.name,
             completion_parser=self.prompt_strategy.parse_response_content,
-            functions=(
-                get_openai_command_specs(self.commands)
-                if self.config.use_functions_api
-                else []
-            ),
+            functions=prompt.functions,
+            prefill_response=prompt.prefill_response,
         )
         result = response.parsed_result
 

@@ -169,6 +169,7 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
         completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
+        prefill_response: str = "",
         **kwargs,
     ) -> ChatModelResponse[_T]:
         """Create a completion using the Anthropic API."""
@@ -177,6 +178,7 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
             model=model_name,
             functions=functions,
             max_output_tokens=max_output_tokens,
+            prefill_response=prefill_response,
             **kwargs,
         )
 
@@ -197,20 +199,11 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
             )
 
             # Merge prefill into generated response
-            if (_prefill_msg := anthropic_messages[-1])["role"] == "assistant":
-                anthropic_messages.pop(-1)
-                prefill_content = (
-                    _content
-                    if isinstance(_content := _prefill_msg["content"], str)
-                    else getattr(
-                        next(b for b in _content if getattr(b, "type") == "text"),
-                        "text",
-                    )
-                )
+            if prefill_response:
                 first_text_block = next(
                     b for b in _assistant_msg.content if b.type == "text"
                 )
-                first_text_block.text = prefill_content + first_text_block.text
+                first_text_block.text = prefill_response + first_text_block.text
 
             assistant_msg = AssistantChatMessage(
                 content="\n\n".join(
@@ -318,6 +311,7 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
         model: AnthropicModelName,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
+        prefill_response: str = "",
         **kwargs,
     ) -> tuple[list[MessageParam], MessageCreateParams]:
         """Prepare arguments for message completion API call.
@@ -422,6 +416,9 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
                         ],
                     }
                 )
+
+        if prefill_response:
+            messages.append({"role": "assistant", "content": prefill_response})
 
         return messages, kwargs  # type: ignore
 

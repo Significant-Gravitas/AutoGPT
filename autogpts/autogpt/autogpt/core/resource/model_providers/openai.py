@@ -395,6 +395,7 @@ class OpenAIProvider(
         completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
+        prefill_response: str = "",  # not supported by OpenAI
         **kwargs,
     ) -> ChatModelResponse[_T]:
         """Create a completion using the OpenAI API and parse it."""

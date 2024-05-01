@@ -413,6 +413,7 @@ class ChatModelProvider(ModelProvider):
         completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
+        prefill_response: str = "",
         **kwargs,
     ) -> ChatModelResponse[_T]:
         ...
