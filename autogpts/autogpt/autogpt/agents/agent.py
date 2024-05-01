@@ -19,7 +19,6 @@ from autogpt.components.event_history import EventHistoryComponent
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
-    AssistantChatMessage,
     AssistantFunctionCall,
     ChatMessage,
     ChatModelProvider,
@@ -46,7 +45,6 @@ from autogpt.utils.exceptions import (
     AgentException,
     AgentTerminated,
     CommandExecutionError,
-    InvalidArgumentError,
     UnknownCommandError,
 )
 

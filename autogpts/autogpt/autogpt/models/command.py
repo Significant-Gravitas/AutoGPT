@@ -3,8 +3,6 @@ from __future__ import annotations
 import inspect
 from typing import Any, Callable
 
-from autogpt.core.utils.json_schema import JSONSchema
-
 from .command_parameter import CommandParameter
 from .context_item import ContextItem
 
