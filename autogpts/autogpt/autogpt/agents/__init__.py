@@ -1,4 +1,9 @@
-from .agent import Agent
-from .base import AgentThoughts, BaseAgent, CommandArgs, CommandName
+from .agent import Agent, OneShotAgentActionProposal
+from .base import BaseAgent, BaseAgentActionProposal
 
-__all__ = ["BaseAgent", "Agent", "CommandName", "CommandArgs", "AgentThoughts"]
+__all__ = [
+    "BaseAgent",
+    "Agent",
+    "BaseAgentActionProposal",
+    "OneShotAgentActionProposal",
+]
