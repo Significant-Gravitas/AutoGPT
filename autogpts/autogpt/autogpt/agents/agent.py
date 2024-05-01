@@ -27,7 +27,7 @@ from autogpt.core.resource.model_providers import (
 )
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.file_storage.base import FileStorage
-from autogpt.llm.providers.openai import get_openai_command_specs
+from autogpt.llm.providers.openai import function_specs_from_commands
 from autogpt.logs.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
@@ -176,7 +176,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             task=self.state.task,
             ai_profile=self.state.ai_profile,
             ai_directives=directives,
-            commands=get_openai_command_specs(self.commands),
+            commands=function_specs_from_commands(self.commands),
             include_os_info=self.legacy_config.execute_local_commands,
         )
 
