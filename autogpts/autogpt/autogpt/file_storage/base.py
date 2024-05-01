@@ -22,43 +22,6 @@ from autogpt.core.configuration.schema import SystemConfiguration
 logger = logging.getLogger(__name__)
 
 
-class FileSyncHandler(FileSystemEventHandler):
-    def __init__(self, storage: FileStorage):
-        self.storage = storage
-
-    async def on_modified(self, event):
-        if event.is_directory:
-            return
-
-        file_path = event.src_path
-        with open(file_path, "rb") as f:
-            content = f.read()
-            assert isinstance(content, bytes)
-            await self.storage.write_file(file_path, content)
-
-    async def on_created(self, event):
-        if event.is_directory:
-            self.storage.make_dir(event.src_path)
-            return
-
-        file_path = event.src_path
-        with open(file_path, "rb") as f:
-            content = f.read()
-            assert isinstance(content, bytes)
-            await self.storage.write_file(file_path, content)
-
-    def on_deleted(self, event):
-        if event.is_directory:
-            self.storage.delete_dir(event.src_path)
-            return
-
-        file_path = event.src_path
-        self.storage.delete_file(file_path)
-
-    def on_moved(self, event):
-        self.storage.rename(event.src_path, event.dest_path)
-
-
 class FileStorageConfiguration(SystemConfiguration):
     restrict_to_root: bool = True
     root: Path = Path("/")
@@ -262,3 +225,40 @@ class FileStorage(ABC):
             )
 
         return full_path
+
+
+class FileSyncHandler(FileSystemEventHandler):
+    def __init__(self, storage: FileStorage):
+        self.storage = storage
+
+    async def on_modified(self, event):
+        if event.is_directory:
+            return
+
+        file_path = event.src_path
+        with open(file_path, "rb") as f:
+            content = f.read()
+            assert isinstance(content, bytes)
+            await self.storage.write_file(file_path, content)
+
+    async def on_created(self, event):
+        if event.is_directory:
+            self.storage.make_dir(event.src_path)
+            return
+
+        file_path = event.src_path
+        with open(file_path, "rb") as f:
+            content = f.read()
+            assert isinstance(content, bytes)
+            await self.storage.write_file(file_path, content)
+
+    def on_deleted(self, event):
+        if event.is_directory:
+            self.storage.delete_dir(event.src_path)
+            return
+
+        file_path = event.src_path
+        self.storage.delete_file(file_path)
+
+    def on_moved(self, event):
+        self.storage.rename(event.src_path, event.dest_path)

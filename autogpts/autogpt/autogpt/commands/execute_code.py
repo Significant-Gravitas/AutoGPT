@@ -114,7 +114,7 @@ class CodeExecutorComponent(CommandProvider):
             str: The STDOUT captured from the code when it ran.
         """
 
-        temp_path = Path("")
+        temp_path = ""
         while True:
             temp_path = f"temp{self._generate_random_string()}.py"
             if not self.workspace.exists(temp_path):
@@ -146,7 +146,7 @@ class CodeExecutorComponent(CommandProvider):
             ),
         },
     )
-    def execute_python_file(self, filename: str, args: list[str] | str = []) -> str:
+    def execute_python_file(self, filename: str, args: list[str] = []) -> str:
         """Execute a Python file in a Docker container and return the output
 
         Args:
@@ -157,9 +157,6 @@ class CodeExecutorComponent(CommandProvider):
             str: The output of the file
         """
         logger.info(f"Executing python file '{filename}'")
-
-        if isinstance(args, str):
-            args = args.split()  # Convert space-separated string to a list
 
         if not str(filename).endswith(".py"):
             raise InvalidArgumentError("Invalid file type. Only .py files are allowed.")
@@ -191,96 +188,7 @@ class CodeExecutorComponent(CommandProvider):
                     raise CodeExecutionError(result.stderr)
 
         logger.debug("AutoGPT is not running in a Docker container")
-        try:
-            assert self.state.agent_id, "Need Agent ID to attach Docker container"
-
-            client = docker.from_env()
-            image_name = "python:3-alpine"
-            container_is_fresh = False
-            container_name = f"{self.state.agent_id}_sandbox"
-            with self.workspace.mount() as local_path:
-                # Ensure the directory exists
-                directory = (local_path / filename).parent
-                os.makedirs(directory, exist_ok=True)
-                # Copy the file to the temporary workspace
-                content = self.workspace.read_file(file_path, binary=True)
-                with open(local_path / filename, "wb") as file:
-                    file.write(content)
-
-                try:
-                    container: DockerContainer = client.containers.get(
-                        container_name
-                    )  # type: ignore
-                except NotFound:
-                    try:
-                        client.images.get(image_name)
-                        logger.debug(f"Image '{image_name}' found locally")
-                    except ImageNotFound:
-                        logger.info(
-                            f"Image '{image_name}' not found locally,"
-                            " pulling from Docker Hub..."
-                        )
-                        # Use the low-level API to stream the pull response
-                        low_level_client = docker.APIClient()
-                        for line in low_level_client.pull(
-                            image_name, stream=True, decode=True
-                        ):
-                            # Print the status and progress, if available
-                            status = line.get("status")
-                            progress = line.get("progress")
-                            if status and progress:
-                                logger.info(f"{status}: {progress}")
-                            elif status:
-                                logger.info(status)
-
-                    logger.debug(f"Creating new {image_name} container...")
-                    container: DockerContainer = client.containers.run(
-                        image_name,
-                        ["sleep", "60"],  # Max 60 seconds to prevent permanent hangs
-                        volumes={
-                            str(Path(local_path).absolute()): {
-                                "bind": "/workspace",
-                                "mode": "rw",
-                            }
-                        },
-                        working_dir="/workspace",
-                        stderr=True,
-                        stdout=True,
-                        detach=True,
-                        name=container_name,
-                    )  # type: ignore
-                    container_is_fresh = True
-
-                if not container.status == "running":
-                    container.start()
-                elif not container_is_fresh:
-                    container.restart()
-
-                logger.debug(f"Running {file_path} in container {container.name}...")
-
-                exec_result = container.exec_run(
-                    [
-                        "python",
-                        "-B",
-                        filename,
-                    ]
-                    + args,
-                    stderr=True,
-                    stdout=True,
-                )
-
-                if exec_result.exit_code != 0:
-                    raise CodeExecutionError(exec_result.output.decode("utf-8"))
-
-                return exec_result.output.decode("utf-8")
-
-        except DockerException as e:
-            logger.warning(
-                "Could not run the script in a container. "
-                "If you haven't already, please install Docker: "
-                "https://docs.docker.com/get-docker/"
-            )
-            raise CommandExecutionError(f"Could not run the script in a container: {e}")
+        return self._run_python_code_in_docker(filename, args)
 
     def validate_command(self, command_line: str, config: Config) -> tuple[bool, bool]:
         """Check whether a command is allowed and whether it may be executed in a shell.
@@ -405,6 +313,100 @@ class CodeExecutorComponent(CommandProvider):
         os.chdir(current_dir)
 
         return f"Subprocess started with PID:'{str(process.pid)}'"
+
+    def _run_python_code_in_docker(self, filename: str, args: list[str]) -> str:
+        """Run a Python script in a Docker container"""
+        file_path = self.workspace.get_path(filename)
+        try:
+            assert self.state.agent_id, "Need Agent ID to attach Docker container"
+
+            client = docker.from_env()
+            image_name = "python:3-alpine"
+            container_is_fresh = False
+            container_name = f"{self.state.agent_id}_sandbox"
+            with self.workspace.mount() as local_path:
+                # Ensure the directory exists
+                directory = (local_path / filename).parent
+                os.makedirs(directory, exist_ok=True)
+                # Copy the file to the temporary workspace
+                content = self.workspace.read_file(file_path, binary=True)
+                with open(local_path / filename, "wb") as file:
+                    file.write(content)
+
+                try:
+                    container: DockerContainer = client.containers.get(
+                        container_name
+                    )  # type: ignore
+                except NotFound:
+                    try:
+                        client.images.get(image_name)
+                        logger.debug(f"Image '{image_name}' found locally")
+                    except ImageNotFound:
+                        logger.info(
+                            f"Image '{image_name}' not found locally,"
+                            " pulling from Docker Hub..."
+                        )
+                        # Use the low-level API to stream the pull response
+                        low_level_client = docker.APIClient()
+                        for line in low_level_client.pull(
+                            image_name, stream=True, decode=True
+                        ):
+                            # Print the status and progress, if available
+                            status = line.get("status")
+                            progress = line.get("progress")
+                            if status and progress:
+                                logger.info(f"{status}: {progress}")
+                            elif status:
+                                logger.info(status)
+
+                    logger.debug(f"Creating new {image_name} container...")
+                    container: DockerContainer = client.containers.run(
+                        image_name,
+                        ["sleep", "60"],  # Max 60 seconds to prevent permanent hangs
+                        volumes={
+                            str(Path(local_path).absolute()): {
+                                "bind": "/workspace",
+                                "mode": "rw",
+                            }
+                        },
+                        working_dir="/workspace",
+                        stderr=True,
+                        stdout=True,
+                        detach=True,
+                        name=container_name,
+                    )  # type: ignore
+                    container_is_fresh = True
+
+                if not container.status == "running":
+                    container.start()
+                elif not container_is_fresh:
+                    container.restart()
+
+                logger.debug(f"Running {file_path} in container {container.name}...")
+
+                exec_result = container.exec_run(
+                    [
+                        "python",
+                        "-B",
+                        filename,
+                    ]
+                    + args,
+                    stderr=True,
+                    stdout=True,
+                )
+
+                if exec_result.exit_code != 0:
+                    raise CodeExecutionError(exec_result.output.decode("utf-8"))
+
+                return exec_result.output.decode("utf-8")
+
+        except DockerException as e:
+            logger.warning(
+                "Could not run the script in a container. "
+                "If you haven't already, please install Docker: "
+                "https://docs.docker.com/get-docker/"
+            )
+            raise CommandExecutionError(f"Could not run the script in a container: {e}")
 
     def _generate_random_string(self, length: int = 8):
         # Create a string of all letters and digits
