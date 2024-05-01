@@ -217,7 +217,7 @@ class AgentProtocolServer:
             execute_approved = not user_input
 
             logger.debug(
-                f"Agent proposed command {last_proposal.use_tool})."
+                f"Agent proposed command {last_proposal.use_tool}."
                 f" User input/feedback: {repr(user_input)}"
             )
 
@@ -302,7 +302,7 @@ class AgentProtocolServer:
         )
         output += f"{assistant_response.thoughts.speak}\n\n"
         output += (
-            f"Next Command: {next_tool_to_use})"
+            f"Next Command: {next_tool_to_use}"
             if next_tool_to_use.name != DEFAULT_ASK_COMMAND
             else next_tool_to_use.arguments["question"]
         )
