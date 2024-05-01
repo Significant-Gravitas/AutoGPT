@@ -33,11 +33,9 @@ from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.app.utils import is_port_free
 from autogpt.config import Config
-from autogpt.core.resource.model_providers import ChatModelProvider
+from autogpt.core.resource.model_providers import ChatModelProvider, ModelProviderBudget
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
-from autogpt.core.resource.model_providers.schema import ModelProviderBudget
 from autogpt.file_storage import FileStorage
-from autogpt.logs.utils import fmt_kwargs
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
 from autogpt.utils.exceptions import AgentFinished
 from autogpt.utils.utils import DEFAULT_ASK_COMMAND, DEFAULT_FINISH_COMMAND
@@ -201,7 +199,7 @@ class AgentProtocolServer:
         # To prevent this from interfering with the agent's process, we ignore the input
         #  of this first step request, and just generate the first step proposal.
         is_init_step = not bool(agent.event_history)
-        execute_command, execute_command_args, execute_result = None, None, None
+        last_proposal, tool_result = None, None
         execute_approved = False
 
         # HACK: only for compatibility with AGBenchmark
@@ -215,13 +213,11 @@ class AgentProtocolServer:
             and agent.event_history.current_episode
             and not agent.event_history.current_episode.result
         ):
-            execute_command = agent.event_history.current_episode.action.name
-            execute_command_args = agent.event_history.current_episode.action.args
+            last_proposal = agent.event_history.current_episode.action
             execute_approved = not user_input
 
             logger.debug(
-                f"Agent proposed command"
-                f" {execute_command}({fmt_kwargs(execute_command_args)})."
+                f"Agent proposed command {last_proposal.use_tool}."
                 f" User input/feedback: {repr(user_input)}"
             )
 
@@ -229,24 +225,25 @@ class AgentProtocolServer:
         step = await self.db.create_step(
             task_id=task_id,
             input=step_request,
-            is_last=execute_command == DEFAULT_FINISH_COMMAND and execute_approved,
+            is_last=(
+                last_proposal is not None
+                and last_proposal.use_tool.name == DEFAULT_FINISH_COMMAND
+                and execute_approved
+            ),
         )
         agent.llm_provider = self._get_task_llm_provider(task, step.step_id)
 
         # Execute previously proposed action
-        if execute_command:
-            assert execute_command_args is not None
+        if last_proposal:
             agent.file_manager.workspace.on_write_file = (
                 lambda path: self._on_agent_write_file(
                     task=task, step=step, relative_path=path
                 )
             )
 
-            if execute_command == DEFAULT_ASK_COMMAND:
-                execute_result = ActionSuccessResult(outputs=user_input)
-                agent.event_history.register_result(execute_result)
-            elif not execute_command:
-                execute_result = None
+            if last_proposal.use_tool.name == DEFAULT_ASK_COMMAND:
+                tool_result = ActionSuccessResult(outputs=user_input)
+                agent.event_history.register_result(tool_result)
             elif execute_approved:
                 step = await self.db.update_step(
                     task_id=task_id,
@@ -256,10 +253,7 @@ class AgentProtocolServer:
 
                 try:
                     # Execute previously proposed action
-                    execute_result = await agent.execute(
-                        command_name=execute_command,
-                        command_args=execute_command_args,
-                    )
+                    tool_result = await agent.execute(last_proposal)
                 except AgentFinished:
                     additional_output = {}
                     task_total_cost = agent.llm_provider.get_incurred_cost()
@@ -273,25 +267,20 @@ class AgentProtocolServer:
                     step = await self.db.update_step(
                         task_id=task_id,
                         step_id=step.step_id,
-                        output=execute_command_args["reason"],
+                        output=last_proposal.use_tool.arguments["reason"],
                         additional_output=additional_output,
                     )
                     await agent.file_manager.save_state()
                     return step
             else:
                 assert user_input
-                execute_result = await agent.execute(
-                    command_name="human_feedback",  # HACK
-                    command_args={},
-                    user_input=user_input,
-                )
+                tool_result = await agent.do_not_execute(last_proposal, user_input)
 
         # Propose next action
         try:
-            next_command, next_command_args, raw_output = (
-                await agent.propose_action()
-            ).to_tuple()
-            logger.debug(f"AI output: {raw_output}")
+            assistant_response = await agent.propose_action()
+            next_tool_to_use = assistant_response.use_tool
+            logger.debug(f"AI output: {assistant_response.thoughts}")
         except Exception as e:
             step = await self.db.update_step(
                 task_id=task_id,
@@ -304,44 +293,44 @@ class AgentProtocolServer:
         # Format step output
         output = (
             (
-                f"`{execute_command}({fmt_kwargs(execute_command_args)})` returned:"
-                + ("\n\n" if "\n" in str(execute_result) else " ")
-                + f"{execute_result}\n\n"
+                f"`{last_proposal.use_tool}` returned:"
+                + ("\n\n" if "\n" in str(tool_result) else " ")
+                + f"{tool_result}\n\n"
             )
-            if execute_command_args and execute_command != DEFAULT_ASK_COMMAND
+            if last_proposal and last_proposal.use_tool.name != DEFAULT_ASK_COMMAND
             else ""
         )
-        output += f"{raw_output['thoughts']['speak']}\n\n"
+        output += f"{assistant_response.thoughts.speak}\n\n"
         output += (
-            f"Next Command: {next_command}({fmt_kwargs(next_command_args)})"
-            if next_command != DEFAULT_ASK_COMMAND
-            else next_command_args["question"]
+            f"Next Command: {next_tool_to_use}"
+            if next_tool_to_use.name != DEFAULT_ASK_COMMAND
+            else next_tool_to_use.arguments["question"]
         )
 
         additional_output = {
             **(
                 {
                     "last_action": {
-                        "name": execute_command,
-                        "args": execute_command_args,
+                        "name": last_proposal.use_tool.name,
+                        "args": last_proposal.use_tool.arguments,
                         "result": (
                             ""
-                            if execute_result is None
+                            if tool_result is None
                             else (
-                                orjson.loads(execute_result.json())
-                                if not isinstance(execute_result, ActionErrorResult)
+                                orjson.loads(tool_result.json())
+                                if not isinstance(tool_result, ActionErrorResult)
                                 else {
-                                    "error": str(execute_result.error),
-                                    "reason": execute_result.reason,
+                                    "error": str(tool_result.error),
+                                    "reason": tool_result.reason,
                                 }
                             )
                         ),
                     },
                 }
-                if not is_init_step
+                if last_proposal and tool_result
                 else {}
             ),
-            **raw_output,
+            **assistant_response.dict(),
         }
 
         task_cumulative_cost = agent.llm_provider.get_incurred_cost()
