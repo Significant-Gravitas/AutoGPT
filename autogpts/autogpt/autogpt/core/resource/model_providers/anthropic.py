@@ -373,7 +373,17 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
             if message.role == ChatMessage.Role.SYSTEM:
                 continue
             elif message.role == ChatMessage.Role.USER:
-                messages.append({"role": "user", "content": message.content})
+                # Merge subsequent user messages
+                if messages and (prev_msg := messages[-1])["role"] == "user":
+                    if isinstance(prev_msg["content"], str):
+                        prev_msg["content"] += f"\n\n{message.content}"
+                    else:
+                        assert isinstance(prev_msg["content"], list)
+                        prev_msg["content"].append(
+                            {"type": "text", "text": message.content}
+                        )
+                else:
+                    messages.append({"role": "user", "content": message.content})
                 # TODO: add support for image blocks
             elif message.role == ChatMessage.Role.ASSISTANT:
                 if isinstance(message, AssistantChatMessage) and message.tool_calls:
