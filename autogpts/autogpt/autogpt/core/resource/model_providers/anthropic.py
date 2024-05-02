@@ -178,14 +178,18 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
             model=model_name,
             functions=functions,
             max_output_tokens=max_output_tokens,
-            prefill_response=prefill_response,
             **kwargs,
         )
 
         total_cost = 0.0
         attempts = 0
         while True:
-            completion_kwargs["messages"] = anthropic_messages
+            completion_kwargs["messages"] = anthropic_messages.copy()
+            if prefill_response:
+                completion_kwargs["messages"].append(
+                    {"role": "assistant", "content": prefill_response}
+                )
+
             (
                 _assistant_msg,
                 cost,
@@ -311,7 +315,6 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
         model: AnthropicModelName,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
-        prefill_response: str = "",
         **kwargs,
     ) -> tuple[list[MessageParam], MessageCreateParams]:
         """Prepare arguments for message completion API call.
@@ -416,9 +419,6 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
                         ],
                     }
                 )
-
-        if prefill_response:
-            messages.append({"role": "assistant", "content": prefill_response})
 
         return messages, kwargs  # type: ignore
 
