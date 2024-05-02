@@ -4,7 +4,10 @@ from typing import TYPE_CHECKING, Iterator
 from forge.agent.components import AgentComponent
 
 if TYPE_CHECKING:
-    from autogpt.agents.base import ThoughtProcessOutput
+    from autogpt.agents.base import BaseAgentActionProposal
+    from autogpt.core.resource.model_providers.schema import ChatMessage
+    from autogpt.models.action_history import ActionResult
+    from autogpt.models.command import Command
 
     from forge.command.command import Command
     from forge.components.event_history import ActionResult
@@ -35,7 +38,7 @@ class MessageProvider(AgentComponent):
 
 class AfterParse(AgentComponent):
     @abstractmethod
-    def after_parse(self, result: "ThoughtProcessOutput") -> None:
+    def after_parse(self, result: "BaseAgentActionProposal") -> None:
         ...
 
 

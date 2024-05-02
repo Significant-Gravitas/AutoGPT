@@ -164,8 +164,8 @@ class CodeExecutorComponent(CommandProvider):
         if not str(filename).endswith(".py"):
             raise InvalidArgumentError("Invalid file type. Only .py files are allowed.")
 
-        file_path = Path(filename)
-        if not file_path.is_file():
+        file_path = self.workspace.get_path(filename)
+        if not self.workspace.exists(file_path):
             # Mimic the response that you get from the command line to make it
             # intuitively understandable for the LLM
             raise FileNotFoundError(
