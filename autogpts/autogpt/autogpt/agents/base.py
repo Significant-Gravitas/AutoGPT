@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from autogpt.core.resource.model_providers.schema import (
         ChatModelInfo,
     )
+    from autogpt.models.action_history import ActionResult
 
 from autogpt.agents import protocols as _protocols
 from autogpt.agents.components import (
@@ -38,21 +39,18 @@ from autogpt.core.configuration import (
     SystemSettings,
     UserConfigurable,
 )
+from autogpt.core.resource.model_providers import AssistantFunctionCall
 from autogpt.core.resource.model_providers.openai import (
     OPEN_AI_CHAT_MODELS,
     OpenAIModelName,
 )
-from autogpt.models.action_history import ActionResult, EpisodicActionHistory
+from autogpt.models.utils import ModelWithSummary
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 P = ParamSpec("P")
-
-CommandName = str
-CommandArgs = dict[str, str]
-AgentThoughts = dict[str, Any]
 
 
 class BaseAgentConfiguration(SystemConfiguration):
@@ -131,9 +129,6 @@ class BaseAgentSettings(SystemSettings):
     config: BaseAgentConfiguration = Field(default_factory=BaseAgentConfiguration)
     """The configuration for this BaseAgent subsystem instance."""
 
-    history: EpisodicActionHistory = Field(default_factory=EpisodicActionHistory)
-    """(STATE) The action history of the agent."""
-
 
 class AgentMeta(ABCMeta):
     def __call__(cls, *args, **kwargs):
@@ -144,13 +139,9 @@ class AgentMeta(ABCMeta):
         return instance
 
 
-class ThoughtProcessOutput(BaseModel):
-    command_name: str = ""
-    command_args: dict[str, Any] = Field(default_factory=dict)
-    thoughts: dict[str, Any] = Field(default_factory=dict)
-
-    def to_tuple(self) -> tuple[CommandName, CommandArgs, AgentThoughts]:
-        return self.command_name, self.command_args, self.thoughts
+class BaseAgentActionProposal(BaseModel):
+    thoughts: str | ModelWithSummary
+    use_tool: AssistantFunctionCall = None
 
 
 class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
@@ -190,15 +181,22 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
         return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
 
     @abstractmethod
-    async def propose_action(self) -> ThoughtProcessOutput:
+    async def propose_action(self) -> BaseAgentActionProposal:
         ...
 
     @abstractmethod
     async def execute(
         self,
-        command_name: str,
-        command_args: dict[str, str] = {},
-        user_input: str = "",
+        proposal: BaseAgentActionProposal,
+        user_feedback: str = "",
+    ) -> ActionResult:
+        ...
+
+    @abstractmethod
+    async def do_not_execute(
+        self,
+        denied_proposal: BaseAgentActionProposal,
+        user_feedback: str,
     ) -> ActionResult:
         ...
 
