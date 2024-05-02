@@ -5,7 +5,6 @@ from pathlib import Path
 
 from autogpt.agent_manager.agent_manager import AgentManager
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.agents.prompt_strategies.one_shot import OneShotAgentPromptStrategy
 from autogpt.app.main import _configure_llm_provider, run_interaction_loop
 from autogpt.config import AIProfile, ConfigBuilder
 from autogpt.file_storage import FileStorageBackendName, get_storage
