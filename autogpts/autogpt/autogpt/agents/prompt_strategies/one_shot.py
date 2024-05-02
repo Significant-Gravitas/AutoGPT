@@ -69,7 +69,16 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
         "{best_practices}"
     )
 
+    DEFAULT_CHOOSE_ACTION_INSTRUCTION: str = (
+        "Determine exactly one command to use next based on the given goals "
+        "and the progress you have made so far, "
+        "and respond using the JSON schema specified previously:"
+    )
+
     body_template: str = UserConfigurable(default=DEFAULT_BODY_TEMPLATE)
+    choose_action_instruction: str = UserConfigurable(
+        default=DEFAULT_CHOOSE_ACTION_INSTRUCTION
+    )
     use_functions_api: bool = UserConfigurable(default=False)
 
     #########
@@ -120,11 +129,14 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             include_os_info=include_os_info,
         )
 
+        final_instruction_msg = ChatMessage.user(self.config.choose_action_instruction)
+
         return ChatPrompt(
             messages=[
                 ChatMessage.system(system_prompt),
                 ChatMessage.user(f'"""{task}"""'),
                 *messages,
+                final_instruction_msg,
             ],
             prefill_response=response_prefill,
             functions=commands if self.config.use_functions_api else [],
