@@ -59,7 +59,7 @@ class BaseAgentConfiguration(SystemConfiguration):
 
     fast_llm: ModelName = UserConfigurable(default=OpenAIModelName.GPT3_16k)
     smart_llm: ModelName = UserConfigurable(default=OpenAIModelName.GPT4)
-    use_functions_api: bool = UserConfigurable(default=True)
+    use_functions_api: bool = UserConfigurable(default=False)
 
     default_cycle_instruction: str = DEFAULT_TRIGGERING_PROMPT
     """The default instruction passed to the AI for a thinking cycle."""
