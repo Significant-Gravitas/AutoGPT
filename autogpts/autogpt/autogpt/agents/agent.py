@@ -109,7 +109,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.commands: list[Command] = []
 
         # Components
-        self.system = SystemComponent(legacy_config, settings.ai_profile)
+        self.system = SystemComponent(legacy_config)
         self.history = EventHistoryComponent(
             settings.history,
             self.send_token_limit,

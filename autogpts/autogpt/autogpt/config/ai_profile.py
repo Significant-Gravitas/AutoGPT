@@ -18,7 +18,6 @@ class AIProfile(BaseModel):
     ai_name: str = ""
     ai_role: str = ""
     ai_goals: list[str] = Field(default_factory=list[str])
-    api_budget: float = 0.0
 
     @staticmethod
     def load(ai_settings_file: str | Path) -> "AIProfile":
@@ -47,11 +46,8 @@ class AIProfile(BaseModel):
             else str(goal)
             for goal in config_params.get("ai_goals", [])
         ]
-        api_budget = config_params.get("api_budget", 0.0)
 
-        return AIProfile(
-            ai_name=ai_name, ai_role=ai_role, ai_goals=ai_goals, api_budget=api_budget
-        )
+        return AIProfile(ai_name=ai_name, ai_role=ai_role, ai_goals=ai_goals)
 
     def save(self, ai_settings_file: str | Path) -> None:
         """

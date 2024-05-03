@@ -18,7 +18,6 @@ ai_goals:
 - "Goal 4: Wake up"
 ai_name: McFamished
 ai_role: A hungry AI
-api_budget: 0.0
 """
     ai_settings_file = tmp_path / "ai_settings.yaml"
     ai_settings_file.write_text(yaml_content)
@@ -41,7 +40,6 @@ api_budget: 0.0
 - 'Goal 4: Wake up'
 ai_name: McFamished
 ai_role: A hungry AI
-api_budget: 0.0
 """
     assert ai_settings_file.read_text() == yaml_content2
 
@@ -55,7 +53,6 @@ def test_ai_profile_file_not_exists(storage: FileStorage):
     assert ai_profile.ai_name == ""
     assert ai_profile.ai_role == ""
     assert ai_profile.ai_goals == []
-    assert ai_profile.api_budget == 0.0
 
 
 def test_ai_profile_file_is_empty(storage: FileStorage):
@@ -68,4 +65,3 @@ def test_ai_profile_file_is_empty(storage: FileStorage):
     assert ai_profile.ai_name == ""
     assert ai_profile.ai_role == ""
     assert ai_profile.ai_goals == []
-    assert ai_profile.api_budget == 0.0
