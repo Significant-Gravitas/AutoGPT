@@ -159,12 +159,13 @@ class FileStorage(ABC):
     @contextmanager
     def mount(self, path: str | Path = ".") -> Generator[Path, Any, None]:
         """Mount the file storage and provide a local path."""
-        local_path = tempfile.mkdtemp()
+        local_path = tempfile.mkdtemp(dir=path)
+        
         observer = Observer()
         try:
             # Sync changes
             event_handler = FileSyncHandler(self)
-            observer.schedule(event_handler, path, recursive=True)
+            observer.schedule(event_handler, local_path, recursive=True)
             observer.start()
 
             yield Path(local_path)

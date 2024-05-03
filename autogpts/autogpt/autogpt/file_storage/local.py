@@ -143,7 +143,4 @@ class LocalFileStorage(FileStorage):
     def mount(self, path: str | Path = ".") -> Generator[Path, Any, None]:
         """Mount the file storage and provide a local path."""
         # No need to do anything for local storage
-        try:
-            yield Path(path)
-        finally:
-            pass
+        yield Path(self.get_path(path)).absolute()
