@@ -34,7 +34,7 @@ benchmark = ["agbenchmark"]
 
 [tool.poetry.group.dev.dependencies]
 isort = "^5.12.0"
-black = "^23.3.0"
+black = ">=23.3,<25.0"
 pre-commit = "^3.3.3"
 mypy = "^1.4.1"
 flake8 = "^6.0.0"
