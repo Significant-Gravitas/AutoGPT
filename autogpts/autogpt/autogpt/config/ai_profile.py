@@ -3,6 +3,15 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
+DEFAULT_AI_NAME = "AutoGPT"
+DEFAULT_AI_ROLE = (
+    "a seasoned digital assistant: "
+    "capable, intelligent, considerate and assertive. "
+    "You have extensive research and development skills, and you don't shy "
+    "away from writing some code to solve a problem. "
+    "You are pragmatic and make the most out of the tools available to you."
+)
+
 
 class AIProfile(BaseModel):
     """
@@ -15,8 +24,9 @@ class AIProfile(BaseModel):
         api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
     """
 
-    ai_name: str = ""
-    ai_role: str = ""
+    ai_name: str = DEFAULT_AI_NAME
+    ai_role: str = DEFAULT_AI_ROLE
+    """`ai_role` should fit in the following format: `You are {ai_name}, {ai_role}`"""
     ai_goals: list[str] = Field(default_factory=list[str])
 
     @staticmethod
@@ -38,8 +48,8 @@ class AIProfile(BaseModel):
         except FileNotFoundError:
             config_params = {}
 
-        ai_name = config_params.get("ai_name", "")
-        ai_role = config_params.get("ai_role", "")
+        ai_name = config_params.get("ai_name", DEFAULT_AI_NAME)
+        ai_role = config_params.get("ai_role", DEFAULT_AI_ROLE)
         ai_goals = [
             str(goal).strip("{}").replace("'", "").replace('"', "")
             if isinstance(goal, dict)
