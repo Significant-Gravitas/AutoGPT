@@ -1,28 +1,19 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Iterator, Literal, Optional
+from typing import TYPE_CHECKING, Any, Generic, Iterator, Literal, Optional, TypeVar
 
 from pydantic import BaseModel, Field
+from pydantic.generics import GenericModel
 
+from autogpt.agents.base import BaseAgentActionProposal
+from autogpt.models.utils import ModelWithSummary
 from autogpt.processing.text import summarize_text
 from autogpt.prompts.utils import format_numbered_list, indent
 
 if TYPE_CHECKING:
     from autogpt.config.config import Config
     from autogpt.core.resource.model_providers import ChatModelProvider
-
-
-class Action(BaseModel):
-    name: str
-    args: dict[str, Any]
-    reasoning: str
-
-    def format_call(self) -> str:
-        return (
-            f"{self.name}"
-            f"({', '.join([f'{a}={repr(v)}' for a, v in self.args.items()])})"
-        )
 
 
 class ActionSuccessResult(BaseModel):
@@ -86,15 +77,22 @@ class ActionInterruptedByHuman(BaseModel):
 
 ActionResult = ActionSuccessResult | ActionErrorResult | ActionInterruptedByHuman
 
+AP = TypeVar("AP", bound=BaseAgentActionProposal)
 
-class Episode(BaseModel):
-    action: Action
+
+class Episode(GenericModel, Generic[AP]):
+    action: AP
     result: ActionResult | None
     summary: str | None = None
 
     def format(self):
-        step = f"Executed `{self.action.format_call()}`\n"
-        step += f'- **Reasoning:** "{self.action.reasoning}"\n'
+        step = f"Executed `{self.action.use_tool}`\n"
+        reasoning = (
+            _r.summary()
+            if isinstance(_r := self.action.thoughts, ModelWithSummary)
+            else _r
+        )
+        step += f'- **Reasoning:** "{reasoning}"\n'
         step += (
             "- **Status:** "
             f"`{self.result.status if self.result else 'did_not_finish'}`\n"
@@ -113,28 +111,28 @@ class Episode(BaseModel):
         return step
 
     def __str__(self) -> str:
-        executed_action = f"Executed `{self.action.format_call()}`"
+        executed_action = f"Executed `{self.action.use_tool}`"
         action_result = f": {self.result}" if self.result else "."
         return executed_action + action_result
 
 
-class EpisodicActionHistory(BaseModel):
+class EpisodicActionHistory(GenericModel, Generic[AP]):
     """Utility container for an action history"""
 
-    episodes: list[Episode] = Field(default_factory=list)
+    episodes: list[Episode[AP]] = Field(default_factory=list)
     cursor: int = 0
     _lock = asyncio.Lock()
 
     @property
-    def current_episode(self) -> Episode | None:
+    def current_episode(self) -> Episode[AP] | None:
         if self.cursor == len(self):
             return None
         return self[self.cursor]
 
-    def __getitem__(self, key: int) -> Episode:
+    def __getitem__(self, key: int) -> Episode[AP]:
         return self.episodes[key]
 
-    def __iter__(self) -> Iterator[Episode]:
+    def __iter__(self) -> Iterator[Episode[AP]]:
         return iter(self.episodes)
 
     def __len__(self) -> int:
@@ -143,7 +141,7 @@ class EpisodicActionHistory(BaseModel):
     def __bool__(self) -> bool:
         return len(self.episodes) > 0
 
-    def register_action(self, action: Action) -> None:
+    def register_action(self, action: AP) -> None:
         if not self.current_episode:
             self.episodes.append(Episode(action=action, result=None))
             assert self.current_episode

@@ -1,12 +1,11 @@
-from typing import Callable, Iterator, Optional
+from typing import Callable, Generic, Iterator, Optional
 
-from autogpt.agents.base import ThoughtProcessOutput
 from autogpt.agents.features.watchdog import WatchdogComponent
 from autogpt.agents.protocols import AfterExecute, AfterParse, MessageProvider
 from autogpt.config.config import Config
 from autogpt.core.resource.model_providers.schema import ChatMessage, ChatModelProvider
 from autogpt.models.action_history import (
-    Action,
+    AP,
     ActionResult,
     Episode,
     EpisodicActionHistory,
@@ -14,14 +13,14 @@ from autogpt.models.action_history import (
 from autogpt.prompts.utils import indent
 
 
-class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute):
+class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute, Generic[AP]):
     """Keeps track of the event history and provides a summary of the steps."""
 
     run_after = [WatchdogComponent]
 
     def __init__(
         self,
-        event_history: EpisodicActionHistory,
+        event_history: EpisodicActionHistory[AP],
         max_tokens: int,
         count_tokens: Callable[[str], int],
         legacy_config: Config,
@@ -41,15 +40,8 @@ class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute):
         ):
             yield ChatMessage.system(f"## Progress on your Task so far\n\n{progress}")
 
-    def after_parse(self, result: ThoughtProcessOutput) -> None:
-        if result.command_name:
-            self.event_history.register_action(
-                Action(
-                    name=result.command_name,
-                    args=result.command_args,
-                    reasoning=result.thoughts["thoughts"]["reasoning"],
-                )
-            )
+    def after_parse(self, result: AP) -> None:
+        self.event_history.register_action(result)
 
     async def after_execute(self, result: ActionResult) -> None:
         self.event_history.register_result(result)
