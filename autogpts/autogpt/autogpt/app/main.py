@@ -474,7 +474,7 @@ async def run_interaction_loop(
     """
     # These contain both application config and agent config, so grab them here.
     legacy_config = agent.legacy_config
-    ai_profile = agent.ai_profile
+    ai_profile = agent.state.ai_profile
     logger = logging.getLogger(__name__)
 
     cycle_budget = cycles_remaining = _get_cycle_budget(

@@ -101,8 +101,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         super().__init__(settings)
 
         self.llm_provider = llm_provider
-        self.ai_profile = settings.ai_profile
-        self.directives = settings.directives
         prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
         prompt_config.use_functions_api = settings.config.use_functions_api
         self.prompt_strategy = OneShotAgentPromptStrategy(prompt_config, logger)
