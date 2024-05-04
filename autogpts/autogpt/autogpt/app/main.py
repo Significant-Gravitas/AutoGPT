@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgentActionProposal
 
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
-from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
 from autogpt.commands.execute_code import (
@@ -328,7 +327,9 @@ async def run_auto_gpt(
 
         # TODO: re-evaluate performance benefit of task-oriented profiles
         # # Concurrently generate a custom profile for the agent and apply it once done
-        # def update_agent_directives(task: asyncio.Task[tuple[AIProfile, AIDirectives]]):
+        # def update_agent_directives(
+        #     task: asyncio.Task[tuple[AIProfile, AIDirectives]]
+        # ):
         #     logger.debug(f"Updating AIProfile: {task.result()[0]}")
         #     logger.debug(f"Adding AIDirectives: {task.result()[1]}")
         #     agent.state.ai_profile = task.result()[0]
