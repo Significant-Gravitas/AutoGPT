@@ -1,4 +1,4 @@
-from autogpt.config.ai_profile import AIProfile
+from autogpt.config.ai_profile import DEFAULT_AI_NAME, DEFAULT_AI_ROLE, AIProfile
 from autogpt.file_storage.base import FileStorage
 
 """
@@ -50,8 +50,8 @@ def test_ai_profile_file_not_exists(storage: FileStorage):
     ai_settings_file = storage.get_path("ai_settings.yaml")
 
     ai_profile = AIProfile.load(str(ai_settings_file))
-    assert ai_profile.ai_name == ""
-    assert ai_profile.ai_role == ""
+    assert ai_profile.ai_name == DEFAULT_AI_NAME
+    assert ai_profile.ai_role == DEFAULT_AI_ROLE
     assert ai_profile.ai_goals == []
 
 
@@ -62,6 +62,6 @@ def test_ai_profile_file_is_empty(storage: FileStorage):
     ai_settings_file.write_text("")
 
     ai_profile = AIProfile.load(str(ai_settings_file))
-    assert ai_profile.ai_name == ""
-    assert ai_profile.ai_role == ""
+    assert ai_profile.ai_name == DEFAULT_AI_NAME
+    assert ai_profile.ai_role == DEFAULT_AI_ROLE
     assert ai_profile.ai_goals == []
