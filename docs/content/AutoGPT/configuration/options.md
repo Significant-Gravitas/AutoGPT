@@ -7,6 +7,7 @@ Configuration is controlled through the `Config` object. You can set configurati
 - `AI_SETTINGS_FILE`: Location of the AI Settings file relative to the AutoGPT root directory. Default: ai_settings.yaml
 - `AUDIO_TO_TEXT_PROVIDER`: Audio To Text Provider. Only option currently is `huggingface`. Default: huggingface
 - `AUTHORISE_COMMAND_KEY`: Key response accepted when authorising commands. Default: y
+- `ANTHROPIC_API_KEY`: Set this if you want to use Anthropic models with AutoGPT
 - `AZURE_CONFIG_FILE`: Location of the Azure Config file relative to the AutoGPT root directory. Default: azure.yaml
 - `BROWSE_CHUNK_MAX_LENGTH`: When browsing website, define the length of chunks to summarize. Default: 3000
 - `BROWSE_SPACY_LANGUAGE_MODEL`: [spaCy language model](https://spacy.io/usage/models) to use when creating chunks. Default: en_core_web_sm
