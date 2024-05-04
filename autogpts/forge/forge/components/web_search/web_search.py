@@ -3,12 +3,12 @@ import logging
 import time
 from typing import Iterator
 
-from autogpt.config.config import Config
 from duckduckgo_search import DDGS
 
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command.command import Command
 from forge.command.decorator import command
+from forge.config.config import Config
 from forge.json.schema import JSONSchema
 from forge.utils.exceptions import ConfigurationError
 

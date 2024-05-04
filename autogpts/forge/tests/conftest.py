@@ -8,7 +8,6 @@ import pytest
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.app.main import _configure_openai_provider
 from autogpt.core.resource.model_providers import ChatModelProvider, OpenAIProvider
-from autogpt.logs.config import configure_logging
 from pytest_mock import MockerFixture
 
 from forge.config import AIProfile, Config, ConfigBuilder
@@ -17,6 +16,7 @@ from forge.file_storage.local import (
     FileStorageConfiguration,
     LocalFileStorage,
 )
+from forge.logging.config import configure_logging
 
 pytest_plugins = [
     "tests.integration.agent_factory",

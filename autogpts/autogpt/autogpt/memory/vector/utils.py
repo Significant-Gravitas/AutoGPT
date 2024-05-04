@@ -2,8 +2,8 @@ import logging
 from typing import Any, Sequence, overload
 
 import numpy as np
+from forge.config.config import Config
 
-from autogpt.config.config import Config
 from autogpt.core.resource.model_providers import EmbeddingModelProvider
 
 logger = logging.getLogger(__name__)

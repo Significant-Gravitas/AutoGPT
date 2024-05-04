@@ -38,7 +38,8 @@ if TYPE_CHECKING:
         ChatModelInfo,
     )
 
-from autogpt.config.config import ConfigBuilder
+from forge.config.config import ConfigBuilder
+
 from autogpt.core.resource.model_providers import AssistantFunctionCall
 from autogpt.core.resource.model_providers.openai import (
     OPEN_AI_CHAT_MODELS,

@@ -8,13 +8,13 @@ from typing import Iterator
 
 import docker
 from autogpt.agents.base import BaseAgentSettings
-from autogpt.config.config import Config
 from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
 
 from forge.agent.protocols import CommandProvider
 from forge.command.command import Command
 from forge.command.decorator import command
+from forge.config.config import Config
 from forge.file_storage.base import FileStorage
 from forge.json.schema import JSONSchema
 from forge.utils.exceptions import (

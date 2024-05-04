@@ -12,6 +12,7 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from forge.agent.agent_protocol import base_router
 from forge.components.event_history import ActionErrorResult, ActionSuccessResult
+from forge.config import Config
 from forge.database.agent_db import AgentDB
 from forge.file_storage import FileStorage
 from forge.sdk.middlewares import AgentMiddleware
@@ -35,7 +36,6 @@ from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.app.utils import is_port_free
-from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider, ModelProviderBudget
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 

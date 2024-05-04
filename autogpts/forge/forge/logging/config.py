@@ -8,13 +8,14 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from forge.config.schema import SystemConfiguration, UserConfigurable
 from openai._base_client import log as openai_logger
 
-if TYPE_CHECKING:
-    from autogpt.speech import TTSConfig
+from forge.config.schema import SystemConfiguration, UserConfigurable
 
-from autogpt.core.runner.client_lib.logging import BelowLevelFilter
+if TYPE_CHECKING:
+    from forge.speech import TTSConfig
+
+from forge.logging import BelowLevelFilter
 
 from .formatters import AutoGptFormatter, StructuredLoggingFormatter
 from .handlers import TTSHandler, TypingConsoleHandler

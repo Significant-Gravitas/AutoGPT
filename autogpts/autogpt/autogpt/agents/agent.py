@@ -34,6 +34,12 @@ from forge.components.web_search import WebSearchComponent
 from forge.components.web_selenium import WebSeleniumComponent
 from forge.config.schema import Configurable
 from forge.file_storage.base import FileStorage
+from forge.logging.log_cycle import (
+    CURRENT_CONTEXT_FILE_NAME,
+    NEXT_ACTION_FILE_NAME,
+    USER_INPUT_FILE_NAME,
+    LogCycleHandler,
+)
 from forge.utils.exceptions import (
     AgentException,
     AgentTerminated,
@@ -57,17 +63,11 @@ from autogpt.core.resource.model_providers import (
 )
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.llm.providers.openai import get_openai_command_specs
-from autogpt.logs.log_cycle import (
-    CURRENT_CONTEXT_FILE_NAME,
-    NEXT_ACTION_FILE_NAME,
-    USER_INPUT_FILE_NAME,
-    LogCycleHandler,
-)
 
 from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 
 if TYPE_CHECKING:
-    from autogpt.config import Config
+    from forge.config import Config
 
 logger = logging.getLogger(__name__)
 

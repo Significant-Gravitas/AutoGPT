@@ -7,11 +7,11 @@ import re
 import time
 from typing import TYPE_CHECKING
 
-from autogpt.logs.utils import remove_color_codes
-from autogpt.speech import TextToSpeechProvider
+from forge.logging.utils import remove_color_codes
+from forge.speech import TextToSpeechProvider
 
 if TYPE_CHECKING:
-    from autogpt.speech import TTSConfig
+    from forge.speech import TTSConfig
 
 
 class TypingConsoleHandler(logging.StreamHandler):

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import subprocess
 
-from autogpt.speech.base import VoiceBase
+from .base import VoiceBase
 
 
 class MacOSTTS(VoiceBase):

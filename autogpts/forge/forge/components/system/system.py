@@ -2,13 +2,13 @@ import logging
 import time
 from typing import Iterator
 
-from autogpt.config.config import Config
 from autogpt.core.resource.model_providers.schema import ChatMessage
 
 from forge.agent.protocols import CommandProvider, DirectiveProvider, MessageProvider
 from forge.command.command import Command
 from forge.command.decorator import command
 from forge.config.ai_profile import AIProfile
+from forge.config.config import Config
 from forge.json.schema import JSONSchema
 from forge.utils.const import DEFAULT_FINISH_COMMAND
 from forge.utils.exceptions import AgentFinished

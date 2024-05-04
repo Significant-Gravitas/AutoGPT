@@ -11,8 +11,9 @@ from pydantic import BaseModel, Field
 from pydantic.generics import GenericModel
 
 if TYPE_CHECKING:
-    from autogpt.config.config import Config
     from autogpt.core.resource.model_providers import ChatModelProvider
+
+    from forge.config.config import Config
 
 
 class ActionSuccessResult(BaseModel):

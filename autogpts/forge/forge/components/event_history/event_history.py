@@ -1,7 +1,6 @@
 from typing import Callable, Generic, Iterator, Optional
 
 from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.config.config import Config
 from autogpt.core.resource.model_providers.schema import ChatMessage, ChatModelProvider
 from autogpt.models.action_history import (
     AP,
@@ -13,6 +12,7 @@ from autogpt.prompts.utils import indent
 
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
 from forge.components.watchdog import WatchdogComponent
+from forge.config.config import Config
 from forge.prompts.utils import indent
 
 

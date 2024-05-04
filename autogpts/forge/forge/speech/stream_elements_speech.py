@@ -4,10 +4,11 @@ import logging
 import os
 
 import requests
-from forge.config.schema import SystemConfiguration, UserConfigurable
 from playsound import playsound
 
-from autogpt.speech.base import VoiceBase
+from forge.config.schema import SystemConfiguration, UserConfigurable
+
+from .base import VoiceBase
 
 logger = logging.getLogger(__name__)
 

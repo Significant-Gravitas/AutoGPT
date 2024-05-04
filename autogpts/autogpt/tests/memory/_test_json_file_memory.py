@@ -2,8 +2,8 @@
 """Tests for JSONFileMemory class"""
 import orjson
 import pytest
+from forge.config import Config
 
-from autogpt.config import Config
 from autogpt.file_storage import FileStorage
 from autogpt.memory.vector import JSONFileMemory, MemoryItem
 

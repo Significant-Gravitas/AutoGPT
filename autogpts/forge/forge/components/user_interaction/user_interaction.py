@@ -1,11 +1,11 @@
 from typing import Iterator
 
 from autogpt.app.utils import clean_input
-from autogpt.config.config import Config
 
 from forge.agent.protocols import CommandProvider
 from forge.command.command import Command
 from forge.command.decorator import command
+from forge.config.config import Config
 from forge.json.schema import JSONSchema
 from forge.utils.const import DEFAULT_ASK_COMMAND
 

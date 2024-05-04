@@ -9,7 +9,6 @@ from unittest import mock
 
 import pytest
 from autogpt.app.configurator import GPT_3_MODEL, GPT_4_MODEL, apply_overrides_to_config
-from autogpt.config import Config, ConfigBuilder
 from autogpt.core.resource.model_providers.openai import OpenAIModelName
 from autogpt.core.resource.model_providers.schema import (
     ChatModelInfo,
@@ -18,6 +17,8 @@ from autogpt.core.resource.model_providers.schema import (
 from openai.pagination import AsyncPage
 from openai.types import Model
 from pydantic import SecretStr
+
+from forge.config import Config, ConfigBuilder
 
 
 def test_initial_values(config: Config) -> None:

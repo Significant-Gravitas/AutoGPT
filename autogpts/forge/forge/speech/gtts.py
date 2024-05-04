@@ -6,7 +6,7 @@ import os
 import gtts
 from playsound import playsound
 
-from autogpt.speech.base import VoiceBase
+from .base import VoiceBase
 
 
 class GTTSVoice(VoiceBase):

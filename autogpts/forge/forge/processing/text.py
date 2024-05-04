@@ -5,7 +5,6 @@ import math
 from typing import Iterator, Optional, TypeVar
 
 import spacy
-from autogpt.config import Config
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
     ChatMessage,
@@ -13,6 +12,7 @@ from autogpt.core.resource.model_providers import (
     ModelTokenizer,
 )
 
+from forge.config import Config
 from forge.json.parsing import extract_list_from_json
 
 logger = logging.getLogger(__name__)

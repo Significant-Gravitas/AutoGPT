@@ -16,6 +16,7 @@ from typing import (
 
 from forge.config.schema import SystemConfiguration, UserConfigurable
 from forge.json.schema import JSONSchema
+from forge.logging.utils import fmt_kwargs
 from pydantic import BaseModel, Field, SecretStr, validator
 
 from autogpt.core.resource.schema import (
@@ -26,7 +27,6 @@ from autogpt.core.resource.schema import (
     ProviderUsage,
     ResourceType,
 )
-from autogpt.logs.utils import fmt_kwargs
 
 
 class ModelProviderService(str, enum.Enum):
