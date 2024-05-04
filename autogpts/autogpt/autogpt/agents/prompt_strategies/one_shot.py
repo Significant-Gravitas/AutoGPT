@@ -122,7 +122,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         1. System prompt
         3. `cycle_instruction`
         """
-        system_prompt = self.build_system_prompt(
+        system_prompt, response_prefill = self.build_system_prompt(
             ai_profile=ai_profile,
             ai_directives=ai_directives,
             commands=commands,
@@ -131,16 +131,16 @@ class OneShotAgentPromptStrategy(PromptStrategy):
 
         final_instruction_msg = ChatMessage.user(self.config.choose_action_instruction)
 
-        prompt = ChatPrompt(
+        return ChatPrompt(
             messages=[
                 ChatMessage.system(system_prompt),
                 ChatMessage.user(f'"""{task}"""'),
                 *messages,
                 final_instruction_msg,
             ],
+            prefill_response=response_prefill,
+            functions=commands if self.config.use_functions_api else [],
         )
-
-        return prompt
 
     def build_system_prompt(
         self,
@@ -148,7 +148,17 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         ai_directives: AIDirectives,
         commands: list[CompletionModelFunction],
         include_os_info: bool,
-    ) -> str:
+    ) -> tuple[str, str]:
+        """
+        Builds the system prompt.
+
+        Returns:
+            str: The system prompt body
+            str: The desired start for the LLM's response; used to steer the output
+        """
+        response_fmt_instruction, response_prefill = self.response_format_instruction(
+            self.config.use_functions_api
+        )
         system_prompt_parts = (
             self._generate_intro_prompt(ai_profile)
             + (self._generate_os_info() if include_os_info else [])
@@ -169,16 +179,16 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 " in the next message. Your job is to complete the task while following"
                 " your directives as given above, and terminate when your task is done."
             ]
-            + [
-                "## RESPONSE FORMAT\n"
-                + self.response_format_instruction(self.config.use_functions_api)
-            ]
+            + ["## RESPONSE FORMAT\n" + response_fmt_instruction]
         )
 
         # Join non-empty parts together into paragraph format
-        return "\n\n".join(filter(None, system_prompt_parts)).strip("\n")
+        return (
+            "\n\n".join(filter(None, system_prompt_parts)).strip("\n"),
+            response_prefill,
+        )
 
-    def response_format_instruction(self, use_functions_api: bool) -> str:
+    def response_format_instruction(self, use_functions_api: bool) -> tuple[str, str]:
         response_schema = self.response_schema.copy(deep=True)
         if (
             use_functions_api
@@ -193,11 +203,15 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             "\n",
             response_schema.to_typescript_object_interface(_RESPONSE_INTERFACE_NAME),
         )
+        response_prefill = f'{{\n    "{list(response_schema.properties.keys())[0]}":'
 
         return (
-            f"YOU MUST ALWAYS RESPOND WITH A JSON OBJECT OF THE FOLLOWING TYPE:\n"
-            f"{response_format}"
-            + ("\n\nYOU MUST ALSO INVOKE A TOOL!" if use_functions_api else "")
+            (
+                f"YOU MUST ALWAYS RESPOND WITH A JSON OBJECT OF THE FOLLOWING TYPE:\n"
+                f"{response_format}"
+                + ("\n\nYOU MUST ALSO INVOKE A TOOL!" if use_functions_api else "")
+            ),
+            response_prefill,
         )
 
     def _generate_intro_prompt(self, ai_profile: AIProfile) -> list[str]:

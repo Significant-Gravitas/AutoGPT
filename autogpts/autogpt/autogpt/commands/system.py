@@ -31,7 +31,9 @@ class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
 
     def get_messages(self) -> Iterator[ChatMessage]:
         # Clock
-        yield ChatMessage.system(f"The current time and date is {time.strftime('%c')}")
+        yield ChatMessage.system(
+            f"## Clock\nThe current time and date is {time.strftime('%c')}"
+        )
 
     def get_commands(self) -> Iterator[Command]:
         yield self.finish
