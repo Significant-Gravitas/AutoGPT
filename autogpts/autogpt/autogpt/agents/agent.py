@@ -50,7 +50,7 @@ from autogpt.utils.exceptions import (
 
 from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 from .features.agent_file_manager import FileManagerComponent
-from .features.context import ContextComponent
+from .features.context import AgentContext, ContextComponent
 from .features.watchdog import WatchdogComponent
 from .prompt_strategies.one_shot import (
     OneShotAgentActionProposal,
@@ -81,6 +81,8 @@ class AgentSettings(BaseAgentSettings):
         default_factory=EpisodicActionHistory[OneShotAgentActionProposal]
     )
     """(STATE) The action history of the agent."""
+
+    context: AgentContext = Field(default_factory=AgentContext)
 
 
 class Agent(BaseAgent, Configurable[AgentSettings]):
@@ -132,7 +134,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         )
         self.web_search = WebSearchComponent(legacy_config)
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
-        self.context = ContextComponent(self.file_manager.workspace)
+        self.context = ContextComponent(self.file_manager.workspace, settings.context)
         self.watchdog = WatchdogComponent(settings.config, settings.history)
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
