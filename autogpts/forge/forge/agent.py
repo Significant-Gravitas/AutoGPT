@@ -19,7 +19,7 @@ class ForgeAgent(Agent):
     agent design.
 
     There is a great paper surveying the agent landscape: https://arxiv.org/abs/2308.11432
-    Which I would highly recommend reading as it will help you understand the possabilities.
+    Which I would highly recommend reading as it will help you understand the possibilities.
 
     Here is a summary of the key components of an agent:
 
@@ -93,7 +93,7 @@ class ForgeAgent(Agent):
 
     async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
         """
-        For a tutorial on how to add your own logic please see the offical tutorial series:
+        For a tutorial on how to add your own logic please see the official tutorial series:
         https://aiedge.medium.com/autogpt-forge-e3de53cc58ec
 
         The agent protocol, which is the core of the Forge, works by creating a task and then

@@ -32,7 +32,7 @@ _JSON_FIXABLE: list[tuple[str, str]] = [
         '```json\n{"name": "John Doe", "age": 30}\n```',
         '{"name": "John Doe", "age": 30}',
     ),
-    # Mutliple problems
+    # Multiple problems
     (
         '{"name":"John Doe" "age": 30\n "empty": "","address": '
         "// random comment\n"

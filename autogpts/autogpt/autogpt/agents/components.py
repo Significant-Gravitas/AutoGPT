@@ -27,9 +27,9 @@ class ComponentEndpointError(Exception):
 
 
 class EndpointPipelineError(ComponentEndpointError):
-    """Error of an entire pipline of one endpoint."""
+    """Error of an entire pipeline of one endpoint."""
 
 
 class ComponentSystemError(EndpointPipelineError):
     """Error of a group of pipelines;
-    multiple different enpoints."""
+    multiple different endpoints."""

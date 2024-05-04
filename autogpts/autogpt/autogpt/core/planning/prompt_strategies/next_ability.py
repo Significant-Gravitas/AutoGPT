@@ -33,7 +33,7 @@ class NextAbility(PromptStrategy):
     ]
 
     DEFAULT_USER_PROMPT_TEMPLATE = (
-        "Your current task is is {task_objective}.\n"
+        "Your current task is {task_objective}.\n"
         "You have taken {cycle_count} actions on this task already. "
         "Here is the actions you have taken and their results:\n"
         "{action_history}\n\n"
@@ -54,7 +54,7 @@ class NextAbility(PromptStrategy):
         "motivation": JSONSchema(
             type=JSONSchema.Type.STRING,
             description=(
-                "Your justification for choosing choosing this function instead of a "
+                "Your justification for choosing this function instead of a "
                 "different one."
             ),
         ),

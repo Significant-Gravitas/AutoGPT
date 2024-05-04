@@ -16,7 +16,7 @@ if __name__ == "__main__":
     expected_result = 8
     test_multiply_int(num, multiplier, expected_result)
 
-    # so its not hard coded
+    # so it's not hard coded
     num = 7
     multiplier = 7
     expected_result = 49

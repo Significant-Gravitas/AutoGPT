@@ -299,7 +299,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
         ]
 
         if self.components:
-            # Check if any coponent is missed (added to Agent but not to components)
+            # Check if any component is missed (added to Agent but not to components)
             for component in components:
                 if component not in self.components:
                     logger.warning(

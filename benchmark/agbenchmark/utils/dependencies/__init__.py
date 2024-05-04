@@ -134,7 +134,7 @@ def pytest_configure(config: Any) -> None:
     # Register marker
     config.addinivalue_line(
         "markers",
-        "depends(name='name', on=['other_name']): marks depencies between tests.",
+        "depends(name='name', on=['other_name']): marks dependencies between tests.",
     )
 
 

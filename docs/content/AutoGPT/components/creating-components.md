@@ -93,12 +93,12 @@ To learn more about commands see [🛠️ Commands](./commands.md).
 
 After components provided all necessary data, the agent needs to build the final prompt that will be send to a llm.
 Currently, `PromptStrategy` (*not* a protocol) is responsible for building the final prompt.
-If you want to change the way the prompt is built, you need to create a new `PromptStrategy` class, and then call relavant methods in your agent class.
+If you want to change the way the prompt is built, you need to create a new `PromptStrategy` class, and then call relevant methods in your agent class.
 You can have a look at the default strategy used by the AutoGPT Agent: [OneShotAgentPromptStrategy](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/autogpt/agents/prompt_strategies/one_shot.py), and how it's used in the [Agent](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/autogpt/agents/agent.py) (search for `self.prompt_strategy`).
 
 ## Example `UserInteractionComponent`
 
-Let's create a slighlty simplified version of the component that is used by the built-in agent.
+Let's create a slightly simplified version of the component that is used by the built-in agent.
 It gives an ability for the agent to ask user for input in the terminal.
 
 1. Create a class for the component that inherits from `CommandProvider`.
