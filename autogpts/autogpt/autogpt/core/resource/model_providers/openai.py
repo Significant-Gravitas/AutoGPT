@@ -42,6 +42,8 @@ from autogpt.core.resource.model_providers.schema import (
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.core.utils.json_utils import json_loads
 
+from .utils import validate_tool_calls
+
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
@@ -298,6 +300,7 @@ class OpenAIProvider(
         budget=ModelProviderBudget(),
     )
 
+    _settings: OpenAISettings
     _configuration: OpenAIConfiguration
     _credentials: OpenAICredentials
     _budget: ModelProviderBudget
@@ -312,11 +315,7 @@ class OpenAIProvider(
         if not settings.credentials:
             settings.credentials = OpenAICredentials.from_env()
 
-        self._settings = settings
-
-        self._configuration = settings.configuration
-        self._credentials = settings.credentials
-        self._budget = settings.budget
+        super(OpenAIProvider, self).__init__(settings=settings, logger=logger)
 
         if self._credentials.api_type == "azure":
             from openai import AsyncAzureOpenAI
@@ -328,8 +327,6 @@ class OpenAIProvider(
             from openai import AsyncOpenAI
 
             self._client = AsyncOpenAI(**self._credentials.get_api_access_kwargs())
-
-        self._logger = logger or logging.getLogger(__name__)
 
     async def get_available_models(self) -> list[ChatModelInfo]:
         _models = (await self._client.models.list()).data
@@ -398,6 +395,7 @@ class OpenAIProvider(
         completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
+        prefill_response: str = "",  # not supported by OpenAI
         **kwargs,
     ) -> ChatModelResponse[_T]:
         """Create a completion using the OpenAI API and parse it."""
@@ -431,6 +429,10 @@ class OpenAIProvider(
                 _assistant_msg, tool_calls_compat_mode
             )
             parse_errors += _errors
+
+            # Validate tool calls
+            if not parse_errors and tool_calls and functions:
+                parse_errors += validate_tool_calls(tool_calls, functions)
 
             assistant_msg = AssistantChatMessage(
                 content=_assistant_msg.content,
