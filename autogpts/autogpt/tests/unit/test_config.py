@@ -14,7 +14,6 @@ from pydantic import SecretStr
 
 from autogpt.app.configurator import GPT_3_MODEL, GPT_4_MODEL, apply_overrides_to_config
 from autogpt.config import Config, ConfigBuilder
-from autogpt.core.resource.model_providers.openai import OpenAIModelName
 from autogpt.core.resource.model_providers.schema import (
     ChatModelInfo,
     ModelProviderName,
@@ -39,8 +38,8 @@ async def test_fallback_to_gpt3_if_gpt4_not_available(
     """
     Test if models update to gpt-3.5-turbo if gpt-4 is not available.
     """
-    config.fast_llm = OpenAIModelName.GPT4_TURBO
-    config.smart_llm = OpenAIModelName.GPT4_TURBO
+    config.fast_llm = GPT_4_MODEL
+    config.smart_llm = GPT_4_MODEL
 
     mock_list_models.return_value = asyncio.Future()
     mock_list_models.return_value.set_result(
@@ -56,8 +55,8 @@ async def test_fallback_to_gpt3_if_gpt4_not_available(
         gpt4only=False,
     )
 
-    assert config.fast_llm == "gpt-3.5-turbo"
-    assert config.smart_llm == "gpt-3.5-turbo"
+    assert config.fast_llm == GPT_3_MODEL
+    assert config.smart_llm == GPT_3_MODEL
 
 
 def test_missing_azure_config(config: Config) -> None:
@@ -148,8 +147,7 @@ def test_azure_config(config_with_azure: Config) -> None:
 @pytest.mark.asyncio
 async def test_create_config_gpt4only(config: Config) -> None:
     with mock.patch(
-        "autogpt.core.resource.model_providers.openai."
-        "OpenAIProvider.get_available_models"
+        "autogpt.core.resource.model_providers.multi.MultiProvider.get_available_models"
     ) as mock_get_models:
         mock_get_models.return_value = [
             ChatModelInfo(
@@ -169,8 +167,7 @@ async def test_create_config_gpt4only(config: Config) -> None:
 @pytest.mark.asyncio
 async def test_create_config_gpt3only(config: Config) -> None:
     with mock.patch(
-        "autogpt.core.resource.model_providers.openai."
-        "OpenAIProvider.get_available_models"
+        "autogpt.core.resource.model_providers.multi.MultiProvider.get_available_models"
     ) as mock_get_models:
         mock_get_models.return_value = [
             ChatModelInfo(
