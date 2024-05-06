@@ -1,7 +1,7 @@
 import abc
 
-from autogpt.core.configuration import SystemConfiguration
-from autogpt.core.resource.model_providers import AssistantChatMessage
+from forge.config.schema import SystemConfiguration
+from forge.llm.providers import AssistantChatMessage
 
 from .schema import ChatPrompt, LanguageModelClassification
 

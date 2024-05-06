@@ -26,31 +26,30 @@ from forge.config import (
     ConfigBuilder,
     assert_config_has_openai_api_key,
 )
-from autogpt.core.resource.model_providers import MultiProvider
 from forge.db import AgentDB
 from forge.file_storage import FileStorageBackendName, get_storage
+from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
 from forge.logging.helpers import print_attribute, speak
+from forge.models.utils import ModelWithSummary
 from forge.utils.const import DEFAULT_FINISH_COMMAND
 from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
+from forge.utils.input import clean_input
 
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
-from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.runner.client_lib.utils import coroutine
-from autogpt.models.utils import ModelWithSummary
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
-    from autogpt.agents.base import BaseAgentActionProposal
+    from forge.agent.base import BaseAgentActionProposal
 
 from .configurator import apply_overrides_to_config
 from .setup import apply_overrides_to_ai_settings, interactively_revise_ai_settings
 from .spinner import Spinner
 from .utils import (
-    clean_input,
     get_legal_warning,
     markdown_to_ansi_style,
     print_git_branch_info,

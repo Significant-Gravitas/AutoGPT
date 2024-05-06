@@ -6,41 +6,25 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
 import sentry_sdk
-from pydantic import Field
-
-from autogpt.commands.execute_code import CodeExecutorComponent
-from autogpt.commands.git_operations import GitOperationsComponent
-from autogpt.commands.image_gen import ImageGeneratorComponent
-from autogpt.commands.system import SystemComponent
-from autogpt.commands.user_interaction import UserInteractionComponent
-from autogpt.commands.web_search import WebSearchComponent
-from autogpt.commands.web_selenium import WebSeleniumComponent
-from autogpt.components.event_history import EventHistoryComponent
-from autogpt.core.configuration import Configurable
-from autogpt.core.prompting import ChatPrompt
-from autogpt.core.resource.model_providers import (
-    AssistantFunctionCall,
-    ChatMessage,
-    ChatModelProvider,
-    ChatModelResponse,
+from forge.agent.base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
+from forge.agent.protocols import (
+    AfterExecute,
+    AfterParse,
+    CommandProvider,
+    DirectiveProvider,
+    MessageProvider,
 )
-from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
-from autogpt.file_storage.base import FileStorage
-from autogpt.llm.providers.openai import function_specs_from_commands
-from autogpt.logs.log_cycle import (
-    CURRENT_CONTEXT_FILE_NAME,
-    NEXT_ACTION_FILE_NAME,
-    USER_INPUT_FILE_NAME,
-    LogCycleHandler,
-)
-from autogpt.models.action_history import (
+from forge.command.command import Command, CommandOutput
+from forge.components.code_executor.code_executor import CodeExecutorComponent
+from forge.components.context.context import ContextComponent
+from forge.components.event_history.action_history import (
     ActionErrorResult,
     ActionInterruptedByHuman,
     ActionResult,
     ActionSuccessResult,
-    EventHistoryComponent,
+    EpisodicActionHistory,
 )
-from forge.components.event_history.action_history import EpisodicActionHistory
+from forge.components.event_history.event_history import EventHistoryComponent
 from forge.components.file_manager import FileManagerComponent
 from forge.components.git_operations import GitOperationsComponent
 from forge.components.image_gen import ImageGeneratorComponent
@@ -51,12 +35,20 @@ from forge.components.web_search import WebSearchComponent
 from forge.components.web_selenium import WebSeleniumComponent
 from forge.config.schema import Configurable
 from forge.file_storage.base import FileStorage
+from forge.llm.providers import (
+    AssistantFunctionCall,
+    ChatMessage,
+    ChatModelProvider,
+    ChatModelResponse,
+)
+from forge.llm.providers.utils import function_specs_from_commands
 from forge.logging.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
+from forge.prompts import ChatPrompt
 from forge.utils.exceptions import (
     AgentException,
     AgentTerminated,
@@ -69,18 +61,7 @@ from autogpt.agents.prompt_strategies.one_shot import (
     OneShotAgentActionProposal,
     OneShotAgentPromptStrategy,
 )
-from autogpt.core.prompting import ChatPrompt
-from autogpt.core.resource.model_providers import (
-    AssistantChatMessage,
-    AssistantFunctionCall,
-    ChatMessage,
-    ChatModelProvider,
-    ChatModelResponse,
-)
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
-from autogpt.llm.providers.openai import get_openai_command_specs
-
-from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 
 if TYPE_CHECKING:
     from forge.config import Config

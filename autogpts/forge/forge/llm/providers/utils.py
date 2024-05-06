@@ -1,4 +1,6 @@
-from typing import Any
+from typing import Any, Iterable
+
+from forge.command.command import Command
 
 from .schema import AssistantToolCall, CompletionModelFunction
 
@@ -69,3 +71,17 @@ def validate_tool_calls(
             )
 
     return errors
+
+
+def function_specs_from_commands(
+    commands: Iterable[Command],
+) -> list[CompletionModelFunction]:
+    """Get LLM-consumable function specs for the agent's available commands."""
+    return [
+        CompletionModelFunction(
+            name=command.names[0],
+            description=command.description,
+            parameters={param.name: param.spec for param in command.parameters},
+        )
+        for command in commands
+    ]

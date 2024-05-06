@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 
+from .agent import Agent
+
 
 class AgentMiddleware:
     """

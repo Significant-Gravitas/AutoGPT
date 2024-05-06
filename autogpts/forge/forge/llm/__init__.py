@@ -1,4 +1,4 @@
-from autogpt.core.resource.schema import (
+from forge.llm.schema import (
     ProviderBudget,
     ProviderCredentials,
     ProviderSettings,

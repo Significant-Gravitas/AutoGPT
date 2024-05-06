@@ -14,8 +14,7 @@ from openai import OpenAI
 from PIL import Image
 
 from forge.agent.protocols import CommandProvider
-from forge.command.command import Command
-from forge.command.decorator import command
+from forge.command import Command, command
 from forge.config.config import Config
 from forge.file_storage import FileStorage
 from forge.json.schema import JSONSchema

@@ -7,14 +7,9 @@ from typing import Literal
 import ftfy
 import numpy as np
 from forge.config.config import Config
+from forge.llm.providers import ChatMessage, ChatModelProvider, EmbeddingModelProvider
 from forge.processing.text import chunk_content, split_text, summarize_text
 from pydantic import BaseModel
-
-from autogpt.core.resource.model_providers import (
-    ChatMessage,
-    ChatModelProvider,
-    EmbeddingModelProvider,
-)
 
 from .utils import Embedding, get_embedding
 

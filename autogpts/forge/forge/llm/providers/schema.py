@@ -16,12 +16,11 @@ from typing import (
     TypeVar,
 )
 
-from forge.config.schema import SystemConfiguration, UserConfigurable
-from forge.json.schema import JSONSchema
-from forge.logging.utils import fmt_kwargs
 from pydantic import BaseModel, Field, SecretStr, validator
 
-from autogpt.core.resource.schema import (
+from forge.config.schema import SystemConfiguration, UserConfigurable
+from forge.json.schema import JSONSchema
+from forge.llm.schema import (
     Embedding,
     ProviderBudget,
     ProviderCredentials,
@@ -29,6 +28,7 @@ from autogpt.core.resource.schema import (
     ProviderUsage,
     ResourceType,
 )
+from forge.logging.utils import fmt_kwargs
 
 if TYPE_CHECKING:
     from jsonschema import ValidationError

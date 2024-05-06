@@ -7,15 +7,13 @@ from tempfile import NamedTemporaryFile
 from typing import Iterator
 
 import docker
-from autogpt.agents.base import BaseAgentSettings
 from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
 
-from forge.agent.protocols import CommandProvider
-from forge.command.command import Command
-from forge.command.decorator import command
-from forge.config.config import Config
-from forge.file_storage.base import FileStorage
+from forge.agent import BaseAgentSettings, CommandProvider
+from forge.command import Command, command
+from forge.config import Config
+from forge.file_storage import FileStorage
 from forge.json.schema import JSONSchema
 from forge.utils.exceptions import (
     CodeExecutionError,

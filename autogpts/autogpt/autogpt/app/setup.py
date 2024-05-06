@@ -4,8 +4,7 @@ from typing import Optional
 
 from forge.config import AIDirectives, AIProfile, Config
 from forge.logging.helpers import print_attribute
-
-from autogpt.app.utils import clean_input
+from forge.utils.input import clean_input
 
 logger = logging.getLogger(__name__)
 

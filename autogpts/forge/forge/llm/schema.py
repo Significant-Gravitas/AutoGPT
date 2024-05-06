@@ -4,11 +4,7 @@ import math
 
 from pydantic import BaseModel, SecretBytes, SecretField, SecretStr
 
-from autogpt.core.configuration import (
-    SystemConfiguration,
-    SystemSettings,
-    UserConfigurable,
-)
+from forge.config.schema import SystemConfiguration, SystemSettings, UserConfigurable
 
 
 class ResourceType(str, enum.Enum):

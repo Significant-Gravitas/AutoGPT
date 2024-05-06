@@ -1,19 +1,12 @@
 from typing import Callable, Generic, Iterator, Optional
 
-from autogpt.agents.base import ThoughtProcessOutput
-from autogpt.core.resource.model_providers.schema import ChatMessage, ChatModelProvider
-from autogpt.models.action_history import (
-    AP,
-    ActionResult,
-    Episode,
-    EpisodicActionHistory,
-)
-from autogpt.prompts.utils import indent
-
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
 from forge.components.watchdog import WatchdogComponent
 from forge.config.config import Config
+from forge.llm.providers import ChatMessage, ChatModelProvider
 from forge.prompts.utils import indent
+
+from .action_history import AP, ActionResult, Episode, EpisodicActionHistory
 
 
 class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute, Generic[AP]):

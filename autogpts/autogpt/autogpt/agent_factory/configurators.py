@@ -2,9 +2,9 @@ from typing import Optional
 
 from forge.config import AIDirectives, AIProfile, Config
 from forge.file_storage.base import FileStorage
+from forge.llm.providers import ChatModelProvider
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.core.resource.model_providers import ChatModelProvider
 
 
 def create_agent(

@@ -3,17 +3,17 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any, Generic, Iterator, Literal, Optional, TypeVar
 
-from autogpt.agents.base import BaseAgentActionProposal
-from autogpt.models.utils import ModelWithSummary
-from autogpt.processing.text import summarize_text
-from autogpt.prompts.utils import format_numbered_list, indent
 from pydantic import BaseModel, Field
 from pydantic.generics import GenericModel
 
-if TYPE_CHECKING:
-    from autogpt.core.resource.model_providers import ChatModelProvider
+from forge.agent import BaseAgentActionProposal
+from forge.models.utils import ModelWithSummary
+from forge.processing.text import summarize_text
+from forge.prompts.utils import format_numbered_list, indent
 
+if TYPE_CHECKING:
     from forge.config.config import Config
+    from forge.llm.providers import ChatModelProvider
 
 
 class ActionSuccessResult(BaseModel):

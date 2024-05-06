@@ -6,8 +6,7 @@ from typing import Iterator
 from duckduckgo_search import DDGS
 
 from forge.agent.protocols import CommandProvider, DirectiveProvider
-from forge.command.command import Command
-from forge.command.decorator import command
+from forge.command import Command, command
 from forge.config.config import Config
 from forge.json.schema import JSONSchema
 from forge.utils.exceptions import ConfigurationError

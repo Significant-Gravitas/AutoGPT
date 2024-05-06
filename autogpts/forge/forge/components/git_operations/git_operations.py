@@ -4,8 +4,7 @@ from typing import Iterator
 from git.repo import Repo
 
 from forge.agent.protocols import CommandProvider
-from forge.command.command import Command
-from forge.command.decorator import command
+from forge.command import Command, command
 from forge.config.config import Config
 from forge.json.schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError

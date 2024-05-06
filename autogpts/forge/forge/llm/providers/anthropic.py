@@ -10,8 +10,8 @@ import tiktoken
 from anthropic import APIConnectionError, APIStatusError
 from pydantic import SecretStr
 
-from autogpt.core.configuration import Configurable, UserConfigurable
-from autogpt.core.resource.model_providers.schema import (
+from forge.config.schema import Configurable, UserConfigurable
+from forge.llm.providers.schema import (
     AssistantChatMessage,
     AssistantFunctionCall,
     AssistantToolCall,

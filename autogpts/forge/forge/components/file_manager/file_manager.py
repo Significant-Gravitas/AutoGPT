@@ -3,11 +3,9 @@ import os
 from pathlib import Path
 from typing import Iterator, Optional
 
-from autogpt.agents.base import BaseAgentSettings
-
+from forge.agent import BaseAgentSettings
 from forge.agent.protocols import CommandProvider, DirectiveProvider
-from forge.command.command import Command
-from forge.command.decorator import command
+from forge.command import Command, command
 from forge.file_storage.base import FileStorage
 from forge.json.schema import JSONSchema
 from forge.utils.file_operations import decode_textual_file

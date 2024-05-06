@@ -8,13 +8,10 @@ from typing import Literal, Optional
 import click
 from colorama import Back, Fore, Style
 from forge.config.config import GPT_3_MODEL, GPT_4_MODEL, Config
+from forge.llm.providers import ModelName, MultiProvider
 from forge.logging.helpers import request_user_double_check
 from forge.utils.yaml_validator import validate_yaml_file
 
-from autogpt.config import Config
-from autogpt.config.config import GPT_3_MODEL, GPT_4_MODEL
-from autogpt.core.resource.model_providers import ModelName, MultiProvider
-from autogpt.logs.helpers import request_user_double_check
 from autogpt.memory.vector import get_supported_memory_backends
 
 logger = logging.getLogger(__name__)

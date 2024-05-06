@@ -8,9 +8,6 @@ import sentry_sdk
 import tenacity
 import tiktoken
 import yaml
-from forge.config.schema import Configurable, UserConfigurable
-from forge.json.parsing import json_loads
-from forge.json.schema import JSONSchema
 from openai._exceptions import APIStatusError, RateLimitError
 from openai.types import CreateEmbeddingResponse
 from openai.types.chat import (
@@ -20,7 +17,10 @@ from openai.types.chat import (
 )
 from pydantic import SecretStr
 
-from autogpt.core.resource.model_providers.schema import (
+from forge.config.schema import Configurable, UserConfigurable
+from forge.json.parsing import json_loads
+from forge.json.schema import JSONSchema
+from forge.llm.providers.schema import (
     AssistantChatMessage,
     AssistantFunctionCall,
     AssistantToolCall,

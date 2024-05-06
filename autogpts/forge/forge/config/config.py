@@ -7,25 +7,17 @@ import re
 from pathlib import Path
 from typing import Any, Optional, Union
 
-from autogpt.app.utils import clean_input
-from autogpt.core.configuration.schema import (
-    Configurable,
-    SystemSettings,
-    UserConfigurable,
-)
-from autogpt.core.resource.model_providers import CHAT_MODELS, ModelName
-from autogpt.core.resource.model_providers.openai import (
-    OpenAICredentials,
-    OpenAIModelName,
-)
 from colorama import Fore
 from pydantic import SecretStr, validator
 
 import forge
 from forge.config.schema import Configurable, SystemSettings, UserConfigurable
 from forge.file_storage import FileStorageBackendName
+from forge.llm.providers import CHAT_MODELS, ModelName
+from forge.llm.providers.openai import OpenAICredentials, OpenAIModelName
 from forge.logging.config import LoggingConfig
 from forge.speech.say import TTSConfig
+from forge.utils.input import clean_input
 
 logger = logging.getLogger(__name__)
 

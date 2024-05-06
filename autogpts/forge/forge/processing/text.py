@@ -5,15 +5,10 @@ import math
 from typing import Iterator, Optional, TypeVar
 
 import spacy
-from autogpt.core.prompting import ChatPrompt
-from autogpt.core.resource.model_providers import (
-    ChatMessage,
-    ChatModelProvider,
-    ModelTokenizer,
-)
 
 from forge.config import Config
 from forge.json.parsing import extract_list_from_json
+from forge.llm.providers import ChatMessage, ChatModelProvider, ModelTokenizer
 
 logger = logging.getLogger(__name__)
 

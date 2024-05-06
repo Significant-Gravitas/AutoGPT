@@ -6,27 +6,22 @@ import re
 from logging import Logger
 
 import distro
+from forge.agent.base import BaseAgentActionProposal
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.schema import SystemConfiguration, UserConfigurable
 from forge.json.parsing import extract_dict_from_json
 from forge.json.schema import JSONSchema
-from forge.prompts.utils import format_numbered_list
-from forge.utils.exceptions import InvalidAgentResponseError
-from pydantic import Field
-
-from autogpt.agents.base import BaseAgentActionProposal
-from autogpt.core.prompting import (
-    ChatPrompt,
-    LanguageModelClassification,
-    PromptStrategy,
-)
-from autogpt.core.resource.model_providers.schema import (
+from forge.llm.providers.schema import (
     AssistantChatMessage,
     ChatMessage,
     CompletionModelFunction,
 )
-from autogpt.models.utils import ModelWithSummary
+from forge.models.utils import ModelWithSummary
+from forge.prompts import ChatPrompt, LanguageModelClassification, PromptStrategy
+from forge.prompts.utils import format_numbered_list
+from forge.utils.exceptions import InvalidAgentResponseError
+from pydantic import Field
 
 _RESPONSE_INTERFACE_NAME = "AssistantResponse"
 

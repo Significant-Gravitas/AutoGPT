@@ -8,12 +8,13 @@ import pytest
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.app.main import _configure_llm_provider
 from autogpt.config import AIProfile, Config, ConfigBuilder
-from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.file_storage.local import (
     FileStorage,
     FileStorageConfiguration,
     LocalFileStorage,
 )
+
+from forge.llm.providers import ChatModelProvider
 from forge.logging.config import configure_logging
 
 pytest_plugins = [

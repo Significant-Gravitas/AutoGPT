@@ -4,39 +4,34 @@ import copy
 import inspect
 import logging
 from abc import ABCMeta, abstractmethod
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Iterator,
-    Optional,
-    ParamSpec,
-    TypeVar,
-    overload,
-)
+from typing import Any, Callable, Iterator, Optional, ParamSpec, TypeVar, overload
 
 from colorama import Fore
-from forge.agent import protocols as _protocols
+from pydantic import BaseModel, Field, validator
+
+from forge.agent import protocols
 from forge.agent.components import (
     AgentComponent,
     ComponentEndpointError,
     EndpointPipelineError,
 )
 from forge.components.event_history import ActionResult
-from forge.config import AIDirectives, AIProfile
+from forge.config import AIDirectives, AIProfile, ConfigBuilder
 from forge.config.schema import (
     Configurable,
     SystemConfiguration,
     SystemSettings,
     UserConfigurable,
 )
-from autogpt.core.resource.model_providers import (
+from forge.llm.providers import (
     CHAT_MODELS,
     AssistantFunctionCall,
     ModelName,
+    OpenAIModelName,
 )
-from autogpt.core.resource.model_providers.openai import OpenAIModelName
-from autogpt.models.utils import ModelWithSummary
+from forge.llm.providers.schema import ChatModelInfo
+from forge.models.utils import ModelWithSummary
+from forge.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -214,7 +209,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
     ) -> list[T] | list[None]:
         method_name = protocol_method.__name__
         protocol_name = protocol_method.__qualname__.split(".")[0]
-        protocol_class = getattr(_protocols, protocol_name)
+        protocol_class = getattr(protocols, protocol_name)
         if not issubclass(protocol_class, AgentComponent):
             raise TypeError(f"{repr(protocol_method)} is not a protocol method")
 

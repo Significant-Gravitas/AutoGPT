@@ -32,6 +32,7 @@ from .schema import (
     ModelResponse,
     ModelTokenizer,
 )
+from .utils import function_specs_from_commands
 
 __all__ = [
     "AssistantChatMessage",
@@ -66,4 +67,5 @@ __all__ = [
     "OpenAIModelName",
     "OpenAIProvider",
     "OpenAISettings",
+    "function_specs_from_commands",
 ]
