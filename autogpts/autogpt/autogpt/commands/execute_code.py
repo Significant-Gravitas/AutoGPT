@@ -5,7 +5,6 @@ import shlex
 import string
 import subprocess
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import Iterator
 
 import docker
@@ -404,5 +403,5 @@ class CodeExecutorComponent(CommandProvider):
         # Create a string of all letters and digits
         characters = string.ascii_letters + string.digits
         # Use random.choices to generate a random string
-        random_string = ''.join(random.choices(characters, k=length))
+        random_string = "".join(random.choices(characters, k=length))
         return random_string

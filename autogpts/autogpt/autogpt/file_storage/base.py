@@ -160,7 +160,7 @@ class FileStorage(ABC):
     def mount(self, path: str | Path = ".") -> Generator[Path, Any, None]:
         """Mount the file storage and provide a local path."""
         local_path = tempfile.mkdtemp(dir=path)
-        
+
         observer = Observer()
         try:
             # Copy all files to the local directory
