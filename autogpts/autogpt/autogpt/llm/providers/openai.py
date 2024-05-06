@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=Callable)
 
 
-def get_openai_command_specs(
+def function_specs_from_commands(
     commands: Iterable[Command],
 ) -> list[CompletionModelFunction]:
     """Get OpenAI-consumable function specs for the agent's available commands.

@@ -26,6 +26,7 @@ from forge.config import (
     ConfigBuilder,
     assert_config_has_openai_api_key,
 )
+from autogpt.core.resource.model_providers import MultiProvider
 from forge.db import AgentDB
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.logging.config import configure_logging
@@ -123,7 +124,7 @@ async def run_auto_gpt(
         skip_news=skip_news,
     )
 
-    llm_provider = _configure_openai_provider(config)
+    llm_provider = _configure_llm_provider(config)
 
     logger = logging.getLogger(__name__)
 
@@ -399,7 +400,7 @@ async def run_auto_gpt_server(
         allow_downloads=allow_downloads,
     )
 
-    llm_provider = _configure_openai_provider(config)
+    llm_provider = _configure_llm_provider(config)
 
     # Set up & start server
     database = AgentDB(
@@ -421,24 +422,12 @@ async def run_auto_gpt_server(
     )
 
 
-def _configure_openai_provider(config: Config) -> OpenAIProvider:
-    """Create a configured OpenAIProvider object.
-
-    Args:
-        config: The program's configuration.
-
-    Returns:
-        A configured OpenAIProvider object.
-    """
-    if config.openai_credentials is None:
-        raise RuntimeError("OpenAI key is not configured")
-
-    openai_settings = OpenAIProvider.default_settings.copy(deep=True)
-    openai_settings.credentials = config.openai_credentials
-    return OpenAIProvider(
-        settings=openai_settings,
-        logger=logging.getLogger("OpenAIProvider"),
-    )
+def _configure_llm_provider(config: Config) -> MultiProvider:
+    multi_provider = MultiProvider()
+    for model in [config.smart_llm, config.fast_llm]:
+        # Ensure model providers for configured LLMs are available
+        multi_provider.get_model_provider(model)
+    return multi_provider
 
 
 def _get_cycle_budget(continuous_mode: bool, continuous_limit: int) -> int | float:

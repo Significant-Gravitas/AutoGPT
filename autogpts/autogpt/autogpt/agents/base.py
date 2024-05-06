@@ -30,21 +30,12 @@ from forge.config.schema import (
     SystemSettings,
     UserConfigurable,
 )
-from forge.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
-from pydantic import BaseModel, Field, validator
-
-if TYPE_CHECKING:
-    from autogpt.core.resource.model_providers.schema import (
-        ChatModelInfo,
-    )
-
-from forge.config.config import ConfigBuilder
-
-from autogpt.core.resource.model_providers import AssistantFunctionCall
-from autogpt.core.resource.model_providers.openai import (
-    OPEN_AI_CHAT_MODELS,
-    OpenAIModelName,
+from autogpt.core.resource.model_providers import (
+    CHAT_MODELS,
+    AssistantFunctionCall,
+    ModelName,
 )
+from autogpt.core.resource.model_providers.openai import OpenAIModelName
 from autogpt.models.utils import ModelWithSummary
 
 logger = logging.getLogger(__name__)
@@ -56,8 +47,8 @@ P = ParamSpec("P")
 class BaseAgentConfiguration(SystemConfiguration):
     allow_fs_access: bool = UserConfigurable(default=False)
 
-    fast_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT3_16k)
-    smart_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT4)
+    fast_llm: ModelName = UserConfigurable(default=OpenAIModelName.GPT3_16k)
+    smart_llm: ModelName = UserConfigurable(default=OpenAIModelName.GPT4)
     use_functions_api: bool = UserConfigurable(default=False)
 
     default_cycle_instruction: str = DEFAULT_TRIGGERING_PROMPT
@@ -174,7 +165,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
         llm_name = (
             self.config.smart_llm if self.config.big_brain else self.config.fast_llm
         )
-        return OPEN_AI_CHAT_MODELS[llm_name]
+        return CHAT_MODELS[llm_name]
 
     @property
     def send_token_limit(self) -> int:
