@@ -325,14 +325,6 @@ class CodeExecutorComponent(CommandProvider):
             container_is_fresh = False
             container_name = f"{self.state.agent_id}_sandbox"
             with self.workspace.mount() as local_path:
-                # Ensure the directory exists
-                directory = (local_path / filename).parent
-                os.makedirs(directory, exist_ok=True)
-                # Copy the file to the temporary workspace
-                content = self.workspace.read_file(file_path, binary=True)
-                with open(local_path / filename, "wb") as file:
-                    file.write(content)
-
                 try:
                     container: DockerContainer = client.containers.get(
                         container_name

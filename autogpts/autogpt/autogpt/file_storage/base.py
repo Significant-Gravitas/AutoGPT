@@ -163,6 +163,16 @@ class FileStorage(ABC):
         
         observer = Observer()
         try:
+            # Copy all files to the local directory
+            files = self.list_files()
+            for file in files:
+                file_path = local_path / file
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(file_path, "wb") as f:
+                    content = self.read_file(file, binary=True)
+                    assert isinstance(content, bytes)
+                    f.write(content)
+
             # Sync changes
             event_handler = FileSyncHandler(self)
             observer.schedule(event_handler, local_path, recursive=True)
