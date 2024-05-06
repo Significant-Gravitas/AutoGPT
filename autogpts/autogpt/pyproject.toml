@@ -22,6 +22,7 @@ serve = "autogpt.app.cli:serve"
 
 [tool.poetry.dependencies]
 python = "^3.10"
+anthropic = "^0.25.1"
 # autogpt-forge = { path = "../forge" }
 autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "autogpts/forge"}
 beautifulsoup4 = "^4.12.2"

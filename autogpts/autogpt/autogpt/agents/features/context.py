@@ -71,34 +71,32 @@ class ContextComponent(MessageProvider, CommandProvider):
             )
         }
     )
-    async def open_file(self, file_path: Path) -> str:
+    async def open_file(self, file_path: str | Path) -> str:
         """Opens a file for editing or continued viewing;
         creates it if it does not exist yet.
         Note: If you only need to read or write a file once,
         use `write_to_file` instead.
 
         Args:
-            file_path (Path): The path of the file to open
+            file_path (str | Path): The path of the file to open
 
         Returns:
             str: A status message indicating what happened
         """
-        # Try to make the file path relative
-        relative_file_path = None
-        with contextlib.suppress(ValueError):
-            relative_file_path = file_path.relative_to(self.workspace.root)
+        if not isinstance(file_path, Path):
+            file_path = Path(file_path)
 
         created = False
         if not self.workspace.exists(file_path):
             await self.workspace.write_file(file_path, "")
             created = True
 
-        file_path = relative_file_path or file_path
+        # Try to make the file path relative
+        with contextlib.suppress(ValueError):
+            file_path = file_path.relative_to(self.workspace.root)
 
         file = FileContextItem(path=file_path)
-
         self.context.add(file)
-
         return (
             f"File {file_path}{' created,' if created else ''} has been opened"
             " and added to the context ✅"
@@ -113,31 +111,29 @@ class ContextComponent(MessageProvider, CommandProvider):
             )
         }
     )
-    def open_folder(self, path: Path) -> str:
+    def open_folder(self, path: str | Path) -> str:
         """Open a folder to keep track of its content
 
         Args:
-            path (Path): The path of the folder to open
+            path (str | Path): The path of the folder to open
 
         Returns:
             str: A status message indicating what happened
         """
-        # Try to make the path relative
-        relative_path = None
-        with contextlib.suppress(ValueError):
-            relative_path = path.relative_to(self.workspace.root)
+        if not isinstance(path, Path):
+            path = Path(path)
 
         if not self.workspace.exists(path):
             raise FileNotFoundError(
                 f"open_folder {path} failed: no such file or directory"
             )
 
-        path = relative_path or path
+        # Try to make the path relative
+        with contextlib.suppress(ValueError):
+            path = path.relative_to(self.workspace.root)
 
         folder = FolderContextItem(path=path)
-
         self.context.add(folder)
-
         return f"Folder {path} has been opened and added to the context ✅"
 
     @command(

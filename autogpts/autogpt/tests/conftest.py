@@ -8,9 +8,9 @@ import pytest
 from pytest_mock import MockerFixture
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.app.main import _configure_openai_provider
+from autogpt.app.main import _configure_llm_provider
 from autogpt.config import AIProfile, Config, ConfigBuilder
-from autogpt.core.resource.model_providers import ChatModelProvider, OpenAIProvider
+from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.file_storage.local import (
     FileStorage,
     FileStorageConfiguration,
@@ -73,8 +73,8 @@ def setup_logger(config: Config):
 
 
 @pytest.fixture
-def llm_provider(config: Config) -> OpenAIProvider:
-    return _configure_openai_provider(config)
+def llm_provider(config: Config) -> ChatModelProvider:
+    return _configure_llm_provider(config)
 
 
 @pytest.fixture
