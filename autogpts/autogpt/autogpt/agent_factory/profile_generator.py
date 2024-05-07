@@ -1,7 +1,9 @@
 import json
 import logging
 
-from forge.config import AIDirectives, AIProfile, Config
+from forge.config.ai_directives import AIDirectives
+from forge.config.ai_profile import AIProfile
+from forge.config.config import Config
 from forge.config.schema import SystemConfiguration, UserConfigurable
 from forge.json.schema import JSONSchema
 from forge.llm.providers.schema import (

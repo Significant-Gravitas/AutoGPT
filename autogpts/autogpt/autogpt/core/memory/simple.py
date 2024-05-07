@@ -1,7 +1,7 @@
 import json
 import logging
 
-from forge.config import Configurable, SystemConfiguration, SystemSettings
+from forge.config.schema import Configurable, SystemConfiguration, SystemSettings
 
 from autogpt.core.memory.base import Memory
 from autogpt.core.workspace import Workspace

@@ -1,4 +1,4 @@
-from forge.config import AIProfile
+from forge.config.ai_profile import AIProfile
 from forge.file_storage import FileStorage
 
 """

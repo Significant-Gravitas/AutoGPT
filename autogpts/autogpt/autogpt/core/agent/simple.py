@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from forge.config import Configurable, SystemConfiguration, SystemSettings
+from forge.config.schema import Configurable, SystemConfiguration, SystemSettings
 from forge.llm.providers import CompletionModelFunction, OpenAIProvider, OpenAISettings
 from pydantic import BaseModel
 

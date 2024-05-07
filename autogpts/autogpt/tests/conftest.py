@@ -5,7 +5,8 @@ import uuid
 from pathlib import Path
 
 import pytest
-from forge.config import AIProfile, Config, ConfigBuilder
+from forge.config.ai_profile import AIProfile
+from forge.config.config import Config, ConfigBuilder
 from forge.file_storage.local import (
     FileStorage,
     FileStorageConfiguration,

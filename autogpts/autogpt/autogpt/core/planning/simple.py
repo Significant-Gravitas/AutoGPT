@@ -3,7 +3,7 @@ import platform
 import time
 
 import distro
-from forge.config import (
+from forge.config.schema import (
     Configurable,
     SystemConfiguration,
     SystemSettings,

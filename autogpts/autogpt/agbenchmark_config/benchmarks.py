@@ -3,7 +3,8 @@ import logging
 import sys
 from pathlib import Path
 
-from forge.config import AIProfile, ConfigBuilder
+from forge.config.ai_profile import AIProfile
+from forge.config.config import ConfigBuilder
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.logging.config import configure_logging
 

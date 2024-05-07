@@ -2,7 +2,7 @@ import abc
 import enum
 from typing import TYPE_CHECKING, Type
 
-from forge.config import SystemConfiguration, UserConfigurable
+from forge.config.schema import SystemConfiguration, UserConfigurable
 from pydantic import BaseModel
 
 if TYPE_CHECKING:

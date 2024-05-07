@@ -19,9 +19,9 @@ from forge.components.code_executor import (
     we_are_running_in_a_docker_container,
 )
 from forge.components.event_history import ActionInterruptedByHuman
-from forge.config import (
-    AIDirectives,
-    AIProfile,
+from forge.config.ai_directives import AIDirectives
+from forge.config.ai_profile import AIProfile
+from forge.config.config import (
     Config,
     ConfigBuilder,
     assert_config_has_openai_api_key,
@@ -176,7 +176,6 @@ async def run_auto_gpt(
             + "\n".join(f"{i} - {id}" for i, id in enumerate(existing_agents, 1))
         )
         load_existing_agent = clean_input(
-            config,
             "Enter the number or name of the agent to run,"
             " or hit enter to create a new one:",
         )
@@ -203,7 +202,7 @@ async def run_auto_gpt(
     if load_existing_agent:
         agent_state = None
         while True:
-            answer = clean_input(config, "Resume? [Y/n]")
+            answer = clean_input("Resume? [Y/n]")
             if answer == "" or answer.lower() == "y":
                 agent_state = agent_manager.load_agent_state(load_existing_agent)
                 break
@@ -237,7 +236,7 @@ async def run_auto_gpt(
             finish_reason = current_episode.action.use_tool.arguments["reason"]
             print(f"Agent previously self-terminated; reason: '{finish_reason}'")
             new_assignment = clean_input(
-                config, "Please give a follow-up question or assignment:"
+                "Please give a follow-up question or assignment:"
             )
             agent.event_history.register_result(
                 ActionInterruptedByHuman(feedback=new_assignment)
@@ -269,7 +268,6 @@ async def run_auto_gpt(
         task = ""
         while task.strip() == "":
             task = clean_input(
-                config,
                 "Enter the task that you want AutoGPT to execute,"
                 " with as much detail as possible:",
             )
@@ -343,7 +341,6 @@ async def run_auto_gpt(
 
         # Allow user to Save As other ID
         save_as_id = clean_input(
-            config,
             f"Press enter to save as '{agent_id}',"
             " or enter a different ID to save to:",
         )
@@ -695,7 +692,7 @@ async def get_user_feedback(
 
     while user_feedback is None:
         # Get input from user
-        console_input = clean_input(config, Fore.MAGENTA + "Input:" + Style.RESET_ALL)
+        console_input = clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
 
         # Parse user input
         if console_input.lower().strip() == config.authorise_key:

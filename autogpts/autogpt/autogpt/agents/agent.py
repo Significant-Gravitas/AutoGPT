@@ -64,7 +64,7 @@ from autogpt.agents.prompt_strategies.one_shot import (
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 
 if TYPE_CHECKING:
-    from forge.config import Config
+    from forge.config.config import Config
 
 logger = logging.getLogger(__name__)
 

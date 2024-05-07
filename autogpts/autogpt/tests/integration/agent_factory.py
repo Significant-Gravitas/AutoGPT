@@ -1,6 +1,7 @@
 import pytest
 
-from forge.config import AIProfile, Config
+from forge.config.ai_profile import AIProfile
+from forge.config.config import Config
 from forge.file_storage import FileStorageBackendName, get_storage
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings

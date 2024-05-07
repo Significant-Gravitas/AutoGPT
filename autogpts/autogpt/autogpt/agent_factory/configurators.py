@@ -1,6 +1,8 @@
 from typing import Optional
 
-from forge.config import AIDirectives, AIProfile, Config
+from forge.config.ai_directives import AIDirectives
+from forge.config.ai_profile import AIProfile
+from forge.config.config import Config
 from forge.file_storage.base import FileStorage
 from forge.llm.providers import ChatModelProvider
 

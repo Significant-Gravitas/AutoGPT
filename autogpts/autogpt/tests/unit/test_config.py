@@ -8,7 +8,7 @@ from typing import Any
 from unittest import mock
 
 import pytest
-from forge.config import Config, ConfigBuilder
+from forge.config.config import Config, ConfigBuilder
 from forge.llm.providers.schema import ChatModelInfo, ModelProviderName
 from openai.pagination import AsyncPage
 from openai.types import Model

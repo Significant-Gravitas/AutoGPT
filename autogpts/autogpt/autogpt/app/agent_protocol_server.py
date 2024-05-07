@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from forge.components.event_history import ActionErrorResult, ActionSuccessResult
-from forge.config import Config
+from forge.config.config import Config
 from forge.file_storage import FileStorage
 from forge.llm.providers import ChatModelProvider, ModelProviderBudget
 from forge.sdk.db import AgentDB

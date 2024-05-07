@@ -12,7 +12,7 @@ from colorama import Fore, Style
 from git import InvalidGitRepositoryError, Repo
 
 if TYPE_CHECKING:
-    from forge.config import Config
+    from forge.config.config import Config
 
 logger = logging.getLogger(__name__)
 
