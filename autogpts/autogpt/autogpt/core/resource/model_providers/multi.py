@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from autogpt.core.configuration import Configurable
 
 from .anthropic import ANTHROPIC_CHAT_MODELS, AnthropicModelName, AnthropicProvider
+from .groq import GROQ_CHAT_MODELS, GroqModelName, GroqProvider
 from .openai import OPEN_AI_CHAT_MODELS, OpenAIModelName, OpenAIProvider
 from .schema import (
     AssistantChatMessage,
@@ -25,9 +26,9 @@ from .schema import (
 
 _T = TypeVar("_T")
 
-ModelName = AnthropicModelName | OpenAIModelName
+ModelName = AnthropicModelName | GroqModelName | OpenAIModelName
 
-CHAT_MODELS = {**ANTHROPIC_CHAT_MODELS, **OPEN_AI_CHAT_MODELS}
+CHAT_MODELS = {**ANTHROPIC_CHAT_MODELS, **GROQ_CHAT_MODELS, **OPEN_AI_CHAT_MODELS}
 
 
 class MultiProvider(Configurable[ModelProviderSettings], ChatModelProvider):
@@ -143,16 +144,17 @@ class MultiProvider(Configurable[ModelProviderSettings], ChatModelProvider):
     @classmethod
     def _get_model_provider_class(
         cls, model_name: ModelName
-    ) -> type[AnthropicProvider | OpenAIProvider]:
+    ) -> type[AnthropicProvider | GroqProvider | OpenAIProvider]:
         return cls._get_provider_class(CHAT_MODELS[model_name].provider_name)
 
     @classmethod
     def _get_provider_class(
         cls, provider_name: ModelProviderName
-    ) -> type[AnthropicProvider | OpenAIProvider]:
+    ) -> type[AnthropicProvider | GroqProvider | OpenAIProvider]:
         try:
             return {
                 ModelProviderName.ANTHROPIC: AnthropicProvider,
+                ModelProviderName.GROQ: GroqProvider,
                 ModelProviderName.OPENAI: OpenAIProvider,
             }[provider_name]
         except KeyError:
