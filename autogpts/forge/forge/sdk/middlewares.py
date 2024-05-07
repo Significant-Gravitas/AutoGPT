@@ -1,6 +1,9 @@
+from typing import TYPE_CHECKING
+
 from fastapi import FastAPI
 
-from .agent import Agent
+if TYPE_CHECKING:
+    from .agent import Agent
 
 
 class AgentMiddleware:

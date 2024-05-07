@@ -15,8 +15,7 @@ from forge.config.schema import SystemConfiguration, UserConfigurable
 if TYPE_CHECKING:
     from forge.speech import TTSConfig
 
-from forge.logging import BelowLevelFilter
-
+from .filters import BelowLevelFilter
 from .formatters import AutoGptFormatter, StructuredLoggingFormatter
 from .handlers import TTSHandler, TypingConsoleHandler
 

@@ -311,7 +311,7 @@ description = ""
 optional = false
 python-versions = "^3.10"
 files = []
-develop = false
+develop = true
 
 [package.dependencies]
 aiohttp = "^3.8.5"
@@ -7256,4 +7256,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "ad1e3c4706465733d04ddab975af630975bd528efce152c1da01eded53069eca"
+content-hash = "cee73bb8387e4dde5d4a7bad68cb187ca6ec95057955b2e435b1f72ade1bd054"

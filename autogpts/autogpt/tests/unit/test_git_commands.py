@@ -1,11 +1,11 @@
 import pytest
-from autogpt.agents.agent import Agent
-from git.exc import GitCommandError
-from git.repo.base import Repo
-
 from forge.components.git_operations import GitOperationsComponent
 from forge.file_storage.base import FileStorage
 from forge.utils.exceptions import CommandExecutionError
+from git.exc import GitCommandError
+from git.repo.base import Repo
+
+from autogpt.agents.agent import Agent
 
 
 @pytest.fixture

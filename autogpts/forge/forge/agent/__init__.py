@@ -1,7 +1,6 @@
 from .base import (
     AgentMeta,
     BaseAgent,
-    BaseAgentActionProposal,
     BaseAgentConfiguration,
     BaseAgentSettings,
 )

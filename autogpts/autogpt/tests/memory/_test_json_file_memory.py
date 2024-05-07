@@ -3,8 +3,8 @@
 import orjson
 import pytest
 from forge.config import Config
-
 from forge.file_storage import FileStorage
+
 from autogpt.memory.vector import JSONFileMemory, MemoryItem
 
 

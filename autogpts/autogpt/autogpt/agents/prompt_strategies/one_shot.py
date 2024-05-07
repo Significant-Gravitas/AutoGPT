@@ -6,7 +6,7 @@ import re
 from logging import Logger
 
 import distro
-from forge.agent.base import BaseAgentActionProposal
+from forge.agent.base import ActionProposal
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.schema import SystemConfiguration, UserConfigurable
@@ -42,7 +42,7 @@ class AssistantThoughts(ModelWithSummary):
         return self.text
 
 
-class OneShotAgentActionProposal(BaseAgentActionProposal):
+class OneShotAgentActionProposal(ActionProposal):
     thoughts: AssistantThoughts
 
 

@@ -3,13 +3,13 @@ from typing import TYPE_CHECKING, Iterator
 
 from forge.llm.providers import ChatMessage
 
-from .base import BaseAgentActionProposal
 from .components import AgentComponent
 
 if TYPE_CHECKING:
-
     from forge.command.command import Command
     from forge.components.event_history import ActionResult
+    
+    from .base import ActionProposal
 
 
 class DirectiveProvider(AgentComponent):
@@ -37,7 +37,7 @@ class MessageProvider(AgentComponent):
 
 class AfterParse(AgentComponent):
     @abstractmethod
-    def after_parse(self, result: "BaseAgentActionProposal") -> None:
+    def after_parse(self, result: "ActionProposal") -> None:
         ...
 
 

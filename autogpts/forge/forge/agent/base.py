@@ -15,7 +15,7 @@ from forge.agent.components import (
     ComponentEndpointError,
     EndpointPipelineError,
 )
-from forge.components.event_history import ActionResult
+from forge.components.event_history import ActionResult, ActionProposal
 from forge.config import AIDirectives, AIProfile, ConfigBuilder
 from forge.config.schema import (
     Configurable,
@@ -30,7 +30,6 @@ from forge.llm.providers import (
     OpenAIModelName,
 )
 from forge.llm.providers.schema import ChatModelInfo
-from forge.models.utils import ModelWithSummary
 from forge.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -125,9 +124,7 @@ class AgentMeta(ABCMeta):
         return instance
 
 
-class BaseAgentActionProposal(BaseModel):
-    thoughts: str | ModelWithSummary
-    use_tool: AssistantFunctionCall = None
+
 
 
 class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
@@ -167,13 +164,13 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
         return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
 
     @abstractmethod
-    async def propose_action(self) -> BaseAgentActionProposal:
+    async def propose_action(self) -> ActionProposal:
         ...
 
     @abstractmethod
     async def execute(
         self,
-        proposal: BaseAgentActionProposal,
+        proposal: ActionProposal,
         user_feedback: str = "",
     ) -> ActionResult:
         ...
@@ -181,7 +178,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
     @abstractmethod
     async def do_not_execute(
         self,
-        denied_proposal: BaseAgentActionProposal,
+        denied_proposal: ActionProposal,
         user_feedback: str,
     ) -> ActionResult:
         ...

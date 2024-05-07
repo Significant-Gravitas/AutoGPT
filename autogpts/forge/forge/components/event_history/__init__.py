@@ -5,5 +5,6 @@ from .action_history import (
     ActionSuccessResult,
     Episode,
     EpisodicActionHistory,
+    ActionProposal,
 )
 from .event_history import EventHistoryComponent

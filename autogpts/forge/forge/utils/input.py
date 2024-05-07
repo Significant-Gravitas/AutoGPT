@@ -2,12 +2,10 @@ import logging
 
 import click
 
-from forge.config.config import Config
-
 logger = logging.getLogger(__name__)
 
 
-def clean_input(config: "Config", prompt: str = ""):
+def clean_input(prompt: str = ""):
     try:
         # ask for input, default when just pressing Enter is y
         logger.debug("Asking user via keyboard...")

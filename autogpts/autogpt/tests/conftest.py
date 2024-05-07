@@ -5,21 +5,20 @@ import uuid
 from pathlib import Path
 
 import pytest
-from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.app.main import _configure_llm_provider
-from autogpt.config import AIProfile, Config, ConfigBuilder
-from autogpt.file_storage.local import (
+from forge.config import AIProfile, Config, ConfigBuilder
+from forge.file_storage.local import (
     FileStorage,
     FileStorageConfiguration,
     LocalFileStorage,
 )
-
 from forge.llm.providers import ChatModelProvider
 from forge.logging.config import configure_logging
 
+from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
+from autogpt.app.main import _configure_llm_provider
+
 pytest_plugins = [
     "tests.integration.agent_factory",
-    "tests.integration.memory.utils",
     "tests.vcr",
 ]
 
@@ -49,7 +48,6 @@ def storage(app_data_dir: Path) -> FileStorage:
 def config(
     tmp_project_root: Path,
     app_data_dir: Path,
-    mocker: MockerFixture,
 ):
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"

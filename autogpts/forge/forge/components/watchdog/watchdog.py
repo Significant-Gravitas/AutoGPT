@@ -1,10 +1,13 @@
 import logging
+from typing import TYPE_CHECKING
 
-from forge.agent.base import BaseAgentActionProposal, BaseAgentConfiguration
+if TYPE_CHECKING:
+    from forge.agent.base import BaseAgentConfiguration
+
 from forge.agent.components import ComponentSystemError
 from forge.agent.protocols import AfterParse
 from forge.components.context import ContextComponent
-from forge.components.event_history import EpisodicActionHistory
+from forge.components.event_history import EpisodicActionHistory, ActionProposal
 
 logger = logging.getLogger(__name__)
 
@@ -19,14 +22,14 @@ class WatchdogComponent(AfterParse):
 
     def __init__(
         self,
-        config: BaseAgentConfiguration,
-        event_history: EpisodicActionHistory[BaseAgentActionProposal],
+        config: "BaseAgentConfiguration",
+        event_history: EpisodicActionHistory[ActionProposal],
     ):
         self.config = config
         self.event_history = event_history
         self.revert_big_brain = False
 
-    def after_parse(self, result: BaseAgentActionProposal) -> None:
+    def after_parse(self, result: ActionProposal) -> None:
         if self.revert_big_brain:
             self.config.big_brain = False
             self.revert_big_brain = False

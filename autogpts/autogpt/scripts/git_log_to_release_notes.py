@@ -132,7 +132,6 @@ Do not mention the changes in the example when writing your release notes!
 
 if __name__ == "__main__":
     import dotenv
-
     from forge.logging.config import configure_logging
 
     configure_logging(debug=True)

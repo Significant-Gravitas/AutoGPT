@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Generic, Iterator, Literal, Optional, Typ
 from pydantic import BaseModel, Field
 from pydantic.generics import GenericModel
 
-from forge.agent import BaseAgentActionProposal
+from forge.llm.providers.schema import AssistantFunctionCall
 from forge.models.utils import ModelWithSummary
 from forge.processing.text import summarize_text
 from forge.prompts.utils import format_numbered_list, indent
@@ -14,6 +14,11 @@ from forge.prompts.utils import format_numbered_list, indent
 if TYPE_CHECKING:
     from forge.config.config import Config
     from forge.llm.providers import ChatModelProvider
+
+
+class ActionProposal(BaseModel):
+    thoughts: str | ModelWithSummary
+    use_tool: AssistantFunctionCall = None
 
 
 class ActionSuccessResult(BaseModel):
@@ -77,7 +82,7 @@ class ActionInterruptedByHuman(BaseModel):
 
 ActionResult = ActionSuccessResult | ActionErrorResult | ActionInterruptedByHuman
 
-AP = TypeVar("AP", bound=BaseAgentActionProposal)
+AP = TypeVar("AP", bound=ActionProposal)
 
 
 class Episode(GenericModel, Generic[AP]):

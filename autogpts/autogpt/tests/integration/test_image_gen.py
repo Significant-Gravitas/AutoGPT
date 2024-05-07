@@ -4,10 +4,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from autogpt.agents.agent import Agent
+from forge.components.image_gen import ImageGeneratorComponent
 from PIL import Image
 
-from forge.components.image_gen import ImageGeneratorComponent
+from autogpt.agents.agent import Agent
 
 
 @pytest.fixture

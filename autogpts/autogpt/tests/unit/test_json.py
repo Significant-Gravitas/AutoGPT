@@ -1,7 +1,6 @@
 import json
 
 import pytest
-
 from forge.json import json_loads
 
 _JSON_FIXABLE: list[tuple[str, str]] = [

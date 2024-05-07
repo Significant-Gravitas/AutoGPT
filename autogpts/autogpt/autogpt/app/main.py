@@ -44,7 +44,7 @@ from autogpt.core.runner.client_lib.utils import coroutine
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
-    from forge.agent.base import BaseAgentActionProposal
+    from forge.agent.base import ActionProposal
 
 from .configurator import apply_overrides_to_config
 from .setup import apply_overrides_to_ai_settings, interactively_revise_ai_settings
@@ -626,7 +626,7 @@ async def run_interaction_loop(
 
 def update_user(
     ai_profile: AIProfile,
-    action_proposal: "BaseAgentActionProposal",
+    action_proposal: "ActionProposal",
     speak_mode: bool = False,
 ) -> None:
     """Prints the assistant's thoughts and the next command to the user.
