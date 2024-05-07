@@ -116,7 +116,7 @@ First some important notes w.r.t. using the application:
   * Frontend -> `frontend`
 
   See also the [README](/#readme).
-""".lstrip()
+""".lstrip()  # noqa
 
 
 SYSTEM_PROMPT = f"""
@@ -128,7 +128,7 @@ Here is an example of what we like our release notes to look and read like:
 ---------------------------------------------------------------------------
 NOTE: These example release notes are not related to the git log that you should write release notes for!
 Do not mention the changes in the example when writing your release notes!
-""".lstrip()
+""".lstrip()  # noqa
 
 if __name__ == "__main__":
     import dotenv
