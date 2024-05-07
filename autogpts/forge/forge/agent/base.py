@@ -15,7 +15,7 @@ from forge.agent.components import (
     ComponentEndpointError,
     EndpointPipelineError,
 )
-from forge.components.event_history import ActionResult, ActionProposal
+from forge.components.event_history import ActionProposal, ActionResult
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import ConfigBuilder

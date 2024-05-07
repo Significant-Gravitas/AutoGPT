@@ -251,9 +251,7 @@ def assert_config_has_openai_api_key(config: Config) -> None:
         logger.info(
             "You can get your key from https://platform.openai.com/account/api-keys"
         )
-        openai_api_key = clean_input(
-            config, "Please enter your OpenAI API key if you have it:"
-        )
+        openai_api_key = clean_input("Please enter your OpenAI API key if you have it:")
         openai_api_key = openai_api_key.strip()
         if re.search(key_pattern, openai_api_key):
             os.environ["OPENAI_API_KEY"] = openai_api_key

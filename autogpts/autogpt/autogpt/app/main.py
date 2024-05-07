@@ -21,11 +21,7 @@ from forge.components.code_executor import (
 from forge.components.event_history import ActionInterruptedByHuman
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
-from forge.config.config import (
-    Config,
-    ConfigBuilder,
-    assert_config_has_openai_api_key,
-)
+from forge.config.config import Config, ConfigBuilder, assert_config_has_openai_api_key
 from forge.db import AgentDB
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider

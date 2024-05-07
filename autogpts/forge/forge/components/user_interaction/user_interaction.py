@@ -12,7 +12,6 @@ class UserInteractionComponent(CommandProvider):
     """Provides commands to interact with the user."""
 
     def __init__(self, config: Config):
-        self.config = config
         self._enabled = not config.noninteractive_mode
 
     def get_commands(self) -> Iterator[Command]:
@@ -32,5 +31,5 @@ class UserInteractionComponent(CommandProvider):
         """If you need more details or information regarding the given goals,
         you can ask the user for input."""
         print(f"\nQ: {question}")
-        resp = clean_input(self.config, "A:")
+        resp = clean_input("A:")
         return f"The user's answer: '{resp}'"

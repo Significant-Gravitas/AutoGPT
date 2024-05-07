@@ -8,7 +8,7 @@ from .components import AgentComponent
 if TYPE_CHECKING:
     from forge.command.command import Command
     from forge.components.event_history import ActionResult
-    
+
     from .base import ActionProposal
 
 
