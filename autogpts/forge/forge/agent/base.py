@@ -25,19 +25,19 @@ from forge.config.schema import (
     SystemSettings,
     UserConfigurable,
 )
-from forge.llm.providers import (
-    CHAT_MODELS,
-    AssistantFunctionCall,
-    ModelName,
-    OpenAIModelName,
-)
+from forge.llm.providers import CHAT_MODELS, ModelName, OpenAIModelName
 from forge.llm.providers.schema import ChatModelInfo
-from forge.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 P = ParamSpec("P")
+
+DEFAULT_TRIGGERING_PROMPT = (
+    "Determine exactly one command to use next based on the given goals "
+    "and the progress you have made so far, "
+    "and respond using the JSON schema specified previously:"
+)
 
 
 class BaseAgentConfiguration(SystemConfiguration):

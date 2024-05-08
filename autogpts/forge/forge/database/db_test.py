@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from forge.sdk.db import (
+from forge.database.db import (
     AgentDB,
     ArtifactModel,
     StepModel,
@@ -13,7 +13,8 @@ from forge.sdk.db import (
     convert_to_step,
     convert_to_task,
 )
-from forge.sdk.model import Artifact, Status, Step, StepRequestBody, Task
+from forge.models.artifact import Artifact
+from forge.models.task import Status, Step, StepRequestBody, Task
 from forge.utils.exceptions import NotFoundError as DataNotFoundError
 
 

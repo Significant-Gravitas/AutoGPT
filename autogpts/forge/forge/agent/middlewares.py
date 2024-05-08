@@ -2,16 +2,13 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 
-if TYPE_CHECKING:
-    from .agent import Agent
-
 
 class AgentMiddleware:
     """
     Middleware that injects the agent instance into the request scope.
     """
 
-    def __init__(self, app: FastAPI, agent: "Agent"):
+    def __init__(self, app: FastAPI, agent):
         """
 
         Args:

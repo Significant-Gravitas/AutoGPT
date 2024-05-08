@@ -25,7 +25,7 @@ from typing import List
 
 from jinja2 import Environment, FileSystemLoader
 
-from .forge_log import ForgeLogger
+from ..logging.forge_log import ForgeLogger
 
 LOG = ForgeLogger(__name__)
 
@@ -50,9 +50,7 @@ class PromptEngine:
 
         try:
             # Get the list of all model directories
-            models_dir = os.path.abspath(
-                os.path.join(os.path.dirname(__file__), "../prompts")
-            )
+            models_dir = os.path.abspath(os.path.dirname(__file__))
             model_names = [
                 os.path.basename(os.path.normpath(d))
                 for d in glob.glob(os.path.join(models_dir, "*/"))
