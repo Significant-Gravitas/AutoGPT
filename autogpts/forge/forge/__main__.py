@@ -3,9 +3,9 @@ import os
 import uvicorn
 from dotenv import load_dotenv
 
-import forge.sdk.forge_log
+import forge.logging.forge_log
 
-LOG = forge.sdk.forge_log.ForgeLogger(__name__)
+LOG = forge.logging.forge_log.ForgeLogger(__name__)
 
 
 logo = """\n\n
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     port = os.getenv("PORT", 8000)
     LOG.info(f"Agent server starting on http://localhost:{port}")
     load_dotenv()
-    forge.sdk.forge_log.setup_logger()
+    forge.logging.forge_log.setup_logger()
 
     uvicorn.run(
         "forge.app:app",

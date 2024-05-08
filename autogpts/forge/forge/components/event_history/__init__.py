@@ -1,7 +1,7 @@
 from .action_history import (
-    Action,
     ActionErrorResult,
     ActionInterruptedByHuman,
+    ActionProposal,
     ActionResult,
     ActionSuccessResult,
     Episode,

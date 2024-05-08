@@ -7,15 +7,13 @@ from tempfile import NamedTemporaryFile
 from typing import Iterator
 
 import docker
-from autogpt.agents.base import BaseAgentSettings
-from autogpt.config.config import Config
 from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
 
-from forge.agent.protocols import CommandProvider
-from forge.command.command import Command
-from forge.command.decorator import command
-from forge.file_storage.base import FileStorage
+from forge.agent import BaseAgentSettings, CommandProvider
+from forge.command import Command, command
+from forge.config.config import Config
+from forge.file_storage import FileStorage
 from forge.json.schema import JSONSchema
 from forge.utils.exceptions import (
     CodeExecutionError,
@@ -164,8 +162,8 @@ class CodeExecutorComponent(CommandProvider):
         if not str(filename).endswith(".py"):
             raise InvalidArgumentError("Invalid file type. Only .py files are allowed.")
 
-        file_path = Path(filename)
-        if not file_path.is_file():
+        file_path = self.workspace.get_path(filename)
+        if not self.workspace.exists(file_path):
             # Mimic the response that you get from the command line to make it
             # intuitively understandable for the LLM
             raise FileNotFoundError(

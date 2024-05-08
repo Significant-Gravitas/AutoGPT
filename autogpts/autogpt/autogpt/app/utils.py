@@ -9,40 +9,17 @@ from typing import TYPE_CHECKING, Any, Callable, Coroutine, ParamSpec, TypeVar
 import asyncio
 import functools
 
-import click
 import requests
 from colorama import Fore, Style
 from git import InvalidGitRepositoryError, Repo
 
 if TYPE_CHECKING:
-    from forge.config import Config
+    from forge.config.config import Config
 
 P = ParamSpec("P")
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
-
-
-def coroutine(f: Callable[P, Coroutine[Any, Any, T]]) -> Callable[P, T]:
-    @functools.wraps(f)
-    def wrapper(*args: P.args, **kwargs: P.kwargs):
-        return asyncio.run(f(*args, **kwargs))
-
-    return wrapper
-
-
-def clean_input(config: "Config", prompt: str = ""):
-    try:
-        # ask for input, default when just pressing Enter is y
-        logger.debug("Asking user via keyboard...")
-
-        return click.prompt(
-            text=prompt, prompt_suffix=" ", default="", show_default=False
-        )
-    except KeyboardInterrupt:
-        logger.info("You interrupted AutoGPT")
-        logger.info("Quitting...")
-        exit(0)
 
 
 def get_bulletin_from_web():
@@ -263,3 +240,11 @@ def is_port_free(port: int, host: str = "127.0.0.1"):
             return True  # If successful, the port is free
         except OSError:
             return False  # If failed, the port is likely in use
+
+
+def coroutine(f: Callable[P, Coroutine[Any, Any, T]]) -> Callable[P, T]:
+    @functools.wraps(f)
+    def wrapper(*args: P.args, **kwargs: P.kwargs):
+        return asyncio.run(f(*args, **kwargs))
+
+    return wrapper

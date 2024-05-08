@@ -19,35 +19,33 @@ from forge.components.code_executor import (
     we_are_running_in_a_docker_container,
 )
 from forge.components.event_history import ActionInterruptedByHuman
-from forge.config import (
-    AIDirectives,
-    AIProfile,
-    Config,
-    ConfigBuilder,
-    assert_config_has_openai_api_key,
-)
-from forge.db import AgentDB
+from forge.config.ai_directives import AIDirectives
+from forge.config.ai_profile import AIProfile
+from forge.config.config import Config, ConfigBuilder, assert_config_has_openai_api_key
+from forge.database.db import AgentDB
 from forge.file_storage import FileStorageBackendName, get_storage
+from forge.llm.providers import MultiProvider
+from forge.logging.config import configure_logging
+from forge.logging.helpers import print_attribute, speak
+from forge.models.utils import ModelWithSummary
 from forge.utils.const import DEFAULT_FINISH_COMMAND
 from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
+from forge.utils.input import clean_input
 
-if TYPE_CHECKING:
-    from autogpt.agents.agent import Agent
-
-from autogpt.app.decorators import coroutine
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
-from autogpt.agents.base import AgentThoughts, CommandArgs, CommandName
-from autogpt.core.resource.model_providers.openai import OpenAIProvider
-from autogpt.logs.config import configure_logging
-from autogpt.logs.helpers import print_attribute, speak
+from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
+
+if TYPE_CHECKING:
+    from autogpt.agents.agent import Agent
+    from forge.agent.base import ActionProposal
 
 from .configurator import apply_overrides_to_config
 from .setup import apply_overrides_to_ai_settings, interactively_revise_ai_settings
 from .spinner import Spinner
 from .utils import (
-    clean_input,
+    coroutine,
     get_legal_warning,
     markdown_to_ansi_style,
     print_git_branch_info,
@@ -121,7 +119,7 @@ async def run_auto_gpt(
         skip_news=skip_news,
     )
 
-    llm_provider = _configure_openai_provider(config)
+    llm_provider = _configure_llm_provider(config)
 
     logger = logging.getLogger(__name__)
 
@@ -174,7 +172,6 @@ async def run_auto_gpt(
             + "\n".join(f"{i} - {id}" for i, id in enumerate(existing_agents, 1))
         )
         load_existing_agent = clean_input(
-            config,
             "Enter the number or name of the agent to run,"
             " or hit enter to create a new one:",
         )
@@ -201,7 +198,7 @@ async def run_auto_gpt(
     if load_existing_agent:
         agent_state = None
         while True:
-            answer = clean_input(config, "Resume? [Y/n]")
+            answer = clean_input("Resume? [Y/n]")
             if answer == "" or answer.lower() == "y":
                 agent_state = agent_manager.load_agent_state(load_existing_agent)
                 break
@@ -227,16 +224,15 @@ async def run_auto_gpt(
         )
 
         if (
-            agent.event_history.current_episode
-            and agent.event_history.current_episode.action.name
-            == DEFAULT_FINISH_COMMAND
-            and not agent.event_history.current_episode.result
+            (current_episode := agent.event_history.current_episode)
+            and current_episode.action.use_tool.name == DEFAULT_FINISH_COMMAND
+            and not current_episode.result
         ):
             # Agent was resumed after `finish` -> rewrite result of `finish` action
-            finish_reason = agent.event_history.current_episode.action.args["reason"]
+            finish_reason = current_episode.action.use_tool.arguments["reason"]
             print(f"Agent previously self-terminated; reason: '{finish_reason}'")
             new_assignment = clean_input(
-                config, "Please give a follow-up question or assignment:"
+                "Please give a follow-up question or assignment:"
             )
             agent.event_history.register_result(
                 ActionInterruptedByHuman(feedback=new_assignment)
@@ -268,7 +264,6 @@ async def run_auto_gpt(
         task = ""
         while task.strip() == "":
             task = clean_input(
-                config,
                 "Enter the task that you want AutoGPT to execute,"
                 " with as much detail as possible:",
             )
@@ -342,7 +337,6 @@ async def run_auto_gpt(
 
         # Allow user to Save As other ID
         save_as_id = clean_input(
-            config,
             f"Press enter to save as '{agent_id}',"
             " or enter a different ID to save to:",
         )
@@ -398,7 +392,7 @@ async def run_auto_gpt_server(
         allow_downloads=allow_downloads,
     )
 
-    llm_provider = _configure_openai_provider(config)
+    llm_provider = _configure_llm_provider(config)
 
     # Set up & start server
     database = AgentDB(
@@ -420,24 +414,12 @@ async def run_auto_gpt_server(
     )
 
 
-def _configure_openai_provider(config: Config) -> OpenAIProvider:
-    """Create a configured OpenAIProvider object.
-
-    Args:
-        config: The program's configuration.
-
-    Returns:
-        A configured OpenAIProvider object.
-    """
-    if config.openai_credentials is None:
-        raise RuntimeError("OpenAI key is not configured")
-
-    openai_settings = OpenAIProvider.default_settings.copy(deep=True)
-    openai_settings.credentials = config.openai_credentials
-    return OpenAIProvider(
-        settings=openai_settings,
-        logger=logging.getLogger("OpenAIProvider"),
-    )
+def _configure_llm_provider(config: Config) -> MultiProvider:
+    multi_provider = MultiProvider()
+    for model in [config.smart_llm, config.fast_llm]:
+        # Ensure model providers for configured LLMs are available
+        multi_provider.get_model_provider(model)
+    return multi_provider
 
 
 def _get_cycle_budget(continuous_mode: bool, continuous_limit: int) -> int | float:
@@ -531,11 +513,7 @@ async def run_interaction_loop(
         # Have the agent determine the next action to take.
         with spinner:
             try:
-                (
-                    command_name,
-                    command_args,
-                    assistant_reply_dict,
-                ) = (await agent.propose_action()).to_tuple()
+                action_proposal = await agent.propose_action()
             except InvalidAgentResponseError as e:
                 logger.warning(f"The agent's thoughts could not be parsed: {e}")
                 consecutive_failures += 1
@@ -558,9 +536,7 @@ async def run_interaction_loop(
         # Print the assistant's thoughts and the next command to the user.
         update_user(
             ai_profile,
-            command_name,
-            command_args,
-            assistant_reply_dict,
+            action_proposal,
             speak_mode=legacy_config.tts_config.speak_mode,
         )
 
@@ -569,12 +545,12 @@ async def run_interaction_loop(
         ##################
         handle_stop_signal()
         if cycles_remaining == 1:  # Last cycle
-            user_feedback, user_input, new_cycles_remaining = await get_user_feedback(
+            feedback_type, feedback, new_cycles_remaining = await get_user_feedback(
                 legacy_config,
                 ai_profile,
             )
 
-            if user_feedback == UserFeedback.AUTHORIZE:
+            if feedback_type == UserFeedback.AUTHORIZE:
                 if new_cycles_remaining is not None:
                     # Case 1: User is altering the cycle budget.
                     if cycle_budget > 1:
@@ -598,13 +574,13 @@ async def run_interaction_loop(
                     "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
                     extra={"color": Fore.MAGENTA},
                 )
-            elif user_feedback == UserFeedback.EXIT:
+            elif feedback_type == UserFeedback.EXIT:
                 logger.warning("Exiting...")
                 exit()
             else:  # user_feedback == UserFeedback.TEXT
-                command_name = "human_feedback"
+                pass
         else:
-            user_input = ""
+            feedback = ""
             # First log new-line so user can differentiate sections better in console
             print()
             if cycles_remaining != math.inf:
@@ -619,33 +595,31 @@ async def run_interaction_loop(
         # Decrement the cycle counter first to reduce the likelihood of a SIGINT
         # happening during command execution, setting the cycles remaining to 1,
         # and then having the decrement set it to 0, exiting the application.
-        if command_name != "human_feedback":
+        if not feedback:
             cycles_remaining -= 1
 
-        if not command_name:
+        if not action_proposal.use_tool:
             continue
 
         handle_stop_signal()
 
-        if command_name:
-            result = await agent.execute(command_name, command_args, user_input)
+        if not feedback:
+            result = await agent.execute(action_proposal)
+        else:
+            result = await agent.do_not_execute(action_proposal, feedback)
 
-            if result.status == "success":
-                logger.info(
-                    result, extra={"title": "SYSTEM:", "title_color": Fore.YELLOW}
-                )
-            elif result.status == "error":
-                logger.warning(
-                    f"Command {command_name} returned an error: "
-                    f"{result.error or result.reason}"
-                )
+        if result.status == "success":
+            logger.info(result, extra={"title": "SYSTEM:", "title_color": Fore.YELLOW})
+        elif result.status == "error":
+            logger.warning(
+                f"Command {action_proposal.use_tool.name} returned an error: "
+                f"{result.error or result.reason}"
+            )
 
 
 def update_user(
     ai_profile: AIProfile,
-    command_name: CommandName,
-    command_args: CommandArgs,
-    assistant_reply_dict: AgentThoughts,
+    action_proposal: "ActionProposal",
     speak_mode: bool = False,
 ) -> None:
     """Prints the assistant's thoughts and the next command to the user.
@@ -661,18 +635,19 @@ def update_user(
 
     print_assistant_thoughts(
         ai_name=ai_profile.ai_name,
-        assistant_reply_json_valid=assistant_reply_dict,
+        thoughts=action_proposal.thoughts,
         speak_mode=speak_mode,
     )
 
     if speak_mode:
-        speak(f"I want to execute {command_name}")
+        speak(f"I want to execute {action_proposal.use_tool.name}")
 
     # First log new-line so user can differentiate sections better in console
     print()
+    safe_tool_name = remove_ansi_escape(action_proposal.use_tool.name)
     logger.info(
-        f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
-        f"ARGUMENTS = {Fore.CYAN}{command_args}{Style.RESET_ALL}",
+        f"COMMAND = {Fore.CYAN}{safe_tool_name}{Style.RESET_ALL}  "
+        f"ARGUMENTS = {Fore.CYAN}{action_proposal.use_tool.arguments}{Style.RESET_ALL}",
         extra={
             "title": "NEXT ACTION:",
             "title_color": Fore.CYAN,
@@ -713,7 +688,7 @@ async def get_user_feedback(
 
     while user_feedback is None:
         # Get input from user
-        console_input = clean_input(config, Fore.MAGENTA + "Input:" + Style.RESET_ALL)
+        console_input = clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
 
         # Parse user input
         if console_input.lower().strip() == config.authorise_key:
@@ -741,56 +716,59 @@ async def get_user_feedback(
 
 def print_assistant_thoughts(
     ai_name: str,
-    assistant_reply_json_valid: dict,
+    thoughts: str | ModelWithSummary | AssistantThoughts,
     speak_mode: bool = False,
 ) -> None:
     logger = logging.getLogger(__name__)
 
-    assistant_thoughts_reasoning = None
-    assistant_thoughts_plan = None
-    assistant_thoughts_speak = None
-    assistant_thoughts_criticism = None
-
-    assistant_thoughts = assistant_reply_json_valid.get("thoughts", {})
-    assistant_thoughts_text = remove_ansi_escape(assistant_thoughts.get("text", ""))
-    if assistant_thoughts:
-        assistant_thoughts_reasoning = remove_ansi_escape(
-            assistant_thoughts.get("reasoning", "")
-        )
-        assistant_thoughts_plan = remove_ansi_escape(assistant_thoughts.get("plan", ""))
-        assistant_thoughts_criticism = remove_ansi_escape(
-            assistant_thoughts.get("self_criticism", "")
-        )
-        assistant_thoughts_speak = remove_ansi_escape(
-            assistant_thoughts.get("speak", "")
-        )
-    print_attribute(
-        f"{ai_name.upper()} THOUGHTS", assistant_thoughts_text, title_color=Fore.YELLOW
+    thoughts_text = remove_ansi_escape(
+        thoughts.text
+        if isinstance(thoughts, AssistantThoughts)
+        else thoughts.summary()
+        if isinstance(thoughts, ModelWithSummary)
+        else thoughts
     )
-    print_attribute("REASONING", assistant_thoughts_reasoning, title_color=Fore.YELLOW)
-    if assistant_thoughts_plan:
-        print_attribute("PLAN", "", title_color=Fore.YELLOW)
-        # If it's a list, join it into a string
-        if isinstance(assistant_thoughts_plan, list):
-            assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
-        elif isinstance(assistant_thoughts_plan, dict):
-            assistant_thoughts_plan = str(assistant_thoughts_plan)
-
-        # Split the input_string using the newline character and dashes
-        lines = assistant_thoughts_plan.split("\n")
-        for line in lines:
-            line = line.lstrip("- ")
-            logger.info(line.strip(), extra={"title": "- ", "title_color": Fore.GREEN})
     print_attribute(
-        "CRITICISM", f"{assistant_thoughts_criticism}", title_color=Fore.YELLOW
+        f"{ai_name.upper()} THOUGHTS", thoughts_text, title_color=Fore.YELLOW
     )
 
-    # Speak the assistant's thoughts
-    if assistant_thoughts_speak:
-        if speak_mode:
-            speak(assistant_thoughts_speak)
-        else:
-            print_attribute("SPEAK", assistant_thoughts_speak, title_color=Fore.YELLOW)
+    if isinstance(thoughts, AssistantThoughts):
+        print_attribute(
+            "REASONING", remove_ansi_escape(thoughts.reasoning), title_color=Fore.YELLOW
+        )
+        if assistant_thoughts_plan := remove_ansi_escape(
+            "\n".join(f"- {p}" for p in thoughts.plan)
+        ):
+            print_attribute("PLAN", "", title_color=Fore.YELLOW)
+            # If it's a list, join it into a string
+            if isinstance(assistant_thoughts_plan, list):
+                assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
+            elif isinstance(assistant_thoughts_plan, dict):
+                assistant_thoughts_plan = str(assistant_thoughts_plan)
+
+            # Split the input_string using the newline character and dashes
+            lines = assistant_thoughts_plan.split("\n")
+            for line in lines:
+                line = line.lstrip("- ")
+                logger.info(
+                    line.strip(), extra={"title": "- ", "title_color": Fore.GREEN}
+                )
+        print_attribute(
+            "CRITICISM",
+            remove_ansi_escape(thoughts.self_criticism),
+            title_color=Fore.YELLOW,
+        )
+
+        # Speak the assistant's thoughts
+        if assistant_thoughts_speak := remove_ansi_escape(thoughts.speak):
+            if speak_mode:
+                speak(assistant_thoughts_speak)
+            else:
+                print_attribute(
+                    "SPEAK", assistant_thoughts_speak, title_color=Fore.YELLOW
+                )
+    else:
+        speak(thoughts_text)
 
 
 def remove_ansi_escape(s: str) -> str:
