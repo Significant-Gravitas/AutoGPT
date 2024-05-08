@@ -1,6 +1,5 @@
 import pytest
-
-from autogpt.logs.utils import remove_color_codes
+from forge.logging.utils import remove_color_codes
 
 
 @pytest.mark.parametrize(

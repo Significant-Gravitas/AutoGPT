@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from forge.config import AIDirectives
+from forge.config.ai_directives import AIDirectives
 from forge.file_storage.base import FileStorage
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
-    from autogpt.config import Config
-    from autogpt.core.resource.model_providers.schema import ChatModelProvider
+    from forge.config.config import Config
+    from forge.llm.providers.schema import ChatModelProvider
 
 from .configurators import _configure_agent
 from .profile_generator import generate_agent_profile_for_task

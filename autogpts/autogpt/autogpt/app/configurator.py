@@ -7,11 +7,11 @@ from typing import Literal, Optional
 
 import click
 from colorama import Back, Fore, Style
+from forge.config.config import GPT_3_MODEL, GPT_4_MODEL, Config
+from forge.llm.providers import ModelName, MultiProvider
+from forge.logging.helpers import request_user_double_check
 from forge.utils.yaml_validator import validate_yaml_file
 
-from autogpt.config.config import GPT_3_MODEL, GPT_4_MODEL, Config
-from autogpt.core.resource.model_providers.openai import OpenAIModelName, OpenAIProvider
-from autogpt.logs.helpers import request_user_double_check
 from autogpt.memory.vector import get_supported_memory_backends
 
 logger = logging.getLogger(__name__)
@@ -149,11 +149,11 @@ async def apply_overrides_to_config(
 
 
 async def check_model(
-    model_name: OpenAIModelName, model_type: Literal["smart_llm", "fast_llm"]
-) -> OpenAIModelName:
+    model_name: ModelName, model_type: Literal["smart_llm", "fast_llm"]
+) -> ModelName:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
-    openai = OpenAIProvider()
-    models = await openai.get_available_models()
+    multi_provider = MultiProvider()
+    models = await multi_provider.get_available_models()
 
     if any(model_name == m.name for m in models):
         return model_name

@@ -6,11 +6,6 @@ from sys import platform
 from typing import Iterator, Type
 from urllib.request import urlretrieve
 
-from autogpt.config import Config
-from autogpt.core.resource.model_providers.schema import (
-    ChatModelInfo,
-    ChatModelProvider,
-)
 from bs4 import BeautifulSoup
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
@@ -34,9 +29,10 @@ from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
 from forge.agent.protocols import CommandProvider, DirectiveProvider
-from forge.command.command import Command
-from forge.command.decorator import command
+from forge.command import Command, command
+from forge.config.config import Config
 from forge.json.schema import JSONSchema
+from forge.llm.providers.schema import ChatModelInfo, ChatModelProvider
 from forge.processing.html import extract_hyperlinks, format_hyperlinks
 from forge.processing.text import extract_information, summarize_text
 from forge.utils.exceptions import CommandExecutionError, TooMuchOutputError

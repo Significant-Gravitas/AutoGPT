@@ -8,7 +8,6 @@ import requests
 from forge.json.parsing import extract_dict_from_json
 from forge.utils.yaml_validator import validate_yaml_file
 from git import InvalidGitRepositoryError
-from tests.utils import skip_in_ci
 
 import autogpt.app.utils
 from autogpt.app.utils import (
@@ -17,6 +16,7 @@ from autogpt.app.utils import (
     get_latest_bulletin,
     set_env_config_value,
 )
+from tests.utils import skip_in_ci
 
 
 @pytest.fixture

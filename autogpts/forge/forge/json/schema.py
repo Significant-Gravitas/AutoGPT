@@ -57,10 +57,35 @@ class JSONSchema(BaseModel):
 
     @staticmethod
     def from_dict(schema: dict) -> "JSONSchema":
+        def resolve_references(schema: dict, definitions: dict) -> dict:
+            """
+            Recursively resolve type $refs in the JSON schema with their definitions.
+            """
+            if isinstance(schema, dict):
+                if "$ref" in schema:
+                    ref_path = schema["$ref"].split("/")[
+                        2:
+                    ]  # Split and remove '#/definitions'
+                    ref_value = definitions
+                    for key in ref_path:
+                        ref_value = ref_value[key]
+                    return resolve_references(ref_value, definitions)
+                else:
+                    return {
+                        k: resolve_references(v, definitions) for k, v in schema.items()
+                    }
+            elif isinstance(schema, list):
+                return [resolve_references(item, definitions) for item in schema]
+            else:
+                return schema
+
+        definitions = schema.get("definitions", {})
+        schema = resolve_references(schema, definitions)
+
         return JSONSchema(
             description=schema.get("description"),
             type=schema["type"],
-            enum=schema["enum"] if "enum" in schema else None,
+            enum=schema.get("enum"),
             items=JSONSchema.from_dict(schema["items"]) if "items" in schema else None,
             properties=JSONSchema.parse_properties(schema)
             if schema["type"] == "object"

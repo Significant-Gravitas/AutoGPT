@@ -2,7 +2,6 @@ import logging
 from pathlib import Path
 
 import yaml
-from autogpt.logs.helpers import request_user_double_check
 from pydantic import BaseModel, Field
 
 from forge.utils.yaml_validator import validate_yaml_file
@@ -25,6 +24,8 @@ class AIDirectives(BaseModel):
 
     @staticmethod
     def from_file(prompt_settings_file: Path) -> "AIDirectives":
+        from forge.logging.helpers import request_user_double_check
+
         (validated, message) = validate_yaml_file(prompt_settings_file)
         if not validated:
             logger.error(message, extra={"title": "FAILED FILE VALIDATION"})

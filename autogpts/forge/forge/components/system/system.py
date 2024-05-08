@@ -2,14 +2,12 @@ import logging
 import time
 from typing import Iterator
 
-from autogpt.config.config import Config
-from autogpt.core.resource.model_providers.schema import ChatMessage
-
 from forge.agent.protocols import CommandProvider, DirectiveProvider, MessageProvider
-from forge.command.command import Command
-from forge.command.decorator import command
+from forge.command import Command, command
 from forge.config.ai_profile import AIProfile
+from forge.config.config import Config
 from forge.json.schema import JSONSchema
+from forge.llm.providers import ChatMessage
 from forge.utils.const import DEFAULT_FINISH_COMMAND
 from forge.utils.exceptions import AgentFinished
 
@@ -32,7 +30,9 @@ class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
 
     def get_messages(self) -> Iterator[ChatMessage]:
         # Clock
-        yield ChatMessage.system(f"The current time and date is {time.strftime('%c')}")
+        yield ChatMessage.system(
+            f"## Clock\nThe current time and date is {time.strftime('%c')}"
+        )
 
     def get_commands(self) -> Iterator[Command]:
         yield self.finish
