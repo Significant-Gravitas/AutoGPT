@@ -89,7 +89,7 @@ Tips for naming your agent:
 * Give it its own unique name, or name it after yourself
 * Include an important aspect of your agent in the name, such as its purpose
 
-Examples: `SwiftyosAssistant`, `PwutsPRAgent`, `Narvis`, `evo.ninja`
+Examples: `SwiftyosAssistant`, `PwutsPRAgent`, `MySuperAgent`
 
 ![Create an Agent](docs/content/imgs/quickstart/007_create_agent.png)
 
