@@ -1,3 +1,4 @@
+from .multi import CHAT_MODELS, ModelName, MultiProvider
 from .openai import (
     OPEN_AI_CHAT_MODELS,
     OPEN_AI_EMBEDDING_MODELS,
@@ -42,11 +43,13 @@ __all__ = [
     "ChatModelProvider",
     "ChatModelResponse",
     "CompletionModelFunction",
+    "CHAT_MODELS",
     "Embedding",
     "EmbeddingModelInfo",
     "EmbeddingModelProvider",
     "EmbeddingModelResponse",
     "ModelInfo",
+    "ModelName",
     "ModelProvider",
     "ModelProviderBudget",
     "ModelProviderCredentials",
@@ -56,6 +59,7 @@ __all__ = [
     "ModelProviderUsage",
     "ModelResponse",
     "ModelTokenizer",
+    "MultiProvider",
     "OPEN_AI_MODELS",
     "OPEN_AI_CHAT_MODELS",
     "OPEN_AI_EMBEDDING_MODELS",
