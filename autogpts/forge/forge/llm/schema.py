@@ -4,7 +4,7 @@ import math
 
 from pydantic import BaseModel, SecretBytes, SecretField, SecretStr
 
-from forge.config.schema import SystemConfiguration, SystemSettings, UserConfigurable
+from forge.models.config import SystemConfiguration, SystemSettings, UserConfigurable
 
 
 class ResourceType(str, enum.Enum):

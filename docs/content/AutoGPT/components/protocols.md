@@ -48,10 +48,9 @@ The easiest way to provide a command is to use `command` decorator on a componen
 **Example** Calculator component that can perform multiplication. Agent is able to call this command if it's relevant to a current task and will see the returned result.
 
 ```py
-from autogpt.agents.components import Component
-from forge.protocols import CommandProvider
-from forge.json.schema import JSONSchema
-from autogpt.utils.command_decorator import command
+from forge.agent import CommandProvider, Component
+from forge.command import command
+from forge.json.model import JSONSchema
 
 
 class CalculatorComponent(CommandProvider):

@@ -1,7 +1,7 @@
 import re
 from typing import Callable, Optional, ParamSpec, TypeVar
 
-from forge.json.schema import JSONSchema
+from forge.json.model import JSONSchema
 
 from .command import Command, CommandOutput, CommandParameter
 

@@ -5,7 +5,7 @@ from typing import Iterator, Optional
 from forge.agent.protocols import CommandProvider, MessageProvider
 from forge.command import Command, command
 from forge.file_storage.base import FileStorage
-from forge.json.schema import JSONSchema
+from forge.json.model import JSONSchema
 from forge.llm.providers import ChatMessage
 from forge.utils.exceptions import InvalidArgumentError
 

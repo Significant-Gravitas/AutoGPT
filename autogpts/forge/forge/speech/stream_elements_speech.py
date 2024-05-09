@@ -6,7 +6,7 @@ import os
 import requests
 from playsound import playsound
 
-from forge.config.schema import SystemConfiguration, UserConfigurable
+from forge.models.config import SystemConfiguration, UserConfigurable
 
 from .base import VoiceBase
 

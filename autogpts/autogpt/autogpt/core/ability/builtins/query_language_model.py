@@ -1,7 +1,7 @@
 import logging
 from typing import ClassVar
 
-from forge.json.schema import JSONSchema
+from forge.json.model import JSONSchema
 from forge.llm.providers import (
     ChatMessage,
     ChatModelProvider,

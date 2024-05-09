@@ -33,7 +33,6 @@ from forge.components.user_interaction import UserInteractionComponent
 from forge.components.watchdog import WatchdogComponent
 from forge.components.web_search import WebSearchComponent
 from forge.components.web_selenium import WebSeleniumComponent
-from forge.config.schema import Configurable
 from forge.file_storage.base import FileStorage
 from forge.llm.providers import (
     AssistantFunctionCall,
@@ -48,6 +47,7 @@ from forge.logging.log_cycle import (
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
+from forge.models.config import Configurable
 from forge.prompts import ChatPrompt
 from forge.utils.exceptions import (
     AgentException,

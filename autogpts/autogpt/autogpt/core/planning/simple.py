@@ -3,18 +3,18 @@ import platform
 import time
 
 import distro
-from forge.config.schema import (
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-    UserConfigurable,
-)
 from forge.llm.providers import (
     ChatModelProvider,
     ChatModelResponse,
     CompletionModelFunction,
     ModelProviderName,
     OpenAIModelName,
+)
+from forge.models.config import (
+    Configurable,
+    SystemConfiguration,
+    SystemSettings,
+    UserConfigurable,
 )
 from forge.prompts import PromptStrategy
 from forge.prompts.schema import LanguageModelClassification

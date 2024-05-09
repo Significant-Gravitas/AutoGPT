@@ -9,14 +9,14 @@ import distro
 from forge.agent.base import ActionProposal
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
-from forge.config.schema import SystemConfiguration, UserConfigurable
+from forge.json.model import JSONSchema
 from forge.json.parsing import extract_dict_from_json
-from forge.json.schema import JSONSchema
 from forge.llm.providers.schema import (
     AssistantChatMessage,
     ChatMessage,
     CompletionModelFunction,
 )
+from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.models.utils import ModelWithSummary
 from forge.prompts import ChatPrompt, LanguageModelClassification, PromptStrategy
 from forge.prompts.utils import format_numbered_list

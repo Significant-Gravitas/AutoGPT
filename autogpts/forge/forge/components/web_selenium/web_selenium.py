@@ -31,7 +31,7 @@ from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverM
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.config.config import Config
-from forge.json.schema import JSONSchema
+from forge.json.model import JSONSchema
 from forge.llm.providers.schema import ChatModelInfo, ChatModelProvider
 from forge.processing.html import extract_hyperlinks, format_hyperlinks
 from forge.processing.text import extract_information, summarize_text

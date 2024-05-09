@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Optional
 
 from openai._base_client import log as openai_logger
 
-from forge.config.schema import SystemConfiguration, UserConfigurable
+from forge.models.config import SystemConfiguration, UserConfigurable
 
 if TYPE_CHECKING:
     from forge.speech import TTSConfig

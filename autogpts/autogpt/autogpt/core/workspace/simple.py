@@ -3,7 +3,7 @@ import logging
 import typing
 from pathlib import Path
 
-from forge.config.schema import (
+from forge.models.config import (
     Configurable,
     SystemConfiguration,
     SystemSettings,

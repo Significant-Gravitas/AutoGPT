@@ -4,10 +4,10 @@ from agent_protocol import StepHandler, StepResult
 from forge.config.ai_profile import AIProfile
 from forge.config.config import ConfigBuilder
 from forge.logging.helpers import user_friendly_output
+from forge.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 from autogpt.agents import Agent
 from autogpt.app.main import UserFeedback
-from forge.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 
 async def task_handler(task_input) -> StepHandler:

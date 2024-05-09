@@ -5,7 +5,7 @@ from typing import Callable, Iterator, Optional, TypeVar
 
 from pydantic import ValidationError
 
-from forge.config.schema import Configurable
+from forge.models.config import Configurable
 
 from .anthropic import ANTHROPIC_CHAT_MODELS, AnthropicModelName, AnthropicProvider
 from .openai import OPEN_AI_CHAT_MODELS, OpenAIModelName, OpenAIProvider

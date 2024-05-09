@@ -4,14 +4,14 @@ import logging
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import Config
-from forge.config.schema import SystemConfiguration, UserConfigurable
-from forge.json.schema import JSONSchema
+from forge.json.model import JSONSchema
 from forge.llm.providers.schema import (
     AssistantChatMessage,
     ChatMessage,
     ChatModelProvider,
     CompletionModelFunction,
 )
+from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.prompts import ChatPrompt, LanguageModelClassification, PromptStrategy
 
 logger = logging.getLogger(__name__)

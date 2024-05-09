@@ -19,12 +19,6 @@ from forge.components.event_history import ActionProposal, ActionResult
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import ConfigBuilder
-from forge.config.schema import (
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-    UserConfigurable,
-)
 from forge.llm.providers import (
     CHAT_MODELS,
     AssistantFunctionCall,
@@ -32,6 +26,12 @@ from forge.llm.providers import (
     OpenAIModelName,
 )
 from forge.llm.providers.schema import ChatModelInfo
+from forge.models.config import (
+    Configurable,
+    SystemConfiguration,
+    SystemSettings,
+    UserConfigurable,
+)
 from forge.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 logger = logging.getLogger(__name__)

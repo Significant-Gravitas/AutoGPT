@@ -1,11 +1,11 @@
 import logging
 
-from forge.config.schema import Configurable, SystemConfiguration, SystemSettings
 from forge.llm.providers import (
     ChatModelProvider,
     CompletionModelFunction,
     ModelProviderName,
 )
+from forge.models.config import Configurable, SystemConfiguration, SystemSettings
 
 from autogpt.core.ability.base import Ability, AbilityConfiguration, AbilityRegistry
 from autogpt.core.ability.builtins import BUILTIN_ABILITIES

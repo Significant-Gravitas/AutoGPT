@@ -16,7 +16,7 @@ import boto3
 import botocore.exceptions
 from pydantic import SecretStr
 
-from forge.config.schema import UserConfigurable
+from forge.models.config import UserConfigurable
 
 from .base import FileStorage, FileStorageConfiguration
 

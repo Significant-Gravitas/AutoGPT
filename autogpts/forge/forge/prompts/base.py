@@ -1,7 +1,7 @@
 import abc
 
-from forge.config.schema import SystemConfiguration
 from forge.llm.providers import AssistantChatMessage
+from forge.models.config import SystemConfiguration
 
 from .schema import ChatPrompt, LanguageModelClassification
 
