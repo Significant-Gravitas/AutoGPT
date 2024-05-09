@@ -1,21 +1,18 @@
 import re
-from typing import Callable, Optional, ParamSpec, TypeVar
+from typing import Callable, Concatenate, Optional, TypeVar
 
+from autogpt.agents.protocols import CommandProvider
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.command import Command, CommandOutput, CommandParameter
+from autogpt.models.command import CO, Command, CommandParameter, P
 
-# Unique identifier for AutoGPT commands
-AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
-
-P = ParamSpec("P")
-CO = TypeVar("CO", bound=CommandOutput)
+_CP = TypeVar("_CP", bound=CommandProvider)
 
 
 def command(
     names: list[str] = [],
     description: Optional[str] = None,
     parameters: dict[str, JSONSchema] = {},
-) -> Callable[[Callable[P, CommandOutput]], Command]:
+) -> Callable[[Callable[Concatenate[_CP, P], CO]], Command[P, CO]]:
     """
     The command decorator is used to make a Command from a function.
 
@@ -29,7 +26,7 @@ def command(
             that the command executes.
     """
 
-    def decorator(func: Callable[P, CO]) -> Command:
+    def decorator(func: Callable[Concatenate[_CP, P], CO]) -> Command[P, CO]:
         doc = func.__doc__ or ""
         # If names is not provided, use the function name
         command_names = names or [func.__name__]
