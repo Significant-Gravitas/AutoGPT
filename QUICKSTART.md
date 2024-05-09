@@ -39,9 +39,6 @@ This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux
 
     The first command you need to use is `./run setup` This will guide you through the process of setting up your system.
     Initially you will get instructions for installing flutter, chrome and setting up your github access token like the following image:
-
-    > Note: for advanced users. The github access token is only needed for the ./run arena enter command so the system can automatically create a PR
-
     
     ![Setup the Project](docs/content/imgs/quickstart/005_setup.png)
 
@@ -92,33 +89,9 @@ Tips for naming your agent:
 * Give it its own unique name, or name it after yourself
 * Include an important aspect of your agent in the name, such as its purpose
 
-Examples: `SwiftyosAssistant`, `PwutsPRAgent`, `Narvis`, `evo.ninja`
+Examples: `SwiftyosAssistant`, `PwutsPRAgent`, `MySuperAgent`
 
 ![Create an Agent](docs/content/imgs/quickstart/007_create_agent.png)
-
-### Optional: Entering the Arena
-
-Entering the Arena is an optional step intended for those who wish to actively participate in the agent leaderboard. If you decide to participate, you can enter the Arena by running `./run arena enter YOUR_AGENT_NAME`. This step is not mandatory for the development or testing of your agent.
-
-Entries with names like `agent`, `ExampleAgent`, `test_agent` or `MyExampleGPT` will NOT be merged. We also don't accept copycat entries that use the name of other projects, like `AutoGPT` or `evo.ninja`.
-
-![Enter the Arena](docs/content/imgs/quickstart/008_enter_arena.png)
-
-> **Note**  
-> For advanced users, create a new branch and create a file called YOUR_AGENT_NAME.json in the arena directory. Then commit this and create a PR to merge into the main repo. Only single file entries will be permitted. The json file needs the following format:
-> ```json
-> {
->   "github_repo_url": "https://github.com/Swiftyos/YourAgentName",
->   "timestamp": "2023-09-18T10:03:38.051498",
->   "commit_hash_to_benchmark": "ac36f7bfc7f23ad8800339fa55943c1405d80d5e",
->   "branch_to_benchmark": "master"
-> }
-> ```
-> - `github_repo_url`: the url to your fork
-> - `timestamp`: timestamp of the last update of this file
-> - `commit_hash_to_benchmark`: the commit hash of your entry. You update each time you have an something ready to be officially entered into the hackathon
-> - `branch_to_benchmark`: the branch you are using to develop your agent on, default is master.
-
 
 ## Running your Agent
 
