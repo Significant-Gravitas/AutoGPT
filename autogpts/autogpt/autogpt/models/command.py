@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable
-
-from autogpt.core.utils.json_schema import JSONSchema
+from typing import Any, Callable, Generic, ParamSpec, TypeVar
 
 from .command_parameter import CommandParameter
 from .context_item import ContextItem
@@ -11,8 +9,11 @@ from .context_item import ContextItem
 CommandReturnValue = Any
 CommandOutput = CommandReturnValue | tuple[CommandReturnValue, ContextItem]
 
+P = ParamSpec("P")
+CO = TypeVar("CO", bound=CommandOutput)
 
-class Command:
+
+class Command(Generic[P, CO]):
     """A class representing a command.
 
     Attributes:
@@ -25,7 +26,7 @@ class Command:
         self,
         names: list[str],
         description: str,
-        method: Callable[..., CommandOutput],
+        method: Callable[P, CO],
         parameters: list[CommandParameter],
     ):
         # Check if all parameters are provided
@@ -42,20 +43,6 @@ class Command:
     def is_async(self) -> bool:
         return inspect.iscoroutinefunction(self.method)
 
-    def validate_args(self, args: dict[str, Any]):
-        """
-        Validates the given arguments against the command's parameter specifications
-
-        Returns:
-            bool: Whether the given set of arguments is valid for this command
-            list[ValidationError]: Issues with the set of arguments (if any)
-        """
-        params_schema = JSONSchema(
-            type=JSONSchema.Type.OBJECT,
-            properties={p.name: p.spec for p in self.parameters},
-        )
-        return params_schema.validate_object(args)
-
     def _parameters_match(
         self, func: Callable, parameters: list[CommandParameter]
     ) -> bool:
@@ -71,7 +58,7 @@ class Command:
         # Check if sorted lists of names/keys are equal
         return sorted(func_param_names) == sorted(names)
 
-    def __call__(self, *args, **kwargs) -> Any:
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> CO:
         return self.method(*args, **kwargs)
 
     def __str__(self) -> str:

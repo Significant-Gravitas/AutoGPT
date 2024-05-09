@@ -19,7 +19,6 @@ from autogpt.components.event_history import EventHistoryComponent
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
-    AssistantChatMessage,
     AssistantFunctionCall,
     ChatMessage,
     ChatModelProvider,
@@ -27,7 +26,7 @@ from autogpt.core.resource.model_providers import (
 )
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.file_storage.base import FileStorage
-from autogpt.llm.providers.openai import get_openai_command_specs
+from autogpt.llm.providers.openai import function_specs_from_commands
 from autogpt.logs.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
@@ -46,7 +45,6 @@ from autogpt.utils.exceptions import (
     AgentException,
     AgentTerminated,
     CommandExecutionError,
-    InvalidArgumentError,
     UnknownCommandError,
 )
 
@@ -104,7 +102,11 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.ai_profile = settings.ai_profile
         self.directives = settings.directives
         prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
-        prompt_config.use_functions_api = settings.config.use_functions_api
+        prompt_config.use_functions_api = (
+            settings.config.use_functions_api
+            # Anthropic currently doesn't support tools + prefilling :(
+            and self.llm.provider_name != "anthropic"
+        )
         self.prompt_strategy = OneShotAgentPromptStrategy(prompt_config, logger)
         self.commands: list[Command] = []
 
@@ -172,7 +174,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             task=self.state.task,
             ai_profile=self.state.ai_profile,
             ai_directives=directives,
-            commands=get_openai_command_specs(self.commands),
+            commands=function_specs_from_commands(self.commands),
             include_os_info=self.legacy_config.execute_local_commands,
         )
 
@@ -202,12 +204,9 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         ] = await self.llm_provider.create_chat_completion(
             prompt.messages,
             model_name=self.llm.name,
-            completion_parser=self.parse_and_validate_response,
-            functions=(
-                get_openai_command_specs(self.commands)
-                if self.config.use_functions_api
-                else []
-            ),
+            completion_parser=self.prompt_strategy.parse_response_content,
+            functions=prompt.functions,
+            prefill_response=prompt.prefill_response,
         )
         result = response.parsed_result
 
@@ -222,28 +221,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         await self.run_pipeline(AfterParse.after_parse, result)
 
         return result
-
-    def parse_and_validate_response(
-        self, llm_response: AssistantChatMessage
-    ) -> OneShotAgentActionProposal:
-        parsed_response = self.prompt_strategy.parse_response_content(llm_response)
-
-        # Validate command arguments
-        command_name = parsed_response.use_tool.name
-        command = self._get_command(command_name)
-        if arg_errors := command.validate_args(parsed_response.use_tool.arguments)[1]:
-            fmt_errors = [
-                f"{'.'.join(str(p) for p in f.path)}: {f.message}"
-                if f.path
-                else f.message
-                for f in arg_errors
-            ]
-            raise InvalidArgumentError(
-                f"The set of arguments supplied for {command_name} is invalid:\n"
-                + "\n".join(fmt_errors)
-            )
-
-        return parsed_response
 
     async def execute(
         self,
