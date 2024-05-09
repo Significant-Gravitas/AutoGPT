@@ -88,7 +88,6 @@ Options:
 
 Commands:
   agent      Commands to create, start and stop agents
-  arena      Commands to enter the arena
   benchmark  Commands to start the benchmark and list tests and categories
   setup      Installs dependencies needed for your system.
 ```
