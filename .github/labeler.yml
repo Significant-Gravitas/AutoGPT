@@ -14,10 +14,6 @@ Frontend:
 - changed-files:
   - any-glob-to-any-file: frontend/**
 
-Arena:
-- changed-files:
-  - any-glob-to-any-file: arena/**
-
 documentation:
 - changed-files:
   - any-glob-to-any-file: docs/**
