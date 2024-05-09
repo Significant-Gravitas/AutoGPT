@@ -1,7 +1,5 @@
 from typing import List
 
-from import
-
 
 def test_two_sum(nums: List, target: int, expected_result: List[int]) -> None:
     result = two_sum(nums, target)
