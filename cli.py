@@ -99,12 +99,7 @@ def create(agent_name):
         new_agent_dir = f"./autogpts/{agent_name}"
         new_agent_name = f"{agent_name.lower()}.json"
 
-        existing_arena_files = [name.lower() for name in os.listdir("./arena/")]
-
-        if (
-            not os.path.exists(new_agent_dir)
-            and not new_agent_name in existing_arena_files
-        ):
+        if not os.path.exists(new_agent_dir):
             shutil.copytree("./autogpts/forge", new_agent_dir)
             click.echo(
                 click.style(
