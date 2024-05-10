@@ -26,7 +26,7 @@ from forge.components.action_history.event_history_component import (
     EventHistoryComponent,
 )
 from forge.components.code_executor.code_executor import CodeExecutorComponent
-from forge.components.context.context import ContextComponent
+from forge.components.context.context import AgentContext, ContextComponent
 from forge.components.file_manager import FileManagerComponent
 from forge.components.git_operations import GitOperationsComponent
 from forge.components.image_gen import ImageGeneratorComponent
@@ -52,10 +52,6 @@ from forge.utils.exceptions import (
 )
 from pydantic import Field
 
-from autogpt.agents.prompt_strategies.one_shot import (
-    OneShotAgentActionProposal,
-    OneShotAgentPromptStrategy,
-)
 from autogpt.app.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
@@ -63,6 +59,11 @@ from autogpt.app.log_cycle import (
     LogCycleHandler,
 )
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
+
+from .prompt_strategies.one_shot import (
+    OneShotAgentActionProposal,
+    OneShotAgentPromptStrategy,
+)
 
 if TYPE_CHECKING:
     from forge.config.config import Config
@@ -81,6 +82,8 @@ class AgentSettings(BaseAgentSettings):
         default_factory=EpisodicActionHistory[OneShotAgentActionProposal]
     )
     """(STATE) The action history of the agent."""
+
+    context: AgentContext = Field(default_factory=AgentContext)
 
 
 class Agent(BaseAgent, Configurable[AgentSettings]):
@@ -132,7 +135,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         )
         self.web_search = WebSearchComponent(legacy_config)
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
-        self.context = ContextComponent(self.file_manager.workspace)
+        self.context = ContextComponent(self.file_manager.workspace, settings.context)
         self.watchdog = WatchdogComponent(settings.config, settings.history)
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -84,7 +84,6 @@ This command forcefully stops the agent. You can also restart it using the start
 ## To Recap
 - We've forked the AutoGPT repo and cloned it locally on your machine.
 - we connected the library with our personal github access token as part of the setup.
-- We've created and named our first agent, and entered it into the arena!
 - We've run the agent and it's tasking server successfully without an error.
 - We've logged into the server site at localhost:8000 using our github account.
 
