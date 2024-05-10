@@ -7,7 +7,11 @@ from autogpt.models.command import Command
 
 
 class CreateCommandComponent(DirectiveProvider, CommandProvider):
-    """Writes a new command for the agent and adds it to the agent's command list."""
+    """
+    Writes a new command for the agent using the AutoGPT Codex API.
+    
+    Once the command is created, it is added to the agent's command list.
+    """
 
     def __init__(self, codex_base_url: str = "http://127.0.0.1:8080/api/v1") -> None:
         self.codex_base_url = codex_base_url
