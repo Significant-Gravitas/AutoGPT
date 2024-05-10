@@ -3,6 +3,8 @@ import platform
 import time
 
 import distro
+from forge.llm.prompting import PromptStrategy
+from forge.llm.prompting.schema import LanguageModelClassification
 from forge.llm.providers import (
     ChatModelProvider,
     ChatModelResponse,
@@ -16,8 +18,6 @@ from forge.models.config import (
     SystemSettings,
     UserConfigurable,
 )
-from forge.prompts import PromptStrategy
-from forge.prompts.schema import LanguageModelClassification
 
 from autogpt.core.planning import prompt_strategies
 from autogpt.core.planning.schema import Task

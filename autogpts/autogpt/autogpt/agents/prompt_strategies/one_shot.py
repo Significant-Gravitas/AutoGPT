@@ -11,6 +11,8 @@ from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.json.model import JSONSchema
 from forge.json.parsing import extract_dict_from_json
+from forge.llm.prompting import ChatPrompt, LanguageModelClassification, PromptStrategy
+from forge.llm.prompting.utils import format_numbered_list
 from forge.llm.providers.schema import (
     AssistantChatMessage,
     ChatMessage,
@@ -18,8 +20,6 @@ from forge.llm.providers.schema import (
 )
 from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.models.utils import ModelWithSummary
-from forge.prompts import ChatPrompt, LanguageModelClassification, PromptStrategy
-from forge.prompts.utils import format_numbered_list
 from forge.utils.exceptions import InvalidAgentResponseError
 from pydantic import Field
 

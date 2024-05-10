@@ -15,25 +15,27 @@ from forge.agent.protocols import (
     MessageProvider,
 )
 from forge.command.command import Command, CommandOutput
-from forge.components.code_executor.code_executor import CodeExecutorComponent
-from forge.components.context.context import ContextComponent
-from forge.components.event_history.action_history import (
+from forge.components.action_history.action_history import (
     ActionErrorResult,
     ActionInterruptedByHuman,
     ActionResult,
     ActionSuccessResult,
     EpisodicActionHistory,
 )
-from forge.components.event_history.event_history import EventHistoryComponent
+from forge.components.action_history.event_history_component import (
+    EventHistoryComponent,
+)
+from forge.components.code_executor.code_executor import CodeExecutorComponent
+from forge.components.context.context import ContextComponent
 from forge.components.file_manager import FileManagerComponent
 from forge.components.git_operations import GitOperationsComponent
 from forge.components.image_gen import ImageGeneratorComponent
 from forge.components.system import SystemComponent
 from forge.components.user_interaction import UserInteractionComponent
 from forge.components.watchdog import WatchdogComponent
-from forge.components.web_search import WebSearchComponent
-from forge.components.web_selenium import WebSeleniumComponent
+from forge.components.web_search import WebSearchComponent, WebSeleniumComponent
 from forge.file_storage.base import FileStorage
+from forge.llm.prompting.schema import ChatPrompt
 from forge.llm.providers import (
     AssistantFunctionCall,
     ChatMessage,
@@ -41,14 +43,7 @@ from forge.llm.providers import (
     ChatModelResponse,
 )
 from forge.llm.providers.utils import function_specs_from_commands
-from forge.logging.log_cycle import (
-    CURRENT_CONTEXT_FILE_NAME,
-    NEXT_ACTION_FILE_NAME,
-    USER_INPUT_FILE_NAME,
-    LogCycleHandler,
-)
 from forge.models.config import Configurable
-from forge.prompts import ChatPrompt
 from forge.utils.exceptions import (
     AgentException,
     AgentTerminated,
@@ -60,6 +55,12 @@ from pydantic import Field
 from autogpt.agents.prompt_strategies.one_shot import (
     OneShotAgentActionProposal,
     OneShotAgentPromptStrategy,
+)
+from autogpt.app.log_cycle import (
+    CURRENT_CONTEXT_FILE_NAME,
+    NEXT_ACTION_FILE_NAME,
+    USER_INPUT_FILE_NAME,
+    LogCycleHandler,
 )
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 

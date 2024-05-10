@@ -15,10 +15,11 @@ from forge.agent.components import (
     ComponentEndpointError,
     EndpointPipelineError,
 )
-from forge.components.event_history import ActionProposal, ActionResult
+from forge.components.action_history import ActionProposal, ActionResult
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import ConfigBuilder
+from forge.llm.prompting.prompt import DEFAULT_TRIGGERING_PROMPT
 from forge.llm.providers import (
     CHAT_MODELS,
     AssistantFunctionCall,
@@ -32,7 +33,6 @@ from forge.models.config import (
     SystemSettings,
     UserConfigurable,
 )
-from forge.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 logger = logging.getLogger(__name__)
 

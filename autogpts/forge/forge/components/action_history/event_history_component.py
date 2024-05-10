@@ -3,8 +3,8 @@ from typing import Callable, Generic, Iterator, Optional
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
 from forge.components.watchdog import WatchdogComponent
 from forge.config.config import Config
+from forge.llm.prompting.utils import indent
 from forge.llm.providers import ChatMessage, ChatModelProvider
-from forge.prompts.utils import indent
 
 from .action_history import AP, ActionResult, Episode, EpisodicActionHistory
 

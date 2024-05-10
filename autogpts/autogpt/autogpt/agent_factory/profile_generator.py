@@ -5,6 +5,7 @@ from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import Config
 from forge.json.model import JSONSchema
+from forge.llm.prompting import ChatPrompt, LanguageModelClassification, PromptStrategy
 from forge.llm.providers.schema import (
     AssistantChatMessage,
     ChatMessage,
@@ -12,7 +13,6 @@ from forge.llm.providers.schema import (
     CompletionModelFunction,
 )
 from forge.models.config import SystemConfiguration, UserConfigurable
-from forge.prompts import ChatPrompt, LanguageModelClassification, PromptStrategy
 
 logger = logging.getLogger(__name__)
 

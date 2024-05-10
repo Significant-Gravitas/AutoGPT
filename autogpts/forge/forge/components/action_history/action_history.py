@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING, Any, Generic, Iterator, Literal, Optional, Typ
 from pydantic import BaseModel, Field
 from pydantic.generics import GenericModel
 
+from forge.content_processing.text import summarize_text
+from forge.llm.prompting.utils import format_numbered_list, indent
 from forge.llm.providers.schema import AssistantFunctionCall
 from forge.models.utils import ModelWithSummary
-from forge.processing.text import summarize_text
-from forge.prompts.utils import format_numbered_list, indent
 
 if TYPE_CHECKING:
     from forge.config.config import Config

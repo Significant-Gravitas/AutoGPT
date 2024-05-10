@@ -5,9 +5,6 @@ from forge.json.model import JSONSchema
 
 from .command import Command, CommandOutput, CommandParameter
 
-# Unique identifier for AutoGPT commands
-AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
-
 P = ParamSpec("P")
 CO = TypeVar("CO", bound=CommandOutput)
 

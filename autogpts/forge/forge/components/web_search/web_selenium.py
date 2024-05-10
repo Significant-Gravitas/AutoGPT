@@ -31,10 +31,10 @@ from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverM
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.config.config import Config
+from forge.content_processing.html import extract_hyperlinks, format_hyperlinks
+from forge.content_processing.text import extract_information, summarize_text
 from forge.json.model import JSONSchema
 from forge.llm.providers.schema import ChatModelInfo, ChatModelProvider
-from forge.processing.html import extract_hyperlinks, format_hyperlinks
-from forge.processing.text import extract_information, summarize_text
 from forge.utils.exceptions import CommandExecutionError, TooMuchOutputError
 from forge.utils.url_validator import validate_url
 

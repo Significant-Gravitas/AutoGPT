@@ -14,11 +14,11 @@ from types import FrameType
 from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
+from forge.components.action_history import ActionInterruptedByHuman
 from forge.components.code_executor import (
     is_docker_available,
     we_are_running_in_a_docker_container,
 )
-from forge.components.event_history import ActionInterruptedByHuman
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import Config, ConfigBuilder, assert_config_has_openai_api_key
@@ -41,8 +41,8 @@ if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
     from forge.agent.base import ActionProposal
 
-from .input import clean_input
 from .configurator import apply_overrides_to_config
+from .input import clean_input
 from .setup import apply_overrides_to_ai_settings, interactively_revise_ai_settings
 from .spinner import Spinner
 from .utils import (

@@ -7,8 +7,8 @@ from typing import Literal
 import ftfy
 import numpy as np
 from forge.config.config import Config
+from forge.content_processing.text import chunk_content, split_text, summarize_text
 from forge.llm.providers import ChatMessage, ChatModelProvider, EmbeddingModelProvider
-from forge.processing.text import chunk_content, split_text, summarize_text
 from pydantic import BaseModel
 
 from .utils import Embedding, get_embedding

@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Union
 
-from .config import LOG_DIR
+from forge.logging.config import LOG_DIR
 
 DEFAULT_PREFIX = "agent"
 CURRENT_CONTEXT_FILE_NAME = "current_context.json"

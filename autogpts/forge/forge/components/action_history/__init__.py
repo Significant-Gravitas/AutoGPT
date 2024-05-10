@@ -7,4 +7,4 @@ from .action_history import (
     Episode,
     EpisodicActionHistory,
 )
-from .event_history import EventHistoryComponent
+from .event_history_component import EventHistoryComponent
