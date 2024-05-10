@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Optional
 import sentry_sdk
 from pydantic import Field
 
+from autogpt.commands.create_command import CreateCommandComponent
 from autogpt.commands.execute_code import CodeExecutorComponent
 from autogpt.commands.git_operations import GitOperationsComponent
 from autogpt.commands.image_gen import ImageGeneratorComponent
@@ -136,6 +137,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
         self.context = ContextComponent(self.file_manager.workspace, settings.context)
         self.watchdog = WatchdogComponent(settings.config, settings.history)
+        self.create_command = CreateCommandComponent()
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         """Timestamp the agent was created; only used for structured debug logging."""
