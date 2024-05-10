@@ -30,7 +30,7 @@ class UserInteractionComponent(CommandProvider):
         },
     )
     def ask_user(self, question: str) -> str:
-        """If you need more details or information regarding the given goals,
+        """If you need more details or information regarding the given task,
         you can ask the user for input."""
         print(f"\nQ: {question}")
         resp = clean_input(self.config, "A:")

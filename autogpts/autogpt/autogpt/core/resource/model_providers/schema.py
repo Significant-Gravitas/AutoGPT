@@ -29,6 +29,7 @@ from autogpt.core.resource.schema import (
 )
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.logs.utils import fmt_kwargs
+from autogpt.prompts.utils import indent
 
 if TYPE_CHECKING:
     from jsonschema import ValidationError
@@ -157,6 +158,38 @@ class CompletionModelFunction(BaseModel):
             for name, p in self.parameters.items()
         )
         return f"{self.name}: {self.description}. Params: ({params})"
+
+    def fmt_header(self) -> str:
+        """
+        Formats and returns the function header as a string with types and descriptions.
+
+        Returns:
+            str: The formatted function header.
+        """
+        params = ", ".join(
+            f"{name}: {p.python_type}{f'= {str(p.default)}' if p.default else ' = None' if not p.required else ''}"
+            for name, p in self.parameters.items()
+        )
+        return (
+            f"def {self.name}({params}):\n"  # TODO: add return type
+            + indent(
+                (
+                    '"""\n'
+                    f"{self.description}\n\n"
+                    "Params:\n"
+                    + indent(
+                        "\n".join(
+                            f"{name}: {param.description}"
+                            for name, param in self.parameters.items()
+                            if param.description
+                        )
+                    ) + "\n"
+                    '"""\n'
+                    "..."
+                ),
+                4,
+            )
+        )
 
     def validate_call(
         self, function_call: AssistantFunctionCall
