@@ -9,7 +9,6 @@ from autogpt.models.command import Command
 class CreateCommandComponent(DirectiveProvider, CommandProvider):
     """
     Writes a new command for the agent using the AutoGPT Codex API.
-    
     Once the command is created, it is added to the agent's command list.
     """
 
