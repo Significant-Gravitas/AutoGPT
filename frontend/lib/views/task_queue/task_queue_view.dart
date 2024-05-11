@@ -4,8 +4,6 @@ import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_queue_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
-import 'package:auto_gpt_flutter_client/views/task_queue/leaderboard_submission_button.dart';
-import 'package:auto_gpt_flutter_client/views/task_queue/leaderboard_submission_dialog.dart';
 import 'package:auto_gpt_flutter_client/views/task_queue/test_suite_button.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -123,26 +121,6 @@ class TaskQueueView extends StatelessWidget {
                   },
                 ),
                 SizedBox(height: 8), // Gap of 8 points between buttons
-                // LeaderboardSubmissionButton
-                LeaderboardSubmissionButton(
-                  onPressed: viewModel.benchmarkStatusMap.isEmpty ||
-                          viewModel.isBenchmarkRunning
-                      ? null
-                      : () {
-                          showDialog(
-                            context: context,
-                            builder: (context) => LeaderboardSubmissionDialog(
-                              onSubmit: (teamName, repoUrl, commitSha) {
-                                viewModel.submitToLeaderboard(
-                                    teamName, repoUrl, commitSha);
-                              },
-                              viewModel: viewModel,
-                            ),
-                          );
-                        },
-                  isDisabled: viewModel.isBenchmarkRunning ||
-                      viewModel.benchmarkStatusMap.isEmpty,
-                ),
               ],
             ),
           ),
