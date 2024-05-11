@@ -134,7 +134,7 @@ def start(agent_name: str, no_setup: bool):
     run_bench_command = os.path.join(agent_dir, "run_benchmark")
     if (
         os.path.exists(agent_dir)
-        and os.path.isfile(run_powcommand)
+        and os.path.isfile(run_command)
         and os.path.isfile(run_bench_command)
     ):
         os.chdir(agent_dir)
