@@ -6,12 +6,10 @@ To ensure efficiency, add the imports to the functions so only what is needed is
 """
 try:
     import click
-    import github
 except ImportError:
     import os
 
     os.system("pip3 install click")
-    os.system("pip3 install PyGithub")
     import click
 
 
@@ -81,7 +79,7 @@ def agent():
 
 @agent.command()
 @click.argument("agent_name")
-def create(agent_name):
+def create(agent_name: str):
     """Create's a new agent with the agent name provided"""
     import os
     import re
@@ -125,7 +123,7 @@ def create(agent_name):
     is_flag=True,
     help="Disables running the setup script before starting the agent",
 )
-def start(agent_name, no_setup):
+def start(agent_name: str, no_setup: bool):
     """Start agent command"""
     import os
     import subprocess
@@ -136,7 +134,7 @@ def start(agent_name, no_setup):
     run_bench_command = os.path.join(agent_dir, "run_benchmark")
     if (
         os.path.exists(agent_dir)
-        and os.path.isfile(run_command)
+        and os.path.isfile(run_powcommand)
         and os.path.isfile(run_bench_command)
     ):
         os.chdir(agent_dir)
