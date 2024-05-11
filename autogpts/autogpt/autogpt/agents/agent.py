@@ -120,7 +120,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             lambda x: self.llm_provider.count_tokens(x, self.llm.name),
             legacy_config,
             llm_provider,
-        )
+        ).run_after(WatchdogComponent)
         self.user_interaction = UserInteractionComponent(legacy_config)
         self.file_manager = FileManagerComponent(settings, file_storage)
         self.code_executor = CodeExecutorComponent(
@@ -135,7 +135,9 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.web_search = WebSearchComponent(legacy_config)
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
         self.context = ContextComponent(self.file_manager.workspace, settings.context)
-        self.watchdog = WatchdogComponent(settings.config, settings.history)
+        self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(
+            ContextComponent
+        )
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         """Timestamp the agent was created; only used for structured debug logging."""
