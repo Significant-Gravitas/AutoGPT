@@ -11,7 +11,6 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
-
 class FunctionSpecRequest(BaseModel):
     """
     A request to generate a correctly formated function spec
@@ -72,6 +71,7 @@ class CreateCommandComponent(DirectiveProvider, CommandProvider):
             ),
         },
     )
+    
     def execute_create_command(
         self, command_name: str, description: str, inputs: str, outputs: str
     ) -> str:
@@ -98,38 +98,19 @@ class CreateCommandComponent(DirectiveProvider, CommandProvider):
             code = func_date.code
         except Exception as e:
             return f"Error when calling Codex: {e}"
-
+        
         return code
-
+    
     def create_command(self, func: FunctionResponse) -> str:
         return ""
-
+    
     def run_generate_command(self, req: FunctionSpecRequest) -> FunctionResponse:
         loop = asyncio.new_event_loop()
-        spec = loop.run_until_complete(self._create_spec(req))
-        func = loop.run_until_complete(self._write_function(spec))  # type: ignore
+        func = loop.run_until_complete(self._write_function(req))
         return func
 
-    async def _write_function(self, req) -> FunctionResponse:  # type: ignore
-        headers: dict[str, str] = {"accept": "application/json"}
-
-        url = f"{self.codex_base_url}/function/spec/"
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, headers=headers, json=req) as response:
-                    response.raise_for_status()
-
-                    data = await response.json()
-                    return FunctionResponse(**data)
-
-        except aiohttp.ClientError as e:
-            logger.exception(f"Error getting user: {e}")
-            raise e
-        except Exception as e:
-            logger.exception(f"Unknown Error when write function: {e}")
-            raise e
-
-    async def _create_spec(self, req: FunctionSpecRequest):
+    
+    async def _write_function(self, req: FunctionSpecRequest) -> FunctionResponse: # type: ignore
         headers: dict[str, str] = {"accept": "application/json"}
 
         url = f"{self.codex_base_url}/function/spec/"
@@ -141,7 +122,7 @@ class CreateCommandComponent(DirectiveProvider, CommandProvider):
                     response.raise_for_status()
 
                     data = await response.json()
-                    return data
+                    return FunctionResponse(**data)
 
         except aiohttp.ClientError as e:
             logger.exception(f"Error getting user: {e}")
@@ -149,3 +130,4 @@ class CreateCommandComponent(DirectiveProvider, CommandProvider):
         except Exception as e:
             logger.exception(f"Unknown Error when write function: {e}")
             raise e
+        
