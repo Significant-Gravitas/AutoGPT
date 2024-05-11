@@ -14,7 +14,7 @@ from typing import Literal
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
 
-from forge.config.schema import UserConfigurable
+from forge.models.config import UserConfigurable
 
 from .base import FileStorage, FileStorageConfiguration
 

@@ -14,11 +14,11 @@ from types import FrameType
 from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
+from forge.components.action_history import ActionInterruptedByHuman
 from forge.components.code_executor import (
     is_docker_available,
     we_are_running_in_a_docker_container,
 )
-from forge.components.event_history import ActionInterruptedByHuman
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import Config, ConfigBuilder, assert_config_has_openai_api_key
@@ -28,9 +28,8 @@ from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
 from forge.logging.helpers import print_attribute, speak
 from forge.models.utils import ModelWithSummary
-from forge.utils.const import DEFAULT_FINISH_COMMAND
+from forge.utils.const import FINISH_COMMAND
 from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
-from forge.utils.input import clean_input
 
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
@@ -40,9 +39,10 @@ from autogpt.core.runner.client_lib.utils import coroutine
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
-    from forge.agent.base import ActionProposal
+    from forge.components.action_history import ActionProposal
 
 from .configurator import apply_overrides_to_config
+from .input import clean_input
 from .setup import apply_overrides_to_ai_settings, interactively_revise_ai_settings
 from .spinner import Spinner
 from .utils import (
@@ -225,7 +225,7 @@ async def run_auto_gpt(
 
         if (
             (current_episode := agent.event_history.current_episode)
-            and current_episode.action.use_tool.name == DEFAULT_FINISH_COMMAND
+            and current_episode.action.use_tool.name == FINISH_COMMAND
             and not current_episode.result
         ):
             # Agent was resumed after `finish` -> rewrite result of `finish` action

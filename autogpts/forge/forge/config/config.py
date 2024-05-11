@@ -7,17 +7,17 @@ import re
 from pathlib import Path
 from typing import Any, Optional, Union
 
+import click
 from colorama import Fore
 from pydantic import SecretStr, validator
 
 import forge
-from forge.config.schema import Configurable, SystemSettings, UserConfigurable
 from forge.file_storage import FileStorageBackendName
 from forge.llm.providers import CHAT_MODELS, ModelName
 from forge.llm.providers.openai import OpenAICredentials, OpenAIModelName
 from forge.logging.config import LoggingConfig
+from forge.models.config import Configurable, SystemSettings, UserConfigurable
 from forge.speech.say import TTSConfig
-from forge.utils.input import clean_input
 
 logger = logging.getLogger(__name__)
 
@@ -251,7 +251,9 @@ def assert_config_has_openai_api_key(config: Config) -> None:
         logger.info(
             "You can get your key from https://platform.openai.com/account/api-keys"
         )
-        openai_api_key = clean_input("Please enter your OpenAI API key if you have it:")
+        openai_api_key = click.prompt(
+            "Please enter your OpenAI API key if you have it:"
+        )
         openai_api_key = openai_api_key.strip()
         if re.search(key_pattern, openai_api_key):
             os.environ["OPENAI_API_KEY"] = openai_api_key

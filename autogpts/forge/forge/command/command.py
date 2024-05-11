@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable
+from typing import Any, Callable, Generic, ParamSpec, TypeVar
 
 from .parameter import CommandParameter
 
 CommandOutput = Any
 
+P = ParamSpec("P")
+CO = TypeVar("CO", bound=CommandOutput)
 
-class Command:
+
+class Command(Generic[P, CO]):
     """A class representing a command.
 
     Attributes:
@@ -21,7 +24,7 @@ class Command:
         self,
         names: list[str],
         description: str,
-        method: Callable[..., CommandOutput],
+        method: Callable[P, CO],
         parameters: list[CommandParameter],
     ):
         # Check if all parameters are provided
@@ -53,7 +56,7 @@ class Command:
         # Check if sorted lists of names/keys are equal
         return sorted(func_param_names) == sorted(names)
 
-    def __call__(self, *args, **kwargs) -> Any:
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> CO:
         return self.method(*args, **kwargs)
 
     def __str__(self) -> str:

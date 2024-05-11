@@ -4,7 +4,16 @@ import copy
 import inspect
 import logging
 from abc import ABCMeta, abstractmethod
-from typing import Any, Callable, Iterator, Optional, ParamSpec, TypeVar, overload
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterator,
+    Optional,
+    ParamSpec,
+    TypeVar,
+    overload,
+)
 
 from colorama import Fore
 from pydantic import BaseModel, Field, validator
@@ -15,18 +24,24 @@ from forge.agent.components import (
     ComponentEndpointError,
     EndpointPipelineError,
 )
-from forge.components.event_history import ActionProposal, ActionResult
+from forge.components.action_history import ActionProposal, ActionResult
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import ConfigBuilder
-from forge.config.schema import (
+from forge.llm.prompting.prompt import DEFAULT_TRIGGERING_PROMPT
+from forge.llm.providers import (
+    CHAT_MODELS,
+    AssistantFunctionCall,
+    ModelName,
+    OpenAIModelName,
+)
+from forge.llm.providers.schema import ChatModelInfo
+from forge.models.config import (
     Configurable,
     SystemConfiguration,
     SystemSettings,
     UserConfigurable,
 )
-from forge.llm.providers import CHAT_MODELS, ModelName, OpenAIModelName
-from forge.llm.providers.schema import ChatModelInfo
 
 logger = logging.getLogger(__name__)
 

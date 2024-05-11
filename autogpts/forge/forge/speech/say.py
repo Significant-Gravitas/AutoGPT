@@ -6,7 +6,7 @@ import threading
 from threading import Semaphore
 from typing import Literal, Optional
 
-from forge.config.schema import SystemConfiguration, UserConfigurable
+from forge.models.config import SystemConfiguration, UserConfigurable
 
 from .base import VoiceBase
 from .eleven_labs import ElevenLabsConfig, ElevenLabsSpeech

@@ -3,8 +3,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from forge.config.schema import Configurable, SystemConfiguration, SystemSettings
 from forge.llm.providers import CompletionModelFunction, OpenAIProvider, OpenAISettings
+from forge.models.config import Configurable, SystemConfiguration, SystemSettings
 from pydantic import BaseModel
 
 from autogpt.core.ability import (

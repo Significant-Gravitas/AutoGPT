@@ -14,7 +14,7 @@ from forge.agent import BaseAgentSettings, CommandProvider
 from forge.command import Command, command
 from forge.config.config import Config
 from forge.file_storage import FileStorage
-from forge.json.schema import JSONSchema
+from forge.json.model import JSONSchema
 from forge.utils.exceptions import (
     CodeExecutionError,
     CommandExecutionError,

@@ -10,7 +10,6 @@ import tiktoken
 from anthropic import APIConnectionError, APIStatusError
 from pydantic import SecretStr
 
-from forge.config.schema import Configurable, UserConfigurable
 from forge.llm.providers.schema import (
     AssistantChatMessage,
     AssistantFunctionCall,
@@ -28,6 +27,7 @@ from forge.llm.providers.schema import (
     ModelTokenizer,
     ToolResultMessage,
 )
+from forge.models.config import Configurable, UserConfigurable
 
 from .utils import validate_tool_calls
 

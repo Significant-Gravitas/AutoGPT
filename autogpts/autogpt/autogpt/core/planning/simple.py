@@ -3,12 +3,8 @@ import platform
 import time
 
 import distro
-from forge.config.schema import (
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-    UserConfigurable,
-)
+from forge.llm.prompting import PromptStrategy
+from forge.llm.prompting.schema import LanguageModelClassification
 from forge.llm.providers import (
     ChatModelProvider,
     ChatModelResponse,
@@ -16,8 +12,12 @@ from forge.llm.providers import (
     ModelProviderName,
     OpenAIModelName,
 )
-from forge.prompts import PromptStrategy
-from forge.prompts.schema import LanguageModelClassification
+from forge.models.config import (
+    Configurable,
+    SystemConfiguration,
+    SystemSettings,
+    UserConfigurable,
+)
 
 from autogpt.core.planning import prompt_strategies
 from autogpt.core.planning.schema import Task
