@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from forge.agent.base import BaseAgentConfiguration
 
+from forge.components.action_history import ActionProposal, EpisodicActionHistory
 from forge.agent.components import ComponentSystemError
 from forge.agent.protocols import AfterParse
-from forge.components.action_history import ActionProposal, EpisodicActionHistory
 from forge.components.context import ContextComponent
 
 logger = logging.getLogger(__name__)

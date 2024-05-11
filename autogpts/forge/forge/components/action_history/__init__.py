@@ -1,4 +1,4 @@
-from .action_history import (
+from .model import (
     ActionErrorResult,
     ActionInterruptedByHuman,
     ActionProposal,

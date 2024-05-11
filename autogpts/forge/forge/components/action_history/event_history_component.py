@@ -1,12 +1,14 @@
-from typing import Callable, Generic, Iterator, Optional
+from typing import Callable, Generic, Iterator, Optional, TYPE_CHECKING
 
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
 from forge.components.watchdog import WatchdogComponent
-from forge.config.config import Config
 from forge.llm.prompting.utils import indent
 from forge.llm.providers import ChatMessage, ChatModelProvider
 
-from .action_history import AP, ActionResult, Episode, EpisodicActionHistory
+if TYPE_CHECKING:
+    from forge.config.config import Config
+
+from .model import AP, ActionResult, Episode, EpisodicActionHistory
 
 
 class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute, Generic[AP]):
@@ -19,7 +21,7 @@ class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute, Generic[A
         event_history: EpisodicActionHistory[AP],
         max_tokens: int,
         count_tokens: Callable[[str], int],
-        legacy_config: Config,
+        legacy_config: "Config",
         llm_provider: ChatModelProvider,
     ) -> None:
         self.event_history = event_history

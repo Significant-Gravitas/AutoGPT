@@ -1,6 +1,7 @@
-from typing import Any, Iterable
+from typing import Any, Iterable, TYPE_CHECKING
 
-from forge.command.command import Command
+if TYPE_CHECKING:
+    from forge.command.command import Command
 
 from .schema import AssistantToolCall, CompletionModelFunction
 
@@ -74,7 +75,7 @@ def validate_tool_calls(
 
 
 def function_specs_from_commands(
-    commands: Iterable[Command],
+    commands: Iterable["Command"],
 ) -> list[CompletionModelFunction]:
     """Get LLM-consumable function specs for the agent's available commands."""
     return [

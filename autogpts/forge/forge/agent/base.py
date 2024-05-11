@@ -4,18 +4,18 @@ import copy
 import inspect
 import logging
 from abc import ABCMeta, abstractmethod
-from typing import Any, Callable, Iterator, Optional, ParamSpec, TypeVar, overload
+from typing import Any, Callable, Iterator, Optional, ParamSpec, TypeVar, overload, TYPE_CHECKING
 
 from colorama import Fore
 from pydantic import BaseModel, Field, validator
 
+from forge.components.action_history import ActionProposal, ActionResult
 from forge.agent import protocols
 from forge.agent.components import (
     AgentComponent,
     ComponentEndpointError,
     EndpointPipelineError,
 )
-from forge.components.action_history import ActionProposal, ActionResult
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import ConfigBuilder

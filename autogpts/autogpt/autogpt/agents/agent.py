@@ -15,7 +15,7 @@ from forge.agent.protocols import (
     MessageProvider,
 )
 from forge.command.command import Command, CommandOutput
-from forge.components.action_history.action_history import (
+from forge.components.action_history.model import (
     ActionErrorResult,
     ActionInterruptedByHuman,
     ActionResult,

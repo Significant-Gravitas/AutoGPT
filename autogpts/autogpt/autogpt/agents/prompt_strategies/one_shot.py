@@ -6,7 +6,7 @@ import re
 from logging import Logger
 
 import distro
-from forge.agent.base import ActionProposal
+from forge.components.action_history import ActionProposal
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.json.model import JSONSchema

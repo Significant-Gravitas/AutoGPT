@@ -39,7 +39,7 @@ from autogpt.core.runner.client_lib.utils import coroutine
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
-    from forge.agent.base import ActionProposal
+    from forge.components.action_history import ActionProposal
 
 from .configurator import apply_overrides_to_config
 from .input import clean_input
