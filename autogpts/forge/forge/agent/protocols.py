@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, Iterator
 from .components import AgentComponent
 
 if TYPE_CHECKING:
-    from forge.llm.providers import ChatMessage
     from forge.command.command import Command
     from forge.components.action_history import ActionResult
+    from forge.llm.providers import ChatMessage
 
     from .base import ActionProposal
 

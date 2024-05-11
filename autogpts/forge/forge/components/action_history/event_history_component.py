@@ -1,4 +1,4 @@
-from typing import Callable, Generic, Iterator, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Generic, Iterator, Optional
 
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
 from forge.components.watchdog import WatchdogComponent

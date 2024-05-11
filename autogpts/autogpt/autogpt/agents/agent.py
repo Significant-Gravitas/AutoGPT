@@ -15,15 +15,15 @@ from forge.agent.protocols import (
     MessageProvider,
 )
 from forge.command.command import Command, CommandOutput
+from forge.components.action_history.event_history_component import (
+    EventHistoryComponent,
+)
 from forge.components.action_history.model import (
     ActionErrorResult,
     ActionInterruptedByHuman,
     ActionResult,
     ActionSuccessResult,
     EpisodicActionHistory,
-)
-from forge.components.action_history.event_history_component import (
-    EventHistoryComponent,
 )
 from forge.components.code_executor.code_executor import CodeExecutorComponent
 from forge.components.context.context import AgentContext, ContextComponent

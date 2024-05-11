@@ -1,3 +1,4 @@
+from .event_history_component import EventHistoryComponent
 from .model import (
     ActionErrorResult,
     ActionInterruptedByHuman,
@@ -7,4 +8,3 @@ from .model import (
     Episode,
     EpisodicActionHistory,
 )
-from .event_history_component import EventHistoryComponent

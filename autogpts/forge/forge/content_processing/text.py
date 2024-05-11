@@ -2,7 +2,7 @@
 
 import logging
 import math
-from typing import Iterator, Optional, TypeVar, TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterator, Optional, TypeVar
 
 import spacy
 
