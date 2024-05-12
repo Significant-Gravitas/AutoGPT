@@ -6,7 +6,6 @@ import re
 from logging import Logger
 
 import distro
-from forge.components.action_history import ActionProposal
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.json.model import JSONSchema
@@ -18,6 +17,7 @@ from forge.llm.providers.schema import (
     ChatMessage,
     CompletionModelFunction,
 )
+from forge.models.action import ActionProposal
 from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.models.utils import ModelWithSummary
 from forge.utils.exceptions import InvalidAgentResponseError

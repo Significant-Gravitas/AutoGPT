@@ -18,13 +18,7 @@ from forge.command.command import Command, CommandOutput
 from forge.components.action_history.event_history_component import (
     EventHistoryComponent,
 )
-from forge.components.action_history.model import (
-    ActionErrorResult,
-    ActionInterruptedByHuman,
-    ActionResult,
-    ActionSuccessResult,
-    EpisodicActionHistory,
-)
+from forge.components.action_history.model import EpisodicActionHistory
 from forge.components.code_executor.code_executor import CodeExecutorComponent
 from forge.components.context.context import AgentContext, ContextComponent
 from forge.components.file_manager import FileManagerComponent
@@ -43,6 +37,12 @@ from forge.llm.providers import (
     ChatModelResponse,
 )
 from forge.llm.providers.utils import function_specs_from_commands
+from forge.models.action import (
+    ActionErrorResult,
+    ActionInterruptedByHuman,
+    ActionResult,
+    ActionSuccessResult,
+)
 from forge.models.config import Configurable
 from forge.utils.exceptions import (
     AgentException,

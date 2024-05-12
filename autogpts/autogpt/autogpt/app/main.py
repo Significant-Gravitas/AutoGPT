@@ -14,7 +14,6 @@ from types import FrameType
 from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
-from forge.components.action_history import ActionInterruptedByHuman
 from forge.components.code_executor import (
     is_docker_available,
     we_are_running_in_a_docker_container,
@@ -27,6 +26,7 @@ from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
 from forge.logging.helpers import print_attribute, speak
+from forge.models.action import ActionInterruptedByHuman, ActionProposal
 from forge.models.utils import ModelWithSummary
 from forge.utils.const import FINISH_COMMAND
 from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
@@ -39,7 +39,6 @@ from autogpt.core.runner.client_lib.utils import coroutine
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
-    from forge.components.action_history import ActionProposal
 
 from .configurator import apply_overrides_to_config
 from .input import clean_input

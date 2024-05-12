@@ -18,13 +18,15 @@ from typing import (
 from colorama import Fore
 from pydantic import BaseModel, Field, validator
 
+if TYPE_CHECKING:
+    from forge.models.action import ActionProposal, ActionResult
+
 from forge.agent import protocols
 from forge.agent.components import (
     AgentComponent,
     ComponentEndpointError,
     EndpointPipelineError,
 )
-from forge.components.action_history import ActionProposal, ActionResult
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import ConfigBuilder

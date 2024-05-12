@@ -10,10 +10,10 @@ from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from forge.components.action_history import ActionErrorResult, ActionSuccessResult
 from forge.config.config import Config
 from forge.file_storage import FileStorage
 from forge.llm.providers import ChatModelProvider, ModelProviderBudget
+from forge.models.action import ActionErrorResult, ActionSuccessResult
 from forge.sdk.db import AgentDB
 from forge.sdk.middlewares import AgentMiddleware
 from forge.sdk.model import (

@@ -6,8 +6,9 @@ if TYPE_CHECKING:
 
 from forge.agent.components import ComponentSystemError
 from forge.agent.protocols import AfterParse
-from forge.components.action_history import ActionProposal, EpisodicActionHistory
+from forge.components.action_history import EpisodicActionHistory
 from forge.components.context import ContextComponent
+from forge.models.action import ActionProposal
 
 logger = logging.getLogger(__name__)
 
