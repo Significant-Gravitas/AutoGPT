@@ -82,14 +82,6 @@ class SideBarView extends StatelessWidget {
                       ),
                       IconButton(
                         splashRadius: 0.1,
-                        iconSize: 33,
-                        icon: Image.asset('assets/images/autogpt_logo.png'),
-                        onPressed: () =>
-                            _launchURL('https://leaderboard.agpt.co'),
-                        tooltip: 'Check out the leaderboard',
-                      ),
-                      IconButton(
-                        splashRadius: 0.1,
                         iconSize: 25,
                         icon: Image.asset('assets/images/discord_logo.png'),
                         onPressed: () =>

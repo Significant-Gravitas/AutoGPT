@@ -7,7 +7,6 @@ if TYPE_CHECKING:
 from forge.agent.components import ComponentSystemError
 from forge.agent.protocols import AfterParse
 from forge.components.action_history import EpisodicActionHistory
-from forge.components.context import ContextComponent
 from forge.models.action import ActionProposal
 
 logger = logging.getLogger(__name__)
@@ -18,8 +17,6 @@ class WatchdogComponent(AfterParse):
     Adds a watchdog feature to an agent class. Whenever the agent starts
     looping, the watchdog will switch from the FAST_LLM to the SMART_LLM and re-think.
     """
-
-    run_after = [ContextComponent]
 
     def __init__(
         self,

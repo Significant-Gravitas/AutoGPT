@@ -1,9 +1,15 @@
+from __future__ import annotations
+
 from abc import ABC
-from typing import Callable
+from typing import Callable, TypeVar
+
+T = TypeVar("T", bound="AgentComponent")
 
 
 class AgentComponent(ABC):
-    run_after: list[type["AgentComponent"]] = []
+    """Base class for all agent components."""
+
+    _run_after: list[type[AgentComponent]] = []
     _enabled: Callable[[], bool] | bool = True
     _disabled_reason: str = ""
 
@@ -15,7 +21,16 @@ class AgentComponent(ABC):
 
     @property
     def disabled_reason(self) -> str:
+        """Return the reason this component is disabled."""
         return self._disabled_reason
+
+    def run_after(self: T, *components: type[AgentComponent] | AgentComponent) -> T:
+        """Set the components that this component should run after."""
+        for component in components:
+            t = component if isinstance(component, type) else type(component)
+            if t not in self._run_after and t is not self.__class__:
+                self._run_after.append(t)
+        return self
 
 
 class ComponentEndpointError(Exception):

@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING, Callable, Generic, Iterator, Optional
 
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
-from forge.components.watchdog import WatchdogComponent
 from forge.llm.prompting.utils import indent
 from forge.llm.providers import ChatMessage, ChatModelProvider
 
@@ -13,8 +12,6 @@ from .model import AP, ActionResult, Episode, EpisodicActionHistory
 
 class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute, Generic[AP]):
     """Keeps track of the event history and provides a summary of the steps."""
-
-    run_after = [WatchdogComponent]
 
     def __init__(
         self,
