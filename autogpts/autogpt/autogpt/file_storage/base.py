@@ -168,13 +168,11 @@ class FileStorage(ABC):
             for file in files:
                 file_path = local_path / file
                 file_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(file_path, "wb") as f:
-                    content = self.read_file(file, binary=True)
-                    assert isinstance(content, bytes)
-                    f.write(content)
+                content = self.read_file(file, binary=True)
+                file_path.write_bytes(content)
 
             # Sync changes
-            event_handler = FileSyncHandler(self)
+            event_handler = FileSyncHandler(self, local_path)
             observer.schedule(event_handler, local_path, recursive=True)
             observer.start()
 
@@ -239,29 +237,26 @@ class FileStorage(ABC):
 
 
 class FileSyncHandler(FileSystemEventHandler):
-    def __init__(self, storage: FileStorage):
+    def __init__(self, storage: FileStorage, path: str | Path = "."):
         self.storage = storage
+        self.path = Path(path)
 
     async def on_modified(self, event):
         if event.is_directory:
             return
 
-        file_path = event.src_path
-        with open(file_path, "rb") as f:
-            content = f.read()
-            assert isinstance(content, bytes)
-            await self.storage.write_file(file_path, content)
+        file_path = Path(event.src_path).relative_to(self.path)
+        content = file_path.read_bytes()
+        await self.storage.write_file(file_path, content)
 
     async def on_created(self, event):
         if event.is_directory:
             self.storage.make_dir(event.src_path)
             return
 
-        file_path = event.src_path
-        with open(file_path, "rb") as f:
-            content = f.read()
-            assert isinstance(content, bytes)
-            await self.storage.write_file(file_path, content)
+        file_path = Path(event.src_path).relative_to(self.path)
+        content = file_path.read_bytes()
+        await self.storage.write_file(file_path, content)
 
     def on_deleted(self, event):
         if event.is_directory:
