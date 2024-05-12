@@ -38,7 +38,7 @@ uvicorn = "^0.23.2"
 
 [package.source]
 type = "directory"
-url = "../../benchmark"
+url = "../benchmark"
 
 [[package]]
 name = "agent-protocol-client"
@@ -7167,4 +7167,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "f4d493c6580713bc6df3eff75e14ab57ee9dd13c8df7dcf7cb4d322840a760d2"
+content-hash = "ab31ff801d1b15a21e0c3bbe0d9a8e61902566645146991b4abe19f6d7cf8fa0"
