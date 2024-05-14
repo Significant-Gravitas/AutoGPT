@@ -18,9 +18,9 @@ from typing import (
 
 from pydantic import BaseModel, Field, SecretStr, validator
 
-from forge.json.model import JSONSchema
 from forge.logging.utils import fmt_kwargs
 from forge.models.config import SystemConfiguration, UserConfigurable
+from forge.models.json_schema import JSONSchema
 from forge.models.providers import (
     Embedding,
     ProviderBudget,

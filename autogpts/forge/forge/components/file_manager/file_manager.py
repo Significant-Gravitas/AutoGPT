@@ -7,7 +7,7 @@ from forge.agent import BaseAgentSettings
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.file_storage.base import FileStorage
-from forge.json.model import JSONSchema
+from forge.models.json_schema import JSONSchema
 from forge.utils.file_operations import decode_textual_file
 
 logger = logging.getLogger(__name__)

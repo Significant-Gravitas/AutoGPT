@@ -2,7 +2,7 @@ import re
 from typing import Callable, Concatenate, Optional, TypeVar
 
 from forge.agent.protocols import CommandProvider
-from forge.json.model import JSONSchema
+from forge.models.json_schema import JSONSchema
 
 from .command import CO, Command, CommandParameter, P
 

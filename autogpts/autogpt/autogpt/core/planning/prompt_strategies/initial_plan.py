@@ -1,6 +1,5 @@
 import logging
 
-from forge.json.model import JSONSchema
 from forge.llm.prompting import ChatPrompt, LanguageModelClassification, PromptStrategy
 from forge.llm.prompting.utils import to_numbered_list
 from forge.llm.providers import (
@@ -9,6 +8,7 @@ from forge.llm.providers import (
     CompletionModelFunction,
 )
 from forge.models.config import SystemConfiguration, UserConfigurable
+from forge.models.json_schema import JSONSchema
 
 from autogpt.core.planning.schema import Task, TaskType
 

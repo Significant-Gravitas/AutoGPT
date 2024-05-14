@@ -5,7 +5,7 @@ import click
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
 from forge.config.config import Config
-from forge.json.model import JSONSchema
+from forge.models.json_schema import JSONSchema
 from forge.utils.const import ASK_COMMAND
 
 

@@ -50,7 +50,7 @@ The easiest way to provide a command is to use `command` decorator on a componen
 ```py
 from forge.agent import CommandProvider, Component
 from forge.command import command
-from forge.json.model import JSONSchema
+from forge.models.json_schema import JSONSchema
 
 
 class CalculatorComponent(CommandProvider):

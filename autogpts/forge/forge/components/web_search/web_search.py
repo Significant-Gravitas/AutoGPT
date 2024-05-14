@@ -8,7 +8,7 @@ from duckduckgo_search import DDGS
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.config.config import Config
-from forge.json.model import JSONSchema
+from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import ConfigurationError
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3

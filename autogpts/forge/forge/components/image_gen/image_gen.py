@@ -17,7 +17,7 @@ from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
 from forge.config.config import Config
 from forge.file_storage import FileStorage
-from forge.json.model import JSONSchema
+from forge.models.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)
 

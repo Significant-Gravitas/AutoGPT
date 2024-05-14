@@ -8,8 +8,8 @@ from typing_extensions import Annotated
 from forge.agent.protocols import CommandProvider, MessageProvider
 from forge.command import Command, command
 from forge.file_storage.base import FileStorage
-from forge.json.model import JSONSchema
 from forge.llm.providers import ChatMessage
+from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import InvalidArgumentError
 
 from .context_item import ContextItem, FileContextItem, FolderContextItem
