@@ -32,5 +32,5 @@ class UserInteractionComponent(CommandProvider):
         """If you need more details or information regarding the given goals,
         you can ask the user for input."""
         print(f"\nQ: {question}")
-        resp = click.prompt("A:")
+        resp = click.prompt("A")
         return f"The user's answer: '{resp}'"
