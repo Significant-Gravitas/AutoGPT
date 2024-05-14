@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 from .model import AP, ActionResult, Episode, EpisodicActionHistory
 
 
-class EventHistoryComponent(MessageProvider, AfterParse, AfterExecute, Generic[AP]):
+class ActionHistoryComponent(MessageProvider, AfterParse, AfterExecute, Generic[AP]):
     """Keeps track of the event history and provides a summary of the steps."""
 
     def __init__(

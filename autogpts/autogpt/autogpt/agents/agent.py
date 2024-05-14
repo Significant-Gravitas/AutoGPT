@@ -15,10 +15,10 @@ from forge.agent.protocols import (
     MessageProvider,
 )
 from forge.command.command import Command, CommandOutput
-from forge.components.action_history.event_history_component import (
-    EventHistoryComponent,
+from forge.components.action_history import (
+    ActionHistoryComponent,
+    EpisodicActionHistory,
 )
-from forge.components.action_history.model import EpisodicActionHistory
 from forge.components.code_executor.code_executor import CodeExecutorComponent
 from forge.components.context.context import AgentContext, ContextComponent
 from forge.components.file_manager import FileManagerComponent
@@ -115,7 +115,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
         # Components
         self.system = SystemComponent(legacy_config, settings.ai_profile)
-        self.history = EventHistoryComponent(
+        self.history = ActionHistoryComponent(
             settings.history,
             self.send_token_limit,
             lambda x: self.llm_provider.count_tokens(x, self.llm.name),
