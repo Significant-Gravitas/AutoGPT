@@ -27,7 +27,7 @@ from forge.components.image_gen import ImageGeneratorComponent
 from forge.components.system import SystemComponent
 from forge.components.user_interaction import UserInteractionComponent
 from forge.components.watchdog import WatchdogComponent
-from forge.components.web_search import WebSearchComponent, WebSeleniumComponent
+from forge.components.web import WebSearchComponent, WebSeleniumComponent
 from forge.file_storage.base import FileStorage
 from forge.llm.prompting.schema import ChatPrompt
 from forge.llm.providers import (
