@@ -12,8 +12,8 @@ You can use any valid Python variable name, what matters for the component to be
 Visit [Built-in Components](./built-in-components.md) to see what components are available out of the box.
 
 ```py
-from autogpt.agents import Agent
-from autogpt.agents.components import AgentComponent
+from forge.agent import BaseAgent
+from forge.agent.components import AgentComponent
 
 class HelloComponent(AgentComponent):
     pass
@@ -22,7 +22,7 @@ class SomeComponent(AgentComponent):
     def __init__(self, hello_component: HelloComponent):
         self.hello_component = hello_component
 
-class MyAgent(Agent):
+class MyAgent(BaseAgent):
     def __init__(self):
         # These components will be automatically discovered and used
         self.hello_component = HelloComponent()
@@ -125,8 +125,8 @@ All errors accept an optional `str` message. There are following errors ordered 
 **Example**
 
 ```py
-from autogpt.agents.components import ComponentEndpointError
-from autogpt.agents.protocols import MessageProvider
+from forge.agent.components import ComponentEndpointError
+from forge.agent.protocols import MessageProvider
 
 # Example of raising an error
 class MyComponent(MessageProvider):

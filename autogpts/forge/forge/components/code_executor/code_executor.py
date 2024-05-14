@@ -173,7 +173,7 @@ class CodeExecutorComponent(CommandProvider):
 
         if we_are_running_in_a_docker_container():
             logger.debug(
-                "AutoGPT is running in a Docker container; "
+                "App is running in a Docker container; "
                 f"executing {file_path} directly..."
             )
             result = subprocess.run(
@@ -187,7 +187,7 @@ class CodeExecutorComponent(CommandProvider):
             else:
                 raise CodeExecutionError(result.stderr)
 
-        logger.debug("AutoGPT is not running in a Docker container")
+        logger.debug("App is not running in a Docker container")
         try:
             assert self.state.agent_id, "Need Agent ID to attach Docker container"
 

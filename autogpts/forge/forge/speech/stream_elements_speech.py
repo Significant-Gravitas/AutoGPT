@@ -18,7 +18,7 @@ class StreamElementsConfig(SystemConfiguration):
 
 
 class StreamElementsSpeech(VoiceBase):
-    """Streamelements speech module for autogpt"""
+    """Streamelements speech module for AutoGPT Forge"""
 
     def _setup(self, config: StreamElementsConfig) -> None:
         """Setup the voices, API key, etc."""

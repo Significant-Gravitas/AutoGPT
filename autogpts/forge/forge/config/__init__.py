@@ -1,5 +1,5 @@
 """
-This module contains the configuration classes for AutoGPT.
+This module contains configuration models and helpers for AutoGPT Forge.
 """
 from .ai_directives import AIDirectives
 from .ai_profile import AIProfile

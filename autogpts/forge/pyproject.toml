@@ -2,7 +2,7 @@
 name = "AutoGPT-Forge"
 version = "0.1.0"
 description = ""
-authors = ["Craig Swift <craigswift13@gmail.com>"]
+authors = ["AutoGPT <support@agpt.co>"]
 license = "MIT"
 readme = "README.md"
 packages = [{ include = "forge" }]
@@ -77,7 +77,7 @@ build-backend = "poetry.core.masonry.api"
 line-length = 88
 target-version = ['py310']
 include = '\.pyi?$'
-packages = ["autogpt"]
+packages = ["forge"]
 extend-exclude = '(/dist|/.venv|/venv|/build|/agent|agbenchmark/challenges)/'
 
 [tool.isort]
