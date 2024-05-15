@@ -24,6 +24,7 @@ def function_specs_from_commands(
         CompletionModelFunction(
             name=command.names[0],
             description=command.description,
+            is_async=command.is_async,
             parameters={param.name: param.spec for param in command.parameters},
         )
         for command in commands

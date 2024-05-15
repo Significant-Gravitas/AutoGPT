@@ -110,6 +110,18 @@ def validate_matching_function(this: FunctionDef, that: FunctionDef):
     func_name = that.name
     errors = []
 
+    # Fix the async flag based on the expectation.
+    if this.is_async != that.is_async:
+        this.is_async = that.is_async
+        if this.is_async and f"async def {this.name}" not in this.function_code:
+            this.function_code = this.function_code.replace(
+                f"def {this.name}", f"async def {this.name}"
+            )
+        if not this.is_async and f"async def {this.name}" in this.function_code:
+            this.function_code = this.function_code.replace(
+                f"async def {this.name}", f"def {this.name}"
+            )
+
     if any(
         [
             x[0] != y[0] or not is_type_equal(x[1], y[1]) and x[1] != "object"

@@ -162,6 +162,7 @@ class CodeValidator:
                 validation_errors=validation_errors,
             )
             function_template = main_func.function_template
+            function_code = main_func.function_code
         else:
             function_template = None
 

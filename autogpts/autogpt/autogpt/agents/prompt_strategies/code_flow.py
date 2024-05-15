@@ -54,10 +54,10 @@ class CodeFlowAgentActionProposal(BaseModel):
     python_code: str = Field(
         ...,
         description=(
-            "Write the fully-functional Python code of the immediate plan. The output will be a `def main() -> str` function of the immediate plan that return the string output, the output will be passed into the LLM context window so avoid returning the whole content!. "
+            "Write the fully-functional Python code of the immediate plan. The output will be an `async def main() -> str` function of the immediate plan that return the string output, the output will be passed into the LLM context window so avoid returning the whole content!. "
             "Use ONLY the listed available functions and built-in Python features. "
             "Leverage the given magic functions to implement function calls for which the "
-            "arguments can't be determined yet. Example:`def main() -> str:\n    return magic_function('arg1', 'arg2').split('\\n')[0]`"
+            "arguments can't be determined yet. Example:`async def main() -> str:\n    return await provided_function('arg1', 'arg2').split('\\n')[0]`"
         ),
     )
 
@@ -232,6 +232,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
                 return_type="str",
                 return_desc="Output of the function",
                 function_desc=f.description,
+                is_async=f.is_async,
             )
             for f in self.commands
         }
@@ -244,10 +245,11 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
                     return_type="str",
                     return_desc="Output of the function",
                     function_desc="The main function to execute the plan",
+                    is_async=True,
                 )
             }
         )
-        await CodeValidator(
+        code_validation = await CodeValidator(
             function_name="main",
             available_functions=available_functions,
         ).validate_code(parsed_response.python_code)
@@ -257,7 +259,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
             use_tool=AssistantFunctionCall(
                 name="execute_code_flow",
                 arguments={
-                    "python_code": parsed_response.python_code,
+                    "python_code": code_validation.functionCode,
                 },
             ),
         )

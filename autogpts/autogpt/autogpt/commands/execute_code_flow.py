@@ -6,7 +6,6 @@ from typing import Iterator
 from autogpt.agents.protocols import CommandProvider
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.llm.providers.openai import function_specs_from_commands
 from autogpt.models.command import Command
 
 logger = logging.getLogger(__name__)
@@ -36,7 +35,7 @@ class CodeFlowExecutionComponent(CommandProvider):
             ),
         },
     )
-    def execute_code_flow(self, python_code: str) -> str:
+    async def execute_code_flow(self, python_code: str) -> str:
         """Execute the code flow.
 
         Args:
@@ -46,7 +45,11 @@ class CodeFlowExecutionComponent(CommandProvider):
         Returns:
             str: The result of the code execution
         """
-        code = f"{python_code}\n\nexec_output = main()"
-        exec_output = None  # type hinting purposes
-        exec(code, {name: func for name, func in self.available_functions.items()})
-        return str(exec_output)
+        code = f"{python_code}\nexec_output = main()"
+        result = {
+            name: func
+            for name, func in self.available_functions.items()
+        }
+        exec(code, result)
+        result = str(await result['exec_output'])
+        return result
