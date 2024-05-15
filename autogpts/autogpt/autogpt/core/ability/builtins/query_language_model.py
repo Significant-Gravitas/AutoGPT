@@ -1,17 +1,18 @@
 import logging
 from typing import ClassVar
 
-from autogpt.core.ability.base import Ability, AbilityConfiguration
-from autogpt.core.ability.schema import AbilityResult
-from autogpt.core.planning.simple import LanguageModelConfiguration
-from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
-from autogpt.core.resource.model_providers import (
+from forge.llm.providers import (
     ChatMessage,
     ChatModelProvider,
     ModelProviderName,
     OpenAIModelName,
 )
-from autogpt.core.utils.json_schema import JSONSchema
+from forge.models.json_schema import JSONSchema
+
+from autogpt.core.ability.base import Ability, AbilityConfiguration
+from autogpt.core.ability.schema import AbilityResult
+from autogpt.core.planning.simple import LanguageModelConfiguration
+from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
 
 
 class QueryLanguageModel(Ability):

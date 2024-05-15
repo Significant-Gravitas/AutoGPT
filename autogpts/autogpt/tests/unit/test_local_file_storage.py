@@ -1,8 +1,7 @@
 from pathlib import Path
 
 import pytest
-
-from autogpt.file_storage.local import FileStorageConfiguration, LocalFileStorage
+from forge.file_storage import FileStorageConfiguration, LocalFileStorage
 
 _ACCESSIBLE_PATHS = [
     Path("."),

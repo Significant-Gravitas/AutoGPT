@@ -2,10 +2,11 @@ import logging
 import os
 from typing import ClassVar
 
+from forge.models.json_schema import JSONSchema
+
 from autogpt.core.ability.base import Ability, AbilityConfiguration
 from autogpt.core.ability.schema import AbilityResult, ContentType, Knowledge
 from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
-from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.core.workspace import Workspace
 
 

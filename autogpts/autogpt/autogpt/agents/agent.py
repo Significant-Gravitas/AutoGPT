@@ -6,66 +6,67 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
 import sentry_sdk
-from pydantic import Field
-
-from autogpt.commands.execute_code import CodeExecutorComponent
-from autogpt.commands.git_operations import GitOperationsComponent
-from autogpt.commands.image_gen import ImageGeneratorComponent
-from autogpt.commands.system import SystemComponent
-from autogpt.commands.user_interaction import UserInteractionComponent
-from autogpt.commands.web_search import WebSearchComponent
-from autogpt.commands.web_selenium import WebSeleniumComponent
-from autogpt.components.event_history import EventHistoryComponent
-from autogpt.core.configuration import Configurable
-from autogpt.core.prompting import ChatPrompt
-from autogpt.core.resource.model_providers import (
-    AssistantFunctionCall,
-    ChatMessage,
-    ChatModelProvider,
-    ChatModelResponse,
-)
-from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
-from autogpt.file_storage.base import FileStorage
-from autogpt.llm.providers.openai import function_specs_from_commands
-from autogpt.logs.log_cycle import (
-    CURRENT_CONTEXT_FILE_NAME,
-    NEXT_ACTION_FILE_NAME,
-    USER_INPUT_FILE_NAME,
-    LogCycleHandler,
-)
-from autogpt.models.action_history import (
-    ActionErrorResult,
-    ActionInterruptedByHuman,
-    ActionResult,
-    ActionSuccessResult,
-    EpisodicActionHistory,
-)
-from autogpt.models.command import Command, CommandOutput
-from autogpt.utils.exceptions import (
-    AgentException,
-    AgentTerminated,
-    CommandExecutionError,
-    UnknownCommandError,
-)
-
-from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
-from .features.agent_file_manager import FileManagerComponent
-from .features.context import AgentContext, ContextComponent
-from .features.watchdog import WatchdogComponent
-from .prompt_strategies.one_shot import (
-    OneShotAgentActionProposal,
-    OneShotAgentPromptStrategy,
-)
-from .protocols import (
+from forge.agent.base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
+from forge.agent.protocols import (
     AfterExecute,
     AfterParse,
     CommandProvider,
     DirectiveProvider,
     MessageProvider,
 )
+from forge.command.command import Command, CommandOutput
+from forge.components.action_history import (
+    ActionHistoryComponent,
+    EpisodicActionHistory,
+)
+from forge.components.code_executor.code_executor import CodeExecutorComponent
+from forge.components.context.context import AgentContext, ContextComponent
+from forge.components.file_manager import FileManagerComponent
+from forge.components.git_operations import GitOperationsComponent
+from forge.components.image_gen import ImageGeneratorComponent
+from forge.components.system import SystemComponent
+from forge.components.user_interaction import UserInteractionComponent
+from forge.components.watchdog import WatchdogComponent
+from forge.components.web import WebSearchComponent, WebSeleniumComponent
+from forge.file_storage.base import FileStorage
+from forge.llm.prompting.schema import ChatPrompt
+from forge.llm.providers import (
+    AssistantFunctionCall,
+    ChatMessage,
+    ChatModelProvider,
+    ChatModelResponse,
+)
+from forge.llm.providers.utils import function_specs_from_commands
+from forge.models.action import (
+    ActionErrorResult,
+    ActionInterruptedByHuman,
+    ActionResult,
+    ActionSuccessResult,
+)
+from forge.models.config import Configurable
+from forge.utils.exceptions import (
+    AgentException,
+    AgentTerminated,
+    CommandExecutionError,
+    UnknownCommandError,
+)
+from pydantic import Field
+
+from autogpt.app.log_cycle import (
+    CURRENT_CONTEXT_FILE_NAME,
+    NEXT_ACTION_FILE_NAME,
+    USER_INPUT_FILE_NAME,
+    LogCycleHandler,
+)
+from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
+
+from .prompt_strategies.one_shot import (
+    OneShotAgentActionProposal,
+    OneShotAgentPromptStrategy,
+)
 
 if TYPE_CHECKING:
-    from autogpt.config import Config
+    from forge.config.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -114,13 +115,13 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
         # Components
         self.system = SystemComponent(legacy_config, settings.ai_profile)
-        self.history = EventHistoryComponent(
+        self.history = ActionHistoryComponent(
             settings.history,
             self.send_token_limit,
             lambda x: self.llm_provider.count_tokens(x, self.llm.name),
             legacy_config,
             llm_provider,
-        )
+        ).run_after(WatchdogComponent)
         self.user_interaction = UserInteractionComponent(legacy_config)
         self.file_manager = FileManagerComponent(settings, file_storage)
         self.code_executor = CodeExecutorComponent(
@@ -135,7 +136,9 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.web_search = WebSearchComponent(legacy_config)
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
         self.context = ContextComponent(self.file_manager.workspace, settings.context)
-        self.watchdog = WatchdogComponent(settings.config, settings.history)
+        self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(
+            ContextComponent
+        )
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         """Timestamp the agent was created; only used for structured debug logging."""

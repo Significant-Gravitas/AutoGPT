@@ -3,24 +3,24 @@ import platform
 import time
 
 import distro
-
-from autogpt.core.configuration import (
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-    UserConfigurable,
-)
-from autogpt.core.planning import prompt_strategies
-from autogpt.core.planning.schema import Task
-from autogpt.core.prompting import PromptStrategy
-from autogpt.core.prompting.schema import LanguageModelClassification
-from autogpt.core.resource.model_providers import (
+from forge.llm.prompting import PromptStrategy
+from forge.llm.prompting.schema import LanguageModelClassification
+from forge.llm.providers import (
     ChatModelProvider,
     ChatModelResponse,
     CompletionModelFunction,
     ModelProviderName,
     OpenAIModelName,
 )
+from forge.models.config import (
+    Configurable,
+    SystemConfiguration,
+    SystemSettings,
+    UserConfigurable,
+)
+
+from autogpt.core.planning import prompt_strategies
+from autogpt.core.planning.schema import Task
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.core.workspace import Workspace
 

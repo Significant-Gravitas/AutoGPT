@@ -1,12 +1,13 @@
 import logging
 
 from agent_protocol import StepHandler, StepResult
+from forge.config.ai_profile import AIProfile
+from forge.config.config import ConfigBuilder
+from forge.llm.prompting.prompt import DEFAULT_TRIGGERING_PROMPT
+from forge.logging.helpers import user_friendly_output
 
 from autogpt.agents import Agent
 from autogpt.app.main import UserFeedback
-from autogpt.config import AIProfile, ConfigBuilder
-from autogpt.logs.helpers import user_friendly_output
-from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 
 async def task_handler(task_input) -> StepHandler:
