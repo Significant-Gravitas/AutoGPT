@@ -34,7 +34,7 @@ jobs:
       fail-fast: false
     timeout-minutes: 20
     env:
-      min-python-version: '3.10'
+      min-python-version: '3.12'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

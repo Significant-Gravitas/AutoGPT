@@ -1,14 +1,19 @@
+import json
+import pprint
+
 from forge.actions import ActionRegister
+from forge.llm import chat_completion_request
 from forge.sdk import (
     Agent,
     AgentDB,
-    ForgeLogger,
     Step,
     StepRequestBody,
     Task,
     TaskRequestBody,
     Workspace,
 )
+from forge.sdk.forge_log import ForgeLogger
+from forge.sdk.prompting import PromptEngine
 
 LOG = ForgeLogger(__name__)
 
@@ -123,24 +128,84 @@ class ForgeAgent(Agent):
         step = await self.db.create_step(
             task_id=task_id, input=step_request, is_last=True
         )
+        task = await self.db.get_task(task_id)
 
-        self.workspace.write(task_id=task_id, path="output.txt", data=b"Washington D.C")
+        # self.workspace.write(task_id=task_id, path="output.txt", data=b"Washington D.C")
 
-        await self.db.create_artifact(
-            task_id=task_id,
-            step_id=step.step_id,
-            file_name="output.txt",
-            relative_path="",
-            agent_created=True,
-        )
+        # await self.db.create_artifact(
+        #     task_id=task_id,
+        #     step_id=step.step_id,
+        #     file_name="output.txt",
+        #     relative_path="",
+        #     agent_created=True,
+        # )
 
-        step.output = "Washington D.C"
+        # step.output = "Washington D.C"
 
-        LOG.info(
-            f"\t✅ Final Step completed: {step.step_id}. \n"
-            + f"Output should be placeholder text Washington D.C. You'll need to \n"
-            + f"modify execute_step to include LLM behavior. Follow the tutorial "
-            + f"if confused. "
-        )
+        # LOG.info(
+        #     f"\t✅ Final Step completed: {step.step_id}. \n"
+        #     + f"Output should be placeholder text Washington D.C. You'll need to \n"
+        #     + f"modify execute_step to include LLM behavior. Follow the tutorial "
+        #     + f"if confused. "
+        # )
 
-        return step
+        # return step
+
+        prompt_engine = PromptEngine(model="gpt-4-turbo-preview")
+        system_prompt = prompt_engine.load_prompt(template_name="system-format")
+        # Define the task parameters
+        task_kwargs = {
+            "task": task.input,
+            "abilities": self.abilities.list_abilities_for_prompt(),
+        }
+
+        # Load the task prompt with the defined task parameters
+        task_prompt = prompt_engine.load_prompt("task-step", **task_kwargs)
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": task_prompt},
+        ]
+        try:
+            # Define the parameters for the chat completion request
+            chat_completion_kwargs = {
+                "messages": messages,
+                "model": "gpt-4-turbo-preview",
+            }
+            # Make the chat completion request and parse the response
+            chat_response = await chat_completion_request(**chat_completion_kwargs)
+            answer = json.loads(chat_response["choices"][0]["message"]["content"])
+
+            # Log the answer for debugging purposes
+            LOG.info(pprint.pformat(answer))
+
+            try:
+                action = answer["action"]
+                LOG.info(f"Action: {action}")
+                output = await self.abilities.run_action(
+                    task_id=task_id, action_name=action["name"], **action["args"]
+                )
+
+                if action["name"] == "finish":
+                    step.output = action["args"]["reason"]
+                    LOG.info(f"Final Step Reason: {output}")
+                    step.is_last = True
+                    return step
+
+                LOG.info(f"Output: {output}")
+
+                step.output = answer["thoughts"]["speak"]
+
+                return step
+            except Exception as e:
+                LOG.error(f"Unable to execute step: {e}")
+                raise e
+
+        except json.JSONDecodeError as e:
+            # Handle JSON decoding errors
+            LOG.error(f"Unable to decode chat response: {chat_response}")
+            raise e
+        except Exception as e:
+            # Handle other exceptions
+            LOG.error(f"Unable to generate chat response: {e}")
+            raise e

@@ -3,10 +3,11 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.reports.processing.graphs import save_single_radar_chart
@@ -20,39 +21,39 @@ logger = logging.getLogger(__name__)
 
 
 class SingletonReportManager:
-    instance = None
+    _instance = None
+    _lock: ClassVar[threading.Lock] = threading.Lock()
 
     INFO_MANAGER: "SessionReportManager"
     REGRESSION_MANAGER: "RegressionTestsTracker"
     SUCCESS_RATE_TRACKER: "SuccessRatesTracker"
 
     def __new__(cls):
-        if not cls.instance:
-            cls.instance = super(SingletonReportManager, cls).__new__(cls)
+        with cls._lock:
+            if not cls._instance:
+                cls._instance = super(SingletonReportManager, cls).__new__(cls)
 
-            agent_benchmark_config = AgentBenchmarkConfig.load()
-            benchmark_start_time_dt = datetime.now(
-                timezone.utc
-            )  # or any logic to fetch the datetime
+                agent_benchmark_config = AgentBenchmarkConfig.load()
+                benchmark_start_time_dt = datetime.now(timezone.utc)
 
-            # Make the Managers class attributes
-            cls.INFO_MANAGER = SessionReportManager(
-                agent_benchmark_config.get_report_dir(benchmark_start_time_dt)
-                / "report.json",
-                benchmark_start_time_dt,
-            )
-            cls.REGRESSION_MANAGER = RegressionTestsTracker(
-                agent_benchmark_config.regression_tests_file
-            )
-            cls.SUCCESS_RATE_TRACKER = SuccessRatesTracker(
-                agent_benchmark_config.success_rate_file
-            )
+                # Make the Managers class attributes
+                cls.INFO_MANAGER = SessionReportManager(
+                    agent_benchmark_config.get_report_dir(benchmark_start_time_dt)
+                    / "report.json",
+                    benchmark_start_time_dt,
+                )
+                cls.REGRESSION_MANAGER = RegressionTestsTracker(
+                    agent_benchmark_config.regression_tests_file
+                )
+                cls.SUCCESS_RATE_TRACKER = SuccessRatesTracker(
+                    agent_benchmark_config.success_rate_file
+                )
 
-        return cls.instance
+        return cls._instance
 
     @classmethod
     def clear_instance(cls):
-        cls.instance = None
+        cls._instance = None
         cls.INFO_MANAGER = None
         cls.REGRESSION_MANAGER = None
         cls.SUCCESS_RATE_TRACKER = None
@@ -130,6 +131,12 @@ class SessionReportManager(BaseReportManager):
         self.tests[test_name] = test_report
 
         self.save()
+
+    def get_test_report(self, test_name: str) -> Test | None:
+        if isinstance(self.tests, Report):
+            return self.tests.tests.get(test_name)
+        else:
+            return self.tests.get(test_name)
 
     def finalize_session_report(self, config: AgentBenchmarkConfig) -> None:
         command = " ".join(sys.argv)

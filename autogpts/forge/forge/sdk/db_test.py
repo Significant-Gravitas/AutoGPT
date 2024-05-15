@@ -14,13 +14,7 @@ from forge.sdk.db import (
     convert_to_task,
 )
 from forge.sdk.errors import NotFoundError as DataNotFoundError
-from forge.sdk.model import (
-    Artifact,
-    Status,
-    Step,
-    StepRequestBody,
-    Task,
-)
+from forge.sdk.model import Artifact, Status, Step, StepRequestBody, Task
 
 
 @pytest.mark.asyncio

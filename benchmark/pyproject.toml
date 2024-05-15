@@ -2,7 +2,7 @@
 name = "agbenchmark"
 version = "0.0.10"
 description = "Benchmarking the performance of agents far and wide, regardless of how they are set up and how they work"
-authors = ["Silen Naihin <silen.naihin@gmail.com>"]
+authors = ["AutoGPT Team"]
 license = "MIT"
 readme = "README.md"
 packages = [{ include = "agbenchmark" }]
@@ -25,7 +25,9 @@ networkx = "^3.1"
 colorama = "^0.4.6"
 pyvis = "^0.3.2"
 selenium = "^4.11.2"
+py = "^1.11.0"  # needed for pytest-parallel
 pytest-asyncio = "^0.21.1"
+pytest-parallel = "^0.1.1"
 uvicorn = "^0.23.2"
 fastapi = "^0.109.1"
 python-multipart = "^0.0.7"

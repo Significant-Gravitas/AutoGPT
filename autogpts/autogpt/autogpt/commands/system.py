@@ -2,9 +2,8 @@ import logging
 import time
 from typing import Iterator
 
-from autogpt.agents.protocols import CommandProvider, DirectiveProvider, MessageProvider
+from autogpt.agents.protocols import CommandProvider, MessageProvider
 from autogpt.command_decorator import command
-from autogpt.config.ai_profile import AIProfile
 from autogpt.config.config import Config
 from autogpt.core.resource.model_providers.schema import ChatMessage
 from autogpt.core.utils.json_schema import JSONSchema
@@ -15,19 +14,11 @@ from autogpt.utils.utils import DEFAULT_FINISH_COMMAND
 logger = logging.getLogger(__name__)
 
 
-class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
+class SystemComponent(MessageProvider, CommandProvider):
     """Component for system messages and commands."""
 
-    def __init__(self, config: Config, profile: AIProfile):
+    def __init__(self, config: Config):
         self.legacy_config = config
-        self.profile = profile
-
-    def get_constraints(self) -> Iterator[str]:
-        if self.profile.api_budget > 0.0:
-            yield (
-                f"It takes money to let you run. "
-                f"Your API budget is ${self.profile.api_budget:.3f}"
-            )
 
     def get_messages(self) -> Iterator[ChatMessage]:
         # Clock

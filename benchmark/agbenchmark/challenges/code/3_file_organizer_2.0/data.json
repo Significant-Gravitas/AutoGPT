@@ -1,0 +1,28 @@
+{
+    "category": [
+        "coding",
+        "general",
+        "validation"
+    ],
+    "cutoff": 110,
+    "dependencies": [],
+    "eval_id": "029c1e6f-2b36-299p-bca6-60063b827d2e",
+    "ground": {
+        "answer": "The correct python file is written and organizes the files accordingly",
+        "eval": {
+            "type": "python"
+        },
+        "files": [
+            "test.py"
+        ],
+        "should_contain": [],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can create a file organizer.",
+        "difficulty": "basic",
+        "side_effects": []
+    },
+    "name": "FileOrganizer_2.0",
+    "task": "Develop a file organizing command-line interface (CLI) tool in Python that categorizes files in a specific directory based on the first letter of their filenames, regardless of their case. This tool will create folders named 'A' to 'Z' at the top level of the specified directory and will move files into these folders accordingly. For example, 'apple.txt' and 'avocado.docx' would both be placed in a folder named 'A'. Ensure the tool is executable via a Python file, and it can be run using the following command format: python organize_files_by_name.py --directory_path=YOUR_DIRECTORY_PATH. Make sure the script is case-insensitive and robust enough to handle various file names and types."
+}

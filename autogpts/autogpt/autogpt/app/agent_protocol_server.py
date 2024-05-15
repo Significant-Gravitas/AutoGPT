@@ -28,8 +28,7 @@ from hypercorn.asyncio import serve as hypercorn_serve
 from hypercorn.config import Config as HypercornConfig
 from sentry_sdk import set_user
 
-from autogpt.agent_factory.configurators import configure_agent_with_state
-from autogpt.agent_factory.generators import generate_agent_for_task
+from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_manager import AgentManager
 from autogpt.app.utils import is_port_free
 from autogpt.config import Config
@@ -137,8 +136,10 @@ class AgentProtocolServer:
             input=task_request.input,
             additional_input=task_request.additional_input,
         )
-        logger.debug(f"Creating agent for task: '{task.input}'")
-        task_agent = await generate_agent_for_task(
+        # TODO: re-evaluate performance benefit of task-oriented profiles
+        # logger.debug(f"Creating agent for task: '{task.input}'")
+        # task_agent = await generate_agent_for_task(
+        task_agent = create_agent(
             agent_id=task_agent_id(task.task_id),
             task=task.input,
             app_config=self.app_config,

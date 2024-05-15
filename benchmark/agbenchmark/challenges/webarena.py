@@ -258,7 +258,8 @@ class WebArenaChallengeSpec(BaseModel):
             f"{' and '.join(s.base_url for s in sites)}.\n\n"
             + "\n".join(
                 s.additional_info.format(url=s.base_url)
-                for s in sites if s.additional_info
+                for s in sites
+                if s.additional_info
             )
         ).strip()
 
@@ -462,7 +463,7 @@ class WebArenaChallenge(BaseChallenge):
 
 
 def load_webarena_challenges(
-    skip_unavailable: bool = True
+    skip_unavailable: bool = True,
 ) -> Iterator[type[WebArenaChallenge]]:
     logger.info("Loading WebArena challenges...")
 

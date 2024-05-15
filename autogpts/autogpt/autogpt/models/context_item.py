@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -11,7 +11,7 @@ from autogpt.utils.file_operations_utils import decode_textual_file
 logger = logging.getLogger(__name__)
 
 
-class ContextItem(ABC):
+class BaseContextItem(ABC):
     @property
     @abstractmethod
     def description(self) -> str:
@@ -38,8 +38,9 @@ class ContextItem(ABC):
         )
 
 
-class FileContextItem(BaseModel, ContextItem):
+class FileContextItem(BaseModel, BaseContextItem):
     path: Path
+    type: Literal["file"] = "file"
 
     @property
     def description(self) -> str:
@@ -54,8 +55,9 @@ class FileContextItem(BaseModel, ContextItem):
             return decode_textual_file(file, self.path.suffix, logger)
 
 
-class FolderContextItem(BaseModel, ContextItem):
+class FolderContextItem(BaseModel, BaseContextItem):
     path: Path
+    type: Literal["folder"] = "folder"
 
     @property
     def description(self) -> str:
@@ -73,7 +75,11 @@ class FolderContextItem(BaseModel, ContextItem):
         return "\n".join(items)
 
 
-class StaticContextItem(BaseModel, ContextItem):
+class StaticContextItem(BaseModel, BaseContextItem):
     item_description: str = Field(alias="description")
     item_source: Optional[str] = Field(alias="source")
     item_content: str = Field(alias="content")
+    type: Literal["static"] = "static"
+
+
+ContextItem = FileContextItem | FolderContextItem | StaticContextItem

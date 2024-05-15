@@ -1,0 +1,29 @@
+{
+    "category": [
+        "coding",
+        "validation"
+    ],
+    "cutoff": 170,
+    "dependencies": [
+        "TestFileOrganizer"
+    ],
+    "eval_id": "8106fd7f-83fd-489o-9513-280f4a3f012c",
+    "ground": {
+        "answer": "The correct python file for a basic message hasher",
+        "eval": {
+            "type": "python"
+        },
+        "files": [
+            "test.py"
+        ],
+        "should_contain": [],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can create a message hasher.",
+        "difficulty": "basic",
+        "side_effects": []
+    },
+    "name": "MessageHasher",
+    "task": "Develop a basic message hasher using a python CLI following these specifications. Functionality: The application should have two main functions: hash a given message and retrieve the original message from a hashed value. CLI: The command-line interface should accept a message or a hashed value as its first input. The program should be able to discern whether the input is a hashed message or a regular message. If the input is a regular message, it will display ONLY the hashed value, otherwise, it will display ONLY the original unhashed message. After processing, the program should prompt the user for another input to process. Technical specifications: Create a file named message_hasher.py. This file will be executed through command lines. Edge cases: To maintain simplicity, assume that the input is always correct, and the user directly provides the hashed message of the message they just hashed. The file message_hasher.py should be executable from the command line with python message_hasher.py. To validate the functionality, create a test script named test.py with the following content: ```import unittest\nfrom message_hasher import hash_message, retrieve_message\n\nclass TestMessageHasher(unittest.TestCase):\n    def test_message_retrieval(self):\n        # Hash the message to get its hash value\n        hashed_message = hash_message('This is a test message')\n\n        # Retrieve the original message using the hash directly\n        retrieved_message = retrieve_message(hashed_message)\n\n        self.assertEqual(retrieved_message, 'This is a test message', \"Retrieved message does not match the original!\")\n        \nif __name__ == \"__main__\":\n    unittest.main()\n``` The test script will ensure the message hashing and retrieval functionalities are working as expected."
+}

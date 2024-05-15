@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Optional
 import sentry_sdk
 from pydantic import Field
 
+from autogpt.commands.create_command import CreateCommandComponent
 from autogpt.commands.execute_code import CodeExecutorComponent
 from autogpt.commands.git_operations import GitOperationsComponent
 from autogpt.commands.image_gen import ImageGeneratorComponent
@@ -50,7 +51,7 @@ from autogpt.utils.exceptions import (
 
 from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 from .features.agent_file_manager import FileManagerComponent
-from .features.context import ContextComponent
+from .features.context import AgentContext, ContextComponent
 from .features.watchdog import WatchdogComponent
 from .prompt_strategies.one_shot import (
     OneShotAgentActionProposal,
@@ -82,6 +83,8 @@ class AgentSettings(BaseAgentSettings):
     )
     """(STATE) The action history of the agent."""
 
+    context: AgentContext = Field(default_factory=AgentContext)
+
 
 class Agent(BaseAgent, Configurable[AgentSettings]):
     default_settings: AgentSettings = AgentSettings(
@@ -99,8 +102,6 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         super().__init__(settings)
 
         self.llm_provider = llm_provider
-        self.ai_profile = settings.ai_profile
-        self.directives = settings.directives
         prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
         prompt_config.use_functions_api = (
             settings.config.use_functions_api
@@ -111,7 +112,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.commands: list[Command] = []
 
         # Components
-        self.system = SystemComponent(legacy_config, settings.ai_profile)
+        self.system = SystemComponent(legacy_config)
         self.history = EventHistoryComponent(
             settings.history,
             self.send_token_limit,
@@ -132,8 +133,9 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         )
         self.web_search = WebSearchComponent(legacy_config)
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
-        self.context = ContextComponent(self.file_manager.workspace)
+        self.context = ContextComponent(self.file_manager.workspace, settings.context)
         self.watchdog = WatchdogComponent(settings.config, settings.history)
+        self.create_command = CreateCommandComponent()
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         """Timestamp the agent was created; only used for structured debug logging."""
