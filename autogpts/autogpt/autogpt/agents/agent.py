@@ -9,6 +9,7 @@ import sentry_sdk
 from pydantic import Field
 
 from autogpt.commands.execute_code import CodeExecutorComponent
+from autogpt.commands.execute_code_flow import CodeFlowExecutionComponent
 from autogpt.commands.git_operations import GitOperationsComponent
 from autogpt.commands.image_gen import ImageGeneratorComponent
 from autogpt.commands.system import SystemComponent
@@ -17,7 +18,7 @@ from autogpt.commands.web_search import WebSearchComponent
 from autogpt.commands.web_selenium import WebSeleniumComponent
 from autogpt.components.event_history import EventHistoryComponent
 from autogpt.core.configuration import Configurable
-from autogpt.core.prompting import ChatPrompt
+from autogpt.core.prompting import ChatPrompt, PromptStrategy
 from autogpt.core.resource.model_providers import (
     AssistantFunctionCall,
     ChatMessage,
@@ -48,13 +49,18 @@ from autogpt.utils.exceptions import (
     UnknownCommandError,
 )
 
-from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
+from .base import (
+    BaseAgent,
+    BaseAgentActionProposal,
+    BaseAgentConfiguration,
+    BaseAgentSettings,
+)
 from .features.agent_file_manager import FileManagerComponent
 from .features.context import AgentContext, ContextComponent
 from .features.watchdog import WatchdogComponent
-from .prompt_strategies.one_shot import (
-    OneShotAgentActionProposal,
-    OneShotAgentPromptStrategy,
+from .prompt_strategies.code_flow import (
+    CodeFlowAgentPromptStrategy,
+    CodeFlowAgentActionProposal,
 )
 from .protocols import (
     AfterExecute,
@@ -77,8 +83,8 @@ class AgentConfiguration(BaseAgentConfiguration):
 class AgentSettings(BaseAgentSettings):
     config: AgentConfiguration = Field(default_factory=AgentConfiguration)
 
-    history: EpisodicActionHistory[OneShotAgentActionProposal] = Field(
-        default_factory=EpisodicActionHistory[OneShotAgentActionProposal]
+    history: EpisodicActionHistory[BaseAgentActionProposal] = Field(
+        default_factory=EpisodicActionHistory[BaseAgentActionProposal]
     )
     """(STATE) The action history of the agent."""
 
@@ -97,19 +103,20 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         llm_provider: ChatModelProvider,
         file_storage: FileStorage,
         legacy_config: Config,
+        prompt_strategy_class: type[PromptStrategy] = CodeFlowAgentPromptStrategy,
     ):
         super().__init__(settings)
 
         self.llm_provider = llm_provider
         self.ai_profile = settings.ai_profile
         self.directives = settings.directives
-        prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
+        prompt_config = prompt_strategy_class.default_configuration.copy(deep=True)
         prompt_config.use_functions_api = (
             settings.config.use_functions_api
             # Anthropic currently doesn't support tools + prefilling :(
             and self.llm.provider_name != "anthropic"
         )
-        self.prompt_strategy = OneShotAgentPromptStrategy(prompt_config, logger)
+        self.prompt_strategy = prompt_strategy_class(prompt_config, logger)
         self.commands: list[Command] = []
 
         # Components
@@ -136,6 +143,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
         self.context = ContextComponent(self.file_manager.workspace, settings.context)
         self.watchdog = WatchdogComponent(settings.config, settings.history)
+        self.code_flow_executor = CodeFlowExecutionComponent()
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         """Timestamp the agent was created; only used for structured debug logging."""
@@ -146,7 +154,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.event_history = settings.history
         self.legacy_config = legacy_config
 
-    async def propose_action(self) -> OneShotAgentActionProposal:
+    async def propose_action(self) -> BaseAgentActionProposal:
         """Proposes the next action to execute, based on the task and current state.
 
         Returns:
@@ -167,6 +175,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         # Get commands
         self.commands = await self.run_pipeline(CommandProvider.get_commands)
         self._remove_disabled_commands()
+        self.code_flow_executor.set_available_functions(self.commands)
 
         # Get messages
         messages = await self.run_pipeline(MessageProvider.get_messages)
@@ -197,12 +206,12 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
     async def complete_and_parse(
         self, prompt: ChatPrompt, exception: Optional[Exception] = None
-    ) -> OneShotAgentActionProposal:
+    ) -> BaseAgentActionProposal:
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
         response: ChatModelResponse[
-            OneShotAgentActionProposal
+            BaseAgentActionProposal
         ] = await self.llm_provider.create_chat_completion(
             prompt.messages,
             model_name=self.llm.name,
@@ -226,7 +235,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
     async def execute(
         self,
-        proposal: OneShotAgentActionProposal,
+        proposal: BaseAgentActionProposal,
         user_feedback: str = "",
     ) -> ActionResult:
         tool = proposal.use_tool
@@ -260,7 +269,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         return result
 
     async def do_not_execute(
-        self, denied_proposal: OneShotAgentActionProposal, user_feedback: str
+        self, denied_proposal: BaseAgentActionProposal, user_feedback: str
     ) -> ActionResult:
         result = ActionInterruptedByHuman(feedback=user_feedback)
         self.log_cycle_handler.log_cycle(

@@ -159,7 +159,7 @@ class CompletionModelFunction(BaseModel):
         )
         return f"{self.name}: {self.description}. Params: ({params})"
 
-    def fmt_header(self) -> str:
+    def fmt_header(self, callable=None) -> str:
         """
         Formats and returns the function header as a string with types and descriptions.
 
@@ -170,25 +170,24 @@ class CompletionModelFunction(BaseModel):
             f"{name}: {p.python_type}{f'= {str(p.default)}' if p.default else ' = None' if not p.required else ''}"
             for name, p in self.parameters.items()
         )
-        return (
-            f"def {self.name}({params}):\n"  # TODO: add return type
-            + indent(
-                (
-                    '"""\n'
-                    f"{self.description}\n\n"
-                    "Params:\n"
-                    + indent(
-                        "\n".join(
-                            f"{name}: {param.description}"
-                            for name, param in self.parameters.items()
-                            if param.description
-                        )
-                    ) + "\n"
-                    '"""\n'
-                    "..."
-                ),
-                4,
-            )
+        return f"def {self.name}({params}) -> str:\n" + indent(
+            (
+                '"""\n'
+                f"{self.description}\n\n"
+                "Params:\n"
+                + indent(
+                    "\n".join(
+                        f"{name}: {param.description}"
+                        for name, param in self.parameters.items()
+                        if param.description
+                    )
+                )
+                + "\n"
+                '"""\n' + "pass"
+                if not callable
+                else f"{callable}['{self.name}']({', '.join(self.parameters.keys())})"
+            ),
+            4,
         )
 
     def validate_call(

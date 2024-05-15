@@ -67,5 +67,5 @@ def main() -> str:
         packages=[],
     )
     assert response.functionCode is not None
-    assert "async def crawl_info" in response.functionCode # async is added
+    assert "async def crawl_info" in response.functionCode  # async is added
     assert "async def main" in response.functionCode

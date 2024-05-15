@@ -443,6 +443,8 @@ class OpenAIProvider(
             if not parse_errors:
                 try:
                     parsed_result = completion_parser(assistant_msg)
+                    if isinstance(parsed_result, Coroutine):
+                        parsed_result = await parsed_result
                 except Exception as e:
                     parse_errors.append(e)
 

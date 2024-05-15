@@ -64,9 +64,7 @@ class CodeValidator:
             ).get_compiled_code()
         except Exception as e:
             # We move on with unfixed code if there's an error
-            logger.warning(
-                f"Error formatting code for route #{self.func_name}: {e}"
-            )
+            logger.warning(f"Error formatting code for route #{self.func_name}: {e}")
             raise e
 
         for formatter in [
@@ -118,7 +116,8 @@ class CodeValidator:
 
             if line := re.search(r"line (\d+)", error):
                 raise Exception(
-                    genererate_line_error(error, raw_code, int(line.group(1))))
+                    genererate_line_error(error, raw_code, int(line.group(1)))
+                )
             else:
                 raise Exception(error)
 
@@ -182,8 +181,7 @@ class CodeValidator:
         if not already_declared_entities:
             validation_errors.append(
                 "These class/function names has already been declared in the code, "
-                "no need to declare them again: "
-                + ", ".join(already_declared_entities)
+                "no need to declare them again: " + ", ".join(already_declared_entities)
             )
 
         result = ValidationResponse(
@@ -202,9 +200,7 @@ class CodeValidator:
         # Execute static validators and fixers.
         # print('old compiled code import ---->', result.imports)
         old_compiled_code = generate_compiled_code(result, add_code_stubs)
-        validation_errors.extend(
-            await static_code_analysis(result)
-        )
+        validation_errors.extend(await static_code_analysis(result))
         new_compiled_code = result.get_compiled_code()
 
         # Auto-fixer works, retry validation (limit to 5 times, to avoid infinite loop)
@@ -404,9 +400,7 @@ async def __execute_pyright(func: ValidationResponse) -> list[str]:
 
         return validation_errors
 
-    packages = "\n".join(
-        [str(p) for p in func.packages if p not in DEFAULT_DEPS]
-    )
+    packages = "\n".join([str(p) for p in func.packages if p not in DEFAULT_DEPS])
     (temp_dir / "requirements.txt").write_text(packages)
     (temp_dir / "code.py").write_text(code)
 
@@ -441,6 +435,7 @@ async def find_module_dist_and_source(
             break
 
     return dist_info_path, module_path
+
 
 AUTO_IMPORT_TYPES: dict[str, str] = {
     "Enum": "from enum import Enum",

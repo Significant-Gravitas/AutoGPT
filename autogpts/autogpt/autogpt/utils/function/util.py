@@ -121,10 +121,7 @@ def validate_matching_function(this: FunctionDef, that: FunctionDef):
             f"Function {func_name} has different arguments than expected, "
             f"expected {expected_args} but got {this.arg_types}"
         )
-    if (
-        not is_type_equal(expected_rets, this.return_type)
-        and expected_rets != "object"
-    ):
+    if not is_type_equal(expected_rets, this.return_type) and expected_rets != "object":
         errors.append(
             f"Function {func_name} has different return type than expected, expected "
             f"{expected_rets} but got {this.return_type}"
@@ -206,8 +203,7 @@ def genererate_line_error(error: str, code: str, line_number: int) -> str:
 
 
 def generate_compiled_code(
-        resp: ValidationResponse,
-        add_code_stubs: bool = True
+    resp: ValidationResponse, add_code_stubs: bool = True
 ) -> str:
     """
     Regenerate imports & raw code using the available objects and functions.

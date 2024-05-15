@@ -121,7 +121,7 @@ async def setup_if_required(
     This setup is executed expectedly once per application run
     Args:
         cwd (Path): The current working directory
-        copy_from_parent (bool): 
+        copy_from_parent (bool):
           Whether to copy the virtual environment from PROJECT_PARENT_DIR
     Returns:
         Path: The path to the virtual environment
