@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgentActionProposal
 
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
-from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
 from autogpt.commands.execute_code import (
@@ -274,14 +273,8 @@ async def run_auto_gpt(
                 " with as much detail as possible:",
             )
 
-        base_ai_directives = AIDirectives.from_file(config.prompt_settings_file)
-
-        ai_profile, task_oriented_ai_directives = await generate_agent_profile_for_task(
-            task,
-            app_config=config,
-            llm_provider=llm_provider,
-        )
-        ai_directives = base_ai_directives + task_oriented_ai_directives
+        ai_directives = AIDirectives.from_file(config.prompt_settings_file)
+        ai_profile = AIProfile()
         apply_overrides_to_ai_settings(
             ai_profile=ai_profile,
             directives=ai_directives,
@@ -331,6 +324,22 @@ async def run_auto_gpt(
                 f"inside its workspace at:{Fore.RESET} {file_manager.workspace.root}",
                 extra={"preserve_color": True},
             )
+
+        # TODO: re-evaluate performance benefit of task-oriented profiles
+        # # Concurrently generate a custom profile for the agent and apply it once done
+        # def update_agent_directives(
+        #     task: asyncio.Task[tuple[AIProfile, AIDirectives]]
+        # ):
+        #     logger.debug(f"Updating AIProfile: {task.result()[0]}")
+        #     logger.debug(f"Adding AIDirectives: {task.result()[1]}")
+        #     agent.state.ai_profile = task.result()[0]
+        #     agent.state.directives = agent.state.directives + task.result()[1]
+
+        # asyncio.create_task(
+        #     generate_agent_profile_for_task(
+        #         task, app_config=config, llm_provider=llm_provider
+        #     )
+        # ).add_done_callback(update_agent_directives)
 
     #################
     # Run the Agent #
@@ -462,7 +471,7 @@ async def run_interaction_loop(
     """
     # These contain both application config and agent config, so grab them here.
     legacy_config = agent.legacy_config
-    ai_profile = agent.ai_profile
+    ai_profile = agent.state.ai_profile
     logger = logging.getLogger(__name__)
 
     cycle_budget = cycles_remaining = _get_cycle_budget(

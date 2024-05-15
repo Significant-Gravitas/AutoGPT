@@ -9,14 +9,16 @@ from autogpt.file_storage.base import FileStorage
 def create_agent(
     agent_id: str,
     task: str,
-    ai_profile: AIProfile,
     app_config: Config,
     file_storage: FileStorage,
     llm_provider: ChatModelProvider,
+    ai_profile: Optional[AIProfile] = None,
     directives: Optional[AIDirectives] = None,
 ) -> Agent:
     if not task:
         raise ValueError("No task specified for new agent")
+    if not ai_profile:
+        ai_profile = AIProfile()
     if not directives:
         directives = AIDirectives.from_file(app_config.prompt_settings_file)
 

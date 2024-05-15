@@ -166,7 +166,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 self.config.body_template.format(
                     constraints=format_numbered_list(
                         ai_directives.constraints
-                        + self._generate_budget_constraint(ai_profile.api_budget)
+                        # + self._generate_budget_constraint(ai_profile.api_budget)
                     ),
                     resources=format_numbered_list(ai_directives.resources),
                     commands=self._generate_commands_list(commands),
