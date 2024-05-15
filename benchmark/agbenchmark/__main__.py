@@ -63,6 +63,9 @@ def start():
     "-N", "--attempts", default=1, help="Number of times to run each challenge."
 )
 @click.option(
+    "-P", "--parallel-tasks", default=1, help="Number of challenges to run in parallel."
+)
+@click.option(
     "-c",
     "--category",
     multiple=True,
@@ -111,6 +114,7 @@ def run(
     category: tuple[str],
     skip_category: tuple[str],
     attempts: int,
+    parallel_tasks: int,
     cutoff: Optional[int] = None,
     backend: Optional[bool] = False,
     # agent_path: Optional[Path] = None,
@@ -158,6 +162,7 @@ def run(
                 categories=category,
                 skip_categories=skip_category,
                 attempts_per_challenge=attempts,
+                concurrent_tasks=parallel_tasks,
                 cutoff=cutoff,
             )
 
@@ -177,6 +182,7 @@ def run(
             categories=category,
             skip_categories=skip_category,
             attempts_per_challenge=attempts,
+            concurrent_tasks=parallel_tasks,
             cutoff=cutoff,
         )
 
