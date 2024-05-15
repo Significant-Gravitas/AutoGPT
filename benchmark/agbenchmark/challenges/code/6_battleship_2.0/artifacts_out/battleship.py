@@ -1,7 +1,13 @@
 from typing import Dict
 
-from abstract_class import (AbstractBattleship, Game, GameStatus,
-                            ShipPlacement, Turn, TurnResponse)
+from abstract_class import (
+    AbstractBattleship,
+    Game,
+    GameStatus,
+    ShipPlacement,
+    Turn,
+    TurnResponse,
+)
 
 
 class Battleship(AbstractBattleship):
