@@ -1,0 +1,33 @@
+{
+    "category": [
+        "scrape_synthesize",
+        "general",
+        "validation"
+    ],
+    "cutoff": 80,
+    "dependencies": [],
+    "eval_id": "1758058c-f726-400d-96fa-f05a328e5fd1",
+    "ground": {
+        "answer": "Toran is from Scotland https://uk.linkedin.com/in/toran-richards.",
+        "case_sensitive": false,
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            "output.txt"
+        ],
+        "should_contain": [
+            "Scotland"
+        ],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can do multi step retrieval (1. who is the CEO of AutoGPT 2. find Toran is from)",
+        "difficulty": "intermediate",
+        "side_effects": [
+            ""
+        ]
+    },
+    "name": "AutoGPTCountry",
+    "task": "Write the country the the inventor/creator of AutoGPT is from to a file called output.txt"
+}

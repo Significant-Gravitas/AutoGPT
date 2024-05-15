@@ -1,0 +1,32 @@
+{
+    "category": [
+        "scrape_synthesize",
+        "general",
+        "validation"
+    ],
+    "cutoff": 60,
+    "dependencies": [],
+    "eval_id": "895ae28a-4513-44ea-a072-0164771d1597",
+    "ground": {
+        "answer": "Are the different organizations mentioned correctly mentioning different companies addressing different shifts.",
+        "eval": {
+            "scoring": "binary",
+            "template": "question",
+            "type": "llm"
+        },
+        "files": [
+            "overview.txt"
+        ],
+        "should_contain": [
+            ""
+        ],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can generate content based on the content of 2 files.",
+        "difficulty": "basic",
+        "side_effects": []
+    },
+    "name": "SynthesizeInfo_2.0",
+    "task": "Create a brief analysis or overview detailing how one or more organizations from organizations.txt are strategizing or benefiting from opportunities or shifts mentioned in shifts.txt. Compile your findings in a document named overview.txt"
+}

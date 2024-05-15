@@ -8,10 +8,19 @@
     "CombineCsv": [
         false
     ],
+    "CombineCsv_2.0": [
+        false
+    ],
     "FileOrganizer": [
         false
     ],
     "LabelData": [
+        false
+    ],
+    "LongestSubstring": [
+        false
+    ],
+    "MessageHasher": [
         false
     ],
     "PasswordGenerator": [
@@ -60,6 +69,9 @@
         false
     ],
     "TicTacToe": [
+        false
+    ],
+    "TicTacToe_2.0": [
         false
     ],
     "UrlShortener": [

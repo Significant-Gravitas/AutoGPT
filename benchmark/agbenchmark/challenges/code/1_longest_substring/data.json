@@ -1,0 +1,32 @@
+{
+    "category": [
+        "coding",
+        "general",
+        "validation"
+    ],
+    "cutoff": 80,
+    "dependencies": [],
+    "eval_id": "a1ff38a4-3453-4bf2-960a-3b927f9936f4",
+    "ground": {
+        "answer": "The lengthOfLongestSubstring function coded properly.",
+        "eval": {
+            "type": "python"
+        },
+        "files": [
+            "test.py"
+        ],
+        "should_contain": [
+            "3",
+            "1",
+            "3"
+        ],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can create the lengthOfLongestSubstring function.",
+        "difficulty": "basic",
+        "side_effects": []
+    },
+    "name": "LongestSubstring",
+    "task": "Create a lengthOfLongestSubstring function in a file called sample_code.py. Given a string s, find the length of the longest substring without repeating characters. Example 1: Input: s = 'abcabcbb', Output: 3. Example 2: Input: s = 'bbbbb', Output: 1."
+}

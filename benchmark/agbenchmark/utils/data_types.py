@@ -33,6 +33,7 @@ class Category(str, Enum):
     DATA = "data"
     CODING = "coding"
     SCRAPE_SYNTHESIZE = "scrape_synthesize"
+    VALIDATION = "validation"
     WEB = "web"
     GAIA_1 = "GAIA_1"
     GAIA_2 = "GAIA_2"

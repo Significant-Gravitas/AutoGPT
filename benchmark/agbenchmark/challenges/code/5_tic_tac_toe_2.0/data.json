@@ -1,0 +1,28 @@
+{
+    "category": [
+        "coding",
+        "general",
+        "validation"
+    ],
+    "cutoff": 170,
+    "dependencies": [],
+    "eval_id": "209d1648-e14a-4982-8b27-074598eb4fd0",
+    "ground": {
+        "answer": "The correct python file for a TicTacToe game is written",
+        "eval": {
+            "type": "python"
+        },
+        "files": [
+            "test.py"
+        ],
+        "should_contain": [],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can create Tic-Tac-Toe game",
+        "difficulty": "basic",
+        "side_effects": []
+    },
+    "name": "TicTacToe_2.0",
+    "task": "Build an advanced Tic-Tac-Toe game using a Python CLI, catering to three players and a 4x4 grid. Here are the specifications.\n\nThe Grid: The game board is a 4x4 grid, consisting of 4 rows and 4 columns, creating a total of 16 squares.\n\nPlayers: There are three players in this game. Player 1 uses the number \"1\", Player 2 uses the number \"2\", and Player 3 uses the number \"3\".\n\nTaking Turns: Players take turns to put their respective numbers (\"1\", \"2\", or \"3\") in an empty square of the grid. Once a number is placed in a square, it cannot be changed or removed.\n\nObjective: The goal is to get four of your numbers in a row, either horizontally, vertically, or diagonally.\n\nEnd of the Game: The game concludes in one of two ways: A player gets four of their numbers in a row (horizontally, vertically, or diagonally) and is declared the winner.\nAll squares on the grid are filled, and no player has four in a row. This situation is a \"draw\" or a \"tie\".\n\nTechnical specifications:\nBuild a file called tic_tac_toe.py. This file will be executed through command lines. Players will input their moves in the format \"x,y\", where x and y represent the location in the grid (0,0 is the top left, and 3,3 is the bottom right). Player 1 starts the game, followed by Player 2 and Player 3, taking turns in a cyclic order.\n\nYour primary requirement is to halt the game when appropriate and to print only one of these four exact sentences:\n\n\"Player 1 won!\"\n\"Player 2 won!\"\n\"Player 3 won!\"\n\"Draw\"\n\nEdge cases: A player can input an incorrect location. If the location is invalid or the square is already filled, this counts as doing nothing, and the player is prompted for a new location again.\n\nYou are expected to create a Python file called tic_tac_toe.py that runs through command lines using `python tic_tac_toe.py`.\n\nHere is an example of how your tic_tac_toe.py game will be tested:\n```\nprocess = subprocess.Popen(['python', 'tic_tac_toe.py'], stdout=subprocess.PIPE, text=True)\noutput, _ = process.communicate('\\n'.join([\"0,0\", \"0,1\", \"0,2\", \"1,0\", \"0,3\", \"1,1\", \"1,2\", \"1,3\", \"2,0\", \"2,1\", \"2,2\", \"2,3\", \"3,0\", \"3,1\", \"3,2\", \"3,3\"]))\nassert \"Draw\" in output\n```"
+}
