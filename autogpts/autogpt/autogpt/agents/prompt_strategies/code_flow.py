@@ -66,7 +66,8 @@ FINAL_INSTRUCTION: str = (
     # "Determine exactly one command to use next based on the given goals "
     # "and the progress you have made so far, "
     # "and respond using the JSON schema specified previously:"
-    "Write Python code to execute your plan as efficiently as possible. "
+    "You have to give the answer in the from of JSON schema specified previously."
+    "For the `python_code` field, you have to write Python code to execute your plan as efficiently as possible."
     "Your code will be executed directly without any editing: "
     "if it doesn't work you will be held responsible. "
     "Use ONLY the listed available functions and built-in Python features. "
@@ -74,7 +75,8 @@ FINAL_INSTRUCTION: str = (
     "Leverage the given magic functions to implement function calls for which the "
     "arguments can't be determined yet. Reduce the amount of unnecessary data passed into "
     "these magic functions where possible, because magic costs money and magically "
-    "processing large amounts of data is expensive."
+    "processing large amounts of data is expensive. If you think are done with the task, "
+    "you can simply call finish(reason='your reason') to end the task. "
 )
 
 
