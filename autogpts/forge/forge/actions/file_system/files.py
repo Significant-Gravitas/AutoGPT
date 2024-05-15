@@ -1,22 +1,24 @@
 from typing import List
 
-from ..registry import action
+from forge.sdk.agent import Agent
+
+from ..registry import ActionParameter, action
 
 
 @action(
     name="list_files",
     description="List files in a directory",
     parameters=[
-        {
-            "name": "path",
-            "description": "Path to the directory",
-            "type": "string",
-            "required": True,
-        }
+        ActionParameter(
+            name="path",
+            description="Path to the directory",
+            type="string",
+            required=True,
+        )
     ],
     output_type="list[str]",
 )
-async def list_files(agent, task_id: str, path: str) -> List[str]:
+async def list_files(agent: Agent, task_id: str, path: str) -> List[str]:
     """
     List files in a workspace directory
     """
@@ -27,22 +29,22 @@ async def list_files(agent, task_id: str, path: str) -> List[str]:
     name="write_file",
     description="Write data to a file",
     parameters=[
-        {
-            "name": "file_path",
-            "description": "Path to the file",
-            "type": "string",
-            "required": True,
-        },
-        {
-            "name": "data",
-            "description": "Data to write to the file",
-            "type": "bytes",
-            "required": True,
-        },
+        ActionParameter(
+            name="file_path",
+            description="Path to the file",
+            type="string",
+            required=True,
+        ),
+        ActionParameter(
+            name="data",
+            description="Data to write to the file",
+            type="bytes",
+            required=True,
+        ),
     ],
     output_type="None",
 )
-async def write_file(agent, task_id: str, file_path: str, data: bytes):
+async def write_file(agent: Agent, task_id: str, file_path: str, data: bytes):
     """
     Write data to a file
     """
@@ -62,16 +64,16 @@ async def write_file(agent, task_id: str, file_path: str, data: bytes):
     name="read_file",
     description="Read data from a file",
     parameters=[
-        {
-            "name": "file_path",
-            "description": "Path to the file",
-            "type": "string",
-            "required": True,
-        },
+        ActionParameter(
+            name="file_path",
+            description="Path to the file",
+            type="string",
+            required=True,
+        )
     ],
     output_type="bytes",
 )
-async def read_file(agent, task_id: str, file_path: str) -> bytes:
+async def read_file(agent: Agent, task_id: str, file_path: str) -> bytes:
     """
     Read data from a file
     """

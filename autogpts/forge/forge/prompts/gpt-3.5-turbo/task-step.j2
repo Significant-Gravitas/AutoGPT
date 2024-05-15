@@ -26,12 +26,14 @@ You can leverage access to the following resources:
 {% endfor %}
 {% endif %}
 
-{% if abilities %}
-## Abilities
-You have access to the following abilities you can call:
-{% for ability in abilities %}
-- {{ ability }}
+{% if actions %}
+## Actions
+You have access to the following actions you can call:
+{% for action in actions %}
+- {{ action }}
 {% endfor %}
+
+You must not try to use any other actions. You must use the exact action name as is
 {% endif %}
 
 {% if best_practices %}
@@ -42,7 +44,7 @@ You have access to the following abilities you can call:
 {% endif %}
 
 {% if previous_actions %}
-## History of Abilities Used
+## History of Actions Used
 {% for action in previous_actions %}
 - {{ action }}
 {% endfor %}

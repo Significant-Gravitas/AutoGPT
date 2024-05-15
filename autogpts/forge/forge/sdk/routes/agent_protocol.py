@@ -22,15 +22,29 @@ the ones that require special attention due to their complexity are:
 Developers and contributors should be especially careful when making modifications to these routes to ensure
 consistency and correctness in the system's behavior.
 """
-import json
-from typing import Optional
 
-from fastapi import APIRouter, Query, Request, Response, UploadFile
+import json
+from typing import TYPE_CHECKING, Optional
+
+from fastapi import APIRouter, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
-from forge.sdk.errors import *
+from forge.sdk.errors import NotFoundError
 from forge.sdk.forge_log import ForgeLogger
-from forge.sdk.model import *
+from forge.sdk.model import (
+    Artifact,
+    Step,
+    StepRequestBody,
+    Task,
+    TaskArtifactsListResponse,
+    TaskListResponse,
+    TaskRequestBody,
+    TaskStepsListResponse,
+)
+
+if TYPE_CHECKING:
+    from forge.sdk.agent import Agent
+
 from forge.sdk.utils import get_detailed_traceback, get_exception_message
 
 base_router = APIRouter()
@@ -43,7 +57,7 @@ async def root():
     """
     Root endpoint that returns a welcome message.
     """
-    return Response(content="Welcome to the AutoGPT Forge")
+    return {"message": "Welcome to the AutoGPT Forge"}
 
 
 @base_router.get("/heartbeat", tags=["server"])
@@ -51,7 +65,7 @@ async def check_server_status():
     """
     Check if the server is running.
     """
-    return Response(content="Server is running.", status_code=200)
+    return {"message": "Server is running."}
 
 
 @base_router.post("/agent/tasks", tags=["agent"], response_model=Task)
@@ -81,27 +95,22 @@ async def create_agent_task(request: Request, task_request: TaskRequestBody) -> 
                 "artifacts": [],
             }
     """
-    agent = request["agent"]
+    agent: Agent = request["agent"]
 
     try:
         task_request = await agent.create_task(task_request)
-        return Response(
-            content=task_request.json(),
-            status_code=200,
-            media_type="application/json",
-        )
+        return task_request
     except Exception:
         LOG.exception(f"Error whilst trying to create a task: {task_request}")
-        return Response(
-            content=json.dumps(
+        raise HTTPException(
+            status_code=500,
+            detail=json.dumps(
                 {
                     "error": "Internal server error",
                     "exception": get_exception_message(),
                     "traceback": get_detailed_traceback(),
                 }
             ),
-            status_code=500,
-            media_type="application/json",
         )
 
 
@@ -146,33 +155,27 @@ async def list_agent_tasks(
                 }
             }
     """
-    agent = request["agent"]
+    agent: Agent = request["agent"]
     try:
-        tasks = await agent.list_tasks(page, page_size)
-        return Response(
-            content=tasks.json(),
-            status_code=200,
-            media_type="application/json",
-        )
+        tasks = await agent.list_tasks(page or 1, page_size or 10)
+        return tasks
     except NotFoundError:
         LOG.exception("Error whilst trying to list tasks")
-        return Response(
-            content=json.dumps({"error": "Tasks not found"}),
+        raise HTTPException(
             status_code=404,
-            media_type="application/json",
+            detail=json.dumps({"error": "Tasks not found"}),
         )
     except Exception:
         LOG.exception("Error whilst trying to list tasks")
-        return Response(
-            content=json.dumps(
+        raise HTTPException(
+            status_code=500,
+            detail=json.dumps(
                 {
                     "error": "Internal server error",
                     "exception": get_exception_message(),
                     "traceback": get_detailed_traceback(),
                 }
             ),
-            status_code=500,
-            media_type="application/json",
         )
 
 
@@ -228,34 +231,28 @@ async def get_agent_task(request: Request, task_id: str) -> Task:
                 ]
             }
     """
-    agent = request["agent"]
+    agent: Agent = request["agent"]
     try:
         task = await agent.get_task(task_id)
+        return task
 
-        return Response(
-            content=task.json(),
-            status_code=200,
-            media_type="application/json",
-        )
     except NotFoundError:
         LOG.exception(f"Error whilst trying to get task: {task_id}")
-        return Response(
-            content=json.dumps({"error": "Task not found"}),
+        raise HTTPException(
             status_code=404,
-            media_type="application/json",
+            detail=json.dumps({"error": "Task not found"}),
         )
     except Exception:
         LOG.exception(f"Error whilst trying to get task: {task_id}")
-        return Response(
-            content=json.dumps(
+        raise HTTPException(
+            status_code=500,
+            detail=json.dumps(
                 {
                     "error": "Internal server error",
                     "exception": get_exception_message(),
                     "traceback": get_detailed_traceback(),
                 }
             ),
-            status_code=500,
-            media_type="application/json",
         )
 
 
@@ -267,8 +264,8 @@ async def get_agent_task(request: Request, task_id: str) -> Task:
 async def list_agent_task_steps(
     request: Request,
     task_id: str,
-    page: Optional[int] = Query(1, ge=1),
-    page_size: Optional[int] = Query(10, ge=1, alias="pageSize"),
+    page: Optional[int] = Query(default=1, ge=1),
+    page_size: Optional[int] = Query(default=10, ge=1, alias="pageSize"),
 ) -> TaskStepsListResponse:
     """
     Retrieves a paginated list of steps associated with a specific task.
@@ -304,33 +301,27 @@ async def list_agent_task_steps(
                 }
             }
     """
-    agent = request["agent"]
+    agent: Agent = request["agent"]
     try:
-        steps = await agent.list_steps(task_id, page, page_size)
-        return Response(
-            content=steps.json(),
-            status_code=200,
-            media_type="application/json",
-        )
+        steps = await agent.list_steps(task_id, page or 1, page_size or 10)
+        return steps
     except NotFoundError:
         LOG.exception("Error whilst trying to list steps")
-        return Response(
-            content=json.dumps({"error": "Steps not found"}),
+        raise HTTPException(
             status_code=404,
-            media_type="application/json",
+            detail=json.dumps({"error": "Steps not found"}),
         )
     except Exception:
         LOG.exception("Error whilst trying to list steps")
-        return Response(
-            content=json.dumps(
+        raise HTTPException(
+            status_code=500,
+            detail=json.dumps(
                 {
                     "error": "Internal server error",
                     "exception": get_exception_message(),
                     "traceback": get_detailed_traceback(),
                 }
             ),
-            status_code=500,
-            media_type="application/json",
         )
 
 
@@ -377,38 +368,32 @@ async def execute_agent_task_step(
                 ...
             }
     """
-    agent = request["agent"]
+    agent: Agent = request["agent"]
     try:
         # An empty step request represents a yes to continue command
         if not step:
-            step = StepRequestBody(input="y")
+            step = StepRequestBody(name=None, input="y")
 
         step = await agent.execute_step(task_id, step)
+        return step
 
-        return Response(
-            content=step.json(),
-            status_code=200,
-            media_type="application/json",
-        )
     except NotFoundError:
         LOG.exception(f"Error whilst trying to execute a task step: {task_id}")
-        return Response(
-            content=json.dumps({"error": f"Task not found {task_id}"}),
+        raise HTTPException(
             status_code=404,
-            media_type="application/json",
+            detail=json.dumps({"error": f"Task not found {task_id}"}),
         )
     except Exception:
         LOG.exception(f"Error whilst trying to execute a task step: {task_id}")
-        return Response(
-            content=json.dumps(
+        raise HTTPException(
+            status_code=500,
+            detail=json.dumps(
                 {
                     "error": "Internal server error",
                     "exception": get_exception_message(),
                     "traceback": get_detailed_traceback(),
                 }
             ),
-            status_code=500,
-            media_type="application/json",
         )
 
 
@@ -438,30 +423,28 @@ async def get_agent_task_step(request: Request, task_id: str, step_id: str) -> S
                 ...
             }
     """
-    agent = request["agent"]
+    agent: Agent = request["agent"]
     try:
         step = await agent.get_step(task_id, step_id)
+        return step
 
-        return Response(content=step.json(), status_code=200)
     except NotFoundError:
         LOG.exception(f"Error whilst trying to get step: {step_id}")
-        return Response(
-            content=json.dumps({"error": "Step not found"}),
+        raise HTTPException(
             status_code=404,
-            media_type="application/json",
+            detail=json.dumps({"error": "Step not found"}),
         )
     except Exception:
         LOG.exception(f"Error whilst trying to get step: {step_id}")
-        return Response(
-            content=json.dumps(
+        raise HTTPException(
+            status_code=500,
+            detail=json.dumps(
                 {
                     "error": "Internal server error",
                     "exception": get_exception_message(),
                     "traceback": get_detailed_traceback(),
                 }
             ),
-            status_code=500,
-            media_type="application/json",
         )
 
 
@@ -507,31 +490,29 @@ async def list_agent_task_artifacts(
                 }
             }
     """
-    agent = request["agent"]
+    agent: Agent = request["agent"]
     try:
         artifacts: TaskArtifactsListResponse = await agent.list_artifacts(
-            task_id, page, page_size
+            task_id, page or 1, page_size or 10
         )
         return artifacts
     except NotFoundError:
         LOG.exception("Error whilst trying to list artifacts")
-        return Response(
-            content=json.dumps({"error": "Artifacts not found for task_id"}),
+        raise HTTPException(
             status_code=404,
-            media_type="application/json",
+            detail=json.dumps({"error": "Artifacts not found for task_id"}),
         )
     except Exception:
         LOG.exception("Error whilst trying to list artifacts")
-        return Response(
-            content=json.dumps(
+        raise HTTPException(
+            status_code=500,
+            detail=json.dumps(
                 {
                     "error": "Internal server error",
                     "exception": get_exception_message(),
                     "traceback": get_detailed_traceback(),
                 }
             ),
-            status_code=500,
-            media_type="application/json",
         )
 
 
@@ -568,33 +549,27 @@ async def upload_agent_task_artifacts(
                 "file_name": "main.py"
             }
     """
-    agent = request["agent"]
+    agent: Agent = request["agent"]
 
     if file is None:
-        return Response(
-            content=json.dumps({"error": "File must be specified"}),
+        raise HTTPException(
             status_code=404,
-            media_type="application/json",
+            detail=json.dumps({"error": "File must be specified"}),
         )
     try:
-        artifact = await agent.create_artifact(task_id, file, relative_path)
-        return Response(
-            content=artifact.json(),
-            status_code=200,
-            media_type="application/json",
-        )
+        artifact = await agent.create_artifact(task_id, file, relative_path or "")
+        return artifact
     except Exception:
         LOG.exception(f"Error whilst trying to upload artifact: {task_id}")
-        return Response(
-            content=json.dumps(
+        raise HTTPException(
+            status_code=500,
+            detail=json.dumps(
                 {
                     "error": "Internal server error",
                     "exception": get_exception_message(),
                     "traceback": get_detailed_traceback(),
                 }
             ),
-            status_code=500,
-            media_type="application/json",
         )
 
 
@@ -605,7 +580,7 @@ async def upload_agent_task_artifacts(
 )
 async def download_agent_task_artifact(
     request: Request, task_id: str, artifact_id: str
-) -> FileResponse:
+) -> Artifact:
     """
     Downloads an artifact associated with a specific task.
 
@@ -624,25 +599,25 @@ async def download_agent_task_artifact(
         Response:
             <file_content_of_artifact>
     """
-    agent = request["agent"]
+    agent: Agent = request["agent"]
     try:
         return await agent.get_artifact(task_id, artifact_id)
     except NotFoundError:
         LOG.exception(f"Error whilst trying to download artifact: {task_id}")
-        return Response(
-            content=json.dumps(
+        raise HTTPException(
+            status_code=404,
+            detail=json.dumps(
                 {
                     "error": f"Artifact not found "
                     "- task_id: {task_id}, artifact_id: {artifact_id}"
                 }
             ),
-            status_code=404,
-            media_type="application/json",
         )
     except Exception:
         LOG.exception(f"Error whilst trying to download artifact: {task_id}")
-        return Response(
-            content=json.dumps(
+        raise HTTPException(
+            status_code=500,
+            detail=json.dumps(
                 {
                     "error": f"Internal server error "
                     "- task_id: {task_id}, artifact_id: {artifact_id}",
@@ -650,6 +625,4 @@ async def download_agent_task_artifact(
                     "traceback": get_detailed_traceback(),
                 }
             ),
-            status_code=500,
-            media_type="application/json",
         )
