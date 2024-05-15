@@ -4,11 +4,15 @@ import json
 import platform
 import re
 from logging import Logger
+from typing import TYPE_CHECKING, Callable, Optional
 
 import distro
-from pydantic import Field
 
-from autogpt.agents.base import BaseAgentActionProposal
+if TYPE_CHECKING:
+    from autogpt.agents.agent import Agent
+    from autogpt.models.action_history import Episode
+
+from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.config import AIDirectives, AIProfile
 from autogpt.core.configuration.schema import SystemConfiguration, UserConfigurable
 from autogpt.core.prompting import (
@@ -23,31 +27,7 @@ from autogpt.core.resource.model_providers.schema import (
 )
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.core.utils.json_utils import extract_dict_from_json
-from autogpt.models.utils import ModelWithSummary
-from autogpt.prompts.utils import format_numbered_list
-from autogpt.utils.exceptions import InvalidAgentResponseError
-
-_RESPONSE_INTERFACE_NAME = "AssistantResponse"
-
-
-class AssistantThoughts(ModelWithSummary):
-    observations: str = Field(
-        ..., description="Relevant observations from your last action (if any)"
-    )
-    text: str = Field(..., description="Thoughts")
-    reasoning: str = Field(..., description="Reasoning behind the thoughts")
-    self_criticism: str = Field(..., description="Constructive self-criticism")
-    plan: list[str] = Field(
-        ..., description="Short list that conveys the long-term plan"
-    )
-    speak: str = Field(..., description="Summary of thoughts, to say to user")
-
-    def summary(self) -> str:
-        return self.text
-
-
-class OneShotAgentActionProposal(BaseAgentActionProposal):
-    thoughts: AssistantThoughts
+from autogpt.prompts.utils import format_numbered_list, indent
 
 
 class OneShotAgentPromptConfiguration(SystemConfiguration):
@@ -75,7 +55,70 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
         "and respond using the JSON schema specified previously:"
     )
 
+    DEFAULT_RESPONSE_SCHEMA = JSONSchema(
+        type=JSONSchema.Type.OBJECT,
+        properties={
+            "thoughts": JSONSchema(
+                type=JSONSchema.Type.OBJECT,
+                required=True,
+                properties={
+                    "observations": JSONSchema(
+                        description=(
+                            "Relevant observations from your last action (if any)"
+                        ),
+                        type=JSONSchema.Type.STRING,
+                        required=False,
+                    ),
+                    "text": JSONSchema(
+                        description="Thoughts",
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                    "reasoning": JSONSchema(
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                    "self_criticism": JSONSchema(
+                        description="Constructive self-criticism",
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                    "plan": JSONSchema(
+                        description=(
+                            "Short markdown-style bullet list that conveys the "
+                            "long-term plan"
+                        ),
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                    "speak": JSONSchema(
+                        description="Summary of thoughts, to say to user",
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                },
+            ),
+            "command": JSONSchema(
+                type=JSONSchema.Type.OBJECT,
+                required=True,
+                properties={
+                    "name": JSONSchema(
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                    "args": JSONSchema(
+                        type=JSONSchema.Type.OBJECT,
+                        required=True,
+                    ),
+                },
+            ),
+        },
+    )
+
     body_template: str = UserConfigurable(default=DEFAULT_BODY_TEMPLATE)
+    response_schema: dict = UserConfigurable(
+        default_factory=DEFAULT_RESPONSE_SCHEMA.to_dict
+    )
     choose_action_instruction: str = UserConfigurable(
         default=DEFAULT_CHOOSE_ACTION_INSTRUCTION
     )
@@ -100,7 +143,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         logger: Logger,
     ):
         self.config = configuration
-        self.response_schema = JSONSchema.from_dict(OneShotAgentActionProposal.schema())
+        self.response_schema = JSONSchema.from_dict(configuration.response_schema)
         self.logger = logger
 
     @property
@@ -110,37 +153,73 @@ class OneShotAgentPromptStrategy(PromptStrategy):
     def build_prompt(
         self,
         *,
-        messages: list[ChatMessage],
         task: str,
         ai_profile: AIProfile,
         ai_directives: AIDirectives,
         commands: list[CompletionModelFunction],
+        event_history: list[Episode],
         include_os_info: bool,
+        max_prompt_tokens: int,
+        count_tokens: Callable[[str], int],
+        count_message_tokens: Callable[[ChatMessage | list[ChatMessage]], int],
+        extra_messages: Optional[list[ChatMessage]] = None,
         **extras,
     ) -> ChatPrompt:
         """Constructs and returns a prompt with the following structure:
         1. System prompt
+        2. Message history of the agent, truncated & prepended with running summary
+            as needed
         3. `cycle_instruction`
         """
-        system_prompt, response_prefill = self.build_system_prompt(
+        if not extra_messages:
+            extra_messages = []
+
+        system_prompt = self.build_system_prompt(
             ai_profile=ai_profile,
             ai_directives=ai_directives,
             commands=commands,
             include_os_info=include_os_info,
         )
+        system_prompt_tlength = count_message_tokens(ChatMessage.system(system_prompt))
+
+        user_task = f'"""{task}"""'
+        user_task_tlength = count_message_tokens(ChatMessage.user(user_task))
+
+        response_format_instr = self.response_format_instruction(
+            self.config.use_functions_api
+        )
+        extra_messages.append(ChatMessage.system(response_format_instr))
 
         final_instruction_msg = ChatMessage.user(self.config.choose_action_instruction)
+        final_instruction_tlength = count_message_tokens(final_instruction_msg)
 
-        return ChatPrompt(
+        if event_history:
+            progress = self.compile_progress(
+                event_history,
+                count_tokens=count_tokens,
+                max_tokens=(
+                    max_prompt_tokens
+                    - system_prompt_tlength
+                    - user_task_tlength
+                    - final_instruction_tlength
+                    - count_message_tokens(extra_messages)
+                ),
+            )
+            extra_messages.insert(
+                0,
+                ChatMessage.system(f"## Progress\n\n{progress}"),
+            )
+
+        prompt = ChatPrompt(
             messages=[
                 ChatMessage.system(system_prompt),
-                ChatMessage.user(f'"""{task}"""'),
-                *messages,
+                ChatMessage.user(user_task),
+                *extra_messages,
                 final_instruction_msg,
             ],
-            prefill_response=response_prefill,
-            functions=commands if self.config.use_functions_api else [],
         )
+
+        return prompt
 
     def build_system_prompt(
         self,
@@ -148,17 +227,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         ai_directives: AIDirectives,
         commands: list[CompletionModelFunction],
         include_os_info: bool,
-    ) -> tuple[str, str]:
-        """
-        Builds the system prompt.
-
-        Returns:
-            str: The system prompt body
-            str: The desired start for the LLM's response; used to steer the output
-        """
-        response_fmt_instruction, response_prefill = self.response_format_instruction(
-            self.config.use_functions_api
-        )
+    ) -> str:
         system_prompt_parts = (
             self._generate_intro_prompt(ai_profile)
             + (self._generate_os_info() if include_os_info else [])
@@ -166,7 +235,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 self.config.body_template.format(
                     constraints=format_numbered_list(
                         ai_directives.constraints
-                        # + self._generate_budget_constraint(ai_profile.api_budget)
+                        + self._generate_budget_constraint(ai_profile.api_budget)
                     ),
                     resources=format_numbered_list(ai_directives.resources),
                     commands=self._generate_commands_list(commands),
@@ -179,39 +248,69 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 " in the next message. Your job is to complete the task while following"
                 " your directives as given above, and terminate when your task is done."
             ]
-            + ["## RESPONSE FORMAT\n" + response_fmt_instruction]
         )
 
         # Join non-empty parts together into paragraph format
-        return (
-            "\n\n".join(filter(None, system_prompt_parts)).strip("\n"),
-            response_prefill,
-        )
+        return "\n\n".join(filter(None, system_prompt_parts)).strip("\n")
 
-    def response_format_instruction(self, use_functions_api: bool) -> tuple[str, str]:
+    def compile_progress(
+        self,
+        episode_history: list[Episode],
+        max_tokens: Optional[int] = None,
+        count_tokens: Optional[Callable[[str], int]] = None,
+    ) -> str:
+        if max_tokens and not count_tokens:
+            raise ValueError("count_tokens is required if max_tokens is set")
+
+        steps: list[str] = []
+        tokens: int = 0
+        n_episodes = len(episode_history)
+
+        for i, episode in enumerate(reversed(episode_history)):
+            # Use full format for the latest 4 steps, summary or format for older steps
+            if i < 4 or episode.summary is None:
+                step_content = indent(episode.format(), 2).strip()
+            else:
+                step_content = episode.summary
+
+            step = f"* Step {n_episodes - i}: {step_content}"
+
+            if max_tokens and count_tokens:
+                step_tokens = count_tokens(step)
+                if tokens + step_tokens > max_tokens:
+                    break
+                tokens += step_tokens
+
+            steps.insert(0, step)
+
+        return "\n\n".join(steps)
+
+    def response_format_instruction(self, use_functions_api: bool) -> str:
         response_schema = self.response_schema.copy(deep=True)
         if (
             use_functions_api
             and response_schema.properties
-            and "use_tool" in response_schema.properties
+            and "command" in response_schema.properties
         ):
-            del response_schema.properties["use_tool"]
+            del response_schema.properties["command"]
 
         # Unindent for performance
         response_format = re.sub(
             r"\n\s+",
             "\n",
-            response_schema.to_typescript_object_interface(_RESPONSE_INTERFACE_NAME),
+            response_schema.to_typescript_object_interface("Response"),
         )
-        response_prefill = f'{{\n    "{list(response_schema.properties.keys())[0]}":'
+
+        instruction = (
+            "Respond with pure JSON containing your thoughts, " "and invoke a tool."
+            if use_functions_api
+            else "Respond with pure JSON."
+        )
 
         return (
-            (
-                f"YOU MUST ALWAYS RESPOND WITH A JSON OBJECT OF THE FOLLOWING TYPE:\n"
-                f"{response_format}"
-                + ("\n\nYOU MUST ALSO INVOKE A TOOL!" if use_functions_api else "")
-            ),
-            response_prefill,
+            f"{instruction} "
+            "The JSON object should be compatible with the TypeScript type `Response` "
+            f"from the following:\n{response_format}"
         )
 
     def _generate_intro_prompt(self, ai_profile: AIProfile) -> list[str]:
@@ -275,7 +374,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
     def parse_response_content(
         self,
         response: AssistantChatMessage,
-    ) -> OneShotAgentActionProposal:
+    ) -> Agent.ThoughtProcessOutput:
         if not response.content:
             raise InvalidAgentResponseError("Assistant response has no text content")
 
@@ -289,13 +388,88 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         )
         assistant_reply_dict = extract_dict_from_json(response.content)
         self.logger.debug(
-            "Parsing object extracted from LLM response:\n"
+            "Validating object extracted from LLM response:\n"
             f"{json.dumps(assistant_reply_dict, indent=4)}"
         )
 
-        parsed_response = OneShotAgentActionProposal.parse_obj(assistant_reply_dict)
-        if self.config.use_functions_api:
-            if not response.tool_calls:
-                raise InvalidAgentResponseError("Assistant did not use a tool")
-            parsed_response.use_tool = response.tool_calls[0].function
-        return parsed_response
+        response_schema = self.response_schema.copy(deep=True)
+        if (
+            self.config.use_functions_api
+            and response_schema.properties
+            and "command" in response_schema.properties
+        ):
+            del response_schema.properties["command"]
+        _, errors = response_schema.validate_object(assistant_reply_dict)
+        if errors:
+            raise InvalidAgentResponseError(
+                "Validation of response failed:\n  "
+                + ";\n  ".join([str(e) for e in errors])
+            )
+
+        # Get command name and arguments
+        command_name, arguments = extract_command(
+            assistant_reply_dict, response, self.config.use_functions_api
+        )
+        return command_name, arguments, assistant_reply_dict
+
+
+#############
+# Utilities #
+#############
+
+
+def extract_command(
+    assistant_reply_json: dict,
+    assistant_reply: AssistantChatMessage,
+    use_openai_functions_api: bool,
+) -> tuple[str, dict[str, str]]:
+    """Parse the response and return the command name and arguments
+
+    Args:
+        assistant_reply_json (dict): The response object from the AI
+        assistant_reply (AssistantChatMessage): The model response from the AI
+        config (Config): The config object
+
+    Returns:
+        tuple: The command name and arguments
+
+    Raises:
+        json.decoder.JSONDecodeError: If the response is not valid JSON
+
+        Exception: If any other error occurs
+    """
+    if use_openai_functions_api:
+        if not assistant_reply.tool_calls:
+            raise InvalidAgentResponseError("Assistant did not use any tools")
+        assistant_reply_json["command"] = {
+            "name": assistant_reply.tool_calls[0].function.name,
+            "args": assistant_reply.tool_calls[0].function.arguments,
+        }
+    try:
+        if not isinstance(assistant_reply_json, dict):
+            raise InvalidAgentResponseError(
+                f"The previous message sent was not a dictionary {assistant_reply_json}"
+            )
+
+        if "command" not in assistant_reply_json:
+            raise InvalidAgentResponseError("Missing 'command' object in JSON")
+
+        command = assistant_reply_json["command"]
+        if not isinstance(command, dict):
+            raise InvalidAgentResponseError("'command' object is not a dictionary")
+
+        if "name" not in command:
+            raise InvalidAgentResponseError("Missing 'name' field in 'command' object")
+
+        command_name = command["name"]
+
+        # Use an empty dictionary if 'args' field is not present in 'command' object
+        arguments = command.get("args", {})
+
+        return command_name, arguments
+
+    except json.decoder.JSONDecodeError:
+        raise InvalidAgentResponseError("Invalid JSON")
+
+    except Exception as e:
+        raise InvalidAgentResponseError(str(e))
