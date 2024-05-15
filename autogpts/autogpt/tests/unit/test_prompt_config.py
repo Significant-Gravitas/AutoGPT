@@ -1,4 +1,4 @@
-from autogpt.config.ai_directives import AIDirectives
+from forge.config.ai_directives import AIDirectives
 
 """
 Test cases for the PromptConfig class, which handles loads the Prompts configuration

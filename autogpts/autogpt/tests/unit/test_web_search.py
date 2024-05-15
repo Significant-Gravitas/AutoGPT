@@ -1,11 +1,11 @@
 import json
 
 import pytest
+from forge.components.web.search import WebSearchComponent
+from forge.utils.exceptions import ConfigurationError
 from googleapiclient.errors import HttpError
 
 from autogpt.agents.agent import Agent
-from autogpt.commands.web_search import WebSearchComponent
-from autogpt.utils.exceptions import ConfigurationError
 
 
 @pytest.fixture
@@ -56,7 +56,7 @@ def test_google_search(
     mock_ddg = mocker.Mock()
     mock_ddg.return_value = return_value
 
-    mocker.patch("autogpt.commands.web_search.DDGS.text", mock_ddg)
+    mocker.patch("forge.components.web.search.DDGS.text", mock_ddg)
     actual_output = web_search_component.web_search(query, num_results=num_results)
     for o in expected_output_parts:
         assert o in actual_output

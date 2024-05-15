@@ -10,8 +10,11 @@ from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from forge.config.config import Config
+from forge.file_storage import FileStorage
+from forge.llm.providers import ChatModelProvider, ModelProviderBudget
+from forge.models.action import ActionErrorResult, ActionSuccessResult
 from forge.sdk.db import AgentDB
-from forge.sdk.errors import NotFoundError
 from forge.sdk.middlewares import AgentMiddleware
 from forge.sdk.model import (
     Artifact,
@@ -24,6 +27,8 @@ from forge.sdk.model import (
     TaskStepsListResponse,
 )
 from forge.sdk.routes.agent_protocol import base_router
+from forge.utils.const import ASK_COMMAND, FINISH_COMMAND
+from forge.utils.exceptions import AgentFinished, NotFoundError
 from hypercorn.asyncio import serve as hypercorn_serve
 from hypercorn.config import Config as HypercornConfig
 from sentry_sdk import set_user
@@ -32,12 +37,6 @@ from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.app.utils import is_port_free
-from autogpt.config import Config
-from autogpt.core.resource.model_providers import ChatModelProvider, ModelProviderBudget
-from autogpt.file_storage import FileStorage
-from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
-from autogpt.utils.exceptions import AgentFinished
-from autogpt.utils.utils import DEFAULT_ASK_COMMAND, DEFAULT_FINISH_COMMAND
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +225,7 @@ class AgentProtocolServer:
             input=step_request,
             is_last=(
                 last_proposal is not None
-                and last_proposal.use_tool.name == DEFAULT_FINISH_COMMAND
+                and last_proposal.use_tool.name == FINISH_COMMAND
                 and execute_approved
             ),
         )
@@ -240,7 +239,7 @@ class AgentProtocolServer:
                 )
             )
 
-            if last_proposal.use_tool.name == DEFAULT_ASK_COMMAND:
+            if last_proposal.use_tool.name == ASK_COMMAND:
                 tool_result = ActionSuccessResult(outputs=user_input)
                 agent.event_history.register_result(tool_result)
             elif execute_approved:
@@ -296,13 +295,13 @@ class AgentProtocolServer:
                 + ("\n\n" if "\n" in str(tool_result) else " ")
                 + f"{tool_result}\n\n"
             )
-            if last_proposal and last_proposal.use_tool.name != DEFAULT_ASK_COMMAND
+            if last_proposal and last_proposal.use_tool.name != ASK_COMMAND
             else ""
         )
         output += f"{assistant_response.thoughts.speak}\n\n"
         output += (
             f"Next Command: {next_tool_to_use}"
-            if next_tool_to_use.name != DEFAULT_ASK_COMMAND
+            if next_tool_to_use.name != ASK_COMMAND
             else next_tool_to_use.arguments["question"]
         )
 

@@ -1,4 +1,4 @@
-from autogpt.config import Config
+from forge.config.config import Config
 
 from .memory_item import MemoryItem, MemoryItemFactory, MemoryItemRelevance
 from .providers.base import VectorMemoryProvider as VectorMemory

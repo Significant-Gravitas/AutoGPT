@@ -8,16 +8,13 @@ from typing import Any
 from unittest import mock
 
 import pytest
+from forge.config.config import Config, ConfigBuilder
+from forge.llm.providers.schema import ChatModelInfo, ModelProviderName
 from openai.pagination import AsyncPage
 from openai.types import Model
 from pydantic import SecretStr
 
 from autogpt.app.configurator import GPT_3_MODEL, GPT_4_MODEL, apply_overrides_to_config
-from autogpt.config import Config, ConfigBuilder
-from autogpt.core.resource.model_providers.schema import (
-    ChatModelInfo,
-    ModelProviderName,
-)
 
 
 def test_initial_values(config: Config) -> None:
@@ -147,7 +144,7 @@ def test_azure_config(config_with_azure: Config) -> None:
 @pytest.mark.asyncio
 async def test_create_config_gpt4only(config: Config) -> None:
     with mock.patch(
-        "autogpt.core.resource.model_providers.multi.MultiProvider.get_available_models"
+        "forge.llm.providers.multi.MultiProvider.get_available_models"
     ) as mock_get_models:
         mock_get_models.return_value = [
             ChatModelInfo(
@@ -167,7 +164,7 @@ async def test_create_config_gpt4only(config: Config) -> None:
 @pytest.mark.asyncio
 async def test_create_config_gpt3only(config: Config) -> None:
     with mock.patch(
-        "autogpt.core.resource.model_providers.multi.MultiProvider.get_available_models"
+        "forge.llm.providers.multi.MultiProvider.get_available_models"
     ) as mock_get_models:
         mock_get_models.return_value = [
             ChatModelInfo(
