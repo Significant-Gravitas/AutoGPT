@@ -3,8 +3,9 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
+from forge.file_storage.base import FileStorage
+
 from autogpt.agents.agent import AgentSettings
-from autogpt.file_storage.base import FileStorage
 
 
 class AgentManager:

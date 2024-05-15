@@ -4,15 +4,15 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
-from autogpt.agents.agent import Agent
-from autogpt.commands.execute_code import (
+from forge.components.code_executor import (
     ALLOWLIST_CONTROL,
     CodeExecutorComponent,
     is_docker_available,
     we_are_running_in_a_docker_container,
 )
-from autogpt.utils.exceptions import InvalidArgumentError, OperationNotAllowedError
+from forge.utils.exceptions import InvalidArgumentError, OperationNotAllowedError
+
+from autogpt.agents.agent import Agent
 
 
 @pytest.fixture

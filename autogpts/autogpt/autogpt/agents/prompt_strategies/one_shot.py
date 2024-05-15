@@ -6,26 +6,22 @@ import re
 from logging import Logger
 
 import distro
-from pydantic import Field
-
-from autogpt.agents.base import BaseAgentActionProposal
-from autogpt.config import AIDirectives, AIProfile
-from autogpt.core.configuration.schema import SystemConfiguration, UserConfigurable
-from autogpt.core.prompting import (
-    ChatPrompt,
-    LanguageModelClassification,
-    PromptStrategy,
-)
-from autogpt.core.resource.model_providers.schema import (
+from forge.config.ai_directives import AIDirectives
+from forge.config.ai_profile import AIProfile
+from forge.json.parsing import extract_dict_from_json
+from forge.llm.prompting import ChatPrompt, LanguageModelClassification, PromptStrategy
+from forge.llm.prompting.utils import format_numbered_list
+from forge.llm.providers.schema import (
     AssistantChatMessage,
     ChatMessage,
     CompletionModelFunction,
 )
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.core.utils.json_utils import extract_dict_from_json
-from autogpt.models.utils import ModelWithSummary
-from autogpt.prompts.utils import format_numbered_list
-from autogpt.utils.exceptions import InvalidAgentResponseError
+from forge.models.action import ActionProposal
+from forge.models.config import SystemConfiguration, UserConfigurable
+from forge.models.json_schema import JSONSchema
+from forge.models.utils import ModelWithSummary
+from forge.utils.exceptions import InvalidAgentResponseError
+from pydantic import Field
 
 _RESPONSE_INTERFACE_NAME = "AssistantResponse"
 
@@ -46,7 +42,7 @@ class AssistantThoughts(ModelWithSummary):
         return self.text
 
 
-class OneShotAgentActionProposal(BaseAgentActionProposal):
+class OneShotAgentActionProposal(ActionProposal):
     thoughts: AssistantThoughts
 
 

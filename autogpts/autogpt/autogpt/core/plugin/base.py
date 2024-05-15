@@ -2,17 +2,14 @@ import abc
 import enum
 from typing import TYPE_CHECKING, Type
 
+from forge.models.config import SystemConfiguration, UserConfigurable
 from pydantic import BaseModel
 
-from autogpt.core.configuration import SystemConfiguration, UserConfigurable
-
 if TYPE_CHECKING:
+    from forge.llm.providers import ChatModelProvider, EmbeddingModelProvider
+
     from autogpt.core.ability import Ability, AbilityRegistry
     from autogpt.core.memory import Memory
-    from autogpt.core.resource.model_providers import (
-        ChatModelProvider,
-        EmbeddingModelProvider,
-    )
 
     # Expand to other types as needed
     PluginType = (

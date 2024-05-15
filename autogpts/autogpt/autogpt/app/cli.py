@@ -4,8 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 import click
-
-from autogpt.logs.config import LogFormatName
+from forge.logging.config import LogFormatName
 
 from .telemetry import setup_telemetry
 

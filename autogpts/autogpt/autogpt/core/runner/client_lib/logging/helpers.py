@@ -2,8 +2,9 @@ from math import ceil, floor
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from autogpt.core.prompting import ChatPrompt
-    from autogpt.core.resource.model_providers import ChatMessage
+    from forge.llm.prompting import ChatPrompt
+    from forge.llm.providers.schema import ChatMessage
+
 
 SEPARATOR_LENGTH = 42
 

@@ -1,9 +1,7 @@
-from .agent import Agent, OneShotAgentActionProposal
-from .base import BaseAgent, BaseAgentActionProposal
+from .agent import Agent
+from .prompt_strategies.one_shot import OneShotAgentActionProposal
 
 __all__ = [
-    "BaseAgent",
     "Agent",
-    "BaseAgentActionProposal",
     "OneShotAgentActionProposal",
 ]

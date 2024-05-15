@@ -6,15 +6,10 @@ from typing import Literal
 
 import ftfy
 import numpy as np
+from forge.config.config import Config
+from forge.content_processing.text import chunk_content, split_text, summarize_text
+from forge.llm.providers import ChatMessage, ChatModelProvider, EmbeddingModelProvider
 from pydantic import BaseModel
-
-from autogpt.config import Config
-from autogpt.core.resource.model_providers import (
-    ChatMessage,
-    ChatModelProvider,
-    EmbeddingModelProvider,
-)
-from autogpt.processing.text import chunk_content, split_text, summarize_text
 
 from .utils import Embedding, get_embedding
 

@@ -2,38 +2,14 @@ import os
 from pathlib import Path
 
 import pytest
-from pytest_mock import MockerFixture
+from forge.file_storage import FileStorage
 
-import autogpt.agents.features.agent_file_manager as file_ops
 from autogpt.agents.agent import Agent
-from autogpt.config import Config
-from autogpt.file_storage import FileStorage
-from autogpt.memory.vector.memory_item import MemoryItem
-from autogpt.memory.vector.utils import Embedding
 
 
 @pytest.fixture()
 def file_content():
     return "This is a test file.\n"
-
-
-@pytest.fixture()
-def mock_MemoryItem_from_text(
-    mocker: MockerFixture, mock_embedding: Embedding, config: Config
-):
-    mocker.patch.object(
-        file_ops.MemoryItemFactory,
-        "from_text",
-        new=lambda content, source_type, config, metadata: MemoryItem(
-            raw_content=content,
-            summary=f"Summary of content '{content}'",
-            chunk_summaries=[f"Summary of content '{content}'"],
-            chunks=[content],
-            e_summary=mock_embedding,
-            e_chunks=[mock_embedding],
-            metadata=metadata | {"source_type": source_type},
-        ),
-    )
 
 
 @pytest.fixture
