@@ -1,6 +1,7 @@
+import ast
 import enum
 from textwrap import indent
-from typing import Optional
+from typing import Any, Optional
 
 from jsonschema import Draft7Validator, ValidationError
 from pydantic import BaseModel
@@ -14,12 +15,14 @@ class JSONSchema(BaseModel):
         NUMBER = "number"
         INTEGER = "integer"
         BOOLEAN = "boolean"
+        TYPE = "type"
 
     # TODO: add docstrings
     description: Optional[str] = None
     type: Optional[Type] = None
     enum: Optional[list] = None
     required: bool = False
+    default: Any = None
     items: Optional["JSONSchema"] = None
     properties: Optional[dict[str, "JSONSchema"]] = None
     minimum: Optional[int | float] = None
@@ -31,6 +34,7 @@ class JSONSchema(BaseModel):
         schema: dict = {
             "type": self.type.value if self.type else None,
             "description": self.description,
+            "default": repr(self.default),
         }
         if self.type == "array":
             if self.items:
@@ -85,6 +89,7 @@ class JSONSchema(BaseModel):
         return JSONSchema(
             description=schema.get("description"),
             type=schema["type"],
+            default=ast.literal_eval(d) if (d := schema.get("default")) else None,
             enum=schema.get("enum"),
             items=JSONSchema.from_dict(schema["items"]) if "items" in schema else None,
             properties=JSONSchema.parse_properties(schema)
@@ -146,6 +151,35 @@ class JSONSchema(BaseModel):
         ) + f"{{\n{indent(attributes_string, '  ')}\n}}"
 
     @property
+    def python_type(self) -> str:
+        if self.type == JSONSchema.Type.BOOLEAN:
+            return "bool"
+        elif self.type in {JSONSchema.Type.INTEGER}:
+            return "int"
+        elif self.type == JSONSchema.Type.NUMBER:
+            return "float"
+        elif self.type == JSONSchema.Type.STRING:
+            return "str"
+        elif self.type == JSONSchema.Type.ARRAY:
+            return f"list[{self.items.python_type}]" if self.items else "list"
+        elif self.type == JSONSchema.Type.OBJECT:
+            if not self.properties:
+                return "dict"
+            raise NotImplementedError(
+                "JSONSchema.python_type doesn't support TypedDicts yet"
+            )
+        elif self.enum:
+            return "Union[" + ", ".join(repr(v) for v in self.enum) + "]"
+        elif self.type == JSONSchema.Type.TYPE:
+            return "type"
+        elif self.type is None:
+            return "Any"
+        else:
+            raise NotImplementedError(
+                f"JSONSchema.python_type does not support Type.{self.type.name} yet"
+            )
+
+    @property
     def typescript_type(self) -> str:
         if self.type == JSONSchema.Type.BOOLEAN:
             return "boolean"
@@ -161,6 +195,10 @@ class JSONSchema(BaseModel):
             return self.to_typescript_object_interface()
         elif self.enum:
             return " | ".join(repr(v) for v in self.enum)
+        elif self.type == JSONSchema.Type.TYPE:
+            return "type"
+        elif self.type is None:
+            return "any"
         else:
             raise NotImplementedError(
                 f"JSONSchema.typescript_type does not support Type.{self.type.name} yet"

@@ -69,7 +69,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         default=AI_SETTINGS_FILE, from_env="AI_SETTINGS_FILE"
     )
     prompt_settings_file: Path = UserConfigurable(
-        default=PROMPT_SETTINGS_FILE,
+        default=project_root / PROMPT_SETTINGS_FILE,
         from_env="PROMPT_SETTINGS_FILE",
     )
 
