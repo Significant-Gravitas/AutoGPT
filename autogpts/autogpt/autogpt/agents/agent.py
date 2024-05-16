@@ -241,6 +241,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         # Get commands
         self.commands = await self.run_pipeline(CommandProvider.get_commands)
         self._remove_disabled_commands()
+        self.code_flow_executor.set_available_functions(self.commands)
 
         try:
             return_value = await self._execute_tool(tool)

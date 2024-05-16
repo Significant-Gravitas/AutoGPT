@@ -162,7 +162,6 @@ class CodeValidator:
                 validation_errors=validation_errors,
             )
             function_template = main_func.function_template
-            function_code = main_func.function_code
         else:
             function_template = None
 
@@ -397,6 +396,7 @@ async def __execute_pyright(func: ValidationResponse) -> list[str]:
 
         # read code from code.py. split the code into imports and raw code
         code = open(f"{temp_dir}/code.py").read()
+        code, error_messages = await __fix_async_calls(code, validation_errors)
         func.imports, func.rawCode = __unpack_import_and_function_code(code)
 
         return validation_errors
@@ -448,6 +448,35 @@ for t in datetime.__all__:
     AUTO_IMPORT_TYPES[t] = f"from datetime import {t}"
 for t in collections.__all__:
     AUTO_IMPORT_TYPES[t] = f"from collections import {t}"
+
+
+async def __fix_async_calls(code: str, errors: list[str]) -> tuple[str, list[str]]:
+    """
+    Fix the async calls in the code
+    Args:
+        code (str): The code snippet
+        errors (list[str]): The list of errors
+        func (ValidationResponse): The function to fix the async calls
+    Returns:
+        tuple[str, list[str]]: The fixed code snippet and the list of errors
+    """
+    async_calls = set()
+    new_errors = []
+    for error in errors:
+        pattern = '"__await__" is not present. reportGeneralTypeIssues -> (.+)'
+        match = re.search(pattern, error)
+        if match:
+            async_calls.add(match.group(1))
+        else:
+            new_errors.append(error)
+
+    for async_call in async_calls:
+        func_call = re.search(r"await ([a-zA-Z0-9_]+)", async_call)
+        if func_call:
+            func_name = func_call.group(1)
+            code = code.replace(f"await {func_name}", f"{func_name}")
+    
+    return code, new_errors
 
 
 async def __fix_missing_imports(

@@ -4,8 +4,7 @@ from logging import Logger
 
 from pydantic import BaseModel, Field
 
-from autogpt.agents.base import BaseAgentActionProposal
-from autogpt.agents.prompt_strategies.one_shot import OneShotAgentPromptConfiguration, AssistantThoughts
+from autogpt.agents.prompt_strategies.one_shot import OneShotAgentPromptConfiguration, AssistantThoughts, OneShotAgentActionProposal
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
 from autogpt.core.configuration.schema import SystemConfiguration
@@ -59,7 +58,8 @@ FINAL_INSTRUCTION: str = (
     "arguments can't be determined yet. Reduce the amount of unnecessary data passed into "
     "these magic functions where possible, because magic costs money and magically "
     "processing large amounts of data is expensive. If you think are done with the task, "
-    "you can simply call finish(reason='your reason') to end the task. "
+    "you can simply call finish(reason='your reason') to end the task, "
+    "a function that has one `finish` command, don't mix finish with other functions. "
 )
 
 
@@ -187,7 +187,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
     async def parse_response_content(
         self,
         response: AssistantChatMessage,
-    ) -> BaseAgentActionProposal:
+    ) -> OneShotAgentActionProposal:
         if not response.content:
             raise InvalidAgentResponseError("Assistant response has no text content")
 
@@ -210,6 +210,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
                 name=f.name,
                 arg_types=[(name, p.python_type) for name, p in f.parameters.items()],
                 arg_descs={name: p.description for name, p in f.parameters.items()},
+                arg_defaults={name: p.default or "None" for name, p in f.parameters.items() if p.default or not p.required},
                 return_type="str",
                 return_desc="Output of the function",
                 function_desc=f.description,
@@ -235,14 +236,24 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
             available_functions=available_functions,
         ).validate_code(parsed_response.python_code)
 
-        result = BaseAgentActionProposal(
-            thoughts=parsed_response.thoughts,
-            use_tool=AssistantFunctionCall(
-                name="execute_code_flow",
-                arguments={
-                    "python_code": code_validation.functionCode,
-                    "plan_text": parsed_response.immediate_plan,
-                },
-            ),
-        )
+        if re.search(r"finish\((.*?)\)", code_validation.functionCode):
+            finish_reason = re.search(r"finish\((reason=)?(.*?)\)", code_validation.functionCode).group(2)
+            result = OneShotAgentActionProposal(
+                thoughts=parsed_response.thoughts,
+                use_tool=AssistantFunctionCall(
+                    name="finish",
+                    arguments={"reason": finish_reason[1:-1]},
+                ),
+            )
+        else:
+            result = OneShotAgentActionProposal(
+                thoughts=parsed_response.thoughts,
+                use_tool=AssistantFunctionCall(
+                    name="execute_code_flow",
+                    arguments={
+                        "python_code": code_validation.functionCode,
+                        "plan_text": parsed_response.immediate_plan,
+                    },
+                ),
+            )
         return result

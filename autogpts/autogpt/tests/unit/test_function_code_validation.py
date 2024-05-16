@@ -56,12 +56,16 @@ def crawl_info(url: str, query: str) -> str | None:
 
     return None
 
+def hehe():
+    return 'hehe'
+
 def main() -> str:
     query = "Find the number of contributors to the autogpt github repository, or if any, list of urls that can be crawled to find the number of contributors"
     for title, url in ("autogpt github contributor page"):
         info = await crawl_info(url, query)
         if info:
             return info
+    x = await hehe()
     return "No info found"
 """,
         packages=[],
@@ -69,3 +73,5 @@ def main() -> str:
     assert response.functionCode is not None
     assert "async def crawl_info" in response.functionCode  # async is added
     assert "async def main" in response.functionCode
+    assert "x = hehe()" in response.functionCode # await is removed
+
