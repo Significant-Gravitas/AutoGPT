@@ -10,10 +10,6 @@ from .artifact import Artifact
 from .pagination import Pagination
 
 
-class StepOutput(BaseModel):
-    pass
-
-
 class TaskRequestBody(BaseModel):
     input: str = Field(
         ...,
