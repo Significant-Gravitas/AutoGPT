@@ -10,12 +10,13 @@ from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from forge.components.action_history import ActionErrorResult, ActionSuccessResult
 from forge.config.config import Config
-from forge.database.db import AgentDB
 from forge.file_storage import FileStorage
 from forge.llm.providers import ChatModelProvider, ModelProviderBudget
-from forge.models.task import (
+from forge.models.action import ActionErrorResult, ActionSuccessResult
+from forge.sdk.db import AgentDB
+from forge.sdk.middlewares import AgentMiddleware
+from forge.sdk.model import (
     Artifact,
     Step,
     StepRequestBody,
@@ -25,7 +26,7 @@ from forge.models.task import (
     TaskRequestBody,
     TaskStepsListResponse,
 )
-from forge.agent.agent_protocol import base_router
+from forge.sdk.routes.agent_protocol import base_router
 from forge.utils.const import ASK_COMMAND, FINISH_COMMAND
 from forge.utils.exceptions import AgentFinished, NotFoundError
 from hypercorn.asyncio import serve as hypercorn_serve

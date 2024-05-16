@@ -33,8 +33,13 @@ from forge.command import Command, command
 from forge.config.config import Config
 from forge.content_processing.html import extract_hyperlinks, format_hyperlinks
 from forge.content_processing.text import extract_information, summarize_text
+<<<<<<<< HEAD:autogpts/forge/forge/components/web_search/web_selenium.py
 from forge.json.model import JSONSchema
 from forge.llm.providers.schema import ChatModelInfo, ChatModelProvider
+========
+from forge.llm.providers.schema import ChatModelInfo, ChatModelProvider
+from forge.models.json_schema import JSONSchema
+>>>>>>>> master:autogpts/forge/forge/components/web/selenium.py
 from forge.utils.exceptions import CommandExecutionError, TooMuchOutputError
 from forge.utils.url_validator import validate_url
 

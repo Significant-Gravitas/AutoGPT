@@ -1,7 +1,6 @@
 import logging
 
 from agent_protocol import StepHandler, StepResult
-from forge.agent.base import DEFAULT_TRIGGERING_PROMPT
 from forge.config.ai_profile import AIProfile
 from forge.config.config import ConfigBuilder
 from forge.llm.prompting.prompt import DEFAULT_TRIGGERING_PROMPT

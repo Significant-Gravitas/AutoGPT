@@ -6,8 +6,8 @@ from forge.agent.protocols import CommandProvider, DirectiveProvider, MessagePro
 from forge.command import Command, command
 from forge.config.ai_profile import AIProfile
 from forge.config.config import Config
-from forge.json.model import JSONSchema
 from forge.llm.providers import ChatMessage
+from forge.models.json_schema import JSONSchema
 from forge.utils.const import FINISH_COMMAND
 from forge.utils.exceptions import AgentFinished
 

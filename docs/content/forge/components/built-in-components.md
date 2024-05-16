@@ -46,7 +46,7 @@ Lets the agent execute non-interactive Shell commands and Python code. Python ex
 - `execute_python_code` execute Python code
 - `execute_python_file` execute Python file
 
-## `EventHistoryComponent`
+## `ActionHistoryComponent`
 
 Keeps track of agent's actions and their outcomes. Provides their summary to the prompt.
 

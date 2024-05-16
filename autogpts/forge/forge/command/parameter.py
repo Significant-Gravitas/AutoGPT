@@ -1,6 +1,6 @@
 import dataclasses
 
-from forge.json.model import JSONSchema
+from forge.models.json_schema import JSONSchema
 
 
 @dataclasses.dataclass

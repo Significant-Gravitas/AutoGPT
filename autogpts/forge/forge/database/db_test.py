@@ -13,8 +13,7 @@ from forge.database.db import (
     convert_to_step,
     convert_to_task,
 )
-from forge.models.artifact import Artifact
-from forge.models.task import Status, Step, StepRequestBody, Task
+from forge.sdk.model import Artifact, Status, Step, StepRequestBody, Task
 from forge.utils.exceptions import NotFoundError as DataNotFoundError
 
 

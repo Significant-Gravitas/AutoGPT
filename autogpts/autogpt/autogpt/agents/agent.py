@@ -15,14 +15,8 @@ from forge.agent.protocols import (
     MessageProvider,
 )
 from forge.command.command import Command, CommandOutput
-from forge.components.action_history.event_history_component import (
-    EventHistoryComponent,
-)
-from forge.components.action_history.model import (
-    ActionErrorResult,
-    ActionInterruptedByHuman,
-    ActionResult,
-    ActionSuccessResult,
+from forge.components.action_history import (
+    ActionHistoryComponent,
     EpisodicActionHistory,
 )
 from forge.components.code_executor.code_executor import CodeExecutorComponent
@@ -33,7 +27,7 @@ from forge.components.image_gen import ImageGeneratorComponent
 from forge.components.system import SystemComponent
 from forge.components.user_interaction import UserInteractionComponent
 from forge.components.watchdog import WatchdogComponent
-from forge.components.web_search import WebSearchComponent, WebSeleniumComponent
+from forge.components.web import WebSearchComponent, WebSeleniumComponent
 from forge.file_storage.base import FileStorage
 from forge.llm.prompting.schema import ChatPrompt
 from forge.llm.providers import (
@@ -43,6 +37,12 @@ from forge.llm.providers import (
     ChatModelResponse,
 )
 from forge.llm.providers.utils import function_specs_from_commands
+from forge.models.action import (
+    ActionErrorResult,
+    ActionInterruptedByHuman,
+    ActionResult,
+    ActionSuccessResult,
+)
 from forge.models.config import Configurable
 from forge.utils.exceptions import (
     AgentException,
@@ -115,13 +115,13 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
         # Components
         self.system = SystemComponent(legacy_config, settings.ai_profile)
-        self.history = EventHistoryComponent(
+        self.history = ActionHistoryComponent(
             settings.history,
             self.send_token_limit,
             lambda x: self.llm_provider.count_tokens(x, self.llm.name),
             legacy_config,
             llm_provider,
-        )
+        ).run_after(WatchdogComponent)
         self.user_interaction = UserInteractionComponent(legacy_config)
         self.file_manager = FileManagerComponent(settings, file_storage)
         self.code_executor = CodeExecutorComponent(
@@ -136,7 +136,9 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.web_search = WebSearchComponent(legacy_config)
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
         self.context = ContextComponent(self.file_manager.workspace, settings.context)
-        self.watchdog = WatchdogComponent(settings.config, settings.history)
+        self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(
+            ContextComponent
+        )
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         """Timestamp the agent was created; only used for structured debug logging."""

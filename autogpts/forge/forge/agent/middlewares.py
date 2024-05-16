@@ -2,6 +2,9 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 
+if TYPE_CHECKING:
+    from .agent import Agent
+
 
 class AgentMiddleware:
     """

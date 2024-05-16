@@ -3,9 +3,9 @@ from pprint import pformat
 from typing import Any, ClassVar
 
 import inflection
-from forge.json.model import JSONSchema
 from forge.llm.providers import CompletionModelFunction
 from forge.models.config import SystemConfiguration
+from forge.models.json_schema import JSONSchema
 from pydantic import Field
 
 from autogpt.core.planning.simple import LanguageModelConfiguration

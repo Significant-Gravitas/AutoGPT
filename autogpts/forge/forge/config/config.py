@@ -252,7 +252,9 @@ def assert_config_has_openai_api_key(config: Config) -> None:
             "You can get your key from https://platform.openai.com/account/api-keys"
         )
         openai_api_key = click.prompt(
-            "Please enter your OpenAI API key if you have it:"
+            "Please enter your OpenAI API key if you have it",
+            default="",
+            show_default=False,
         )
         openai_api_key = openai_api_key.strip()
         if re.search(key_pattern, openai_api_key):

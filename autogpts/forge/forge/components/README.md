@@ -12,8 +12,8 @@ You can use any valid Python variable name, what matters for the component to be
 Visit [Built-in Components](./built-in-components.md) to see what components are available out of the box.
 
 ```py
-from autogpt.agents import Agent
-from autogpt.agents.components import AgentComponent
+from forge.agent import BaseAgent
+from forge.agent.components import AgentComponent
 
 class HelloComponent(AgentComponent):
     pass
@@ -22,7 +22,7 @@ class SomeComponent(AgentComponent):
     def __init__(self, hello_component: HelloComponent):
         self.hello_component = hello_component
 
-class MyAgent(Agent):
+class MyAgent(BaseAgent):
     def __init__(self):
         # These components will be automatically discovered and used
         self.hello_component = HelloComponent()
@@ -32,21 +32,30 @@ class MyAgent(Agent):
 
 ## Ordering components
 
-The execution order of components is important because the latter ones may depend on the results of the former ones.
+The execution order of components is important because some may depend on the results of the previous ones.
+**By default, components are ordered alphabetically.**
 
-### Implicit order
+### Ordering individual components
 
-Components can be ordered implicitly by the agent; each component can set `run_after` list to specify which components should run before it. This is useful when components rely on each other or need to be executed in a specific order. Otherwise, the order of components is alphabetical.
+You can order a single component by passing other components (or their types) to the `run_after` method. This way you can ensure that the component will be executed after the specified one.
+The `run_after` method returns the component itself, so you can call it when assigning the component to a variable:
 
 ```py
-# This component will run after HelloComponent
-class CalculatorComponent(AgentComponent):
-    run_after = [HelloComponent]
+class MyAgent(Agent):
+    def __init__(self):
+        self.hello_component = HelloComponent()
+        self.calculator_component = CalculatorComponent().run_after(self.hello_component)
+        # This is equivalent to passing a type:
+        # self.calculator_component = CalculatorComponent().run_after(HelloComponent)
 ```
 
-### Explicit order
+!!! warning
+    Be sure not to make circular dependencies when ordering components!
 
-Sometimes it may be easier to order components explicitly by setting `self.components` list in the agent's `__init__` method. This way you can also ensure there's no circular dependencies and `run_after` is ignored.
+### Ordering all components
+
+You can also order all components by setting `self.components` list in the agent's `__init__` method.
+This way ensures that there's no circular dependencies and any `run_after` calls are ignored.
 
 !!! warning
     Be sure to include all components - by setting `self.components` list, you're overriding the default behavior of discovering components automatically. Since it's usually not intended agent will inform you in the terminal if some components were skipped.
@@ -55,7 +64,7 @@ Sometimes it may be easier to order components explicitly by setting `self.compo
 class MyAgent(Agent):
     def __init__(self):
         self.hello_component = HelloComponent()
-        self.calculator_component = CalculatorComponent(self.hello_component)
+        self.calculator_component = CalculatorComponent()
         # Explicitly set components list
         self.components = [self.hello_component, self.calculator_component]
 ```
@@ -116,8 +125,8 @@ All errors accept an optional `str` message. There are following errors ordered 
 **Example**
 
 ```py
-from autogpt.agents.components import ComponentEndpointError
-from autogpt.agents.protocols import MessageProvider
+from forge.agent.components import ComponentEndpointError
+from forge.agent.protocols import MessageProvider
 
 # Example of raising an error
 class MyComponent(MessageProvider):

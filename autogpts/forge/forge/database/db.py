@@ -21,9 +21,10 @@ from sqlalchemy import (
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, joinedload, relationship, sessionmaker
 
-from forge.models.artifact import Artifact
-from forge.models.utils import Pagination
 from forge.utils.exceptions import NotFoundError
+
+from .forge_log import ForgeLogger
+from .model import Artifact, Pagination, Status, Step, StepRequestBody, Task
 
 from ..logging.forge_log import ForgeLogger
 from ..models.task import Status, Step, StepRequestBody, Task

@@ -18,13 +18,15 @@ from typing import (
 from colorama import Fore
 from pydantic import BaseModel, Field, validator
 
+if TYPE_CHECKING:
+    from forge.models.action import ActionProposal, ActionResult
+
 from forge.agent import protocols
 from forge.agent.components import (
     AgentComponent,
     ComponentEndpointError,
     EndpointPipelineError,
 )
-from forge.components.action_history import ActionProposal, ActionResult
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import ConfigBuilder
@@ -299,7 +301,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
         ]
 
         if self.components:
-            # Check if any coponent is missed (added to Agent but not to components)
+            # Check if any component is missing (added to Agent but not to components)
             for component in components:
                 if component not in self.components:
                     logger.warning(
@@ -320,12 +322,11 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
             if node in visited:
                 return
             visited.add(node)
-            for neighbor_class in node.__class__.run_after:
-                # Find the instance of neighbor_class in components
+            for neighbor_class in node._run_after:
                 neighbor = next(
                     (m for m in components if isinstance(m, neighbor_class)), None
                 )
-                if neighbor:
+                if neighbor and neighbor not in visited:
                     visit(neighbor)
             stack.append(node)
 
