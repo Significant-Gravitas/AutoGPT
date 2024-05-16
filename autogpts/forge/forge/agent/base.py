@@ -30,7 +30,6 @@ from forge.agent.components import (
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import ConfigBuilder
-from forge.llm.prompting.prompt import DEFAULT_TRIGGERING_PROMPT
 from forge.llm.providers import (
     CHAT_MODELS,
     AssistantFunctionCall,
