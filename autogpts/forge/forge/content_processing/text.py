@@ -1,4 +1,5 @@
 """Text processing functions"""
+from __future__ import annotations
 
 import logging
 import math
@@ -56,7 +57,7 @@ def chunk_content(
 async def summarize_text(
     text: str,
     llm_provider: ChatModelProvider,
-    config: "Config",
+    config: Config,
     question: Optional[str] = None,
     instruction: Optional[str] = None,
 ) -> tuple[str, list[tuple[str, str]]]:
@@ -89,7 +90,7 @@ async def extract_information(
     source_text: str,
     topics_of_interest: list[str],
     llm_provider: ChatModelProvider,
-    config: "Config",
+    config: Config,
 ) -> list[str]:
     fmt_topics_list = "\n".join(f"* {topic}." for topic in topics_of_interest)
     instruction = (
@@ -113,7 +114,7 @@ async def _process_text(
     text: str,
     instruction: str,
     llm_provider: ChatModelProvider,
-    config: "Config",
+    config: Config,
     output_type: type[str | list[str]] = str,
 ) -> tuple[str, list[tuple[str, str]]] | list[str]:
     """Process text using the OpenAI API for summarization or information extraction
@@ -122,7 +123,7 @@ async def _process_text(
         text (str): The text to process.
         instruction (str): Additional instruction for processing.
         llm_provider: LLM provider to use.
-        config ("Config"): The global application config.
+        config (Config): The global application config.
         output_type: `str` for summaries or `list[str]` for piece-wise info extraction.
 
     Returns:
@@ -220,7 +221,7 @@ async def _process_text(
 
 def split_text(
     text: str,
-    config: "Config",
+    config: Config,
     max_chunk_length: int,
     tokenizer: ModelTokenizer,
     with_overlap: bool = True,
@@ -230,7 +231,7 @@ def split_text(
 
     Args:
         text (str): The text to split.
-        config ("Config"): "Config" object containing the Spacy model setting.
+        config (Config): Config object containing the Spacy model setting.
         max_chunk_length (int, optional): The maximum length of a chunk.
         tokenizer (ModelTokenizer): Tokenizer to use for determining chunk length.
         with_overlap (bool, optional): Whether to allow overlap between chunks.
