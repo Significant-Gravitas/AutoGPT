@@ -1,9 +1,4 @@
-from typing import TYPE_CHECKING
-
-from fastapi import FastAPI
-
-if TYPE_CHECKING:
-    from .agent import Agent
+from starlette.types import ASGIApp
 
 
 class AgentMiddleware:
@@ -11,7 +6,7 @@ class AgentMiddleware:
     Middleware that injects the agent instance into the request scope.
     """
 
-    def __init__(self, app: FastAPI, agent):
+    def __init__(self, app: ASGIApp, agent):
         """
 
         Args:
