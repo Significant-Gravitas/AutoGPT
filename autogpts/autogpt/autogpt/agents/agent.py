@@ -58,10 +58,7 @@ from .base import (
 from .features.agent_file_manager import FileManagerComponent
 from .features.context import AgentContext, ContextComponent
 from .features.watchdog import WatchdogComponent
-from .prompt_strategies.code_flow import (
-    CodeFlowAgentPromptStrategy,
-    CodeFlowAgentActionProposal,
-)
+from .prompt_strategies.code_flow import CodeFlowAgentPromptStrategy
 from .protocols import (
     AfterExecute,
     AfterParse,

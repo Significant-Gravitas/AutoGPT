@@ -77,6 +77,7 @@ google-cloud-storage = "^2.13.0"
 psycopg2-binary = "^2.9.9"
 ruff = "^0.4.4"
 pyright = "^1.1.362"
+ptyprocess = "^0.7.0"
 
 [tool.poetry.extras]
 benchmark = ["agbenchmark"]

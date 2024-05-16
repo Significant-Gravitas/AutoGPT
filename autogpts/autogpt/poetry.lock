@@ -4745,7 +4745,7 @@ files = [
 name = "ptyprocess"
 version = "0.7.0"
 description = "Run a subprocess in a pseudo terminal"
-optional = true
+optional = false
 python-versions = "*"
 files = [
     {file = "ptyprocess-0.7.0-py2.py3-none-any.whl", hash = "sha256:4b41f3967fce3af57cc7e94b888626c18bf37a083e3651ca8feeb66d492fef35"},
@@ -7320,4 +7320,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "2ce5b3a7793bdc98bfe0bbb94ae153bbfe60d5767d9e5490420cc000c2959609"
+content-hash = "e4f170809cd2c0c6daaa3130393870ff1873efde0b5b5860ad60c25d9a64afb1"

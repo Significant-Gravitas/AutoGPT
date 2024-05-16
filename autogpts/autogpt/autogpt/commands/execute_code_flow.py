@@ -33,9 +33,14 @@ class CodeFlowExecutionComponent(CommandProvider):
                 description="The Python code to execute",
                 required=True,
             ),
+            "plan_text": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The plan to written in a natural language",
+                required=False,
+            ),
         },
     )
-    async def execute_code_flow(self, python_code: str) -> str:
+    async def execute_code_flow(self, python_code: str, plan_text: str) -> str:
         """Execute the code flow.
 
         Args:
@@ -52,4 +57,4 @@ class CodeFlowExecutionComponent(CommandProvider):
         }
         exec(code, result)
         result = str(await result['exec_output'])
-        return result
+        return f"Execution Plan:\n{plan_text}\n\nExecution Output:\n{result}"

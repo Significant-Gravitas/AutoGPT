@@ -5,7 +5,7 @@ from logging import Logger
 from pydantic import BaseModel, Field
 
 from autogpt.agents.base import BaseAgentActionProposal
-from autogpt.agents.prompt_strategies.one_shot import OneShotAgentPromptConfiguration
+from autogpt.agents.prompt_strategies.one_shot import OneShotAgentPromptConfiguration, AssistantThoughts
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
 from autogpt.core.configuration.schema import SystemConfiguration
@@ -24,22 +24,6 @@ from autogpt.utils.function.code_validation import CodeValidator
 from autogpt.utils.function.model import FunctionDef
 
 _RESPONSE_INTERFACE_NAME = "AssistantResponse"
-
-
-class AssistantThoughts(ModelWithSummary):
-    observations: str = Field(
-        ..., description="Relevant observations from your last action (if any)"
-    )
-    self_criticism: str = Field(..., description="Constructive self-criticism")
-    reasoning: str = Field(..., description="Reasoning towards a new plan")
-    plan: list[str] = Field(
-        ...,
-        description="Short list that conveys your long-term plan. Parallelize where possible.",
-    )
-
-    def summary(self) -> str:
-        return self.reasoning
-
 
 class CodeFlowAgentActionProposal(BaseModel):
     thoughts: AssistantThoughts
@@ -66,8 +50,8 @@ FINAL_INSTRUCTION: str = (
     # "Determine exactly one command to use next based on the given goals "
     # "and the progress you have made so far, "
     # "and respond using the JSON schema specified previously:"
-    "You have to give the answer in the from of JSON schema specified previously."
-    "For the `python_code` field, you have to write Python code to execute your plan as efficiently as possible."
+    "You have to give the answer in the from of JSON schema specified previously. "
+    "For the `python_code` field, you have to write Python code to execute your plan as efficiently as possible. "
     "Your code will be executed directly without any editing: "
     "if it doesn't work you will be held responsible. "
     "Use ONLY the listed available functions and built-in Python features. "
@@ -217,10 +201,6 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
             )
         )
         assistant_reply_dict = extract_dict_from_json(response.content)
-        self.logger.debug(
-            "Parsing object extracted from LLM response:\n"
-            f"{json.dumps(assistant_reply_dict, indent=4)}"
-        )
 
         parsed_response = CodeFlowAgentActionProposal.parse_obj(assistant_reply_dict)
         if not parsed_response.python_code:
@@ -262,6 +242,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
                 name="execute_code_flow",
                 arguments={
                     "python_code": code_validation.functionCode,
+                    "plan_text": parsed_response.immediate_plan,
                 },
             ),
         )
