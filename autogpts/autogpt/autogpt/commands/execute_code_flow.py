@@ -1,5 +1,6 @@
 """Commands to generate images based on text input"""
 
+import inspect
 import logging
 from typing import Iterator
 
@@ -56,5 +57,7 @@ class CodeFlowExecutionComponent(CommandProvider):
             for name, func in self.available_functions.items()
         }
         exec(code, result)
-        result = str(await result['exec_output'])
+        result = await result['exec_output']
+        if inspect.isawaitable(result):
+            result = await result
         return f"Execution Plan:\n{plan_text}\n\nExecution Output:\n{result}"
