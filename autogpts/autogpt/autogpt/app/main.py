@@ -14,6 +14,7 @@ from types import FrameType
 from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
+from forge.agent_protocol.database import AgentDB
 from forge.components.code_executor import (
     is_docker_available,
     we_are_running_in_a_docker_container,
@@ -21,7 +22,6 @@ from forge.components.code_executor import (
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import Config, ConfigBuilder, assert_config_has_openai_api_key
-from forge.db import AgentDB
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging

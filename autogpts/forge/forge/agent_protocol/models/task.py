@@ -7,7 +7,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 from .artifact import Artifact
-from .utils import Pagination
+from .pagination import Pagination
 
 
 class StepOutput(BaseModel):
@@ -64,7 +64,7 @@ class StepRequestBody(BaseModel):
     additional_input: Optional[dict] = None
 
 
-class Status(Enum):
+class StepStatus(Enum):
     created = "created"
     running = "running"
     completed = "completed"
@@ -96,7 +96,7 @@ class Step(StepRequestBody):
     name: Optional[str] = Field(
         None, description="The name of the task step.", example="Write to file"
     )
-    status: Status = Field(
+    status: StepStatus = Field(
         ..., description="The status of the task step.", example="created"
     )
     output: Optional[str] = Field(

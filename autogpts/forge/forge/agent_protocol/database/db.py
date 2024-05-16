@@ -21,13 +21,12 @@ from sqlalchemy import (
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, joinedload, relationship, sessionmaker
 
+from forge.logging.forge_log import ForgeLogger
 from forge.utils.exceptions import NotFoundError
 
-from .forge_log import ForgeLogger
-from .model import Artifact, Pagination, Status, Step, StepRequestBody, Task
-
-from ..logging.forge_log import ForgeLogger
-from ..models.task import Status, Step, StepRequestBody, Task
+from ..models.artifact import Artifact
+from ..models.pagination import Pagination
+from ..models.task import Step, StepRequestBody, StepStatus, Task
 
 LOG = ForgeLogger(__name__)
 
@@ -108,7 +107,9 @@ def convert_to_step(step_model: StepModel, debug_enabled: bool = False) -> Step:
     step_artifacts = [
         convert_to_artifact(artifact) for artifact in step_model.artifacts
     ]
-    status = Status.completed if step_model.status == "completed" else Status.created
+    status = (
+        StepStatus.completed if step_model.status == "completed" else StepStatus.created
+    )
     return Step(
         task_id=step_model.task_id,
         step_id=step_model.step_id,
