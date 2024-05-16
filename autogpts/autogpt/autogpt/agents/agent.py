@@ -58,6 +58,7 @@ from .base import (
 from .features.agent_file_manager import FileManagerComponent
 from .features.context import AgentContext, ContextComponent
 from .features.watchdog import WatchdogComponent
+from .prompt_strategies.one_shot import OneShotAgentActionProposal
 from .prompt_strategies.code_flow import CodeFlowAgentPromptStrategy
 from .protocols import (
     AfterExecute,
@@ -80,8 +81,8 @@ class AgentConfiguration(BaseAgentConfiguration):
 class AgentSettings(BaseAgentSettings):
     config: AgentConfiguration = Field(default_factory=AgentConfiguration)
 
-    history: EpisodicActionHistory[BaseAgentActionProposal] = Field(
-        default_factory=EpisodicActionHistory[BaseAgentActionProposal]
+    history: EpisodicActionHistory[OneShotAgentActionProposal] = Field(
+        default_factory=EpisodicActionHistory[OneShotAgentActionProposal]
     )
     """(STATE) The action history of the agent."""
 

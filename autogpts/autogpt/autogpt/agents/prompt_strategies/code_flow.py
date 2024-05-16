@@ -18,7 +18,6 @@ from autogpt.core.resource.model_providers.schema import (
 )
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.core.utils.json_utils import extract_dict_from_json
-from autogpt.models.utils import ModelWithSummary
 from autogpt.utils.exceptions import InvalidAgentResponseError
 from autogpt.utils.function.code_validation import CodeValidator
 from autogpt.utils.function.model import FunctionDef
