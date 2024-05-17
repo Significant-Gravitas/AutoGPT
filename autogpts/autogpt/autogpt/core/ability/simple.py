@@ -1,16 +1,17 @@
 import logging
 
-from autogpt.core.ability.base import Ability, AbilityConfiguration, AbilityRegistry
-from autogpt.core.ability.builtins import BUILTIN_ABILITIES
-from autogpt.core.ability.schema import AbilityResult
-from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
-from autogpt.core.memory.base import Memory
-from autogpt.core.plugin.simple import SimplePluginService
-from autogpt.core.resource.model_providers import (
+from forge.llm.providers import (
     ChatModelProvider,
     CompletionModelFunction,
     ModelProviderName,
 )
+from forge.models.config import Configurable, SystemConfiguration, SystemSettings
+
+from autogpt.core.ability.base import Ability, AbilityConfiguration, AbilityRegistry
+from autogpt.core.ability.builtins import BUILTIN_ABILITIES
+from autogpt.core.ability.schema import AbilityResult
+from autogpt.core.memory.base import Memory
+from autogpt.core.plugin.simple import SimplePluginService
 from autogpt.core.workspace.base import Workspace
 
 

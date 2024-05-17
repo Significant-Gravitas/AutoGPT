@@ -1,5 +1,5 @@
-from autogpt.config.ai_profile import AIProfile
-from autogpt.file_storage.base import FileStorage
+from forge.config.ai_profile import AIProfile
+from forge.file_storage import FileStorage
 
 """
 Test cases for the AIProfile class, which handles loads the AI configuration

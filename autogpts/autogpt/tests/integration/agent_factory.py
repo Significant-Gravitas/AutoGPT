@@ -1,22 +1,9 @@
 import pytest
+from forge.config.ai_profile import AIProfile
+from forge.config.config import Config
+from forge.file_storage import FileStorageBackendName, get_storage
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.agents.prompt_strategies.one_shot import OneShotAgentPromptStrategy
-from autogpt.config import AIProfile, Config
-from autogpt.file_storage import FileStorageBackendName, get_storage
-from autogpt.memory.vector import get_memory
-
-
-@pytest.fixture
-def memory_json_file(config: Config):
-    was_memory_backend = config.memory_backend
-
-    config.memory_backend = "json_file"
-    memory = get_memory(config)
-    memory.clear()
-    yield memory
-
-    config.memory_backend = was_memory_backend
 
 
 @pytest.fixture
@@ -29,10 +16,6 @@ def dummy_agent(config: Config, llm_provider, memory_json_file):
         ],
     )
 
-    agent_prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(
-        deep=True
-    )
-    agent_prompt_config.use_functions_api = config.openai_functions
     agent_settings = AgentSettings(
         name=Agent.default_settings.name,
         description=Agent.default_settings.description,
@@ -42,7 +25,6 @@ def dummy_agent(config: Config, llm_provider, memory_json_file):
             smart_llm=config.smart_llm,
             use_functions_api=config.openai_functions,
         ),
-        prompt_config=agent_prompt_config,
         history=Agent.default_settings.history.copy(deep=True),
     )
 

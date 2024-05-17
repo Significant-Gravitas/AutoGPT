@@ -3,14 +3,14 @@ import logging
 import typing
 from pathlib import Path
 
-from pydantic import SecretField
-
-from autogpt.core.configuration import (
+from forge.models.config import (
     Configurable,
     SystemConfiguration,
     SystemSettings,
     UserConfigurable,
 )
+from pydantic import SecretField
+
 from autogpt.core.workspace.base import Workspace
 
 if typing.TYPE_CHECKING:

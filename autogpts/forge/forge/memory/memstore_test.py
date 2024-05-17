@@ -3,7 +3,7 @@ import shutil
 
 import pytest
 
-from forge.sdk.memory.memstore import ChromaMemStore
+from forge.memory.chroma_memstore import ChromaMemStore
 
 
 @pytest.fixture

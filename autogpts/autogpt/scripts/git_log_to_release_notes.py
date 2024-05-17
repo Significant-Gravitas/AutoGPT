@@ -5,10 +5,10 @@ from pathlib import Path
 from typing import Optional
 
 import click
+from forge.llm.providers import ChatMessage, MultiProvider
+from forge.llm.providers.anthropic import AnthropicModelName
 from git import Repo, TagReference
 
-from autogpt.core.resource.model_providers import ChatMessage, MultiProvider
-from autogpt.core.resource.model_providers.anthropic import AnthropicModelName
 from autogpt.core.runner.client_lib.utils import coroutine
 
 
@@ -132,8 +132,7 @@ Do not mention the changes in the example when writing your release notes!
 
 if __name__ == "__main__":
     import dotenv
-
-    from autogpt.logs.config import configure_logging
+    from forge.logging.config import configure_logging
 
     configure_logging(debug=True)
 

@@ -3,13 +3,13 @@ from pprint import pformat
 from typing import Any, ClassVar
 
 import inflection
+from forge.llm.providers import CompletionModelFunction
+from forge.models.config import SystemConfiguration
+from forge.models.json_schema import JSONSchema
 from pydantic import Field
 
-from autogpt.core.configuration import SystemConfiguration
 from autogpt.core.planning.simple import LanguageModelConfiguration
 from autogpt.core.plugin.base import PluginLocation
-from autogpt.core.resource.model_providers import CompletionModelFunction
-from autogpt.core.utils.json_schema import JSONSchema
 
 from .schema import AbilityResult
 

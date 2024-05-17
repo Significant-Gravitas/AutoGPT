@@ -36,7 +36,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
-from forge.sdk.errors import CommandExecutionError
+from forge.utils.exceptions import CommandExecutionError
 
 from ..registry import action
 
