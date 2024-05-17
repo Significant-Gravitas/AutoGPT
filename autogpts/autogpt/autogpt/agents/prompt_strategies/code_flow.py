@@ -59,7 +59,8 @@ FINAL_INSTRUCTION: str = (
     "these magic functions where possible, because magic costs money and magically "
     "processing large amounts of data is expensive. If you think are done with the task, "
     "you can simply call finish(reason='your reason') to end the task, "
-    "a function that has one `finish` command, don't mix finish with other functions. "
+    "a function that has one `finish` command, don't mix finish with other functions! "
+    "If you still need to do other functions, let the next cycle execute the `finish` function. "
 )
 
 
@@ -182,7 +183,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
         ]
 
     def _generate_function_headers(self, funcs: list[CompletionModelFunction]) -> str:
-        return "\n\n".join(f.fmt_header() for f in funcs)
+        return "\n\n".join(f.fmt_header(force_async=True) for f in funcs)
 
     async def parse_response_content(
         self,
@@ -211,10 +212,10 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
                 arg_types=[(name, p.python_type) for name, p in f.parameters.items()],
                 arg_descs={name: p.description for name, p in f.parameters.items()},
                 arg_defaults={name: p.default or "None" for name, p in f.parameters.items() if p.default or not p.required},
-                return_type="str",
+                return_type=f.return_type,
                 return_desc="Output of the function",
                 function_desc=f.description,
-                is_async=f.is_async,
+                is_async=True,
             )
             for f in self.commands
         }
@@ -236,6 +237,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
             available_functions=available_functions,
         ).validate_code(parsed_response.python_code)
 
+        # TODO: prevent combining finish with other functions
         if re.search(r"finish\((.*?)\)", code_validation.functionCode):
             finish_reason = re.search(r"finish\((reason=)?(.*?)\)", code_validation.functionCode).group(2)
             result = OneShotAgentActionProposal(

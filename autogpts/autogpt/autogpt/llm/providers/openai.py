@@ -26,6 +26,7 @@ def function_specs_from_commands(
             description=command.description,
             is_async=command.is_async,
             parameters={param.name: param.spec for param in command.parameters},
+            return_type=command.return_type,
         )
         for command in commands
     ]

@@ -125,6 +125,7 @@ class CompletionModelFunction(BaseModel):
     name: str
     description: str
     parameters: dict[str, "JSONSchema"]
+    return_type: str | None = None
     is_async: bool = False
 
     @property
@@ -160,7 +161,7 @@ class CompletionModelFunction(BaseModel):
         )
         return f"{self.name}: {self.description}. Params: ({params})"
 
-    def fmt_header(self, impl="pass") -> str:
+    def fmt_header(self, impl="pass", force_async=False) -> str:
         """
         Formats and returns the function header as a string with types and descriptions.
 
@@ -171,8 +172,9 @@ class CompletionModelFunction(BaseModel):
             f"{name}: {p.python_type}{f'= {str(p.default)}' if p.default else ' = None' if not p.required else ''}"
             for name, p in self.parameters.items()
         )
-        func = "async def" if self.is_async else "def"
-        return f"{func} {self.name}({params}) -> str:\n" + indent(
+        func = "async def" if self.is_async or force_async else "def"
+        return_str = f" -> {self.return_type}" if self.return_type else ""
+        return f"{func} {self.name}({params}){return_str}:\n" + indent(
             (
                 '"""\n'
                 f"{self.description}\n\n"

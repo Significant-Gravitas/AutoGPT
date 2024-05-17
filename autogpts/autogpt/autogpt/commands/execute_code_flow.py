@@ -51,13 +51,26 @@ class CodeFlowExecutionComponent(CommandProvider):
         Returns:
             str: The result of the code execution
         """
-        code = f"{python_code}\nexec_output = main()"
+        code_header = "import inspect\n".join(
+            [
+                f"""
+async def {name}(*args, **kwargs):
+    result = {name}_func(*args, **kwargs)
+    if inspect.isawaitable(result):
+        result = await result
+    return result
+"""
+                for name in self.available_functions.keys()
+            ]
+        )
         result = {
-            name: func
-            for name, func in self.available_functions.items()
+            name + "_func": func for name, func in self.available_functions.items()
         }
+        code = f"{code_header}\n{python_code}\nexec_output = main()"
+        print("----> Executing code:", python_code)
         exec(code, result)
-        result = await result['exec_output']
+        result = await result["exec_output"]
+        print("----> Execution result:", result)
         if inspect.isawaitable(result):
             result = await result
         return f"Execution Plan:\n{plan_text}\n\nExecution Output:\n{result}"
