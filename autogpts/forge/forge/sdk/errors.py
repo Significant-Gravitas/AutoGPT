@@ -11,7 +11,7 @@ class AgentException(Exception):
     message: str
 
     hint: Optional[str] = None
-    """A hint which can be passed to the LLM to reduce recurrence of this error"""
+    """A hint that can be given to the language model to lessen the frequency of this error."""
 
     def __init__(self, message: str, *args):
         self.message = message
