@@ -35,7 +35,7 @@ from forge.content_processing.html import extract_hyperlinks, format_hyperlinks
 from forge.content_processing.text import extract_information, summarize_text
 from forge.llm.providers.schema import ChatModelInfo, ChatModelProvider
 from forge.models.json_schema import JSONSchema
-from forge.utils.exceptions import CommandExecutionError, TooMuchOutputError
+from forge.utils.exceptions import CommandExecutionError
 from forge.utils.url_validator import validate_url
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,10 @@ LINKS_TO_RETURN = 20
 
 class BrowsingError(CommandExecutionError):
     """An error occurred while trying to browse the page"""
+
+
+class TooMuchOutputError(CommandExecutionError):
+    """The operation generated more output than what the Agent can process"""
 
 
 class WebSeleniumComponent(DirectiveProvider, CommandProvider):
