@@ -23,12 +23,12 @@ Developers and contributors should be especially careful when making modificatio
 consistency and correctness in the system's behavior.
 """
 import json
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
-from forge.logging.forge_log import ForgeLogger
 from forge.utils.exceptions import (
     NotFoundError,
     get_detailed_traceback,
@@ -47,8 +47,7 @@ from .models import (
 )
 
 base_router = APIRouter()
-
-LOG = ForgeLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @base_router.get("/", tags=["root"])
@@ -104,7 +103,7 @@ async def create_agent_task(request: Request, task_request: TaskRequestBody) -> 
             media_type="application/json",
         )
     except Exception:
-        LOG.exception(f"Error whilst trying to create a task: {task_request}")
+        logger.exception(f"Error whilst trying to create a task: {task_request}")
         return Response(
             content=json.dumps(
                 {
@@ -168,14 +167,14 @@ async def list_agent_tasks(
             media_type="application/json",
         )
     except NotFoundError:
-        LOG.exception("Error whilst trying to list tasks")
+        logger.exception("Error whilst trying to list tasks")
         return Response(
             content=json.dumps({"error": "Tasks not found"}),
             status_code=404,
             media_type="application/json",
         )
     except Exception:
-        LOG.exception("Error whilst trying to list tasks")
+        logger.exception("Error whilst trying to list tasks")
         return Response(
             content=json.dumps(
                 {
@@ -251,14 +250,14 @@ async def get_agent_task(request: Request, task_id: str) -> Task:
             media_type="application/json",
         )
     except NotFoundError:
-        LOG.exception(f"Error whilst trying to get task: {task_id}")
+        logger.exception(f"Error whilst trying to get task: {task_id}")
         return Response(
             content=json.dumps({"error": "Task not found"}),
             status_code=404,
             media_type="application/json",
         )
     except Exception:
-        LOG.exception(f"Error whilst trying to get task: {task_id}")
+        logger.exception(f"Error whilst trying to get task: {task_id}")
         return Response(
             content=json.dumps(
                 {
@@ -326,14 +325,14 @@ async def list_agent_task_steps(
             media_type="application/json",
         )
     except NotFoundError:
-        LOG.exception("Error whilst trying to list steps")
+        logger.exception("Error whilst trying to list steps")
         return Response(
             content=json.dumps({"error": "Steps not found"}),
             status_code=404,
             media_type="application/json",
         )
     except Exception:
-        LOG.exception("Error whilst trying to list steps")
+        logger.exception("Error whilst trying to list steps")
         return Response(
             content=json.dumps(
                 {
@@ -404,14 +403,14 @@ async def execute_agent_task_step(
             media_type="application/json",
         )
     except NotFoundError:
-        LOG.exception(f"Error whilst trying to execute a task step: {task_id}")
+        logger.exception(f"Error whilst trying to execute a task step: {task_id}")
         return Response(
             content=json.dumps({"error": f"Task not found {task_id}"}),
             status_code=404,
             media_type="application/json",
         )
     except Exception:
-        LOG.exception(f"Error whilst trying to execute a task step: {task_id}")
+        logger.exception(f"Error whilst trying to execute a task step: {task_id}")
         return Response(
             content=json.dumps(
                 {
@@ -457,14 +456,14 @@ async def get_agent_task_step(request: Request, task_id: str, step_id: str) -> S
 
         return Response(content=step.json(), status_code=200)
     except NotFoundError:
-        LOG.exception(f"Error whilst trying to get step: {step_id}")
+        logger.exception(f"Error whilst trying to get step: {step_id}")
         return Response(
             content=json.dumps({"error": "Step not found"}),
             status_code=404,
             media_type="application/json",
         )
     except Exception:
-        LOG.exception(f"Error whilst trying to get step: {step_id}")
+        logger.exception(f"Error whilst trying to get step: {step_id}")
         return Response(
             content=json.dumps(
                 {
@@ -527,14 +526,14 @@ async def list_agent_task_artifacts(
         )
         return artifacts
     except NotFoundError:
-        LOG.exception("Error whilst trying to list artifacts")
+        logger.exception("Error whilst trying to list artifacts")
         return Response(
             content=json.dumps({"error": "Artifacts not found for task_id"}),
             status_code=404,
             media_type="application/json",
         )
     except Exception:
-        LOG.exception("Error whilst trying to list artifacts")
+        logger.exception("Error whilst trying to list artifacts")
         return Response(
             content=json.dumps(
                 {
@@ -597,7 +596,7 @@ async def upload_agent_task_artifacts(
             media_type="application/json",
         )
     except Exception:
-        LOG.exception(f"Error whilst trying to upload artifact: {task_id}")
+        logger.exception(f"Error whilst trying to upload artifact: {task_id}")
         return Response(
             content=json.dumps(
                 {
@@ -641,7 +640,7 @@ async def download_agent_task_artifact(
     try:
         return await agent.get_artifact(task_id, artifact_id)
     except NotFoundError:
-        LOG.exception(f"Error whilst trying to download artifact: {task_id}")
+        logger.exception(f"Error whilst trying to download artifact: {task_id}")
         return Response(
             content=json.dumps(
                 {
@@ -653,7 +652,7 @@ async def download_agent_task_artifact(
             media_type="application/json",
         )
     except Exception:
-        LOG.exception(f"Error whilst trying to download artifact: {task_id}")
+        logger.exception(f"Error whilst trying to download artifact: {task_id}")
         return Response(
             content=json.dumps(
                 {
