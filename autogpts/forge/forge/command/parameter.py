@@ -1,10 +1,9 @@
-import dataclasses
+from pydantic import BaseModel
 
-from forge.json.schema import JSONSchema
+from forge.models.json_schema import JSONSchema
 
 
-@dataclasses.dataclass
-class CommandParameter:
+class CommandParameter(BaseModel):
     name: str
     spec: JSONSchema
 

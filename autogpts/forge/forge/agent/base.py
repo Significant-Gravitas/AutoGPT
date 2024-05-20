@@ -4,10 +4,22 @@ import copy
 import inspect
 import logging
 from abc import ABCMeta, abstractmethod
-from typing import Any, Callable, Iterator, Optional, ParamSpec, TypeVar, overload
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterator,
+    Optional,
+    ParamSpec,
+    TypeVar,
+    overload,
+)
 
 from colorama import Fore
 from pydantic import BaseModel, Field, validator
+
+if TYPE_CHECKING:
+    from forge.models.action import ActionProposal, ActionResult
 
 from forge.agent import protocols
 from forge.agent.components import (
@@ -15,18 +27,17 @@ from forge.agent.components import (
     ComponentEndpointError,
     EndpointPipelineError,
 )
-from forge.components.event_history import ActionProposal, ActionResult
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import ConfigBuilder
-from forge.config.schema import (
+from forge.llm.providers import CHAT_MODELS, ModelName, OpenAIModelName
+from forge.llm.providers.schema import ChatModelInfo
+from forge.models.config import (
     Configurable,
     SystemConfiguration,
     SystemSettings,
     UserConfigurable,
 )
-from forge.llm.providers import CHAT_MODELS, ModelName, OpenAIModelName
-from forge.llm.providers.schema import ChatModelInfo
 
 logger = logging.getLogger(__name__)
 
@@ -103,11 +114,7 @@ class BaseAgentSettings(SystemSettings):
     ai_profile: AIProfile = Field(default_factory=lambda: AIProfile(ai_name="AutoGPT"))
     """The AI profile or "personality" of the agent."""
 
-    directives: AIDirectives = Field(
-        default_factory=lambda: AIDirectives.from_file(
-            ConfigBuilder.default_settings.prompt_settings_file
-        )
-    )
+    directives: AIDirectives = Field(default_factory=AIDirectives)
     """Directives (general instructional guidelines) for the agent."""
 
     task: str = "Terminate immediately"  # FIXME: placeholder for forge.sdk.schema.Task
@@ -284,7 +291,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
         ]
 
         if self.components:
-            # Check if any coponent is missed (added to Agent but not to components)
+            # Check if any component is missing (added to Agent but not to components)
             for component in components:
                 if component not in self.components:
                     logger.warning(
@@ -305,12 +312,11 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
             if node in visited:
                 return
             visited.add(node)
-            for neighbor_class in node.__class__.run_after:
-                # Find the instance of neighbor_class in components
+            for neighbor_class in node._run_after:
                 neighbor = next(
                     (m for m in components if isinstance(m, neighbor_class)), None
                 )
-                if neighbor:
+                if neighbor and neighbor not in visited:
                     visit(neighbor)
             stack.append(node)
 

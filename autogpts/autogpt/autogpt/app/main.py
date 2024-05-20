@@ -10,27 +10,25 @@ import re
 import signal
 import sys
 from pathlib import Path
-from types import FrameType
+from types import FrameType, coroutine
 from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
+from forge.agent_protocol.database import AgentDB
 from forge.components.code_executor import (
     is_docker_available,
     we_are_running_in_a_docker_container,
 )
-from forge.components.event_history import ActionInterruptedByHuman
-from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import Config, ConfigBuilder, assert_config_has_openai_api_key
-from forge.database.db import AgentDB
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
 from forge.logging.helpers import print_attribute, speak
+from forge.models.action import ActionInterruptedByHuman, ActionProposal
 from forge.models.utils import ModelWithSummary
-from forge.utils.const import DEFAULT_FINISH_COMMAND
+from forge.utils.const import FINISH_COMMAND
 from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
-from forge.utils.input import clean_input
 
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
@@ -39,13 +37,12 @@ from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
-    from forge.agent.base import ActionProposal
 
 from .configurator import apply_overrides_to_config
+from .input import clean_input
 from .setup import apply_overrides_to_ai_settings, interactively_revise_ai_settings
 from .spinner import Spinner
 from .utils import (
-    coroutine,
     get_legal_warning,
     markdown_to_ansi_style,
     print_git_branch_info,
@@ -58,8 +55,6 @@ from .utils import (
 async def run_auto_gpt(
     continuous: bool = False,
     continuous_limit: Optional[int] = None,
-    ai_settings: Optional[Path] = None,
-    prompt_settings: Optional[Path] = None,
     skip_reprompt: bool = False,
     speak: bool = False,
     debug: bool = False,
@@ -109,8 +104,6 @@ async def run_auto_gpt(
         config=config,
         continuous=continuous,
         continuous_limit=continuous_limit,
-        ai_settings_file=ai_settings,
-        prompt_settings_file=prompt_settings,
         skip_reprompt=skip_reprompt,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
@@ -135,7 +128,7 @@ async def run_auto_gpt(
             )
 
     if not config.skip_news:
-        print_motd(config, logger)
+        print_motd(logger)
         print_git_branch_info(logger)
         print_python_version_info(logger)
         print_attribute("Smart LLM", config.smart_llm)
@@ -147,10 +140,6 @@ async def run_auto_gpt(
                 print_attribute("Continuous Limit", config.continuous_limit)
         if config.tts_config.speak_mode:
             print_attribute("Speak Mode", "ENABLED")
-        if ai_settings:
-            print_attribute("Using AI Settings File", ai_settings)
-        if prompt_settings:
-            print_attribute("Using Prompt Settings File", prompt_settings)
         if config.allow_downloads:
             print_attribute("Native Downloading", "ENABLED")
         if we_are_running_in_a_docker_container() or is_docker_available():
@@ -225,7 +214,7 @@ async def run_auto_gpt(
 
         if (
             (current_episode := agent.event_history.current_episode)
-            and current_episode.action.use_tool.name == DEFAULT_FINISH_COMMAND
+            and current_episode.action.use_tool.name == FINISH_COMMAND
             and not current_episode.result
         ):
             # Agent was resumed after `finish` -> rewrite result of `finish` action
@@ -268,14 +257,12 @@ async def run_auto_gpt(
                 " with as much detail as possible:",
             )
 
-        base_ai_directives = AIDirectives.from_file(config.prompt_settings_file)
-
         ai_profile, task_oriented_ai_directives = await generate_agent_profile_for_task(
             task,
             app_config=config,
             llm_provider=llm_provider,
         )
-        ai_directives = base_ai_directives + task_oriented_ai_directives
+        ai_directives = task_oriented_ai_directives
         apply_overrides_to_ai_settings(
             ai_profile=ai_profile,
             directives=ai_directives,
@@ -348,7 +335,6 @@ async def run_auto_gpt(
 
 @coroutine
 async def run_auto_gpt_server(
-    prompt_settings: Optional[Path] = None,
     debug: bool = False,
     log_level: Optional[str] = None,
     log_format: Optional[str] = None,
@@ -385,7 +371,6 @@ async def run_auto_gpt_server(
 
     await apply_overrides_to_config(
         config=config,
-        prompt_settings_file=prompt_settings,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
         browser_name=browser_name,

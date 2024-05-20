@@ -2,15 +2,12 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Literal, Optional
 
 import click
 from colorama import Back, Fore, Style
 from forge.config.config import GPT_3_MODEL, GPT_4_MODEL, Config
 from forge.llm.providers import ModelName, MultiProvider
-from forge.logging.helpers import request_user_double_check
-from forge.utils.yaml_validator import validate_yaml_file
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +16,6 @@ async def apply_overrides_to_config(
     config: Config,
     continuous: bool = False,
     continuous_limit: Optional[int] = None,
-    ai_settings_file: Optional[Path] = None,
-    prompt_settings_file: Optional[Path] = None,
     skip_reprompt: bool = False,
     gpt3only: bool = False,
     gpt4only: bool = False,
@@ -34,8 +29,6 @@ async def apply_overrides_to_config(
         config (Config): The config object to update.
         continuous (bool): Whether to run in continuous mode.
         continuous_limit (int): The number of times to run in continuous mode.
-        ai_settings_file (Path): The path to the ai_settings.yaml file.
-        prompt_settings_file (Path): The path to the prompt_settings.yaml file.
         skip_reprompt (bool): Whether to skip the re-prompting messages on start.
         speak (bool): Whether to enable speak mode.
         debug (bool): Whether to enable debug mode.
@@ -83,31 +76,6 @@ async def apply_overrides_to_config(
 
     if skip_reprompt:
         config.skip_reprompt = True
-
-    if ai_settings_file:
-        file = ai_settings_file
-
-        # Validate file
-        (validated, message) = validate_yaml_file(file)
-        if not validated:
-            logger.fatal(extra={"title": "FAILED FILE VALIDATION:"}, msg=message)
-            request_user_double_check()
-            exit(1)
-
-        config.ai_settings_file = config.project_root / file
-        config.skip_reprompt = True
-
-    if prompt_settings_file:
-        file = prompt_settings_file
-
-        # Validate file
-        (validated, message) = validate_yaml_file(file)
-        if not validated:
-            logger.fatal(extra={"title": "FAILED FILE VALIDATION:"}, msg=message)
-            request_user_double_check()
-            exit(1)
-
-        config.prompt_settings_file = config.project_root / file
 
     if browser_name:
         config.selenium_web_browser = browser_name

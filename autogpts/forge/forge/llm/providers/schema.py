@@ -18,9 +18,10 @@ from typing import (
 
 from pydantic import BaseModel, Field, SecretStr, validator
 
-from forge.config.schema import SystemConfiguration, UserConfigurable
-from forge.json.schema import JSONSchema
-from forge.llm.schema import (
+from forge.logging.utils import fmt_kwargs
+from forge.models.config import SystemConfiguration, UserConfigurable
+from forge.models.json_schema import JSONSchema
+from forge.models.providers import (
     Embedding,
     ProviderBudget,
     ProviderCredentials,
@@ -28,7 +29,6 @@ from forge.llm.schema import (
     ProviderUsage,
     ResourceType,
 )
-from forge.logging.utils import fmt_kwargs
 
 if TYPE_CHECKING:
     from jsonschema import ValidationError

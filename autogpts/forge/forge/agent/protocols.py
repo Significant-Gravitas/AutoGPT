@@ -1,13 +1,12 @@
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Iterator
 
-from forge.llm.providers import ChatMessage
-
 from .components import AgentComponent
 
 if TYPE_CHECKING:
     from forge.command.command import Command
-    from forge.components.event_history import ActionResult
+    from forge.llm.providers import ChatMessage
+    from forge.models.action import ActionResult
 
     from .base import ActionProposal
 

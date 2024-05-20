@@ -14,9 +14,8 @@ from forge.agent import BaseAgentSettings, CommandProvider
 from forge.command import Command, command
 from forge.config.config import Config
 from forge.file_storage import FileStorage
-from forge.json.schema import JSONSchema
+from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import (
-    CodeExecutionError,
     CommandExecutionError,
     InvalidArgumentError,
     OperationNotAllowedError,
@@ -49,6 +48,10 @@ def is_docker_available() -> bool:
         return docker_info["OSType"] == "linux"
     except Exception:
         return False
+
+
+class CodeExecutionError(CommandExecutionError):
+    """The operation (an attempt to run arbitrary code) returned an error"""
 
 
 class CodeExecutorComponent(CommandProvider):
@@ -173,7 +176,7 @@ class CodeExecutorComponent(CommandProvider):
 
         if we_are_running_in_a_docker_container():
             logger.debug(
-                "AutoGPT is running in a Docker container; "
+                "App is running in a Docker container; "
                 f"executing {file_path} directly..."
             )
             result = subprocess.run(
@@ -187,7 +190,7 @@ class CodeExecutorComponent(CommandProvider):
             else:
                 raise CodeExecutionError(result.stderr)
 
-        logger.debug("AutoGPT is not running in a Docker container")
+        logger.debug("App is not running in a Docker container")
         try:
             assert self.state.agent_id, "Need Agent ID to attach Docker container"
 

@@ -16,26 +16,21 @@ from forge.agent.protocols import (
     MessageProvider,
 )
 from forge.command.command import Command, CommandOutput
-from forge.components.code_executor.code_executor import CodeExecutorComponent
-from forge.components.context.context import ContextComponent
-from forge.components.event_history.action_history import (
-    ActionErrorResult,
-    ActionInterruptedByHuman,
-    ActionResult,
-    ActionSuccessResult,
+from forge.components.action_history import (
+    ActionHistoryComponent,
     EpisodicActionHistory,
 )
-from forge.components.event_history.event_history import EventHistoryComponent
+from forge.components.code_executor.code_executor import CodeExecutorComponent
+from forge.components.context.context import AgentContext, ContextComponent
 from forge.components.file_manager import FileManagerComponent
 from forge.components.git_operations import GitOperationsComponent
 from forge.components.image_gen import ImageGeneratorComponent
 from forge.components.system import SystemComponent
 from forge.components.user_interaction import UserInteractionComponent
 from forge.components.watchdog import WatchdogComponent
-from forge.components.web_search import WebSearchComponent
-from forge.components.web_selenium import WebSeleniumComponent
-from forge.config.schema import Configurable
+from forge.components.web import WebSearchComponent, WebSeleniumComponent
 from forge.file_storage.base import FileStorage
+from forge.llm.prompting.schema import ChatPrompt
 from forge.llm.providers import (
     AssistantFunctionCall,
     ChatMessage,
@@ -43,13 +38,13 @@ from forge.llm.providers import (
     ChatModelResponse,
 )
 from forge.llm.providers.utils import function_specs_from_commands
-from forge.logging.log_cycle import (
-    CURRENT_CONTEXT_FILE_NAME,
-    NEXT_ACTION_FILE_NAME,
-    USER_INPUT_FILE_NAME,
-    LogCycleHandler,
+from forge.models.action import (
+    ActionErrorResult,
+    ActionInterruptedByHuman,
+    ActionResult,
+    ActionSuccessResult,
 )
-from forge.prompts import ChatPrompt
+from forge.models.config import Configurable
 from forge.utils.exceptions import (
     AgentException,
     AgentTerminated,
@@ -58,7 +53,15 @@ from forge.utils.exceptions import (
 )
 from pydantic import Field
 
-from autogpt.agents.prompt_strategies.one_shot import (
+from autogpt.app.log_cycle import (
+    CURRENT_CONTEXT_FILE_NAME,
+    NEXT_ACTION_FILE_NAME,
+    USER_INPUT_FILE_NAME,
+    LogCycleHandler,
+)
+from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
+
+from .prompt_strategies.one_shot import (
     OneShotAgentActionProposal,
     OneShotAgentPromptStrategy,
 )
@@ -100,6 +103,8 @@ class AgentSettings(BaseAgentSettings):
     )
     """(STATE) The action history of the agent."""
 
+    context: AgentContext = Field(default_factory=AgentContext)
+
 
 class Agent(BaseAgent, Configurable[AgentSettings]):
     default_settings: AgentSettings = AgentSettings(
@@ -130,13 +135,13 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
         # Components
         self.system = SystemComponent(legacy_config, settings.ai_profile)
-        self.history = EventHistoryComponent(
+        self.history = ActionHistoryComponent(
             settings.history,
             self.send_token_limit,
             lambda x: self.llm_provider.count_tokens(x, self.llm.name),
             legacy_config,
             llm_provider,
-        )
+        ).run_after(WatchdogComponent)
         self.user_interaction = UserInteractionComponent(legacy_config)
         self.file_manager = FileManagerComponent(settings, file_storage)
         self.code_executor = CodeExecutorComponent(
@@ -150,8 +155,10 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         )
         self.web_search = WebSearchComponent(legacy_config)
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
-        self.context = ContextComponent(self.file_manager.workspace)
-        self.watchdog = WatchdogComponent(settings.config, settings.history)
+        self.context = ContextComponent(self.file_manager.workspace, settings.context)
+        self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(
+            ContextComponent
+        )
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         """Timestamp the agent was created; only used for structured debug logging."""

@@ -17,9 +17,7 @@ from openai.types.chat import (
 )
 from pydantic import SecretStr
 
-from forge.config.schema import Configurable, UserConfigurable
 from forge.json.parsing import json_loads
-from forge.json.schema import JSONSchema
 from forge.llm.providers.schema import (
     AssistantChatMessage,
     AssistantFunctionCall,
@@ -41,6 +39,8 @@ from forge.llm.providers.schema import (
     ModelProviderSettings,
     ModelTokenizer,
 )
+from forge.models.config import Configurable, UserConfigurable
+from forge.models.json_schema import JSONSchema
 
 from .utils import validate_tool_calls
 

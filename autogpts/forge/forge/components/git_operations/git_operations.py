@@ -6,7 +6,7 @@ from git.repo import Repo
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
 from forge.config.config import Config
-from forge.json.schema import JSONSchema
+from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError
 from forge.utils.url_validator import validate_url
 

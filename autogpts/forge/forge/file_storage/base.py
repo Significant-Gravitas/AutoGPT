@@ -11,7 +11,7 @@ from io import IOBase, TextIOBase
 from pathlib import Path
 from typing import IO, Any, BinaryIO, Callable, Literal, TextIO, overload
 
-from forge.config.schema import SystemConfiguration
+from forge.models.config import SystemConfiguration
 
 logger = logging.getLogger(__name__)
 

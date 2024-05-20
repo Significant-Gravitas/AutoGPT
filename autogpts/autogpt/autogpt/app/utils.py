@@ -5,19 +5,10 @@ import re
 import socket
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Coroutine, ParamSpec, TypeVar
-import asyncio
-import functools
 
 import requests
 from colorama import Fore, Style
 from git import InvalidGitRepositoryError, Repo
-
-if TYPE_CHECKING:
-    from forge.config.config import Config
-
-P = ParamSpec("P")
-T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +155,7 @@ By using the System, you agree to indemnify, defend, and hold harmless the Proje
     return legal_text
 
 
-def print_motd(config: "Config", logger: logging.Logger):
+def print_motd(logger: logging.Logger):
     motd, is_new_motd = get_latest_bulletin()
     if motd:
         motd = markdown_to_ansi_style(motd)
@@ -240,11 +231,3 @@ def is_port_free(port: int, host: str = "127.0.0.1"):
             return True  # If successful, the port is free
         except OSError:
             return False  # If failed, the port is likely in use
-
-
-def coroutine(f: Callable[P, Coroutine[Any, Any, T]]) -> Callable[P, T]:
-    @functools.wraps(f)
-    def wrapper(*args: P.args, **kwargs: P.kwargs):
-        return asyncio.run(f(*args, **kwargs))
-
-    return wrapper

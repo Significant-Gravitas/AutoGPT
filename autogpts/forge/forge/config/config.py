@@ -7,24 +7,22 @@ import re
 from pathlib import Path
 from typing import Any, Optional, Union
 
+import click
 from colorama import Fore
 from pydantic import SecretStr, validator
 
 import forge
-from forge.config.schema import Configurable, SystemSettings, UserConfigurable
 from forge.file_storage import FileStorageBackendName
 from forge.llm.providers import CHAT_MODELS, ModelName
 from forge.llm.providers.openai import OpenAICredentials, OpenAIModelName
 from forge.logging.config import LoggingConfig
+from forge.models.config import Configurable, SystemSettings, UserConfigurable
 from forge.speech.say import TTSConfig
-from forge.utils.input import clean_input
 
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(forge.__file__).parent.parent
-AI_SETTINGS_FILE = Path("ai_settings.yaml")
 AZURE_CONFIG_FILE = Path("azure.yaml")
-PROMPT_SETTINGS_FILE = Path("prompt_settings.yaml")
 
 GPT_4_MODEL = OpenAIModelName.GPT4
 GPT_3_MODEL = OpenAIModelName.GPT3
@@ -57,15 +55,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     ##########################
     # Agent Control Settings #
     ##########################
-    # Paths
-    ai_settings_file: Path = UserConfigurable(
-        default=AI_SETTINGS_FILE, from_env="AI_SETTINGS_FILE"
-    )
-    prompt_settings_file: Path = UserConfigurable(
-        default=PROMPT_SETTINGS_FILE,
-        from_env="PROMPT_SETTINGS_FILE",
-    )
-
     # Model configuration
     fast_llm: ModelName = UserConfigurable(
         default=OpenAIModelName.GPT3,
@@ -205,8 +194,6 @@ class ConfigBuilder(Configurable[Config]):
 
         # Make relative paths absolute
         for k in {
-            "ai_settings_file",  # TODO: deprecate or repurpose
-            "prompt_settings_file",  # TODO: deprecate or repurpose
             "azure_config_file",  # TODO: move from project root
         }:
             setattr(config, k, project_root / getattr(config, k))
@@ -238,7 +225,11 @@ def assert_config_has_openai_api_key(config: Config) -> None:
         logger.info(
             "You can get your key from https://platform.openai.com/account/api-keys"
         )
-        openai_api_key = clean_input("Please enter your OpenAI API key if you have it:")
+        openai_api_key = click.prompt(
+            "Please enter your OpenAI API key if you have it",
+            default="",
+            show_default=False,
+        )
         openai_api_key = openai_api_key.strip()
         if re.search(key_pattern, openai_api_key):
             os.environ["OPENAI_API_KEY"] = openai_api_key

@@ -18,13 +18,6 @@ Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI i
 &ensp;|&ensp;
 **🛠️ [Build your own Agent - Quickstart](QUICKSTART.md)**
 
-## 🥇 Current Best Agent: evo.ninja
-[Current Best Agent]: #-current-best-agent-evoninja
-
-The AutoGPT Arena Hackathon saw [**evo.ninja**](https://github.com/polywrap/evo.ninja) earn the top spot on our Arena Leaderboard, proving itself as the best open-source generalist agent. Try it now at https://evo.ninja!
-
-📈 To challenge evo.ninja, AutoGPT, and others, submit your benchmark run to the [Leaderboard](#-leaderboard), and maybe your agent will be up here next!
-
 ## 🧱 Building blocks
 
 ### 🏗️ Forge
@@ -45,13 +38,6 @@ This guide will walk you through the process of creating your own agent and usin
 📦 [`agbenchmark`](https://pypi.org/project/agbenchmark/) on Pypi
 &ensp;|&ensp;
 📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark) about the Benchmark
-
-#### 🏆 [Leaderboard][leaderboard]
-[leaderboard]: https://leaderboard.agpt.co
-
-Submit your benchmark run through the UI and claim your place on the AutoGPT Arena Leaderboard! The best scoring general agent earns the title of **[Current Best Agent]**, and will be adopted into our repo so people can easily run it through the [CLI].
-
-[![Screenshot of the AutoGPT Arena leaderboard](https://github.com/Significant-Gravitas/AutoGPT/assets/12185583/60813392-9ddb-4cca-bb44-b477dbae225d)][leaderboard]
 
 ### 💻 UI
 
@@ -78,7 +64,6 @@ Options:
 
 Commands:
   agent      Commands to create, start and stop agents
-  arena      Commands to enter the arena
   benchmark  Commands to start the benchmark and list tests and categories
   setup      Installs dependencies needed for your system.
 ```

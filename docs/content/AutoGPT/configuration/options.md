@@ -4,7 +4,6 @@ Configuration is controlled through the `Config` object. You can set configurati
 
 ## Environment Variables
 
-- `AI_SETTINGS_FILE`: Location of the AI Settings file relative to the AutoGPT root directory. Default: ai_settings.yaml
 - `AUDIO_TO_TEXT_PROVIDER`: Audio To Text Provider. Only option currently is `huggingface`. Default: huggingface
 - `AUTHORISE_COMMAND_KEY`: Key response accepted when authorising commands. Default: y
 - `ANTHROPIC_API_KEY`: Set this if you want to use Anthropic models with AutoGPT
@@ -32,7 +31,6 @@ Configuration is controlled through the `Config` object. You can set configurati
 - `OPENAI_API_KEY`: *REQUIRED*- Your [OpenAI API Key](https://platform.openai.com/account/api-keys).
 - `OPENAI_ORGANIZATION`: Organization ID in OpenAI. Optional.
 - `PLAIN_OUTPUT`: Plain output, which disables the spinner. Default: False
-- `PROMPT_SETTINGS_FILE`: Location of the Prompt Settings file relative to the AutoGPT root directory. Default: prompt_settings.yaml
 - `RESTRICT_TO_WORKSPACE`: The restrict file reading and writing to the workspace directory. Default: True
 - `SD_WEBUI_AUTH`: Stable Diffusion Web UI username:password pair. Optional.
 - `SD_WEBUI_URL`: Stable Diffusion Web UI URL. Default: http://localhost:7860

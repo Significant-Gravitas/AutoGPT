@@ -1,22 +1,24 @@
 import contextlib
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator
+
+from pydantic import BaseModel, Field
+from typing_extensions import Annotated
 
 from forge.agent.protocols import CommandProvider, MessageProvider
 from forge.command import Command, command
 from forge.file_storage.base import FileStorage
-from forge.json.schema import JSONSchema
 from forge.llm.providers import ChatMessage
+from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import InvalidArgumentError
 
 from .context_item import ContextItem, FileContextItem, FolderContextItem
 
 
-class AgentContext:
-    items: list[ContextItem]
-
-    def __init__(self, items: Optional[list[ContextItem]] = None):
-        self.items = items or []
+class AgentContext(BaseModel):
+    items: list[Annotated[ContextItem, Field(discriminator="type")]] = Field(
+        default_factory=list
+    )
 
     def __bool__(self) -> bool:
         return len(self.items) > 0
@@ -42,8 +44,8 @@ class AgentContext:
 class ContextComponent(MessageProvider, CommandProvider):
     """Adds ability to keep files and folders open in the context (prompt)."""
 
-    def __init__(self, workspace: FileStorage):
-        self.context = AgentContext()
+    def __init__(self, workspace: FileStorage, context: AgentContext):
+        self.context = context
         self.workspace = workspace
 
     def get_messages(self) -> Iterator[ChatMessage]:

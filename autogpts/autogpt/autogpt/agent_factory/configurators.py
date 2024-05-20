@@ -20,8 +20,7 @@ def create_agent(
 ) -> Agent:
     if not task:
         raise ValueError("No task specified for new agent")
-    if not directives:
-        directives = AIDirectives.from_file(app_config.prompt_settings_file)
+    directives = directives or AIDirectives()
 
     agent = _configure_agent(
         agent_id=agent_id,

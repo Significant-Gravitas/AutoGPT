@@ -50,7 +50,7 @@ class FancyConsoleFormatter(logging.Formatter):
         return super().format(record)
 
 
-class AutoGptFormatter(FancyConsoleFormatter):
+class ForgeFormatter(FancyConsoleFormatter):
     def __init__(self, *args, no_color: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         self.no_color = no_color

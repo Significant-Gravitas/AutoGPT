@@ -1,11 +1,12 @@
 from typing import Iterator
 
+import click
+
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
 from forge.config.config import Config
-from forge.json.schema import JSONSchema
-from forge.utils.const import DEFAULT_ASK_COMMAND
-from forge.utils.input import clean_input
+from forge.models.json_schema import JSONSchema
+from forge.utils.const import ASK_COMMAND
 
 
 class UserInteractionComponent(CommandProvider):
@@ -18,7 +19,7 @@ class UserInteractionComponent(CommandProvider):
         yield self.ask_user
 
     @command(
-        names=[DEFAULT_ASK_COMMAND],
+        names=[ASK_COMMAND],
         parameters={
             "question": JSONSchema(
                 type=JSONSchema.Type.STRING,
@@ -31,5 +32,5 @@ class UserInteractionComponent(CommandProvider):
         """If you need more details or information regarding the given goals,
         you can ask the user for input."""
         print(f"\nQ: {question}")
-        resp = clean_input("A:")
+        resp = click.prompt("A")
         return f"The user's answer: '{resp}'"
