@@ -48,9 +48,6 @@
           #  source: ./azure.yaml
           #  target: /app/azure.yaml
           #- type: bind
-          #  source: ./ai_settings.yaml
-          #  target: /app/ai_settings.yaml
-          #- type: bind
           #  source: ./prompt_settings.yaml
           #  target: /app/prompt_settings.yaml
     ```
@@ -77,9 +74,6 @@
           - ./logs:/app/logs
           ## uncomment following lines if you want to make use of these files
           ## you must have them existing in the same folder as this docker-compose.yml
-          #- type: bind
-          #  source: ./ai_settings.yaml
-          #  target: /app/ai_settings.yaml
           #- type: bind
           #  source: ./prompt_settings.yaml
           #  target: /app/prompt_settings.yaml

@@ -65,15 +65,6 @@ def cli(ctx: click.Context):
     help="Skips the re-prompting messages at the beginning of the script",
 )
 @click.option(
-    "--ai-settings",
-    "-C",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help=(
-        "Specifies which ai_settings.yaml file to use, relative to the AutoGPT"
-        " root directory. Will also automatically skip the re-prompt."
-    ),
-)
-@click.option(
     "--ai-name",
     type=str,
     help="AI name override",
@@ -157,7 +148,6 @@ def run(
     install_plugin_deps: bool,
     skip_news: bool,
     skip_reprompt: bool,
-    ai_settings: Optional[Path],
     ai_name: Optional[str],
     ai_role: Optional[str],
     prompt_settings: Optional[Path],
@@ -180,7 +170,6 @@ def run(
     run_auto_gpt(
         continuous=continuous,
         continuous_limit=continuous_limit,
-        ai_settings=ai_settings,
         prompt_settings=prompt_settings,
         skip_reprompt=skip_reprompt,
         speak=speak,

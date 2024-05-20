@@ -64,9 +64,6 @@ Options:
   -c, --continuous                Enable Continuous Mode
   -y, --skip-reprompt             Skips the re-prompting messages at the
                                   beginning of the script
-  -C, --ai-settings FILE          Specifies which ai_settings.yaml file to
-                                  use, relative to the AutoGPT root directory.
-                                  Will also automatically skip the re-prompt.
   -P, --prompt-settings FILE      Specifies which prompt_settings.yaml file to
                                   use.
   -l, --continuous-limit INTEGER  Defines the number of times to run in

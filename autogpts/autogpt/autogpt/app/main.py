@@ -57,7 +57,6 @@ from .utils import (
 async def run_auto_gpt(
     continuous: bool = False,
     continuous_limit: Optional[int] = None,
-    ai_settings: Optional[Path] = None,
     prompt_settings: Optional[Path] = None,
     skip_reprompt: bool = False,
     speak: bool = False,
@@ -108,7 +107,6 @@ async def run_auto_gpt(
         config=config,
         continuous=continuous,
         continuous_limit=continuous_limit,
-        ai_settings_file=ai_settings,
         prompt_settings_file=prompt_settings,
         skip_reprompt=skip_reprompt,
         gpt3only=gpt3only,
@@ -146,8 +144,6 @@ async def run_auto_gpt(
                 print_attribute("Continuous Limit", config.continuous_limit)
         if config.tts_config.speak_mode:
             print_attribute("Speak Mode", "ENABLED")
-        if ai_settings:
-            print_attribute("Using AI Settings File", ai_settings)
         if prompt_settings:
             print_attribute("Using Prompt Settings File", prompt_settings)
         if config.allow_downloads:
