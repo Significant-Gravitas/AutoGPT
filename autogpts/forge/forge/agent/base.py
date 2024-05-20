@@ -119,11 +119,7 @@ class BaseAgentSettings(SystemSettings):
     ai_profile: AIProfile = Field(default_factory=lambda: AIProfile(ai_name="AutoGPT"))
     """The AI profile or "personality" of the agent."""
 
-    directives: AIDirectives = Field(
-        default_factory=lambda: AIDirectives.from_file(
-            ConfigBuilder.default_settings.prompt_settings_file
-        )
-    )
+    directives: AIDirectives = Field(default_factory=AIDirectives)
     """Directives (general instructional guidelines) for the agent."""
 
     task: str = "Terminate immediately"  # FIXME: placeholder for forge.sdk.schema.Task

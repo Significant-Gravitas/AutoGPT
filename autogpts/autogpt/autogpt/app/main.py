@@ -57,7 +57,6 @@ from .utils import (
 async def run_auto_gpt(
     continuous: bool = False,
     continuous_limit: Optional[int] = None,
-    prompt_settings: Optional[Path] = None,
     skip_reprompt: bool = False,
     speak: bool = False,
     debug: bool = False,
@@ -107,7 +106,6 @@ async def run_auto_gpt(
         config=config,
         continuous=continuous,
         continuous_limit=continuous_limit,
-        prompt_settings_file=prompt_settings,
         skip_reprompt=skip_reprompt,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
@@ -144,8 +142,6 @@ async def run_auto_gpt(
                 print_attribute("Continuous Limit", config.continuous_limit)
         if config.tts_config.speak_mode:
             print_attribute("Speak Mode", "ENABLED")
-        if prompt_settings:
-            print_attribute("Using Prompt Settings File", prompt_settings)
         if config.allow_downloads:
             print_attribute("Native Downloading", "ENABLED")
         if we_are_running_in_a_docker_container() or is_docker_available():
@@ -263,14 +259,12 @@ async def run_auto_gpt(
                 " with as much detail as possible:",
             )
 
-        base_ai_directives = AIDirectives.from_file(config.prompt_settings_file)
-
         ai_profile, task_oriented_ai_directives = await generate_agent_profile_for_task(
             task,
             app_config=config,
             llm_provider=llm_provider,
         )
-        ai_directives = base_ai_directives + task_oriented_ai_directives
+        ai_directives = task_oriented_ai_directives
         apply_overrides_to_ai_settings(
             ai_profile=ai_profile,
             directives=ai_directives,
@@ -343,7 +337,6 @@ async def run_auto_gpt(
 
 @coroutine
 async def run_auto_gpt_server(
-    prompt_settings: Optional[Path] = None,
     debug: bool = False,
     log_level: Optional[str] = None,
     log_format: Optional[str] = None,
@@ -380,7 +373,6 @@ async def run_auto_gpt_server(
 
     await apply_overrides_to_config(
         config=config,
-        prompt_settings_file=prompt_settings,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
         browser_name=browser_name,

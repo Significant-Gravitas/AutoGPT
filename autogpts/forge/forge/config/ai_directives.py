@@ -20,17 +20,6 @@ class AIDirectives(BaseModel):
     constraints: list[str] = Field(default_factory=list)
     best_practices: list[str] = Field(default_factory=list)
 
-    @staticmethod
-    def from_file(prompt_settings_file: Path) -> "AIDirectives":
-        with open(prompt_settings_file, encoding="utf-8") as file:
-            config_params = yaml.load(file, Loader=yaml.SafeLoader)
-
-        return AIDirectives(
-            constraints=config_params.get("constraints", []),
-            resources=config_params.get("resources", []),
-            best_practices=config_params.get("best_practices", []),
-        )
-
     def __add__(self, other: "AIDirectives") -> "AIDirectives":
         return AIDirectives(
             resources=self.resources + other.resources,

@@ -20,7 +20,6 @@ async def apply_overrides_to_config(
     config: Config,
     continuous: bool = False,
     continuous_limit: Optional[int] = None,
-    prompt_settings_file: Optional[Path] = None,
     skip_reprompt: bool = False,
     gpt3only: bool = False,
     gpt4only: bool = False,
@@ -35,7 +34,6 @@ async def apply_overrides_to_config(
         config (Config): The config object to update.
         continuous (bool): Whether to run in continuous mode.
         continuous_limit (int): The number of times to run in continuous mode.
-        prompt_settings_file (Path): The path to the prompt_settings.yaml file.
         skip_reprompt (bool): Whether to skip the re-prompting messages on start.
         speak (bool): Whether to enable speak mode.
         debug (bool): Whether to enable debug mode.
@@ -98,9 +96,6 @@ async def apply_overrides_to_config(
 
     if skip_reprompt:
         config.skip_reprompt = True
-
-    if prompt_settings_file:
-        config.prompt_settings_file = config.project_root / prompt_settings_file
 
     if browser_name:
         config.selenium_web_browser = browser_name
