@@ -20,7 +20,9 @@ from forge.components.action_history import (
     EpisodicActionHistory,
 )
 from forge.components.code_executor.code_executor import CodeExecutorComponent
-from forge.components.code_flow_executor.code_flow_executor import CodeFlowExecutionComponent
+from forge.components.code_flow_executor.code_flow_executor import (
+    CodeFlowExecutionComponent,
+)
 from forge.components.context.context import AgentContext, ContextComponent
 from forge.components.file_manager import FileManagerComponent
 from forge.components.git_operations import GitOperationsComponent
@@ -30,6 +32,7 @@ from forge.components.user_interaction import UserInteractionComponent
 from forge.components.watchdog import WatchdogComponent
 from forge.components.web import WebSearchComponent, WebSeleniumComponent
 from forge.file_storage.base import FileStorage
+from forge.llm.prompting import PromptStrategy
 from forge.llm.prompting.schema import ChatPrompt
 from forge.llm.providers import (
     AssistantFunctionCall,

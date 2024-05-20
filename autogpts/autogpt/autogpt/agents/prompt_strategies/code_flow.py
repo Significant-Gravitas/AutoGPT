@@ -108,7 +108,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
         )
 
         self.commands = commands
-        final_instruction_msg = ChatMessage.user(FINAL_INSTRUCTION)
+        final_instruction_msg = ChatMessage.system(FINAL_INSTRUCTION)
 
         return ChatPrompt(
             messages=[

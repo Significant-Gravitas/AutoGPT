@@ -167,6 +167,9 @@ class CompletionModelFunction(BaseModel):
         Returns:
             str: The formatted function header.
         """
+        def indent(content: str, spaces: int = 4):
+            return " " * spaces + content.replace("\n", "\n" + " " * spaces)
+
         params = ", ".join(
             f"{name}: {p.python_type}{f'= {str(p.default)}' if p.default else ' = None' if not p.required else ''}"
             for name, p in self.parameters.items()
@@ -189,7 +192,6 @@ class CompletionModelFunction(BaseModel):
                 '"""\n'
                 f"{impl}"
             ),
-            4,
         )
 
     def validate_call(
