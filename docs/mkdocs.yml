@@ -16,15 +16,6 @@ nav:
               - Search: AutoGPT/configuration/search.md
               - Voice: AutoGPT/configuration/voice.md
               - Image Generation: AutoGPT/configuration/imagegen.md
-      - Components:
-          - Introduction: AutoGPT/components/introduction.md
-          - Agents: AutoGPT/components/agents.md
-          - Components: AutoGPT/components/components.md
-          - Protocols: AutoGPT/components/protocols.md
-          - Commands: AutoGPT/components/commands.md
-          - Built in Components: AutoGPT/components/built-in-components.md
-          - Creating Components: AutoGPT/components/creating-components.md
-          - Advanced: AutoGPT/components/advanced.md
       - Usage: AutoGPT/usage.md
       - Help us improve AutoGPT:
           - Share your debug logs with us: AutoGPT/share-your-logs.md
@@ -37,6 +28,14 @@ nav:
 
   - Forge:
       - Introduction: forge/get-started.md
+      - Components:
+          - Introduction: forge/components/introduction.md
+          - Agents: forge/components/agents.md
+          - Components: forge/components/components.md
+          - Protocols: forge/components/protocols.md
+          - Commands: forge/components/commands.md
+          - Built in Components: forge/components/built-in-components.md
+          - Creating Components: forge/components/creating-components.md
 
   - Frontend:
       - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/frontend/README.md

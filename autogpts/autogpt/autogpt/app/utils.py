@@ -7,29 +7,14 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import click
 import requests
 from colorama import Fore, Style
 from git import InvalidGitRepositoryError, Repo
 
 if TYPE_CHECKING:
-    from autogpt.config import Config
+    from forge.config.config import Config
 
 logger = logging.getLogger(__name__)
-
-
-def clean_input(config: "Config", prompt: str = ""):
-    try:
-        # ask for input, default when just pressing Enter is y
-        logger.debug("Asking user via keyboard...")
-
-        return click.prompt(
-            text=prompt, prompt_suffix=" ", default="", show_default=False
-        )
-    except KeyboardInterrupt:
-        logger.info("You interrupted AutoGPT")
-        logger.info("Quitting...")
-        exit(0)
 
 
 def get_bulletin_from_web():

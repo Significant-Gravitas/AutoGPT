@@ -1,4 +1,3 @@
-import json
 import re
 from logging import Logger
 
@@ -9,21 +8,18 @@ from autogpt.agents.prompt_strategies.one_shot import (
     AssistantThoughts,
     OneShotAgentActionProposal,
 )
-from autogpt.config.ai_directives import AIDirectives
-from autogpt.config.ai_profile import AIProfile
-from autogpt.core.configuration.schema import SystemConfiguration
-from autogpt.core.prompting import PromptStrategy
-from autogpt.core.prompting.schema import ChatPrompt, LanguageModelClassification
-from autogpt.core.resource.model_providers import AssistantFunctionCall, ChatMessage
-from autogpt.core.resource.model_providers.schema import (
-    AssistantChatMessage,
-    CompletionModelFunction,
-)
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.core.utils.json_utils import extract_dict_from_json
-from autogpt.utils.exceptions import InvalidAgentResponseError
-from autogpt.utils.function.code_validation import CodeValidator
-from autogpt.utils.function.model import FunctionDef
+
+from forge.utils.function.code_validation import CodeValidator
+from forge.utils.function.model import FunctionDef
+from forge.json.parsing import extract_dict_from_json
+from forge.utils.exceptions import InvalidAgentResponseError
+from forge.config.ai_directives import AIDirectives
+from forge.config.ai_profile import AIProfile
+from forge.models.json_schema import JSONSchema
+from forge.llm.prompting import ChatPrompt, LanguageModelClassification, PromptStrategy
+from forge.llm.providers import AssistantChatMessage, CompletionModelFunction
+from forge.llm.providers.schema import AssistantFunctionCall, ChatMessage
+from forge.models.config import SystemConfiguration
 
 _RESPONSE_INTERFACE_NAME = "AssistantResponse"
 
@@ -50,9 +46,6 @@ class CodeFlowAgentActionProposal(BaseModel):
 
 
 FINAL_INSTRUCTION: str = (
-    # "Determine exactly one command to use next based on the given goals "
-    # "and the progress you have made so far, "
-    # "and respond using the JSON schema specified previously:"
     "You have to give the answer in the from of JSON schema specified previously. "
     "For the `python_code` field, you have to write Python code to execute your plan as efficiently as possible. "
     "Your code will be executed directly without any editing: "
@@ -62,8 +55,9 @@ FINAL_INSTRUCTION: str = (
     "Leverage the given magic functions to implement function calls for which the "
     "arguments can't be determined yet. Reduce the amount of unnecessary data passed into "
     "these magic functions where possible, because magic costs money and magically "
-    "processing large amounts of data is expensive. If you think are done with the task, "
-    "you can simply call finish(reason='your reason') to end the task, "
+    "processing large amounts of data is expensive. "
+    "If you think are done with the task, you can simply call "
+    "finish(reason='your reason') to end the task, "
     "a function that has one `finish` command, don't mix finish with other functions! "
     "If you still need to do other functions, let the next cycle execute the `finish` function. "
     "Avoid hard-coding input values as input, and avoid returning large outputs. "

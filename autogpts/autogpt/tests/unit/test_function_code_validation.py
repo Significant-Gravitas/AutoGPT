@@ -1,6 +1,6 @@
 import pytest
 
-from autogpt.utils.function.code_validation import CodeValidator, FunctionDef
+from forge.utils.function.code_validation import CodeValidator, FunctionDef
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,6 @@
 import pytest
+from forge.utils.url_validator import validate_url
 from pytest import raises
-
-from autogpt.url_utils.validators import validate_url
 
 
 @validate_url

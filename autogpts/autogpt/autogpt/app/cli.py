@@ -7,8 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import click
-
-from autogpt.logs.config import LogFormatName
+from forge.logging.config import LogFormatName
 
 # from .telemetry import setup_telemetry
 

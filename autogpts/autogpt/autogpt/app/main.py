@@ -14,42 +14,37 @@ from types import FrameType
 from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
-from forge.sdk.db import AgentDB
-
-if TYPE_CHECKING:
-    from autogpt.agents.agent import Agent
-    from autogpt.agents.base import BaseAgentActionProposal
+from forge.components.code_executor import (
+    is_docker_available,
+    we_are_running_in_a_docker_container,
+)
+from forge.config.ai_directives import AIDirectives
+from forge.config.ai_profile import AIProfile
+from forge.config.config import Config, ConfigBuilder, assert_config_has_openai_api_key
+from forge.db import AgentDB
+from forge.file_storage import FileStorageBackendName, get_storage
+from forge.llm.providers import MultiProvider
+from forge.logging.config import configure_logging
+from forge.logging.helpers import print_attribute, speak
+from forge.models.action import ActionInterruptedByHuman, ActionProposal
+from forge.models.utils import ModelWithSummary
+from forge.utils.const import FINISH_COMMAND
+from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
-from autogpt.commands.execute_code import (
-    is_docker_available,
-    we_are_running_in_a_docker_container,
-)
-from autogpt.config import (
-    AIDirectives,
-    AIProfile,
-    Config,
-    ConfigBuilder,
-    assert_config_has_openai_api_key,
-)
-from autogpt.core.resource.model_providers import MultiProvider
 from autogpt.core.runner.client_lib.utils import coroutine
-from autogpt.file_storage import FileStorageBackendName, get_storage
-from autogpt.logs.config import configure_logging
-from autogpt.logs.helpers import print_attribute, speak
-from autogpt.models.action_history import ActionInterruptedByHuman
-from autogpt.models.utils import ModelWithSummary
-from autogpt.utils.exceptions import AgentTerminated, InvalidAgentResponseError
-from autogpt.utils.utils import DEFAULT_FINISH_COMMAND
+
+if TYPE_CHECKING:
+    from autogpt.agents.agent import Agent
 
 from .configurator import apply_overrides_to_config
+from .input import clean_input
 from .setup import apply_overrides_to_ai_settings, interactively_revise_ai_settings
 from .spinner import Spinner
 from .utils import (
-    clean_input,
     get_legal_warning,
     markdown_to_ansi_style,
     print_git_branch_info,
@@ -176,7 +171,6 @@ async def run_auto_gpt(
             + "\n".join(f"{i} - {id}" for i, id in enumerate(existing_agents, 1))
         )
         load_existing_agent = clean_input(
-            config,
             "Enter the number or name of the agent to run,"
             " or hit enter to create a new one:",
         )
@@ -203,7 +197,7 @@ async def run_auto_gpt(
     if load_existing_agent:
         agent_state = None
         while True:
-            answer = clean_input(config, "Resume? [Y/n]")
+            answer = clean_input("Resume? [Y/n]")
             if answer == "" or answer.lower() == "y":
                 agent_state = agent_manager.load_agent_state(load_existing_agent)
                 break
@@ -230,14 +224,14 @@ async def run_auto_gpt(
 
         if (
             (current_episode := agent.event_history.current_episode)
-            and current_episode.action.use_tool.name == DEFAULT_FINISH_COMMAND
+            and current_episode.action.use_tool.name == FINISH_COMMAND
             and not current_episode.result
         ):
             # Agent was resumed after `finish` -> rewrite result of `finish` action
             finish_reason = current_episode.action.use_tool.arguments["reason"]
             print(f"Agent previously self-terminated; reason: '{finish_reason}'")
             new_assignment = clean_input(
-                config, "Please give a follow-up question or assignment:"
+                "Please give a follow-up question or assignment:"
             )
             agent.event_history.register_result(
                 ActionInterruptedByHuman(feedback=new_assignment)
@@ -269,7 +263,6 @@ async def run_auto_gpt(
         task = ""
         while task.strip() == "":
             task = clean_input(
-                config,
                 "Enter the task that you want AutoGPT to execute,"
                 " with as much detail as possible:",
             )
@@ -343,7 +336,6 @@ async def run_auto_gpt(
 
         # Allow user to Save As other ID
         save_as_id = clean_input(
-            config,
             f"Press enter to save as '{agent_id}',"
             " or enter a different ID to save to:",
         )
@@ -626,7 +618,7 @@ async def run_interaction_loop(
 
 def update_user(
     ai_profile: AIProfile,
-    action_proposal: "BaseAgentActionProposal",
+    action_proposal: "ActionProposal",
     speak_mode: bool = False,
 ) -> None:
     """Prints the assistant's thoughts and the next command to the user.
@@ -695,7 +687,7 @@ async def get_user_feedback(
 
     while user_feedback is None:
         # Get input from user
-        console_input = clean_input(config, Fore.MAGENTA + "Input:" + Style.RESET_ALL)
+        console_input = clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
 
         # Parse user input
         if console_input.lower().strip() == config.authorise_key:
