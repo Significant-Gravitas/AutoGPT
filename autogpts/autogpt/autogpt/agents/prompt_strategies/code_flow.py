@@ -28,41 +28,48 @@ class CodeFlowAgentActionProposal(BaseModel):
     immediate_plan: str = Field(
         ...,
         description="We will be running an iterative process to execute the plan, "
-        "Write the partial / immediate plan to execute your plan as detailed and efficiently as possible without the help of the reasoning/intelligence. "
-        "The plan should describe the output of the immediate plan, so that the next iteration can be executed by taking the output into account. "
-        "Try to do as much as possible without making any assumption or uninformed guesses. Avoid large output at all costs!!!"
-        "Format: Objective[Objective of this iteration, explain what's the use of this iteration for the next one] Plan[Plan that does not require any reasoning or intelligence] Output[Output of the plan / should be small, avoid whole file output]",
-    )
+        "Write the partial / immediate plan to execute your plan as detailed and "
+        "efficiently as possible without the help of the reasoning/intelligence. "
+        "The plan should describe the output of the immediate plan, so that the next "
+        "iteration can be executed by taking the output into account. "
+        "Try to do as much as possible without making any assumption or uninformed "
+        "guesses. Avoid large output at all costs!!!\n"
+        "Format: Objective[Objective of this iteration, explain what's the use of this "
+        "iteration for the next one] Plan[Plan that does not require any reasoning or "
+        "intelligence] Output[Output of the plan / should be small, avoid whole file "
+        "output]", )
     python_code: str = Field(
-        ...,
-        description=(
-            "Write the fully-functional Python code of the immediate plan. The output will be an `async def main() -> str` function of the immediate plan that return the string output, the output will be passed into the LLM context window so avoid returning the whole content!. "
+        ..., description=(
+            "Write the fully-functional Python code of the immediate plan. "
+            "The output will be an `async def main() -> str` function of the immediate "
+            "plan that return the string output, the output will be passed into the "
+            "LLM context window so avoid returning the whole content!. "
             "Use ONLY the listed available functions and built-in Python features. "
-            "Leverage the given magic functions to implement function calls for which the "
-            "arguments can't be determined yet. Example:`async def main() -> str:\n    return await provided_function('arg1', 'arg2').split('\\n')[0]`"
-        ),
-    )
+            "Leverage the given magic functions to implement function calls for which "
+            "the arguments can't be determined yet. "
+            "Example:`async def main() -> str:\n"
+            "    return await provided_function('arg1', 'arg2').split('\\n')[0]`"), )
 
 
 FINAL_INSTRUCTION: str = (
     "You have to give the answer in the from of JSON schema specified previously. "
-    "For the `python_code` field, you have to write Python code to execute your plan as efficiently as possible. "
-    "Your code will be executed directly without any editing: "
-    "if it doesn't work you will be held responsible. "
+    "For the `python_code` field, you have to write Python code to execute your plan "
+    "as efficiently as possible. Your code will be executed directly without any "
+    "editing, if it doesn't work you will be held responsible. "
     "Use ONLY the listed available functions and built-in Python features. "
-    "Do not make uninformed assumptions (e.g. about the content or format of an unknown file). "
-    "Leverage the given magic functions to implement function calls for which the "
-    "arguments can't be determined yet. Reduce the amount of unnecessary data passed into "
-    "these magic functions where possible, because magic costs money and magically "
-    "processing large amounts of data is expensive. "
-    "If you think are done with the task, you can simply call "
+    "Do not make uninformed assumptions "
+    "(e.g. about the content or format of an unknown file). Leverage the given magic "
+    "functions to implement function calls for which the arguments can't be determined "
+    "yet. Reduce the amount of unnecessary data passed into these magic functions "
+    "where possible, because magic costs money and magically processing large amounts "
+    "of data is expensive. If you think are done with the task, you can simply call "
     "finish(reason='your reason') to end the task, "
     "a function that has one `finish` command, don't mix finish with other functions! "
-    "If you still need to do other functions, let the next cycle execute the `finish` function. "
+    "If you still need to do other functions, "
+    "let the next cycle execute the `finish` function. "
     "Avoid hard-coding input values as input, and avoid returning large outputs. "
     "The code that you have been executing in the past cycles can also be buggy, "
-    "so if you see undesired output, you can always try to re-plan, and re-code. "
-)
+    "so if you see undesired output, you can always try to re-plan, and re-code. ")
 
 
 class CodeFlowAgentPromptStrategy(PromptStrategy):

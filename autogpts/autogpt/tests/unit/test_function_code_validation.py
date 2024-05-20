@@ -16,7 +16,7 @@ async def test_code_validation():
                 },
                 return_type="str",
                 return_desc="Information matching the query",
-                function_desc="Read a webpage and return the information matching the query",
+                function_desc="Read a webpage and return the info matching the query",
                 is_async=True,
             ),
             "web_search": FunctionDef(
@@ -34,7 +34,7 @@ async def test_code_validation():
                 arg_descs={},
                 return_type="str",
                 return_desc="Answer in the text format",
-                function_desc="Get the number of contributors to the autogpt github repository",
+                function_desc="Get the num of contributors to the autogpt github repo",
                 is_async=False,
             ),
         },
@@ -47,7 +47,7 @@ def crawl_info(url: str, query: str) -> str | None:
     if info:
         return info
 
-    urls = await read_webpage(url, "Find (if any) possible relevant URLS to crawl for finding the info of " + query + " return list of URLs separated by newline")
+    urls = await read_webpage(url, "autogpt github contributor page")
     for url in urls.split('\\n'):
         info = await crawl_info(url, query)
         if info:
@@ -59,7 +59,7 @@ def hehe():
     return 'hehe'
 
 def main() -> str:
-    query = "Find the number of contributors to the autogpt github repository, or if any, list of urls that can be crawled to find the number of contributors"
+    query = "Find the number of contributors to the autogpt github repository"
     for title, url in ("autogpt github contributor page"):
         info = await crawl_info(url, query)
         if info:

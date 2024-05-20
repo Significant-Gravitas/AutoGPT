@@ -51,13 +51,12 @@ async def test_code_flow_build_prompt():
 
     prompt = str(
         prompt_strategy.build_prompt(
-            task="Figure out from file1.csv and file2.csv how much was spent on utilities",
+            task="Figure out from file.csv how much was spent on utilities",
             messages=[],
             ai_profile=ai_profile,
             ai_directives=ai_directives,
             commands=commands,
-        )
-    )
+        ))
     assert "DummyGPT" in prompt
     assert "async def web_search(query: str, num_results: int = None)" in prompt
 
@@ -79,7 +78,7 @@ async def test_code_flow_parse_response():
   ],
   "speak": "This is what the AI would say."
 },
-"immediate_plan": "Objective[objective1] Plan[plan1] Output[out1]", 
+"immediate_plan": "Objective[objective1] Plan[plan1] Output[out1]",
 "python_code": "async def main() -> str:\n    return 'You passed the test.'",
 }
     """
