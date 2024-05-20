@@ -1,16 +1,15 @@
 import logging
+
 import pytest
-
-from autogpt.agents.prompt_strategies.code_flow import CodeFlowAgentPromptStrategy
-
 from forge.components.code_flow_executor.code_flow_executor import (
     CodeFlowExecutionComponent,
 )
-from forge.config.ai_profile import AIProfile
 from forge.config.ai_directives import AIDirectives
+from forge.config.ai_profile import AIProfile
 from forge.llm.providers import AssistantChatMessage
 from forge.llm.providers.schema import CompletionModelFunction, JSONSchema
 
+from autogpt.agents.prompt_strategies.code_flow import CodeFlowAgentPromptStrategy
 
 logger = logging.getLogger(__name__)
 config = CodeFlowAgentPromptStrategy.default_configuration.copy(deep=True)

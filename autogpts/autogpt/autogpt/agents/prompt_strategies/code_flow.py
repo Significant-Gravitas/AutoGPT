@@ -1,25 +1,24 @@
 import re
 from logging import Logger
 
-from pydantic import BaseModel, Field
-
-from autogpt.agents.prompt_strategies.one_shot import (
-    OneShotAgentPromptConfiguration,
-    AssistantThoughts,
-    OneShotAgentActionProposal,
-)
-
-from forge.utils.function.code_validation import CodeValidator
-from forge.utils.function.model import FunctionDef
-from forge.json.parsing import extract_dict_from_json
-from forge.utils.exceptions import InvalidAgentResponseError
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
-from forge.models.json_schema import JSONSchema
+from forge.json.parsing import extract_dict_from_json
 from forge.llm.prompting import ChatPrompt, LanguageModelClassification, PromptStrategy
 from forge.llm.providers import AssistantChatMessage, CompletionModelFunction
 from forge.llm.providers.schema import AssistantFunctionCall, ChatMessage
 from forge.models.config import SystemConfiguration
+from forge.models.json_schema import JSONSchema
+from forge.utils.exceptions import InvalidAgentResponseError
+from forge.utils.function.code_validation import CodeValidator
+from forge.utils.function.model import FunctionDef
+from pydantic import BaseModel, Field
+
+from autogpt.agents.prompt_strategies.one_shot import (
+    AssistantThoughts,
+    OneShotAgentActionProposal,
+    OneShotAgentPromptConfiguration,
+)
 
 _RESPONSE_INTERFACE_NAME = "AssistantResponse"
 
