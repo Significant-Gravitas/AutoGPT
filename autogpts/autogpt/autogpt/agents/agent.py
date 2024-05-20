@@ -150,7 +150,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.event_history = settings.history
         self.legacy_config = legacy_config
 
-    async def propose_action(self) -> BaseAgentActionProposal:
+    async def propose_action(self) -> OneShotAgentActionProposal:
         """Proposes the next action to execute, based on the task and current state.
 
         Returns:
@@ -202,12 +202,12 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
     async def complete_and_parse(
         self, prompt: ChatPrompt, exception: Optional[Exception] = None
-    ) -> BaseAgentActionProposal:
+    ) -> OneShotAgentActionProposal:
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
         response: ChatModelResponse[
-            BaseAgentActionProposal
+            OneShotAgentActionProposal
         ] = await self.llm_provider.create_chat_completion(
             prompt.messages,
             model_name=self.llm.name,
@@ -231,7 +231,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
     async def execute(
         self,
-        proposal: BaseAgentActionProposal,
+        proposal: OneShotAgentActionProposal,
         user_feedback: str = "",
     ) -> ActionResult:
         tool = proposal.use_tool
@@ -266,7 +266,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         return result
 
     async def do_not_execute(
-        self, denied_proposal: BaseAgentActionProposal, user_feedback: str
+        self, denied_proposal: OneShotAgentActionProposal, user_feedback: str
     ) -> ActionResult:
         result = ActionInterruptedByHuman(feedback=user_feedback)
         self.log_cycle_handler.log_cycle(
