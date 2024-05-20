@@ -143,7 +143,9 @@ class AgentDB:
         super().__init__()
         self.debug_enabled = debug_enabled
         if self.debug_enabled:
-            logger.debug(f"Initializing AgentDB with database_string: {database_string}")
+            logger.debug(
+                f"Initializing AgentDB with database_string: {database_string}"
+            )
         self.engine = create_engine(database_string)
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
@@ -328,7 +330,9 @@ class AgentDB:
                 ):
                     return convert_to_artifact(artifact_model)
                 else:
-                    logger.error(f"Artifact not found with and artifact_id: {artifact_id}")
+                    logger.error(
+                        f"Artifact not found with and artifact_id: {artifact_id}"
+                    )
                     raise NotFoundError("Artifact not found")
         except SQLAlchemyError as e:
             logger.error(f"SQLAlchemy error while getting artifact: {e}")
@@ -349,7 +353,9 @@ class AgentDB:
         additional_output: Optional[Dict[str, Any]] = None,
     ) -> Step:
         if self.debug_enabled:
-            logger.debug(f"Updating step with task_id: {task_id} and step_id: {step_id}")
+            logger.debug(
+                f"Updating step with task_id: {task_id} and step_id: {step_id}"
+            )
         try:
             with self.Session() as session:
                 if (

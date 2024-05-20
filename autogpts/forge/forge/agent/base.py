@@ -30,12 +30,7 @@ from forge.agent.components import (
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import ConfigBuilder
-from forge.llm.providers import (
-    CHAT_MODELS,
-    AssistantFunctionCall,
-    ModelName,
-    OpenAIModelName,
-)
+from forge.llm.providers import CHAT_MODELS, ModelName, OpenAIModelName
 from forge.llm.providers.schema import ChatModelInfo
 from forge.models.config import (
     Configurable,

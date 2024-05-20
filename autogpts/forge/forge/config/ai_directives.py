@@ -1,7 +1,7 @@
-import logging
-from pathlib import Path
+from __future__ import annotations
 
-import yaml
+import logging
+
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class AIDirectives(BaseModel):
     constraints: list[str] = Field(default_factory=list)
     best_practices: list[str] = Field(default_factory=list)
 
-    def __add__(self, other: "AIDirectives") -> "AIDirectives":
+    def __add__(self, other: AIDirectives) -> AIDirectives:
         return AIDirectives(
             resources=self.resources + other.resources,
             constraints=self.constraints + other.constraints,

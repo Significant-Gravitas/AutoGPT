@@ -10,8 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from forge.file_storage.base import FileStorage
-from forge.utils.exceptions import NotFoundError
+from forge.agent_protocol.api_router import base_router
 from forge.agent_protocol.database.db import AgentDB
 from forge.agent_protocol.middlewares import AgentMiddleware
 from forge.agent_protocol.models.task import (
@@ -24,7 +23,8 @@ from forge.agent_protocol.models.task import (
     TaskRequestBody,
     TaskStepsListResponse,
 )
-from forge.agent_protocol.api_router import base_router
+from forge.file_storage.base import FileStorage
+from forge.utils.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 

@@ -19,7 +19,6 @@ from forge.components.code_executor import (
     is_docker_available,
     we_are_running_in_a_docker_container,
 )
-from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import Config, ConfigBuilder, assert_config_has_openai_api_key
 from forge.file_storage import FileStorageBackendName, get_storage

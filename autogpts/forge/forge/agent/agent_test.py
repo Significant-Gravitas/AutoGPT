@@ -1,10 +1,16 @@
 from pathlib import Path
+
 import pytest
 
+from forge.agent_protocol.database.db import AgentDB
+from forge.agent_protocol.models.task import (
+    StepRequestBody,
+    Task,
+    TaskListResponse,
+    TaskRequestBody,
+)
 from forge.file_storage.base import FileStorageConfiguration
 from forge.file_storage.local import LocalFileStorage
-from forge.agent_protocol.database.db import AgentDB
-from forge.agent_protocol.models.task import StepRequestBody, Task, TaskListResponse, TaskRequestBody
 
 from .agent import Agent
 

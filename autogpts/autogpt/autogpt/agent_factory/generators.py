@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from forge.config.ai_directives import AIDirectives
 from forge.file_storage.base import FileStorage
 
 if TYPE_CHECKING:
