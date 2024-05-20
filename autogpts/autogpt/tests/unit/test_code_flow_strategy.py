@@ -56,7 +56,8 @@ async def test_code_flow_build_prompt():
             ai_profile=ai_profile,
             ai_directives=ai_directives,
             commands=commands,
-        ))
+        )
+    )
     assert "DummyGPT" in prompt
     assert "async def web_search(query: str, num_results: int = None)" in prompt
 

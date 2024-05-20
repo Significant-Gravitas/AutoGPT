@@ -37,9 +37,11 @@ class CodeFlowAgentActionProposal(BaseModel):
         "Format: Objective[Objective of this iteration, explain what's the use of this "
         "iteration for the next one] Plan[Plan that does not require any reasoning or "
         "intelligence] Output[Output of the plan / should be small, avoid whole file "
-        "output]", )
+        "output]",
+    )
     python_code: str = Field(
-        ..., description=(
+        ...,
+        description=(
             "Write the fully-functional Python code of the immediate plan. "
             "The output will be an `async def main() -> str` function of the immediate "
             "plan that return the string output, the output will be passed into the "
@@ -48,7 +50,9 @@ class CodeFlowAgentActionProposal(BaseModel):
             "Leverage the given magic functions to implement function calls for which "
             "the arguments can't be determined yet. "
             "Example:`async def main() -> str:\n"
-            "    return await provided_function('arg1', 'arg2').split('\\n')[0]`"), )
+            "    return await provided_function('arg1', 'arg2').split('\\n')[0]`"
+        ),
+    )
 
 
 FINAL_INSTRUCTION: str = (
@@ -69,7 +73,8 @@ FINAL_INSTRUCTION: str = (
     "let the next cycle execute the `finish` function. "
     "Avoid hard-coding input values as input, and avoid returning large outputs. "
     "The code that you have been executing in the past cycles can also be buggy, "
-    "so if you see undesired output, you can always try to re-plan, and re-code. ")
+    "so if you see undesired output, you can always try to re-plan, and re-code. "
+)
 
 
 class CodeFlowAgentPromptStrategy(PromptStrategy):
