@@ -4,7 +4,11 @@ from logging import Logger
 
 from pydantic import BaseModel, Field
 
-from autogpt.agents.prompt_strategies.one_shot import OneShotAgentPromptConfiguration, AssistantThoughts, OneShotAgentActionProposal
+from autogpt.agents.prompt_strategies.one_shot import (
+    OneShotAgentPromptConfiguration,
+    AssistantThoughts,
+    OneShotAgentActionProposal,
+)
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
 from autogpt.core.configuration.schema import SystemConfiguration
@@ -22,6 +26,7 @@ from autogpt.utils.function.code_validation import CodeValidator
 from autogpt.utils.function.model import FunctionDef
 
 _RESPONSE_INTERFACE_NAME = "AssistantResponse"
+
 
 class CodeFlowAgentActionProposal(BaseModel):
     thoughts: AssistantThoughts
@@ -61,6 +66,9 @@ FINAL_INSTRUCTION: str = (
     "you can simply call finish(reason='your reason') to end the task, "
     "a function that has one `finish` command, don't mix finish with other functions! "
     "If you still need to do other functions, let the next cycle execute the `finish` function. "
+    "Avoid hard-coding input values as input, and avoid returning large outputs. "
+    "The code that you have been executing in the past cycles can also be buggy, "
+    "so if you see undesired output, you can always try to re-plan, and re-code. "
 )
 
 
@@ -211,7 +219,11 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
                 name=f.name,
                 arg_types=[(name, p.python_type) for name, p in f.parameters.items()],
                 arg_descs={name: p.description for name, p in f.parameters.items()},
-                arg_defaults={name: p.default or "None" for name, p in f.parameters.items() if p.default or not p.required},
+                arg_defaults={
+                    name: p.default or "None"
+                    for name, p in f.parameters.items()
+                    if p.default or not p.required
+                },
                 return_type=f.return_type,
                 return_desc="Output of the function",
                 function_desc=f.description,
@@ -239,7 +251,9 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
 
         # TODO: prevent combining finish with other functions
         if re.search(r"finish\((.*?)\)", code_validation.functionCode):
-            finish_reason = re.search(r"finish\((reason=)?(.*?)\)", code_validation.functionCode).group(2)
+            finish_reason = re.search(
+                r"finish\((reason=)?(.*?)\)", code_validation.functionCode
+            ).group(2)
             result = OneShotAgentActionProposal(
                 thoughts=parsed_response.thoughts,
                 use_tool=AssistantFunctionCall(

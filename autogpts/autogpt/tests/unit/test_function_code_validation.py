@@ -73,5 +73,4 @@ def main() -> str:
     assert response.functionCode is not None
     assert "async def crawl_info" in response.functionCode  # async is added
     assert "async def main" in response.functionCode
-    assert "x = hehe()" in response.functionCode # await is removed
-
+    assert "x = hehe()" in response.functionCode  # await is removed

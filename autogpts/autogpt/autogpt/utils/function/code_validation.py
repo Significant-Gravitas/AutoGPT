@@ -475,7 +475,7 @@ async def __fix_async_calls(code: str, errors: list[str]) -> tuple[str, list[str
         if func_call:
             func_name = func_call.group(1)
             code = code.replace(f"await {func_name}", f"{func_name}")
-    
+
     return code, new_errors
 
 

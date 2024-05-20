@@ -9,6 +9,7 @@ from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command
 
+MAX_RESULT_LENGTH = 1000
 logger = logging.getLogger(__name__)
 
 
@@ -67,10 +68,14 @@ async def {name}(*args, **kwargs):
             name + "_func": func for name, func in self.available_functions.items()
         }
         code = f"{code_header}\n{python_code}\nexec_output = main()"
-        print("----> Executing code:", python_code)
+        logger.debug("----> Executing code:", python_code)
         exec(code, result)
         result = await result["exec_output"]
-        print("----> Execution result:", result)
+        logger.debug("----> Execution result:", result)
         if inspect.isawaitable(result):
             result = await result
+
+        # limit the result to limit the characters
+        if len(result) > MAX_RESULT_LENGTH:
+            result = result[:MAX_RESULT_LENGTH] + "...[Truncated, Content is too long]"
         return f"Execution Plan:\n{plan_text}\n\nExecution Output:\n{result}"

@@ -47,10 +47,17 @@ class FunctionDef(BaseModel):
     is_async: bool = False
 
     def __generate_function_template(f) -> str:
-        args_str = ", ".join([
-            f"{name}: {type}" + (f" = {f.arg_defaults.get(name, '')}" if name in f.arg_defaults else "")
-            for name, type in f.arg_types
-        ])
+        args_str = ", ".join(
+            [
+                f"{name}: {type}"
+                + (
+                    f" = {f.arg_defaults.get(name, '')}"
+                    if name in f.arg_defaults
+                    else ""
+                )
+                for name, type in f.arg_types
+            ]
+        )
         arg_desc = f"\n{' '*4}".join(
             [
                 f'{name} ({type}): {f.arg_descs.get(name, "-")}'

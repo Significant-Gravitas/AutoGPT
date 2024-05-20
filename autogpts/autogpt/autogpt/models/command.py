@@ -42,7 +42,7 @@ class Command(Generic[P, CO]):
     @property
     def is_async(self) -> bool:
         return inspect.iscoroutinefunction(self.method)
-    
+
     @property
     def return_type(self) -> type:
         type = inspect.signature(self.method).return_annotation

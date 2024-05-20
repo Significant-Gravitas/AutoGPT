@@ -32,7 +32,8 @@ _RESPONSE_INTERFACE_NAME = "AssistantResponse"
 
 class AssistantThoughts(ModelWithSummary):
     past_action_summary: str = Field(
-        ..., description="Summary of the last action you took, if ther is none, you can leave it empty"
+        ...,
+        description="Summary of the last action you took, if there is none, you can leave it empty",
     )
     observations: str = Field(
         ..., description="Relevant observations from your last actions (if any)"
@@ -41,7 +42,8 @@ class AssistantThoughts(ModelWithSummary):
     reasoning: str = Field(..., description="Reasoning behind the thoughts")
     self_criticism: str = Field(..., description="Constructive self-criticism")
     plan: list[str] = Field(
-        ..., description="Short list that conveys the long-term plan considering the progress on your task so far"
+        ...,
+        description="Short list that conveys the long-term plan, considering the progress on your task so far",
     )
     speak: str = Field(..., description="Summary of thoughts, to say to user")
 
