@@ -211,13 +211,6 @@ class FunctionVisitor(ast.NodeVisitor):
         )
         self.objectsIdx.append(node.lineno)
 
-        """Some class are simply used as a type and doesn't have any new fields"""
-        # if not is_implemented:
-        #     raise ValidationError(
-        #         f"Class {node.name} is not implemented. "
-        #         f"Please complete the implementation of this class!"
-        #     )
-
     def visit(self, node):
         if (
             isinstance(node, ast.Assign)

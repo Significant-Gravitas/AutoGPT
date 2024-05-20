@@ -14,11 +14,6 @@ from autogpt.app.main import _configure_llm_provider, run_interaction_loop
 
 LOG_DIR = Path(__file__).parent / "logs"
 
-from dotenv import load_dotenv
-
-load_dotenv()
-configure_logging(debug=True)
-
 
 def run_specific_agent(task: str, continuous_mode: bool = False) -> None:
     agent = bootstrap_agent(task, continuous_mode)
