@@ -10,7 +10,6 @@ from colorama import Back, Fore, Style
 from forge.config.config import GPT_3_MODEL, GPT_4_MODEL, Config
 from forge.llm.providers import ModelName, MultiProvider
 from forge.logging.helpers import request_user_double_check
-from forge.utils.yaml_validator import validate_yaml_file
 
 from autogpt.memory.vector import get_supported_memory_backends
 
@@ -103,29 +102,11 @@ async def apply_overrides_to_config(
         config.skip_reprompt = True
 
     if ai_settings_file:
-        file = ai_settings_file
-
-        # Validate file
-        (validated, message) = validate_yaml_file(file)
-        if not validated:
-            logger.fatal(extra={"title": "FAILED FILE VALIDATION:"}, msg=message)
-            request_user_double_check()
-            exit(1)
-
-        config.ai_settings_file = config.project_root / file
+        config.ai_settings_file = config.project_root / ai_settings_file
         config.skip_reprompt = True
 
     if prompt_settings_file:
-        file = prompt_settings_file
-
-        # Validate file
-        (validated, message) = validate_yaml_file(file)
-        if not validated:
-            logger.fatal(extra={"title": "FAILED FILE VALIDATION:"}, msg=message)
-            request_user_double_check()
-            exit(1)
-
-        config.prompt_settings_file = config.project_root / file
+        config.prompt_settings_file = config.project_root / prompt_settings_file
 
     if browser_name:
         config.selenium_web_browser = browser_name

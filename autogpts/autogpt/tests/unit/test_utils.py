@@ -6,7 +6,6 @@ from unittest.mock import patch
 import pytest
 import requests
 from forge.json.parsing import extract_dict_from_json
-from forge.utils.yaml_validator import validate_yaml_file
 from git import InvalidGitRepositoryError
 
 import autogpt.app.utils
@@ -56,41 +55,6 @@ def invalid_json_response() -> dict:
         },
         "command": {"name": "", "args": {}},
     }
-
-
-def test_validate_yaml_file_valid():
-    with open("valid_test_file.yaml", "w") as f:
-        f.write("setting: value")
-    result, message = validate_yaml_file("valid_test_file.yaml")
-    os.remove("valid_test_file.yaml")
-
-    assert result is True
-    assert "Successfully validated" in message
-
-
-def test_validate_yaml_file_not_found():
-    result, message = validate_yaml_file("non_existent_file.yaml")
-
-    assert result is False
-    assert "wasn't found" in message
-
-
-def test_validate_yaml_file_invalid():
-    with open("invalid_test_file.yaml", "w") as f:
-        f.write(
-            "settings:\n"
-            "  first_setting: value\n"
-            "  second_setting: value\n"
-            "    nested_setting: value\n"
-            "  third_setting: value\n"
-            "unindented_setting: value"
-        )
-    result, message = validate_yaml_file("invalid_test_file.yaml")
-    os.remove("invalid_test_file.yaml")
-    print(result)
-    print(message)
-    assert result is False
-    assert "There was an issue while trying to read" in message
 
 
 @patch("requests.get")

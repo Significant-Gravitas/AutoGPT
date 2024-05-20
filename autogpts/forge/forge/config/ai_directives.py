@@ -4,8 +4,6 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
-from forge.utils.yaml_validator import validate_yaml_file
-
 logger = logging.getLogger(__name__)
 
 
@@ -24,14 +22,6 @@ class AIDirectives(BaseModel):
 
     @staticmethod
     def from_file(prompt_settings_file: Path) -> "AIDirectives":
-        from forge.logging.helpers import request_user_double_check
-
-        (validated, message) = validate_yaml_file(prompt_settings_file)
-        if not validated:
-            logger.error(message, extra={"title": "FAILED FILE VALIDATION"})
-            request_user_double_check()
-            raise RuntimeError(f"File validation failed: {message}")
-
         with open(prompt_settings_file, encoding="utf-8") as file:
             config_params = yaml.load(file, Loader=yaml.SafeLoader)
 
