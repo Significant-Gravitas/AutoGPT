@@ -67,10 +67,10 @@ async def {name}(*args, **kwargs):
             name + "_func": func for name, func in self.available_functions.items()
         }
         code = f"{code_header}\n{python_code}\n\nexec_output = main()"
-        logger.debug("Code-Flow Execution code:\n{}", python_code)
+        logger.debug(f"Code-Flow Execution code:\n{python_code}")
         exec(code, result)
         result = await result["exec_output"]
-        logger.debug("Code-Flow Execution result:\n{}", result)
+        logger.debug(f"Code-Flow Execution result:\n{result}")
         if inspect.isawaitable(result):
             result = await result
 
