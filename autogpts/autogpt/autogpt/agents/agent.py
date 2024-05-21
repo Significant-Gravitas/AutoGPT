@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import inspect
 import logging
-from math import ceil, floor
 from datetime import datetime
+from math import ceil, floor
 from typing import TYPE_CHECKING, Optional
 
 import sentry_sdk
@@ -59,7 +59,6 @@ from autogpt.app.log_cycle import (
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
-from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 
 from .prompt_strategies.one_shot import (
     OneShotAgentActionProposal,

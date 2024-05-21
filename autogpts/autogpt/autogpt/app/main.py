@@ -10,7 +10,7 @@ import re
 import signal
 import sys
 from pathlib import Path
-from types import FrameType, coroutine
+from types import FrameType
 from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
@@ -43,6 +43,7 @@ from .input import clean_input
 from .setup import apply_overrides_to_ai_settings, interactively_revise_ai_settings
 from .spinner import Spinner
 from .utils import (
+    coroutine,
     get_legal_warning,
     markdown_to_ansi_style,
     print_git_branch_info,

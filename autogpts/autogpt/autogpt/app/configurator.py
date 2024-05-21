@@ -5,7 +5,7 @@ import logging
 from typing import Literal, Optional
 
 import click
-from colorama import Back, Fore, Style
+from colorama import Back, Style
 from forge.config.config import GPT_3_MODEL, GPT_4_MODEL, Config
 from forge.llm.providers import ModelName, MultiProvider
 

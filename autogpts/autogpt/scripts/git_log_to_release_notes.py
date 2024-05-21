@@ -5,10 +5,11 @@ from pathlib import Path
 from typing import Optional
 
 import click
-from autogpt.app.utils import coroutine
 from forge.llm.providers import ChatMessage, MultiProvider
 from forge.llm.providers.anthropic import AnthropicModelName
 from git import Repo, TagReference
+
+from autogpt.app.utils import coroutine
 
 
 @click.command()
