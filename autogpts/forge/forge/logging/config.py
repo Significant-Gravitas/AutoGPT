@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 from .filters import BelowLevelFilter
 from .formatters import ForgeFormatter, StructuredLoggingFormatter
-from .handlers import TTSHandler, TypingConsoleHandler
+from .handlers import TTSHandler
 
 LOG_DIR = Path(__file__).parent.parent.parent / "logs"
 LOG_FILE = "activity.log"
@@ -198,22 +198,6 @@ def configure_logging(
     stderr.setFormatter(console_formatter)
     log_handlers += [stdout, stderr]
 
-    # Console output handler which simulates typing
-    typing_console_handler = TypingConsoleHandler(stream=sys.stdout)
-    typing_console_handler.setLevel(logging.INFO)
-    typing_console_handler.setFormatter(console_formatter)
-
-    # User friendly output logger (text + speech)
-    user_friendly_output_logger = logging.getLogger(USER_FRIENDLY_OUTPUT_LOGGER)
-    user_friendly_output_logger.setLevel(logging.INFO)
-    user_friendly_output_logger.addHandler(
-        typing_console_handler if not config.plain_console_output else stdout
-    )
-    if tts_config:
-        user_friendly_output_logger.addHandler(TTSHandler(tts_config))
-    user_friendly_output_logger.addHandler(stderr)
-    user_friendly_output_logger.propagate = False
-
     # File output handlers
     if config.log_file_format is not None:
         if config.level < logging.ERROR:
@@ -229,7 +213,6 @@ def configure_logging(
             activity_log_handler.setLevel(config.level)
             activity_log_handler.setFormatter(file_output_formatter)
             log_handlers += [activity_log_handler]
-            user_friendly_output_logger.addHandler(activity_log_handler)
 
         # ERROR log file handler
         error_log_handler = logging.FileHandler(
@@ -238,7 +221,6 @@ def configure_logging(
         error_log_handler.setLevel(logging.ERROR)
         error_log_handler.setFormatter(ForgeFormatter(DEBUG_LOG_FORMAT, no_color=True))
         log_handlers += [error_log_handler]
-        user_friendly_output_logger.addHandler(error_log_handler)
 
     # Configure the root logger
     logging.basicConfig(

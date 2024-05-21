@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import random
-import re
-import time
 from typing import TYPE_CHECKING
 
 from forge.logging.utils import remove_color_codes
@@ -12,39 +9,6 @@ from forge.speech import TextToSpeechProvider
 
 if TYPE_CHECKING:
     from forge.speech import TTSConfig
-
-
-class TypingConsoleHandler(logging.StreamHandler):
-    """Output stream to console using simulated typing"""
-
-    # Typing speed settings in WPS (Words Per Second)
-    MIN_WPS = 25
-    MAX_WPS = 100
-
-    def emit(self, record: logging.LogRecord) -> None:
-        min_typing_interval = 1 / TypingConsoleHandler.MAX_WPS
-        max_typing_interval = 1 / TypingConsoleHandler.MIN_WPS
-
-        msg = self.format(record)
-        try:
-            # Split without discarding whitespace
-            words = re.findall(r"\S+\s*", msg)
-
-            for i, word in enumerate(words):
-                self.stream.write(word)
-                self.flush()
-                if i >= len(words) - 1:
-                    self.stream.write(self.terminator)
-                    self.flush()
-                    break
-
-                interval = random.uniform(min_typing_interval, max_typing_interval)
-                # type faster after each word
-                min_typing_interval = min_typing_interval * 0.95
-                max_typing_interval = max_typing_interval * 0.95
-                time.sleep(interval)
-        except Exception:
-            self.handleError(record)
 
 
 class TTSHandler(logging.Handler):
