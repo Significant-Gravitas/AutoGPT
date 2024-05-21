@@ -4,7 +4,6 @@
 *.template
 *.yaml
 *.yml
-!prompt_settings.yaml
 
 data/*
 logs/*

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Callable, Generic, Iterator, Optional
 
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
@@ -18,7 +20,7 @@ class ActionHistoryComponent(MessageProvider, AfterParse, AfterExecute, Generic[
         event_history: EpisodicActionHistory[AP],
         max_tokens: int,
         count_tokens: Callable[[str], int],
-        legacy_config: "Config",
+        legacy_config: Config,
         llm_provider: ChatModelProvider,
     ) -> None:
         self.event_history = event_history

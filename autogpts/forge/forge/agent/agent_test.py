@@ -1,15 +1,25 @@
+from pathlib import Path
+
 import pytest
 
+from forge.agent_protocol.database.db import AgentDB
+from forge.agent_protocol.models.task import (
+    StepRequestBody,
+    Task,
+    TaskListResponse,
+    TaskRequestBody,
+)
+from forge.file_storage.base import FileStorageConfiguration
+from forge.file_storage.local import LocalFileStorage
+
 from .agent import Agent
-from .db import AgentDB
-from .model import StepRequestBody, Task, TaskListResponse, TaskRequestBody
-from .workspace import LocalWorkspace
 
 
 @pytest.fixture
 def agent():
     db = AgentDB("sqlite:///test.db")
-    workspace = LocalWorkspace("./test_workspace")
+    config = FileStorageConfiguration(root=Path("./test_workspace"))
+    workspace = LocalFileStorage(config)
     return Agent(db, workspace)
 
 

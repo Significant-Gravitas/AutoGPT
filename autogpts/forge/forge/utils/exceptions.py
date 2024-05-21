@@ -91,13 +91,5 @@ class OperationNotAllowedError(CommandExecutionError):
     """The agent is not allowed to execute the proposed operation"""
 
 
-class AccessDeniedError(CommandExecutionError):
-    """The operation failed because access to a required resource was denied"""
-
-
-class CodeExecutionError(CommandExecutionError):
-    """The operation (an attempt to run arbitrary code) returned an error"""
-
-
 class TooMuchOutputError(CommandExecutionError):
     """The operation generated more output than what the Agent can process"""
