@@ -32,7 +32,7 @@ from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
-from autogpt.agent_manager import AgentManager
+from autogpt.agents.agent_manager import AgentManager
 from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
 
 if TYPE_CHECKING:
