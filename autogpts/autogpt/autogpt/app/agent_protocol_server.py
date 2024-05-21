@@ -10,13 +10,10 @@ from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from forge.config.config import Config
-from forge.file_storage import FileStorage
-from forge.llm.providers import ChatModelProvider, ModelProviderBudget
-from forge.models.action import ActionErrorResult, ActionSuccessResult
-from forge.sdk.db import AgentDB
-from forge.sdk.middlewares import AgentMiddleware
-from forge.sdk.model import (
+from forge.agent_protocol.api_router import base_router
+from forge.agent_protocol.database import AgentDB
+from forge.agent_protocol.middlewares import AgentMiddleware
+from forge.agent_protocol.models import (
     Artifact,
     Step,
     StepRequestBody,
@@ -26,7 +23,10 @@ from forge.sdk.model import (
     TaskRequestBody,
     TaskStepsListResponse,
 )
-from forge.sdk.routes.agent_protocol import base_router
+from forge.config.config import Config
+from forge.file_storage import FileStorage
+from forge.llm.providers import ChatModelProvider, ModelProviderBudget
+from forge.models.action import ActionErrorResult, ActionSuccessResult
 from forge.utils.const import ASK_COMMAND, FINISH_COMMAND
 from forge.utils.exceptions import AgentFinished, NotFoundError
 from hypercorn.asyncio import serve as hypercorn_serve
@@ -123,7 +123,7 @@ class AgentProtocolServer:
         config.bind = [f"0.0.0.0:{port}"]
 
         logger.info(f"AutoGPT server starting on http://localhost:{port}")
-        await hypercorn_serve(app, config)
+        await hypercorn_serve(app, config)  # type: ignore
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         """

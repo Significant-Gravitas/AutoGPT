@@ -1,3 +1,4 @@
+import logging
 import os
 import pathlib
 from io import BytesIO
@@ -9,12 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from forge.utils.exceptions import NotFoundError
-
-from .db import AgentDB
-from .forge_log import ForgeLogger
-from .middlewares import AgentMiddleware
-from .model import (
+from forge.agent_protocol.api_router import base_router
+from forge.agent_protocol.database.db import AgentDB
+from forge.agent_protocol.middlewares import AgentMiddleware
+from forge.agent_protocol.models.task import (
     Artifact,
     Step,
     StepRequestBody,
@@ -24,14 +23,14 @@ from .model import (
     TaskRequestBody,
     TaskStepsListResponse,
 )
-from .routes.agent_protocol import base_router
-from .workspace import Workspace
+from forge.file_storage.base import FileStorage
+from forge.utils.exceptions import NotFoundError
 
-LOG = ForgeLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class Agent:
-    def __init__(self, database: AgentDB, workspace: Workspace):
+    def __init__(self, database: AgentDB, workspace: FileStorage):
         self.db = database
         self.workspace = workspace
 
@@ -187,7 +186,7 @@ class Agent:
             else:
                 file_path = os.path.join(relative_path, file_name)
 
-            self.workspace.write(task_id, file_path, data)
+            await self.workspace.write_file(file_path, data)
 
             artifact = await self.db.create_artifact(
                 task_id=task_id,
@@ -209,7 +208,7 @@ class Agent:
                 file_path = os.path.join(artifact.relative_path, artifact.file_name)
             else:
                 file_path = artifact.relative_path
-            retrieved_artifact = self.workspace.read(task_id=task_id, path=file_path)
+            retrieved_artifact = self.workspace.read_file(file_path)
         except NotFoundError as e:
             raise
         except FileNotFoundError as e:

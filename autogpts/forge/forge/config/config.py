@@ -22,9 +22,7 @@ from forge.speech.say import TTSConfig
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(forge.__file__).parent.parent
-AI_SETTINGS_FILE = Path("ai_settings.yaml")
 AZURE_CONFIG_FILE = Path("azure.yaml")
-PROMPT_SETTINGS_FILE = Path("prompt_settings.yaml")
 
 GPT_4_MODEL = OpenAIModelName.GPT4
 GPT_3_MODEL = OpenAIModelName.GPT3
@@ -57,15 +55,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     ##########################
     # Agent Control Settings #
     ##########################
-    # Paths
-    ai_settings_file: Path = UserConfigurable(
-        default=AI_SETTINGS_FILE, from_env="AI_SETTINGS_FILE"
-    )
-    prompt_settings_file: Path = UserConfigurable(
-        default=PROMPT_SETTINGS_FILE,
-        from_env="PROMPT_SETTINGS_FILE",
-    )
-
     # Model configuration
     fast_llm: ModelName = UserConfigurable(
         default=OpenAIModelName.GPT3,
@@ -218,8 +207,6 @@ class ConfigBuilder(Configurable[Config]):
 
         # Make relative paths absolute
         for k in {
-            "ai_settings_file",  # TODO: deprecate or repurpose
-            "prompt_settings_file",  # TODO: deprecate or repurpose
             "azure_config_file",  # TODO: move from project root
         }:
             setattr(config, k, project_root / getattr(config, k))

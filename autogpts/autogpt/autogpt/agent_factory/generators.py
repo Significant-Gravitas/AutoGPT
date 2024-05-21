@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from forge.config.ai_directives import AIDirectives
 from forge.file_storage.base import FileStorage
 
 if TYPE_CHECKING:
@@ -21,7 +20,6 @@ async def generate_agent_for_task(
     file_storage: FileStorage,
     llm_provider: ChatModelProvider,
 ) -> Agent:
-    base_directives = AIDirectives.from_file(app_config.prompt_settings_file)
     ai_profile, task_directives = await generate_agent_profile_for_task(
         task=task,
         app_config=app_config,
@@ -31,7 +29,7 @@ async def generate_agent_for_task(
         agent_id=agent_id,
         task=task,
         ai_profile=ai_profile,
-        directives=base_directives + task_directives,
+        directives=task_directives,
         app_config=app_config,
         file_storage=file_storage,
         llm_provider=llm_provider,

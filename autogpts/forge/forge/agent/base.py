@@ -30,13 +30,7 @@ from forge.agent.components import (
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import ConfigBuilder
-from forge.llm.prompting.prompt import DEFAULT_TRIGGERING_PROMPT
-from forge.llm.providers import (
-    CHAT_MODELS,
-    AssistantFunctionCall,
-    ModelName,
-    OpenAIModelName,
-)
+from forge.llm.providers import CHAT_MODELS, ModelName, OpenAIModelName
 from forge.llm.providers.schema import ChatModelInfo
 from forge.models.config import (
     Configurable,
@@ -49,6 +43,12 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 P = ParamSpec("P")
+
+DEFAULT_TRIGGERING_PROMPT = (
+    "Determine exactly one command to use next based on the given goals "
+    "and the progress you have made so far, "
+    "and respond using the JSON schema specified previously:"
+)
 
 
 class BaseAgentConfiguration(SystemConfiguration):
@@ -114,11 +114,7 @@ class BaseAgentSettings(SystemSettings):
     ai_profile: AIProfile = Field(default_factory=lambda: AIProfile(ai_name="AutoGPT"))
     """The AI profile or "personality" of the agent."""
 
-    directives: AIDirectives = Field(
-        default_factory=lambda: AIDirectives.from_file(
-            ConfigBuilder.default_settings.prompt_settings_file
-        )
-    )
+    directives: AIDirectives = Field(default_factory=AIDirectives)
     """Directives (general instructional guidelines) for the agent."""
 
     task: str = "Terminate immediately"  # FIXME: placeholder for forge.sdk.schema.Task

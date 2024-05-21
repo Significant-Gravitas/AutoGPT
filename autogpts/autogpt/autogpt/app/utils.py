@@ -5,14 +5,10 @@ import re
 import socket
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import requests
 from colorama import Fore, Style
 from git import InvalidGitRepositoryError, Repo
-
-if TYPE_CHECKING:
-    from forge.config.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +155,7 @@ By using the System, you agree to indemnify, defend, and hold harmless the Proje
     return legal_text
 
 
-def print_motd(config: "Config", logger: logging.Logger):
+def print_motd(logger: logging.Logger):
     motd, is_new_motd = get_latest_bulletin()
     if motd:
         motd = markdown_to_ansi_style(motd)
