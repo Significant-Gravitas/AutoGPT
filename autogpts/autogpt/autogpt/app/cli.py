@@ -65,15 +65,6 @@ def cli(ctx: click.Context):
     help="Skips the re-prompting messages at the beginning of the script",
 )
 @click.option(
-    "--ai-settings",
-    "-C",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help=(
-        "Specifies which ai_settings.yaml file to use, relative to the AutoGPT"
-        " root directory. Will also automatically skip the re-prompt."
-    ),
-)
-@click.option(
     "--ai-name",
     type=str,
     help="AI name override",
@@ -82,12 +73,6 @@ def cli(ctx: click.Context):
     "--ai-role",
     type=str,
     help="AI role override",
-)
-@click.option(
-    "--prompt-settings",
-    "-P",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Specifies which prompt_settings.yaml file to use.",
 )
 @click.option(
     "--constraint",
@@ -157,10 +142,8 @@ def run(
     install_plugin_deps: bool,
     skip_news: bool,
     skip_reprompt: bool,
-    ai_settings: Optional[Path],
     ai_name: Optional[str],
     ai_role: Optional[str],
-    prompt_settings: Optional[Path],
     resource: tuple[str],
     constraint: tuple[str],
     best_practice: tuple[str],
@@ -180,8 +163,6 @@ def run(
     run_auto_gpt(
         continuous=continuous,
         continuous_limit=continuous_limit,
-        ai_settings=ai_settings,
-        prompt_settings=prompt_settings,
         skip_reprompt=skip_reprompt,
         speak=speak,
         debug=debug,
@@ -205,12 +186,6 @@ def run(
 
 
 @cli.command()
-@click.option(
-    "--prompt-settings",
-    "-P",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Specifies which prompt_settings.yaml file to use.",
-)
 @click.option("--gpt3only", is_flag=True, help="Enable GPT3.5 Only Mode")
 @click.option("--gpt4only", is_flag=True, help="Enable GPT4 Only Mode")
 @click.option(
@@ -250,7 +225,6 @@ def run(
     type=click.Choice([i.value for i in LogFormatName]),
 )
 def serve(
-    prompt_settings: Optional[Path],
     gpt3only: bool,
     gpt4only: bool,
     browser_name: Optional[str],
@@ -269,7 +243,6 @@ def serve(
     from autogpt.app.main import run_auto_gpt_server
 
     run_auto_gpt_server(
-        prompt_settings=prompt_settings,
         debug=debug,
         log_level=log_level,
         log_format=log_format,

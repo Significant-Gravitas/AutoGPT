@@ -48,7 +48,6 @@ RUN poetry install --no-cache --no-root --without dev \
 ONBUILD COPY autogpt/ ./autogpt
 ONBUILD COPY scripts/ ./scripts
 ONBUILD COPY plugins/ ./plugins
-ONBUILD COPY prompt_settings.yaml ./prompt_settings.yaml
 ONBUILD COPY README.md ./README.md
 ONBUILD RUN mkdir ./data
 

@@ -16,7 +16,6 @@ from forge.config.config import Config
 from forge.file_storage import FileStorage
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import (
-    CodeExecutionError,
     CommandExecutionError,
     InvalidArgumentError,
     OperationNotAllowedError,
@@ -49,6 +48,10 @@ def is_docker_available() -> bool:
         return docker_info["OSType"] == "linux"
     except Exception:
         return False
+
+
+class CodeExecutionError(CommandExecutionError):
+    """The operation (an attempt to run arbitrary code) returned an error"""
 
 
 class CodeExecutorComponent(CommandProvider):
