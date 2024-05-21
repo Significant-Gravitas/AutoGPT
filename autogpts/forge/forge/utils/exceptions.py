@@ -89,3 +89,7 @@ class InvalidArgumentError(CommandExecutionError):
 
 class OperationNotAllowedError(CommandExecutionError):
     """The agent is not allowed to execute the proposed operation"""
+
+
+class TooMuchOutputError(CommandExecutionError):
+    """The operation generated more output than what the Agent can process"""

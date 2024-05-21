@@ -24,7 +24,7 @@ from forge.config.config import Config, ConfigBuilder, assert_config_has_openai_
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
-from forge.logging.helpers import print_attribute, speak
+from forge.logging.utils import print_attribute, speak
 from forge.models.action import ActionInterruptedByHuman, ActionProposal
 from forge.models.utils import ModelWithSummary
 from forge.utils.const import FINISH_COMMAND

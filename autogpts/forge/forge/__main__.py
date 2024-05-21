@@ -4,6 +4,8 @@ import os
 import uvicorn
 from dotenv import load_dotenv
 
+from forge.logging.config import configure_logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,6 +37,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
 if __name__ == "__main__":
     print(logo)
     port = os.getenv("PORT", 8000)
+    configure_logging()
     logger.info(f"Agent server starting on http://localhost:{port}")
     load_dotenv()
 
