@@ -9,7 +9,7 @@ packages = [{ include = "forge" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-agbenchmark = { path = "../../benchmark", optional = true }
+agbenchmark = { path = "../benchmark", optional = true }
 # agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
 aiohttp = "^3.8.5"
 anthropic = "^0.25.1"

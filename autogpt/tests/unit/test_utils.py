@@ -67,7 +67,7 @@ def test_get_bulletin_from_web_success(mock_get):
 
     assert expected_content in bulletin
     mock_get.assert_called_with(
-        "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/master/autogpts/autogpt/BULLETIN.md"  # noqa: E501
+        "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/master/autogpt/BULLETIN.md"  # noqa: E501
     )
 
 

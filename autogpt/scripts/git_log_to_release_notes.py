@@ -55,7 +55,7 @@ async def generate_release_notes(repo_path: Optional[Path] = None):
 
     git_log = repo.git.log(
         f"{last_release_tag.name}...{new_release_ref}",
-        "autogpts/autogpt/",
+        "autogpt/",
         no_merges=True,
         follow=True,
     )
@@ -80,7 +80,7 @@ async def generate_release_notes(repo_path: Optional[Path] = None):
 EXAMPLE_RELEASE_NOTES = """
 First some important notes w.r.t. using the application:
 * `run.sh` has been renamed to `autogpt.sh`
-* The project has been restructured. The AutoGPT Agent is now located in `autogpts/autogpt`.
+* The project has been restructured. The AutoGPT Agent is now located in `autogpt`.
 * The application no longer uses a single workspace for all tasks. Instead, every task that you run the agent on creates a new workspace folder. See the [usage guide](https://docs.agpt.co/autogpt/usage/#workspace) for more information.
 
 ## New features ✨
@@ -89,12 +89,12 @@ First some important notes w.r.t. using the application:
   Our agent now works with the [Agent Protocol](/#-agent-protocol), a REST API that allows creating tasks and executing the agent's step-by-step process. This allows integration with other applications, and we also use it to connect to the agent through the UI.
 * **UI 💻**
   With the aforementioned Agent Protocol integration comes the benefit of using our own open-source Agent UI. Easily create, use, and chat with multiple agents from one interface.
-  When starting the application through the project's new [CLI](/#-cli), it runs with the new frontend by default, with benchmarking capabilities. Running `autogpt.sh serve` in the subproject folder (`autogpts/autogpt`) will also serve the new frontend, but without benchmarking functionality.
+  When starting the application through the project's new [CLI](/#-cli), it runs with the new frontend by default, with benchmarking capabilities. Running `autogpt.sh serve` in the subproject folder (`autogpt`) will also serve the new frontend, but without benchmarking functionality.
   Running the application the "old-fashioned" way, with the terminal interface (let's call it TTY mode), is still possible with `autogpt.sh run`.
 * **Resuming agents 🔄️**
   In TTY mode, the application will now save the agent's state when quitting, and allows resuming where you left off at a later time!
 * **GCS and S3 workspace backends 📦**
-  To further support running the application as part of a larger system, Google Cloud Storage and S3 workspace backends were added. Configuration options for this can be found in [`.env.template`](/autogpts/autogpt/.env.template).
+  To further support running the application as part of a larger system, Google Cloud Storage and S3 workspace backends were added. Configuration options for this can be found in [`.env.template`](/autogpt/.env.template).
 * **Documentation Rewrite 📖**
   The [documentation](https://docs.agpt.co) has been restructured and mostly rewritten to clarify and simplify the instructions, and also to accommodate the other subprojects that are now in the repo.
 * **New Project CLI 🔧**
@@ -110,8 +110,8 @@ First some important notes w.r.t. using the application:
   This is mostly made possible by the `autogpt.core.configuration` module, which was also expanded with a few new features for it. Most notably, the new `from_env` attribute on the `UserConfigurable` field decorator and corresponding logic in `SystemConfiguration.from_env()` and related functions.
 * **Monorepo**
   As mentioned, the repo has been restructured to accommodate the AutoGPT Agent, Forge, AGBenchmark and the new Frontend.
-  * AutoGPT Agent has been moved to `autogpts/autogpt`
-  * Forge now lives in `autogpts/forge`, and the project's new CLI makes it easy to create new Forge-based agents.
+  * AutoGPT Agent has been moved to `autogpt`
+  * Forge now lives in `forge`, and the project's new CLI makes it easy to create new Forge-based agents.
   * AGBenchmark -> `benchmark`
   * Frontend -> `frontend`
 

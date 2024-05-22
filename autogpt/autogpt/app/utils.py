@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 def get_bulletin_from_web():
     try:
         response = requests.get(
-            "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/master/autogpts/autogpt/BULLETIN.md"  # noqa: E501
+            "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/master/autogpt/BULLETIN.md"  # noqa: E501
         )
         if response.status_code == 200:
             return response.text
@@ -45,7 +45,7 @@ def vcs_state_diverges_from_master() -> bool:
     """
     Returns whether a git repo is present and contains changes that are not in `master`.
     """
-    paths_we_care_about = "autogpts/autogpt/autogpt/**/*.py"
+    paths_we_care_about = "autogpt/autogpt/**/*.py"
     try:
         repo = Repo(search_parent_directories=True)
 

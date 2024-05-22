@@ -42,7 +42,7 @@ jobs:
       - name: Benchmark ${{ matrix.agent-name }}
         run: |
           ./run agent start ${{ matrix.agent-name }}
-          cd autogpts/${{ matrix.agent-name }}
+          cd ${{ matrix.agent-name }}
 
           set +e  # Do not quit on non-zero exit codes
           poetry run agbenchmark run -N 3 \
