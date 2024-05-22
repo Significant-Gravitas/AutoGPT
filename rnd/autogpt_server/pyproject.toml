@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "rnd"
+name = "autogpt_server"
 version = "0.1.0"
 description = ""
 authors = ["SwiftyOS <craigswift13@gmail.com>"]
