@@ -1,14 +1,20 @@
+import asyncio
 import contextlib
+import functools
 import logging
 import os
 import re
 import socket
 import sys
 from pathlib import Path
+from typing import Any, Callable, Coroutine, ParamSpec, TypeVar
 
 import requests
 from colorama import Fore, Style
 from git import InvalidGitRepositoryError, Repo
+
+P = ParamSpec("P")
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -231,3 +237,11 @@ def is_port_free(port: int, host: str = "127.0.0.1"):
             return True  # If successful, the port is free
         except OSError:
             return False  # If failed, the port is likely in use
+
+
+def coroutine(f: Callable[P, Coroutine[Any, Any, T]]) -> Callable[P, T]:
+    @functools.wraps(f)
+    def wrapper(*args: P.args, **kwargs: P.kwargs):
+        return asyncio.run(f(*args, **kwargs))
+
+    return wrapper

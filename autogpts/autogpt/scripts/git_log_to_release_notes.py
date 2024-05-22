@@ -9,7 +9,7 @@ from forge.llm.providers import ChatMessage, MultiProvider
 from forge.llm.providers.anthropic import AnthropicModelName
 from git import Repo, TagReference
 
-from autogpt.core.runner.client_lib.utils import coroutine
+from autogpt.app.utils import coroutine
 
 
 @click.command()

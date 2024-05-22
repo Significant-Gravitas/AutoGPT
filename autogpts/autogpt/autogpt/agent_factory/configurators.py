@@ -73,8 +73,6 @@ def _configure_agent(
         app_config=app_config,
     )
 
-    # TODO: configure memory
-
     return Agent(
         settings=agent_state,
         llm_provider=llm_provider,
