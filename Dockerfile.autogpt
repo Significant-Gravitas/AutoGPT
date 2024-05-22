@@ -28,8 +28,11 @@ RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="$POETRY_HOME/bin:$PATH"
 RUN poetry config installer.max-workers 10
 
-WORKDIR /app
-COPY pyproject.toml poetry.lock ./
+WORKDIR /app/autogpt
+COPY autogpt/pyproject.toml autogpt/poetry.lock ./
+
+# Include forge so it can be used as a path dependency
+COPY forge/ ../forge
 
 # Set the entrypoint
 ENTRYPOINT ["poetry", "run", "autogpt"]
@@ -45,10 +48,10 @@ ONBUILD COPY . ./
 FROM autogpt-base as autogpt-release
 RUN poetry install --no-cache --no-root --without dev \
     && rm -rf $(poetry env info --path)/src
-ONBUILD COPY autogpt/ ./autogpt
-ONBUILD COPY scripts/ ./scripts
-ONBUILD COPY plugins/ ./plugins
-ONBUILD COPY README.md ./README.md
+ONBUILD COPY autogpt/autogpt/ ./autogpt
+ONBUILD COPY autogpt/scripts/ ./scripts
+ONBUILD COPY autogpt/plugins/ ./plugins
+ONBUILD COPY autogpt/README.md ./README.md
 ONBUILD RUN mkdir ./data
 
 FROM autogpt-${BUILD_TYPE} AS autogpt
