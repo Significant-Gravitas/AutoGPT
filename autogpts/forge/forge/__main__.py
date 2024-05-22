@@ -8,7 +8,6 @@ from forge.logging.config import configure_logging
 
 logger = logging.getLogger(__name__)
 
-
 logo = """\n\n
        d8888          888             .d8888b.  8888888b. 88888888888 
       d88888          888            d88P  Y88b 888   Y88b    888     
