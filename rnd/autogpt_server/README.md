@@ -2,15 +2,21 @@
 
 This is a research project into creating the next generation of autogpt, which is an autogpt agent server.
 
-It will come with the AutoGPT Agent as the default agent
+The agent server will enable the creation of composite multi-agent system that utilize AutoGPT Agent as its default agent.
 
 
 ## Project Outline
 
-The project mainly consist of two main component:
+Currently the project mainly consist of these components:
 
-agent_server: Responsible as the API server for creating an agent.
-agent_executor: Responsible for executor the agent.
+*agent_api*
+A component that will expose an API endpoints for the creation & execution of agents.
+This component will do connections to the DB to persist and read the agents.
+It will also trigger the agent execution by pushing its execution request to the ExecutionQueue.
+
+*agent_executor*
+A component that will execute the agents.
+This component will be a pool of processes/threads that will consume the ExecutionQueue and execute the agent accordingly. 
 
 
 

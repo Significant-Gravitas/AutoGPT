@@ -10,10 +10,11 @@ logger = logging.getLogger(__name__)
 
 # TODO: Replace this by an actual Agent Execution.
 def __execute(id: str, data: str) -> None:
+    logger.warning(f"Executor processing started, execution_id: {id}, data: {data}")
     for i in range(5):
-        print(f"Executor processing step {i}, execution_id: {id}, data: {data}")
+        logger.warning(f"Executor processing step {i}, execution_id: {id}, data: {data}")
         time.sleep(1)
-    print(f"Executor processing completed, execution_id: {id}, data: {data}")
+    logger.warning(f"Executor processing completed, execution_id: {id}, data: {data}")
 
 
 def start_executor(pool_size: int, queue: ExecutionQueue) -> None:
