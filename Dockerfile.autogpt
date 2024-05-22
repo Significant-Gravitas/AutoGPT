@@ -34,6 +34,9 @@ COPY autogpt/pyproject.toml autogpt/poetry.lock ./
 # Include forge so it can be used as a path dependency
 COPY forge/ ../forge
 
+# Include frontend
+COPY frontend/ ../frontend
+
 # Set the entrypoint
 ENTRYPOINT ["poetry", "run", "autogpt"]
 CMD []

@@ -20,6 +20,9 @@
 !forge/poetry.lock
 !forge/README.md
 
+# Frontend
+!frontend/build/web/
+
 # Explicitly re-ignore some folders
 .*
 **/__pycache__
