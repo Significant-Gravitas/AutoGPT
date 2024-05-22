@@ -129,7 +129,10 @@ def start(agent_name: str, no_setup: bool):
     import subprocess
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
-    agent_dir = os.path.join(script_dir, f"agents/{agent_name}")
+    agent_dir = os.path.join(
+        script_dir,
+        f"agents/{agent_name}" if agent_name not in ["autogpt", "forge"] else agent_name,
+    )
     run_command = os.path.join(agent_dir, "run")
     run_bench_command = os.path.join(agent_dir, "run_benchmark")
     if (
@@ -209,6 +212,8 @@ def list():
             for d in os.listdir(agents_dir)
             if os.path.isdir(os.path.join(agents_dir, d))
         ]
+        if os.path.isdir("./autogpt"):
+            agents_list.append("autogpt")
         if agents_list:
             click.echo(click.style("Available agents: 🤖", fg="green"))
             for agent in agents_list:
@@ -240,7 +245,10 @@ def start(agent_name, subprocess_args):
     import subprocess
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
-    agent_dir = os.path.join(script_dir, f"agents/{agent_name}")
+    agent_dir = os.path.join(
+        script_dir,
+        f"agents/{agent_name}" if agent_name not in ["autogpt", "forge"] else agent_name,
+    )
     benchmark_script = os.path.join(agent_dir, "run_benchmark")
     if os.path.exists(agent_dir) and os.path.isfile(benchmark_script):
         os.chdir(agent_dir)
