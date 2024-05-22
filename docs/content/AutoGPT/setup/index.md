@@ -71,7 +71,7 @@ Since we don't ship AutoGPT as a desktop application, you'll need to download th
 ### Completing the Setup
 
 Once you have cloned or downloaded the project, you can find the AutoGPT Agent in the
-`autogpts/autogpt/` folder. In this folder:
+`autogpt/` folder. In this folder:
 
 1. Find the file named `.env.template`. This file may
     be hidden by default in some operating systems due to the dot prefix. To reveal

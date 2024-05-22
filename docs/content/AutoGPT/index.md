@@ -4,9 +4,9 @@
 &ensp;|&ensp;
 [💻 **User guide**](./usage.md)
 &ensp;|&ensp;
-[🐙 **GitHub**](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt)
+[🐙 **GitHub**](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt)
 
-**Location:** `autogpts/autogpt/` in the GitHub repo
+**Location:** `autogpt/` in the GitHub repo
 
 AutoGPT was conceived when OpenAI published their GPT-4 model accompanied by a paper
 outlining the advanced reasoning and task-solving abilities of the model. The concept

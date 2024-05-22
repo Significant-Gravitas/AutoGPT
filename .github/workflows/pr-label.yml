@@ -5,7 +5,7 @@ on:
   push:
     branches: [ master, development, release-* ]
     paths-ignore:
-      - 'autogpts/autogpt/tests/vcr_cassettes'
+      - 'autogpt/tests/vcr_cassettes'
       - 'benchmark/reports/**'
   # So that the `dirtyLabel` is removed if conflicts are resolve
   # We recommend `pull_request_target` so that github secrets are available.
