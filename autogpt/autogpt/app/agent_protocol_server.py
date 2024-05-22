@@ -99,7 +99,7 @@ class AgentProtocolServer:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         frontend_path = (
             pathlib.Path(script_dir)
-            .joinpath("../../frontend/build/web")
+            .joinpath("../../../frontend/build/web")
             .resolve()
         )
 

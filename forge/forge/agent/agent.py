@@ -67,7 +67,7 @@ class Agent:
         app.include_router(router, prefix="/ap/v1")
         script_dir = os.path.dirname(os.path.realpath(__file__))
         frontend_path = pathlib.Path(
-            os.path.join(script_dir, "../../frontend/build/web")
+            os.path.join(script_dir, "../../../frontend/build/web")
         ).resolve()
 
         if os.path.exists(frontend_path):
@@ -78,7 +78,7 @@ class Agent:
                 return RedirectResponse(url="/app/index.html", status_code=307)
 
         else:
-            LOG.warning(
+            logger.warning(
                 f"Frontend not found. {frontend_path} does not exist. The frontend will not be served"
             )
         app.add_middleware(AgentMiddleware, agent=self)
