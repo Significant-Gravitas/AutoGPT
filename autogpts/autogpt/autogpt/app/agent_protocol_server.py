@@ -35,7 +35,7 @@ from sentry_sdk import set_user
 
 from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
-from autogpt.agent_manager import AgentManager
+from autogpt.agents.agent_manager import AgentManager
 from autogpt.app.utils import is_port_free
 
 logger = logging.getLogger(__name__)

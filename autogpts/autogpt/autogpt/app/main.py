@@ -32,9 +32,8 @@ from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
-from autogpt.agent_manager import AgentManager
+from autogpt.agents.agent_manager import AgentManager
 from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
-from autogpt.core.runner.client_lib.utils import coroutine
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
@@ -44,6 +43,7 @@ from .input import clean_input
 from .setup import apply_overrides_to_ai_settings, interactively_revise_ai_settings
 from .spinner import Spinner
 from .utils import (
+    coroutine,
     get_legal_warning,
     markdown_to_ansi_style,
     print_git_branch_info,

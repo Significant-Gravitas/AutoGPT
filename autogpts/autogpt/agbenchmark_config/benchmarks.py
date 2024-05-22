@@ -8,8 +8,8 @@ from forge.config.config import ConfigBuilder
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.logging.config import configure_logging
 
-from autogpt.agent_manager.agent_manager import AgentManager
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
+from autogpt.agents.agent_manager import AgentManager
 from autogpt.app.main import _configure_llm_provider, run_interaction_loop
 
 LOG_DIR = Path(__file__).parent / "logs"
@@ -31,7 +31,6 @@ def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
     config.continuous_mode = continuous_mode
     config.continuous_limit = 20
     config.noninteractive_mode = True
-    config.memory_backend = "no_memory"
 
     ai_profile = AIProfile(
         ai_name="AutoGPT",

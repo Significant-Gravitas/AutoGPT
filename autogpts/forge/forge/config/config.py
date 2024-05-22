@@ -79,19 +79,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     continuous_mode: bool = False
     continuous_limit: int = 0
 
-    ##########
-    # Memory #
-    ##########
-    memory_backend: str = UserConfigurable("json_file", from_env="MEMORY_BACKEND")
-    memory_index: str = UserConfigurable("auto-gpt-memory", from_env="MEMORY_INDEX")
-    redis_host: str = UserConfigurable("localhost", from_env="REDIS_HOST")
-    redis_port: int = UserConfigurable(default=6379, from_env="REDIS_PORT")
-    redis_password: str = UserConfigurable("", from_env="REDIS_PASSWORD")
-    wipe_redis_on_start: bool = UserConfigurable(
-        default=True,
-        from_env=lambda: os.getenv("WIPE_REDIS_ON_START", "True") == "True",
-    )
-
     ############
     # Commands #
     ############
