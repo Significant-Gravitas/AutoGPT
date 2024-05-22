@@ -1,7 +1,7 @@
 # AutoGPT Agent User Guide
 
 !!! note
-    This guide assumes you are in the `autogpts/autogpt` folder, where the AutoGPT Agent
+    This guide assumes you are in the `autogpt` folder, where the AutoGPT Agent
     is located.
 
 ## Command Line Interface
@@ -169,7 +169,7 @@ Here are some common arguments you can use when running AutoGPT:
     There are shorthands for some of these flags, for example `-P` for `--prompt-settings`.  
     Use `./autogpt.sh --help` for more information.
 
-[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/.env.template
+[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt/.env.template
 
 ## Agent State
 [agent state]: #agent-state

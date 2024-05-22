@@ -87,7 +87,7 @@
     AutoGPT uses a browser in headless mode by default: `HEADLESS_BROWSER=True`.
     Please do not change this setting in combination with Docker, or AutoGPT will crash.
 
-[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/.env.template
+[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt/.env.template
 [Docker Hub]: https://hub.docker.com/r/significantgravitas/auto-gpt
 
 ## Configuration

@@ -5,14 +5,14 @@ on:
     branches: [ master, development, ci-test* ]
     paths:
       - '.github/workflows/autogpt-ci.yml'
-      - 'autogpts/autogpt/**'
-      - '!autogpts/autogpt/tests/vcr_cassettes'
+      - 'autogpt/**'
+      - '!autogpt/tests/vcr_cassettes'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
       - '.github/workflows/autogpt-ci.yml'
-      - 'autogpts/autogpt/**'
-      - '!autogpts/autogpt/tests/vcr_cassettes'
+      - 'autogpt/**'
+      - '!autogpt/tests/vcr_cassettes'
 
 concurrency:
   group: ${{ format('autogpt-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -21,7 +21,7 @@ concurrency:
 defaults:
   run:
     shell: bash
-    working-directory: autogpts/autogpt
+    working-directory: autogpt
 
 jobs:
   lint:
@@ -48,7 +48,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pypoetry
-          key: ${{ runner.os }}-poetry-${{ hashFiles('autogpts/autogpt/pyproject.toml') }}-${{ steps.get_date.outputs.date }}
+          key: ${{ runner.os }}-poetry-${{ hashFiles('autogpt/pyproject.toml') }}-${{ steps.get_date.outputs.date }}
 
       - name: Install Python dependencies
         run: |
@@ -170,7 +170,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
-          key: poetry-${{ runner.os }}-${{ hashFiles('autogpts/autogpt/poetry.lock') }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt/poetry.lock') }}
 
       - name: Install Poetry (Unix)
         if: runner.os != 'Windows'
@@ -293,4 +293,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-logs
-          path: autogpts/autogpt/logs/
+          path: autogpt/logs/
