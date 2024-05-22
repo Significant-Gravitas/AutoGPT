@@ -6,20 +6,24 @@ version: "3.9"
 
 services:
   auto-gpt:
-    build: ./
+    build:
+      context: ../
+      dockerfile: Dockerfile.autogpt
     env_file:
       - .env
     ports:
       - "8000:8000"
     volumes:
-      - ./:/app
+      - ./:/app/autogpt/
       - ./docker-compose.yml:/app/docker-compose.yml:ro
-      - ./Dockerfile:/app/Dockerfile:ro
+      # - ./Dockerfile:/app/Dockerfile:ro
     profiles: ["exclude-from-up"]
 
   # Only for TESTING purposes. Run with: docker compose run --build --rm autogpt-test
   autogpt-test:
-    build: ./
+    build:
+      context: ../
+      dockerfile: Dockerfile.autogpt
     env_file:
       - .env
     environment:
@@ -29,8 +33,8 @@ services:
     entrypoint: ["poetry", "run"]
     command: ["pytest", "-v"]
     volumes:
-      - ./autogpt:/app/autogpt
-      - ./tests:/app/tests
+      - ./autogpt:/app/autogpt/autogpt
+      - ./tests:/app/autogpt/tests
     depends_on:
       - minio
     profiles: ["exclude-from-up"]
