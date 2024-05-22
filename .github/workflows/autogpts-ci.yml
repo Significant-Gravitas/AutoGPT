@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        agent-name: [ autogpt, forge ]
+        agent-name: [ autogpt ]
       fail-fast: false
     timeout-minutes: 20
     env:
