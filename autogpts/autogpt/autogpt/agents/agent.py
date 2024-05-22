@@ -3,7 +3,6 @@ from __future__ import annotations
 import inspect
 import logging
 from datetime import datetime
-from math import ceil, floor
 from typing import TYPE_CHECKING, Optional
 
 import sentry_sdk
@@ -31,6 +30,7 @@ from forge.components.watchdog import WatchdogComponent
 from forge.components.web import WebSearchComponent, WebSeleniumComponent
 from forge.file_storage.base import FileStorage
 from forge.llm.prompting.schema import ChatPrompt
+from forge.llm.prompting.utils import dump_prompt
 from forge.llm.providers import (
     AssistantFunctionCall,
     ChatMessage,
@@ -69,25 +69,6 @@ if TYPE_CHECKING:
     from forge.config.config import Config
 
 logger = logging.getLogger(__name__)
-
-
-SEPARATOR_LENGTH = 42
-
-
-def dump_prompt(prompt: "ChatPrompt") -> str:
-    def separator(text: str):
-        half_sep_len = (SEPARATOR_LENGTH - 2 - len(text)) / 2
-        return f"{floor(half_sep_len)*'-'} {text.upper()} {ceil(half_sep_len)*'-'}"
-
-    formatted_messages = "\n".join(
-        [f"{separator(m.role)}\n{m.content}" for m in prompt.messages]
-    )
-    return f"""
-============== {prompt.__class__.__name__} ==============
-Length: {len(prompt.messages)} messages
-{formatted_messages}
-==========================================
-"""
 
 
 class AgentConfiguration(BaseAgentConfiguration):
