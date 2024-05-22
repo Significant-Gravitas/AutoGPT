@@ -14,7 +14,7 @@
 │   │   └── __init__.py
 │   ├── manager             # The Agent Manager it manages a pool of executors and schedules components to run
 │   │   └── __init__.py
-│   └── server              # The main autogpt appliction. It includes the api server and additional modules
+│   └── server              # The main autogpt application. It includes the api server and additional modules
 │       └── __init__.py
 └── pyproject.toml
 ```
