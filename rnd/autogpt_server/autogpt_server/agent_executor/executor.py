@@ -1,6 +1,5 @@
 import logging
 import time
-
 from concurrent.futures import ThreadPoolExecutor
 
 from autogpt_server.data import ExecutionQueue
@@ -12,7 +11,9 @@ logger = logging.getLogger(__name__)
 def __execute(id: str, data: str) -> None:
     logger.warning(f"Executor processing started, execution_id: {id}, data: {data}")
     for i in range(5):
-        logger.warning(f"Executor processing step {i}, execution_id: {id}, data: {data}")
+        logger.warning(
+            f"Executor processing step {i}, execution_id: {id}, data: {data}"
+        )
         time.sleep(1)
     logger.warning(f"Executor processing completed, execution_id: {id}, data: {data}")
 

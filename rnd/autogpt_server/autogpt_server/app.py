@@ -6,6 +6,6 @@ from autogpt_server.data import ExecutionQueue
 
 if __name__ == "__main__":
     queue = ExecutionQueue()
-    executor_process = Process(target=start_executor, args=(5,queue))
+    executor_process = Process(target=start_executor, args=(5, queue))
     executor_process.start()
     start_server(queue)

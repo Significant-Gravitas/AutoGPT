@@ -1,1 +1,1 @@
-from .executor import start_executor
+from .executor import start_executor  # noqa
