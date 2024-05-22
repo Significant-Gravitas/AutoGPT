@@ -6,7 +6,7 @@
 !autogpt/pyproject.toml
 !autogpt/poetry.lock
 !autogpt/README.md
-!autogpt/tests/*
+!autogpt/tests/
 
 # Benchmark
 !benchmark/agbenchmark/

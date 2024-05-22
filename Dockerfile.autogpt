@@ -45,7 +45,7 @@ CMD []
 FROM autogpt-base as autogpt-dev
 RUN poetry install --no-cache --no-root \
     && rm -rf $(poetry env info --path)/src
-ONBUILD COPY . ./
+ONBUILD COPY autogpt/ ./
 
 # release build -> include bare minimum
 FROM autogpt-base as autogpt-release
