@@ -94,14 +94,14 @@ def create(agent_name: str):
         )
         return
     try:
-        new_agent_dir = f"./autogpts/{agent_name}"
+        new_agent_dir = f"./agents/{agent_name}"
         new_agent_name = f"{agent_name.lower()}.json"
 
         if not os.path.exists(new_agent_dir):
-            shutil.copytree("./autogpts/forge", new_agent_dir)
+            shutil.copytree("./forge", new_agent_dir)
             click.echo(
                 click.style(
-                    f"🎉 New agent '{agent_name}' created. The code for your new agent is in: autogpts/{agent_name}",
+                    f"🎉 New agent '{agent_name}' created. The code for your new agent is in: agents/{agent_name}",
                     fg="green",
                 )
             )
@@ -129,7 +129,10 @@ def start(agent_name: str, no_setup: bool):
     import subprocess
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
-    agent_dir = os.path.join(script_dir, f"autogpts/{agent_name}")
+    agent_dir = os.path.join(
+        script_dir,
+        f"agents/{agent_name}" if agent_name not in ["autogpt", "forge"] else agent_name,
+    )
     run_command = os.path.join(agent_dir, "run")
     run_bench_command = os.path.join(agent_dir, "run_benchmark")
     if (
@@ -203,12 +206,14 @@ def list():
     import os
 
     try:
-        agents_dir = "./autogpts"
+        agents_dir = "./agents"
         agents_list = [
             d
             for d in os.listdir(agents_dir)
             if os.path.isdir(os.path.join(agents_dir, d))
         ]
+        if os.path.isdir("./autogpt"):
+            agents_list.append("autogpt")
         if agents_list:
             click.echo(click.style("Available agents: 🤖", fg="green"))
             for agent in agents_list:
@@ -216,7 +221,7 @@ def list():
         else:
             click.echo(click.style("No agents found 😞", fg="red"))
     except FileNotFoundError:
-        click.echo(click.style("The autogpts directory does not exist 😢", fg="red"))
+        click.echo(click.style("The agents directory does not exist 😢", fg="red"))
     except Exception as e:
         click.echo(click.style(f"An error occurred: {e} 😢", fg="red"))
 
@@ -240,7 +245,10 @@ def start(agent_name, subprocess_args):
     import subprocess
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
-    agent_dir = os.path.join(script_dir, f"autogpts/{agent_name}")
+    agent_dir = os.path.join(
+        script_dir,
+        f"agents/{agent_name}" if agent_name not in ["autogpt", "forge"] else agent_name,
+    )
     benchmark_script = os.path.join(agent_dir, "run_benchmark")
     if os.path.exists(agent_dir) and os.path.isfile(benchmark_script):
         os.chdir(agent_dir)

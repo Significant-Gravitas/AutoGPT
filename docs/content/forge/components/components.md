@@ -1,1 +1,1 @@
-../../../../autogpts/forge/forge/components/README.md
+../../../../forge/forge/components/README.md

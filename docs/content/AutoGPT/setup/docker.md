@@ -47,12 +47,6 @@
           #- type: bind
           #  source: ./azure.yaml
           #  target: /app/azure.yaml
-          #- type: bind
-          #  source: ./ai_settings.yaml
-          #  target: /app/ai_settings.yaml
-          #- type: bind
-          #  source: ./prompt_settings.yaml
-          #  target: /app/prompt_settings.yaml
     ```
     </details>
 
@@ -77,12 +71,6 @@
           - ./logs:/app/logs
           ## uncomment following lines if you want to make use of these files
           ## you must have them existing in the same folder as this docker-compose.yml
-          #- type: bind
-          #  source: ./ai_settings.yaml
-          #  target: /app/ai_settings.yaml
-          #- type: bind
-          #  source: ./prompt_settings.yaml
-          #  target: /app/prompt_settings.yaml
     ```
     </details>
 
@@ -99,7 +87,7 @@
     AutoGPT uses a browser in headless mode by default: `HEADLESS_BROWSER=True`.
     Please do not change this setting in combination with Docker, or AutoGPT will crash.
 
-[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/.env.template
+[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt/.env.template
 [Docker Hub]: https://hub.docker.com/r/significantgravitas/auto-gpt
 
 ## Configuration
@@ -116,9 +104,6 @@
         To activate and adjust a setting, remove the `# ` prefix.
 
 5. Save and close the `.env` file.
-
-Templates for the optional extra configuration files (e.g. `prompt_settings.yml`) can be
-found in the [repository].
 
 !!! info "Using a GPT Azure-instance"
     If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and
@@ -141,7 +126,6 @@ found in the [repository].
 
     **Note:** Azure support has been dropped in `master`, so these instructions will only work with v0.4.7 (or earlier).
 
-[repository]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt
 [show hidden files/Windows]: https://support.microsoft.com/en-us/windows/view-hidden-files-and-folders-in-windows-97fbc472-c603-9d90-91d0-1166d1d9f4b5
 [show hidden files/macOS]: https://www.pcmag.com/how-to/how-to-access-your-macs-hidden-files
 [openai-python docs]: https://github.com/openai/openai-python#microsoft-azure-endpoints
