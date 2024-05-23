@@ -34,6 +34,7 @@ en-core-web-sm = {url = "https://github.com/explosion/spacy-models/releases/down
 fastapi = "^0.109.1"
 ftfy = "^6.1.1"
 google-api-python-client = "*"
+groq = "^0.5.0"
 gTTS = "^2.3.1"
 hypercorn = "^0.14.4"
 inflection = "*"
@@ -62,7 +63,6 @@ agbenchmark = { path = "../benchmark", optional = true }
 google-cloud-logging = "^3.8.0"
 google-cloud-storage = "^2.13.0"
 psycopg2-binary = "^2.9.9"
-groq = "^0.5.0"
 
 [tool.poetry.extras]
 benchmark = ["agbenchmark"]
