@@ -21,7 +21,9 @@ def execute_agent(agent_id: str):
     return {"execution_id": execution_id, "agent_id": agent_id}
 
 
-def start_server(queue: ExecutionQueue):
+def start_server(queue: ExecutionQueue, use_uvicorn: bool = True):
     global execution_queue
     execution_queue = queue
-    uvicorn.run(app)
+    if use_uvicorn:
+        uvicorn.run(app)
+    return app

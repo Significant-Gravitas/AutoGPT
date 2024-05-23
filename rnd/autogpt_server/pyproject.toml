@@ -10,6 +10,7 @@ python = "^3.10"
 click = "^8.1.7"
 pydantic = "^2.7.1"
 prisma = "^0.13.1"
+pytest = "^8.2.1"
 
 
 [build-system]

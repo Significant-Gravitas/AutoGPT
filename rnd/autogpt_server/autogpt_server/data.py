@@ -10,10 +10,11 @@ class Execution:
         self.data = data
 
 
-# TODO: Replace this by a persistent queue.
-# One very likely candidate would be persisted Redis,
-# Tt will also open the possibility of using it for other purposes like
-# caching, execution engine broker (like Celery), etc.
+# TODO: This shared class make api & executor coupled in one machine.
+# Replace this with a persistent & remote-hosted queue.
+# One very likely candidate would be persisted Redis (Redis Queue).
+# It will also open the possibility of using it for other purposes like
+# caching, execution engine broker (like Celery), user session management etc.
 class ExecutionQueue:
     """
     Queue for managing the execution of agents.
