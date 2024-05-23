@@ -10,8 +10,8 @@ import tiktoken
 from groq import APIConnectionError, APIStatusError
 from pydantic import SecretStr
 
-from autogpt.core.configuration import Configurable, UserConfigurable
-from autogpt.core.resource.model_providers.schema import (
+from forge.json.parsing import json_loads
+from forge.llm.providers.schema import (
     AssistantChatMessage,
     AssistantFunctionCall,
     AssistantToolCall,
@@ -27,7 +27,7 @@ from autogpt.core.resource.model_providers.schema import (
     ModelProviderSettings,
     ModelTokenizer,
 )
-from autogpt.core.utils.json_utils import json_loads
+from forge.models.config import Configurable, UserConfigurable
 
 from .utils import validate_tool_calls
 
