@@ -4,64 +4,90 @@ datasource db {
 }
 
 generator client {
-  provider  = "prisma-client-py"
-  interface = "asyncio"
+  provider             = "prisma-client-py"
+  recursive_type_depth = 5
+  interface            = "asyncio"
 }
 
 // This model describe a single node in the Agent Graph/Flow (Multi Agent System).
 model AgentNode {
   id String @id
 
-  // This define the name or the id of the component that this node will execute.
-  // I'm on the fence on whether to make AgentComponent a DB model,
-  // since the list of the components will be hard-coded as the code anyway,
-  // and we won't store code in the DB.
-  //
-  // --- This is how AgentComponent information should look like ---
-  // model AgentComponent {
-  //   id   String @id
-  //   name String
-  //   code String
-  //   type String (Agent/Script)
-  //   inputSchema  String
-  //   outputSchema String 
-  // }
   agentComponentId String
+  AgentComponent   AgentComponent @relation(fields: [agentComponentId], references: [id])
 
+  // On which produced output, that the child node component should be executed.
+  // The length has to be equal to ChildNodes(ChildNodes[i]) will be triggered by trigger[i]).
+  // Or optionally equal to zero, which any types output will trigger the children.
+  childNodeOutputTrigger AgentComponentOutput[]
+
+  // These fields define the node relations as a graph.
   parentNodeId String?
-  ChildNodes   AgentNode[] @relation("AgentGraph")
   ParentNode   AgentNode?  @relation("AgentGraph", fields: [parentNodeId], references: [id])
+  ChildNodes   AgentNode[] @relation("AgentGraph")
 
-  ExecutionHistory AgentNodeExecution[] @relation("AgentExecution")
+  ExecutionHistory AgentNodeExecution[]
 }
 
+// This model describe a component that will be executed by the AgentNode.
+model AgentComponent {
+  id   String @id
+  name String
+  code String
+
+  // We allow a component to have multiple types of output.
+  Output      AgentComponentOutput[]
+  inputSchema String
+
+  // Prisma requires explicit back-references.
+  ReferencedByAgentNode AgentNode[]
+}
+
+// This model describe the output (produced event) of an AgentComponent
+model AgentComponentOutput {
+  id           String @id
+  outputName   String
+  outputSchema String
+  description  String
+
+  AgentComponent   AgentComponent @relation(fields: [agentComponentId], references: [id])
+  agentComponentId String
+
+  // Prisma requires explicit back-references.
+  ReferencedByAgentNode          AgentNode[]
+  ReferencedByAgentNodeExecution AgentNodeExecution[]
+}
+
+// This model describe the execution of an AgentNode.
 model AgentNodeExecution {
   id String @id
 
   agentNodeId String
-  AgentNode   AgentNode @relation("AgentExecution", fields: [agentNodeId], references: [id])
+  AgentNode   AgentNode @relation(fields: [agentNodeId], references: [id])
 
-  inputSchema  String?
-  outputSchema String?
-  input        String
-  output       String
-  inputFiles   FileDefinition[] @relation("InputFiles")
-  outputFiles  FileDefinition[] @relation("OutputFiles")
+  inputData    String
+  inputFiles   FileDefinition[]      @relation("InputFiles")
+  outputData   String
+  outputFiles  FileDefinition[]      @relation("OutputFiles")
+  outputTypeId String?
+  outputType   AgentComponentOutput? @relation(fields: [outputTypeId], references: [id])
 
   // sqlite does not support enum
   // enum Status { STARTED, RUNNING, SUCCESS, FAILED }
   executionStatus String
 }
 
+// This model describe a file that can be used as input/output of an AgentNodeExecution.
 model FileDefinition {
-  id       String @id
+  id       String  @id
   path     String
-  metadata String // JSON serialized object
-  mimeType String
-  size     Int
-  hash     String
-  encoding String
+  metadata String? // JSON serialized object
+  mimeType String?
+  size     Int?
+  hash     String?
+  encoding String?
 
-  ReferrencedInputFiles  AgentNodeExecution[] @relation("InputFiles")
-  ReferrencedOutputFiles AgentNodeExecution[] @relation("OutputFiles")
+  // Prisma requires explicit back-references.
+  ReferrencedByInputFiles  AgentNodeExecution[] @relation("InputFiles")
+  ReferrencedByOutputFiles AgentNodeExecution[] @relation("OutputFiles")
 }
