@@ -6,10 +6,16 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
+import tempfile
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from io import IOBase, TextIOBase
 from pathlib import Path
-from typing import IO, Any, BinaryIO, Callable, Literal, TextIO, overload
+from typing import IO, Any, BinaryIO, Callable, Generator, Literal, TextIO, overload
+
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 from forge.models.config import SystemConfiguration
 
@@ -150,6 +156,32 @@ class FileStorage(ABC):
         """
         return self._sanitize_path(relative_path)
 
+    @contextmanager
+    def mount(self, path: str | Path = ".") -> Generator[Path, Any, None]:
+        """Mount the file storage and provide a local path."""
+        local_path = tempfile.mkdtemp(dir=path)
+
+        observer = Observer()
+        try:
+            # Copy all files to the local directory
+            files = self.list_files()
+            for file in files:
+                file_path = local_path / file
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                content = self.read_file(file, binary=True)
+                file_path.write_bytes(content)
+
+            # Sync changes
+            event_handler = FileSyncHandler(self, local_path)
+            observer.schedule(event_handler, local_path, recursive=True)
+            observer.start()
+
+            yield Path(local_path)
+        finally:
+            observer.stop()
+            observer.join()
+            shutil.rmtree(local_path)
+
     def _sanitize_path(
         self,
         path: str | Path,
@@ -202,3 +234,37 @@ class FileStorage(ABC):
             )
 
         return full_path
+
+
+class FileSyncHandler(FileSystemEventHandler):
+    def __init__(self, storage: FileStorage, path: str | Path = "."):
+        self.storage = storage
+        self.path = Path(path)
+
+    async def on_modified(self, event):
+        if event.is_directory:
+            return
+
+        file_path = Path(event.src_path).relative_to(self.path)
+        content = file_path.read_bytes()
+        await self.storage.write_file(file_path, content)
+
+    async def on_created(self, event):
+        if event.is_directory:
+            self.storage.make_dir(event.src_path)
+            return
+
+        file_path = Path(event.src_path).relative_to(self.path)
+        content = file_path.read_bytes()
+        await self.storage.write_file(file_path, content)
+
+    def on_deleted(self, event):
+        if event.is_directory:
+            self.storage.delete_dir(event.src_path)
+            return
+
+        file_path = event.src_path
+        self.storage.delete_file(file_path)
+
+    def on_moved(self, event):
+        self.storage.rename(event.src_path, event.dest_path)
