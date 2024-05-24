@@ -9,7 +9,7 @@ generator client {
   interface            = "asyncio"
 }
 
-// This model describe a single node in the Agent Graph/Flow (Multi Agent System).
+// This model describes a single node in the Agent Graph/Flow (Multi Agent System).
 model AgentNode {
   id String @id
 
@@ -29,7 +29,7 @@ model AgentNode {
   ExecutionHistory AgentNodeExecution[]
 }
 
-// This model describe a component that will be executed by the AgentNode.
+// This model describes a component that will be executed by the AgentNode.
 model AgentComponent {
   id   String @id
   name String
@@ -43,7 +43,7 @@ model AgentComponent {
   ReferencedByAgentNode AgentNode[]
 }
 
-// This model describe the output (produced event) of an AgentComponent
+// This model describes the output (produced event) of an AgentComponent
 model AgentComponentOutput {
   id           String @id
   outputName   String
@@ -58,7 +58,7 @@ model AgentComponentOutput {
   ReferencedByAgentNodeExecution AgentNodeExecution[]
 }
 
-// This model describe the execution of an AgentNode.
+// This model describes the execution of an AgentNode.
 model AgentNodeExecution {
   id String @id
 
@@ -77,7 +77,7 @@ model AgentNodeExecution {
   executionStatus String
 }
 
-// This model describe a file that can be used as input/output of an AgentNodeExecution.
+// This model describes a file that can be used as input/output of an AgentNodeExecution.
 model FileDefinition {
   id       String  @id
   path     String
