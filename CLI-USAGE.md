@@ -74,7 +74,7 @@ Lists all the available agents.
 **Output**:
 
 ```
-🎉 New agent 'my_agent' created and switched to the new directory in autogpts folder.
+🎉 New agent 'my_agent' created and switched to the new directory in agents folder.
 ```
 
 Creates a new agent named 'my_agent'.

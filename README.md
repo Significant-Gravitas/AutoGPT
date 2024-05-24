@@ -22,12 +22,12 @@ Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI i
 
 ### 🏗️ Forge
 
-**Forge your own agent!** &ndash; Forge is a ready-to-go template for your agent application. All the boilerplate code is already handled, letting you channel all your creativity into the things that set *your* agent apart. All tutorials are located [here](https://medium.com/@aiedge/autogpt-forge-e3de53cc58ec). Components from the [`forge.sdk`](/autogpts/forge/forge/sdk) can also be used individually to speed up development and reduce boilerplate in your agent project.
+**Forge your own agent!** &ndash; Forge is a ready-to-go template for your agent application. All the boilerplate code is already handled, letting you channel all your creativity into the things that set *your* agent apart. All tutorials are located [here](https://medium.com/@aiedge/autogpt-forge-e3de53cc58ec). Components from the [`forge.sdk`](/forge/forge/sdk) can also be used individually to speed up development and reduce boilerplate in your agent project.
 
-🚀 [**Getting Started with Forge**](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/forge/tutorials/001_getting_started.md) &ndash;
+🚀 [**Getting Started with Forge**](https://github.com/Significant-Gravitas/AutoGPT/blob/master/forge/tutorials/001_getting_started.md) &ndash;
 This guide will walk you through the process of creating your own agent and using the benchmark and user interface.
 
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/forge) about Forge
+📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/forge) about Forge
 
 ### 🎯 Benchmark
 

@@ -117,7 +117,7 @@ jobs:
           branch=$(jq -r '.["branch_to_benchmark"]' arena/$AGENT_NAME.json)
           git clone "$link" -b "$branch" "$AGENT_NAME"
           cd $AGENT_NAME
-          cp ./autogpts/$AGENT_NAME/.env.example ./autogpts/$AGENT_NAME/.env || echo "file not found"
+          cp ./$AGENT_NAME/.env.example ./$AGENT_NAME/.env || echo "file not found"
           ./run agent start $AGENT_NAME
           cd ../benchmark
           poetry install
