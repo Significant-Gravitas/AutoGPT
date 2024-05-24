@@ -84,7 +84,8 @@ def test_execute_python_file_args(
     assert result == f"{random_args_string}\n"
 
 
-def test_execute_python_code(
+@pytest.mark.asyncio
+async def test_execute_python_code(
     code_executor_component: CodeExecutorComponent,
     random_code: str,
     random_string: str,
@@ -93,7 +94,7 @@ def test_execute_python_code(
     if not (is_docker_available() or we_are_running_in_a_docker_container()):
         pytest.skip("Docker is not available")
 
-    result: str = code_executor_component.execute_python_code(random_code)
+    result: str = await code_executor_component.execute_python_code(random_code)
     assert result.replace("\r", "") == f"Hello {random_string}!\n"
 
 
