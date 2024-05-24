@@ -177,7 +177,8 @@ class CodeExecutorComponent(CommandProvider):
             )
             with self.workspace.mount() as local_path:
                 result = subprocess.run(
-                    ["python", "-B", str(file_path)] + args,
+                    ["python", "-B", str(file_path.relative_to(self.workspace.root))]
+                    + args,
                     capture_output=True,
                     encoding="utf8",
                     cwd=str(local_path),
