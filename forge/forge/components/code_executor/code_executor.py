@@ -146,7 +146,7 @@ class CodeExecutorComponent(CommandProvider):
             ),
         },
     )
-    def execute_python_file(self, filename: str, args: list[str] = []) -> str:
+    def execute_python_file(self, filename: str | Path, args: list[str] = []) -> str:
         """Execute a Python file in a Docker container and return the output
 
         Args:
@@ -188,7 +188,7 @@ class CodeExecutorComponent(CommandProvider):
                     raise CodeExecutionError(result.stderr)
 
         logger.debug("App is not running in a Docker container")
-        return self._run_python_code_in_docker(filename, args)
+        return self._run_python_code_in_docker(file_path, args)
 
     def validate_command(self, command_line: str, config: Config) -> tuple[bool, bool]:
         """Check whether a command is allowed and whether it may be executed in a shell.
@@ -314,7 +314,7 @@ class CodeExecutorComponent(CommandProvider):
 
         return f"Subprocess started with PID:'{str(process.pid)}'"
 
-    def _run_python_code_in_docker(self, filename: str, args: list[str]) -> str:
+    def _run_python_code_in_docker(self, filename: str | Path, args: list[str]) -> str:
         """Run a Python script in a Docker container"""
         file_path = self.workspace.get_path(filename)
         try:
@@ -356,7 +356,7 @@ class CodeExecutorComponent(CommandProvider):
                         image_name,
                         ["sleep", "60"],  # Max 60 seconds to prevent permanent hangs
                         volumes={
-                            str(Path(local_path).absolute()): {
+                            str(local_path.resolve()): {
                                 "bind": "/workspace",
                                 "mode": "rw",
                             }
@@ -380,7 +380,7 @@ class CodeExecutorComponent(CommandProvider):
                     [
                         "python",
                         "-B",
-                        filename,
+                        file_path.relative_to(self.workspace.root).as_posix(),
                     ]
                     + args,
                     stderr=True,
