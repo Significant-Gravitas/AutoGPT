@@ -162,7 +162,7 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
 
     @classmethod
     def count_tokens(cls, text: str, model_name: GroqModelName) -> int:
-        return cls.get_tokenizer(model_name).encode(text)
+        return len(cls.get_tokenizer(model_name).encode(text))
 
     @classmethod
     def count_message_tokens(
