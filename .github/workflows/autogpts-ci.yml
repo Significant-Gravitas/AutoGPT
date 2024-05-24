@@ -8,7 +8,8 @@ on:
     branches: [ master, development, ci-test* ]
     paths:
       - '.github/workflows/autogpts-ci.yml'
-      - 'autogpts/**'
+      - 'autogpt/**'
+      - 'forge/**'
       - 'benchmark/**'
       - 'run'
       - 'cli.py'
@@ -18,7 +19,8 @@ on:
     branches: [ master, development, release-* ]
     paths:
       - '.github/workflows/autogpts-ci.yml'
-      - 'autogpts/**'
+      - 'autogpt/**'
+      - 'forge/**'
       - 'benchmark/**'
       - 'run'
       - 'cli.py'
@@ -30,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        agent-name: [ autogpt, forge ]
+        agent-name: [ autogpt ]
       fail-fast: false
     timeout-minutes: 20
     env:
@@ -48,14 +50,14 @@ jobs:
           python-version: ${{ env.min-python-version }}
 
       - name: Install Poetry
-        working-directory: ./autogpts/${{ matrix.agent-name }}/
+        working-directory: ./${{ matrix.agent-name }}/
         run: |
           curl -sSL https://install.python-poetry.org | python -
 
       - name: Run regression tests
         run: |
           ./run agent start ${{ matrix.agent-name }}
-          cd autogpts/${{ matrix.agent-name }}
+          cd ${{ matrix.agent-name }}
           poetry run agbenchmark --mock --test=BasicRetrieval --test=Battleship --test=WebArenaTask_0
           poetry run agbenchmark --test=WriteFile
         env:

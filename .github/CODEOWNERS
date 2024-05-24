@@ -1,5 +1,5 @@
 .github/workflows/  @Significant-Gravitas/devops
-autogpts/autogpt/   @Significant-Gravitas/maintainers
-autogpts/forge/     @Significant-Gravitas/forge-maintainers
+autogpt/   @Significant-Gravitas/maintainers
+forge/     @Significant-Gravitas/forge-maintainers
 benchmark/          @Significant-Gravitas/benchmark-maintainers
 frontend/           @Significant-Gravitas/frontend-maintainers
