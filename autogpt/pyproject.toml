@@ -34,7 +34,6 @@ en-core-web-sm = {url = "https://github.com/explosion/spacy-models/releases/down
 fastapi = "^0.109.1"
 ftfy = "^6.1.1"
 google-api-python-client = "*"
-groq = "^0.5.0"
 gTTS = "^2.3.1"
 hypercorn = "^0.14.4"
 inflection = "*"

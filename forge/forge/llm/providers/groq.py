@@ -33,8 +33,8 @@ from .utils import validate_tool_calls
 
 if TYPE_CHECKING:
     from groq.types.chat import ChatCompletion, CompletionCreateParams
-    from groq.types.chat.chat_completion import ChoiceMessage as ChatCompletionMessage
-    from groq.types.chat.completion_create_params import Message as MessageParam
+    from groq.types.chat.chat_completion_message import ChatCompletionMessage
+    from groq.types.chat.chat_completion_message_param import ChatCompletionMessageParam
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
@@ -286,7 +286,7 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
         **kwargs,  # type: ignore
-    ) -> tuple[list[MessageParam], CompletionCreateParams]:
+    ) -> tuple[list[ChatCompletionMessageParam], CompletionCreateParams]:
         """Prepare chat completion arguments and keyword arguments for API call.
 
         Args:
@@ -320,7 +320,7 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
             kwargs["extra_headers"] = kwargs.get("extra_headers", {})  # type: ignore
             kwargs["extra_headers"].update(extra_headers.copy())  # type: ignore
 
-        groq_messages: list[MessageParam] = [
+        groq_messages: list[ChatCompletionMessageParam] = [
             message.dict(
                 include={"role", "content", "tool_calls", "tool_call_id", "name"},
                 exclude_none=True,
