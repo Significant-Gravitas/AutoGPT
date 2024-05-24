@@ -80,6 +80,8 @@ class OpenAIModelName(str, enum.Enum):
     GPT4_VISION = "gpt-4-vision-preview"
     GPT4 = GPT4_ROLLING
     GPT4_32k = GPT4_ROLLING_32k
+    GPT4_O = "gpt-4o-2024-05-13"
+    GPT4_O_ROLLING = GPT4_O
 
 
 OPEN_AI_EMBEDDING_MODELS = {
@@ -167,6 +169,14 @@ OPEN_AI_CHAT_MODELS = {
             prompt_token_cost=0.01 / 1000,
             completion_token_cost=0.03 / 1000,
             max_tokens=128000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT4_O,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=5 / 1_000_000,
+            completion_token_cost=15 / 1_000_000,
+            max_tokens=128_000,
             has_function_call_api=True,
         ),
     ]
