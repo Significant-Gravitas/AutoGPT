@@ -157,12 +157,12 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
 
     @classmethod
     def get_tokenizer(cls, model_name: GroqModelName) -> ModelTokenizer:
-        # HACK: No official tokenizer is available for Claude 3
-        return tiktoken.encoding_for_model(model_name)
+        # HACK: No official tokenizer is available for Groq
+        return tiktoken.encoding_for_model("gpt-3.5-turbo")
 
     @classmethod
     def count_tokens(cls, text: str, model_name: GroqModelName) -> int:
-        return 0  # HACK: No official tokenizer is available for Claude 3
+        return cls.get_tokenizer(model_name).encode(text)
 
     @classmethod
     def count_message_tokens(
@@ -170,7 +170,13 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
         messages: ChatMessage | list[ChatMessage],
         model_name: GroqModelName,
     ) -> int:
-        return 0  # HACK: No official tokenizer is available for Claude 3
+        if isinstance(messages, ChatMessage):
+            messages = [messages]
+        # HACK: No official tokenizer (for text or messages) is available for Groq.
+        # Token overhead of messages is unknown and may be inaccurate.
+        return cls.count_tokens(
+            "\n\n".join(f"{m.role.upper()}: {m.content}" for m in messages), model_name
+        )
 
     async def create_chat_completion(
         self,
