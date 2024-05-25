@@ -34,7 +34,7 @@ repos:
         language: system
 
   - repo: https://github.com/psf/black
-    rev: 24.4.2
+    rev: 23.12.1
     hooks:
       - id: black
         name: Lint - Black
