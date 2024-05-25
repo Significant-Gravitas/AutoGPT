@@ -84,9 +84,6 @@ class OpenAIModelName(str, enum.Enum):
     GPT4_32k = GPT4_ROLLING_32k
     GPT4_O = GPT4_O_ROLLING
 
-    # TODO: added here for convenience, maybe better to move this somewhere else though
-    LLAMAFILE_MISTRAL_7B_INSTRUCT = "mistral-7b-instruct-v0"
-
 
 OPEN_AI_EMBEDDING_MODELS = {
     info.name: info
@@ -174,15 +171,6 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=0.03 / 1000,
             max_tokens=128000,
             has_function_call_api=True,
-        ),
-        ChatModelInfo(
-            name=OpenAIModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT,
-            service=ModelProviderService.CHAT,
-            provider_name=ModelProviderName.LLAMAFILE,
-            prompt_token_cost=0.0,
-            completion_token_cost=0.0,
-            max_tokens=32768,
-            has_function_call_api=False,
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT4_O,

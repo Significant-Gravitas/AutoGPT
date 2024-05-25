@@ -13,18 +13,12 @@ from overrides import overrides
 
 from forge.json.parsing import json_loads
 
-from .openai import (
-    OpenAICredentials,
-    OpenAIProvider,
-    OpenAIModelName,
-    _functions_compat_fix_kwargs
-)
+from .openai import OpenAICredentials, OpenAIProvider
 from .schema import (
     AssistantToolCall,
     AssistantToolCallDict,
     ChatMessage,
     ChatModelInfo,
-    CompletionModelFunction,
     ModelProviderName,
     ModelTokenizer,
 )
@@ -40,7 +34,7 @@ LLAMAFILE_CHAT_MODELS = {
     info.name: info
     for info in [
         ChatModelInfo(
-            name=OpenAIModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT,
+            name=LlamafileModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT,
             provider_name=ModelProviderName.LLAMAFILE,
             prompt_token_cost=0.0,
             completion_token_cost=0.0,
@@ -102,23 +96,23 @@ class LlamafileProvider(OpenAIProvider):
         ]
 
     @overrides
-    def get_tokenizer(self, model_name: OpenAIModelName) -> ModelTokenizer:
+    def get_tokenizer(self, model_name: LlamafileModelName) -> ModelTokenizer:
         return LlamafileTokenizer(self._credentials)
 
     @overrides
-    def count_tokens(self, text: str, model_name: OpenAIModelName) -> int:
+    def count_tokens(self, text: str, model_name: LlamafileModelName) -> int:
         return len(self.get_tokenizer(model_name).encode(text))
 
     @overrides
     def count_message_tokens(
         self,
         messages: ChatMessage | list[ChatMessage],
-        model_name: OpenAIModelName,
+        model_name: LlamafileModelName,
     ) -> int:
         if isinstance(messages, ChatMessage):
             messages = [messages]
 
-        if model_name == OpenAIModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT:
+        if model_name == LlamafileModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT:
             # For mistral-instruct, num added tokens depends on if the message
             # is a prompt/instruction or an assistant-generated message.
             # - prompt gets [INST], [/INST] added and the first instruction
@@ -162,7 +156,6 @@ class LlamafileProvider(OpenAIProvider):
         - expects messages to alternate between user/assistant roles.
 
         See details here: https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2#instruction-format
-
         """
         adapted_messages = []
         for message in messages:
@@ -189,11 +182,11 @@ class LlamafileProvider(OpenAIProvider):
     async def _create_chat_completion(
         self,
         messages: list[ChatCompletionMessageParam],
-        model: OpenAIModelName,
+        model: LlamafileModelName,
         *_,
         **kwargs,
     ) -> tuple[ChatCompletion, float, int, int]:
-        if model == OpenAIModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT:
+        if model == LlamafileModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT:
             messages = self._adapt_chat_messages_for_mistral_instruct(messages)
 
         if "seed" not in kwargs:
