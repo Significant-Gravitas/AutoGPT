@@ -67,34 +67,39 @@ repos:
         files: ^benchmark/(agbenchmark|tests)/
         args: [--config=benchmark/.flake8]
 
-  - repo: https://github.com/RobertCraigie/pyright-python
-    rev: v1.1.364
+  - repo: local
     # To have watertight type checking, we check *all* the files in an affected
     # project. To trigger on poetry.lock we also reset the file `types` filter.
     hooks:
       - id: pyright
         name: Typecheck (Pyright) - AutoGPT
         alias: pyright-autogpt
+        entry: poetry -C autogpt run pyright
+        args: [-p, autogpt, autogpt]
         # include forge since it's a path dependency:
         files: ^(autogpt|forge)/((autogpt|forge|tests)/|poetry\.lock$)
         types: [file]
-        args: [-p, autogpt, autogpt]
+        language: system
         pass_filenames: false
 
       - id: pyright
         name: Typecheck (Pyright) - Forge
         alias: pyright-forge
+        entry: poetry -C forge run pyright
+        args: [-p, forge, forge]
         files: ^forge/(forge/|poetry\.lock$)
         types: [file]
-        args: [-p, forge, forge]
+        language: system
         pass_filenames: false
 
       - id: pyright
         name: Typecheck (Pyright) - Benchmark
         alias: pyright-benchmark
+        entry: poetry -C benchmark run pyright
+        args: [-p, benchmark, benchmark]
         files: ^benchmark/(agbenchmark|tests)/
         types: [file]
-        args: [-p, benchmark, benchmark]
+        language: system
         pass_filenames: false
 
   - repo: local
@@ -103,7 +108,6 @@ repos:
         name: Pytest - AutoGPT (excluding slow tests)
         entry: bash -c 'cd autogpt && poetry run pytest --cov=autogpt -m "not slow" tests/unit tests/integration'
         files: ^(autogpt|forge)/((autogpt|forge|tests)/|poetry\.lock$)
-        verbose: true
         language: system
         pass_filenames: false
 
@@ -111,6 +115,5 @@ repos:
         name: Pytest - Forge (excluding slow tests)
         entry: bash -c 'cd forge && poetry run pytest --cov=forge -m "not slow"'
         files: ^forge/(forge/|tests/|poetry\.lock$)
-        verbose: true
         language: system
         pass_filenames: false
