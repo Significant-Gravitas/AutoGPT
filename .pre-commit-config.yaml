@@ -1,0 +1,90 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: check-byte-order-marker
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: debug-statements
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.1
+    hooks:
+      - id: isort
+        name: Lint - isort
+        language_version: python3.10
+        args: [--resolve-all-configs, --profile, black]
+
+  - repo: https://github.com/psf/black
+    rev: 24.4.2
+    hooks:
+      - id: black
+        name: Lint - Black
+        language_version: python3.10
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        name: Lint - Flake8 - AutoGPT
+        alias: flake8-autogpt
+        files: ^autogpt/(autogpt|tests)/.*$
+        args: [--config=autogpt/.flake8]
+
+      - id: flake8
+        name: Lint - Flake8 - Forge
+        alias: flake8-forge
+        files: ^forge/(forge|tests)/.*$
+        args: [--config=forge/.flake8]
+
+      - id: flake8
+        name: Lint - Flake8 - Benchmark
+        alias: flake8-benchmark
+        files: ^benchmark/(agbenchmark|tests)/.*$
+        args: [--config=benchmark/.flake8]
+
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.364
+    hooks:
+      - id: pyright
+        name: Typecheck (Pyright) - AutoGPT
+        alias: pyright-autogpt
+        # include forge since it's a path dependency:
+        files: ^(autogpt|forge)/((autogpt|forge|tests)/.*|poetry\.lock)$
+        args: [-p, autogpt]
+        pass_filenames: false
+
+      - id: pyright
+        name: Typecheck (Pyright) - Forge
+        alias: pyright-forge
+        files: ^forge/(forge/.*|poetry\.lock)$
+        args: [-p, forge]
+        pass_filenames: false
+
+      - id: pyright
+        name: Typecheck (Pyright) - Benchmark
+        alias: pyright-benchmark
+        files: ^benchmark/(agbenchmark|tests)/.*$
+        args: [-p, benchmark]
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: pytest-autogpt
+        name: Pytest - AutoGPT (excluding slow tests)
+        entry: bash -c 'cd autogpt && poetry run pytest --cov=autogpt -m "not slow" tests/unit tests/integration'
+        verbose: true
+        language: system
+        pass_filenames: false
+        files: ^(autogpt|forge)/((autogpt|forge|tests)/.*|poetry\.lock)$
+
+      - id: pytest-forge
+        name: Pytest - Forge (excluding slow tests)
+        entry: bash -c 'cd forge && poetry run pytest --cov=forge -m "not slow"'
+        verbose: true
+        language: system
+        pass_filenames: false
+        files: ^forge/((forge|tests)/.*|poetry\.lock)$
