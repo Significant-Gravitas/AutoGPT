@@ -14,21 +14,21 @@ repos:
     hooks:
       - id: isort-autogpt
         name: Lint - isort - AutoGPT
-        entry: cd autogpt && poetry run isort
+        entry: poetry -C autogpt run isort
         files: ^autogpt/
         types: [file, python]
         language: system
 
       - id: isort-forge
         name: Lint - isort - Forge
-        entry: cd forge && poetry run isort
+        entry: poetry -C forge run isort
         files: ^forge/
         types: [file, python]
         language: system
 
       - id: isort-benchmark
         name: Lint - isort - Benchmark
-        entry: cd benchmark && poetry run isort
+        entry: poetry -C benchmark run isort
         files: ^benchmark/
         types: [file, python]
         language: system
