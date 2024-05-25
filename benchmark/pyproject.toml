@@ -37,7 +37,7 @@ click-default-group = "^1.2.4"
 tabulate = "^0.9.0"
 
 [tool.poetry.group.dev.dependencies]
-black = "^24.0.0"
+black = "^23.12.1"
 flake8 = "^7.0.0"
 isort = "^5.13.1"
 pyright = "^1.1.364"
