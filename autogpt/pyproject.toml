@@ -1,9 +1,7 @@
 [tool.poetry]
 name = "agpt"
 version = "0.5.0"
-authors = [
-  "Significant Gravitas <support@agpt.co>",
-]
+authors = ["Significant Gravitas <support@agpt.co>"]
 readme = "README.md"
 description = "An open-source attempt to make GPT-4 autonomous"
 homepage = "https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt"
@@ -30,7 +28,7 @@ charset-normalizer = "^3.1.0"
 click = "*"
 colorama = "^0.4.6"
 distro = "^1.8.0"
-en-core-web-sm = {url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl"}
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl" }
 fastapi = "^0.109.1"
 ftfy = "^6.1.1"
 google-api-python-client = "*"
@@ -67,13 +65,13 @@ psycopg2-binary = "^2.9.9"
 benchmark = ["agbenchmark"]
 
 [tool.poetry.group.dev.dependencies]
-black = "*"
-boto3-stubs = {extras = ["s3"], version = "^1.33.6"}
-flake8 = "*"
+black = "^24.0.0"
+boto3-stubs = { extras = ["s3"], version = "^1.33.6" }
+flake8 = "^7.0.0"
 gitpython = "^3.1.32"
-isort = "*"
-mypy = "*"
+isort = "^5.13.1"
 pre-commit = "*"
+pyright = "^1.1.364"
 types-beautifulsoup4 = "*"
 types-colorama = "*"
 types-Markdown = "*"
@@ -90,7 +88,7 @@ pytest-integration = "*"
 pytest-mock = "*"
 pytest-recording = "*"
 pytest-xdist = "*"
-vcrpy = {git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master"}
+vcrpy = { git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master" }
 
 
 [build-system]
@@ -111,20 +109,9 @@ skip_glob = ["data"]
 
 [tool.pyright]
 pythonVersion = "3.10"
-exclude = [
-    "data/**",
-    "**/node_modules",
-    "**/__pycache__",
-    "**/.*",
-]
-ignore = [
-    "../forge/**"
-]
+exclude = ["data/**", "**/node_modules", "**/__pycache__", "**/.*"]
+ignore = ["../forge/**"]
 
 
 [tool.pytest.ini_options]
-markers = [
-    "slow",
-    "requires_openai_api_key",
-    "requires_huggingface_api_key"
-]
+markers = ["slow", "requires_openai_api_key", "requires_huggingface_api_key"]

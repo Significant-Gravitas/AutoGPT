@@ -10,13 +10,28 @@ repos:
       - id: check-symlinks
       - id: debug-statements
 
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.1
+  - repo: local
     hooks:
-      - id: isort
-        name: Lint - isort
-        language_version: python3.10
-        args: [--resolve-all-configs, --profile, black]
+      - id: isort-autogpt
+        name: Lint - isort - AutoGPT
+        entry: cd autogpt && poetry run isort
+        files: ^autogpt/
+        types: [file, python]
+        language: system
+
+      - id: isort-forge
+        name: Lint - isort - Forge
+        entry: cd forge && poetry run isort
+        files: ^forge/
+        types: [file, python]
+        language: system
+
+      - id: isort-benchmark
+        name: Lint - isort - Benchmark
+        entry: cd benchmark && poetry run isort
+        files: ^benchmark/
+        types: [file, python]
+        language: system
 
   - repo: https://github.com/psf/black
     rev: 24.4.2
@@ -31,19 +46,19 @@ repos:
       - id: flake8
         name: Lint - Flake8 - AutoGPT
         alias: flake8-autogpt
-        files: ^autogpt/(autogpt|tests)/.*$
+        files: ^autogpt/(autogpt|tests)/
         args: [--config=autogpt/.flake8]
 
       - id: flake8
         name: Lint - Flake8 - Forge
         alias: flake8-forge
-        files: ^forge/(forge|tests)/.*$
+        files: ^forge/(forge|tests)/
         args: [--config=forge/.flake8]
 
       - id: flake8
         name: Lint - Flake8 - Benchmark
         alias: flake8-benchmark
-        files: ^benchmark/(agbenchmark|tests)/.*$
+        files: ^benchmark/(agbenchmark|tests)/
         args: [--config=benchmark/.flake8]
 
   - repo: https://github.com/RobertCraigie/pyright-python
@@ -53,21 +68,21 @@ repos:
         name: Typecheck (Pyright) - AutoGPT
         alias: pyright-autogpt
         # include forge since it's a path dependency:
-        files: ^(autogpt|forge)/((autogpt|forge|tests)/.*|poetry\.lock)$
+        files: ^(autogpt|forge)/((autogpt|forge|tests)/|poetry\.lock$)
         args: [-p, autogpt]
         pass_filenames: false
 
       - id: pyright
         name: Typecheck (Pyright) - Forge
         alias: pyright-forge
-        files: ^forge/(forge/.*|poetry\.lock)$
+        files: ^forge/(forge/|poetry\.lock$)
         args: [-p, forge]
         pass_filenames: false
 
       - id: pyright
         name: Typecheck (Pyright) - Benchmark
         alias: pyright-benchmark
-        files: ^benchmark/(agbenchmark|tests)/.*$
+        files: ^benchmark/(agbenchmark|tests)/
         args: [-p, benchmark]
         pass_filenames: false
 
@@ -79,7 +94,7 @@ repos:
         verbose: true
         language: system
         pass_filenames: false
-        files: ^(autogpt|forge)/((autogpt|forge|tests)/.*|poetry\.lock)$
+        files: ^(autogpt|forge)/((autogpt|forge|tests)/|poetry\.lock$)
 
       - id: pytest-forge
         name: Pytest - Forge (excluding slow tests)
@@ -87,4 +102,4 @@ repos:
         verbose: true
         language: system
         pass_filenames: false
-        files: ^forge/((forge|tests)/.*|poetry\.lock)$
+        files: ^forge/(forge/|tests/|poetry\.lock$)
