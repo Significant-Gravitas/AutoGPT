@@ -44,7 +44,7 @@ from forge.models.action import (
     ActionResult,
     ActionSuccessResult,
 )
-from forge.models.config import Configurable
+from forge.models.config import ComponentConfiguration, Configurable
 from forge.utils.exceptions import (
     AgentException,
     AgentTerminated,
@@ -126,8 +126,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.file_manager = FileManagerComponent(settings, file_storage)
         self.code_executor = CodeExecutorComponent(
             self.file_manager.workspace,
-            settings,
-            legacy_config,
+            settings
         )
         self.git_ops = GitOperationsComponent(legacy_config)
         self.image_gen = ImageGeneratorComponent(
@@ -156,6 +155,9 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             The command name and arguments, if any, and the agent's thoughts.
         """
         self.reset_trace()
+        json = self.serialize_configs()
+        logger.info(f"Configs: {json}")
+        self.deserialize_configs(json)
 
         # Get directives
         resources = await self.run_pipeline(DirectiveProvider.get_resources)

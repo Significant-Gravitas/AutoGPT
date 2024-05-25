@@ -31,6 +31,11 @@ def UserConfigurable(
     )
 
 
+class ComponentConfiguration(BaseModel):
+    """Base class for component configuration models."""
+    pass
+
+
 class SystemConfiguration(BaseModel):
     def get_user_config(self) -> dict[str, Any]:
         return _recurse_user_config_values(self)

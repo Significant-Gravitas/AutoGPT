@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import inspect
+import json
 import logging
 from abc import ABCMeta, abstractmethod
 from typing import (
@@ -25,6 +26,7 @@ from forge.agent import protocols
 from forge.agent.components import (
     AgentComponent,
     ComponentEndpointError,
+    ConfigurableComponent,
     EndpointPipelineError,
 )
 from forge.config.ai_directives import AIDirectives
@@ -33,6 +35,7 @@ from forge.config.config import ConfigBuilder
 from forge.llm.providers import CHAT_MODELS, ModelName, OpenAIModelName
 from forge.llm.providers.schema import ChatModelInfo
 from forge.models.config import (
+    ComponentConfiguration,
     Configurable,
     SystemConfiguration,
     SystemSettings,
@@ -131,9 +134,6 @@ class AgentMeta(ABCMeta):
         # Automatically collect modules after the instance is created
         instance._collect_components()
         return instance
-
-
-
 
 
 class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
@@ -282,6 +282,25 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
             except Exception as e:
                 raise e
         return method_result
+    
+    def serialize_configs(self) -> str:
+        configs = {}
+        for component in self.components:
+            if isinstance(component, ConfigurableComponent):
+                config_type_name = component.config.__class__.__name__
+                configs[config_type_name] = component.config.dict()
+        return json.dumps(configs, indent=4)
+    
+    def deserialize_configs(self, serialized_configs: str):
+        configs_dict = json.loads(serialized_configs)
+        
+        for component in self.components:
+            if not isinstance(component, ConfigurableComponent):
+                continue
+            config_type = type(component.config)
+            config_type_name = config_type.__name__
+            if config_type_name in configs_dict:
+                component.config = config_type.parse_raw(json.dumps(configs_dict[config_type_name]))
 
     def _collect_components(self):
         components = [

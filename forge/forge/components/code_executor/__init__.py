@@ -1,6 +1,4 @@
 from .code_executor import (
-    ALLOWLIST_CONTROL,
-    DENYLIST_CONTROL,
     CodeExecutionError,
     CodeExecutorComponent,
     is_docker_available,
