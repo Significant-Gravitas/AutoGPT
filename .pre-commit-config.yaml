@@ -69,21 +69,21 @@ repos:
         alias: pyright-autogpt
         # include forge since it's a path dependency:
         files: ^(autogpt|forge)/((autogpt|forge|tests)/|poetry\.lock$)
-        args: [-p, autogpt]
+        args: [-p, autogpt, autogpt]
         pass_filenames: false
 
       - id: pyright
         name: Typecheck (Pyright) - Forge
         alias: pyright-forge
         files: ^forge/(forge/|poetry\.lock$)
-        args: [-p, forge]
+        args: [-p, forge, forge]
         pass_filenames: false
 
       - id: pyright
         name: Typecheck (Pyright) - Benchmark
         alias: pyright-benchmark
         files: ^benchmark/(agbenchmark|tests)/
-        args: [-p, benchmark]
+        args: [-p, benchmark, benchmark]
         pass_filenames: false
 
   - repo: local
