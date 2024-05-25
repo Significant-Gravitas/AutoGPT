@@ -14,6 +14,8 @@ try:
 except GoogleAuthError:
     pytest.skip("Google Cloud Authentication not configured", allow_module_level=True)
 
+pytestmark = pytest.mark.slow
+
 
 @pytest.fixture(scope="module")
 def gcs_bucket_name() -> str:
