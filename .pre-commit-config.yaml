@@ -117,3 +117,10 @@ repos:
         files: ^forge/(forge/|tests/|poetry\.lock$)
         language: system
         pass_filenames: false
+
+      - id: pytest-benchmark
+        name: Run tests - Benchmark
+        entry: bash -c 'cd benchmark && poetry run pytest --cov=benchmark'
+        files: ^benchmark/(agbenchmark/|tests/|poetry\.lock$)
+        language: system
+        pass_filenames: false
