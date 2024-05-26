@@ -64,6 +64,7 @@ flake8 = "^7.0.0"
 isort = "^5.13.1"
 pyright = "^1.1.364"
 pre-commit = "^3.3.3"
+boto3-stubs = { extras = ["s3"], version = "^1.33.6" }
 types-requests = "^2.31.0.2"
 pytest = "^7.4.0"
 pytest-asyncio = "^0.21.1"
