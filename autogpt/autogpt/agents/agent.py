@@ -124,7 +124,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             ActionHistoryConfiguration(max_tokens=self.send_token_limit),
         ).run_after(WatchdogComponent)
         self.user_interaction = UserInteractionComponent(legacy_config)
-        self.file_manager = FileManagerComponent(settings, file_storage)
+        self.file_manager = FileManagerComponent(file_storage, settings)
         self.code_executor = CodeExecutorComponent(
             self.file_manager.workspace,
             settings
