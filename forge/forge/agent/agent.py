@@ -198,7 +198,7 @@ class Agent:
             raise
         return artifact
 
-    async def get_artifact(self, task_id: str, artifact_id: str) -> Artifact:
+    async def get_artifact(self, task_id: str, artifact_id: str) -> StreamingResponse:
         """
         Get an artifact by ID.
         """
@@ -208,7 +208,7 @@ class Agent:
                 file_path = os.path.join(artifact.relative_path, artifact.file_name)
             else:
                 file_path = artifact.relative_path
-            retrieved_artifact = self.workspace.read_file(file_path)
+            retrieved_artifact = self.workspace.read_file(file_path, binary=True)
         except NotFoundError as e:
             raise
         except FileNotFoundError as e:

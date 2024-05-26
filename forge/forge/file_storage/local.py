@@ -50,6 +50,8 @@ class LocalFileStorage(FileStorage):
 
     def _open_file(self, path: str | Path, mode: str) -> IO:
         full_path = self.get_path(path)
+        if any(m in mode for m in ("w", "a", "x")):
+            full_path.parent.mkdir(parents=True, exist_ok=True)
         return open(full_path, mode)  # type: ignore
 
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:

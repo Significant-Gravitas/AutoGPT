@@ -1,4 +1,4 @@
-from .artifact import Artifact, ArtifactUpload
+from .artifact import Artifact
 from .pagination import Pagination
 from .task import (
     Step,

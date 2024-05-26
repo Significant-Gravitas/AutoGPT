@@ -222,7 +222,7 @@ async def test_create_and_get_step():
     db_name = "sqlite:///test_db.sqlite3"
     agent_db = AgentDB(db_name)
     task = await agent_db.create_task("task_input")
-    step_input = StepInput(type="python/code")
+    step_input = {"type": "python/code"}
     request = StepRequestBody(input="test_input debug", additional_input=step_input)
     step = await agent_db.create_step(task.task_id, request)
     step = await agent_db.get_step(task.task_id, step.step_id)
@@ -235,7 +235,7 @@ async def test_updating_step():
     db_name = "sqlite:///test_db.sqlite3"
     agent_db = AgentDB(db_name)
     created_task = await agent_db.create_task("task_input")
-    step_input = StepInput(type="python/code")
+    step_input = {"type": "python/code"}
     request = StepRequestBody(input="test_input debug", additional_input=step_input)
     created_step = await agent_db.create_step(created_task.task_id, request)
     await agent_db.update_step(created_task.task_id, created_step.step_id, "completed")
@@ -261,7 +261,7 @@ async def test_get_artifact():
 
     # Given: A task and its corresponding artifact
     task = await db.create_task("test_input debug")
-    step_input = StepInput(type="python/code")
+    step_input = {"type": "python/code"}
     requst = StepRequestBody(input="test_input debug", additional_input=step_input)
 
     step = await db.create_step(task.task_id, requst)
@@ -312,14 +312,14 @@ async def test_list_steps():
     db_name = "sqlite:///test_db.sqlite3"
     db = AgentDB(db_name)
 
-    step_input = StepInput(type="python/code")
-    requst = StepRequestBody(input="test_input debug", additional_input=step_input)
+    step_input = {"type": "python/code"}
+    request = StepRequestBody(input="test_input debug", additional_input=step_input)
 
     # Given: A task and multiple steps for that task
     task = await db.create_task("test_input")
-    step1 = await db.create_step(task.task_id, requst)
-    requst = StepRequestBody(input="step two", additional_input=step_input)
-    step2 = await db.create_step(task.task_id, requst)
+    step1 = await db.create_step(task.task_id, request)
+    request = StepRequestBody(input="step two")
+    step2 = await db.create_step(task.task_id, request)
 
     # When: All steps for the task are fetched
     fetched_steps, pagination = await db.list_steps(task.task_id)
