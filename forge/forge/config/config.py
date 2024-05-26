@@ -98,16 +98,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         from_env=lambda: os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True",
     )
 
-    # Text to image
-    image_provider: Optional[str] = UserConfigurable(from_env="IMAGE_PROVIDER")
-    huggingface_image_model: str = UserConfigurable(
-        default="CompVis/stable-diffusion-v1-4", from_env="HUGGINGFACE_IMAGE_MODEL"
-    )
-    sd_webui_url: Optional[str] = UserConfigurable(
-        default="http://localhost:7860", from_env="SD_WEBUI_URL"
-    )
-    image_size: int = UserConfigurable(default=256, from_env="IMAGE_SIZE")
-
     # Audio to text
     audio_to_text_provider: str = UserConfigurable(
         default="huggingface", from_env="AUDIO_TO_TEXT_PROVIDER"
@@ -140,14 +130,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     google_custom_search_engine_id: Optional[str] = UserConfigurable(
         from_env="GOOGLE_CUSTOM_SEARCH_ENGINE_ID",
     )
-
-    # Huggingface
-    huggingface_api_token: Optional[str] = UserConfigurable(
-        from_env="HUGGINGFACE_API_TOKEN"
-    )
-
-    # Stable Diffusion
-    sd_webui_auth: Optional[str] = UserConfigurable(from_env="SD_WEBUI_AUTH")
 
     @validator("openai_functions")
     def validate_openai_functions(cls, v: bool, values: dict[str, Any]):

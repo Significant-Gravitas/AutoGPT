@@ -131,7 +131,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         )
         self.git_ops = GitOperationsComponent()
         self.image_gen = ImageGeneratorComponent(
-            self.file_manager.workspace, legacy_config
+            self.file_manager.workspace
         )
         self.web_search = WebSearchComponent(legacy_config)
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)

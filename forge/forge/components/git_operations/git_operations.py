@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Iterator, Optional
 
 from git.repo import Repo
+from pydantic import SecretStr
 
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider
@@ -13,8 +14,8 @@ from forge.utils.url_validator import validate_url
 
 
 class GitOperationsConfiguration(ComponentConfiguration):
-    github_username: str = FromEnv("GITHUB_USERNAME")
-    github_api_key: str = FromEnv("GITHUB_API_KEY")
+    github_username: Optional[str] = FromEnv("GITHUB_USERNAME")
+    github_api_key: Optional[SecretStr] = FromEnv("GITHUB_API_KEY")
 
 
 class GitOperationsComponent(CommandProvider, ConfigurableComponent[GitOperationsConfiguration]):
@@ -56,8 +57,8 @@ class GitOperationsComponent(CommandProvider, ConfigurableComponent[GitOperation
         """
         split_url = url.split("//")
         auth_repo_url = (
-            f"//{self.legacy_config.github_username}:"
-            f"{self.legacy_config.github_api_key}@".join(split_url)
+            f"//{self.config.github_username}:"
+            f"{self.config.github_api_key.get_secret_value()}@".join(split_url)
         )
         try:
             Repo.clone_from(url=auth_repo_url, to_path=clone_path)

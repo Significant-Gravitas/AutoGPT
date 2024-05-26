@@ -25,7 +25,6 @@ Configuration is controlled through the `Config` object. You can set configurati
 - `HUGGINGFACE_API_TOKEN`: HuggingFace API, to be used for both image generation and audio to text. Optional.
 - `HUGGINGFACE_AUDIO_TO_TEXT_MODEL`: HuggingFace audio to text model. Default: CompVis/stable-diffusion-v1-4
 - `HUGGINGFACE_IMAGE_MODEL`: HuggingFace model to use for image generation. Default: CompVis/stable-diffusion-v1-4
-- `IMAGE_PROVIDER`: Image provider. Options are `dalle`, `huggingface`, and `sdwebui`. Default: dalle
 - `IMAGE_SIZE`: Default size of image to generate. Default: 256
 - `OPENAI_API_KEY`: *REQUIRED*- Your [OpenAI API Key](https://platform.openai.com/account/api-keys).
 - `OPENAI_ORGANIZATION`: Organization ID in OpenAI. Optional.
