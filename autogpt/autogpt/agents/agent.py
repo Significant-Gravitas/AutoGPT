@@ -129,7 +129,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             self.file_manager.workspace,
             settings
         )
-        self.git_ops = GitOperationsComponent(legacy_config)
+        self.git_ops = GitOperationsComponent()
         self.image_gen = ImageGeneratorComponent(
             self.file_manager.workspace, legacy_config
         )

@@ -1,21 +1,28 @@
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Optional
 
 from git.repo import Repo
 
+from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
-from forge.config.config import Config
+from forge.models.config import ComponentConfiguration, FromEnv
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError
 from forge.utils.url_validator import validate_url
 
 
-class GitOperationsComponent(CommandProvider):
+class GitOperationsConfiguration(ComponentConfiguration):
+    github_username: str = FromEnv("GITHUB_USERNAME")
+    github_api_key: str = FromEnv("GITHUB_API_KEY")
+
+
+class GitOperationsComponent(CommandProvider, ConfigurableComponent[GitOperationsConfiguration]):
     """Provides commands to perform Git operations."""
 
-    def __init__(self, config: Config):
-        self._enabled = bool(config.github_username and config.github_api_key)
+    def __init__(self, config: Optional[GitOperationsConfiguration] = None):
+        super().__init__(config or GitOperationsConfiguration())
+        self._enabled = bool(self.config.github_username and self.config.github_api_key)
         self._disabled_reason = "Configure github_username and github_api_key."
         self.legacy_config = config
 

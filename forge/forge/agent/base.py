@@ -300,7 +300,17 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
             config_type = type(component.config)
             config_type_name = config_type.__name__
             if config_type_name in configs_dict:
-                component.config = config_type.parse_raw(json.dumps(configs_dict[config_type_name]))
+                # Parse the serialized data and update the existing config
+                updated_data = json.loads(json.dumps(configs_dict[config_type_name]))
+                self._update_config_with_defaults(component.config, updated_data)
+
+    def _update_config_with_defaults(self, config: BaseModel, data: dict[str, Any]) -> None:
+        for key, value in data.items():
+            current_value = getattr(config, key)
+            if isinstance(current_value, BaseModel) and isinstance(value, dict):
+                self._update_config_with_defaults(current_value, value)
+            else:
+                setattr(config, key, value)
 
     def _collect_components(self):
         components = [

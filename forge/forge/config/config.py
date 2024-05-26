@@ -135,10 +135,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         default=AZURE_CONFIG_FILE, from_env="AZURE_CONFIG_FILE"
     )
 
-    # Github
-    github_api_key: Optional[str] = UserConfigurable(from_env="GITHUB_API_KEY")
-    github_username: Optional[str] = UserConfigurable(from_env="GITHUB_USERNAME")
-
     # Google
     google_api_key: Optional[str] = UserConfigurable(from_env="GOOGLE_API_KEY")
     google_custom_search_engine_id: Optional[str] = UserConfigurable(
