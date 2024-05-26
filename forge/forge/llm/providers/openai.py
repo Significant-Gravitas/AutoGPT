@@ -78,8 +78,11 @@ class OpenAIModelName(str, enum.Enum):
     GPT4_TURBO = "gpt-4-turbo"
     GPT4_TURBO_PREVIEW = "gpt-4-turbo-preview"
     GPT4_VISION = "gpt-4-vision-preview"
+    GPT4_O_v1 = "gpt-4o-2024-05-13"
+    GPT4_O_ROLLING = "gpt-4o"
     GPT4 = GPT4_ROLLING
     GPT4_32k = GPT4_ROLLING_32k
+    GPT4_O = GPT4_O_ROLLING
 
 
 OPEN_AI_EMBEDDING_MODELS = {
@@ -169,6 +172,14 @@ OPEN_AI_CHAT_MODELS = {
             max_tokens=128000,
             has_function_call_api=True,
         ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT4_O,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=5 / 1_000_000,
+            completion_token_cost=15 / 1_000_000,
+            max_tokens=128_000,
+            has_function_call_api=True,
+        ),
     ]
 }
 # Copy entries for models with equivalent specs
@@ -189,6 +200,7 @@ chat_model_mapping = {
         OpenAIModelName.GPT4_TURBO_PREVIEW,
         OpenAIModelName.GPT4_v5,
     ],
+    OpenAIModelName.GPT4_O: [OpenAIModelName.GPT4_O_v1],
 }
 for base, copies in chat_model_mapping.items():
     for copy in copies:
