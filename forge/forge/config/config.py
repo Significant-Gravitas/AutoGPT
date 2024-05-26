@@ -125,12 +125,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         default=AZURE_CONFIG_FILE, from_env="AZURE_CONFIG_FILE"
     )
 
-    # Google
-    google_api_key: Optional[str] = UserConfigurable(from_env="GOOGLE_API_KEY")
-    google_custom_search_engine_id: Optional[str] = UserConfigurable(
-        from_env="GOOGLE_CUSTOM_SEARCH_ENGINE_ID",
-    )
-
     @validator("openai_functions")
     def validate_openai_functions(cls, v: bool, values: dict[str, Any]):
         if v:

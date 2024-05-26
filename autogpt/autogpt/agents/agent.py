@@ -115,7 +115,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.commands: list[Command] = []
 
         # Components
-        self.system = SystemComponent(legacy_config, settings.ai_profile)
+        self.system = SystemComponent(settings.ai_profile)
         self.history = ActionHistoryComponent(
             settings.history,
             lambda x: self.llm_provider.count_tokens(x, self.llm.name),
@@ -123,7 +123,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             llm_provider,
             ActionHistoryConfiguration(max_tokens=self.send_token_limit),
         ).run_after(WatchdogComponent)
-        self.user_interaction = UserInteractionComponent(legacy_config)
+        self.user_interaction = UserInteractionComponent(legacy_config.noninteractive_mode)
         self.file_manager = FileManagerComponent(file_storage, settings)
         self.code_executor = CodeExecutorComponent(
             self.file_manager.workspace,
@@ -133,7 +133,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.image_gen = ImageGeneratorComponent(
             self.file_manager.workspace
         )
-        self.web_search = WebSearchComponent(legacy_config)
+        self.web_search = WebSearchComponent()
         self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
         self.context = ContextComponent(self.file_manager.workspace, settings.context)
         self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(

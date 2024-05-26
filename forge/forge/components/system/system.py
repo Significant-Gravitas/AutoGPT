@@ -5,7 +5,6 @@ from typing import Iterator
 from forge.agent.protocols import CommandProvider, DirectiveProvider, MessageProvider
 from forge.command import Command, command
 from forge.config.ai_profile import AIProfile
-from forge.config.config import Config
 from forge.llm.providers import ChatMessage
 from forge.models.json_schema import JSONSchema
 from forge.utils.const import FINISH_COMMAND
@@ -17,8 +16,7 @@ logger = logging.getLogger(__name__)
 class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
     """Component for system messages and commands."""
 
-    def __init__(self, config: Config, profile: AIProfile):
-        self.legacy_config = config
+    def __init__(self, profile: AIProfile):
         self.profile = profile
 
     def get_constraints(self) -> Iterator[str]:

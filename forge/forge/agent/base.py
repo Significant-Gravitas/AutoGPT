@@ -304,13 +304,14 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
                 updated_data = json.loads(json.dumps(configs_dict[config_type_name]))
                 self._update_config_with_defaults(component.config, updated_data)
 
-    def _update_config_with_defaults(self, config: BaseModel, data: dict[str, Any]) -> None:
+    def _update_config_with_defaults(self, config: BaseModel, data: dict[str, Any]) -> BaseModel:
+        config_data = config.dict()
         for key, value in data.items():
-            current_value = getattr(config, key)
+            current_value = getattr(config, key, None)
             if isinstance(current_value, BaseModel) and isinstance(value, dict):
-                self._update_config_with_defaults(current_value, value)
-            else:
-                setattr(config, key, value)
+                value = self._update_config_with_defaults(current_value, value).dict()
+            config_data[key] = value
+        return config.__class__(**config_data)
 
     def _collect_components(self):
         components = [

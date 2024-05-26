@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING
 
@@ -20,7 +22,7 @@ class WatchdogComponent(AfterParse):
 
     def __init__(
         self,
-        config: "BaseAgentConfiguration",
+        config: BaseAgentConfiguration,
         event_history: EpisodicActionHistory[ActionProposal],
     ):
         self.config = config
