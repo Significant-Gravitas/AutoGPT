@@ -65,7 +65,7 @@ class LoggingConfig(SystemConfiguration):
     log_dir: Path = LOG_DIR
     log_file_format: Optional[LogFormatName] = UserConfigurable(
         default=LogFormatName.SIMPLE,
-        from_env=lambda: os.getenv(
+        from_env=lambda: os.getenv(  # type: ignore
             "LOG_FILE_FORMAT", os.getenv("LOG_FORMAT", "simple")
         ),
     )
