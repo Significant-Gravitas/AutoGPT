@@ -15,6 +15,7 @@ from openai.types.chat import (
     ChatCompletionMessage,
     ChatCompletionMessageParam,
 )
+from openai.types.shared_params import FunctionDefinition
 from pydantic import SecretStr
 
 from forge.json.parsing import json_loads
@@ -23,14 +24,14 @@ from forge.llm.providers.schema import (
     AssistantFunctionCall,
     AssistantToolCall,
     AssistantToolCallDict,
+    BaseChatModelProvider,
+    BaseEmbeddingModelProvider,
     ChatMessage,
     ChatModelInfo,
-    ChatModelProvider,
     ChatModelResponse,
     CompletionModelFunction,
     Embedding,
     EmbeddingModelInfo,
-    EmbeddingModelProvider,
     EmbeddingModelResponse,
     ModelProviderBudget,
     ModelProviderConfiguration,
@@ -39,7 +40,7 @@ from forge.llm.providers.schema import (
     ModelProviderSettings,
     ModelTokenizer,
 )
-from forge.models.config import Configurable, UserConfigurable
+from forge.models.config import UserConfigurable
 from forge.models.json_schema import JSONSchema
 
 from .utils import validate_tool_calls
@@ -223,7 +224,7 @@ class OpenAIConfiguration(ModelProviderConfiguration):
 class OpenAICredentials(ModelProviderCredentials):
     """Credentials for OpenAI."""
 
-    api_key: SecretStr = UserConfigurable(from_env="OPENAI_API_KEY")
+    api_key: SecretStr = UserConfigurable(from_env="OPENAI_API_KEY")  # type: ignore
     api_base: Optional[SecretStr] = UserConfigurable(
         default=None, from_env="OPENAI_API_BASE_URL"
     )
@@ -243,7 +244,7 @@ class OpenAICredentials(ModelProviderCredentials):
 
     def get_api_access_kwargs(self) -> dict[str, str]:
         kwargs = {
-            k: (v.get_secret_value() if type(v) is SecretStr else v)
+            k: v.get_secret_value()
             for k, v in {
                 "api_key": self.api_key,
                 "base_url": self.api_base,
@@ -275,8 +276,8 @@ class OpenAICredentials(ModelProviderCredentials):
         except AssertionError as e:
             raise ValueError(*e.args)
 
-        self.api_type = config_params.get("azure_api_type", "azure")
-        self.api_version = config_params.get("azure_api_version", "")
+        self.api_type = config_params.get("azure_api_type", "azure")  # type: ignore
+        self.api_version = config_params.get("azure_api_version", "")  # type: ignore
         self.azure_endpoint = config_params.get("azure_endpoint")
         self.azure_model_to_deploy_id_map = config_params.get("azure_model_map")
 
@@ -294,13 +295,14 @@ class OpenAICredentials(ModelProviderCredentials):
 
 
 class OpenAISettings(ModelProviderSettings):
-    configuration: OpenAIConfiguration
-    credentials: Optional[OpenAICredentials]
-    budget: ModelProviderBudget
+    configuration: OpenAIConfiguration  # type: ignore
+    credentials: Optional[OpenAICredentials]  # type: ignore
+    budget: ModelProviderBudget  # type: ignore
 
 
 class OpenAIProvider(
-    Configurable[OpenAISettings], ChatModelProvider, EmbeddingModelProvider
+    BaseChatModelProvider[OpenAIModelName, OpenAISettings],
+    BaseEmbeddingModelProvider[OpenAIModelName, OpenAISettings],
 ):
     default_settings = OpenAISettings(
         name="openai_provider",
@@ -334,32 +336,33 @@ class OpenAIProvider(
 
             # API key and org (if configured) are passed, the rest of the required
             # credentials is loaded from the environment by the AzureOpenAI client.
-            self._client = AsyncAzureOpenAI(**self._credentials.get_api_access_kwargs())
+            self._client = AsyncAzureOpenAI(
+                **self._credentials.get_api_access_kwargs()  # type: ignore
+            )
         else:
             from openai import AsyncOpenAI
 
-            self._client = AsyncOpenAI(**self._credentials.get_api_access_kwargs())
+            self._client = AsyncOpenAI(
+                **self._credentials.get_api_access_kwargs()  # type: ignore
+            )
 
-    async def get_available_models(self) -> list[ChatModelInfo]:
+    async def get_available_models(self) -> list[ChatModelInfo[OpenAIModelName]]:
         _models = (await self._client.models.list()).data
         return [OPEN_AI_MODELS[m.id] for m in _models if m.id in OPEN_AI_MODELS]
 
-    def get_token_limit(self, model_name: str) -> int:
+    def get_token_limit(self, model_name: OpenAIModelName) -> int:
         """Get the token limit for a given model."""
         return OPEN_AI_MODELS[model_name].max_tokens
 
-    @classmethod
-    def get_tokenizer(cls, model_name: OpenAIModelName) -> ModelTokenizer:
+    def get_tokenizer(self, model_name: OpenAIModelName) -> ModelTokenizer[int]:
         return tiktoken.encoding_for_model(model_name)
 
-    @classmethod
-    def count_tokens(cls, text: str, model_name: OpenAIModelName) -> int:
-        encoding = cls.get_tokenizer(model_name)
+    def count_tokens(self, text: str, model_name: OpenAIModelName) -> int:
+        encoding = self.get_tokenizer(model_name)
         return len(encoding.encode(text))
 
-    @classmethod
     def count_message_tokens(
-        cls,
+        self,
         messages: ChatMessage | list[ChatMessage],
         model_name: OpenAIModelName,
     ) -> int:
@@ -447,7 +450,7 @@ class OpenAIProvider(
                 parse_errors += validate_tool_calls(tool_calls, functions)
 
             assistant_msg = AssistantChatMessage(
-                content=_assistant_msg.content,
+                content=_assistant_msg.content or "",
                 tool_calls=tool_calls or None,
             )
 
@@ -466,7 +469,7 @@ class OpenAIProvider(
 
                 return ChatModelResponse(
                     response=AssistantChatMessage(
-                        content=_assistant_msg.content,
+                        content=_assistant_msg.content or "",
                         tool_calls=tool_calls or None,
                     ),
                     parsed_result=parsed_result,
@@ -492,7 +495,9 @@ class OpenAIProvider(
                     )
 
                 if attempts < self._configuration.fix_failed_parse_tries:
-                    openai_messages.append(_assistant_msg.dict(exclude_none=True))
+                    openai_messages.append(
+                        _assistant_msg.dict(exclude_none=True)  # type: ignore
+                    )
                     openai_messages.append(
                         {
                             "role": "system",
@@ -508,11 +513,12 @@ class OpenAIProvider(
     async def create_embedding(
         self,
         text: str,
-        model_name: OpenAIModelName,
+        model_name: str,
         embedding_parser: Callable[[Embedding], Embedding],
         **kwargs,
     ) -> EmbeddingModelResponse:
         """Create an embedding using the OpenAI API."""
+        model_name = OpenAIModelName(model_name)
         embedding_kwargs = self._get_embedding_kwargs(model_name, **kwargs)
         response = await self._create_embedding(text=text, **embedding_kwargs)
 
@@ -522,7 +528,10 @@ class OpenAIProvider(
             prompt_tokens_used=response.usage.prompt_tokens,
             completion_tokens_used=0,
         )
-        self._budget.update_usage_and_cost(response)
+        self._budget.update_usage_and_cost(
+            model_info=response.model_info,
+            input_tokens_used=response.prompt_tokens_used,
+        )
         return response
 
     def _get_chat_completion_args(
@@ -549,7 +558,8 @@ class OpenAIProvider(
         if functions:
             if OPEN_AI_CHAT_MODELS[model_name].has_function_call_api:
                 kwargs["tools"] = [
-                    {"type": "function", "function": f.schema} for f in functions
+                    {"type": "function", "function": format_function_def_for_openai(f)}
+                    for f in functions
                 ]
                 if len(functions) == 1:
                     # force the model to call the only specified function
@@ -570,7 +580,7 @@ class OpenAIProvider(
             del kwargs["messages"]
 
         openai_messages: list[ChatCompletionMessageParam] = [
-            message.dict(
+            message.dict(  # type: ignore
                 include={"role", "content", "tool_calls", "name"},
                 exclude_none=True,
             )
@@ -655,7 +665,7 @@ class OpenAIProvider(
 
     def _parse_assistant_tool_calls(
         self, assistant_message: ChatCompletionMessage, compat_mode: bool = False
-    ):
+    ) -> tuple[list[AssistantToolCall], list[Exception]]:
         tool_calls: list[AssistantToolCall] = []
         parse_errors: list[Exception] = []
 
@@ -747,6 +757,24 @@ class OpenAIProvider(
 
     def __repr__(self):
         return "OpenAIProvider()"
+
+
+def format_function_def_for_openai(self: CompletionModelFunction) -> FunctionDefinition:
+    """Returns an OpenAI-consumable function definition"""
+
+    return {
+        "name": self.name,
+        "description": self.description,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                name: param.to_dict() for name, param in self.parameters.items()
+            },
+            "required": [
+                name for name, param in self.parameters.items() if param.required
+            ],
+        },
+    }
 
 
 def format_function_specs_as_typescript_ns(
@@ -888,6 +916,4 @@ def _tool_calls_compat_extract_calls(response: str) -> Iterator[AssistantToolCal
 
     for t in tool_calls:
         t["id"] = str(uuid.uuid4())
-        t["function"]["arguments"] = str(t["function"]["arguments"])  # HACK
-
         yield AssistantToolCall.parse_obj(t)
