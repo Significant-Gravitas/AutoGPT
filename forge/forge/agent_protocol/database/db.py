@@ -4,23 +4,22 @@ It uses SQLite as the database and file store backend.
 IT IS NOT ADVISED TO USE THIS IN PRODUCTION!
 """
 
-import datetime
 import logging
 import math
 import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from sqlalchemy import (
-    JSON,
-    Boolean,
-    Column,
-    DateTime,
-    ForeignKey,
-    String,
-    create_engine,
-)
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, create_engine
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import DeclarativeBase, joinedload, relationship, sessionmaker
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    joinedload,
+    mapped_column,
+    relationship,
+    sessionmaker,
+)
 
 from forge.utils.exceptions import NotFoundError
 
@@ -32,18 +31,20 @@ logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
-    pass
+    type_annotation_map = {
+        dict[str, Any]: JSON,
+    }
 
 
 class TaskModel(Base):
     __tablename__ = "tasks"
 
-    task_id = Column(String, primary_key=True, index=True)
-    input = Column(String)
-    additional_input = Column(JSON)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    modified_at = Column(
-        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
+    task_id: Mapped[str] = mapped_column(primary_key=True, index=True)
+    input: Mapped[str]
+    additional_input: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    modified_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
     artifacts = relationship("ArtifactModel", back_populates="task")
@@ -52,35 +53,35 @@ class TaskModel(Base):
 class StepModel(Base):
     __tablename__ = "steps"
 
-    step_id = Column(String, primary_key=True, index=True)
-    task_id = Column(String, ForeignKey("tasks.task_id"))
-    name = Column(String)
-    input = Column(String)
-    status = Column(String)
-    output = Column(String)
-    is_last = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    modified_at = Column(
-        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
+    step_id: Mapped[str] = mapped_column(primary_key=True, index=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.task_id"))
+    name: Mapped[str]
+    input: Mapped[str]
+    status: Mapped[str]
+    output: Mapped[Optional[str]]
+    is_last: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    modified_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
-    additional_input = Column(JSON)
-    additional_output = Column(JSON)
+    additional_input: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    additional_output: Mapped[Optional[dict[str, Any]]]
     artifacts = relationship("ArtifactModel", back_populates="step")
 
 
 class ArtifactModel(Base):
     __tablename__ = "artifacts"
 
-    artifact_id = Column(String, primary_key=True, index=True)
-    task_id = Column(String, ForeignKey("tasks.task_id"))
-    step_id = Column(String, ForeignKey("steps.step_id"))
-    agent_created = Column(Boolean, default=False)
-    file_name = Column(String)
-    relative_path = Column(String)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    modified_at = Column(
-        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
+    artifact_id: Mapped[str] = mapped_column(primary_key=True, index=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.task_id"))
+    step_id: Mapped[Optional[str]] = mapped_column(ForeignKey("steps.step_id"))
+    agent_created: Mapped[bool] = mapped_column(default=False)
+    file_name: Mapped[str]
+    relative_path: Mapped[str]
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    modified_at: Mapped[datetime] = mapped_column(
+        default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
     step = relationship("StepModel", back_populates="artifacts")

@@ -22,13 +22,15 @@ from forge.agent_protocol.models import (
 )
 from forge.utils.exceptions import NotFoundError as DataNotFoundError
 
+TEST_DB = "sqlite:///test_db.sqlite3"
 
-@pytest.mark.asyncio
+
 def test_table_creation():
-    db_name = "sqlite:///test_db.sqlite3"
-    agent_db = AgentDB(db_name)
+    agent_db = AgentDB(TEST_DB)
 
-    conn = sqlite3.connect("test_db.sqlite3")
+    db_filename = TEST_DB.split("///")[1]
+
+    conn = sqlite3.connect(db_filename)
     cursor = conn.cursor()
 
     # Test for tasks table existence
@@ -45,7 +47,7 @@ def test_table_creation():
     )
     assert cursor.fetchone() is not None
 
-    os.remove(db_name.split("///")[1])
+    os.remove(db_filename)
 
 
 @pytest.mark.asyncio
@@ -118,6 +120,7 @@ async def test_convert_to_task():
         created_at=now,
         modified_at=now,
         input="Write the words you receive to the file 'output.txt'.",
+        additional_input={},
         artifacts=[
             ArtifactModel(
                 artifact_id="b225e278-8b4c-4f99-a696-8facf19f0e56",
@@ -147,6 +150,7 @@ async def test_convert_to_step():
         name="Write to file",
         status="created",
         input="Write the words you receive to the file 'output.txt'.",
+        additional_input={},
         artifacts=[
             ArtifactModel(
                 artifact_id="b225e278-8b4c-4f99-a696-8facf19f0e56",
@@ -190,50 +194,45 @@ async def test_convert_to_artifact():
 async def test_create_task():
     # Having issues with pytest fixture so added setup and teardown in each test as a rapid workaround
     # TODO: Fix this!
-    db_name = "sqlite:///test_db.sqlite3"
-    agent_db = AgentDB(db_name)
+    agent_db = AgentDB(TEST_DB)
 
     task = await agent_db.create_task("task_input")
     assert task.input == "task_input"
-    os.remove(db_name.split("///")[1])
+    os.remove(TEST_DB.split("///")[1])
 
 
 @pytest.mark.asyncio
 async def test_create_and_get_task():
-    db_name = "sqlite:///test_db.sqlite3"
-    agent_db = AgentDB(db_name)
+    agent_db = AgentDB(TEST_DB)
     task = await agent_db.create_task("test_input")
     fetched_task = await agent_db.get_task(task.task_id)
     assert fetched_task.input == "test_input"
-    os.remove(db_name.split("///")[1])
+    os.remove(TEST_DB.split("///")[1])
 
 
 @pytest.mark.asyncio
 async def test_get_task_not_found():
-    db_name = "sqlite:///test_db.sqlite3"
-    agent_db = AgentDB(db_name)
+    agent_db = AgentDB(TEST_DB)
     with pytest.raises(DataNotFoundError):
         await agent_db.get_task(9999)
-    os.remove(db_name.split("///")[1])
+    os.remove(TEST_DB.split("///")[1])
 
 
 @pytest.mark.asyncio
 async def test_create_and_get_step():
-    db_name = "sqlite:///test_db.sqlite3"
-    agent_db = AgentDB(db_name)
+    agent_db = AgentDB(TEST_DB)
     task = await agent_db.create_task("task_input")
     step_input = {"type": "python/code"}
     request = StepRequestBody(input="test_input debug", additional_input=step_input)
     step = await agent_db.create_step(task.task_id, request)
     step = await agent_db.get_step(task.task_id, step.step_id)
     assert step.input == "test_input debug"
-    os.remove(db_name.split("///")[1])
+    os.remove(TEST_DB.split("///")[1])
 
 
 @pytest.mark.asyncio
 async def test_updating_step():
-    db_name = "sqlite:///test_db.sqlite3"
-    agent_db = AgentDB(db_name)
+    agent_db = AgentDB(TEST_DB)
     created_task = await agent_db.create_task("task_input")
     step_input = {"type": "python/code"}
     request = StepRequestBody(input="test_input debug", additional_input=step_input)
@@ -242,22 +241,20 @@ async def test_updating_step():
 
     step = await agent_db.get_step(created_task.task_id, created_step.step_id)
     assert step.status.value == "completed"
-    os.remove(db_name.split("///")[1])
+    os.remove(TEST_DB.split("///")[1])
 
 
 @pytest.mark.asyncio
 async def test_get_step_not_found():
-    db_name = "sqlite:///test_db.sqlite3"
-    agent_db = AgentDB(db_name)
+    agent_db = AgentDB(TEST_DB)
     with pytest.raises(DataNotFoundError):
         await agent_db.get_step(9999, 9999)
-    os.remove(db_name.split("///")[1])
+    os.remove(TEST_DB.split("///")[1])
 
 
 @pytest.mark.asyncio
 async def test_get_artifact():
-    db_name = "sqlite:///test_db.sqlite3"
-    db = AgentDB(db_name)
+    db = AgentDB(TEST_DB)
 
     # Given: A task and its corresponding artifact
     task = await db.create_task("test_input debug")
@@ -285,13 +282,12 @@ async def test_get_artifact():
         == "file:///path/to/test_get_artifact_sample_file.txt"
     )
 
-    os.remove(db_name.split("///")[1])
+    os.remove(TEST_DB.split("///")[1])
 
 
 @pytest.mark.asyncio
 async def test_list_tasks():
-    db_name = "sqlite:///test_db.sqlite3"
-    db = AgentDB(db_name)
+    db = AgentDB(TEST_DB)
 
     # Given: Multiple tasks in the database
     task1 = await db.create_task("test_input_1")
@@ -304,13 +300,12 @@ async def test_list_tasks():
     task_ids = [task.task_id for task in fetched_tasks]
     assert task1.task_id in task_ids
     assert task2.task_id in task_ids
-    os.remove(db_name.split("///")[1])
+    os.remove(TEST_DB.split("///")[1])
 
 
 @pytest.mark.asyncio
 async def test_list_steps():
-    db_name = "sqlite:///test_db.sqlite3"
-    db = AgentDB(db_name)
+    db = AgentDB(TEST_DB)
 
     step_input = {"type": "python/code"}
     request = StepRequestBody(input="test_input debug", additional_input=step_input)
@@ -328,4 +323,4 @@ async def test_list_steps():
     step_ids = [step.step_id for step in fetched_steps]
     assert step1.step_id in step_ids
     assert step2.step_id in step_ids
-    os.remove(db_name.split("///")[1])
+    os.remove(TEST_DB.split("///")[1])

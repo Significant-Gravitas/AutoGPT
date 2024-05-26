@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -17,7 +17,7 @@ class TaskRequestBody(BaseModel):
         description="Input prompt for the task.",
         example="Write the words you receive to the file 'output.txt'.",
     )
-    additional_input: Optional[dict] = None
+    additional_input: dict[str, Any] = Field(default_factory=dict)
 
 
 class Task(TaskRequestBody):
@@ -38,7 +38,7 @@ class Task(TaskRequestBody):
         description="The ID of the task.",
         example="50da533e-3904-4401-8a07-c49adf88b5eb",
     )
-    artifacts: Optional[List[Artifact]] = Field(
+    artifacts: list[Artifact] = Field(
         default_factory=list,
         description="A list of artifacts that the task has produced.",
         example=[
@@ -52,12 +52,10 @@ class StepRequestBody(BaseModel):
     name: Optional[str] = Field(
         default=None, description="The name of the task step.", example="Write to file"
     )
-    input: Optional[str] = Field(
-        default=None,
-        description="Input prompt for the step.",
-        example="Washington",
+    input: str = Field(
+        ..., description="Input prompt for the step.", example="Washington"
     )
-    additional_input: Optional[dict] = None
+    additional_input: dict[str, Any] = Field(default_factory=dict)
 
 
 class StepStatus(Enum):
@@ -100,8 +98,8 @@ class Step(StepRequestBody):
         description="Output of the task step.",
         example="I am going to use the write_to_file command and write Washington to a file called output.txt <write_to_file('output.txt', 'Washington')",
     )
-    additional_output: Optional[dict] = None
-    artifacts: Optional[List[Artifact]] = Field(
+    additional_output: Optional[dict[str, Any]] = None
+    artifacts: list[Artifact] = Field(
         default_factory=list,
         description="A list of artifacts that the step has produced.",
     )
