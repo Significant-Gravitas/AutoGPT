@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import inspect
 import logging
-from io import IOBase
+from io import IOBase, TextIOWrapper
 from pathlib import Path
-from typing import Literal
+from typing import Literal, overload
 
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
+from google.cloud.storage.fileio import BlobReader, BlobWriter
 
 from forge.models.config import UserConfigurable
 
@@ -73,13 +74,53 @@ class GCSFileStorage(FileStorage):
         path = self.get_path(path)
         return self._bucket.blob(str(path))
 
+    @overload
+    def open_file(
+        self,
+        path: str | Path,
+        mode: Literal["w", "r"] = "r",
+        binary: Literal[False] = False,
+    ) -> TextIOWrapper:
+        ...
+
+    @overload
+    def open_file(
+        self, path: str | Path, mode: Literal["w", "r"], binary: Literal[True]
+    ) -> BlobReader | BlobWriter:
+        ...
+
+    @overload
+    def open_file(self, path: str | Path, *, binary: Literal[True]) -> BlobReader:
+        ...
+
+    @overload
     def open_file(
         self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
-    ) -> IOBase:
+    ) -> BlobReader | BlobWriter | TextIOWrapper:
+        ...
+
+    def open_file(
+        self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
+    ) -> BlobReader | BlobWriter | TextIOWrapper:
         """Open a file in the storage."""
         blob = self._get_blob(path)
         blob.reload()  # pin revision number to prevent version mixing while reading
         return blob.open(f"{mode}b" if binary else mode)
+
+    @overload
+    def read_file(self, path: str | Path, binary: Literal[False] = False) -> str:
+        """Read a file in the storage as text."""
+        ...
+
+    @overload
+    def read_file(self, path: str | Path, binary: Literal[True]) -> bytes:
+        """Read a file in the storage as binary."""
+        ...
+
+    @overload
+    def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
+        """Read a file in the storage."""
+        ...
 
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
         """Read a file in the storage."""

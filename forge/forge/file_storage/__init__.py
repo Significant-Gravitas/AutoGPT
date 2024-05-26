@@ -15,7 +15,7 @@ class FileStorageBackendName(str, enum.Enum):
 
 def get_storage(
     backend: FileStorageBackendName,
-    root_path: Path = ".",
+    root_path: Path = Path("."),
     restrict_to_root: bool = True,
 ) -> FileStorage:
     match backend:

@@ -8,9 +8,9 @@ from __future__ import annotations
 import contextlib
 import inspect
 import logging
-from io import IOBase, TextIOWrapper
+from io import TextIOBase, TextIOWrapper
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional, overload
 
 import boto3
 import botocore.exceptions
@@ -22,6 +22,7 @@ from .base import FileStorage, FileStorageConfiguration
 
 if TYPE_CHECKING:
     import mypy_boto3_s3
+    from botocore.response import StreamingBody
 
 logger = logging.getLogger(__name__)
 
@@ -95,12 +96,56 @@ class S3FileStorage(FileStorage):
             obj.load()
         return obj
 
+    @overload
+    def open_file(
+        self,
+        path: str | Path,
+        mode: Literal["w", "r"] = "r",
+        binary: Literal[False] = False,
+    ) -> TextIOWrapper:
+        ...
+
+    @overload
+    def open_file(
+        self, path: str | Path, mode: Literal["w", "r"], binary: Literal[True]
+    ) -> StreamingBody:
+        ...
+
+    @overload
+    def open_file(self, path: str | Path, *, binary: Literal[True]) -> StreamingBody:
+        ...
+
+    @overload
     def open_file(
         self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
-    ) -> IOBase:
+    ) -> StreamingBody | TextIOWrapper:
+        ...
+
+    def open_file(
+        self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
+    ) -> TextIOWrapper | StreamingBody:
         """Open a file in the storage."""
         obj = self._get_obj(path)
-        return obj.get()["Body"] if binary else TextIOWrapper(obj.get()["Body"])
+        return (
+            obj.get()["Body"]
+            if binary
+            else TextIOWrapper(obj.get()["Body"])  # type: ignore
+        )
+
+    @overload
+    def read_file(self, path: str | Path, binary: Literal[False] = False) -> str:
+        """Read a file in the storage as text."""
+        ...
+
+    @overload
+    def read_file(self, path: str | Path, binary: Literal[True]) -> bytes:
+        """Read a file in the storage as binary."""
+        ...
+
+    @overload
+    def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
+        """Read a file in the storage."""
+        ...
 
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
         """Read a file in the storage."""
@@ -172,7 +217,7 @@ class S3FileStorage(FileStorage):
             self._s3.meta.client.head_object(Bucket=self._bucket_name, Key=str(path))
             return True
         except botocore.exceptions.ClientError as e:
-            if int(e.response["ResponseMetadata"]["HTTPStatusCode"]) == 404:
+            if e.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 # If the object does not exist,
                 # check for objects with the prefix (folder)
                 prefix = f"{str(path).rstrip('/')}/"
@@ -201,7 +246,7 @@ class S3FileStorage(FileStorage):
             )
             self._s3.meta.client.delete_object(Bucket=self._bucket_name, Key=old_path)
         except botocore.exceptions.ClientError as e:
-            if int(e.response["ResponseMetadata"]["HTTPStatusCode"]) == 404:
+            if e.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 # If the object does not exist,
                 # it may be a folder
                 prefix = f"{old_path.rstrip('/')}/"
@@ -233,7 +278,7 @@ class S3FileStorage(FileStorage):
                 Key=destination,
             )
         except botocore.exceptions.ClientError as e:
-            if int(e.response["ResponseMetadata"]["HTTPStatusCode"]) == 404:
+            if e.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 # If the object does not exist,
                 # it may be a folder
                 prefix = f"{source.rstrip('/')}/"
@@ -254,7 +299,7 @@ class S3FileStorage(FileStorage):
             S3FileStorageConfiguration(
                 bucket=self._bucket_name,
                 root=Path("/").joinpath(self.get_path(subroot)),
-                s3_endpoint_url=self._s3.meta.client.meta.endpoint_url,
+                s3_endpoint_url=SecretStr(self._s3.meta.client.meta.endpoint_url),
             )
         )
         file_storage._s3 = self._s3
