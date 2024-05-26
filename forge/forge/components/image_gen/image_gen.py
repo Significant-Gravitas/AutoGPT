@@ -9,35 +9,44 @@ from base64 import b64decode
 from pathlib import Path
 from typing import Iterator, Literal, Optional
 
-from pydantic import SecretStr
 import requests
-from forge.agent.components import ConfigurableComponent
-from forge.llm.providers.openai import OpenAICredentials
-from forge.models.config import ComponentConfiguration, FromEnv
-from forge.utils.exceptions import CommandExecutionError
 from openai import OpenAI
 from PIL import Image
+from pydantic import SecretStr
 
+from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
 from forge.file_storage import FileStorage
+from forge.llm.providers.openai import OpenAICredentials
+from forge.models.config import ComponentConfiguration, FromEnv
 from forge.models.json_schema import JSONSchema
+from forge.utils.exceptions import CommandExecutionError
 
 logger = logging.getLogger(__name__)
 
 
 class ImageGeneratorConfiguration(ComponentConfiguration):
-    image_provider: Literal["dalle"] | Literal["huggingface"] | Literal["sdwebui"] = "dalle"
+    image_provider: Literal["dalle"] | Literal["huggingface"] | Literal[
+        "sdwebui"
+    ] = "dalle"
     huggingface_image_model: str = "CompVis/stable-diffusion-v1-4"
     huggingface_api_token: Optional[SecretStr] = FromEnv("HUGGINGFACE_API_TOKEN")
     sd_webui_url: str = "http://localhost:7860"
     sd_webui_auth: Optional[SecretStr] = FromEnv("SD_WEBUI_AUTH")
 
 
-class ImageGeneratorComponent(CommandProvider, ConfigurableComponent[ImageGeneratorConfiguration]):
+class ImageGeneratorComponent(
+    CommandProvider, ConfigurableComponent[ImageGeneratorConfiguration]
+):
     """A component that provides commands to generate images from text prompts."""
 
-    def __init__(self, workspace: FileStorage, config: Optional[ImageGeneratorConfiguration] = None, openai_credentials: Optional[OpenAICredentials] = None):
+    def __init__(
+        self,
+        workspace: FileStorage,
+        config: Optional[ImageGeneratorConfiguration] = None,
+        openai_credentials: Optional[OpenAICredentials] = None,
+    ):
         """openai_credentials only needed for `dalle` provider."""
         super().__init__(config or ImageGeneratorConfiguration())
         self.openai_credentials = openai_credentials
@@ -172,11 +181,13 @@ class ImageGeneratorComponent(CommandProvider, ConfigurableComponent[ImageGenera
 
         response = OpenAI(
             api_key=self.openai_credentials.api_key.get_secret_value(),
-            organization=self.openai_credentials.organization.get_secret_value() if self.openai_credentials.organization else None,
+            organization=self.openai_credentials.organization.get_secret_value()
+            if self.openai_credentials.organization
+            else None,
         ).images.generate(
             prompt=prompt,
             n=1,
-            size=f"{size}x{size}", # type: ignore
+            size=f"{size}x{size}",  # type: ignore
             response_format="b64_json",
         )
 

@@ -50,7 +50,7 @@ C = TypeVar("C", bound=ComponentConfiguration)
 #         return super().__call__(*args, **kwargs)
 
 
-class ConfigurableComponent(ABC, Generic[C]):#, metaclass=ConfigurableComponentMeta):
+class ConfigurableComponent(ABC, Generic[C]):
     """A component that can be configured with a Pydantic model."""
 
     def __init__(self, config: Optional[C] = None):

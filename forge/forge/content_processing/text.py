@@ -5,12 +5,12 @@ import logging
 import math
 from typing import Iterator, Optional, TypeVar
 
-from forge.llm.providers.multi import ModelName
 import spacy
 
 from forge.json.parsing import extract_list_from_json
 from forge.llm.prompting import ChatPrompt
 from forge.llm.providers import ChatMessage, ChatModelProvider, ModelTokenizer
+from forge.llm.providers.multi import ModelName
 
 logger = logging.getLogger(__name__)
 

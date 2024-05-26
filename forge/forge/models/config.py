@@ -37,6 +37,7 @@ def UserConfigurable(
 
 class ComponentConfiguration(BaseModel):
     """Base class for component configuration models."""
+
     pass
 
 

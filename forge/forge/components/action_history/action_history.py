@@ -17,7 +17,13 @@ class ActionHistoryConfiguration(ComponentConfiguration):
     spacy_language_model: str = "en_core_web_sm"
 
 
-class ActionHistoryComponent(MessageProvider, AfterParse, AfterExecute, Generic[AP], ConfigurableComponent[ActionHistoryConfiguration]):
+class ActionHistoryComponent(
+    MessageProvider,
+    AfterParse,
+    AfterExecute,
+    Generic[AP],
+    ConfigurableComponent[ActionHistoryConfiguration],
+):
     """Keeps track of the event history and provides a summary of the steps."""
 
     def __init__(

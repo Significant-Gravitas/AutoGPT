@@ -114,7 +114,10 @@ class EpisodicActionHistory(GenericModel, Generic[AP]):
             self.cursor = len(self.episodes)
 
     async def handle_compression(
-        self, llm_provider: ChatModelProvider, model_name: ModelName, spacy_model: str,
+        self,
+        llm_provider: ChatModelProvider,
+        model_name: ModelName,
+        spacy_model: str,
     ) -> None:
         """Compresses each episode in the action history using an LLM.
 

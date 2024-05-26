@@ -12,9 +12,9 @@ from docker.models.containers import Container as DockerContainer
 from pydantic import Field
 
 from forge.agent import BaseAgentSettings, CommandProvider
+from forge.agent.components import ComponentConfiguration, ConfigurableComponent
 from forge.command import Command, command
 from forge.file_storage import FileStorage
-from forge.agent.components import ComponentConfiguration, ConfigurableComponent
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import (
     CommandExecutionError,
@@ -63,7 +63,10 @@ class CodeExecutorComponent(CommandProvider, ConfigurableComponent[CodeExecutorC
     """Provides commands to execute Python code and shell commands."""
 
     def __init__(
-        self, workspace: FileStorage, state: BaseAgentSettings, config: Optional[CodeExecutorConfig] = None,
+        self,
+        workspace: FileStorage,
+        state: BaseAgentSettings,
+        config: Optional[CodeExecutorConfig] = None,
     ):
         super().__init__(config or CodeExecutorConfig())
         self.workspace = workspace

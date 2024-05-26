@@ -25,7 +25,9 @@ class FileManagerConfiguration(ComponentConfiguration):
         allow_mutation = False
 
 
-class FileManagerComponent(DirectiveProvider, CommandProvider, ConfigurableComponent[FileManagerConfiguration]):
+class FileManagerComponent(
+    DirectiveProvider, CommandProvider, ConfigurableComponent[FileManagerConfiguration]
+):
     """
     Adds general file manager (e.g. Agent state),
     workspace manager (e.g. Agent output files) support and
@@ -44,14 +46,14 @@ class FileManagerComponent(DirectiveProvider, CommandProvider, ConfigurableCompo
     """The name of the file where the agent's state is stored."""
 
     def __init__(
-            self,
-            file_storage: FileStorage,
-            state: BaseAgentSettings,
-            config: Optional[FileManagerConfiguration] = None,
-        ):
+        self,
+        file_storage: FileStorage,
+        state: BaseAgentSettings,
+        config: Optional[FileManagerConfiguration] = None,
+    ):
         """Initialise the FileManagerComponent.
         Either `agent_id` or `config` must be provided.
-        
+
         Args:
             file_storage (FileStorage): The file storage instance to use.
             state (BaseAgentSettings): The agent's state.
@@ -65,7 +67,11 @@ class FileManagerComponent(DirectiveProvider, CommandProvider, ConfigurableCompo
         if not config:
             files_path = f"agents/{self.state.agent_id}/"
             workspace_path = f"agents/{self.state.agent_id}/workspace"
-            super().__init__(FileManagerConfiguration(files_path=files_path, workspace_path=workspace_path))
+            super().__init__(
+                FileManagerConfiguration(
+                    files_path=files_path, workspace_path=workspace_path
+                )
+            )
         else:
             super().__init__(config)
 
@@ -87,7 +93,9 @@ class FileManagerComponent(DirectiveProvider, CommandProvider, ConfigurableCompo
                 f"agents/{save_as_id}/workspace",
             )
         else:
-            await self.files.write_file(self.files.root / self.STATE_FILE, self.state.json())
+            await self.files.write_file(
+                self.files.root / self.STATE_FILE, self.state.json()
+            )
 
     def get_resources(self) -> Iterator[str]:
         yield "The ability to read and write files."

@@ -3,9 +3,8 @@ import logging
 import time
 from typing import Iterator, Optional
 
-from pydantic import SecretStr
-
 from duckduckgo_search import DDGS
+from pydantic import SecretStr
 
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider, DirectiveProvider
@@ -26,7 +25,9 @@ class WebSearchConfiguration(ComponentConfiguration):
     )
 
 
-class WebSearchComponent(DirectiveProvider, CommandProvider, ConfigurableComponent[WebSearchConfiguration]):
+class WebSearchComponent(
+    DirectiveProvider, CommandProvider, ConfigurableComponent[WebSearchConfiguration]
+):
     """Provides commands to search the web."""
 
     def __init__(self, config: Optional[WebSearchConfiguration] = None):
@@ -47,10 +48,7 @@ class WebSearchComponent(DirectiveProvider, CommandProvider, ConfigurableCompone
     def get_commands(self) -> Iterator[Command]:
         yield self.web_search
 
-        if (
-            self.config.google_api_key
-            and self.config.google_custom_search_engine_id
-        ):
+        if self.config.google_api_key and self.config.google_custom_search_engine_id:
             yield self.google
 
     @command(
@@ -150,7 +148,9 @@ class WebSearchComponent(DirectiveProvider, CommandProvider, ConfigurableCompone
         try:
             # Get the Google API key and Custom Search Engine ID from the config file
             api_key = self.config.google_api_key.get_secret_value()
-            custom_search_engine_id = self.config.google_custom_search_engine_id.get_secret_value()
+            custom_search_engine_id = (
+                self.config.google_custom_search_engine_id.get_secret_value()
+            )
 
             # Initialize the Custom Search API service
             service = build("customsearch", "v1", developerKey=api_key)

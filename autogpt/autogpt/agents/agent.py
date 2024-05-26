@@ -29,7 +29,6 @@ from forge.components.system import SystemComponent
 from forge.components.user_interaction import UserInteractionComponent
 from forge.components.watchdog import WatchdogComponent
 from forge.components.web import WebSearchComponent, WebSeleniumComponent
-from forge.components.web.selenium import WebSeleniumConfiguration
 from forge.file_storage.base import FileStorage
 from forge.llm.prompting.schema import ChatPrompt
 from forge.llm.prompting.utils import dump_prompt
@@ -46,7 +45,7 @@ from forge.models.action import (
     ActionResult,
     ActionSuccessResult,
 )
-from forge.models.config import ComponentConfiguration, Configurable
+from forge.models.config import Configurable
 from forge.utils.exceptions import (
     AgentException,
     AgentTerminated,
@@ -124,16 +123,15 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             llm_provider,
             ActionHistoryConfiguration(max_tokens=self.send_token_limit),
         ).run_after(WatchdogComponent)
-        self.user_interaction = UserInteractionComponent(legacy_config.noninteractive_mode)
+        self.user_interaction = UserInteractionComponent(
+            legacy_config.noninteractive_mode
+        )
         self.file_manager = FileManagerComponent(file_storage, settings)
         self.code_executor = CodeExecutorComponent(
-            self.file_manager.workspace,
-            settings
+            self.file_manager.workspace, settings
         )
         self.git_ops = GitOperationsComponent()
-        self.image_gen = ImageGeneratorComponent(
-            self.file_manager.workspace
-        )
+        self.image_gen = ImageGeneratorComponent(self.file_manager.workspace)
         self.web_search = WebSearchComponent()
         self.web_selenium = WebSeleniumComponent(
             legacy_config.fast_llm,

@@ -29,13 +29,13 @@ from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
 from forge.agent.components import ConfigurableComponent
-from forge.llm.providers.multi import ModelName
-from forge.models.config import ComponentConfiguration
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.content_processing.html import extract_hyperlinks, format_hyperlinks
 from forge.content_processing.text import extract_information, summarize_text
+from forge.llm.providers.multi import ModelName
 from forge.llm.providers.schema import ChatModelInfo, ChatModelProvider
+from forge.models.config import ComponentConfiguration
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError, TooMuchOutputError
 from forge.utils.url_validator import validate_url
@@ -52,15 +52,17 @@ class BrowsingError(CommandExecutionError):
 
 
 class WebSeleniumConfiguration(ComponentConfiguration):
-    web_browser: Literal["chrome"] | Literal["firefox"] | Literal["safari"] | Literal["edge"] = "chrome"
+    web_browser: Literal["chrome"] | Literal["firefox"] | Literal["safari"] | Literal[
+        "edge"
+    ] = "chrome"
     headless: bool = True
-    user_agent: str = (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"
-    )
+    user_agent: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"
     browse_spacy_language_model: str = "en_core_web_sm"
 
 
-class WebSeleniumComponent(DirectiveProvider, CommandProvider, ConfigurableComponent[WebSeleniumConfiguration]):
+class WebSeleniumComponent(
+    DirectiveProvider, CommandProvider, ConfigurableComponent[WebSeleniumConfiguration]
+):
     """Provides commands to browse the web using Selenium."""
 
     def __init__(
@@ -291,9 +293,7 @@ class WebSeleniumComponent(DirectiveProvider, CommandProvider, ConfigurableCompo
                 options.add_argument("--headless=new")
                 options.add_argument("--disable-gpu")
 
-            self._sideload_chrome_extensions(
-                options, self.data_dir / "assets" / "crx"
-            )
+            self._sideload_chrome_extensions(options, self.data_dir / "assets" / "crx")
 
             if (chromium_driver_path := Path("/usr/bin/chromedriver")).exists():
                 chrome_service = ChromeDriverService(str(chromium_driver_path))

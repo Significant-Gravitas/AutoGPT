@@ -18,7 +18,9 @@ class GitOperationsConfiguration(ComponentConfiguration):
     github_api_key: Optional[SecretStr] = FromEnv("GITHUB_API_KEY")
 
 
-class GitOperationsComponent(CommandProvider, ConfigurableComponent[GitOperationsConfiguration]):
+class GitOperationsComponent(
+    CommandProvider, ConfigurableComponent[GitOperationsConfiguration]
+):
     """Provides commands to perform Git operations."""
 
     def __init__(self, config: Optional[GitOperationsConfiguration] = None):
