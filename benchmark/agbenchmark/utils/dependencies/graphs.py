@@ -57,8 +57,10 @@ def curved_edges(
     """
     ax = plt.gca()
     for u, v, data in G.edges(data=True):
-        src = np.array(pos[u])
-        dst = np.array(pos[v])
+        _src = pos[u]
+        _dst = pos[v]
+        src = np.array(_src)
+        dst = np.array(_dst)
 
         same_level = abs(src[1] - dst[1]) < 0.01
 
@@ -80,8 +82,8 @@ def curved_edges(
         else:
             ax.annotate(
                 "",
-                xy=dst,
-                xytext=src,
+                xy=_dst,
+                xytext=_src,
                 arrowprops=dict(
                     arrowstyle="-|>", color="gray", lw=1, shrinkA=10, shrinkB=10
                 ),
@@ -137,7 +139,7 @@ def tree_layout(graph: nx.DiGraph, root_node: Any) -> Dict[Any, Tuple[float, flo
 def graph_spring_layout(
     dag: nx.DiGraph, labels: Dict[Any, str], tree: bool = True
 ) -> None:
-    num_nodes = len(dag.nodes())
+    num_nodes = len(list(dag.nodes()))
     # Setting up the figure and axis
     fig, ax = plt.subplots()
     ax.axis("off")  # Turn off the axis

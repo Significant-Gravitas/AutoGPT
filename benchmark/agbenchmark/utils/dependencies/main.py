@@ -12,7 +12,9 @@ from typing import Any, Generator
 
 import colorama
 import networkx
-from _pytest.nodes import Item
+from pytest import Function, Item
+
+from agbenchmark.challenges.base import BaseChallenge
 
 from .constants import MARKER_KWARG_DEPENDENCIES, MARKER_NAME
 from .graphs import graph_interactive_network
@@ -86,20 +88,20 @@ class DependencyManager(object):
     def __init__(self) -> None:
         """Create a new DependencyManager."""
         self.options: dict[str, Any] = {}
-        self._items: list[Item] | None = None
+        self._items: list[Function] | None = None
         self._name_to_nodeids: Any = None
         self._nodeid_to_item: Any = None
         self._results: Any = None
 
     @property
-    def items(self) -> list[Item]:
+    def items(self) -> list[Function]:
         """The collected tests that are managed by this instance."""
         if self._items is None:
             raise AttributeError("The items attribute has not been set yet")
         return self._items
 
     @items.setter
-    def items(self, items: list[Item]) -> None:
+    def items(self, items: list[Function]) -> None:
         if self._items is not None:
             raise AttributeError("The items attribute has already been set")
         self._items = items
@@ -135,7 +137,7 @@ class DependencyManager(object):
         return self._name_to_nodeids
 
     @property
-    def nodeid_to_item(self) -> dict[str, Item]:
+    def nodeid_to_item(self) -> dict[str, Function]:
         """A mapping from node ids to test items."""
         assert self.items is not None
         return self._nodeid_to_item
@@ -214,11 +216,8 @@ class DependencyManager(object):
 
         labels = {}
         for item in self.items:
-            try:
-                with open(item.cls.CHALLENGE_LOCATION) as f:
-                    data = json.load(f)
-            except:
-                data = {}
+            assert item.cls and issubclass(item.cls, BaseChallenge)
+            data = item.cls.info.dict()
 
             node_name = get_name(item)
             data["name"] = node_name

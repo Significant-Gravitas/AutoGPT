@@ -123,6 +123,7 @@ def check_regression(request: pytest.FixtureRequest) -> None:
     with contextlib.suppress(FileNotFoundError):
         rt_tracker = RegressionTestsTracker(agbenchmark_config.regression_tests_file)
 
+        assert isinstance(request.node.parent, pytest.Function)
         test_name = request.node.parent.name
         challenge_location = getattr(request.node.parent.cls, "CHALLENGE_LOCATION", "")
         skip_string = f"Skipping {test_name} at {challenge_location}"
@@ -148,7 +149,9 @@ def mock(request: pytest.FixtureRequest) -> bool:
     Returns:
         bool: Whether `--mock` is set for this session.
     """
-    return request.config.getoption("--mock")
+    mock = request.config.getoption("--mock")
+    assert isinstance(mock, bool)
+    return mock
 
 
 test_reports: dict[str, Test] = {}
@@ -221,7 +224,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc):
 
 
 def pytest_collection_modifyitems(
-    items: list[pytest.Item], config: pytest.Config
+    items: list[pytest.Function], config: pytest.Config
 ) -> None:
     """
     Pytest hook that is called after initial test collection has been performed.
@@ -248,6 +251,7 @@ def pytest_collection_modifyitems(
     i = 0
     while i < len(items):
         item = items[i]
+        assert item.cls and issubclass(item.cls, BaseChallenge)
         challenge = item.cls
         challenge_name = item.cls.__name__
 

@@ -1,4 +1,3 @@
-from collections import deque
 import glob
 import json
 import logging
@@ -6,19 +5,17 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections import deque
 from pathlib import Path
-from typing import Any, ClassVar, Iterator, Literal, Optional
+from typing import Annotated, Any, ClassVar, Iterator, Literal, Optional
 
 import pytest
-from agent_protocol_client import (
-    AgentApi,
-    ApiClient,
-    Configuration as ClientConfig,
-    Step,
-)
+from agent_protocol_client import AgentApi, ApiClient
+from agent_protocol_client import Configuration as ClientConfig
+from agent_protocol_client import Step
 from colorama import Fore, Style
 from openai import _load_client as get_openai_client
-from pydantic import BaseModel, constr, Field, validator
+from pydantic import BaseModel, Field, constr, validator
 
 from agbenchmark.agent_api_interface import download_agent_artifacts_into_folder
 from agbenchmark.agent_interface import copy_challenge_artifacts_into_workspace
@@ -49,7 +46,7 @@ class BuiltinChallengeSpec(BaseModel):
 
     class Info(BaseModel):
         difficulty: DifficultyLevel
-        description: constr(regex=r"^Tests if the agent can.*")
+        description: Annotated[str, constr(regex=r"^Tests if the agent can.*")]
         side_effects: list[str] = Field(default_factory=list)
 
     info: Info
@@ -184,7 +181,7 @@ class BuiltinChallenge(BaseChallenge):
         steps: list[Step] = []
         try:
             async for step in self.run_challenge(
-                config, timeout, mock=request.config.getoption("--mock")
+                config, timeout, mock=bool(request.config.getoption("--mock"))
             ):
                 if not task_id:
                     task_id = step.task_id
@@ -199,6 +196,8 @@ class BuiltinChallenge(BaseChallenge):
             timed_out = False
         except TimeoutError:
             timed_out = True
+
+        assert isinstance(request.node, pytest.Item)
         request.node.user_properties.append(("steps", steps))
         request.node.user_properties.append(("n_steps", n_steps))
         request.node.user_properties.append(("timed_out", timed_out))

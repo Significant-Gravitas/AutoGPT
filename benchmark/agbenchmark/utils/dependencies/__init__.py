@@ -139,7 +139,7 @@ def pytest_configure(config: Any) -> None:
 
 
 @pytest.hookimpl(trylast=True)
-def pytest_collection_modifyitems(config: Any, items: list[Item]) -> None:
+def pytest_collection_modifyitems(config: Any, items: list[pytest.Function]) -> None:
     manager = managers[-1]
 
     # Register the founds tests on the manager

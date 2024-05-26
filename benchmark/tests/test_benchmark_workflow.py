@@ -1,11 +1,16 @@
+import datetime
+import time
+
 import pytest
 import requests
 
 URL_BENCHMARK = "http://localhost:8080/ap/v1"
 URL_AGENT = "http://localhost:8000/ap/v1"
 
-import datetime
-import time
+try:
+    response = requests.get(f"{URL_AGENT}/agent/tasks")
+except requests.exceptions.ConnectionError:
+    pytest.skip("No agent available to test against", allow_module_level=True)
 
 
 @pytest.mark.parametrize(
@@ -28,7 +33,11 @@ import time
     ],
 )
 def test_entire_workflow(
-    eval_id, input_text, expected_artifact_length, test_name, should_be_successful
+    eval_id: str,
+    input_text: str,
+    expected_artifact_length: int,
+    test_name: str,
+    should_be_successful: bool,
 ):
     task_request = {"eval_id": eval_id, "input": input_text}
     response = requests.get(f"{URL_AGENT}/agent/tasks")
