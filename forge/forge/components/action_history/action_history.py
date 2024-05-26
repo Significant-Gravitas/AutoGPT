@@ -14,7 +14,7 @@ from .model import AP, ActionResult, Episode, EpisodicActionHistory
 
 class ActionHistoryConfiguration(ComponentConfiguration):
     max_tokens: int = 1024
-    browse_spacy_language_model: str = "en_core_web_sm"
+    spacy_language_model: str = "en_core_web_sm"
 
 
 class ActionHistoryComponent(MessageProvider, AfterParse, AfterExecute, Generic[AP], ConfigurableComponent[ActionHistoryConfiguration]):
@@ -48,7 +48,7 @@ class ActionHistoryComponent(MessageProvider, AfterParse, AfterExecute, Generic[
     async def after_execute(self, result: ActionResult) -> None:
         self.event_history.register_result(result)
         await self.event_history.handle_compression(
-            self.llm_provider, self.model_name, self.config.browse_spacy_language_model
+            self.llm_provider, self.model_name, self.config.spacy_language_model
         )
 
     def _compile_progress(

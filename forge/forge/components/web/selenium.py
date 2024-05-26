@@ -3,7 +3,7 @@ import logging
 import re
 from pathlib import Path
 from sys import platform
-from typing import Iterator, Type
+from typing import Iterator, Literal, Optional, Type
 from urllib.request import urlretrieve
 
 from bs4 import BeautifulSoup
@@ -28,9 +28,11 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
+from forge.agent.components import ConfigurableComponent
+from forge.llm.providers.multi import ModelName
+from forge.models.config import ComponentConfiguration
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
-from forge.config.config import Config
 from forge.content_processing.html import extract_hyperlinks, format_hyperlinks
 from forge.content_processing.text import extract_information, summarize_text
 from forge.llm.providers.schema import ChatModelInfo, ChatModelProvider
@@ -49,18 +51,31 @@ class BrowsingError(CommandExecutionError):
     """An error occurred while trying to browse the page"""
 
 
-class WebSeleniumComponent(DirectiveProvider, CommandProvider):
+class WebSeleniumConfiguration(ComponentConfiguration):
+    web_browser: Literal["chrome"] | Literal["firefox"] | Literal["safari"] | Literal["edge"] = "chrome"
+    headless: bool = True
+    user_agent: str = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"
+    )
+    browse_spacy_language_model: str = "en_core_web_sm"
+
+
+class WebSeleniumComponent(DirectiveProvider, CommandProvider, ConfigurableComponent[WebSeleniumConfiguration]):
     """Provides commands to browse the web using Selenium."""
 
     def __init__(
         self,
-        config: Config,
+        llm_model_name: ModelName,
         llm_provider: ChatModelProvider,
         model_info: ChatModelInfo,
+        data_dir: Path,
+        config: Optional[WebSeleniumConfiguration] = None,
     ):
-        self.legacy_config = config
+        super().__init__(config or WebSeleniumConfiguration())
+        self.model_name = llm_model_name
         self.llm_provider = llm_provider
         self.model_info = model_info
+        self.data_dir = data_dir
 
     def get_resources(self) -> Iterator[str]:
         yield "Ability to read websites."
@@ -127,7 +142,7 @@ class WebSeleniumComponent(DirectiveProvider, CommandProvider):
         """
         driver = None
         try:
-            driver = await self.open_page_in_browser(url, self.legacy_config)
+            driver = await self.open_page_in_browser(url)
 
             text = self.scrape_text_with_selenium(driver)
             links = self.scrape_links_with_selenium(driver, url)
@@ -226,7 +241,7 @@ class WebSeleniumComponent(DirectiveProvider, CommandProvider):
 
         return format_hyperlinks(hyperlinks)
 
-    async def open_page_in_browser(self, url: str, config: Config) -> WebDriver:
+    async def open_page_in_browser(self, url: str) -> WebDriver:
         """Open a browser window and load a web page using Selenium
 
         Params:
@@ -246,11 +261,11 @@ class WebSeleniumComponent(DirectiveProvider, CommandProvider):
             "safari": SafariOptions,
         }
 
-        options: BrowserOptions = options_available[config.selenium_web_browser]()
-        options.add_argument(f"user-agent={config.user_agent}")
+        options: BrowserOptions = options_available[self.config.web_browser]()
+        options.add_argument(f"user-agent={self.config.user_agent}")
 
         if isinstance(options, FirefoxOptions):
-            if config.selenium_headless:
+            if self.config.headless:
                 options.headless = True
                 options.add_argument("--disable-gpu")
             driver = FirefoxDriver(
@@ -272,12 +287,12 @@ class WebSeleniumComponent(DirectiveProvider, CommandProvider):
                 options.add_argument("--remote-debugging-port=9222")
 
             options.add_argument("--no-sandbox")
-            if config.selenium_headless:
+            if self.config.headless:
                 options.add_argument("--headless=new")
                 options.add_argument("--disable-gpu")
 
             self._sideload_chrome_extensions(
-                options, config.app_data_dir / "assets" / "crx"
+                options, self.data_dir / "assets" / "crx"
             )
 
             if (chromium_driver_path := Path("/usr/bin/chromedriver")).exists():
@@ -359,7 +374,8 @@ class WebSeleniumComponent(DirectiveProvider, CommandProvider):
                 text,
                 topics_of_interest=topics_of_interest,
                 llm_provider=self.llm_provider,
-                config=self.legacy_config,
+                model_name=self.model_name,
+                spacy_model=self.config.browse_spacy_language_model,
             )
             return "\n".join(f"* {i}" for i in information)
         else:
@@ -367,6 +383,7 @@ class WebSeleniumComponent(DirectiveProvider, CommandProvider):
                 text,
                 question=question,
                 llm_provider=self.llm_provider,
-                config=self.legacy_config,
+                model_name=self.model_name,
+                spacy_model=self.config.browse_spacy_language_model,
             )
             return result

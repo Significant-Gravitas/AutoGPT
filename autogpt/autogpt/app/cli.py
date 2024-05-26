@@ -31,11 +31,6 @@ def cli(ctx: click.Context):
 @click.option("--gpt3only", is_flag=True, help="Enable GPT3.5 Only Mode")
 @click.option("--gpt4only", is_flag=True, help="Enable GPT4 Only Mode")
 @click.option(
-    "-b",
-    "--browser-name",
-    help="Specifies which web-browser to use when using selenium to scrape the web.",
-)
-@click.option(
     "--allow-downloads",
     is_flag=True,
     help="Dangerous: Allows AutoGPT to download files natively.",
@@ -136,7 +131,6 @@ def run(
     speak: bool,
     gpt3only: bool,
     gpt4only: bool,
-    browser_name: Optional[str],
     allow_downloads: bool,
     workspace_directory: Optional[Path],
     install_plugin_deps: bool,
@@ -171,7 +165,6 @@ def run(
         log_file_format=log_file_format,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
-        browser_name=browser_name,
         allow_downloads=allow_downloads,
         skip_news=skip_news,
         workspace_directory=workspace_directory,
@@ -188,11 +181,6 @@ def run(
 @cli.command()
 @click.option("--gpt3only", is_flag=True, help="Enable GPT3.5 Only Mode")
 @click.option("--gpt4only", is_flag=True, help="Enable GPT4 Only Mode")
-@click.option(
-    "-b",
-    "--browser-name",
-    help="Specifies which web-browser to use when using selenium to scrape the web.",
-)
 @click.option(
     "--allow-downloads",
     is_flag=True,
@@ -227,7 +215,6 @@ def run(
 def serve(
     gpt3only: bool,
     gpt4only: bool,
-    browser_name: Optional[str],
     allow_downloads: bool,
     install_plugin_deps: bool,
     debug: bool,
@@ -249,7 +236,6 @@ def serve(
         log_file_format=log_file_format,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
-        browser_name=browser_name,
         allow_downloads=allow_downloads,
         install_plugin_deps=install_plugin_deps,
     )

@@ -29,6 +29,7 @@ from forge.components.system import SystemComponent
 from forge.components.user_interaction import UserInteractionComponent
 from forge.components.watchdog import WatchdogComponent
 from forge.components.web import WebSearchComponent, WebSeleniumComponent
+from forge.components.web.selenium import WebSeleniumConfiguration
 from forge.file_storage.base import FileStorage
 from forge.llm.prompting.schema import ChatPrompt
 from forge.llm.prompting.utils import dump_prompt
@@ -134,7 +135,12 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             self.file_manager.workspace
         )
         self.web_search = WebSearchComponent()
-        self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
+        self.web_selenium = WebSeleniumComponent(
+            legacy_config.fast_llm,
+            llm_provider,
+            self.llm,
+            str(legacy_config.app_data_dir),
+        )
         self.context = ContextComponent(self.file_manager.workspace, settings.context)
         self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(
             ContextComponent

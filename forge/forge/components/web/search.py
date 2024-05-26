@@ -10,7 +10,6 @@ from duckduckgo_search import DDGS
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
-from forge.config.config import Config
 from forge.models.config import ComponentConfiguration, FromEnv
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import ConfigurationError

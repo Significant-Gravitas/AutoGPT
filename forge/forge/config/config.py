@@ -106,16 +106,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         from_env="HUGGINGFACE_AUDIO_TO_TEXT_MODEL"
     )
 
-    # Web browsing
-    selenium_web_browser: str = UserConfigurable("chrome", from_env="USE_WEB_BROWSER")
-    selenium_headless: bool = UserConfigurable(
-        default=True, from_env=lambda: os.getenv("HEADLESS_BROWSER", "True") == "True"
-    )
-    user_agent: str = UserConfigurable(
-        default="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",  # noqa: E501
-        from_env="USER_AGENT",
-    )
-
     ###############
     # Credentials #
     ###############

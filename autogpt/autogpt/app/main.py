@@ -64,7 +64,6 @@ async def run_auto_gpt(
     log_file_format: Optional[str] = None,
     gpt3only: bool = False,
     gpt4only: bool = False,
-    browser_name: Optional[str] = None,
     allow_downloads: bool = False,
     skip_news: bool = False,
     workspace_directory: Optional[Path] = None,
@@ -108,7 +107,6 @@ async def run_auto_gpt(
         skip_reprompt=skip_reprompt,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
-        browser_name=browser_name,
         allow_downloads=allow_downloads,
         skip_news=skip_news,
     )
@@ -134,7 +132,6 @@ async def run_auto_gpt(
         print_python_version_info(logger)
         print_attribute("Smart LLM", config.smart_llm)
         print_attribute("Fast LLM", config.fast_llm)
-        print_attribute("Browser", config.selenium_web_browser)
         if config.continuous_mode:
             print_attribute("Continuous Mode", "ENABLED", title_color=Fore.YELLOW)
             if continuous_limit:
@@ -342,7 +339,6 @@ async def run_auto_gpt_server(
     log_file_format: Optional[str] = None,
     gpt3only: bool = False,
     gpt4only: bool = False,
-    browser_name: Optional[str] = None,
     allow_downloads: bool = False,
     install_plugin_deps: bool = False,
 ):
@@ -374,7 +370,6 @@ async def run_auto_gpt_server(
         config=config,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
-        browser_name=browser_name,
         allow_downloads=allow_downloads,
     )
 

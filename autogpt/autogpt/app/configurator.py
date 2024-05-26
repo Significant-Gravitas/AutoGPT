@@ -19,7 +19,6 @@ async def apply_overrides_to_config(
     skip_reprompt: bool = False,
     gpt3only: bool = False,
     gpt4only: bool = False,
-    browser_name: Optional[str] = None,
     allow_downloads: bool = False,
     skip_news: bool = False,
 ) -> None:
@@ -37,7 +36,6 @@ async def apply_overrides_to_config(
         log_file_format (str): Override the format for the log file.
         gpt3only (bool): Whether to enable GPT3.5 only mode.
         gpt4only (bool): Whether to enable GPT4 only mode.
-        browser_name (str): The name of the browser to use for scraping the web.
         allow_downloads (bool): Whether to allow AutoGPT to download files natively.
         skips_news (bool): Whether to suppress the output of latest news on startup.
     """
@@ -76,9 +74,6 @@ async def apply_overrides_to_config(
 
     if skip_reprompt:
         config.skip_reprompt = True
-
-    if browser_name:
-        config.selenium_web_browser = browser_name
 
     if allow_downloads:
         logger.warning(
