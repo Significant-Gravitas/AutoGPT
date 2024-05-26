@@ -58,4 +58,4 @@ class WatchdogComponent(AfterParse):
                 self.big_brain = True
                 self.revert_big_brain = True
                 # Trigger retry of all pipelines prior to this component
-                raise ComponentSystemError()
+                raise ComponentSystemError(rethink_reason, self)

@@ -11,7 +11,7 @@ from .utils import ModelWithSummary
 
 class ActionProposal(BaseModel):
     thoughts: str | ModelWithSummary
-    use_tool: AssistantFunctionCall = None
+    use_tool: AssistantFunctionCall
 
 
 class ActionSuccessResult(BaseModel):

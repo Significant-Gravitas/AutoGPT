@@ -133,9 +133,6 @@ class AgentMeta(ABCMeta):
         return instance
 
 
-
-
-
 class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
     C = TypeVar("C", bound=AgentComponent)
 
@@ -269,9 +266,9 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
                         break
                 # Successful pipeline execution
                 break
-            except EndpointPipelineError:
+            except EndpointPipelineError as e:
                 self._trace.append(
-                    f"❌ {Fore.LIGHTRED_EX}{component.__class__.__name__}: "
+                    f"❌ {Fore.LIGHTRED_EX}{e.triggerer.__class__.__name__}: "
                     f"EndpointPipelineError{Fore.RESET}"
                 )
                 # Restart from the beginning on EndpointPipelineError
