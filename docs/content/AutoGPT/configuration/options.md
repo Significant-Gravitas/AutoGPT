@@ -9,7 +9,6 @@ Configuration is controlled through the `Config` object. You can set configurati
 - `ANTHROPIC_API_KEY`: Set this if you want to use Anthropic models with AutoGPT
 - `AZURE_CONFIG_FILE`: Location of the Azure Config file relative to the AutoGPT root directory. Default: azure.yaml
 - `BROWSE_CHUNK_MAX_LENGTH`: When browsing website, define the length of chunks to summarize. Default: 3000
-- `BROWSE_SPACY_LANGUAGE_MODEL`: [spaCy language model](https://spacy.io/usage/models) to use when creating chunks. Default: en_core_web_sm
 - `CHAT_MESSAGES_ENABLED`: Enable chat messages. Optional
 - `DISABLED_COMMANDS`: Commands to disable. Use comma separated names of commands. See the list of commands from built-in components [here](../components/components.md). Default: None
 - `ELEVENLABS_API_KEY`: ElevenLabs API Key. Optional.
@@ -34,9 +33,6 @@ Configuration is controlled through the `Config` object. You can set configurati
 - `RESTRICT_TO_WORKSPACE`: The restrict file reading and writing to the workspace directory. Default: True
 - `SD_WEBUI_AUTH`: Stable Diffusion Web UI username:password pair. Optional.
 - `SD_WEBUI_URL`: Stable Diffusion Web UI URL. Default: http://localhost:7860
-- `SHELL_ALLOWLIST`: List of shell commands that ARE allowed to be executed by AutoGPT. Only applies if `SHELL_COMMAND_CONTROL` is set to `allowlist`. Default: None
-- `SHELL_COMMAND_CONTROL`: Whether to use `allowlist` or `denylist` to determine what shell commands can be executed (Default: denylist)
-- `SHELL_DENYLIST`: List of shell commands that ARE NOT allowed to be executed by AutoGPT. Only applies if `SHELL_COMMAND_CONTROL` is set to `denylist`. Default: sudo,su
 - `SMART_LLM`: LLM Model to use for "smart" tasks. Default: `gpt-4-turbo-preview`
 - `STREAMELEMENTS_VOICE`: StreamElements voice to use. Default: Brian
 - `TEMPERATURE`: Value of temperature given to OpenAI. Value from 0 to 2. Lower is more deterministic, higher is more random. See https://platform.openai.com/docs/api-reference/completions/create#completions/create-temperature

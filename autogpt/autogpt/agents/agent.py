@@ -19,6 +19,7 @@ from forge.components.action_history import (
     ActionHistoryComponent,
     EpisodicActionHistory,
 )
+from forge.components.action_history.action_history import ActionHistoryConfiguration
 from forge.components.code_executor.code_executor import CodeExecutorComponent
 from forge.components.context.context import AgentContext, ContextComponent
 from forge.components.file_manager import FileManagerComponent
@@ -117,10 +118,10 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.system = SystemComponent(legacy_config, settings.ai_profile)
         self.history = ActionHistoryComponent(
             settings.history,
-            self.send_token_limit,
             lambda x: self.llm_provider.count_tokens(x, self.llm.name),
-            legacy_config,
+            legacy_config.fast_llm,
             llm_provider,
+            ActionHistoryConfiguration(max_tokens=self.send_token_limit),
         ).run_after(WatchdogComponent)
         self.user_interaction = UserInteractionComponent(legacy_config)
         self.file_manager = FileManagerComponent(settings, file_storage)

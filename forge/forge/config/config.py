@@ -71,9 +71,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     embedding_model: str = UserConfigurable(
         default="text-embedding-3-small", from_env="EMBEDDING_MODEL"
     )
-    browse_spacy_language_model: str = UserConfigurable(
-        default="en_core_web_sm", from_env="BROWSE_SPACY_LANGUAGE_MODEL"
-    )
 
     # Run loop configuration
     continuous_mode: bool = False
@@ -96,24 +93,9 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     allow_downloads: bool = False
 
     # Shell commands
-    shell_command_control: str = UserConfigurable(
-        default="denylist", from_env="SHELL_COMMAND_CONTROL"
-    )
     execute_local_commands: bool = UserConfigurable(
         default=False,
         from_env=lambda: os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True",
-    )
-    shell_denylist: list[str] = UserConfigurable(
-        default_factory=lambda: ["sudo", "su"],
-        from_env=lambda: _safe_split(
-            os.getenv("SHELL_DENYLIST", os.getenv("DENY_COMMANDS"))
-        ),
-    )
-    shell_allowlist: list[str] = UserConfigurable(
-        default_factory=list,
-        from_env=lambda: _safe_split(
-            os.getenv("SHELL_ALLOWLIST", os.getenv("ALLOW_COMMANDS"))
-        ),
     )
 
     # Text to image
