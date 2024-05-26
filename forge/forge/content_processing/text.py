@@ -165,7 +165,7 @@ async def _process_text(
             ),
         )
 
-        if output_type == list[str]:
+        if isinstance(response.parsed_result, list):
             logger.debug(f"Raw LLM response: {repr(response.response.content)}")
             fmt_result_bullet_list = "\n".join(f"* {r}" for r in response.parsed_result)
             logger.debug(
