@@ -160,7 +160,8 @@ CURRENT_BULLETIN.md
 
 agbenchmark_config/workspace
 agbenchmark_config/reports
-*.sqlite
+*.sqlite*
+*.db
 .agbench
 .agbenchmark
 .benchmarks
@@ -168,7 +169,7 @@ agbenchmark_config/reports
 .pytest_cache
 .vscode
 ig_*
-agent.db
 agbenchmark_config/updates.json
 agbenchmark_config/challenges_already_beaten.json
 agbenchmark_config/temp_folder/*
+test_workspace/
