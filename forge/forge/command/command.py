@@ -62,7 +62,8 @@ class Command(Generic[P, CO]):
     def __str__(self) -> str:
         params = [
             f"{param.name}: "
-            + ("%s" if param.spec.required else "Optional[%s]") % param.spec.type.value
+            + ("%s" if param.spec.required else "Optional[%s]")
+            % (param.spec.type.value if param.spec.type else "Any")
             for param in self.parameters
         ]
         return (
