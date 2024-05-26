@@ -26,8 +26,10 @@ duckduckgo-search = "^5.0.0"
 fastapi = "^0.109.1"
 gitpython = "^3.1.32"
 google-api-python-client = "*"
+google-cloud-logging = "^3.8.0"
 google-cloud-storage = "^2.13.0"
 groq = "^0.8.0"
+gTTS = "^2.3.1"
 jinja2 = "^3.1.2"
 jsonschema = "*"
 litellm = "^1.17.9"
@@ -65,6 +67,7 @@ pre-commit = "^3.3.3"
 types-requests = "^2.31.0.2"
 pytest = "^7.4.0"
 pytest-asyncio = "^0.21.1"
+pytest-cov = "^5.0.0"
 mock = "^5.1.0"
 pydevd-pycharm = "^233.6745.319"
 
@@ -86,3 +89,8 @@ profile = "black"
 
 [tool.pyright]
 pythonVersion = "3.10"
+
+
+[tool.pytest.ini_options]
+pythonpath = ["forge"]
+testpaths = ["forge", "tests"]

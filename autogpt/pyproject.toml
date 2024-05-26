@@ -32,7 +32,6 @@ en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/dow
 fastapi = "^0.109.1"
 ftfy = "^6.1.1"
 google-api-python-client = "*"
-gTTS = "^2.3.1"
 hypercorn = "^0.14.4"
 inflection = "*"
 jsonschema = "*"
@@ -57,8 +56,6 @@ openapi-python-client = "^0.14.0"
 # Benchmarking
 agbenchmark = { path = "../benchmark", optional = true }
 # agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
-google-cloud-logging = "^3.8.0"
-google-cloud-storage = "^2.13.0"
 psycopg2-binary = "^2.9.9"
 
 [tool.poetry.extras]
