@@ -214,7 +214,7 @@ async def test_create_and_get_task():
 async def test_get_task_not_found():
     agent_db = AgentDB(TEST_DB)
     with pytest.raises(DataNotFoundError):
-        await agent_db.get_task(9999)
+        await agent_db.get_task("9999")
     os.remove(TEST_DB.split("///")[1])
 
 
@@ -248,7 +248,7 @@ async def test_updating_step():
 async def test_get_step_not_found():
     agent_db = AgentDB(TEST_DB)
     with pytest.raises(DataNotFoundError):
-        await agent_db.get_step(9999, 9999)
+        await agent_db.get_step("9999", "9999")
     os.remove(TEST_DB.split("///")[1])
 
 
