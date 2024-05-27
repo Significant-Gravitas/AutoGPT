@@ -64,7 +64,7 @@ repos:
       - id: flake8
         name: Lint (Flake8) - Benchmark
         alias: flake8-benchmark
-        files: ^benchmark/(agbenchmark|tests)/
+        files: ^benchmark/(agbenchmark|tests)/((?!reports).)*[/.]
         args: [--config=benchmark/.flake8]
 
   - repo: local
