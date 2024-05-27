@@ -21,6 +21,7 @@ Configuration is controlled through the `Config` object. You can set configurati
 - `GITHUB_USERNAME`: GitHub Username. Optional.
 - `GOOGLE_API_KEY`: Google API key. Optional.
 - `GOOGLE_CUSTOM_SEARCH_ENGINE_ID`: [Google custom search engine ID](https://programmablesearchengine.google.com/controlpanel/all). Optional.
+- `GROQ_API_KEY`: Set this if you want to use Groq models with AutoGPT
 - `HUGGINGFACE_API_TOKEN`: HuggingFace API, to be used for both image generation and audio to text. Optional.
 - `HUGGINGFACE_AUDIO_TO_TEXT_MODEL`: HuggingFace audio to text model. Default: CompVis/stable-diffusion-v1-4
 - `HUGGINGFACE_IMAGE_MODEL`: HuggingFace model to use for image generation. Default: CompVis/stable-diffusion-v1-4
