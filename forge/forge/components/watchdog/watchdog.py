@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING
 from forge.agent.components import ComponentSystemError
 from forge.agent.protocols import AfterParse
 from forge.components.action_history import EpisodicActionHistory
+from forge.models.action import AnyProposal
 
 if TYPE_CHECKING:
     from forge.agent.base import BaseAgentConfiguration
-    from forge.models.action import AnyProposal
 
 logger = logging.getLogger(__name__)
 

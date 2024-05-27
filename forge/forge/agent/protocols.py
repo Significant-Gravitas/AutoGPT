@@ -1,12 +1,13 @@
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Awaitable, Generic, Iterator
 
+from forge.models.action import ActionResult, AnyProposal
+
 from .components import AgentComponent
 
 if TYPE_CHECKING:
     from forge.command.command import Command
     from forge.llm.providers import ChatMessage
-    from forge.models.action import ActionResult, AnyProposal
 
 
 class DirectiveProvider(AgentComponent):

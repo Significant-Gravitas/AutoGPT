@@ -5,7 +5,6 @@ import inspect
 import logging
 from abc import ABCMeta, abstractmethod
 from typing import (
-    TYPE_CHECKING,
     Any,
     Awaitable,
     Callable,
@@ -31,10 +30,8 @@ from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.llm.providers import CHAT_MODELS, ModelName, OpenAIModelName
 from forge.llm.providers.schema import ChatModelInfo
+from forge.models.action import ActionResult, AnyProposal
 from forge.models.config import SystemConfiguration, SystemSettings, UserConfigurable
-
-if TYPE_CHECKING:
-    from forge.models.action import ActionResult, AnyProposal
 
 logger = logging.getLogger(__name__)
 
