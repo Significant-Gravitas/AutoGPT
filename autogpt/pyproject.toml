@@ -51,7 +51,6 @@ requests = "*"
 sentry-sdk = "^1.40.4"
 spacy = "^3.7.4"
 tenacity = "^8.2.2"
-tiktoken = "^0.5.0"
 
 # OpenAI and Generic plugins import
 openapi-python-client = "^0.14.0"
