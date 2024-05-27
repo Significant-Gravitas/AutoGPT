@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
 from forge.agent_protocol.database import AgentDB
-from forge.components.code_executor import (
+from forge.components.code_executor.code_executor import (
     is_docker_available,
     we_are_running_in_a_docker_container,
 )

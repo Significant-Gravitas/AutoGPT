@@ -110,7 +110,7 @@ class AssistantToolCallDict(TypedDict):
 
 
 class AssistantChatMessage(ChatMessage):
-    role: Literal[ChatMessage.Role.ASSISTANT] = ChatMessage.Role.ASSISTANT  # type: ignore
+    role: Literal[ChatMessage.Role.ASSISTANT] = ChatMessage.Role.ASSISTANT  # type: ignore # noqa
     content: str = ""
     tool_calls: Optional[list[AssistantToolCall]] = None
 

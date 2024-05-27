@@ -360,7 +360,7 @@ class GroqProvider(BaseChatModelProvider[GroqModelName, GroqSettings]):
 
         if not response.usage:
             self._logger.warning(
-                f"Groq chat completion response does not contain a usage field",
+                "Groq chat completion response does not contain a usage field",
                 response,
             )
             return response, 0, 0, 0

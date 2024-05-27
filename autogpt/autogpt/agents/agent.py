@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 import sentry_sdk
 from forge.agent.base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
@@ -14,7 +14,7 @@ from forge.agent.protocols import (
     DirectiveProvider,
     MessageProvider,
 )
-from forge.command.command import Command, CommandOutput
+from forge.command.command import Command
 from forge.components.action_history import (
     ActionHistoryComponent,
     EpisodicActionHistory,
@@ -282,7 +282,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
 
         return result
 
-    async def _execute_tool(self, tool_call: AssistantFunctionCall) -> CommandOutput:
+    async def _execute_tool(self, tool_call: AssistantFunctionCall) -> Any:
         """Execute the command and return the result
 
         Args:

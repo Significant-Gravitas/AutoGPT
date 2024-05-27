@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable, Concatenate, Generic, ParamSpec, TypeVar, cast
+from typing import Callable, Concatenate, Generic, ParamSpec, TypeVar, cast
 
 from forge.agent.protocols import CommandProvider
 
 from .parameter import CommandParameter
 
-CommandOutput = Any
-
 P = ParamSpec("P")
-CO = TypeVar("CO", bound=CommandOutput)
+CO = TypeVar("CO")  # command output
 
 _CP = TypeVar("_CP", bound=CommandProvider)
 

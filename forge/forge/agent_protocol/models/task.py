@@ -96,7 +96,10 @@ class Step(StepRequestBody):
     output: Optional[str] = Field(
         default=None,
         description="Output of the task step.",
-        example="I am going to use the write_to_file command and write Washington to a file called output.txt <write_to_file('output.txt', 'Washington')",
+        example=(
+            "I am going to use the write_to_file command and write Washington "
+            "to a file called output.txt <write_to_file('output.txt', 'Washington')"
+        ),
     )
     additional_output: Optional[dict[str, Any]] = None
     artifacts: list[Artifact] = Field(

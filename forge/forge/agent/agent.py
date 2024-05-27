@@ -78,7 +78,8 @@ class Agent:
 
         else:
             logger.warning(
-                f"Frontend not found. {frontend_path} does not exist. The frontend will not be served"
+                f"Frontend not found. {frontend_path} does not exist. "
+                "The frontend will not be served."
             )
         app.add_middleware(AgentMiddleware, agent=self)
 

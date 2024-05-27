@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from forge.components.code_executor import (
+from forge.components.code_executor.code_executor import (
     ALLOWLIST_CONTROL,
     CodeExecutorComponent,
     is_docker_available,

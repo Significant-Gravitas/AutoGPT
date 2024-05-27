@@ -46,7 +46,7 @@ async def test_list_tasks(agent: Agent):
     task_request = TaskRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
-    task = await agent.create_task(task_request)
+    await agent.create_task(task_request)
     tasks = await agent.list_tasks()
     assert isinstance(tasks, TaskListResponse)
 

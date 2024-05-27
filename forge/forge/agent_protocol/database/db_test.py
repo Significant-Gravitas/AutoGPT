@@ -22,15 +22,18 @@ from forge.agent_protocol.models import (
 )
 from forge.utils.exceptions import NotFoundError as DataNotFoundError
 
-TEST_DB = "sqlite:///test_db.sqlite3"
+TEST_DB_FILENAME = "test_db.sqlite3"
+TEST_DB_URL = f"sqlite:///{TEST_DB_FILENAME}"
 
 
-def test_table_creation():
-    agent_db = AgentDB(TEST_DB)
+@pytest.fixture
+def agent_db():
+    yield AgentDB(TEST_DB_URL)
+    os.remove(TEST_DB_FILENAME)
 
-    db_filename = TEST_DB.split("///")[1]
 
-    conn = sqlite3.connect(db_filename)
+def test_table_creation(agent_db: AgentDB):
+    conn = sqlite3.connect(TEST_DB_FILENAME)
     cursor = conn.cursor()
 
     # Test for tasks table existence
@@ -46,8 +49,6 @@ def test_table_creation():
         "SELECT name FROM sqlite_master WHERE type='table' AND name='artifacts'"
     )
     assert cursor.fetchone() is not None
-
-    os.remove(db_filename)
 
 
 @pytest.mark.asyncio
@@ -86,7 +87,10 @@ async def test_step_schema():
         name="Write to file",
         input="Write the words you receive to the file 'output.txt'.",
         status=StepStatus.created,
-        output="I am going to use the write_to_file command and write Washington to a file called output.txt <write_to_file('output.txt', 'Washington')>",
+        output=(
+            "I am going to use the write_to_file command and write Washington "
+            "to a file called output.txt <write_to_file('output.txt', 'Washington')>"
+        ),
         artifacts=[
             Artifact(
                 artifact_id="b225e278-8b4c-4f99-a696-8facf19f0e56",
@@ -103,13 +107,13 @@ async def test_step_schema():
     assert step.step_id == "6bb1801a-fd80-45e8-899a-4dd723cc602e"
     assert step.name == "Write to file"
     assert step.status == StepStatus.created
-    assert (
-        step.output
-        == "I am going to use the write_to_file command and write Washington to a file called output.txt <write_to_file('output.txt', 'Washington')>"
+    assert step.output == (
+        "I am going to use the write_to_file command and write Washington "
+        "to a file called output.txt <write_to_file('output.txt', 'Washington')>"
     )
     assert len(step.artifacts) == 1
     assert step.artifacts[0].artifact_id == "b225e278-8b4c-4f99-a696-8facf19f0e56"
-    assert step.is_last == False
+    assert step.is_last is False
 
 
 @pytest.mark.asyncio
@@ -170,7 +174,7 @@ async def test_convert_to_step():
     assert step.status == StepStatus.created
     assert len(step.artifacts) == 1
     assert step.artifacts[0].artifact_id == "b225e278-8b4c-4f99-a696-8facf19f0e56"
-    assert step.is_last == False
+    assert step.is_last is False
 
 
 @pytest.mark.asyncio
@@ -187,52 +191,40 @@ async def test_convert_to_artifact():
     artifact = convert_to_artifact(artifact_model)
     assert artifact.artifact_id == "b225e278-8b4c-4f99-a696-8facf19f0e56"
     assert artifact.relative_path == "file:///path/to/main.py"
-    assert artifact.agent_created == True
+    assert artifact.agent_created is True
 
 
 @pytest.mark.asyncio
-async def test_create_task():
-    # Having issues with pytest fixture so added setup and teardown in each test as a rapid workaround
-    # TODO: Fix this!
-    agent_db = AgentDB(TEST_DB)
-
+async def test_create_task(agent_db: AgentDB):
     task = await agent_db.create_task("task_input")
     assert task.input == "task_input"
-    os.remove(TEST_DB.split("///")[1])
 
 
 @pytest.mark.asyncio
-async def test_create_and_get_task():
-    agent_db = AgentDB(TEST_DB)
+async def test_create_and_get_task(agent_db: AgentDB):
     task = await agent_db.create_task("test_input")
     fetched_task = await agent_db.get_task(task.task_id)
     assert fetched_task.input == "test_input"
-    os.remove(TEST_DB.split("///")[1])
 
 
 @pytest.mark.asyncio
-async def test_get_task_not_found():
-    agent_db = AgentDB(TEST_DB)
+async def test_get_task_not_found(agent_db: AgentDB):
     with pytest.raises(DataNotFoundError):
         await agent_db.get_task("9999")
-    os.remove(TEST_DB.split("///")[1])
 
 
 @pytest.mark.asyncio
-async def test_create_and_get_step():
-    agent_db = AgentDB(TEST_DB)
+async def test_create_and_get_step(agent_db: AgentDB):
     task = await agent_db.create_task("task_input")
     step_input = {"type": "python/code"}
     request = StepRequestBody(input="test_input debug", additional_input=step_input)
     step = await agent_db.create_step(task.task_id, request)
     step = await agent_db.get_step(task.task_id, step.step_id)
     assert step.input == "test_input debug"
-    os.remove(TEST_DB.split("///")[1])
 
 
 @pytest.mark.asyncio
-async def test_updating_step():
-    agent_db = AgentDB(TEST_DB)
+async def test_updating_step(agent_db: AgentDB):
     created_task = await agent_db.create_task("task_input")
     step_input = {"type": "python/code"}
     request = StepRequestBody(input="test_input debug", additional_input=step_input)
@@ -241,30 +233,25 @@ async def test_updating_step():
 
     step = await agent_db.get_step(created_task.task_id, created_step.step_id)
     assert step.status.value == "completed"
-    os.remove(TEST_DB.split("///")[1])
 
 
 @pytest.mark.asyncio
-async def test_get_step_not_found():
-    agent_db = AgentDB(TEST_DB)
+async def test_get_step_not_found(agent_db: AgentDB):
     with pytest.raises(DataNotFoundError):
         await agent_db.get_step("9999", "9999")
-    os.remove(TEST_DB.split("///")[1])
 
 
 @pytest.mark.asyncio
-async def test_get_artifact():
-    db = AgentDB(TEST_DB)
-
+async def test_get_artifact(agent_db: AgentDB):
     # Given: A task and its corresponding artifact
-    task = await db.create_task("test_input debug")
+    task = await agent_db.create_task("test_input debug")
     step_input = {"type": "python/code"}
     requst = StepRequestBody(input="test_input debug", additional_input=step_input)
 
-    step = await db.create_step(task.task_id, requst)
+    step = await agent_db.create_step(task.task_id, requst)
 
     # Create an artifact
-    artifact = await db.create_artifact(
+    artifact = await agent_db.create_artifact(
         task_id=task.task_id,
         file_name="test_get_artifact_sample_file.txt",
         relative_path="file:///path/to/test_get_artifact_sample_file.txt",
@@ -273,7 +260,7 @@ async def test_get_artifact():
     )
 
     # When: The artifact is fetched by its ID
-    fetched_artifact = await db.get_artifact(artifact.artifact_id)
+    fetched_artifact = await agent_db.get_artifact(artifact.artifact_id)
 
     # Then: The fetched artifact matches the original
     assert fetched_artifact.artifact_id == artifact.artifact_id
@@ -282,45 +269,37 @@ async def test_get_artifact():
         == "file:///path/to/test_get_artifact_sample_file.txt"
     )
 
-    os.remove(TEST_DB.split("///")[1])
-
 
 @pytest.mark.asyncio
-async def test_list_tasks():
-    db = AgentDB(TEST_DB)
-
+async def test_list_tasks(agent_db: AgentDB):
     # Given: Multiple tasks in the database
-    task1 = await db.create_task("test_input_1")
-    task2 = await db.create_task("test_input_2")
+    task1 = await agent_db.create_task("test_input_1")
+    task2 = await agent_db.create_task("test_input_2")
 
     # When: All tasks are fetched
-    fetched_tasks, pagination = await db.list_tasks()
+    fetched_tasks, pagination = await agent_db.list_tasks()
 
     # Then: The fetched tasks list includes the created tasks
     task_ids = [task.task_id for task in fetched_tasks]
     assert task1.task_id in task_ids
     assert task2.task_id in task_ids
-    os.remove(TEST_DB.split("///")[1])
 
 
 @pytest.mark.asyncio
-async def test_list_steps():
-    db = AgentDB(TEST_DB)
-
+async def test_list_steps(agent_db: AgentDB):
     step_input = {"type": "python/code"}
     request = StepRequestBody(input="test_input debug", additional_input=step_input)
 
     # Given: A task and multiple steps for that task
-    task = await db.create_task("test_input")
-    step1 = await db.create_step(task.task_id, request)
+    task = await agent_db.create_task("test_input")
+    step1 = await agent_db.create_step(task.task_id, request)
     request = StepRequestBody(input="step two")
-    step2 = await db.create_step(task.task_id, request)
+    step2 = await agent_db.create_step(task.task_id, request)
 
     # When: All steps for the task are fetched
-    fetched_steps, pagination = await db.list_steps(task.task_id)
+    fetched_steps, pagination = await agent_db.list_steps(task.task_id)
 
     # Then: The fetched steps list includes the created steps
     step_ids = [step.step_id for step in fetched_steps]
     assert step1.step_id in step_ids
     assert step2.step_id in step_ids
-    os.remove(TEST_DB.split("///")[1])

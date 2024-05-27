@@ -173,8 +173,6 @@ class AgentDB:
         except SQLAlchemyError as e:
             logger.error(f"SQLAlchemy error while creating task: {e}")
             raise
-        except NotFoundError as e:
-            raise
         except Exception as e:
             logger.error(f"Unexpected error while creating task: {e}")
             raise
@@ -208,8 +206,6 @@ class AgentDB:
         except SQLAlchemyError as e:
             logger.error(f"SQLAlchemy error while creating step: {e}")
             raise
-        except NotFoundError as e:
-            raise
         except Exception as e:
             logger.error(f"Unexpected error while creating step: {e}")
             raise
@@ -238,7 +234,7 @@ class AgentDB:
                     session.close()
                     if self.debug_enabled:
                         logger.debug(
-                            f"Artifact already exists with relative_path: {relative_path}"
+                            f"Artifact {file_name} already exists at {relative_path}/"
                         )
                     return convert_to_artifact(existing_artifact)
 
@@ -255,13 +251,11 @@ class AgentDB:
                 session.refresh(new_artifact)
                 if self.debug_enabled:
                     logger.debug(
-                        f"Created new artifact with artifact_id: {new_artifact.artifact_id}"
+                        f"Created new artifact with ID: {new_artifact.artifact_id}"
                     )
                 return convert_to_artifact(new_artifact)
         except SQLAlchemyError as e:
             logger.error(f"SQLAlchemy error while creating step: {e}")
-            raise
-        except NotFoundError as e:
             raise
         except Exception as e:
             logger.error(f"Unexpected error while creating step: {e}")
@@ -285,8 +279,6 @@ class AgentDB:
                     raise NotFoundError("Task not found")
         except SQLAlchemyError as e:
             logger.error(f"SQLAlchemy error while getting task: {e}")
-            raise
-        except NotFoundError as e:
             raise
         except Exception as e:
             logger.error(f"Unexpected error while getting task: {e}")
@@ -313,8 +305,6 @@ class AgentDB:
         except SQLAlchemyError as e:
             logger.error(f"SQLAlchemy error while getting step: {e}")
             raise
-        except NotFoundError as e:
-            raise
         except Exception as e:
             logger.error(f"Unexpected error while getting step: {e}")
             raise
@@ -337,8 +327,6 @@ class AgentDB:
                     raise NotFoundError("Artifact not found")
         except SQLAlchemyError as e:
             logger.error(f"SQLAlchemy error while getting artifact: {e}")
-            raise
-        except NotFoundError as e:
             raise
         except Exception as e:
             logger.error(f"Unexpected error while getting artifact: {e}")
@@ -376,13 +364,12 @@ class AgentDB:
                     return await self.get_step(task_id, step_id)
                 else:
                     logger.error(
-                        f"Step not found for update with task_id: {task_id} and step_id: {step_id}"
+                        "Can't update non-existent Step with "
+                        f"task_id: {task_id} and step_id: {step_id}"
                     )
                     raise NotFoundError("Step not found")
         except SQLAlchemyError as e:
             logger.error(f"SQLAlchemy error while getting step: {e}")
-            raise
-        except NotFoundError as e:
             raise
         except Exception as e:
             logger.error(f"Unexpected error while getting step: {e}")
@@ -442,8 +429,6 @@ class AgentDB:
         except SQLAlchemyError as e:
             logger.error(f"SQLAlchemy error while listing tasks: {e}")
             raise
-        except NotFoundError as e:
-            raise
         except Exception as e:
             logger.error(f"Unexpected error while listing tasks: {e}")
             raise
@@ -476,8 +461,6 @@ class AgentDB:
         except SQLAlchemyError as e:
             logger.error(f"SQLAlchemy error while listing steps: {e}")
             raise
-        except NotFoundError as e:
-            raise
         except Exception as e:
             logger.error(f"Unexpected error while listing steps: {e}")
             raise
@@ -509,8 +492,6 @@ class AgentDB:
                 ], pagination
         except SQLAlchemyError as e:
             logger.error(f"SQLAlchemy error while listing artifacts: {e}")
-            raise
-        except NotFoundError as e:
             raise
         except Exception as e:
             logger.error(f"Unexpected error while listing artifacts: {e}")
