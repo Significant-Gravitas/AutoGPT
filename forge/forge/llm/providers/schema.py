@@ -67,7 +67,7 @@ class ChatMessage(BaseModel):
         FUNCTION = "function"
         """May be used for the return value of function calls"""
 
-    role: Role = Field(..., const=True)
+    role: Role
     content: str
 
     @staticmethod
