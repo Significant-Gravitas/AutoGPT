@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Generic, Iterator
+from typing import TYPE_CHECKING, Generic
 
 from pydantic import Field
 from pydantic.generics import GenericModel
