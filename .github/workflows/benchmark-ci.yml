@@ -84,7 +84,7 @@ jobs:
         run: |
           poetry run pytest -vv \
             --cov=agbenchmark --cov-branch --cov-report term-missing --cov-report xml \
-            --numprocesses=logical --durations=10 \
+            --durations=10 \
             tests
         env:
           CI: true

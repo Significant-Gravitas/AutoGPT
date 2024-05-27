@@ -105,7 +105,7 @@ jobs:
         run: |
           poetry run pytest -vv \
             --cov=forge --cov-branch --cov-report term-missing --cov-report xml \
-            --numprocesses=logical --durations=10 \
+            --durations=10 \
             forge tests/unit tests/integration
         env:
           CI: true
