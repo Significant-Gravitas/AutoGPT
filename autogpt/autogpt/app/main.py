@@ -20,7 +20,6 @@ from forge.components.code_executor import (
     we_are_running_in_a_docker_container,
 )
 from forge.config.ai_profile import AIProfile
-from forge.config.config import Config, ConfigBuilder, assert_config_has_openai_api_key
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
@@ -33,6 +32,11 @@ from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agents.agent_manager import AgentManager
+from autogpt.agents.config import (
+    Config,
+    ConfigBuilder,
+    assert_config_has_openai_api_key,
+)
 from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
 
 if TYPE_CHECKING:

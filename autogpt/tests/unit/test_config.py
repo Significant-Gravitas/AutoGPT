@@ -8,12 +8,12 @@ from typing import Any
 from unittest import mock
 
 import pytest
-from forge.config.config import Config, ConfigBuilder
 from forge.llm.providers.schema import ChatModelInfo, ModelProviderName
 from openai.pagination import AsyncPage
 from openai.types import Model
 from pydantic import SecretStr
 
+from autogpt.agents.config import Config, ConfigBuilder
 from autogpt.app.configurator import GPT_3_MODEL, GPT_4_MODEL, apply_overrides_to_config
 
 

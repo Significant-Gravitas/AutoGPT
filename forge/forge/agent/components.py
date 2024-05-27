@@ -51,7 +51,7 @@ class ConfigurableComponent(ABC, Generic[C]):
                 "or set the `config` attribute manually."
             )
         return self._config
-    
+
     @config.setter
     def config(self, config: C):
         self._config = config

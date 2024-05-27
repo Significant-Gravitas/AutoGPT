@@ -3,8 +3,8 @@ from unittest.mock import patch
 import pytest
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
-from forge.config.config import Config
 
+from autogpt.agents.config import Config
 from autogpt.app.setup import (
     apply_overrides_to_ai_settings,
     interactively_revise_ai_settings,

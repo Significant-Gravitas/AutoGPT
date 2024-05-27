@@ -3,7 +3,6 @@ import logging
 
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
-from forge.config.config import Config
 from forge.llm.prompting import ChatPrompt, LanguageModelClassification, PromptStrategy
 from forge.llm.providers.schema import (
     AssistantChatMessage,
@@ -13,6 +12,8 @@ from forge.llm.providers.schema import (
 )
 from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.models.json_schema import JSONSchema
+
+from autogpt.agents.config import Config
 
 logger = logging.getLogger(__name__)
 

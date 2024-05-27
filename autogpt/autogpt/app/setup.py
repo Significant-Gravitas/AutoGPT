@@ -4,8 +4,9 @@ from typing import Optional
 
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
-from forge.config.config import Config
 from forge.logging.utils import print_attribute
+
+from autogpt.agents.config import Config
 
 from .input import clean_input
 

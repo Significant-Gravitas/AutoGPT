@@ -8,16 +8,14 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 import click
-from colorama import Fore
-from pydantic import SecretStr, validator
-
 import forge
-from forge.file_storage import FileStorageBackendName
+from colorama import Fore
+from forge.config.base import BaseConfig
 from forge.llm.providers import CHAT_MODELS, ModelName
 from forge.llm.providers.openai import OpenAICredentials, OpenAIModelName
 from forge.logging.config import LoggingConfig
-from forge.models.config import Configurable, SystemSettings, UserConfigurable
-from forge.speech.say import TTSConfig
+from forge.models.config import Configurable, UserConfigurable
+from pydantic import SecretStr, validator
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +26,7 @@ GPT_4_MODEL = OpenAIModelName.GPT4
 GPT_3_MODEL = OpenAIModelName.GPT3
 
 
-class Config(SystemSettings, arbitrary_types_allowed=True):
+class Config(BaseConfig):
     name: str = "Auto-GPT configuration"
     description: str = "Default configuration for the Auto-GPT application."
 
@@ -42,15 +40,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     authorise_key: str = UserConfigurable(default="y", from_env="AUTHORISE_COMMAND_KEY")
     exit_key: str = UserConfigurable(default="n", from_env="EXIT_KEY")
     noninteractive_mode: bool = False
-
-    # TTS configuration
     logging: LoggingConfig = LoggingConfig()
-    tts_config: TTSConfig = TTSConfig()
-
-    # File storage
-    file_storage_backend: FileStorageBackendName = UserConfigurable(
-        default=FileStorageBackendName.LOCAL, from_env="FILE_STORAGE_BACKEND"
-    )
 
     ##########################
     # Agent Control Settings #
@@ -91,20 +81,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         from_env=lambda: os.getenv("RESTRICT_TO_WORKSPACE", "True") == "True",
     )
     allow_downloads: bool = False
-
-    # Shell commands
-    execute_local_commands: bool = UserConfigurable(
-        default=False,
-        from_env=lambda: os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True",
-    )
-
-    # Audio to text
-    audio_to_text_provider: str = UserConfigurable(
-        default="huggingface", from_env="AUDIO_TO_TEXT_PROVIDER"
-    )
-    huggingface_audio_to_text_model: Optional[str] = UserConfigurable(
-        from_env="HUGGINGFACE_AUDIO_TO_TEXT_MODEL"
-    )
 
     ###############
     # Credentials #

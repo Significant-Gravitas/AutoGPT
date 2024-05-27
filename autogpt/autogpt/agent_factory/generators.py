@@ -6,7 +6,7 @@ from forge.file_storage.base import FileStorage
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
-    from forge.config.config import Config
+    from autogpt.agents.config import Config
     from forge.llm.providers.schema import ChatModelProvider
 
 from .configurators import _configure_agent

@@ -13,7 +13,8 @@ from forge.models.action import ActionProposal, ActionResult
 from forge.models.utils import ModelWithSummary
 
 if TYPE_CHECKING:
-    from forge.config.config import Config
+    from autogpt.agents.config import Config
+
     from forge.llm.providers import ChatModelProvider
 
 AP = TypeVar("AP", bound=ActionProposal)

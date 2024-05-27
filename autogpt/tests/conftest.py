@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 from forge.config.ai_profile import AIProfile
-from forge.config.config import Config, ConfigBuilder
 from forge.file_storage.local import (
     FileStorage,
     FileStorageConfiguration,
@@ -16,6 +15,7 @@ from forge.llm.providers import ChatModelProvider
 from forge.logging.config import configure_logging
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
+from autogpt.agents.config import Config, ConfigBuilder
 from autogpt.app.main import _configure_llm_provider
 
 pytest_plugins = [

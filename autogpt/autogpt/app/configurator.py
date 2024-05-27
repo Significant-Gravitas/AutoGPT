@@ -6,8 +6,9 @@ from typing import Literal, Optional
 
 import click
 from colorama import Back, Style
-from forge.config.config import GPT_3_MODEL, GPT_4_MODEL, Config
 from forge.llm.providers import ModelName, MultiProvider
+
+from autogpt.agents.config import GPT_3_MODEL, GPT_4_MODEL, Config
 
 logger = logging.getLogger(__name__)
 

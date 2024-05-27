@@ -20,7 +20,10 @@ from forge.components.action_history import (
     EpisodicActionHistory,
 )
 from forge.components.action_history.action_history import ActionHistoryConfiguration
-from forge.components.code_executor.code_executor import CodeExecutorComponent, CodeExecutorConfiguration
+from forge.components.code_executor.code_executor import (
+    CodeExecutorComponent,
+    CodeExecutorConfiguration,
+)
 from forge.components.context.context import AgentContext, ContextComponent
 from forge.components.file_manager import FileManagerComponent
 from forge.components.git_operations import GitOperationsComponent
@@ -67,7 +70,7 @@ from .prompt_strategies.one_shot import (
 )
 
 if TYPE_CHECKING:
-    from forge.config.config import Config
+    from autogpt.agents.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +132,9 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         self.file_manager = FileManagerComponent(file_storage, settings)
         self.code_executor = CodeExecutorComponent(
             self.file_manager.workspace,
-            CodeExecutorConfiguration(docker_container_name=f"{settings.agent_id}_sandbox"),
+            CodeExecutorConfiguration(
+                docker_container_name=f"{settings.agent_id}_sandbox"
+            ),
         )
         self.git_ops = GitOperationsComponent()
         self.image_gen = ImageGeneratorComponent(self.file_manager.workspace)

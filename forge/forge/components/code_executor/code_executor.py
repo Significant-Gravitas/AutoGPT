@@ -61,7 +61,9 @@ class CodeExecutorConfiguration(ComponentConfiguration):
     docker_container_name: str = "agent_sandbox"
 
 
-class CodeExecutorComponent(CommandProvider, ConfigurableComponent[CodeExecutorConfiguration]):
+class CodeExecutorComponent(
+    CommandProvider, ConfigurableComponent[CodeExecutorConfiguration]
+):
     """Provides commands to execute Python code and shell commands."""
 
     def __init__(
