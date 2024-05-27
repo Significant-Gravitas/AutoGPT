@@ -59,19 +59,21 @@ def _configure_agent(
     directives: Optional[AIDirectives] = None,
     state: Optional[AgentSettings] = None,
 ) -> Agent:
-    if not (state or agent_id and task and ai_profile and directives):
+    if state:
+        agent_state = state
+    elif agent_id and task and ai_profile and directives:
+        agent_state = state or create_agent_state(
+            agent_id=agent_id,
+            task=task,
+            ai_profile=ai_profile,
+            directives=directives,
+            app_config=app_config,
+        )
+    else:
         raise TypeError(
             "Either (state) or (agent_id, task, ai_profile, directives)"
             " must be specified"
         )
-
-    agent_state = state or create_agent_state(
-        agent_id=agent_id,
-        task=task,
-        ai_profile=ai_profile,
-        directives=directives,
-        app_config=app_config,
-    )
 
     return Agent(
         settings=agent_state,
