@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Callable, Iterator, Optional
 
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
 from forge.llm.prompting.utils import indent
-from forge.llm.providers import ChatMessage, ChatModelProvider
+from forge.llm.providers import ChatMessage, MultiProvider
 
 if TYPE_CHECKING:
     from forge.config.config import Config
@@ -21,7 +21,7 @@ class ActionHistoryComponent(MessageProvider, AfterParse[AnyProposal], AfterExec
         max_tokens: int,
         count_tokens: Callable[[str], int],
         legacy_config: Config,
-        llm_provider: ChatModelProvider,
+        llm_provider: MultiProvider,
     ) -> None:
         self.event_history = event_history
         self.max_tokens = max_tokens

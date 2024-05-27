@@ -4,7 +4,7 @@ from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import Config
 from forge.file_storage.base import FileStorage
-from forge.llm.providers import ChatModelProvider
+from forge.llm.providers import MultiProvider
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 
@@ -15,7 +15,7 @@ def create_agent(
     ai_profile: AIProfile,
     app_config: Config,
     file_storage: FileStorage,
-    llm_provider: ChatModelProvider,
+    llm_provider: MultiProvider,
     directives: Optional[AIDirectives] = None,
 ) -> Agent:
     if not task:
@@ -39,7 +39,7 @@ def configure_agent_with_state(
     state: AgentSettings,
     app_config: Config,
     file_storage: FileStorage,
-    llm_provider: ChatModelProvider,
+    llm_provider: MultiProvider,
 ) -> Agent:
     return _configure_agent(
         state=state,
@@ -51,7 +51,7 @@ def configure_agent_with_state(
 
 def _configure_agent(
     app_config: Config,
-    llm_provider: ChatModelProvider,
+    llm_provider: MultiProvider,
     file_storage: FileStorage,
     agent_id: str = "",
     task: str = "",

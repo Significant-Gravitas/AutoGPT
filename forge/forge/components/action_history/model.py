@@ -13,7 +13,7 @@ from forge.models.utils import ModelWithSummary
 
 if TYPE_CHECKING:
     from forge.config.config import Config
-    from forge.llm.providers import ChatModelProvider
+    from forge.llm.providers import MultiProvider
 
 
 class Episode(GenericModel, Generic[AnyProposal]):
@@ -108,7 +108,7 @@ class EpisodicActionHistory(GenericModel, Generic[AnyProposal]):
             self.cursor = len(self.episodes)
 
     async def handle_compression(
-        self, llm_provider: ChatModelProvider, app_config: Config
+        self, llm_provider: MultiProvider, app_config: Config
     ) -> None:
         """Compresses each episode in the action history using an LLM.
 

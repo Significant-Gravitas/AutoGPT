@@ -5,10 +5,10 @@ from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import Config
 from forge.llm.prompting import ChatPrompt, LanguageModelClassification, PromptStrategy
+from forge.llm.providers import MultiProvider
 from forge.llm.providers.schema import (
     AssistantChatMessage,
     ChatMessage,
-    ChatModelProvider,
     CompletionModelFunction,
 )
 from forge.models.config import SystemConfiguration, UserConfigurable
@@ -219,7 +219,7 @@ class AgentProfileGenerator(PromptStrategy):
 async def generate_agent_profile_for_task(
     task: str,
     app_config: Config,
-    llm_provider: ChatModelProvider,
+    llm_provider: MultiProvider,
 ) -> tuple[AIProfile, AIDirectives]:
     """Generates an AIConfig object from the given string.
 

@@ -34,8 +34,8 @@ from forge.llm.prompting.utils import dump_prompt
 from forge.llm.providers import (
     AssistantFunctionCall,
     ChatMessage,
-    ChatModelProvider,
     ChatModelResponse,
+    MultiProvider,
 )
 from forge.llm.providers.utils import function_specs_from_commands
 from forge.models.action import (
@@ -95,7 +95,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
     def __init__(
         self,
         settings: AgentSettings,
-        llm_provider: ChatModelProvider,
+        llm_provider: MultiProvider,
         file_storage: FileStorage,
         legacy_config: Config,
     ):

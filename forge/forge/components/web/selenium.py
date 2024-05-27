@@ -32,7 +32,7 @@ from forge.command import Command, command
 from forge.config.config import Config
 from forge.content_processing.html import extract_hyperlinks, format_hyperlinks
 from forge.content_processing.text import extract_information, summarize_text
-from forge.llm.providers import ChatModelInfo, ChatModelProvider
+from forge.llm.providers import ChatModelInfo, MultiProvider
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError, TooMuchOutputError
 from forge.utils.url_validator import validate_url
@@ -57,7 +57,7 @@ class WebSeleniumComponent(DirectiveProvider, CommandProvider):
     def __init__(
         self,
         config: Config,
-        llm_provider: ChatModelProvider,
+        llm_provider: MultiProvider,
         model_info: ChatModelInfo,
     ):
         self.legacy_config = config
