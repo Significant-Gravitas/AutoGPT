@@ -38,6 +38,7 @@ jobs:
     runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
     defaults:
       run:
+        shell: bash
         working-directory: benchmark
     steps:
       - name: Checkout repository
