@@ -28,7 +28,7 @@ def gcs_root() -> Path:
 
 
 @pytest.fixture(scope="module")
-def gcs_storage_uninitialized(gcs_bucket_name: str, gcs_root: Path) -> GCSFileStorage:
+def gcs_storage_uninitialized(gcs_bucket_name: str, gcs_root: Path):
     os.environ["STORAGE_BUCKET"] = gcs_bucket_name
     storage_config = GCSFileStorageConfiguration.from_env()
     storage_config.root = gcs_root
@@ -54,7 +54,7 @@ def test_initialize(gcs_bucket_name: str, gcs_storage_uninitialized: GCSFileStor
 
 
 @pytest.fixture(scope="module")
-def gcs_storage(gcs_storage_uninitialized: GCSFileStorage) -> GCSFileStorage:
+def gcs_storage(gcs_storage_uninitialized: GCSFileStorage):
     (gcs_storage := gcs_storage_uninitialized).initialize()
     yield gcs_storage  # type: ignore
 
@@ -79,7 +79,7 @@ TEST_FILES: list[tuple[str | Path, str]] = [
 
 
 @pytest_asyncio.fixture
-async def gcs_storage_with_files(gcs_storage: GCSFileStorage) -> GCSFileStorage:
+async def gcs_storage_with_files(gcs_storage: GCSFileStorage):
     for file_name, file_content in TEST_FILES:
         gcs_storage._bucket.blob(
             str(gcs_storage.get_path(file_name))

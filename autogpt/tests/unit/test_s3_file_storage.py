@@ -22,7 +22,7 @@ def s3_root() -> Path:
 
 
 @pytest.fixture
-def s3_storage_uninitialized(s3_bucket_name: str, s3_root: Path) -> S3FileStorage:
+def s3_storage_uninitialized(s3_bucket_name: str, s3_root: Path):
     os.environ["STORAGE_BUCKET"] = s3_bucket_name
     storage_config = S3FileStorageConfiguration.from_env()
     storage_config.root = s3_root
@@ -52,7 +52,7 @@ def test_workspace_bucket_name(
 
 
 @pytest.fixture
-def s3_storage(s3_storage_uninitialized: S3FileStorage) -> S3FileStorage:
+def s3_storage(s3_storage_uninitialized: S3FileStorage):
     (s3_storage := s3_storage_uninitialized).initialize()
     yield s3_storage  # type: ignore
 
@@ -71,7 +71,7 @@ TEST_FILES: list[tuple[str | Path, str]] = [
 
 
 @pytest_asyncio.fixture
-async def s3_storage_with_files(s3_storage: S3FileStorage) -> S3FileStorage:
+async def s3_storage_with_files(s3_storage: S3FileStorage):
     for file_name, file_content in TEST_FILES:
         s3_storage._bucket.Object(str(s3_storage.get_path(file_name))).put(
             Body=file_content
