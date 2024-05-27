@@ -52,7 +52,7 @@ repos:
       - id: flake8
         name: Lint (Flake8) - AutoGPT
         alias: flake8-autogpt
-        files: ^autogpt/(autogpt|tests)/
+        files: ^autogpt/(autogpt|scripts|tests)/
         args: [--config=autogpt/.flake8]
 
       - id: flake8
@@ -77,7 +77,7 @@ repos:
         entry: poetry -C autogpt run pyright
         args: [-p, autogpt, autogpt]
         # include forge since it's a path dependency:
-        files: ^(autogpt|forge)/((autogpt|forge|tests)/|poetry\.lock$)
+        files: ^(autogpt|forge)/((autogpt|forge|scripts|tests)/|poetry\.lock$)
         types: [file]
         language: system
         pass_filenames: false
