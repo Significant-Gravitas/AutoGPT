@@ -17,9 +17,9 @@ from .agent import Agent
 
 
 @pytest.fixture
-def agent():
+def agent(test_workspace: Path):
     db = AgentDB("sqlite:///test.db")
-    config = FileStorageConfiguration(root=Path("./test_workspace"))
+    config = FileStorageConfiguration(root=test_workspace)
     workspace = LocalFileStorage(config)
     return Agent(db, workspace)
 
@@ -107,9 +107,12 @@ async def test_create_artifact(agent: Agent, file_upload: UploadFile):
     )
     task = await agent.create_task(task_request)
     artifact = await agent.create_artifact(
-        task_id=task.task_id, file=file_upload, relative_path="tests/agent_test.py"
+        task_id=task.task_id,
+        file=file_upload,
+        relative_path=f"a_dir/{file_upload.filename}",
     )
-    assert artifact.file_name == "agent_test.py"
+    assert artifact.file_name == file_upload.filename
+    assert artifact.relative_path == f"a_dir/{file_upload.filename}"
 
 
 @pytest.mark.asyncio
@@ -120,7 +123,9 @@ async def test_create_and_get_artifact(agent: Agent, file_upload: UploadFile):
     task = await agent.create_task(task_request)
 
     artifact = await agent.create_artifact(
-        task.task_id, file=file_upload, relative_path="tests/agent_test.py"
+        task_id=task.task_id,
+        file=file_upload,
+        relative_path=f"b_dir/{file_upload.filename}",
     )
     await file_upload.seek(0)
     file_upload_content = await file_upload.read()
@@ -130,4 +135,3 @@ async def test_create_and_get_artifact(agent: Agent, file_upload: UploadFile):
     async for b in retrieved_artifact.body_iterator:
         retrieved_artifact_content.extend(b)  # type: ignore
     assert retrieved_artifact_content == file_upload_content
-    assert artifact.file_name == "agent_test.py"
