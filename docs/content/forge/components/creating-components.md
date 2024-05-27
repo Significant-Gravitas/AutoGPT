@@ -150,9 +150,9 @@ It gives an ability for the agent to ask user for input in the terminal.
 5. Since agent isn't always running in the terminal or interactive mode, we need to disable this component by setting `self._enabled` when it's not possible to ask for user input.
 
     ```py
-    def __init__(self, config: Config):
+    def __init__(self, interactive_mode: bool):
         self.config = config
-        self._enabled = not config.noninteractive_mode
+        self._enabled = interactive_mode
     ```
 
 The final component should look like this:
@@ -163,10 +163,10 @@ class MyUserInteractionComponent(CommandProvider):
     """Provides commands to interact with the user."""
 
     # We pass config to check if we're in noninteractive mode
-    def __init__(self, config: Config):
+    def __init__(self, interactive_mode: bool):
         self.config = config
         # 5.
-        self._enabled = not config.noninteractive_mode
+        self._enabled = interactive_mode
 
     # 4.
     def get_commands(self) -> Iterator[Command]:

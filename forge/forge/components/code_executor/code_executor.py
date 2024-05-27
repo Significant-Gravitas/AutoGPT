@@ -12,7 +12,7 @@ from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
 from pydantic import Field
 
-from forge.agent import BaseAgentSettings, CommandProvider
+from forge.agent import CommandProvider
 from forge.agent.components import ComponentConfiguration, ConfigurableComponent
 from forge.command import Command, command
 from forge.file_storage import FileStorage
@@ -53,25 +53,24 @@ class CodeExecutionError(CommandExecutionError):
     """The operation (an attempt to run arbitrary code) returned an error"""
 
 
-class CodeExecutorConfig(ComponentConfiguration):
+class CodeExecutorConfiguration(ComponentConfiguration):
     execute_local_commands: bool = False
     shell_command_control: Literal["allowlist"] | Literal["denylist"] = "allowlist"
     shell_allowlist: list[str] = Field(default_factory=list)
     shell_denylist: list[str] = Field(default_factory=list)
+    docker_container_name: str = "agent_sandbox"
 
 
-class CodeExecutorComponent(CommandProvider, ConfigurableComponent[CodeExecutorConfig]):
+class CodeExecutorComponent(CommandProvider, ConfigurableComponent[CodeExecutorConfiguration]):
     """Provides commands to execute Python code and shell commands."""
 
     def __init__(
         self,
         workspace: FileStorage,
-        state: BaseAgentSettings,
-        config: Optional[CodeExecutorConfig] = None,
+        config: Optional[CodeExecutorConfiguration] = None,
     ):
-        super().__init__(config or CodeExecutorConfig())
+        super().__init__(config or CodeExecutorConfiguration())
         self.workspace = workspace
-        self.state = state
 
         if not we_are_running_in_a_docker_container() and not is_docker_available():
             logger.info(
@@ -323,12 +322,10 @@ class CodeExecutorComponent(CommandProvider, ConfigurableComponent[CodeExecutorC
         """Run a Python script in a Docker container"""
         file_path = self.workspace.get_path(filename)
         try:
-            assert self.state.agent_id, "Need Agent ID to attach Docker container"
-
             client = docker.from_env()
             image_name = "python:3-alpine"
             container_is_fresh = False
-            container_name = f"{self.state.agent_id}_sandbox"
+            container_name = self.config.docker_container_name
             with self.workspace.mount() as local_path:
                 try:
                     container: DockerContainer = client.containers.get(

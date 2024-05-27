@@ -6,6 +6,7 @@ from typing import Callable, Generic, Optional, TypeVar, get_args, get_type_hint
 from forge.models.config import ComponentConfiguration
 
 T = TypeVar("T", bound="AgentComponent")
+C = TypeVar("C", bound=ComponentConfiguration)
 
 
 class AgentComponent(ABC):
@@ -35,21 +36,6 @@ class AgentComponent(ABC):
         return self
 
 
-C = TypeVar("C", bound=ComponentConfiguration)
-
-
-# class ConfigurableComponentMeta(ABCMeta):
-#     def __call__(cls, *args, **kwargs):
-#         if 'config' not in kwargs:
-#             # Extract the type of the config from the generic type hint
-#             generic_base = next(
-#                 base for base in cls.__orig_bases__ if isinstance(base, Generic)
-#             )
-#             config_type = get_type_hints(generic_base)['C']
-#             kwargs['config'] = config_type()  # Instantiate the config class
-#         return super().__call__(*args, **kwargs)
-
-
 class ConfigurableComponent(ABC, Generic[C]):
     """A component that can be configured with a Pydantic model."""
 
@@ -58,19 +44,17 @@ class ConfigurableComponent(ABC, Generic[C]):
 
     @property
     def config(self) -> C:
-        if not hasattr(self, "_config") or self._config is None:
-            config_type = self._get_config_type()
-            self._config = config_type()
+        if self._config is None:
+            raise ValueError(
+                "Component is not configured. "
+                "Call `super().__init__(config)` in `__init__` "
+                "or set the `config` attribute manually."
+            )
         return self._config
-
+    
     @config.setter
-    def config(self, value: C):
-        self._config = value
-
-    @classmethod
-    def _get_config_type(cls) -> type[C]:
-        hints = get_type_hints(cls)
-        return hints["config"]
+    def config(self, config: C):
+        self._config = config
 
 
 class ComponentEndpointError(Exception):

@@ -20,7 +20,7 @@ from forge.components.action_history import (
     EpisodicActionHistory,
 )
 from forge.components.action_history.action_history import ActionHistoryConfiguration
-from forge.components.code_executor.code_executor import CodeExecutorComponent
+from forge.components.code_executor.code_executor import CodeExecutorComponent, CodeExecutorConfiguration
 from forge.components.context.context import AgentContext, ContextComponent
 from forge.components.file_manager import FileManagerComponent
 from forge.components.git_operations import GitOperationsComponent
@@ -128,7 +128,8 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
         )
         self.file_manager = FileManagerComponent(file_storage, settings)
         self.code_executor = CodeExecutorComponent(
-            self.file_manager.workspace, settings
+            self.file_manager.workspace,
+            CodeExecutorConfiguration(docker_container_name=f"{settings.agent_id}_sandbox"),
         )
         self.git_ops = GitOperationsComponent()
         self.image_gen = ImageGeneratorComponent(self.file_manager.workspace)
@@ -137,7 +138,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
             legacy_config.fast_llm,
             llm_provider,
             self.llm,
-            str(legacy_config.app_data_dir),
+            legacy_config.app_data_dir,
         )
         self.context = ContextComponent(self.file_manager.workspace, settings.context)
         self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(

@@ -62,7 +62,7 @@ def config(
 
 
 @pytest.fixture(scope="session")
-def setup_logger(config: Config):
+def setup_logger():
     configure_logging(
         debug=True,
         log_dir=Path(__file__).parent / "logs",
