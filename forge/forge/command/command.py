@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable, Generic, ParamSpec, TypeVar
+from typing import Any, Callable, Concatenate, Generic, ParamSpec, TypeVar, cast
+
+from forge.agent.protocols import CommandProvider
 
 from .parameter import CommandParameter
 
@@ -9,6 +11,8 @@ CommandOutput = Any
 
 P = ParamSpec("P")
 CO = TypeVar("CO", bound=CommandOutput)
+
+_CP = TypeVar("_CP", bound=CommandProvider)
 
 
 class Command(Generic[P, CO]):
@@ -24,7 +28,7 @@ class Command(Generic[P, CO]):
         self,
         names: list[str],
         description: str,
-        method: Callable[P, CO],
+        method: Callable[Concatenate[_CP, P], CO],
         parameters: list[CommandParameter],
     ):
         # Check if all parameters are provided
@@ -34,7 +38,9 @@ class Command(Generic[P, CO]):
             )
         self.names = names
         self.description = description
-        self.method = method
+        # Method technically has a `self` parameter, but we can ignore that
+        # since Python passes it internally.
+        self.method = cast(Callable[P, CO], method)
         self.parameters = parameters
 
     @property
