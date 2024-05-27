@@ -7,11 +7,13 @@ from abc import ABCMeta, abstractmethod
 from typing import (
     TYPE_CHECKING,
     Any,
+    Awaitable,
     Callable,
     Iterator,
     Optional,
     ParamSpec,
     TypeVar,
+    cast,
     overload,
 )
 
@@ -200,13 +202,16 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
 
     @overload
     async def run_pipeline(
-        self, protocol_method: Callable[P, None], *args, retry_limit: int = 3
+        self,
+        protocol_method: Callable[P, None | Awaitable[None]],
+        *args,
+        retry_limit: int = 3,
     ) -> list[None]:
         ...
 
     async def run_pipeline(
         self,
-        protocol_method: Callable[P, Iterator[T] | None],
+        protocol_method: Callable[P, Iterator[T] | None | Awaitable[None]],
         *args,
         retry_limit: int = 3,
     ) -> list[T] | list[None]:
@@ -237,7 +242,10 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
                         )
                         continue
 
-                    method = getattr(component, method_name, None)
+                    method = cast(
+                        Callable[..., Iterator[T] | None | Awaitable[None]] | None,
+                        getattr(component, method_name, None),
+                    )
                     if not callable(method):
                         continue
 
@@ -245,10 +253,9 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
                     while component_attempts < retry_limit:
                         try:
                             component_args = self._selective_copy(args)
-                            if inspect.iscoroutinefunction(method):
-                                result = await method(*component_args)
-                            else:
-                                result = method(*component_args)
+                            result = method(*component_args)
+                            if inspect.isawaitable(result):
+                                result = await result
                             if result is not None:
                                 method_result.extend(result)
                             args = component_args

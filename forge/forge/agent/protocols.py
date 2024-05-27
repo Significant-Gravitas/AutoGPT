@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Generic, Iterator
+from typing import TYPE_CHECKING, Awaitable, Generic, Iterator
 
 from .components import AgentComponent
 
@@ -34,17 +34,17 @@ class MessageProvider(AgentComponent):
 
 class AfterParse(AgentComponent, Generic[AnyProposal]):
     @abstractmethod
-    def after_parse(self, result: AnyProposal) -> None:
+    def after_parse(self, result: AnyProposal) -> None | Awaitable[None]:
         ...
 
 
 class ExecutionFailure(AgentComponent):
     @abstractmethod
-    def execution_failure(self, error: Exception) -> None:
+    def execution_failure(self, error: Exception) -> None | Awaitable[None]:
         ...
 
 
 class AfterExecute(AgentComponent):
     @abstractmethod
-    def after_execute(self, result: "ActionResult") -> None:
+    def after_execute(self, result: "ActionResult") -> None | Awaitable[None]:
         ...
