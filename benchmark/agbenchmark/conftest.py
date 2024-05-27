@@ -123,9 +123,10 @@ def check_regression(request: pytest.FixtureRequest) -> None:
     with contextlib.suppress(FileNotFoundError):
         rt_tracker = RegressionTestsTracker(agbenchmark_config.regression_tests_file)
 
-        assert isinstance(request.node.parent, pytest.Function)
+        assert isinstance(request.node, pytest.Function)
+        assert isinstance(request.node.parent, pytest.Class)
         test_name = request.node.parent.name
-        challenge_location = getattr(request.node.parent.cls, "CHALLENGE_LOCATION", "")
+        challenge_location = getattr(request.node.cls, "CHALLENGE_LOCATION", "")
         skip_string = f"Skipping {test_name} at {challenge_location}"
 
         # Check if the test name exists in the regression tests
@@ -253,7 +254,7 @@ def pytest_collection_modifyitems(
         item = items[i]
         assert item.cls and issubclass(item.cls, BaseChallenge)
         challenge = item.cls
-        challenge_name = item.cls.__name__
+        challenge_name = challenge.info.name
 
         if not issubclass(challenge, BaseChallenge):
             item.warn(
