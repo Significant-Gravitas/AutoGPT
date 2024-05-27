@@ -1,14 +1,12 @@
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Generic, Iterator
 
 from .components import AgentComponent
 
 if TYPE_CHECKING:
     from forge.command.command import Command
     from forge.llm.providers import ChatMessage
-    from forge.models.action import ActionResult
-
-    from .base import ActionProposal
+    from forge.models.action import ActionResult, AnyProposal
 
 
 class DirectiveProvider(AgentComponent):
@@ -34,9 +32,9 @@ class MessageProvider(AgentComponent):
         ...
 
 
-class AfterParse(AgentComponent):
+class AfterParse(AgentComponent, Generic[AnyProposal]):
     @abstractmethod
-    def after_parse(self, result: "ActionProposal") -> None:
+    def after_parse(self, result: AnyProposal) -> None:
         ...
 
 

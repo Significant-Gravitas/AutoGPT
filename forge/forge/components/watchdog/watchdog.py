@@ -1,18 +1,20 @@
+from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from forge.agent.base import BaseAgentConfiguration
 
 from forge.agent.components import ComponentSystemError
 from forge.agent.protocols import AfterParse
 from forge.components.action_history import EpisodicActionHistory
-from forge.models.action import ActionProposal
+
+if TYPE_CHECKING:
+    from forge.agent.base import BaseAgentConfiguration
+    from forge.models.action import ActionProposal
 
 logger = logging.getLogger(__name__)
 
 
-class WatchdogComponent(AfterParse):
+class WatchdogComponent(AfterParse[ActionProposal]):
     """
     Adds a watchdog feature to an agent class. Whenever the agent starts
     looping, the watchdog will switch from the FAST_LLM to the SMART_LLM and re-think.

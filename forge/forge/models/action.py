@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, TypeVar
 
 from pydantic import BaseModel
 
@@ -12,6 +12,9 @@ from .utils import ModelWithSummary
 class ActionProposal(BaseModel):
     thoughts: str | ModelWithSummary
     use_tool: AssistantFunctionCall
+
+
+AnyProposal = TypeVar("AnyProposal", bound=ActionProposal)
 
 
 class ActionSuccessResult(BaseModel):

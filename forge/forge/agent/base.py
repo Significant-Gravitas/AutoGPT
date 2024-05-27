@@ -18,9 +18,6 @@ from typing import (
 from colorama import Fore
 from pydantic import BaseModel, Field, validator
 
-if TYPE_CHECKING:
-    from forge.models.action import ActionProposal, ActionResult
-
 from forge.agent import protocols
 from forge.agent.components import (
     AgentComponent,
@@ -38,6 +35,9 @@ from forge.models.config import (
     SystemSettings,
     UserConfigurable,
 )
+
+if TYPE_CHECKING:
+    from forge.models.action import ActionProposal, ActionResult
 
 logger = logging.getLogger(__name__)
 
