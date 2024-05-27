@@ -111,7 +111,8 @@ class GCSFileStorage(FileStorage):
     ) -> BlobReader | BlobWriter | TextIOWrapper:
         ...
 
-    def open_file(
+    # https://github.com/microsoft/pyright/issues/8007
+    def open_file(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, path: str | Path, mode: Literal["r", "w"] = "r", binary: bool = False
     ) -> BlobReader | BlobWriter | TextIOWrapper:
         """Open a file in the storage."""
