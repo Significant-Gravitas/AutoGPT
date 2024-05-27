@@ -32,9 +32,15 @@ def agent_db():
     os.remove(TEST_DB_FILENAME)
 
 
-def test_table_creation(agent_db: AgentDB):
-    conn = sqlite3.connect(TEST_DB_FILENAME)
-    cursor = conn.cursor()
+@pytest.fixture
+def raw_db_connection(agent_db: AgentDB):
+    connection = sqlite3.connect(TEST_DB_FILENAME)
+    yield connection
+    connection.close()
+
+
+def test_table_creation(raw_db_connection: sqlite3.Connection):
+    cursor = raw_db_connection.cursor()
 
     # Test for tasks table existence
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'")
