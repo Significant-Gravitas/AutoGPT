@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 import sentry_sdk
 from forge.agent.base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
@@ -76,7 +76,9 @@ class AgentConfiguration(BaseAgentConfiguration):
 
 
 class AgentSettings(BaseAgentSettings):
-    config: AgentConfiguration = Field(default_factory=AgentConfiguration)
+    config: AgentConfiguration = Field(  # type: ignore
+        default_factory=AgentConfiguration
+    )
 
     history: EpisodicActionHistory[OneShotAgentActionProposal] = Field(
         default_factory=EpisodicActionHistory[OneShotAgentActionProposal]
@@ -86,8 +88,8 @@ class AgentSettings(BaseAgentSettings):
     context: AgentContext = Field(default_factory=AgentContext)
 
 
-class Agent(BaseAgent, Configurable[AgentSettings]):
-    default_settings: AgentSettings = AgentSettings(
+class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
+    default_settings: ClassVar[AgentSettings] = AgentSettings(
         name="Agent",
         description=__doc__ if __doc__ else "",
     )

@@ -9,6 +9,7 @@ from typing import (
     Any,
     Awaitable,
     Callable,
+    Generic,
     Iterator,
     Optional,
     ParamSpec,
@@ -30,15 +31,10 @@ from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.llm.providers import CHAT_MODELS, ModelName, OpenAIModelName
 from forge.llm.providers.schema import ChatModelInfo
-from forge.models.config import (
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-    UserConfigurable,
-)
+from forge.models.config import SystemConfiguration, SystemSettings, UserConfigurable
 
 if TYPE_CHECKING:
-    from forge.models.action import ActionProposal, ActionResult
+    from forge.models.action import ActionResult, AnyProposal
 
 logger = logging.getLogger(__name__)
 
@@ -134,14 +130,7 @@ class AgentMeta(ABCMeta):
         return instance
 
 
-class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
-    C = TypeVar("C", bound=AgentComponent)
-
-    default_settings = BaseAgentSettings(
-        name="BaseAgent",
-        description=__doc__ if __doc__ else "",
-    )
-
+class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
     def __init__(
         self,
         settings: BaseAgentSettings,
@@ -171,13 +160,13 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
         return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
 
     @abstractmethod
-    async def propose_action(self) -> ActionProposal:
+    async def propose_action(self) -> AnyProposal:
         ...
 
     @abstractmethod
     async def execute(
         self,
-        proposal: ActionProposal,
+        proposal: AnyProposal,
         user_feedback: str = "",
     ) -> ActionResult:
         ...
@@ -185,7 +174,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
     @abstractmethod
     async def do_not_execute(
         self,
-        denied_proposal: ActionProposal,
+        denied_proposal: AnyProposal,
         user_feedback: str,
     ) -> ActionResult:
         ...
