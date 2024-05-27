@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from colorama import Fore, Style
 from openai._base_client import log as openai_logger
 
 from forge.models.config import SystemConfiguration, UserConfigurable
