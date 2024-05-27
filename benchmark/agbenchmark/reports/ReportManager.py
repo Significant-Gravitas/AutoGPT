@@ -100,7 +100,7 @@ class SessionReportManager(BaseReportManager):
     """Abstracts interaction with the regression tests file"""
 
     tests: dict[str, Test]
-    report: Report | None
+    report: Report | None = None
 
     def __init__(self, report_file: Path, benchmark_start_time: datetime):
         super().__init__(report_file)
