@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import inspect
 import logging
-from io import IOBase, TextIOWrapper
+from io import TextIOWrapper
 from pathlib import Path
 from typing import Literal, overload
 
@@ -78,15 +78,27 @@ class GCSFileStorage(FileStorage):
     def open_file(
         self,
         path: str | Path,
-        mode: Literal["w", "r"] = "r",
+        mode: Literal["r", "w"] = "r",
         binary: Literal[False] = False,
     ) -> TextIOWrapper:
         ...
 
     @overload
     def open_file(
-        self, path: str | Path, mode: Literal["w", "r"], binary: Literal[True]
-    ) -> BlobReader | BlobWriter:
+        self, path: str | Path, mode: Literal["r"], binary: Literal[True]
+    ) -> BlobReader:
+        ...
+
+    @overload
+    def open_file(
+        self, path: str | Path, mode: Literal["w"], binary: Literal[True]
+    ) -> BlobWriter:
+        ...
+
+    @overload
+    def open_file(
+        self, path: str | Path, mode: Literal["r", "w"], binary: Literal[True]
+    ) -> BlobWriter | BlobReader:
         ...
 
     @overload
@@ -95,12 +107,12 @@ class GCSFileStorage(FileStorage):
 
     @overload
     def open_file(
-        self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
+        self, path: str | Path, mode: Literal["r", "w"] = "r", binary: bool = False
     ) -> BlobReader | BlobWriter | TextIOWrapper:
         ...
 
     def open_file(
-        self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
+        self, path: str | Path, mode: Literal["r", "w"] = "r", binary: bool = False
     ) -> BlobReader | BlobWriter | TextIOWrapper:
         """Open a file in the storage."""
         blob = self._get_blob(path)
