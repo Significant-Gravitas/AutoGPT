@@ -76,8 +76,8 @@ repos:
         alias: pyright-autogpt
         entry: poetry -C autogpt run pyright
         args: [-p, autogpt, autogpt]
-        # include forge since it's a path dependency:
-        files: ^(autogpt|forge)/((autogpt|forge|scripts|tests)/|poetry\.lock$)
+        # include forge source (since it's a path dependency) but exclude *_test.py files:
+        files: ^(autogpt/((autogpt|scripts|tests)/|poetry\.lock$)|forge/(forge/.*(?<!_test)\.py|poetry\.lock)$)
         types: [file]
         language: system
         pass_filenames: false
@@ -107,7 +107,8 @@ repos:
       - id: pytest-autogpt
         name: Run tests - AutoGPT (excl. slow tests)
         entry: bash -c 'cd autogpt && poetry run pytest --cov=autogpt -m "not slow" tests/unit tests/integration'
-        files: ^(autogpt|forge)/((autogpt|forge|tests)/|poetry\.lock$)
+        # include forge source (since it's a path dependency) but exclude *_test.py files:
+        files: ^(autogpt/((autogpt|tests)/|poetry\.lock$)|forge/(forge/.*(?<!_test)\.py|poetry\.lock)$)
         language: system
         pass_filenames: false
 
