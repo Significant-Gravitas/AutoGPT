@@ -106,7 +106,7 @@ jobs:
           poetry run pytest -vv \
             --cov=forge --cov-branch --cov-report term-missing --cov-report xml \
             --durations=10 \
-            forge tests/unit tests/integration
+            forge
         env:
           CI: true
           PLAIN_OUTPUT: True
