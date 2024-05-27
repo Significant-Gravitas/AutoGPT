@@ -25,7 +25,8 @@ except requests.exceptions.ConnectionError:
         ),
         (
             "f219f3d3-a41b-45a9-a3d0-389832086ee8",
-            "Read the file called file_to_read.txt and write its content to a file called output.txt",
+            "Read the file called file_to_read.txt "
+            "and write its content to a file called output.txt",
             1,
             "ReadFile",
             False,
@@ -73,7 +74,7 @@ def test_entire_workflow(
     )
     assert step_response.status_code == 200
     step_response = step_response.json()
-    assert step_response["is_last"] == True  # Assuming is_last is always True
+    assert step_response["is_last"] is True  # Assuming is_last is always True
 
     eval_response = requests.post(
         URL_BENCHMARK + "/agent/tasks/" + task_response_benchmark_id + "/evaluations",

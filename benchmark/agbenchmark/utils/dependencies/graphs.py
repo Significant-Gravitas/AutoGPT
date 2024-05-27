@@ -70,7 +70,7 @@ def curved_edges(
             arrow = patches.FancyArrowPatch(
                 posA=curve[0],  # type: ignore
                 posB=curve[-1],  # type: ignore
-                connectionstyle=f"arc3,rad=0.2",
+                connectionstyle="arc3,rad=0.2",
                 color="gray",
                 arrowstyle="-|>",
                 mutation_scale=15.0,
@@ -91,7 +91,8 @@ def curved_edges(
 
 
 def tree_layout(graph: nx.DiGraph, root_node: Any) -> Dict[Any, Tuple[float, float]]:
-    """Compute positions as a tree layout centered on the root with alternating vertical shifts."""
+    """Compute positions as a tree layout centered on the root
+    with alternating vertical shifts."""
     bfs_tree = nx.bfs_tree(graph, source=root_node)
     levels = {
         node: depth
@@ -290,7 +291,8 @@ def graph_interactive_network(
 
     # Optionally, save to a file
     # Sync with the flutter UI
-    # this literally only works in the AutoGPT repo, but this part of the code is not reached if BUILD_SKILL_TREE is false
+    # this literally only works in the AutoGPT repo, but this part of the code
+    # is not reached if BUILD_SKILL_TREE is false
     write_pretty_json(graph_data, flutter_app_path / "tree_structure.json")
     validate_skill_tree(graph_data, "")
 
@@ -334,11 +336,13 @@ def graph_interactive_network(
 
 def extract_subgraph_based_on_category(graph, category):
     """
-    Extracts a subgraph that includes all nodes and edges required to reach all nodes with a specified category.
+    Extracts a subgraph that includes all nodes and edges required to reach all nodes
+    with a specified category.
 
     :param graph: The original graph.
     :param category: The target category.
-    :return: Subgraph with nodes and edges required to reach the nodes with the given category.
+    :return: Subgraph with nodes and edges required to reach the nodes
+        with the given category.
     """
 
     subgraph = {"nodes": [], "edges": []}
@@ -426,7 +430,8 @@ def get_roots(graph):
 
 def validate_skill_tree(graph, skill_tree_name):
     """
-    Validate if a given graph represents a valid skill tree and raise appropriate exceptions if not.
+    Validate if a given graph represents a valid skill tree
+    and raise appropriate exceptions if not.
 
     :param graph: A dictionary representing the graph with 'nodes' and 'edges'.
     :raises: ValueError with a description of the invalidity.
@@ -436,7 +441,8 @@ def validate_skill_tree(graph, skill_tree_name):
     if cycle_path:
         cycle_str = " -> ".join(cycle_path)
         raise ValueError(
-            f"{skill_tree_name} skill tree is circular! Circular path detected: {cycle_str}."
+            f"{skill_tree_name} skill tree is circular! "
+            f"Detected circular path: {cycle_str}."
         )
 
     # Check for multiple roots

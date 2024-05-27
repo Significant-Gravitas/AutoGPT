@@ -1,12 +1,11 @@
 """
 A module to manage dependencies between pytest tests.
 
-This module provides the methods implementing the main logic. These are used in the pytest hooks that are in
-__init__.py.
+This module provides the methods implementing the main logic.
+These are used in the pytest hooks that are in __init__.py.
 """
 
 import collections
-import json
 import os
 from typing import Any, Generator
 
@@ -40,7 +39,8 @@ class TestResult(object):
             )
         if result.when in self.results:
             raise AttributeError(
-                f"Received multiple results for step {result.when} of test {self.nodeid}"
+                f"Received multiple results for step {result.when} "
+                f"of test {self.nodeid}"
             )
         self.results[result.when] = result.outcome
 
@@ -68,7 +68,7 @@ class TestDependencies(object):
             for dep in marker.kwargs.get(MARKER_KWARG_DEPENDENCIES, [])
         ]
         for dependency in dependencies:
-            # If the name is not known, try to make it absolute (ie file::[class::]method)
+            # If the name is not known, try to make it absolute (file::[class::]method)
             if dependency not in manager.name_to_nodeids:
                 absolute_dependency = get_absolute_nodeid(dependency, self.nodeid)
                 if absolute_dependency in manager.name_to_nodeids:
@@ -127,7 +127,8 @@ class DependencyManager(object):
         for item in items:
             nodeid = clean_nodeid(item.nodeid)
             # Process the dependencies of this test
-            # This uses the mappings created in the previous loop, and can thus not be merged into that loop
+            # This uses the mappings created in the previous loop,
+            # and can thus not be merged into that loop
             self._dependencies[nodeid] = TestDependencies(item, self)
 
     @property
@@ -196,7 +197,9 @@ class DependencyManager(object):
 
     @property
     def sorted_items(self) -> Generator:
-        """Get a sorted list of tests where all tests are sorted after their dependencies."""
+        """
+        Get a sorted list of tests where all tests are sorted after their dependencies.
+        """
         # Build a directed graph for sorting
         build_skill_tree = os.getenv("BUILD_SKILL_TREE")
         BUILD_SKILL_TREE = (
@@ -204,8 +207,8 @@ class DependencyManager(object):
         )
         dag = networkx.DiGraph()
 
-        # Insert all items as nodes, to prevent items that have no dependencies and are not dependencies themselves from
-        # being lost
+        # Insert all items as nodes, to prevent items that have no dependencies
+        # and are not dependencies themselves from being lost
         dag.add_nodes_from(self.items)
 
         # Insert edges for all the dependencies

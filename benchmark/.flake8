@@ -9,4 +9,5 @@ exclude =
     .pytest_cache/,
     venv*/,
     .venv/,
-    reports/*,
+    reports/,
+    agbenchmark/reports/,
