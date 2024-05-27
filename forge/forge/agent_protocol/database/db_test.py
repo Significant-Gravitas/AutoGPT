@@ -28,7 +28,9 @@ TEST_DB_URL = f"sqlite:///{TEST_DB_FILENAME}"
 
 @pytest.fixture
 def agent_db():
-    yield AgentDB(TEST_DB_URL)
+    db = AgentDB(TEST_DB_URL)
+    yield db
+    db.close()
     os.remove(TEST_DB_FILENAME)
 
 

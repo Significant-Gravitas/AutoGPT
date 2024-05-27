@@ -151,6 +151,10 @@ class AgentDB:
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
 
+    def close(self) -> None:
+        self.Session.close_all()
+        self.engine.dispose()
+
     async def create_task(
         self, input: Optional[str], additional_input: Optional[dict] = {}
     ) -> Task:
