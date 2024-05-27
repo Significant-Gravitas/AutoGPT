@@ -36,12 +36,13 @@ def test_initialize(s3_bucket_name: str, s3_storage_uninitialized: S3FileStorage
 
     # test that the bucket doesn't exist yet
     with pytest.raises(ClientError):
-        s3.meta.client.head_bucket(Bucket=s3_bucket_name)
+        s3.meta.client.head_bucket(Bucket=s3_bucket_name)  # pyright: ignore
 
     s3_storage_uninitialized.initialize()
 
     # test that the bucket has been created
-    s3.meta.client.head_bucket(Bucket=s3_bucket_name)
+    s3.meta.client.head_bucket(Bucket=s3_bucket_name)  # pyright: ignore
+    # FIXME: remove the "pyright: ignore" comments after moving this test file to forge
 
 
 def test_workspace_bucket_name(

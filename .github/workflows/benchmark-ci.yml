@@ -21,7 +21,6 @@ concurrency:
 defaults:
   run:
     shell: bash
-    working-directory: benchmark
 
 env:
   min-python-version: '3.10'
@@ -37,7 +36,9 @@ jobs:
         python-version: ["3.10"]
         platform-os: [ubuntu, macos, macos-arm64, windows]
     runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
-
+    defaults:
+      run:
+        working-directory: benchmark
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -116,11 +117,11 @@ jobs:
           python-version: ${{ env.min-python-version }}
 
       - name: Install Poetry
-        working-directory: ./${{ matrix.agent-name }}/
         run: |
           curl -sSL https://install.python-poetry.org | python -
 
       - name: Run regression tests
+        working-directory: .
         run: |
           ./run agent start ${{ matrix.agent-name }}
           cd ${{ matrix.agent-name }}
