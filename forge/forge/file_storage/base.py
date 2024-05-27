@@ -11,7 +11,6 @@ import shutil
 import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from io import IOBase
 from pathlib import Path
 from typing import Any, BinaryIO, Callable, Generator, Literal, TextIO, overload
 
@@ -76,21 +75,19 @@ class FileStorage(ABC):
     @abstractmethod
     def open_file(
         self, path: str | Path, mode: Literal["r", "w"], binary: Literal[True]
-    ) -> BinaryIO | IOBase:
+    ) -> BinaryIO:
         """Returns a binary file-like object representing the file."""
 
     @overload
     @abstractmethod
-    def open_file(
-        self, path: str | Path, *, binary: Literal[True]
-    ) -> BinaryIO | IOBase:
+    def open_file(self, path: str | Path, *, binary: Literal[True]) -> BinaryIO:
         """Returns a readable binary file-like object representing the file."""
 
     @overload
     @abstractmethod
     def open_file(
         self, path: str | Path, mode: Literal["r", "w"] = "r", binary: bool = False
-    ) -> TextIO | BinaryIO | IOBase:
+    ) -> TextIO | BinaryIO:
         """Returns a file-like object representing the file."""
 
     @overload
