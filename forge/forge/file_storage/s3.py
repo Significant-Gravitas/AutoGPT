@@ -318,7 +318,7 @@ class S3BinaryIOWrapper(BinaryIO):
         return self._name
 
     def read(self, size: int = -1) -> bytes:
-        return self.body.read(size)
+        return self.body.read(size if size > 0 else None)
 
     def readinto(self, b: bytearray) -> int:
         data = self.read(len(b))
