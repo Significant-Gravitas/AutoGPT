@@ -26,8 +26,10 @@ duckduckgo-search = "^5.0.0"
 fastapi = "^0.109.1"
 gitpython = "^3.1.32"
 google-api-python-client = "*"
+google-cloud-logging = "^3.8.0"
 google-cloud-storage = "^2.13.0"
 groq = "^0.8.0"
+gTTS = "^2.3.1"
 jinja2 = "^3.1.2"
 jsonschema = "*"
 litellm = "^1.17.9"
@@ -57,16 +59,17 @@ webdriver-manager = "^4.0.1"
 benchmark = ["agbenchmark"]
 
 [tool.poetry.group.dev.dependencies]
-isort = "^5.12.0"
-black = "^23.3.0"
+black = "^23.12.1"
+flake8 = "^7.0.0"
+isort = "^5.13.1"
+pyright = "^1.1.364"
 pre-commit = "^3.3.3"
-mypy = "^1.4.1"
-flake8 = "^6.0.0"
+boto3-stubs = { extras = ["s3"], version = "^1.33.6" }
 types-requests = "^2.31.0.2"
 pytest = "^7.4.0"
 pytest-asyncio = "^0.21.1"
+pytest-cov = "^5.0.0"
 mock = "^5.1.0"
-autoflake = "^2.2.0"
 pydevd-pycharm = "^233.6745.319"
 
 
@@ -74,20 +77,21 @@ pydevd-pycharm = "^233.6745.319"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
+
 [tool.black]
 line-length = 88
 target-version = ['py310']
 include = '\.pyi?$'
-packages = ["forge"]
-extend-exclude = '(/dist|/.venv|/venv|/build|/agent|agbenchmark/challenges)/'
+
 
 [tool.isort]
 profile = "black"
-multi_line_output = 3
-include_trailing_comma = true
-force_grid_wrap = 0
-use_parentheses = true
-ensure_newline_before_comments = true
-line_length = 88
-sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
-skip_glob = [".tox", "__pycache__", "*.pyc", "venv*/*", "reports", "venv", "env", "node_modules", ".env", ".venv", "dist", "agent/*", "agbenchmark/challenges/*"]
+
+
+[tool.pyright]
+pythonVersion = "3.10"
+
+
+[tool.pytest.ini_options]
+pythonpath = ["forge"]
+testpaths = ["forge", "tests"]

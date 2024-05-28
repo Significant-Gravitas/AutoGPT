@@ -37,15 +37,14 @@ class GameStatus(BaseModel):
     winner: Optional[str]
 
 
-from typing import List
-
-
 class Game(BaseModel):
     game_id: str
-    players: List[str]
-    board: dict  # This could represent the state of the game board, you might need to flesh this out further
-    ships: List[ShipPlacement]  # List of ship placements for this game
-    turns: List[Turn]  # List of turns that have been taken
+    players: list[str]
+    # This could represent the state of the game board,
+    # you might need to flesh this out further:
+    board: dict
+    ships: list[ShipPlacement]  # List of ship placements for this game
+    turns: list[Turn]  # List of turns that have been taken
 
 
 class AbstractBattleship(ABC):
@@ -86,7 +85,7 @@ class AbstractBattleship(ABC):
         pass
 
     @abstractmethod
-    def get_game(self) -> Game:
+    def get_game(self) -> Game | None:
         """
         Retrieve the state of the game.
         """
@@ -103,5 +102,8 @@ class AbstractBattleship(ABC):
     def create_game(self) -> None:
         """
         Create a new game.
+
+        Returns:
+            str: The ID of the created game.
         """
         pass

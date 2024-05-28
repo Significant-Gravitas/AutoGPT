@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
 from forge.agent_protocol.database import AgentDB
-from forge.components.code_executor import (
+from forge.components.code_executor.code_executor import (
     is_docker_available,
     we_are_running_in_a_docker_container,
 )
@@ -82,7 +82,9 @@ async def run_auto_gpt(
     local = config.file_storage_backend == FileStorageBackendName.LOCAL
     restrict_to_root = not local or config.restrict_to_workspace
     file_storage = get_storage(
-        config.file_storage_backend, root_path="data", restrict_to_root=restrict_to_root
+        config.file_storage_backend,
+        root_path=Path("data"),
+        restrict_to_root=restrict_to_root,
     )
     file_storage.initialize()
 
@@ -353,7 +355,9 @@ async def run_auto_gpt_server(
     local = config.file_storage_backend == FileStorageBackendName.LOCAL
     restrict_to_root = not local or config.restrict_to_workspace
     file_storage = get_storage(
-        config.file_storage_backend, root_path="data", restrict_to_root=restrict_to_root
+        config.file_storage_backend,
+        root_path=Path("data"),
+        restrict_to_root=restrict_to_root,
     )
     file_storage.initialize()
 

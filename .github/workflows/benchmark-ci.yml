@@ -1,4 +1,4 @@
-name: Benchmark CI
+name: AGBenchmark CI
 
 on:
   push:
@@ -14,62 +14,91 @@ on:
       - '!benchmark/reports/**'
       - .github/workflows/benchmark-ci.yml
 
+concurrency:
+  group: ${{ format('benchmark-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
+
+defaults:
+  run:
+    shell: bash
+
 env:
   min-python-version: '3.10'
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-
+  test:
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10"]
+        platform-os: [ubuntu, macos, macos-arm64, windows]
+    runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: benchmark
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: true
 
-      - name: Set up Python ${{ env.min-python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.min-python-version }}
+          python-version: ${{ matrix.python-version }}
 
-      - id: get_date
-        name: Get date
-        working-directory: ./benchmark/
-        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+      - name: Set up Python dependency cache
+        # On Windows, unpacking cached dependencies takes longer than just installing them
+        if: runner.os != 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('benchmark/poetry.lock') }}
 
-      - name: Install Poetry
-        working-directory: ./benchmark/
+      - name: Install Poetry (Unix)
+        if: runner.os != 'Windows'
         run: |
-          curl -sSL https://install.python-poetry.org | python -
+          curl -sSL https://install.python-poetry.org | python3 -
 
-      - name: Install dependencies
-        working-directory: ./benchmark/
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+          fi
+
+      - name: Install Poetry (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          export POETRY_VIRTUALENVS_IN_PROJECT=true
-          poetry install -vvv
+          (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
 
-      - name: Lint with flake8
-        working-directory: ./benchmark/
-        run: poetry run flake8
+          $env:PATH += ";$env:APPDATA\Python\Scripts"
+          echo "$env:APPDATA\Python\Scripts" >> $env:GITHUB_PATH
 
-      - name: Check black formatting
-        working-directory: ./benchmark/
-        run: poetry run  black . --exclude test.py --check
-        if: success() || failure()
+      - name: Install Python dependencies
+        run: poetry install
 
-      - name: Check isort formatting
-        working-directory: ./benchmark/
-        run: poetry run  isort . --check
-        if: success() || failure()
-
-      - name: Check for unused imports and pass statements
-        working-directory: ./benchmark/
+      - name: Run pytest with coverage
         run: |
-          cmd="poetry run autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring agbenchmark"
-          $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
-        if: success() || failure()
+          poetry run pytest -vv \
+            --cov=agbenchmark --cov-branch --cov-report term-missing --cov-report xml \
+            --durations=10 \
+            tests
+        env:
+          CI: true
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
-  tests-agbenchmark:
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: agbenchmark,${{ runner.os }}
+
+  self-test-with-agent:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -89,11 +118,11 @@ jobs:
           python-version: ${{ env.min-python-version }}
 
       - name: Install Poetry
-        working-directory: ./${{ matrix.agent-name }}/
         run: |
           curl -sSL https://install.python-poetry.org | python -
 
       - name: Run regression tests
+        working-directory: .
         run: |
           ./run agent start ${{ matrix.agent-name }}
           cd ${{ matrix.agent-name }}
@@ -125,7 +154,6 @@ jobs:
           export BUILD_SKILL_TREE=true
 
           poetry run agbenchmark --mock
-          poetry run pytest -vv -s tests
 
           CHANGED=$(git diff --name-only | grep -E '(agbenchmark/challenges)|(../frontend/assets)') || echo "No diffs"
           if [ ! -z "$CHANGED" ]; then

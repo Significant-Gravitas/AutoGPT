@@ -32,7 +32,12 @@ class ImageGeneratorComponent(CommandProvider):
         self.legacy_config = config
 
     def get_commands(self) -> Iterator[Command]:
-        yield self.generate_image
+        if (
+            self.legacy_config.openai_credentials
+            or self.legacy_config.huggingface_api_token
+            or self.legacy_config.sd_webui_auth
+        ):
+            yield self.generate_image
 
     @command(
         parameters={
@@ -60,17 +65,26 @@ class ImageGeneratorComponent(CommandProvider):
             str: The filename of the image
         """
         filename = self.workspace.root / f"{str(uuid.uuid4())}.jpg"
+        cfg = self.legacy_config
 
-        # DALL-E
-        if self.legacy_config.image_provider == "dalle":
+        if cfg.openai_credentials and (
+            cfg.image_provider == "dalle"
+            or not (cfg.huggingface_api_token or cfg.sd_webui_url)
+        ):
             return self.generate_image_with_dalle(prompt, filename, size)
-        # HuggingFace
-        elif self.legacy_config.image_provider == "huggingface":
+
+        elif cfg.huggingface_api_token and (
+            cfg.image_provider == "huggingface"
+            or not (cfg.openai_credentials or cfg.sd_webui_url)
+        ):
             return self.generate_image_with_hf(prompt, filename)
-        # SD WebUI
-        elif self.legacy_config.image_provider == "sdwebui":
+
+        elif cfg.sd_webui_url and (
+            cfg.image_provider == "sdwebui" or cfg.sd_webui_auth
+        ):
             return self.generate_image_with_sd_webui(prompt, filename, size)
-        return "No Image Provider Set"
+
+        return "Error: No image generation provider available"
 
     def generate_image_with_hf(self, prompt: str, output_file: Path) -> str:
         """Generate an image with HuggingFace's API.
@@ -142,6 +156,7 @@ class ImageGeneratorComponent(CommandProvider):
         Returns:
             str: The filename of the image
         """
+        assert self.legacy_config.openai_credentials  # otherwise this tool is disabled
 
         # Check for supported image sizes
         if size not in [256, 512, 1024]:
@@ -152,16 +167,19 @@ class ImageGeneratorComponent(CommandProvider):
             )
             size = closest
 
+        # TODO: integrate in `forge.llm.providers`(?)
         response = OpenAI(
             api_key=self.legacy_config.openai_credentials.api_key.get_secret_value()
         ).images.generate(
             prompt=prompt,
             n=1,
-            size=f"{size}x{size}",
+            # TODO: improve typing of size config item(s)
+            size=f"{size}x{size}",  # type: ignore
             response_format="b64_json",
         )
+        assert response.data[0].b64_json is not None  # response_format = "b64_json"
 
-        logger.info(f"Image Generated for prompt:{prompt}")
+        logger.info(f"Image Generated for prompt: {prompt}")
 
         image_data = b64decode(response.data[0].b64_json)
 

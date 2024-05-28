@@ -1,27 +1,27 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Generic, Iterator, Optional
+from typing import TYPE_CHECKING, Callable, Iterator, Optional
 
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
 from forge.llm.prompting.utils import indent
-from forge.llm.providers import ChatMessage, ChatModelProvider
+from forge.llm.providers import ChatMessage, MultiProvider
 
 if TYPE_CHECKING:
     from forge.config.config import Config
 
-from .model import AP, ActionResult, Episode, EpisodicActionHistory
+from .model import ActionResult, AnyProposal, Episode, EpisodicActionHistory
 
 
-class ActionHistoryComponent(MessageProvider, AfterParse, AfterExecute, Generic[AP]):
+class ActionHistoryComponent(MessageProvider, AfterParse[AnyProposal], AfterExecute):
     """Keeps track of the event history and provides a summary of the steps."""
 
     def __init__(
         self,
-        event_history: EpisodicActionHistory[AP],
+        event_history: EpisodicActionHistory[AnyProposal],
         max_tokens: int,
         count_tokens: Callable[[str], int],
         legacy_config: Config,
-        llm_provider: ChatModelProvider,
+        llm_provider: MultiProvider,
     ) -> None:
         self.event_history = event_history
         self.max_tokens = max_tokens
@@ -37,7 +37,7 @@ class ActionHistoryComponent(MessageProvider, AfterParse, AfterExecute, Generic[
         ):
             yield ChatMessage.system(f"## Progress on your Task so far\n\n{progress}")
 
-    def after_parse(self, result: AP) -> None:
+    def after_parse(self, result: AnyProposal) -> None:
         self.event_history.register_action(result)
 
     async def after_execute(self, result: ActionResult) -> None:
@@ -48,7 +48,7 @@ class ActionHistoryComponent(MessageProvider, AfterParse, AfterExecute, Generic[
 
     def _compile_progress(
         self,
-        episode_history: list[Episode],
+        episode_history: list[Episode[AnyProposal]],
         max_tokens: Optional[int] = None,
         count_tokens: Optional[Callable[[str], int]] = None,
     ) -> str:
