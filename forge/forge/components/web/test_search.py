@@ -1,16 +1,15 @@
 import json
 
 import pytest
-from forge.components.web.search import WebSearchComponent
 from forge.utils.exceptions import ConfigurationError
 from googleapiclient.errors import HttpError
 
-from autogpt.agents.agent import Agent
+from . import WebSearchComponent
 
 
 @pytest.fixture
-def web_search_component(agent: Agent):
-    return agent.web_search
+def web_search_component():
+    return WebSearchComponent()
 
 
 @pytest.mark.parametrize(

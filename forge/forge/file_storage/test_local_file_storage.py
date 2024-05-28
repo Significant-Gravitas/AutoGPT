@@ -1,7 +1,8 @@
 from pathlib import Path
 
 import pytest
-from forge.file_storage import FileStorageConfiguration, LocalFileStorage
+
+from . import FileStorageConfiguration, LocalFileStorage
 
 _ACCESSIBLE_PATHS = [
     Path("."),
