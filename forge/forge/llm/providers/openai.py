@@ -2,7 +2,16 @@ import enum
 import logging
 import os
 from pathlib import Path
-from typing import Any, Callable, Coroutine, Iterator, Optional, ParamSpec, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Coroutine,
+    Iterator,
+    Optional,
+    ParamSpec,
+    TypeVar,
+    cast,
+)
 
 import sentry_sdk
 import tenacity
@@ -12,6 +21,7 @@ from openai._exceptions import APIStatusError, RateLimitError
 from openai.types import CreateEmbeddingResponse
 from openai.types.chat import (
     ChatCompletion,
+    ChatCompletionAssistantMessageParam,
     ChatCompletionMessage,
     ChatCompletionMessageParam,
 )
@@ -230,15 +240,18 @@ class OpenAICredentials(ModelProviderCredentials):
     )
     organization: Optional[SecretStr] = UserConfigurable(from_env="OPENAI_ORGANIZATION")
 
-    api_type: str = UserConfigurable(
-        default="",
-        from_env=lambda: (
+    api_type: Optional[SecretStr] = UserConfigurable(
+        default=None,
+        from_env=lambda: cast(
+            SecretStr | None,
             "azure"
             if os.getenv("USE_AZURE") == "True"
-            else os.getenv("OPENAI_API_TYPE")
+            else os.getenv("OPENAI_API_TYPE"),
         ),
     )
-    api_version: str = UserConfigurable("", from_env="OPENAI_API_VERSION")
+    api_version: Optional[SecretStr] = UserConfigurable(
+        default=None, from_env="OPENAI_API_VERSION"
+    )
     azure_endpoint: Optional[SecretStr] = None
     azure_model_to_deploy_id_map: Optional[dict[str, str]] = None
 
@@ -249,18 +262,18 @@ class OpenAICredentials(ModelProviderCredentials):
                 "api_key": self.api_key,
                 "base_url": self.api_base,
                 "organization": self.organization,
+                "api_version": self.api_version,
             }.items()
             if v is not None
         }
-        if self.api_type == "azure":
-            kwargs["api_version"] = self.api_version
+        if self.api_type == SecretStr("azure"):
             assert self.azure_endpoint, "Azure endpoint not configured"
             kwargs["azure_endpoint"] = self.azure_endpoint.get_secret_value()
         return kwargs
 
     def get_model_access_kwargs(self, model: str) -> dict[str, str]:
         kwargs = {"model": model}
-        if self.api_type == "azure" and model:
+        if self.api_type == SecretStr("azure") and model:
             azure_kwargs = self._get_azure_access_kwargs(model)
             kwargs.update(azure_kwargs)
         return kwargs
@@ -276,8 +289,8 @@ class OpenAICredentials(ModelProviderCredentials):
         except AssertionError as e:
             raise ValueError(*e.args)
 
-        self.api_type = config_params.get("azure_api_type", "azure")  # type: ignore
-        self.api_version = config_params.get("azure_api_version", "")  # type: ignore
+        self.api_type = config_params.get("azure_api_type", "azure")
+        self.api_version = config_params.get("azure_api_version", None)
         self.azure_endpoint = config_params.get("azure_endpoint")
         self.azure_model_to_deploy_id_map = config_params.get("azure_model_map")
 
@@ -331,7 +344,7 @@ class OpenAIProvider(
 
         super(OpenAIProvider, self).__init__(settings=settings, logger=logger)
 
-        if self._credentials.api_type == "azure":
+        if self._credentials.api_type == SecretStr("azure"):
             from openai import AsyncAzureOpenAI
 
             # API key and org (if configured) are passed, the rest of the required
@@ -496,7 +509,10 @@ class OpenAIProvider(
 
                 if attempts < self._configuration.fix_failed_parse_tries:
                     openai_messages.append(
-                        _assistant_msg.dict(exclude_none=True)  # type: ignore
+                        cast(
+                            ChatCompletionAssistantMessageParam,
+                            _assistant_msg.dict(exclude_none=True),
+                        )
                     )
                     openai_messages.append(
                         {
@@ -513,12 +529,11 @@ class OpenAIProvider(
     async def create_embedding(
         self,
         text: str,
-        model_name: str,
+        model_name: OpenAIModelName,
         embedding_parser: Callable[[Embedding], Embedding],
         **kwargs,
     ) -> EmbeddingModelResponse:
         """Create an embedding using the OpenAI API."""
-        model_name = OpenAIModelName(model_name)
         embedding_kwargs = self._get_embedding_kwargs(model_name, **kwargs)
         response = await self._create_embedding(text=text, **embedding_kwargs)
 
@@ -579,10 +594,13 @@ class OpenAIProvider(
             model_prompt += kwargs["messages"]
             del kwargs["messages"]
 
-        openai_messages: list[ChatCompletionMessageParam] = [
-            message.dict(  # type: ignore
-                include={"role", "content", "tool_calls", "name"},
-                exclude_none=True,
+        openai_messages = [
+            cast(
+                ChatCompletionMessageParam,
+                message.dict(
+                    include={"role", "content", "tool_calls", "name"},
+                    exclude_none=True,
+                ),
             )
             for message in model_prompt
         ]
