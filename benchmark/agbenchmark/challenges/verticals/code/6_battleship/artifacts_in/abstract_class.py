@@ -85,7 +85,7 @@ class AbstractBattleship(ABC):
         pass
 
     @abstractmethod
-    def get_game(self) -> Game:
+    def get_game(self) -> Game | None:
         """
         Retrieve the state of the game.
         """

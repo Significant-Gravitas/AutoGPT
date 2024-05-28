@@ -139,8 +139,8 @@ class Battleship(AbstractBattleship):
         else:
             raise ValueError(f"Game {game_id} isn't over yet")
 
-    def get_game(self, game_id: str) -> Game:
-        return self.games[game_id]
+    def get_game(self, game_id: str) -> Game | None:
+        return self.games.get(game_id)
 
     def delete_game(self, game_id: str) -> None:
         if game_id in self.games:
