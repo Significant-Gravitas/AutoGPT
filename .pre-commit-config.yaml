@@ -1,0 +1,127 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: fix-byte-order-marker
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: debug-statements
+
+  - repo: local
+    # isort needs the context of which packages are installed to function, so we
+    # can't use a vendored isort pre-commit hook (which runs in its own isolated venv).
+    hooks:
+      - id: isort-autogpt
+        name: Lint (isort) - AutoGPT
+        entry: poetry -C autogpt run isort
+        files: ^autogpt/
+        types: [file, python]
+        language: system
+
+      - id: isort-forge
+        name: Lint (isort) - Forge
+        entry: poetry -C forge run isort
+        files: ^forge/
+        types: [file, python]
+        language: system
+
+      - id: isort-benchmark
+        name: Lint (isort) - Benchmark
+        entry: poetry -C benchmark run isort
+        files: ^benchmark/
+        types: [file, python]
+        language: system
+
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    # Black has sensible defaults, doesn't need package context, and ignores
+    # everything in .gitignore, so it works fine without any config or arguments.
+    hooks:
+      - id: black
+        name: Lint (Black)
+        language_version: python3.10
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.0.0
+    # To have flake8 load the config of the individual subprojects, we have to call
+    # them separately.
+    hooks:
+      - id: flake8
+        name: Lint (Flake8) - AutoGPT
+        alias: flake8-autogpt
+        files: ^autogpt/(autogpt|scripts|tests)/
+        args: [--config=autogpt/.flake8]
+
+      - id: flake8
+        name: Lint (Flake8) - Forge
+        alias: flake8-forge
+        files: ^forge/(forge|tests)/
+        args: [--config=forge/.flake8]
+
+      - id: flake8
+        name: Lint (Flake8) - Benchmark
+        alias: flake8-benchmark
+        files: ^benchmark/(agbenchmark|tests)/((?!reports).)*[/.]
+        args: [--config=benchmark/.flake8]
+
+  - repo: local
+    # To have watertight type checking, we check *all* the files in an affected
+    # project. To trigger on poetry.lock we also reset the file `types` filter.
+    hooks:
+      - id: pyright
+        name: Typecheck - AutoGPT
+        alias: pyright-autogpt
+        entry: poetry -C autogpt run pyright
+        args: [-p, autogpt, autogpt]
+        # include forge source (since it's a path dependency) but exclude *_test.py files:
+        files: ^(autogpt/((autogpt|scripts|tests)/|poetry\.lock$)|forge/(forge/.*(?<!_test)\.py|poetry\.lock)$)
+        types: [file]
+        language: system
+        pass_filenames: false
+
+      - id: pyright
+        name: Typecheck - Forge
+        alias: pyright-forge
+        entry: poetry -C forge run pyright
+        args: [-p, forge, forge]
+        files: ^forge/(forge/|poetry\.lock$)
+        types: [file]
+        language: system
+        pass_filenames: false
+
+      - id: pyright
+        name: Typecheck - Benchmark
+        alias: pyright-benchmark
+        entry: poetry -C benchmark run pyright
+        args: [-p, benchmark, benchmark]
+        files: ^benchmark/(agbenchmark|tests)/
+        types: [file]
+        language: system
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: pytest-autogpt
+        name: Run tests - AutoGPT (excl. slow tests)
+        entry: bash -c 'cd autogpt && poetry run pytest --cov=autogpt -m "not slow" tests/unit tests/integration'
+        # include forge source (since it's a path dependency) but exclude *_test.py files:
+        files: ^(autogpt/((autogpt|tests)/|poetry\.lock$)|forge/(forge/.*(?<!_test)\.py|poetry\.lock)$)
+        language: system
+        pass_filenames: false
+
+      - id: pytest-forge
+        name: Run tests - Forge (excl. slow tests)
+        entry: bash -c 'cd forge && poetry run pytest --cov=forge -m "not slow"'
+        files: ^forge/(forge/|tests/|poetry\.lock$)
+        language: system
+        pass_filenames: false
+
+      - id: pytest-benchmark
+        name: Run tests - Benchmark
+        entry: bash -c 'cd benchmark && poetry run pytest --cov=benchmark'
+        files: ^benchmark/(agbenchmark/|tests/|poetry\.lock$)
+        language: system
+        pass_filenames: false

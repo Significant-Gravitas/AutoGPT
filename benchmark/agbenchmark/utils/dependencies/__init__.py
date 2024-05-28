@@ -32,7 +32,10 @@ def _add_ini_and_option(
     default: str | bool | int,
     **kwargs: Any,
 ) -> None:
-    """Add an option to both the ini file as well as the command line flags, with the latter overriding the former."""
+    """
+    Add an option to both the ini file and the command line flags.
+    Command line flags/options takes precedence over the ini config.
+    """
     parser.addini(
         name,
         help + " This overrides the similarly named option from the config.",
@@ -44,7 +47,10 @@ def _add_ini_and_option(
 def _get_ini_or_option(
     config: Any, name: str, choices: Optional[list[str]]
 ) -> str | None:
-    """Get an option from either the ini file or the command line flags, the latter taking precedence."""
+    """
+    Get an option from either the ini file or the command line flags,
+    with the latter taking precedence.
+    """
     value = config.getini(name)
     if value is not None and choices is not None and value not in choices:
         raise ValueError(
@@ -73,7 +79,7 @@ def pytest_addoption(parser: Parser) -> None:
             default=False,
             help=(
                 "List all non-nodeid dependency names + the tests they resolve to. "
-                "Will also list all nodeid dependency names when verbosity is high enough."
+                "Will also list all nodeid dependency names in verbose mode."
             ),
         )
 
@@ -83,7 +89,10 @@ def pytest_addoption(parser: Parser) -> None:
             "--list-processed-dependencies",
             action="store_true",
             default=False,
-            help="List all dependencies of all tests as a list of nodeids + the names that could not be resolved.",
+            help=(
+                "List all dependencies of all tests as a list of nodeids "
+                "+ the names that could not be resolved."
+            ),
         )
 
     # Add an ini option + flag to choose the action to take for failed dependencies
@@ -94,7 +103,8 @@ def pytest_addoption(parser: Parser) -> None:
             name="failed_dependency_action",
             help=(
                 "The action to take when a test has dependencies that failed. "
-                'Use "run" to run the test anyway, "skip" to skip the test, and "fail" to fail the test.'
+                'Use "run" to run the test anyway, "skip" to skip the test, '
+                'and "fail" to fail the test.'
             ),
             default="skip",
             choices=DEPENDENCY_PROBLEM_ACTIONS.keys(),
@@ -107,8 +117,10 @@ def pytest_addoption(parser: Parser) -> None:
             group,
             name="missing_dependency_action",
             help=(
-                "The action to take when a test has dependencies that cannot be found within the current scope. "
-                'Use "run" to run the test anyway, "skip" to skip the test, and "fail" to fail the test.'
+                "The action to take when a test has dependencies that cannot be found "
+                "within the current scope. "
+                'Use "run" to run the test anyway, "skip" to skip the test, '
+                'and "fail" to fail the test.'
             ),
             default="warning",
             choices=DEPENDENCY_PROBLEM_ACTIONS.keys(),
@@ -139,7 +151,7 @@ def pytest_configure(config: Any) -> None:
 
 
 @pytest.hookimpl(trylast=True)
-def pytest_collection_modifyitems(config: Any, items: list[Item]) -> None:
+def pytest_collection_modifyitems(config: Any, items: list[pytest.Function]) -> None:
     manager = managers[-1]
 
     # Register the founds tests on the manager

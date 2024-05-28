@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 import logging
-from typing import TYPE_CHECKING, Callable, Optional, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Optional, ParamSpec, TypeVar
 
 import sentry_sdk
 import tenacity
@@ -15,9 +15,9 @@ from forge.llm.providers.schema import (
     AssistantChatMessage,
     AssistantFunctionCall,
     AssistantToolCall,
+    BaseChatModelProvider,
     ChatMessage,
     ChatModelInfo,
-    ChatModelProvider,
     ChatModelResponse,
     CompletionModelFunction,
     ModelProviderBudget,
@@ -27,8 +27,9 @@ from forge.llm.providers.schema import (
     ModelProviderSettings,
     ModelTokenizer,
 )
-from forge.models.config import Configurable, UserConfigurable
+from forge.models.config import UserConfigurable
 
+from .openai import format_function_def_for_openai
 from .utils import validate_tool_calls
 
 if TYPE_CHECKING:
@@ -93,14 +94,14 @@ class GroqConfiguration(ModelProviderConfiguration):
 class GroqCredentials(ModelProviderCredentials):
     """Credentials for Groq."""
 
-    api_key: SecretStr = UserConfigurable(from_env="GROQ_API_KEY")
+    api_key: SecretStr = UserConfigurable(from_env="GROQ_API_KEY")  # type: ignore
     api_base: Optional[SecretStr] = UserConfigurable(
         default=None, from_env="GROQ_API_BASE_URL"
     )
 
     def get_api_access_kwargs(self) -> dict[str, str]:
         return {
-            k: (v.get_secret_value() if type(v) is SecretStr else v)
+            k: v.get_secret_value()
             for k, v in {
                 "api_key": self.api_key,
                 "base_url": self.api_base,
@@ -110,12 +111,12 @@ class GroqCredentials(ModelProviderCredentials):
 
 
 class GroqSettings(ModelProviderSettings):
-    configuration: GroqConfiguration
-    credentials: Optional[GroqCredentials]
-    budget: ModelProviderBudget
+    configuration: GroqConfiguration  # type: ignore
+    credentials: Optional[GroqCredentials]  # type: ignore
+    budget: ModelProviderBudget  # type: ignore
 
 
-class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
+class GroqProvider(BaseChatModelProvider[GroqModelName, GroqSettings]):
     default_settings = GroqSettings(
         name="groq_provider",
         description="Provides access to Groq's API.",
@@ -145,28 +146,27 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
 
         from groq import AsyncGroq
 
-        self._client = AsyncGroq(**self._credentials.get_api_access_kwargs())
+        self._client = AsyncGroq(
+            **self._credentials.get_api_access_kwargs()  # type: ignore
+        )
 
-    async def get_available_models(self) -> list[ChatModelInfo]:
+    async def get_available_models(self) -> list[ChatModelInfo[GroqModelName]]:
         _models = (await self._client.models.list()).data
         return [GROQ_CHAT_MODELS[m.id] for m in _models if m.id in GROQ_CHAT_MODELS]
 
-    def get_token_limit(self, model_name: str) -> int:
+    def get_token_limit(self, model_name: GroqModelName) -> int:
         """Get the token limit for a given model."""
         return GROQ_CHAT_MODELS[model_name].max_tokens
 
-    @classmethod
-    def get_tokenizer(cls, model_name: GroqModelName) -> ModelTokenizer:
+    def get_tokenizer(self, model_name: GroqModelName) -> ModelTokenizer[Any]:
         # HACK: No official tokenizer is available for Groq
         return tiktoken.encoding_for_model("gpt-3.5-turbo")
 
-    @classmethod
-    def count_tokens(cls, text: str, model_name: GroqModelName) -> int:
-        return len(cls.get_tokenizer(model_name).encode(text))
+    def count_tokens(self, text: str, model_name: GroqModelName) -> int:
+        return len(self.get_tokenizer(model_name).encode(text))
 
-    @classmethod
     def count_message_tokens(
-        cls,
+        self,
         messages: ChatMessage | list[ChatMessage],
         model_name: GroqModelName,
     ) -> int:
@@ -174,7 +174,7 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
             messages = [messages]
         # HACK: No official tokenizer (for text or messages) is available for Groq.
         # Token overhead of messages is unknown and may be inaccurate.
-        return cls.count_tokens(
+        return self.count_tokens(
             "\n\n".join(f"{m.role.upper()}: {m.content}" for m in messages), model_name
         )
 
@@ -191,7 +191,6 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
         """Create a completion using the Groq API."""
         groq_messages, completion_kwargs = self._get_chat_completion_args(
             prompt_messages=model_prompt,
-            model=model_name,
             functions=functions,
             max_output_tokens=max_output_tokens,
             **kwargs,
@@ -202,7 +201,8 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
         while True:
             completion_kwargs["messages"] = groq_messages.copy()
             _response, _cost, t_input, t_output = await self._create_chat_completion(
-                completion_kwargs
+                model=model_name,
+                completion_kwargs=completion_kwargs,
             )
             total_cost += _cost
 
@@ -221,7 +221,7 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
                 parse_errors += validate_tool_calls(tool_calls, functions)
 
             assistant_msg = AssistantChatMessage(
-                content=_assistant_msg.content,
+                content=_assistant_msg.content or "",
                 tool_calls=tool_calls or None,
             )
 
@@ -240,7 +240,7 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
 
                 return ChatModelResponse(
                     response=AssistantChatMessage(
-                        content=_assistant_msg.content,
+                        content=_assistant_msg.content or "",
                         tool_calls=tool_calls or None,
                     ),
                     parsed_result=parsed_result,
@@ -266,7 +266,9 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
                     )
 
                 if attempts < self._configuration.fix_failed_parse_tries:
-                    groq_messages.append(_assistant_msg.dict(exclude_none=True))
+                    groq_messages.append(
+                        _assistant_msg.dict(exclude_none=True)  # type: ignore
+                    )
                     groq_messages.append(
                         {
                             "role": "system",
@@ -282,7 +284,6 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
     def _get_chat_completion_args(
         self,
         prompt_messages: list[ChatMessage],
-        model: GroqModelName,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
         **kwargs,  # type: ignore
@@ -291,7 +292,6 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
 
         Args:
             model_prompt: List of ChatMessages.
-            model_name: The model to use.
             functions: Optional list of functions available to the LLM.
             kwargs: Additional keyword arguments.
 
@@ -300,13 +300,13 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
             dict[str, Any]: Any other kwargs for the OpenAI call
         """
         kwargs: CompletionCreateParams = kwargs  # type: ignore
-        kwargs["model"] = model
         if max_output_tokens:
             kwargs["max_tokens"] = max_output_tokens
 
         if functions:
             kwargs["tools"] = [
-                {"type": "function", "function": f.schema} for f in functions
+                {"type": "function", "function": format_function_def_for_openai(f)}
+                for f in functions
             ]
             if len(functions) == 1:
                 # force the model to call the only specified function
@@ -321,7 +321,7 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
             kwargs["extra_headers"].update(extra_headers.copy())  # type: ignore
 
         groq_messages: list[ChatCompletionMessageParam] = [
-            message.dict(
+            message.dict(  # type: ignore
                 include={"role", "content", "tool_calls", "tool_call_id", "name"},
                 exclude_none=True,
             )
@@ -335,7 +335,7 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
         return groq_messages, kwargs
 
     async def _create_chat_completion(
-        self, completion_kwargs: CompletionCreateParams
+        self, model: GroqModelName, completion_kwargs: CompletionCreateParams
     ) -> tuple[ChatCompletion, float, int, int]:
         """
         Create a chat completion using the Groq API with retry handling.
@@ -351,24 +351,31 @@ class GroqProvider(Configurable[GroqSettings], ChatModelProvider):
         """
 
         @self._retry_api_request
-        async def _create_chat_completion_with_retry(
-            completion_kwargs: CompletionCreateParams,
-        ) -> ChatCompletion:
-            return await self._client.chat.completions.create(**completion_kwargs)
+        async def _create_chat_completion_with_retry() -> ChatCompletion:
+            return await self._client.chat.completions.create(
+                model=model, **completion_kwargs  # type: ignore
+            )
 
-        response = await _create_chat_completion_with_retry(completion_kwargs)
+        response = await _create_chat_completion_with_retry()
 
-        cost = self._budget.update_usage_and_cost(
-            model_info=GROQ_CHAT_MODELS[completion_kwargs["model"]],
-            input_tokens_used=response.usage.prompt_tokens,
-            output_tokens_used=response.usage.completion_tokens,
-        )
-        return (
-            response,
-            cost,
-            response.usage.prompt_tokens,
-            response.usage.completion_tokens,
-        )
+        if not response.usage:
+            self._logger.warning(
+                "Groq chat completion response does not contain a usage field",
+                response,
+            )
+            return response, 0, 0, 0
+        else:
+            cost = self._budget.update_usage_and_cost(
+                model_info=GROQ_CHAT_MODELS[model],
+                input_tokens_used=response.usage.prompt_tokens,
+                output_tokens_used=response.usage.completion_tokens,
+            )
+            return (
+                response,
+                cost,
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens,
+            )
 
     def _parse_assistant_tool_calls(
         self, assistant_message: ChatCompletionMessage, compat_mode: bool = False

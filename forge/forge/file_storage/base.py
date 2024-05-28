@@ -4,17 +4,17 @@ The FileStorage class provides an interface for interacting with a file storage.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import shutil
 import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from io import IOBase, TextIOBase
 from pathlib import Path
-from typing import IO, Any, BinaryIO, Callable, Generator, Literal, TextIO, overload
+from typing import Any, BinaryIO, Callable, Generator, Literal, TextIO, overload
 
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from forge.models.config import SystemConfiguration
@@ -66,26 +66,29 @@ class FileStorage(ABC):
     def open_file(
         self,
         path: str | Path,
-        mode: Literal["w", "r"] = "r",
+        mode: Literal["r", "w"] = "r",
         binary: Literal[False] = False,
-    ) -> TextIO | TextIOBase:
+    ) -> TextIO:
         """Returns a readable text file-like object representing the file."""
 
     @overload
     @abstractmethod
     def open_file(
-        self,
-        path: str | Path,
-        mode: Literal["w", "r"] = "r",
-        binary: Literal[True] = True,
-    ) -> BinaryIO | IOBase:
+        self, path: str | Path, mode: Literal["r", "w"], binary: Literal[True]
+    ) -> BinaryIO:
+        """Returns a binary file-like object representing the file."""
+
+    @overload
+    @abstractmethod
+    def open_file(self, path: str | Path, *, binary: Literal[True]) -> BinaryIO:
         """Returns a readable binary file-like object representing the file."""
 
+    @overload
     @abstractmethod
     def open_file(
-        self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
-    ) -> IO | IOBase:
-        """Returns a readable file-like object representing the file."""
+        self, path: str | Path, mode: Literal["r", "w"] = "r", binary: bool = False
+    ) -> TextIO | BinaryIO:
+        """Returns a file-like object representing the file."""
 
     @overload
     @abstractmethod
@@ -95,13 +98,15 @@ class FileStorage(ABC):
 
     @overload
     @abstractmethod
-    def read_file(self, path: str | Path, binary: Literal[True] = True) -> bytes:
+    def read_file(self, path: str | Path, binary: Literal[True]) -> bytes:
         """Read a file in the storage as binary."""
         ...
 
+    @overload
     @abstractmethod
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
         """Read a file in the storage."""
+        ...
 
     @abstractmethod
     async def write_file(self, path: str | Path, content: str | bytes) -> None:
@@ -241,24 +246,32 @@ class FileSyncHandler(FileSystemEventHandler):
         self.storage = storage
         self.path = Path(path)
 
-    async def on_modified(self, event):
+    def on_modified(self, event: FileSystemEvent):
         if event.is_directory:
             return
 
         file_path = Path(event.src_path).relative_to(self.path)
         content = file_path.read_bytes()
-        await self.storage.write_file(file_path, content)
+        # Must execute write_file synchronously because the hook is synchronous
+        # TODO: Schedule write operation using asyncio.create_task (non-blocking)
+        asyncio.get_event_loop().run_until_complete(
+            self.storage.write_file(file_path, content)
+        )
 
-    async def on_created(self, event):
+    def on_created(self, event: FileSystemEvent):
         if event.is_directory:
             self.storage.make_dir(event.src_path)
             return
 
         file_path = Path(event.src_path).relative_to(self.path)
         content = file_path.read_bytes()
-        await self.storage.write_file(file_path, content)
+        # Must execute write_file synchronously because the hook is synchronous
+        # TODO: Schedule write operation using asyncio.create_task (non-blocking)
+        asyncio.get_event_loop().run_until_complete(
+            self.storage.write_file(file_path, content)
+        )
 
-    def on_deleted(self, event):
+    def on_deleted(self, event: FileSystemEvent):
         if event.is_directory:
             self.storage.delete_dir(event.src_path)
             return
@@ -266,5 +279,5 @@ class FileSyncHandler(FileSystemEventHandler):
         file_path = event.src_path
         self.storage.delete_file(file_path)
 
-    def on_moved(self, event):
+    def on_moved(self, event: FileSystemEvent):
         self.storage.rename(event.src_path, event.dest_path)

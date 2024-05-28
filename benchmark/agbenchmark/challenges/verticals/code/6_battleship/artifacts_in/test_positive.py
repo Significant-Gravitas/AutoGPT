@@ -61,6 +61,7 @@ def test_ship_sinking_feedback(battleship_game, initialized_game_id):
         {"row": 1, "column": "H"},
     ]
 
+    response = None
     for index, hit in enumerate(hits):
         turn = Turn(target={"row": 2, "column": hit})
         response = battleship_game.create_turn(initialized_game_id, turn)
@@ -69,7 +70,7 @@ def test_ship_sinking_feedback(battleship_game, initialized_game_id):
         static_turn = Turn(target=static_moves[index])
         battleship_game.create_turn(initialized_game_id, static_turn)
 
-    assert response.result == "sunk"
+    assert response and response.result == "sunk"
 
 
 def test_restart_game(battleship_game):

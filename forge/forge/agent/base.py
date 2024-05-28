@@ -5,21 +5,20 @@ import inspect
 import logging
 from abc import ABCMeta, abstractmethod
 from typing import (
-    TYPE_CHECKING,
     Any,
+    Awaitable,
     Callable,
+    Generic,
     Iterator,
     Optional,
     ParamSpec,
     TypeVar,
+    cast,
     overload,
 )
 
 from colorama import Fore
 from pydantic import BaseModel, Field, validator
-
-if TYPE_CHECKING:
-    from forge.models.action import ActionProposal, ActionResult
 
 from forge.agent import protocols
 from forge.agent.components import (
@@ -29,15 +28,10 @@ from forge.agent.components import (
 )
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
-from forge.config.config import ConfigBuilder
 from forge.llm.providers import CHAT_MODELS, ModelName, OpenAIModelName
 from forge.llm.providers.schema import ChatModelInfo
-from forge.models.config import (
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-    UserConfigurable,
-)
+from forge.models.action import ActionResult, AnyProposal
+from forge.models.config import SystemConfiguration, SystemSettings, UserConfigurable
 
 logger = logging.getLogger(__name__)
 
@@ -133,17 +127,7 @@ class AgentMeta(ABCMeta):
         return instance
 
 
-
-
-
-class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
-    C = TypeVar("C", bound=AgentComponent)
-
-    default_settings = BaseAgentSettings(
-        name="BaseAgent",
-        description=__doc__ if __doc__ else "",
-    )
-
+class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
     def __init__(
         self,
         settings: BaseAgentSettings,
@@ -173,13 +157,13 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
         return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
 
     @abstractmethod
-    async def propose_action(self) -> ActionProposal:
+    async def propose_action(self) -> AnyProposal:
         ...
 
     @abstractmethod
     async def execute(
         self,
-        proposal: ActionProposal,
+        proposal: AnyProposal,
         user_feedback: str = "",
     ) -> ActionResult:
         ...
@@ -187,7 +171,7 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
     @abstractmethod
     async def do_not_execute(
         self,
-        denied_proposal: ActionProposal,
+        denied_proposal: AnyProposal,
         user_feedback: str,
     ) -> ActionResult:
         ...
@@ -203,13 +187,16 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
 
     @overload
     async def run_pipeline(
-        self, protocol_method: Callable[P, None], *args, retry_limit: int = 3
+        self,
+        protocol_method: Callable[P, None | Awaitable[None]],
+        *args,
+        retry_limit: int = 3,
     ) -> list[None]:
         ...
 
     async def run_pipeline(
         self,
-        protocol_method: Callable[P, Iterator[T] | None],
+        protocol_method: Callable[P, Iterator[T] | None | Awaitable[None]],
         *args,
         retry_limit: int = 3,
     ) -> list[T] | list[None]:
@@ -240,7 +227,10 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
                         )
                         continue
 
-                    method = getattr(component, method_name, None)
+                    method = cast(
+                        Callable[..., Iterator[T] | None | Awaitable[None]] | None,
+                        getattr(component, method_name, None),
+                    )
                     if not callable(method):
                         continue
 
@@ -248,10 +238,9 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
                     while component_attempts < retry_limit:
                         try:
                             component_args = self._selective_copy(args)
-                            if inspect.iscoroutinefunction(method):
-                                result = await method(*component_args)
-                            else:
-                                result = method(*component_args)
+                            result = method(*component_args)
+                            if inspect.isawaitable(result):
+                                result = await result
                             if result is not None:
                                 method_result.extend(result)
                             args = component_args
@@ -269,9 +258,9 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
                         break
                 # Successful pipeline execution
                 break
-            except EndpointPipelineError:
+            except EndpointPipelineError as e:
                 self._trace.append(
-                    f"❌ {Fore.LIGHTRED_EX}{component.__class__.__name__}: "
+                    f"❌ {Fore.LIGHTRED_EX}{e.triggerer.__class__.__name__}: "
                     f"EndpointPipelineError{Fore.RESET}"
                 )
                 # Restart from the beginning on EndpointPipelineError

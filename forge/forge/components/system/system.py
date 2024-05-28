@@ -37,8 +37,8 @@ class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
             "You are unable to interact with physical objects. "
             "If this is absolutely necessary to fulfill a task or objective or "
             "to complete a step, you must ask the user to do it for you. "
-            "If the user refuses this, and there is no other way to achieve your goals, "
-            "you must terminate to avoid wasting time and energy."
+            "If the user refuses this, and there is no other way to achieve your "
+            "goals, you must terminate to avoid wasting time and energy."
         )
 
     def get_resources(self) -> Iterator[str]:

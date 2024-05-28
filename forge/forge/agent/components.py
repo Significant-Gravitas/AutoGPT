@@ -36,8 +36,9 @@ class AgentComponent(ABC):
 class ComponentEndpointError(Exception):
     """Error of a single protocol method on a component."""
 
-    def __init__(self, message: str = ""):
+    def __init__(self, message: str, component: AgentComponent):
         self.message = message
+        self.triggerer = component
         super().__init__(message)
 
 

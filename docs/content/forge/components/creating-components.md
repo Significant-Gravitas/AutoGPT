@@ -203,7 +203,7 @@ class MyAgent(Agent):
     def __init__(
         self,
         settings: AgentSettings,
-        llm_provider: ChatModelProvider,
+        llm_provider: MultiProvider,
         file_storage: FileStorage,
         legacy_config: Config,
     ):
@@ -220,7 +220,7 @@ class MyAgent(Agent):
     def __init__(
         self,
         settings: AgentSettings,
-        llm_provider: ChatModelProvider,
+        llm_provider: MultiProvider,
         file_storage: FileStorage,
         legacy_config: Config,
     ):
