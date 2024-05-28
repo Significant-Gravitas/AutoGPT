@@ -125,7 +125,8 @@ class ImageGeneratorComponent(
                 "You need to set your Hugging Face API token in the config file."
             )
         headers = {
-            "Authorization": f"Bearer {self.config.huggingface_api_token.get_secret_value()}",
+            "Authorization":
+                f"Bearer {self.config.huggingface_api_token.get_secret_value()}",
             "X-Use-Cache": "false",
         }
 

@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from . import json_loads
+from .parsing import json_loads
 
 _JSON_FIXABLE: list[tuple[str, str]] = [
     # Missing comma

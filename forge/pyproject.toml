@@ -69,6 +69,7 @@ types-requests = "^2.31.0.2"
 pytest = "^7.4.0"
 pytest-asyncio = "^0.21.1"
 pytest-cov = "^5.0.0"
+pytest-mock = "*"
 mock = "^5.1.0"
 pydevd-pycharm = "^233.6745.319"
 
@@ -95,3 +96,4 @@ pythonVersion = "3.10"
 [tool.pytest.ini_options]
 pythonpath = ["forge"]
 testpaths = ["forge", "tests"]
+markers = ["slow", "requires_openai_api_key", "requires_huggingface_api_key"]

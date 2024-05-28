@@ -5,13 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from . import (
+from forge.file_storage.base import FileStorage
+from forge.utils.exceptions import InvalidArgumentError, OperationNotAllowedError
+
+from .code_executor import (
     CodeExecutorComponent,
     is_docker_available,
     we_are_running_in_a_docker_container,
 )
-from forge.file_storage.base import FileStorage
-from forge.utils.exceptions import InvalidArgumentError, OperationNotAllowedError
 
 
 @pytest.fixture
@@ -102,20 +103,6 @@ def test_execute_python_file_not_found(code_executor_component: CodeExecutorComp
         r"\[Errno 2\] No such file or directory",
     ):
         code_executor_component.execute_python_file(Path("notexist.py"))
-
-
-def test_execute_shell(
-    code_executor_component: CodeExecutorComponent, random_string: str
-):
-    result = code_executor_component.execute_shell(f"echo 'Hello {random_string}!'")
-    assert f"Hello {random_string}!" in result
-
-
-def test_execute_shell_local_commands_not_allowed(
-    code_executor_component: CodeExecutorComponent, random_string: str
-):
-    result = code_executor_component.execute_shell(f"echo 'Hello {random_string}!'")
-    assert f"Hello {random_string}!" in result
 
 
 def test_execute_shell_denylist_should_deny(

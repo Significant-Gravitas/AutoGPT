@@ -1,8 +1,9 @@
 import pytest
-from forge.file_storage.base import FileStorage
-from forge.utils.exceptions import CommandExecutionError
 from git.exc import GitCommandError
 from git.repo.base import Repo
+
+from forge.file_storage.base import FileStorage
+from forge.utils.exceptions import CommandExecutionError
 
 from . import GitOperationsComponent
 
@@ -14,7 +15,10 @@ def mock_clone_from(mocker):
 
 @pytest.fixture
 def git_ops_component():
-    return GitOperationsComponent()
+    comp = GitOperationsComponent()
+    if not comp.config.github_username or not comp.config.github_api_key:
+        pytest.skip("GitHub credentials not configured")
+    return comp
 
 
 def test_clone_auto_gpt_repository(

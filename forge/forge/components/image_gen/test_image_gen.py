@@ -3,9 +3,9 @@ import hashlib
 from pathlib import Path
 from unittest.mock import patch
 
-from pydantic import SecretStr
 import pytest
 from PIL import Image
+from pydantic import SecretStr
 
 from forge.file_storage.base import FileStorage
 from forge.llm.providers.openai import OpenAICredentials
@@ -15,7 +15,10 @@ from . import ImageGeneratorComponent
 
 @pytest.fixture
 def image_gen_component(storage: FileStorage):
-    return ImageGeneratorComponent(storage, openai_credentials=OpenAICredentials.from_env())
+    cred = OpenAICredentials.from_env()
+    if not cred.api_key:
+        pytest.skip("OpenAI API key not set.")
+    return ImageGeneratorComponent(storage, openai_credentials=cred)
 
 
 @pytest.fixture(params=[256, 512, 1024])
@@ -56,6 +59,8 @@ def test_huggingface(
     image_model,
 ):
     """Test HuggingFace image generation."""
+    if not image_gen_component.config.huggingface_api_token:
+        pytest.skip("HuggingFace API key not set.")
     generate_and_validate(
         image_gen_component,
         storage,
@@ -66,9 +71,7 @@ def test_huggingface(
 
 
 @pytest.mark.xfail(reason="SD WebUI call does not work.")
-def test_sd_webui(
-    image_gen_component: ImageGeneratorComponent, storage, image_size
-):
+def test_sd_webui(image_gen_component: ImageGeneratorComponent, storage, image_size):
     """Test SD WebUI image generation."""
     generate_and_validate(
         image_gen_component,

@@ -57,7 +57,8 @@ class FileManagerComponent(
         Args:
             file_storage (FileStorage): The file storage instance to use.
             state (BaseAgentSettings): The agent's state.
-            config (FileManagerConfiguration, optional): The configuration for the file manager. Defaults to None.
+            config (FileManagerConfiguration, optional): The configuration for the
+                file manager. Defaults to None.
         """
         if not state.agent_id:
             raise ValueError("Agent must have an ID.")

@@ -57,6 +57,9 @@ class GitOperationsComponent(
         Returns:
             str: The result of the clone operation.
         """
+        assert self.config.github_username is not None
+        assert self.config.github_api_key is not None
+
         split_url = url.split("//")
         auth_repo_url = (
             f"//{self.config.github_username}:"

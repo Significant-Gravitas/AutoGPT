@@ -6,9 +6,11 @@ import pytest
 from forge.file_storage.base import FileStorage, FileStorageConfiguration
 from forge.file_storage.local import LocalFileStorage
 
+
 @pytest.fixture()
 def test_workspace(tmp_path: Path) -> Path:
     return tmp_path
+
 
 @pytest.fixture()
 def tmp_project_root(tmp_path: Path) -> Path:

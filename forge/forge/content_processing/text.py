@@ -9,8 +9,9 @@ import spacy
 
 from forge.json.parsing import extract_list_from_json
 from forge.llm.prompting import ChatPrompt
-from forge.llm.providers import ChatMessage, ModelTokenizer, MultiProvider
+from forge.llm.providers import ChatMessage, ModelTokenizer
 from forge.llm.providers.multi import ModelName
+from forge.llm.providers.schema import BaseChatModelProvider
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ def chunk_content(
 
 async def summarize_text(
     text: str,
-    llm_provider: MultiProvider,
+    llm_provider: BaseChatModelProvider,
     model_name: ModelName,
     spacy_model: str = "en_core_web_sm",
     question: Optional[str] = None,
@@ -89,7 +90,7 @@ async def summarize_text(
 async def extract_information(
     source_text: str,
     topics_of_interest: list[str],
-    llm_provider: MultiProvider,
+    llm_provider: BaseChatModelProvider,
     model_name: ModelName,
     spacy_model: str = "en_core_web_sm",
 ) -> list[str]:
@@ -115,7 +116,7 @@ async def extract_information(
 async def _process_text(
     text: str,
     instruction: str,
-    llm_provider: MultiProvider,
+    llm_provider: BaseChatModelProvider,
     model_name: ModelName,
     spacy_model: str = "en_core_web_sm",
     output_type: type[str | list[str]] = str,

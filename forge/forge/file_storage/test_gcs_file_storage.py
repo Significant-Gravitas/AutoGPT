@@ -8,7 +8,7 @@ from google.auth.exceptions import GoogleAuthError
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
 
-from . import GCSFileStorage, GCSFileStorageConfiguration
+from .gcs import GCSFileStorage, GCSFileStorageConfiguration
 
 try:
     storage.Client()

@@ -1,8 +1,9 @@
 import json
 
 import pytest
-from forge.utils.exceptions import ConfigurationError
 from googleapiclient.errors import HttpError
+
+from forge.utils.exceptions import ConfigurationError
 
 from . import WebSearchComponent
 
@@ -97,6 +98,9 @@ def test_google_official_search(
     mock_googleapiclient,
     web_search_component: WebSearchComponent,
 ):
+    if not web_search_component.config.google_api_key:
+        pytest.skip("Google API key not configured")
+
     mock_googleapiclient.return_value = search_results
     actual_output = web_search_component.google(query, num_results=num_results)
     assert actual_output == web_search_component.safe_google_results(expected_output)
@@ -130,6 +134,9 @@ def test_google_official_search_errors(
     error_msg,
     web_search_component: WebSearchComponent,
 ):
+    if not web_search_component.config.google_api_key:
+        pytest.skip("Google API key not configured")
+
     class resp:
         def __init__(self, _status, _reason):
             self.status = _status

@@ -108,7 +108,8 @@ class EpisodicActionHistory(GenericModel, Generic[AnyProposal]):
             self.cursor = len(self.episodes)
 
     async def handle_compression(
-        self, llm_provider: MultiProvider,
+        self,
+        llm_provider: MultiProvider,
         model_name: ModelName,
         spacy_model: str,
     ) -> None:

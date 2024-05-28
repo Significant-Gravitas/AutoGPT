@@ -1,7 +1,7 @@
 import pytest
 from pytest import raises
 
-from .url_validator import validate_url
+from forge.utils.url_validator import validate_url
 
 
 @validate_url

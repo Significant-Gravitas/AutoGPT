@@ -32,8 +32,9 @@ from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.content_processing.html import extract_hyperlinks, format_hyperlinks
 from forge.content_processing.text import extract_information, summarize_text
-from forge.llm.providers import ChatModelInfo, MultiProvider
+from forge.llm.providers import ChatModelInfo
 from forge.llm.providers.multi import ModelName
+from forge.llm.providers.schema import BaseChatModelProvider
 from forge.models.config import ComponentConfiguration
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError, TooMuchOutputError
@@ -58,7 +59,11 @@ class WebSeleniumConfiguration(ComponentConfiguration):
         "edge"
     ] = "chrome"
     headless: bool = True
-    user_agent: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"
+    user_agent: str = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/83.0.4103.97 Safari/537.36"
+    )
     browse_spacy_language_model: str = "en_core_web_sm"
 
 
@@ -70,7 +75,7 @@ class WebSeleniumComponent(
     def __init__(
         self,
         llm_model_name: ModelName,
-        llm_provider: MultiProvider,
+        llm_provider: BaseChatModelProvider,
         model_info: ChatModelInfo,
         data_dir: Path,
         config: Optional[WebSeleniumConfiguration] = None,
