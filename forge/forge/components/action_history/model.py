@@ -1,25 +1,23 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Generic, Iterator, TypeVar
+from typing import TYPE_CHECKING, Generic
 
 from pydantic import Field
 from pydantic.generics import GenericModel
 
 from forge.content_processing.text import summarize_text
 from forge.llm.prompting.utils import format_numbered_list, indent
-from forge.models.action import ActionProposal, ActionResult
+from forge.models.action import ActionResult, AnyProposal
 from forge.models.utils import ModelWithSummary
 
 if TYPE_CHECKING:
     from forge.config.config import Config
-    from forge.llm.providers import ChatModelProvider
-
-AP = TypeVar("AP", bound=ActionProposal)
+    from forge.llm.providers import MultiProvider
 
 
-class Episode(GenericModel, Generic[AP]):
-    action: AP
+class Episode(GenericModel, Generic[AnyProposal]):
+    action: AnyProposal
     result: ActionResult | None
     summary: str | None = None
 
@@ -54,24 +52,21 @@ class Episode(GenericModel, Generic[AP]):
         return executed_action + action_result
 
 
-class EpisodicActionHistory(GenericModel, Generic[AP]):
+class EpisodicActionHistory(GenericModel, Generic[AnyProposal]):
     """Utility container for an action history"""
 
-    episodes: list[Episode[AP]] = Field(default_factory=list)
+    episodes: list[Episode[AnyProposal]] = Field(default_factory=list)
     cursor: int = 0
     _lock = asyncio.Lock()
 
     @property
-    def current_episode(self) -> Episode[AP] | None:
+    def current_episode(self) -> Episode[AnyProposal] | None:
         if self.cursor == len(self):
             return None
         return self[self.cursor]
 
-    def __getitem__(self, key: int) -> Episode[AP]:
+    def __getitem__(self, key: int) -> Episode[AnyProposal]:
         return self.episodes[key]
-
-    def __iter__(self) -> Iterator[Episode[AP]]:
-        return iter(self.episodes)
 
     def __len__(self) -> int:
         return len(self.episodes)
@@ -79,7 +74,7 @@ class EpisodicActionHistory(GenericModel, Generic[AP]):
     def __bool__(self) -> bool:
         return len(self.episodes) > 0
 
-    def register_action(self, action: AP) -> None:
+    def register_action(self, action: AnyProposal) -> None:
         if not self.current_episode:
             self.episodes.append(Episode(action=action, result=None))
             assert self.current_episode
@@ -113,7 +108,7 @@ class EpisodicActionHistory(GenericModel, Generic[AP]):
             self.cursor = len(self.episodes)
 
     async def handle_compression(
-        self, llm_provider: ChatModelProvider, app_config: Config
+        self, llm_provider: MultiProvider, app_config: Config
     ) -> None:
         """Compresses each episode in the action history using an LLM.
 

@@ -1,4 +1,4 @@
-name: AutoGPTs smoke test CI
+name: Agent smoke tests
 
 on:
   workflow_dispatch:
@@ -28,7 +28,7 @@ on:
       - '!**/*.md'
 
 jobs:
-  run-tests:
+  serve-agent-protocol:
     runs-on: ubuntu-latest
     strategy:
       matrix:

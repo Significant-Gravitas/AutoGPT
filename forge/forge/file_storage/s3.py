@@ -8,9 +8,9 @@ from __future__ import annotations
 import contextlib
 import inspect
 import logging
-from io import IOBase, TextIOWrapper
+from io import TextIOWrapper
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, BinaryIO, Literal, Optional, overload
 
 import boto3
 import botocore.exceptions
@@ -22,6 +22,7 @@ from .base import FileStorage, FileStorageConfiguration
 
 if TYPE_CHECKING:
     import mypy_boto3_s3
+    from botocore.response import StreamingBody
 
 logger = logging.getLogger(__name__)
 
@@ -89,18 +90,60 @@ class S3FileStorage(FileStorage):
 
     def _get_obj(self, path: str | Path) -> mypy_boto3_s3.service_resource.Object:
         """Get an S3 object."""
-        path = self.get_path(path)
         obj = self._bucket.Object(str(path))
         with contextlib.suppress(botocore.exceptions.ClientError):
             obj.load()
         return obj
 
+    @overload
     def open_file(
-        self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
-    ) -> IOBase:
+        self,
+        path: str | Path,
+        mode: Literal["r", "w"] = "r",
+        binary: Literal[False] = False,
+    ) -> TextIOWrapper:
+        ...
+
+    @overload
+    def open_file(
+        self, path: str | Path, mode: Literal["r", "w"], binary: Literal[True]
+    ) -> S3BinaryIOWrapper:
+        ...
+
+    @overload
+    def open_file(
+        self, path: str | Path, *, binary: Literal[True]
+    ) -> S3BinaryIOWrapper:
+        ...
+
+    @overload
+    def open_file(
+        self, path: str | Path, mode: Literal["r", "w"] = "r", binary: bool = False
+    ) -> S3BinaryIOWrapper | TextIOWrapper:
+        ...
+
+    def open_file(
+        self, path: str | Path, mode: Literal["r", "w"] = "r", binary: bool = False
+    ) -> TextIOWrapper | S3BinaryIOWrapper:
         """Open a file in the storage."""
-        obj = self._get_obj(path)
-        return obj.get()["Body"] if binary else TextIOWrapper(obj.get()["Body"])
+        path = self.get_path(path)
+        body = S3BinaryIOWrapper(self._get_obj(path).get()["Body"], str(path))
+        return body if binary else TextIOWrapper(body)
+
+    @overload
+    def read_file(self, path: str | Path, binary: Literal[False] = False) -> str:
+        """Read a file in the storage as text."""
+        ...
+
+    @overload
+    def read_file(self, path: str | Path, binary: Literal[True]) -> bytes:
+        """Read a file in the storage as binary."""
+        ...
+
+    @overload
+    def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
+        """Read a file in the storage."""
+        ...
 
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
         """Read a file in the storage."""
@@ -108,7 +151,7 @@ class S3FileStorage(FileStorage):
 
     async def write_file(self, path: str | Path, content: str | bytes) -> None:
         """Write to a file in the storage."""
-        obj = self._get_obj(path)
+        obj = self._get_obj(self.get_path(path))
         obj.put(Body=content)
 
         if self.on_write_file:
@@ -172,7 +215,7 @@ class S3FileStorage(FileStorage):
             self._s3.meta.client.head_object(Bucket=self._bucket_name, Key=str(path))
             return True
         except botocore.exceptions.ClientError as e:
-            if int(e.response["ResponseMetadata"]["HTTPStatusCode"]) == 404:
+            if e.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 # If the object does not exist,
                 # check for objects with the prefix (folder)
                 prefix = f"{str(path).rstrip('/')}/"
@@ -201,7 +244,7 @@ class S3FileStorage(FileStorage):
             )
             self._s3.meta.client.delete_object(Bucket=self._bucket_name, Key=old_path)
         except botocore.exceptions.ClientError as e:
-            if int(e.response["ResponseMetadata"]["HTTPStatusCode"]) == 404:
+            if e.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 # If the object does not exist,
                 # it may be a folder
                 prefix = f"{old_path.rstrip('/')}/"
@@ -233,7 +276,7 @@ class S3FileStorage(FileStorage):
                 Key=destination,
             )
         except botocore.exceptions.ClientError as e:
-            if int(e.response["ResponseMetadata"]["HTTPStatusCode"]) == 404:
+            if e.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 # If the object does not exist,
                 # it may be a folder
                 prefix = f"{source.rstrip('/')}/"
@@ -254,7 +297,7 @@ class S3FileStorage(FileStorage):
             S3FileStorageConfiguration(
                 bucket=self._bucket_name,
                 root=Path("/").joinpath(self.get_path(subroot)),
-                s3_endpoint_url=self._s3.meta.client.meta.endpoint_url,
+                s3_endpoint_url=SecretStr(self._s3.meta.client.meta.endpoint_url),
             )
         )
         file_storage._s3 = self._s3
@@ -263,3 +306,48 @@ class S3FileStorage(FileStorage):
 
     def __repr__(self) -> str:
         return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self._root})"
+
+
+class S3BinaryIOWrapper(BinaryIO):
+    def __init__(self, body: StreamingBody, name: str):
+        self.body = body
+        self._name = name
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def read(self, size: int = -1) -> bytes:
+        return self.body.read(size if size > 0 else None)
+
+    def readinto(self, b: bytearray) -> int:
+        data = self.read(len(b))
+        b[: len(data)] = data
+        return len(data)
+
+    def close(self) -> None:
+        self.body.close()
+
+    def fileno(self) -> int:
+        return self.body.fileno()
+
+    def flush(self) -> None:
+        self.body.flush()
+
+    def isatty(self) -> bool:
+        return self.body.isatty()
+
+    def readable(self) -> bool:
+        return self.body.readable()
+
+    def seekable(self) -> bool:
+        return self.body.seekable()
+
+    def writable(self) -> bool:
+        return False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.body.close()

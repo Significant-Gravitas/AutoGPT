@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from colorama import Fore, Style
 from openai._base_client import log as openai_logger
 
 from forge.models.config import SystemConfiguration, UserConfigurable
@@ -65,7 +64,7 @@ class LoggingConfig(SystemConfiguration):
     log_dir: Path = LOG_DIR
     log_file_format: Optional[LogFormatName] = UserConfigurable(
         default=LogFormatName.SIMPLE,
-        from_env=lambda: os.getenv(
+        from_env=lambda: os.getenv(  # type: ignore
             "LOG_FILE_FORMAT", os.getenv("LOG_FORMAT", "simple")
         ),
     )

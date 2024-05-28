@@ -11,7 +11,8 @@ import docker
 from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
 
-from forge.agent import BaseAgentSettings, CommandProvider
+from forge.agent import BaseAgentSettings
+from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
 from forge.config.config import Config
 from forge.file_storage import FileStorage
