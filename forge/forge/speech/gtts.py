@@ -15,7 +15,7 @@ class GTTSVoice(VoiceBase):
     def _setup(self) -> None:
         pass
 
-    def _speech(self, text: str, _: int = 0) -> bool:
+    def _speech(self, text: str, voice_id: int = 0) -> bool:
         """Play the given text."""
         tts = gtts.gTTS(text)
         tts.save("speech.mp3")

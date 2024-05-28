@@ -1,7 +1,5 @@
 import abc
-from typing import TYPE_CHECKING
-
-from forge.models.config import SystemConfiguration
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from forge.llm.providers import AssistantChatMessage
@@ -10,8 +8,6 @@ from .schema import ChatPrompt, LanguageModelClassification
 
 
 class PromptStrategy(abc.ABC):
-    default_configuration: SystemConfiguration
-
     @property
     @abc.abstractmethod
     def model_classification(self) -> LanguageModelClassification:
@@ -22,5 +18,5 @@ class PromptStrategy(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def parse_response_content(self, response_content: "AssistantChatMessage"):
+    def parse_response_content(self, response: "AssistantChatMessage") -> Any:
         ...

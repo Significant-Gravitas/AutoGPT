@@ -1,10 +1,7 @@
 import enum
 from pathlib import Path
 
-from .base import FileStorage, FileStorageConfiguration
-from .gcs import GCSFileStorage, GCSFileStorageConfiguration
-from .local import LocalFileStorage
-from .s3 import S3FileStorage, S3FileStorageConfiguration
+from .base import FileStorage
 
 
 class FileStorageBackendName(str, enum.Enum):
@@ -15,7 +12,7 @@ class FileStorageBackendName(str, enum.Enum):
 
 def get_storage(
     backend: FileStorageBackendName,
-    root_path: Path = ".",
+    root_path: Path = Path("."),
     restrict_to_root: bool = True,
 ) -> FileStorage:
     match backend:

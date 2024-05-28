@@ -56,7 +56,7 @@ def winner(board):
 
 def getLocation():
     location = input(
-        "Choose where to play. Enter two numbers separated by a comma, for example: 1,1 "
+        "Choose where to play. Enter two numbers separated by a comma [example: 1,1]: "
     )
     print(f"\nYou picked {location}")
     coordinates = [int(x) for x in location.split(",")]
@@ -69,7 +69,8 @@ def getLocation():
     ):
         print("You inputted a location in an invalid format")
         location = input(
-            "Choose where to play. Enter two numbers separated by a comma, for example: 1,1 "
+            "Choose where to play. Enter two numbers separated by a comma "
+            "[example: 1,1]: "
         )
         coordinates = [int(x) for x in location.split(",")]
     return coordinates

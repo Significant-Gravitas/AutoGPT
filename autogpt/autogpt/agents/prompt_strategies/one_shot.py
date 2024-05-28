@@ -43,7 +43,7 @@ class AssistantThoughts(ModelWithSummary):
 
 
 class OneShotAgentActionProposal(ActionProposal):
-    thoughts: AssistantThoughts
+    thoughts: AssistantThoughts  # type: ignore
 
 
 class OneShotAgentPromptConfiguration(SystemConfiguration):
@@ -186,11 +186,8 @@ class OneShotAgentPromptStrategy(PromptStrategy):
 
     def response_format_instruction(self, use_functions_api: bool) -> tuple[str, str]:
         response_schema = self.response_schema.copy(deep=True)
-        if (
-            use_functions_api
-            and response_schema.properties
-            and "use_tool" in response_schema.properties
-        ):
+        assert response_schema.properties
+        if use_functions_api and "use_tool" in response_schema.properties:
             del response_schema.properties["use_tool"]
 
         # Unindent for performance
@@ -288,10 +285,10 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             "Parsing object extracted from LLM response:\n"
             f"{json.dumps(assistant_reply_dict, indent=4)}"
         )
-
-        parsed_response = OneShotAgentActionProposal.parse_obj(assistant_reply_dict)
         if self.config.use_functions_api:
             if not response.tool_calls:
                 raise InvalidAgentResponseError("Assistant did not use a tool")
-            parsed_response.use_tool = response.tool_calls[0].function
+            assistant_reply_dict["use_tool"] = response.tool_calls[0].function
+
+        parsed_response = OneShotAgentActionProposal.parse_obj(assistant_reply_dict)
         return parsed_response

@@ -1,31 +1,26 @@
 import abc
 import enum
 import math
+from typing import Callable, Generic, TypeVar
 
 from pydantic import BaseModel, SecretBytes, SecretField, SecretStr
 
-from forge.models.config import SystemConfiguration, SystemSettings, UserConfigurable
+from forge.models.config import SystemConfiguration, UserConfigurable
+
+_T = TypeVar("_T")
 
 
 class ResourceType(str, enum.Enum):
     """An enumeration of resource types."""
 
     MODEL = "model"
-    MEMORY = "memory"
 
 
-class ProviderUsage(SystemConfiguration, abc.ABC):
-    @abc.abstractmethod
-    def update_usage(self, *args, **kwargs) -> None:
-        """Update the usage of the resource."""
-        ...
-
-
-class ProviderBudget(SystemConfiguration):
+class ProviderBudget(SystemConfiguration, Generic[_T]):
     total_budget: float = UserConfigurable(math.inf)
     total_cost: float = 0
     remaining_budget: float = math.inf
-    usage: ProviderUsage
+    usage: _T
 
     @abc.abstractmethod
     def update_usage_and_cost(self, *args, **kwargs) -> float:
@@ -43,8 +38,8 @@ class ProviderCredentials(SystemConfiguration):
     def unmasked(self) -> dict:
         return unmask(self)
 
-    class Config:
-        json_encoders = {
+    class Config(SystemConfiguration.Config):
+        json_encoders: dict[type[SecretField], Callable[[SecretField], str | None]] = {
             SecretStr: lambda v: v.get_secret_value() if v else None,
             SecretBytes: lambda v: v.get_secret_value() if v else None,
             SecretField: lambda v: v.get_secret_value() if v else None,
@@ -60,12 +55,6 @@ def unmask(model: BaseModel):
         else:
             unmasked_fields[field_name] = value
     return unmasked_fields
-
-
-class ProviderSettings(SystemSettings):
-    resource_type: ResourceType
-    credentials: ProviderCredentials | None = None
-    budget: ProviderBudget | None = None
 
 
 # Used both by model providers and memory providers

@@ -1,4 +1,5 @@
 """Model definitions for use in the API"""
+from typing import Annotated
 
 from pydantic import BaseModel, constr
 
@@ -36,7 +37,7 @@ class RunDetails(BaseModel):
     run_id: str | None = None
     command: str
     completion_time: str | None = None
-    benchmark_start_time: constr(regex=datetime_format)
+    benchmark_start_time: Annotated[str, constr(regex=datetime_format)]
 
 
 class BenchmarkRun(BaseModel):
