@@ -410,15 +410,10 @@ class BuiltinChallenge(BaseChallenge):
 def load_builtin_challenges() -> Iterator[type[BuiltinChallenge]]:
     logger.info("Loading built-in challenges...")
 
-    challenges_path = os.path.dirname(__file__)
+    challenges_path = Path(__file__).parent
     logger.debug(f"Looking for challenge spec files in {challenges_path}...")
 
-    json_files = deque(
-        glob.glob(
-            f"{challenges_path}/**/data.json",
-            recursive=True,
-        )
-    )
+    json_files = deque(challenges_path.rglob("data.json"))
 
     logger.debug(f"Found {len(json_files)} built-in challenges.")
 
@@ -430,7 +425,7 @@ def load_builtin_challenges() -> Iterator[type[BuiltinChallenge]]:
             ignored += 1
             continue
 
-        challenge = BuiltinChallenge.from_challenge_spec_file(Path(json_file))
+        challenge = BuiltinChallenge.from_challenge_spec_file(json_file)
         logger.debug(f"Generated test for {challenge.info.name}")
         yield challenge
 
@@ -441,8 +436,8 @@ def load_builtin_challenges() -> Iterator[type[BuiltinChallenge]]:
     )
 
 
-def _challenge_should_be_ignored(json_file_path: str):
+def _challenge_should_be_ignored(json_file_path: Path):
     return (
-        "challenges/deprecated" in json_file_path
-        or "challenges/library" in json_file_path
+        "challenges/deprecated" in json_file_path.as_posix()
+        or "challenges/library" in json_file_path.as_posix()
     )
