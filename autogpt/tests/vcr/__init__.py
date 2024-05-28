@@ -1,6 +1,7 @@
 import logging
 import os
 from hashlib import sha256
+from typing import cast
 
 import pytest
 from openai import OpenAI
@@ -53,11 +54,14 @@ def cached_openai_client(mocker: MockerFixture) -> OpenAI:
     def _patched_prepare_options(self, options: FinalRequestOptions):
         _prepare_options(options)
 
+        if not options.json_data:
+            return
+
         headers: dict[str, str | Omit] = (
             {**options.headers} if is_given(options.headers) else {}
         )
         options.headers = headers
-        data: dict = options.json_data
+        data = cast(dict, options.json_data)
 
         logging.getLogger("cached_openai_client").debug(
             f"Outgoing API request: {headers}\n{data if data else None}"

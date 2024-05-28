@@ -12,7 +12,7 @@ from forge.file_storage.local import (
     FileStorageConfiguration,
     LocalFileStorage,
 )
-from forge.llm.providers import ChatModelProvider
+from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
@@ -71,14 +71,12 @@ def setup_logger(config: Config):
 
 
 @pytest.fixture
-def llm_provider(config: Config) -> ChatModelProvider:
+def llm_provider(config: Config) -> MultiProvider:
     return _configure_llm_provider(config)
 
 
 @pytest.fixture
-def agent(
-    config: Config, llm_provider: ChatModelProvider, storage: FileStorage
-) -> Agent:
+def agent(config: Config, llm_provider: MultiProvider, storage: FileStorage) -> Agent:
     ai_profile = AIProfile(
         ai_name="Base",
         ai_role="A base AI",

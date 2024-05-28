@@ -5,3 +5,11 @@ from .context_item import (
     FolderContextItem,
     StaticContextItem,
 )
+
+__all__ = [
+    "ContextComponent",
+    "ContextItem",
+    "FileContextItem",
+    "FolderContextItem",
+    "StaticContextItem",
+]

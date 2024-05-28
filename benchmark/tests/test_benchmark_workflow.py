@@ -1,11 +1,16 @@
+import datetime
+import time
+
 import pytest
 import requests
 
 URL_BENCHMARK = "http://localhost:8080/ap/v1"
 URL_AGENT = "http://localhost:8000/ap/v1"
 
-import datetime
-import time
+try:
+    response = requests.get(f"{URL_AGENT}/agent/tasks")
+except requests.exceptions.ConnectionError:
+    pytest.skip("No agent available to test against", allow_module_level=True)
 
 
 @pytest.mark.parametrize(
@@ -20,7 +25,8 @@ import time
         ),
         (
             "f219f3d3-a41b-45a9-a3d0-389832086ee8",
-            "Read the file called file_to_read.txt and write its content to a file called output.txt",
+            "Read the file called file_to_read.txt "
+            "and write its content to a file called output.txt",
             1,
             "ReadFile",
             False,
@@ -28,7 +34,11 @@ import time
     ],
 )
 def test_entire_workflow(
-    eval_id, input_text, expected_artifact_length, test_name, should_be_successful
+    eval_id: str,
+    input_text: str,
+    expected_artifact_length: int,
+    test_name: str,
+    should_be_successful: bool,
 ):
     task_request = {"eval_id": eval_id, "input": input_text}
     response = requests.get(f"{URL_AGENT}/agent/tasks")
@@ -64,7 +74,7 @@ def test_entire_workflow(
     )
     assert step_response.status_code == 200
     step_response = step_response.json()
-    assert step_response["is_last"] == True  # Assuming is_last is always True
+    assert step_response["is_last"] is True  # Assuming is_last is always True
 
     eval_response = requests.post(
         URL_BENCHMARK + "/agent/tasks/" + task_response_benchmark_id + "/evaluations",

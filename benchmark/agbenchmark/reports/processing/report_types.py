@@ -3,7 +3,7 @@ Model definitions used internally and for reports generated during command-line 
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Annotated, Any, Dict, List
 
 from agent_protocol_client import Step
 from pydantic import BaseModel, Field, constr, validator
@@ -88,7 +88,7 @@ class Test(BaseModel):
 class ReportBase(BaseModel):
     command: str
     completion_time: str | None = None
-    benchmark_start_time: constr(regex=datetime_format)
+    benchmark_start_time: Annotated[str, constr(regex=datetime_format)]
     metrics: MetricsOverall
     config: Dict[str, str | dict[str, str]]
     agent_git_commit_sha: str | None = None

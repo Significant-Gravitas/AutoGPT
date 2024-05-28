@@ -25,7 +25,7 @@ class TXTParser(ParserStrategy):
         charset_match = charset_normalizer.from_bytes(file.read()).best()
         logger.debug(
             f"Reading {getattr(file, 'name', 'file')} "
-            f"with encoding '{charset_match.encoding}'"
+            f"with encoding '{charset_match.encoding if charset_match else None}'"
         )
         return str(charset_match)
 

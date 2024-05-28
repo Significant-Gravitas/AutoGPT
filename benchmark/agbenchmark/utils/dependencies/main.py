@@ -1,18 +1,19 @@
 """
 A module to manage dependencies between pytest tests.
 
-This module provides the methods implementing the main logic. These are used in the pytest hooks that are in
-__init__.py.
+This module provides the methods implementing the main logic.
+These are used in the pytest hooks that are in __init__.py.
 """
 
 import collections
-import json
 import os
 from typing import Any, Generator
 
 import colorama
 import networkx
-from _pytest.nodes import Item
+from pytest import Function, Item
+
+from agbenchmark.challenges.base import BaseChallenge
 
 from .constants import MARKER_KWARG_DEPENDENCIES, MARKER_NAME
 from .graphs import graph_interactive_network
@@ -38,7 +39,8 @@ class TestResult(object):
             )
         if result.when in self.results:
             raise AttributeError(
-                f"Received multiple results for step {result.when} of test {self.nodeid}"
+                f"Received multiple results for step {result.when} "
+                f"of test {self.nodeid}"
             )
         self.results[result.when] = result.outcome
 
@@ -66,7 +68,7 @@ class TestDependencies(object):
             for dep in marker.kwargs.get(MARKER_KWARG_DEPENDENCIES, [])
         ]
         for dependency in dependencies:
-            # If the name is not known, try to make it absolute (ie file::[class::]method)
+            # If the name is not known, try to make it absolute (file::[class::]method)
             if dependency not in manager.name_to_nodeids:
                 absolute_dependency = get_absolute_nodeid(dependency, self.nodeid)
                 if absolute_dependency in manager.name_to_nodeids:
@@ -86,20 +88,20 @@ class DependencyManager(object):
     def __init__(self) -> None:
         """Create a new DependencyManager."""
         self.options: dict[str, Any] = {}
-        self._items: list[Item] | None = None
+        self._items: list[Function] | None = None
         self._name_to_nodeids: Any = None
         self._nodeid_to_item: Any = None
         self._results: Any = None
 
     @property
-    def items(self) -> list[Item]:
+    def items(self) -> list[Function]:
         """The collected tests that are managed by this instance."""
         if self._items is None:
             raise AttributeError("The items attribute has not been set yet")
         return self._items
 
     @items.setter
-    def items(self, items: list[Item]) -> None:
+    def items(self, items: list[Function]) -> None:
         if self._items is not None:
             raise AttributeError("The items attribute has already been set")
         self._items = items
@@ -125,7 +127,8 @@ class DependencyManager(object):
         for item in items:
             nodeid = clean_nodeid(item.nodeid)
             # Process the dependencies of this test
-            # This uses the mappings created in the previous loop, and can thus not be merged into that loop
+            # This uses the mappings created in the previous loop,
+            # and can thus not be merged into that loop
             self._dependencies[nodeid] = TestDependencies(item, self)
 
     @property
@@ -135,7 +138,7 @@ class DependencyManager(object):
         return self._name_to_nodeids
 
     @property
-    def nodeid_to_item(self) -> dict[str, Item]:
+    def nodeid_to_item(self) -> dict[str, Function]:
         """A mapping from node ids to test items."""
         assert self.items is not None
         return self._nodeid_to_item
@@ -194,7 +197,9 @@ class DependencyManager(object):
 
     @property
     def sorted_items(self) -> Generator:
-        """Get a sorted list of tests where all tests are sorted after their dependencies."""
+        """
+        Get a sorted list of tests where all tests are sorted after their dependencies.
+        """
         # Build a directed graph for sorting
         build_skill_tree = os.getenv("BUILD_SKILL_TREE")
         BUILD_SKILL_TREE = (
@@ -202,8 +207,8 @@ class DependencyManager(object):
         )
         dag = networkx.DiGraph()
 
-        # Insert all items as nodes, to prevent items that have no dependencies and are not dependencies themselves from
-        # being lost
+        # Insert all items as nodes, to prevent items that have no dependencies
+        # and are not dependencies themselves from being lost
         dag.add_nodes_from(self.items)
 
         # Insert edges for all the dependencies
@@ -214,11 +219,8 @@ class DependencyManager(object):
 
         labels = {}
         for item in self.items:
-            try:
-                with open(item.cls.CHALLENGE_LOCATION) as f:
-                    data = json.load(f)
-            except:
-                data = {}
+            assert item.cls and issubclass(item.cls, BaseChallenge)
+            data = item.cls.info.dict()
 
             node_name = get_name(item)
             data["name"] = node_name

@@ -1,9 +1,7 @@
 [tool.poetry]
 name = "agpt"
 version = "0.5.0"
-authors = [
-  "Significant Gravitas <support@agpt.co>",
-]
+authors = ["Significant Gravitas <support@agpt.co>"]
 readme = "README.md"
 description = "An open-source attempt to make GPT-4 autonomous"
 homepage = "https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt"
@@ -30,11 +28,10 @@ charset-normalizer = "^3.1.0"
 click = "*"
 colorama = "^0.4.6"
 distro = "^1.8.0"
-en-core-web-sm = {url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl"}
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl" }
 fastapi = "^0.109.1"
 ftfy = "^6.1.1"
 google-api-python-client = "*"
-gTTS = "^2.3.1"
 hypercorn = "^0.14.4"
 inflection = "*"
 jsonschema = "*"
@@ -58,21 +55,18 @@ openapi-python-client = "^0.14.0"
 # Benchmarking
 agbenchmark = { path = "../benchmark", optional = true }
 # agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
-google-cloud-logging = "^3.8.0"
-google-cloud-storage = "^2.13.0"
 psycopg2-binary = "^2.9.9"
 
 [tool.poetry.extras]
 benchmark = ["agbenchmark"]
 
 [tool.poetry.group.dev.dependencies]
-black = "*"
-boto3-stubs = {extras = ["s3"], version = "^1.33.6"}
-flake8 = "*"
+black = "^23.12.1"
+flake8 = "^7.0.0"
 gitpython = "^3.1.32"
-isort = "*"
-mypy = "*"
+isort = "^5.13.1"
 pre-commit = "*"
+pyright = "^1.1.364"
 types-beautifulsoup4 = "*"
 types-colorama = "*"
 types-Markdown = "*"
@@ -89,7 +83,7 @@ pytest-integration = "*"
 pytest-mock = "*"
 pytest-recording = "*"
 pytest-xdist = "*"
-vcrpy = {git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master"}
+vcrpy = { git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master" }
 
 
 [build-system]
@@ -101,50 +95,18 @@ build-backend = "poetry.core.masonry.api"
 line-length = 88
 target-version = ['py310']
 include = '\.pyi?$'
-packages = ["autogpt"]
-extend-exclude = '.+/(dist|.venv|venv|build|data)/.+'
 
 
 [tool.isort]
 profile = "black"
-multi_line_output = 3
-include_trailing_comma = true
-force_grid_wrap = 0
-use_parentheses = true
-ensure_newline_before_comments = true
-line_length = 88
-sections = [
-    "FUTURE",
-    "STDLIB",
-    "THIRDPARTY",
-    "FIRSTPARTY",
-    "LOCALFOLDER"
-]
-extend_skip = [
-    "agbenchmark_config/temp_folder/",
-    "data/",
-]
+skip_glob = ["data"]
 
 
-[tool.mypy]
-follow_imports = 'skip'
-check_untyped_defs = true
-disallow_untyped_calls = true
-files = [
-    'autogpt/**/*.py',
-    'tests/**/*.py'
-]
-
-[[tool.mypy.overrides]]
-module = [
-    'requests.*',
-    'yaml.*'
-]
-ignore_missing_imports = true
+[tool.pyright]
+pythonVersion = "3.10"
+exclude = ["data/**", "**/node_modules", "**/__pycache__", "**/.*"]
+ignore = ["../forge/**"]
 
 
 [tool.pytest.ini_options]
-markers = [
-    "requires_openai_api_key",
-    "requires_huggingface_api_key"
-]
+markers = ["slow", "requires_openai_api_key", "requires_huggingface_api_key"]

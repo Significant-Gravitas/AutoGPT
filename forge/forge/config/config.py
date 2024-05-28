@@ -200,7 +200,7 @@ class ConfigBuilder(Configurable[Config]):
 
         if (
             config.openai_credentials
-            and config.openai_credentials.api_type == "azure"
+            and config.openai_credentials.api_type == SecretStr("azure")
             and (config_file := config.azure_config_file)
         ):
             config.openai_credentials.load_azure_config(config_file)
