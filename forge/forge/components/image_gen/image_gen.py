@@ -1,5 +1,3 @@
-"""Commands to generate images based on text input"""
-
 import io
 import json
 import logging

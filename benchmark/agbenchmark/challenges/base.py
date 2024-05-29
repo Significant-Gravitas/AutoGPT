@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import AsyncIterator, ClassVar, Optional
+from typing import AsyncIterator, Awaitable, ClassVar, Optional
 
 import pytest
 from agent_protocol_client import AgentApi, Step
@@ -54,7 +54,7 @@ class BaseChallenge(ABC):
         config: AgentBenchmarkConfig,
         request: pytest.FixtureRequest,
         i_attempt: int,
-    ) -> None:
+    ) -> None | Awaitable[None]:
         """
         Test method for use by Pytest-based benchmark sessions. Should return normally
         if the challenge passes, and raise a (preferably descriptive) error otherwise.

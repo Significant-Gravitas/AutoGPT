@@ -7,7 +7,7 @@ import re
 import socket
 import sys
 from pathlib import Path
-from typing import Any, Callable, Coroutine, ParamSpec, TypeVar
+from typing import Any, Callable, Coroutine, ParamSpec, TypeVar, cast
 
 import requests
 from colorama import Fore, Style
@@ -88,7 +88,7 @@ def vcs_state_diverges_from_master() -> bool:
 def get_git_user_email() -> str:
     try:
         repo = Repo(search_parent_directories=True)
-        return repo.config_reader().get_value("user", "email", default="")
+        return cast(str, repo.config_reader().get_value("user", "email", default=""))
     except InvalidGitRepositoryError:
         return ""
 

@@ -106,8 +106,8 @@ def find_agbenchmark_without_uvicorn():
 
 
 class CreateReportRequest(BaseModel):
-    test: str = None
-    test_run_id: str = None
+    test: str
+    test_run_id: str
     # category: Optional[str] = []
     mock: Optional[bool] = False
 
@@ -178,8 +178,8 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
             logger.debug(f"Benchmark finished running in {time.time() - start_time} s")
 
         # List all folders in the current working directory
-        path_reports = agbenchmark_config.reports_folder
-        folders = [folder for folder in path_reports.iterdir() if folder.is_dir()]
+        reports_folder = agbenchmark_config.reports_folder
+        folders = [folder for folder in reports_folder.iterdir() if folder.is_dir()]
 
         # Sort the folders based on their names
         sorted_folders = sorted(folders, key=lambda x: x.name)
@@ -196,13 +196,14 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
                     data = json.load(file)
                 logger.debug(f"Report data: {data}")
             else:
-                logger.error(
+                raise HTTPException(
+                    502,
                     "Could not get result after running benchmark: "
-                    f"'report.json' does not exist in '{latest_folder}'"
+                    f"'report.json' does not exist in '{latest_folder}'",
                 )
         else:
-            logger.error(
-                "Could not get result after running benchmark: no reports found"
+            raise HTTPException(
+                504, "Could not get result after running benchmark: no reports found"
             )
 
         return data
@@ -239,7 +240,9 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
                 api_instance = AgentApi(api_client)
                 task_input = challenge_info.task
 
-                task_request_body = TaskRequestBody(input=task_input)
+                task_request_body = TaskRequestBody(
+                    input=task_input, additional_input=None
+                )
                 task_response = await api_instance.create_agent_task(
                     task_request_body=task_request_body
                 )
@@ -276,7 +279,7 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
             # Forward the request
             response = await client.post(
                 new_url,
-                data=await request.body(),
+                content=await request.body(),
                 headers=dict(request.headers),
             )
 
