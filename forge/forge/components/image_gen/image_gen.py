@@ -54,7 +54,12 @@ class ImageGeneratorComponent(
         self.legacy_config = config
 
     def get_commands(self) -> Iterator[Command]:
-        yield self.generate_image
+        if (
+            self.openai_credentials
+            or self.config.huggingface_api_token
+            or self.config.sd_webui_auth
+        ):
+            yield self.generate_image
 
     @command(
         parameters={
@@ -83,16 +88,24 @@ class ImageGeneratorComponent(
         """
         filename = self.workspace.root / f"{str(uuid.uuid4())}.jpg"
 
-        # DALL-E
-        if self.config.image_provider == "dalle":
+        if self.openai_credentials and (
+            self.config.image_provider == "dalle"
+            or not (self.config.huggingface_api_token or self.config.sd_webui_url)
+        ):
             return self.generate_image_with_dalle(prompt, filename, size)
-        # HuggingFace
-        elif self.config.image_provider == "huggingface":
+
+        elif self.config.huggingface_api_token and (
+            self.config.image_provider == "huggingface"
+            or not (self.openai_credentials or self.config.sd_webui_url)
+        ):
             return self.generate_image_with_hf(prompt, filename)
-        # SD WebUI
-        elif self.config.image_provider == "sdwebui":
+
+        elif self.config.sd_webui_url and (
+            self.config.image_provider == "sdwebui" or self.config.sd_webui_auth
+        ):
             return self.generate_image_with_sd_webui(prompt, filename, size)
-        return "No Image Provider Set"
+
+        return "Error: No image generation provider available"
 
     def generate_image_with_hf(self, prompt: str, output_file: Path) -> str:
         """Generate an image with HuggingFace's API.
@@ -110,7 +123,8 @@ class ImageGeneratorComponent(
                 "You need to set your Hugging Face API token in the config file."
             )
         headers = {
-            "Authorization": f"Bearer {self.config.huggingface_api_token.get_secret_value()}",
+            "Authorization":
+                f"Bearer {self.config.huggingface_api_token.get_secret_value()}",
             "X-Use-Cache": "false",
         }
 
@@ -164,6 +178,7 @@ class ImageGeneratorComponent(
         Returns:
             str: The filename of the image
         """
+        assert self.openai_credentials  # otherwise this tool is disabled
 
         # Check for supported image sizes
         if size not in [256, 512, 1024]:
@@ -174,9 +189,7 @@ class ImageGeneratorComponent(
             )
             size = closest
 
-        if not self.openai_credentials:
-            raise CommandExecutionError("OpenAI credentials are required for DALL-E.")
-
+        # TODO: integrate in `forge.llm.providers`(?)
         response = OpenAI(
             api_key=self.openai_credentials.api_key.get_secret_value(),
             organization=self.openai_credentials.organization.get_secret_value()
@@ -185,11 +198,13 @@ class ImageGeneratorComponent(
         ).images.generate(
             prompt=prompt,
             n=1,
+            # TODO: improve typing of size config item(s)
             size=f"{size}x{size}",  # type: ignore
             response_format="b64_json",
         )
+        assert response.data[0].b64_json is not None  # response_format = "b64_json"
 
-        logger.info(f"Image Generated for prompt:{prompt}")
+        logger.info(f"Image Generated for prompt: {prompt}")
 
         if not response.data[0].b64_json:
             raise CommandExecutionError("No image data returned.")
