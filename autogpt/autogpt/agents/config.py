@@ -5,7 +5,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import click
 import forge
@@ -41,6 +41,7 @@ class Config(BaseConfig):
     exit_key: str = UserConfigurable(default="n", from_env="EXIT_KEY")
     noninteractive_mode: bool = False
     logging: LoggingConfig = LoggingConfig()
+    config_file: Optional[str] = UserConfigurable(default=None, from_env="CONFIG_FILE")
 
     ##########################
     # Agent Control Settings #
@@ -80,7 +81,6 @@ class Config(BaseConfig):
         default=True,
         from_env=lambda: os.getenv("RESTRICT_TO_WORKSPACE", "True") == "True",
     )
-    allow_downloads: bool = False
 
     ###############
     # Credentials #
@@ -179,7 +179,7 @@ def assert_config_has_openai_api_key(config: Config) -> None:
         exit(1)
 
 
-def _safe_split(s: Union[str, None], sep: str = ",") -> list[str]:
+def _safe_split(s: Optional[str], sep: str = ",") -> list[str]:
     """Split a string by a separator. Return an empty list if the string is None."""
     if s is None:
         return []

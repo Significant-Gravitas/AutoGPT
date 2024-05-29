@@ -1,7 +1,4 @@
-from .code_executor import (
-    CodeExecutionError,
-    CodeExecutorComponent,
-)
+from .code_executor import CodeExecutionError, CodeExecutorComponent
 
 __all__ = [
     "ALLOWLIST_CONTROL",

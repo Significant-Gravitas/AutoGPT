@@ -5,7 +5,6 @@ import logging
 from typing import Literal, Optional
 
 import click
-from colorama import Back, Style
 from forge.llm.providers import ModelName, MultiProvider
 
 from autogpt.agents.config import GPT_3_MODEL, GPT_4_MODEL, Config
@@ -20,7 +19,6 @@ async def apply_overrides_to_config(
     skip_reprompt: bool = False,
     gpt3only: bool = False,
     gpt4only: bool = False,
-    allow_downloads: bool = False,
     skip_news: bool = False,
 ) -> None:
     """Updates the config object with the given arguments.
@@ -37,7 +35,6 @@ async def apply_overrides_to_config(
         log_file_format (str): Override the format for the log file.
         gpt3only (bool): Whether to enable GPT3.5 only mode.
         gpt4only (bool): Whether to enable GPT4 only mode.
-        allow_downloads (bool): Whether to allow AutoGPT to download files natively.
         skips_news (bool): Whether to suppress the output of latest news on startup.
     """
     config.continuous_mode = False
@@ -75,20 +72,6 @@ async def apply_overrides_to_config(
 
     if skip_reprompt:
         config.skip_reprompt = True
-
-    if allow_downloads:
-        logger.warning(
-            msg=f"{Back.LIGHTYELLOW_EX}"
-            "AutoGPT will now be able to download and save files to your machine."
-            f"{Back.RESET}"
-            " It is recommended that you monitor any files it downloads carefully.",
-        )
-        logger.warning(
-            msg=f"{Back.RED + Style.BRIGHT}"
-            "NEVER OPEN FILES YOU AREN'T SURE OF!"
-            f"{Style.RESET_ALL}",
-        )
-        config.allow_downloads = True
 
     if skip_news:
         config.skip_news = True

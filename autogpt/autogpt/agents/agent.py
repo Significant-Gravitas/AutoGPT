@@ -168,9 +168,6 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             The command name and arguments, if any, and the agent's thoughts.
         """
         self.reset_trace()
-        json = self.serialize_configs()
-        logger.info(f"Configs: {json}")
-        self.deserialize_configs(json)
 
         # Get directives
         resources = await self.run_pipeline(DirectiveProvider.get_resources)

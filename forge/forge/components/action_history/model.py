@@ -13,8 +13,6 @@ from forge.models.action import ActionResult, AnyProposal
 from forge.models.utils import ModelWithSummary
 
 if TYPE_CHECKING:
-    from autogpt.agents.config import Config
-
     from forge.llm.providers import MultiProvider
 
 
@@ -110,7 +108,8 @@ class EpisodicActionHistory(GenericModel, Generic[AnyProposal]):
             self.cursor = len(self.episodes)
 
     async def handle_compression(
-        self, llm_provider: MultiProvider,
+        self,
+        llm_provider: MultiProvider,
         model_name: ModelName,
         spacy_model: str,
     ) -> None:

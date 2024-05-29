@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, Generic, Iterator, Optional
+from typing import Callable, Iterator, Optional
 
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
@@ -16,7 +16,13 @@ class ActionHistoryConfiguration(ComponentConfiguration):
     max_tokens: int = 1024
     spacy_language_model: str = "en_core_web_sm"
 
-class ActionHistoryComponent(MessageProvider, AfterParse[AnyProposal], AfterExecute, ConfigurableComponent[ActionHistoryConfiguration]):
+
+class ActionHistoryComponent(
+    MessageProvider,
+    AfterParse[AnyProposal],
+    AfterExecute,
+    ConfigurableComponent[ActionHistoryConfiguration],
+):
     """Keeps track of the event history and provides a summary of the steps."""
 
     def __init__(

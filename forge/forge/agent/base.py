@@ -293,9 +293,13 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
             if config_type_name in configs_dict:
                 # Parse the serialized data and update the existing config
                 updated_data = json.loads(json.dumps(configs_dict[config_type_name]))
-                self._update_config_with_defaults(component.config, updated_data)
+                component.config = self._update_config_with_defaults(
+                    component.config, updated_data
+                )
 
-    def _update_config_with_defaults(self, config: BaseModel, data: dict[str, Any]) -> BaseModel:
+    def _update_config_with_defaults(
+        self, config: BaseModel, data: dict[str, Any]
+    ) -> BaseModel:
         config_data = config.dict()
         for key, value in data.items():
             current_value = getattr(config, key, None)

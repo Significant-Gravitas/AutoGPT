@@ -72,8 +72,6 @@ Options:
   --gpt4only                      Enable GPT4 Only Mode
   -b, --browser-name TEXT         Specifies which web-browser to use when
                                   using selenium to scrape the web.
-  --allow-downloads               Dangerous: Allows AutoGPT to download files
-                                  natively.
   --skip-news                     Specifies whether to suppress the output of
                                   latest news on startup.
   --install-plugin-deps           Installs external dependencies for 3rd party
@@ -92,6 +90,7 @@ Options:
   --override-directives           If specified, --constraint, --resource and
                                   --best-practice will override the AI's
                                   directives instead of being appended to them
+  --config-file TEXT              Path to the json configuration file.
   --help                          Show this message and exit.
 ```
 </details>
@@ -117,8 +116,6 @@ Options:
   --gpt4only                  Enable GPT4 Only Mode
   -b, --browser-name TEXT     Specifies which web-browser to use when using
                               selenium to scrape the web.
-  --allow-downloads           Dangerous: Allows AutoGPT to download files
-                              natively.
   --install-plugin-deps       Installs external dependencies for 3rd party
                               plugins.
   --help                      Show this message and exit.

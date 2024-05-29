@@ -68,9 +68,7 @@ async def run_auto_gpt(
     log_file_format: Optional[str] = None,
     gpt3only: bool = False,
     gpt4only: bool = False,
-    allow_downloads: bool = False,
     skip_news: bool = False,
-    workspace_directory: Optional[Path] = None,
     install_plugin_deps: bool = False,
     override_ai_name: Optional[str] = None,
     override_ai_role: Optional[str] = None,
@@ -78,6 +76,7 @@ async def run_auto_gpt(
     constraints: Optional[list[str]] = None,
     best_practices: Optional[list[str]] = None,
     override_directives: bool = False,
+    config_file: Optional[str] = None,
 ):
     # Set up configuration
     config = ConfigBuilder.build_config_from_env()
@@ -113,7 +112,6 @@ async def run_auto_gpt(
         skip_reprompt=skip_reprompt,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
-        allow_downloads=allow_downloads,
         skip_news=skip_news,
     )
 
@@ -144,8 +142,6 @@ async def run_auto_gpt(
                 print_attribute("Continuous Limit", config.continuous_limit)
         if config.tts_config.speak_mode:
             print_attribute("Speak Mode", "ENABLED")
-        if config.allow_downloads:
-            print_attribute("Native Downloading", "ENABLED")
         if we_are_running_in_a_docker_container() or is_docker_available():
             print_attribute("Code Execution", "ENABLED")
         else:
@@ -317,6 +313,16 @@ async def run_auto_gpt(
                 extra={"preserve_color": True},
             )
 
+    # Load component configuration from file
+    config_file_path: Optional[str] = config_file or config.config_file
+    if config_file_path:
+        try:
+            with open(config_file_path, "r") as f:
+                logger.info(f"Loading component configuration from {config_file_path}")
+                agent.deserialize_configs(f.read())
+        except Exception as e:
+            logger.error(f"Could not load component configuration: {e}")
+
     #################
     # Run the Agent #
     #################
@@ -345,7 +351,6 @@ async def run_auto_gpt_server(
     log_file_format: Optional[str] = None,
     gpt3only: bool = False,
     gpt4only: bool = False,
-    allow_downloads: bool = False,
     install_plugin_deps: bool = False,
 ):
     from .agent_protocol_server import AgentProtocolServer
@@ -378,7 +383,6 @@ async def run_auto_gpt_server(
         config=config,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
-        allow_downloads=allow_downloads,
     )
 
     llm_provider = _configure_llm_provider(config)

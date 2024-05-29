@@ -58,7 +58,10 @@ class WebSeleniumConfiguration(ComponentConfiguration):
         "edge"
     ] = "chrome"
     headless: bool = True
-    user_agent: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"
+    user_agent: str = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"
+    )
     browse_spacy_language_model: str = "en_core_web_sm"
 
 
