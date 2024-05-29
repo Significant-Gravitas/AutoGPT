@@ -67,8 +67,8 @@ def test_missing_azure_config(config: Config) -> None:
     with pytest.raises(ValueError):
         config.openai_credentials.load_azure_config(config_file)
 
-    assert config.openai_credentials.api_type != "azure"
-    assert config.openai_credentials.api_version == ""
+    assert config.openai_credentials.api_type != SecretStr("azure")
+    assert config.openai_credentials.api_version is None
     assert config.openai_credentials.azure_model_to_deploy_id_map is None
 
 
@@ -98,8 +98,8 @@ azure_model_map:
 
 def test_azure_config(config_with_azure: Config) -> None:
     assert (credentials := config_with_azure.openai_credentials) is not None
-    assert credentials.api_type == "azure"
-    assert credentials.api_version == "2023-06-01-preview"
+    assert credentials.api_type == SecretStr("azure")
+    assert credentials.api_version == SecretStr("2023-06-01-preview")
     assert credentials.azure_endpoint == SecretStr("https://dummy.openai.azure.com")
     assert credentials.azure_model_to_deploy_id_map == {
         config_with_azure.fast_llm: "FAST-LLM_ID",

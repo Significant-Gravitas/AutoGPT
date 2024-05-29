@@ -12,7 +12,7 @@ from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
 from pydantic import Field
 
-from forge.agent import CommandProvider
+from forge.agent.protocols import CommandProvider
 from forge.agent.components import ComponentConfiguration, ConfigurableComponent
 from forge.command import Command, command
 from forge.file_storage import FileStorage

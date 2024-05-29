@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 import sentry_sdk
 from forge.agent.base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
@@ -14,7 +14,7 @@ from forge.agent.protocols import (
     DirectiveProvider,
     MessageProvider,
 )
-from forge.command.command import Command, CommandOutput
+from forge.command.command import Command
 from forge.components.action_history import (
     ActionHistoryComponent,
     EpisodicActionHistory,
@@ -38,8 +38,8 @@ from forge.llm.prompting.utils import dump_prompt
 from forge.llm.providers import (
     AssistantFunctionCall,
     ChatMessage,
-    ChatModelProvider,
     ChatModelResponse,
+    MultiProvider,
 )
 from forge.llm.providers.utils import function_specs_from_commands
 from forge.models.action import (
@@ -80,7 +80,9 @@ class AgentConfiguration(BaseAgentConfiguration):
 
 
 class AgentSettings(BaseAgentSettings):
-    config: AgentConfiguration = Field(default_factory=AgentConfiguration)
+    config: AgentConfiguration = Field(  # type: ignore
+        default_factory=AgentConfiguration
+    )
 
     history: EpisodicActionHistory[OneShotAgentActionProposal] = Field(
         default_factory=EpisodicActionHistory[OneShotAgentActionProposal]
@@ -90,8 +92,8 @@ class AgentSettings(BaseAgentSettings):
     context: AgentContext = Field(default_factory=AgentContext)
 
 
-class Agent(BaseAgent, Configurable[AgentSettings]):
-    default_settings: AgentSettings = AgentSettings(
+class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
+    default_settings: ClassVar[AgentSettings] = AgentSettings(
         name="Agent",
         description=__doc__ if __doc__ else "",
     )
@@ -99,7 +101,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
     def __init__(
         self,
         settings: AgentSettings,
-        llm_provider: ChatModelProvider,
+        llm_provider: MultiProvider,
         file_storage: FileStorage,
         legacy_config: Config,
     ):
@@ -293,7 +295,7 @@ class Agent(BaseAgent, Configurable[AgentSettings]):
 
         return result
 
-    async def _execute_tool(self, tool_call: AssistantFunctionCall) -> CommandOutput:
+    async def _execute_tool(self, tool_call: AssistantFunctionCall) -> Any:
         """Execute the command and return the result
 
         Args:

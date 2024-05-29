@@ -19,19 +19,27 @@ from typing import (
 from pydantic import BaseModel, Field, SecretStr, validator
 
 from forge.logging.utils import fmt_kwargs
-from forge.models.config import SystemConfiguration, UserConfigurable
+from forge.models.config import (
+    Configurable,
+    SystemConfiguration,
+    SystemSettings,
+    UserConfigurable,
+)
 from forge.models.json_schema import JSONSchema
 from forge.models.providers import (
     Embedding,
     ProviderBudget,
     ProviderCredentials,
-    ProviderSettings,
-    ProviderUsage,
     ResourceType,
 )
 
 if TYPE_CHECKING:
     from jsonschema import ValidationError
+
+
+_T = TypeVar("_T")
+
+_ModelName = TypeVar("_ModelName", bound=str)
 
 
 class ModelProviderService(str, enum.Enum):
@@ -102,13 +110,13 @@ class AssistantToolCallDict(TypedDict):
 
 
 class AssistantChatMessage(ChatMessage):
-    role: Literal[ChatMessage.Role.ASSISTANT] = ChatMessage.Role.ASSISTANT
-    content: Optional[str]
+    role: Literal[ChatMessage.Role.ASSISTANT] = ChatMessage.Role.ASSISTANT  # type: ignore # noqa
+    content: str = ""
     tool_calls: Optional[list[AssistantToolCall]] = None
 
 
 class ToolResultMessage(ChatMessage):
-    role: Literal[ChatMessage.Role.TOOL] = ChatMessage.Role.TOOL
+    role: Literal[ChatMessage.Role.TOOL] = ChatMessage.Role.TOOL  # type: ignore
     is_error: bool = False
     tool_call_id: str
 
@@ -125,32 +133,6 @@ class CompletionModelFunction(BaseModel):
     name: str
     description: str
     parameters: dict[str, "JSONSchema"]
-
-    @property
-    def schema(self) -> dict[str, str | dict | list]:
-        """Returns an OpenAI-consumable function specification"""
-
-        return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    name: param.to_dict() for name, param in self.parameters.items()
-                },
-                "required": [
-                    name for name, param in self.parameters.items() if param.required
-                ],
-            },
-        }
-
-    @staticmethod
-    def parse(schema: dict) -> "CompletionModelFunction":
-        return CompletionModelFunction(
-            name=schema["name"],
-            description=schema["description"],
-            parameters=JSONSchema.parse_properties(schema["parameters"]),
-        )
 
     def fmt_line(self) -> str:
         params = ", ".join(
@@ -184,15 +166,15 @@ class CompletionModelFunction(BaseModel):
         return params_schema.validate_object(function_call.arguments)
 
 
-class ModelInfo(BaseModel):
+class ModelInfo(BaseModel, Generic[_ModelName]):
     """Struct for model information.
 
     Would be lovely to eventually get this directly from APIs, but needs to be
     scraped from websites for now.
     """
 
-    name: str
-    service: ModelProviderService
+    name: _ModelName
+    service: ClassVar[ModelProviderService]
     provider_name: ModelProviderName
     prompt_token_cost: float = 0.0
     completion_token_cost: float = 0.0
@@ -220,27 +202,39 @@ class ModelProviderCredentials(ProviderCredentials):
     api_version: SecretStr | None = UserConfigurable(default=None)
     deployment_id: SecretStr | None = UserConfigurable(default=None)
 
-    class Config:
+    class Config(ProviderCredentials.Config):
         extra = "ignore"
 
 
-class ModelProviderUsage(ProviderUsage):
+class ModelProviderUsage(BaseModel):
     """Usage for a particular model from a model provider."""
 
-    completion_tokens: int = 0
-    prompt_tokens: int = 0
+    class ModelUsage(BaseModel):
+        completion_tokens: int = 0
+        prompt_tokens: int = 0
+
+    usage_per_model: dict[str, ModelUsage] = defaultdict(ModelUsage)
+
+    @property
+    def completion_tokens(self) -> int:
+        return sum(model.completion_tokens for model in self.usage_per_model.values())
+
+    @property
+    def prompt_tokens(self) -> int:
+        return sum(model.prompt_tokens for model in self.usage_per_model.values())
 
     def update_usage(
         self,
+        model: str,
         input_tokens_used: int,
         output_tokens_used: int = 0,
     ) -> None:
-        self.prompt_tokens += input_tokens_used
-        self.completion_tokens += output_tokens_used
+        self.usage_per_model[model].prompt_tokens += input_tokens_used
+        self.usage_per_model[model].completion_tokens += output_tokens_used
 
 
-class ModelProviderBudget(ProviderBudget):
-    usage: defaultdict[str, ModelProviderUsage] = defaultdict(ModelProviderUsage)
+class ModelProviderBudget(ProviderBudget[ModelProviderUsage]):
+    usage: ModelProviderUsage = Field(default_factory=ModelProviderUsage)
 
     def update_usage_and_cost(
         self,
@@ -253,7 +247,7 @@ class ModelProviderBudget(ProviderBudget):
         Returns:
             float: The (calculated) cost of the given model response.
         """
-        self.usage[model_info.name].update_usage(input_tokens_used, output_tokens_used)
+        self.usage.update_usage(model_info.name, input_tokens_used, output_tokens_used)
         incurred_cost = (
             output_tokens_used * model_info.completion_token_cost
             + input_tokens_used * model_info.prompt_token_cost
@@ -263,28 +257,33 @@ class ModelProviderBudget(ProviderBudget):
         return incurred_cost
 
 
-class ModelProviderSettings(ProviderSettings):
-    resource_type: ResourceType = ResourceType.MODEL
+class ModelProviderSettings(SystemSettings):
+    resource_type: ClassVar[ResourceType] = ResourceType.MODEL
     configuration: ModelProviderConfiguration
     credentials: Optional[ModelProviderCredentials] = None
     budget: Optional[ModelProviderBudget] = None
 
 
-class ModelProvider(abc.ABC):
+_ModelProviderSettings = TypeVar("_ModelProviderSettings", bound=ModelProviderSettings)
+
+
+# TODO: either use MultiProvider throughout codebase as type for `llm_provider`, or
+# replace `_ModelName` by `str` to eliminate type checking difficulties
+class BaseModelProvider(
+    abc.ABC,
+    Generic[_ModelName, _ModelProviderSettings],
+    Configurable[_ModelProviderSettings],
+):
     """A ModelProvider abstracts the details of a particular provider of models."""
 
-    default_settings: ClassVar[ModelProviderSettings]
+    default_settings: ClassVar[_ModelProviderSettings]  # type: ignore
 
-    _settings: ModelProviderSettings
-    _configuration: ModelProviderConfiguration
-    _credentials: Optional[ModelProviderCredentials] = None
-    _budget: Optional[ModelProviderBudget] = None
-
+    _settings: _ModelProviderSettings
     _logger: logging.Logger
 
     def __init__(
         self,
-        settings: Optional[ModelProviderSettings] = None,
+        settings: Optional[_ModelProviderSettings] = None,
         logger: Optional[logging.Logger] = None,
     ):
         if not settings:
@@ -298,15 +297,15 @@ class ModelProvider(abc.ABC):
         self._logger = logger or logging.getLogger(self.__module__)
 
     @abc.abstractmethod
-    def count_tokens(self, text: str, model_name: str) -> int:
+    def count_tokens(self, text: str, model_name: _ModelName) -> int:
         ...
 
     @abc.abstractmethod
-    def get_tokenizer(self, model_name: str) -> "ModelTokenizer":
+    def get_tokenizer(self, model_name: _ModelName) -> "ModelTokenizer[Any]":
         ...
 
     @abc.abstractmethod
-    def get_token_limit(self, model_name: str) -> int:
+    def get_token_limit(self, model_name: _ModelName) -> int:
         ...
 
     def get_incurred_cost(self) -> float:
@@ -320,15 +319,15 @@ class ModelProvider(abc.ABC):
         return math.inf
 
 
-class ModelTokenizer(Protocol):
+class ModelTokenizer(Protocol, Generic[_T]):
     """A ModelTokenizer provides tokenization specific to a model."""
 
     @abc.abstractmethod
-    def encode(self, text: str) -> list:
+    def encode(self, text: str) -> list[_T]:
         ...
 
     @abc.abstractmethod
-    def decode(self, tokens: list) -> str:
+    def decode(self, tokens: list[_T]) -> str:
         ...
 
 
@@ -337,10 +336,10 @@ class ModelTokenizer(Protocol):
 ####################
 
 
-class EmbeddingModelInfo(ModelInfo):
+class EmbeddingModelInfo(ModelInfo[_ModelName]):
     """Struct for embedding model information."""
 
-    service: Literal[ModelProviderService.EMBEDDING] = ModelProviderService.EMBEDDING
+    service = ModelProviderService.EMBEDDING
     max_tokens: int
     embedding_dimensions: int
 
@@ -350,20 +349,19 @@ class EmbeddingModelResponse(ModelResponse):
 
     embedding: Embedding = Field(default_factory=list)
 
-    @classmethod
     @validator("completion_tokens_used")
-    def _verify_no_completion_tokens_used(cls, v):
+    def _verify_no_completion_tokens_used(cls, v: int):
         if v > 0:
             raise ValueError("Embeddings should not have completion tokens used.")
         return v
 
 
-class EmbeddingModelProvider(ModelProvider):
+class BaseEmbeddingModelProvider(BaseModelProvider[_ModelName, _ModelProviderSettings]):
     @abc.abstractmethod
     async def create_embedding(
         self,
         text: str,
-        model_name: str,
+        model_name: _ModelName,
         embedding_parser: Callable[[Embedding], Embedding],
         **kwargs,
     ) -> EmbeddingModelResponse:
@@ -375,34 +373,31 @@ class EmbeddingModelProvider(ModelProvider):
 ###############
 
 
-class ChatModelInfo(ModelInfo):
+class ChatModelInfo(ModelInfo[_ModelName]):
     """Struct for language model information."""
 
-    service: Literal[ModelProviderService.CHAT] = ModelProviderService.CHAT
+    service = ModelProviderService.CHAT
     max_tokens: int
     has_function_call_api: bool = False
-
-
-_T = TypeVar("_T")
 
 
 class ChatModelResponse(ModelResponse, Generic[_T]):
     """Standard response struct for a response from a language model."""
 
     response: AssistantChatMessage
-    parsed_result: _T = None
+    parsed_result: _T
 
 
-class ChatModelProvider(ModelProvider):
+class BaseChatModelProvider(BaseModelProvider[_ModelName, _ModelProviderSettings]):
     @abc.abstractmethod
-    async def get_available_models(self) -> list[ChatModelInfo]:
+    async def get_available_models(self) -> list[ChatModelInfo[_ModelName]]:
         ...
 
     @abc.abstractmethod
     def count_message_tokens(
         self,
         messages: ChatMessage | list[ChatMessage],
-        model_name: str,
+        model_name: _ModelName,
     ) -> int:
         ...
 
@@ -410,7 +405,7 @@ class ChatModelProvider(ModelProvider):
     async def create_chat_completion(
         self,
         model_prompt: list[ChatMessage],
-        model_name: str,
+        model_name: _ModelName,
         completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,

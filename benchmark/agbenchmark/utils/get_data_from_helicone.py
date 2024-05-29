@@ -15,7 +15,8 @@ def get_data_from_helicone(challenge: str) -> Optional[float]:
     # Define the endpoint of your GraphQL server
     url = "https://www.helicone.ai/api/graphql"
 
-    # Set the headers, usually you'd need to set the content type and possibly an authorization token
+    # Set the headers, usually you'd need to set the content type
+    # and possibly an authorization token
     headers = {"authorization": f"Bearer {os.environ.get('HELICONE_API_KEY')}"}
 
     # Define the query, variables, and operation name

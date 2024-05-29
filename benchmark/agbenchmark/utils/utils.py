@@ -202,11 +202,15 @@ def sorted_by_enum_index(
     sortable: Iterable[T],
     enum: type[Enum],
     *,
-    key: Callable[[T], Enum | None] = lambda x: x,  # type: ignore
+    key: Optional[Callable[[T], Enum | None]] = None,
     reverse: bool = False,
 ) -> list[T]:
     return sorted(
         sortable,
-        key=lambda x: enum._member_names_.index(e.name) if (e := key(x)) else 420e3,
+        key=lambda x: (
+            enum._member_names_.index(e.name)  # type: ignore
+            if (e := key(x) if key else x)
+            else 420e3
+        ),
         reverse=reverse,
     )

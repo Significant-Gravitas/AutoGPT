@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from fastapi import UploadFile
 
 from forge.agent_protocol.database.db import AgentDB
 from forge.agent_protocol.models.task import (
@@ -16,16 +17,23 @@ from .agent import Agent
 
 
 @pytest.fixture
-def agent():
+def agent(test_workspace: Path):
     db = AgentDB("sqlite:///test.db")
-    config = FileStorageConfiguration(root=Path("./test_workspace"))
+    config = FileStorageConfiguration(root=test_workspace)
     workspace = LocalFileStorage(config)
     return Agent(db, workspace)
 
 
-@pytest.mark.skip
+@pytest.fixture
+def file_upload():
+    this_file = Path(__file__)
+    file_handle = this_file.open("rb")
+    yield UploadFile(file_handle, filename=this_file.name)
+    file_handle.close()
+
+
 @pytest.mark.asyncio
-async def test_create_task(agent):
+async def test_create_task(agent: Agent):
     task_request = TaskRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
@@ -33,20 +41,18 @@ async def test_create_task(agent):
     assert task.input == "test_input"
 
 
-@pytest.mark.skip
 @pytest.mark.asyncio
-async def test_list_tasks(agent):
+async def test_list_tasks(agent: Agent):
     task_request = TaskRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
-    task = await agent.create_task(task_request)
+    await agent.create_task(task_request)
     tasks = await agent.list_tasks()
     assert isinstance(tasks, TaskListResponse)
 
 
-@pytest.mark.skip
 @pytest.mark.asyncio
-async def test_get_task(agent):
+async def test_get_task(agent: Agent):
     task_request = TaskRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
@@ -55,9 +61,9 @@ async def test_get_task(agent):
     assert retrieved_task.task_id == task.task_id
 
 
-@pytest.mark.skip
+@pytest.mark.xfail(reason="execute_step is not implemented")
 @pytest.mark.asyncio
-async def test_create_and_execute_step(agent):
+async def test_execute_step(agent: Agent):
     task_request = TaskRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
@@ -65,14 +71,14 @@ async def test_create_and_execute_step(agent):
     step_request = StepRequestBody(
         input="step_input", additional_input={"input": "additional_test_input"}
     )
-    step = await agent.create_and_execute_step(task.task_id, step_request)
+    step = await agent.execute_step(task.task_id, step_request)
     assert step.input == "step_input"
     assert step.additional_input == {"input": "additional_test_input"}
 
 
-@pytest.mark.skip
+@pytest.mark.xfail(reason="execute_step is not implemented")
 @pytest.mark.asyncio
-async def test_get_step(agent):
+async def test_get_step(agent: Agent):
     task_request = TaskRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
@@ -80,38 +86,52 @@ async def test_get_step(agent):
     step_request = StepRequestBody(
         input="step_input", additional_input={"input": "additional_test_input"}
     )
-    step = await agent.create_and_execute_step(task.task_id, step_request)
+    step = await agent.execute_step(task.task_id, step_request)
     retrieved_step = await agent.get_step(task.task_id, step.step_id)
     assert retrieved_step.step_id == step.step_id
 
 
-@pytest.mark.skip
 @pytest.mark.asyncio
-async def test_list_artifacts(agent):
-    artifacts = await agent.list_artifacts()
-    assert isinstance(artifacts, list)
+async def test_list_artifacts(agent: Agent):
+    tasks = await agent.list_tasks()
+    assert tasks.tasks, "No tasks in test.db"
+
+    artifacts = await agent.list_artifacts(tasks.tasks[0].task_id)
+    assert isinstance(artifacts.artifacts, list)
 
 
-@pytest.mark.skip
 @pytest.mark.asyncio
-async def test_create_artifact(agent):
+async def test_create_artifact(agent: Agent, file_upload: UploadFile):
     task_request = TaskRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
     task = await agent.create_task(task_request)
-    artifact_request = ArtifactRequestBody(file=None, uri="test_uri")
-    artifact = await agent.create_artifact(task.task_id, artifact_request)
-    assert artifact.uri == "test_uri"
+    artifact = await agent.create_artifact(
+        task_id=task.task_id,
+        file=file_upload,
+        relative_path=f"a_dir/{file_upload.filename}",
+    )
+    assert artifact.file_name == file_upload.filename
+    assert artifact.relative_path == f"a_dir/{file_upload.filename}"
 
 
-@pytest.mark.skip
 @pytest.mark.asyncio
-async def test_get_artifact(agent):
+async def test_create_and_get_artifact(agent: Agent, file_upload: UploadFile):
     task_request = TaskRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
     task = await agent.create_task(task_request)
-    artifact_request = ArtifactRequestBody(file=None, uri="test_uri")
-    artifact = await agent.create_artifact(task.task_id, artifact_request)
+
+    artifact = await agent.create_artifact(
+        task_id=task.task_id,
+        file=file_upload,
+        relative_path=f"b_dir/{file_upload.filename}",
+    )
+    await file_upload.seek(0)
+    file_upload_content = await file_upload.read()
+
     retrieved_artifact = await agent.get_artifact(task.task_id, artifact.artifact_id)
-    assert retrieved_artifact.artifact_id == artifact.artifact_id
+    retrieved_artifact_content = bytearray()
+    async for b in retrieved_artifact.body_iterator:
+        retrieved_artifact_content.extend(b)  # type: ignore
+    assert retrieved_artifact_content == file_upload_content

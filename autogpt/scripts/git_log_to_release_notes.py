@@ -20,7 +20,7 @@ from autogpt.app.utils import coroutine
 )
 @coroutine
 async def generate_release_notes(repo_path: Optional[Path] = None):
-    logger = logging.getLogger(generate_release_notes.name)
+    logger = logging.getLogger(generate_release_notes.name)  # pyright: ignore
 
     repo = Repo(repo_path, search_parent_directories=True)
     tags = list(repo.tags)

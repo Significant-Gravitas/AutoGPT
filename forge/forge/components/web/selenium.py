@@ -12,7 +12,6 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeDriverService
 from selenium.webdriver.chrome.webdriver import WebDriver as ChromeDriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.options import ArgOptions as BrowserOptions
 from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.edge.service import Service as EdgeDriverService
 from selenium.webdriver.edge.webdriver import WebDriver as EdgeDriver
@@ -33,8 +32,8 @@ from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.content_processing.html import extract_hyperlinks, format_hyperlinks
 from forge.content_processing.text import extract_information, summarize_text
+from forge.llm.providers import ChatModelInfo, MultiProvider
 from forge.llm.providers.multi import ModelName
-from forge.llm.providers.schema import ChatModelInfo, ChatModelProvider
 from forge.models.config import ComponentConfiguration
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError, TooMuchOutputError
@@ -45,6 +44,9 @@ logger = logging.getLogger(__name__)
 FILE_DIR = Path(__file__).parent.parent
 MAX_RAW_CONTENT_LENGTH = 500
 LINKS_TO_RETURN = 20
+
+
+BrowserOptions = ChromeOptions | EdgeOptions | FirefoxOptions | SafariOptions
 
 
 class BrowsingError(CommandExecutionError):
@@ -68,7 +70,7 @@ class WebSeleniumComponent(
     def __init__(
         self,
         llm_model_name: ModelName,
-        llm_provider: ChatModelProvider,
+        llm_provider: MultiProvider,
         model_info: ChatModelInfo,
         data_dir: Path,
         config: Optional[WebSeleniumConfiguration] = None,
@@ -268,7 +270,7 @@ class WebSeleniumComponent(
 
         if isinstance(options, FirefoxOptions):
             if self.config.headless:
-                options.headless = True
+                options.headless = True  # type: ignore
                 options.add_argument("--disable-gpu")
             driver = FirefoxDriver(
                 service=GeckoDriverService(GeckoDriverManager().install()),

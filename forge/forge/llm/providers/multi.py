@@ -1,20 +1,18 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable, Iterator, Optional, TypeVar
+from typing import Any, Callable, Iterator, Optional, TypeVar
 
 from pydantic import ValidationError
-
-from forge.models.config import Configurable
 
 from .anthropic import ANTHROPIC_CHAT_MODELS, AnthropicModelName, AnthropicProvider
 from .groq import GROQ_CHAT_MODELS, GroqModelName, GroqProvider
 from .openai import OPEN_AI_CHAT_MODELS, OpenAIModelName, OpenAIProvider
 from .schema import (
     AssistantChatMessage,
+    BaseChatModelProvider,
     ChatMessage,
     ChatModelInfo,
-    ChatModelProvider,
     ChatModelResponse,
     CompletionModelFunction,
     ModelProviderBudget,
@@ -27,11 +25,12 @@ from .schema import (
 _T = TypeVar("_T")
 
 ModelName = AnthropicModelName | GroqModelName | OpenAIModelName
+EmbeddingModelProvider = OpenAIProvider
 
 CHAT_MODELS = {**ANTHROPIC_CHAT_MODELS, **GROQ_CHAT_MODELS, **OPEN_AI_CHAT_MODELS}
 
 
-class MultiProvider(Configurable[ModelProviderSettings], ChatModelProvider):
+class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
     default_settings = ModelProviderSettings(
         name="multi_provider",
         description=(
@@ -57,7 +56,7 @@ class MultiProvider(Configurable[ModelProviderSettings], ChatModelProvider):
 
         self._provider_instances = {}
 
-    async def get_available_models(self) -> list[ChatModelInfo]:
+    async def get_available_models(self) -> list[ChatModelInfo[ModelName]]:
         models = []
         for provider in self.get_available_providers():
             models.extend(await provider.get_available_models())
@@ -65,24 +64,25 @@ class MultiProvider(Configurable[ModelProviderSettings], ChatModelProvider):
 
     def get_token_limit(self, model_name: ModelName) -> int:
         """Get the token limit for a given model."""
-        return self.get_model_provider(model_name).get_token_limit(model_name)
-
-    @classmethod
-    def get_tokenizer(cls, model_name: ModelName) -> ModelTokenizer:
-        return cls._get_model_provider_class(model_name).get_tokenizer(model_name)
-
-    @classmethod
-    def count_tokens(cls, text: str, model_name: ModelName) -> int:
-        return cls._get_model_provider_class(model_name).count_tokens(
-            text=text, model_name=model_name
+        return self.get_model_provider(model_name).get_token_limit(
+            model_name  # type: ignore
         )
 
-    @classmethod
+    def get_tokenizer(self, model_name: ModelName) -> ModelTokenizer[Any]:
+        return self.get_model_provider(model_name).get_tokenizer(
+            model_name  # type: ignore
+        )
+
+    def count_tokens(self, text: str, model_name: ModelName) -> int:
+        return self.get_model_provider(model_name).count_tokens(
+            text=text, model_name=model_name  # type: ignore
+        )
+
     def count_message_tokens(
-        cls, messages: ChatMessage | list[ChatMessage], model_name: ModelName
+        self, messages: ChatMessage | list[ChatMessage], model_name: ModelName
     ) -> int:
-        return cls._get_model_provider_class(model_name).count_message_tokens(
-            messages=messages, model_name=model_name
+        return self.get_model_provider(model_name).count_message_tokens(
+            messages=messages, model_name=model_name  # type: ignore
         )
 
     async def create_chat_completion(
@@ -98,7 +98,7 @@ class MultiProvider(Configurable[ModelProviderSettings], ChatModelProvider):
         """Create a completion using the Anthropic API."""
         return await self.get_model_provider(model_name).create_chat_completion(
             model_prompt=model_prompt,
-            model_name=model_name,
+            model_name=model_name,  # type: ignore
             completion_parser=completion_parser,
             functions=functions,
             max_output_tokens=max_output_tokens,
@@ -136,16 +136,10 @@ class MultiProvider(Configurable[ModelProviderSettings], ChatModelProvider):
                     ) from e
 
             self._provider_instances[provider_name] = _provider = Provider(
-                settings=settings, logger=self._logger
+                settings=settings, logger=self._logger  # type: ignore
             )
             _provider._budget = self._budget  # Object binding not preserved by Pydantic
         return _provider
-
-    @classmethod
-    def _get_model_provider_class(
-        cls, model_name: ModelName
-    ) -> type[AnthropicProvider | GroqProvider | OpenAIProvider]:
-        return cls._get_provider_class(CHAT_MODELS[model_name].provider_name)
 
     @classmethod
     def _get_provider_class(
@@ -162,3 +156,6 @@ class MultiProvider(Configurable[ModelProviderSettings], ChatModelProvider):
 
     def __repr__(self):
         return f"{self.__class__.__name__}()"
+
+
+ChatModelProvider = AnthropicProvider | GroqProvider | OpenAIProvider | MultiProvider

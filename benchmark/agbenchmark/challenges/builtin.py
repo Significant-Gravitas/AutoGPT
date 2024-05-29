@@ -1,4 +1,3 @@
-from collections import deque
 import glob
 import json
 import logging
@@ -6,19 +5,17 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections import deque
 from pathlib import Path
-from typing import Any, ClassVar, Iterator, Literal, Optional
+from typing import Annotated, Any, ClassVar, Iterator, Literal, Optional
 
 import pytest
-from agent_protocol_client import (
-    AgentApi,
-    ApiClient,
-    Configuration as ClientConfig,
-    Step,
-)
+from agent_protocol_client import AgentApi, ApiClient
+from agent_protocol_client import Configuration as ClientConfig
+from agent_protocol_client import Step
 from colorama import Fore, Style
 from openai import _load_client as get_openai_client
-from pydantic import BaseModel, constr, Field, validator
+from pydantic import BaseModel, Field, constr, validator
 
 from agbenchmark.agent_api_interface import download_agent_artifacts_into_folder
 from agbenchmark.agent_interface import copy_challenge_artifacts_into_workspace
@@ -49,7 +46,7 @@ class BuiltinChallengeSpec(BaseModel):
 
     class Info(BaseModel):
         difficulty: DifficultyLevel
-        description: constr(regex=r"^Tests if the agent can.*")
+        description: Annotated[str, constr(regex=r"^Tests if the agent can.*")]
         side_effects: list[str] = Field(default_factory=list)
 
     info: Info
@@ -184,7 +181,7 @@ class BuiltinChallenge(BaseChallenge):
         steps: list[Step] = []
         try:
             async for step in self.run_challenge(
-                config, timeout, mock=request.config.getoption("--mock")
+                config, timeout, mock=bool(request.config.getoption("--mock"))
             ):
                 if not task_id:
                     task_id = step.task_id
@@ -199,6 +196,8 @@ class BuiltinChallenge(BaseChallenge):
             timed_out = False
         except TimeoutError:
             timed_out = True
+
+        assert isinstance(request.node, pytest.Item)
         request.node.user_properties.append(("steps", steps))
         request.node.user_properties.append(("n_steps", n_steps))
         request.node.user_properties.append(("timed_out", timed_out))
@@ -411,15 +410,10 @@ class BuiltinChallenge(BaseChallenge):
 def load_builtin_challenges() -> Iterator[type[BuiltinChallenge]]:
     logger.info("Loading built-in challenges...")
 
-    challenges_path = os.path.dirname(__file__)
+    challenges_path = Path(__file__).parent
     logger.debug(f"Looking for challenge spec files in {challenges_path}...")
 
-    json_files = deque(
-        glob.glob(
-            f"{challenges_path}/**/data.json",
-            recursive=True,
-        )
-    )
+    json_files = deque(challenges_path.rglob("data.json"))
 
     logger.debug(f"Found {len(json_files)} built-in challenges.")
 
@@ -431,7 +425,7 @@ def load_builtin_challenges() -> Iterator[type[BuiltinChallenge]]:
             ignored += 1
             continue
 
-        challenge = BuiltinChallenge.from_challenge_spec_file(Path(json_file))
+        challenge = BuiltinChallenge.from_challenge_spec_file(json_file)
         logger.debug(f"Generated test for {challenge.info.name}")
         yield challenge
 
@@ -442,8 +436,8 @@ def load_builtin_challenges() -> Iterator[type[BuiltinChallenge]]:
     )
 
 
-def _challenge_should_be_ignored(json_file_path: str):
+def _challenge_should_be_ignored(json_file_path: Path):
     return (
-        "challenges/deprecated" in json_file_path
-        or "challenges/library" in json_file_path
+        "challenges/deprecated" in json_file_path.as_posix()
+        or "challenges/library" in json_file_path.as_posix()
     )
