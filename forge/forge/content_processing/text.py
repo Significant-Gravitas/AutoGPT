@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 from forge.json.parsing import extract_list_from_json
 from forge.llm.prompting import ChatPrompt
-from forge.llm.providers import ChatMessage, ChatModelProvider, ModelTokenizer
+from forge.llm.providers import ChatMessage, ModelTokenizer, MultiProvider
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ def chunk_content(
 
 async def summarize_text(
     text: str,
-    llm_provider: ChatModelProvider,
+    llm_provider: MultiProvider,
     config: Config,
     question: Optional[str] = None,
     instruction: Optional[str] = None,
@@ -89,7 +89,7 @@ async def summarize_text(
 async def extract_information(
     source_text: str,
     topics_of_interest: list[str],
-    llm_provider: ChatModelProvider,
+    llm_provider: MultiProvider,
     config: Config,
 ) -> list[str]:
     fmt_topics_list = "\n".join(f"* {topic}." for topic in topics_of_interest)
@@ -113,7 +113,7 @@ async def extract_information(
 async def _process_text(
     text: str,
     instruction: str,
-    llm_provider: ChatModelProvider,
+    llm_provider: MultiProvider,
     config: Config,
     output_type: type[str | list[str]] = str,
 ) -> tuple[str, list[tuple[str, str]]] | list[str]:
@@ -165,7 +165,7 @@ async def _process_text(
             ),
         )
 
-        if output_type == list[str]:
+        if isinstance(response.parsed_result, list):
             logger.debug(f"Raw LLM response: {repr(response.response.content)}")
             fmt_result_bullet_list = "\n".join(f"* {r}" for r in response.parsed_result)
             logger.debug(

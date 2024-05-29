@@ -39,7 +39,7 @@ def validate_url(func: Callable[P, T]) -> Callable[P, T]:
 
         return func(*bound_args.args, **bound_args.kwargs)
 
-    return wrapper
+    return wrapper  # type: ignore
 
 
 def is_valid_url(url: str) -> bool:

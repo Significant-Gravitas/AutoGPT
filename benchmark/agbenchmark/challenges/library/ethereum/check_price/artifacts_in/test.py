@@ -23,9 +23,10 @@ def test_get_ethereum_price() -> None:
     real_eth_price_value = float(real_eth_price)
 
     # Check if the eth price is within $50 of the actual Ethereum price
-    assert (
-        abs(real_eth_price_value - eth_price_value) <= 50
-    ), f"AssertionError: Ethereum price is not within $50 of the actual Ethereum price (Provided price: ${eth_price}, Real price: ${real_eth_price})"
+    assert abs(real_eth_price_value - eth_price_value) <= 50, (
+        "AssertionError: Ethereum price is not within $50 of the actual Ethereum price "
+        f"(Provided price: ${eth_price}, Real price: ${real_eth_price})"
+    )
 
     print("Matches")
 

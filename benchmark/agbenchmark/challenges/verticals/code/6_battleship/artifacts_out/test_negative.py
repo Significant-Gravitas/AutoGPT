@@ -50,7 +50,7 @@ def test_cant_hit_before_ships_placed(battleship_game):
 
 
 def test_cant_place_ship_after_all_ships_placed(battleship_game, initialized_game_id):
-    game = battleship_game.get_game(initialized_game_id)
+    battleship_game.get_game(initialized_game_id)
     additional_ship = ShipPlacement(
         ship_type="carrier", start={"row": 2, "column": "E"}, direction="horizontal"
     )
