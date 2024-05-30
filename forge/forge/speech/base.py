@@ -45,7 +45,7 @@ class VoiceBase:
         """
 
     @abc.abstractmethod
-    def _speech(self, text: str, voice_index: int = 0) -> bool:
+    def _speech(self, text: str, voice_id: int = 0) -> bool:
         """
         Play the given text.
 

@@ -1,4 +1,4 @@
-# mypy: ignore-errors
+# pyright: reportMissingImports=false
 from typing import List
 
 from sample_code import three_sum

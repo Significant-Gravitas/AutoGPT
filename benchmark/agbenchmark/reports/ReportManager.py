@@ -53,9 +53,9 @@ class SingletonReportManager:
     @classmethod
     def clear_instance(cls):
         cls.instance = None
-        cls.INFO_MANAGER = None
-        cls.REGRESSION_MANAGER = None
-        cls.SUCCESS_RATE_TRACKER = None
+        del cls.INFO_MANAGER
+        del cls.REGRESSION_MANAGER
+        del cls.SUCCESS_RATE_TRACKER
 
 
 class BaseReportManager:
@@ -99,7 +99,8 @@ class BaseReportManager:
 class SessionReportManager(BaseReportManager):
     """Abstracts interaction with the regression tests file"""
 
-    tests: dict[str, Test] | Report
+    tests: dict[str, Test]
+    report: Report | None = None
 
     def __init__(self, report_file: Path, benchmark_start_time: datetime):
         super().__init__(report_file)
@@ -109,20 +110,21 @@ class SessionReportManager(BaseReportManager):
 
     def save(self) -> None:
         with self.report_file.open("w") as f:
-            if isinstance(self.tests, Report):
-                f.write(self.tests.json(indent=4))
+            if self.report:
+                f.write(self.report.json(indent=4))
             else:
                 json.dump({k: v.dict() for k, v in self.tests.items()}, f, indent=4)
 
     def load(self) -> None:
         super().load()
-        if "tests" in self.tests:  # type: ignore
-            self.tests = Report.parse_obj(self.tests)
+
+        if "tests" in self.tests:
+            self.report = Report.parse_obj(self.tests)
         else:
             self.tests = {n: Test.parse_obj(d) for n, d in self.tests.items()}
 
     def add_test_report(self, test_name: str, test_report: Test) -> None:
-        if isinstance(self.tests, Report):
+        if self.report:
             raise RuntimeError("Session report already finalized")
 
         if test_name.startswith("Test"):
@@ -134,10 +136,10 @@ class SessionReportManager(BaseReportManager):
     def finalize_session_report(self, config: AgentBenchmarkConfig) -> None:
         command = " ".join(sys.argv)
 
-        if isinstance(self.tests, Report):
+        if self.report:
             raise RuntimeError("Session report already finalized")
 
-        self.tests = Report(
+        self.report = Report(
             command=command.split(os.sep)[-1],
             benchmark_git_commit_sha="---",
             agent_git_commit_sha="---",
@@ -156,7 +158,7 @@ class SessionReportManager(BaseReportManager):
             config=config.dict(exclude={"reports_folder"}, exclude_none=True),
         )
 
-        agent_categories = get_highest_achieved_difficulty_per_category(self.tests)
+        agent_categories = get_highest_achieved_difficulty_per_category(self.report)
         if len(agent_categories) > 1:
             save_single_radar_chart(
                 agent_categories,
@@ -166,8 +168,8 @@ class SessionReportManager(BaseReportManager):
         self.save()
 
     def get_total_costs(self):
-        if isinstance(self.tests, Report):
-            tests = self.tests.tests
+        if self.report:
+            tests = self.report.tests
         else:
             tests = self.tests
 

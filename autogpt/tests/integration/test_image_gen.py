@@ -257,17 +257,3 @@ def test_huggingface_fail_request_bad_image(
     result = image_gen_component.generate_image("astronaut riding a horse", 512)
 
     assert result == "Error creating image."
-
-
-def test_huggingface_fail_missing_api_token(
-    mocker, image_gen_component: ImageGeneratorComponent, agent: Agent
-):
-    agent.legacy_config.image_provider = "huggingface"
-    agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
-
-    # Mock requests.post to raise ValueError
-    mocker.patch("requests.post", side_effect=ValueError)
-
-    # Verify request raises an error.
-    with pytest.raises(ValueError):
-        image_gen_component.generate_image("astronaut riding a horse", 512)

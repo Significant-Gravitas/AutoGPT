@@ -1,4 +1,3 @@
-import abc
 import os
 import typing
 from typing import Any, Callable, Generic, Optional, Type, TypeVar, get_args
@@ -85,11 +84,11 @@ class SystemSettings(BaseModel):
 S = TypeVar("S", bound=SystemSettings)
 
 
-class Configurable(abc.ABC, Generic[S]):
+class Configurable(Generic[S]):
     """A base class for all configurable objects."""
 
     prefix: str = ""
-    default_settings: typing.ClassVar[S]
+    default_settings: typing.ClassVar[S]  # type: ignore
 
     @classmethod
     def get_user_config(cls) -> dict[str, Any]:

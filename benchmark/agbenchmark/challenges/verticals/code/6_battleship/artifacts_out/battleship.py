@@ -1,14 +1,20 @@
 from typing import Dict
 
-from abstract_class import (AbstractBattleship, Game, GameStatus,
-                            ShipPlacement, Turn, TurnResponse)
+from abstract_class import (
+    AbstractBattleship,
+    Game,
+    GameStatus,
+    ShipPlacement,
+    Turn,
+    TurnResponse,
+)
 
 
 class Battleship(AbstractBattleship):
     def __init__(self):
-        self.games: Dict[int, Game] = {}
+        self.games: Dict[str, Game] = {}
 
-    def create_game(self) -> int:
+    def create_game(self) -> str:
         game_id = str(len(self.games))
         new_game = Game(
             game_id=game_id,
@@ -19,7 +25,7 @@ class Battleship(AbstractBattleship):
         )
 
         self.games[game_id] = new_game
-        return new_game.game_id
+        return game_id
 
     def create_ship_placement(self, game_id: str, placement: ShipPlacement) -> None:
         game = self.games.get(game_id)
@@ -79,38 +85,34 @@ class Battleship(AbstractBattleship):
 
         game.turns.append(turn)
 
-        if hit_ship == "hit":
+        if not hit_ship or hit_ship == "hit":  # if no ship or already hit
             return TurnResponse(result="miss", ship_type=None)
 
-        if hit_ship:
-            ship_placement = next(sp for sp in game.ships if sp.ship_type == hit_ship)
+        ship_placement = next(sp for sp in game.ships if sp.ship_type == hit_ship)
+        start_row, start_col = (
+            ship_placement.start["row"],
+            ord(ship_placement.start["column"]) - ord("A"),
+        )
+        ship_positions = [
+            (
+                start_row + (i if ship_placement.direction == "vertical" else 0),
+                start_col + (i if ship_placement.direction == "horizontal" else 0),
+            )
+            for i in range(self.SHIP_LENGTHS[hit_ship])
+        ]
 
-        if hit_ship:
-            ship_placement = next(sp for sp in game.ships if sp.ship_type == hit_ship)
-            start_row, start_col = ship_placement.start["row"], ord(
-                ship_placement.start["column"]
-            ) - ord("A")
-            ship_positions = [
-                (
-                    start_row + (i if ship_placement.direction == "vertical" else 0),
-                    start_col + (i if ship_placement.direction == "horizontal" else 0),
-                )
-                for i in range(self.SHIP_LENGTHS[hit_ship])
-            ]
+        targeted_positions = {
+            (t.target["row"], ord(t.target["column"]) - ord("A")) for t in game.turns
+        }
 
-            targeted_positions = {
-                (t.target["row"], ord(t.target["column"]) - ord("A"))
-                for t in game.turns
-            }
+        game.board[(target_row, target_col)] = "hit"
 
-            game.board[(target_row, target_col)] = "hit"
-
-            if set(ship_positions).issubset(targeted_positions):
-                for pos in ship_positions:
-                    game.board[pos] = "hit"
-                return TurnResponse(result="sunk", ship_type=hit_ship)
-            else:
-                return TurnResponse(result="hit", ship_type=hit_ship)
+        if set(ship_positions).issubset(targeted_positions):
+            for pos in ship_positions:
+                game.board[pos] = "hit"
+            return TurnResponse(result="sunk", ship_type=hit_ship)
+        else:
+            return TurnResponse(result="hit", ship_type=hit_ship)
 
     def get_game_status(self, game_id: str) -> GameStatus:
         game = self.games.get(game_id)
@@ -132,12 +134,12 @@ class Battleship(AbstractBattleship):
     def get_winner(self, game_id: str) -> str:
         game_status = self.get_game_status(game_id)
 
-        if game_status.is_game_over:
+        if game_status.is_game_over and game_status.winner:
             return game_status.winner
         else:
-            return None
+            raise ValueError(f"Game {game_id} isn't over yet")
 
-    def get_game(self, game_id: str) -> Game:
+    def get_game(self, game_id: str) -> Game | None:
         return self.games.get(game_id)
 
     def delete_game(self, game_id: str) -> None:

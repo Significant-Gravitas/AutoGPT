@@ -17,7 +17,7 @@ def print_markdown_report(report_json_file: str):
     report = Report.parse_file(report_json_file)
 
     # Header and metadata
-    click.echo(f"# Benchmark Report")
+    click.echo("# Benchmark Report")
     click.echo(f"- ⌛ **Run time:** `{report.metrics.run_time}`")
     click.echo(
         f"  - **Started at:** `{report.benchmark_start_time[:16].replace('T', '` `')}`"

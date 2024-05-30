@@ -25,7 +25,7 @@ from forge.agent_protocol.models import (
 )
 from forge.config.config import Config
 from forge.file_storage import FileStorage
-from forge.llm.providers import ChatModelProvider, ModelProviderBudget
+from forge.llm.providers import ModelProviderBudget, MultiProvider
 from forge.models.action import ActionErrorResult, ActionSuccessResult
 from forge.utils.const import ASK_COMMAND, FINISH_COMMAND
 from forge.utils.exceptions import AgentFinished, NotFoundError
@@ -49,7 +49,7 @@ class AgentProtocolServer:
         app_config: Config,
         database: AgentDB,
         file_storage: FileStorage,
-        llm_provider: ChatModelProvider,
+        llm_provider: MultiProvider,
     ):
         self.app_config = app_config
         self.db = database
@@ -444,9 +444,7 @@ class AgentProtocolServer:
         agent_id = task_agent_id(task_id)
         return self.file_storage.clone_with_subroot(f"agents/{agent_id}/workspace")
 
-    def _get_task_llm_provider(
-        self, task: Task, step_id: str = ""
-    ) -> ChatModelProvider:
+    def _get_task_llm_provider(self, task: Task, step_id: str = "") -> MultiProvider:
         """
         Configures the LLM provider with headers to link outgoing requests to the task.
         """

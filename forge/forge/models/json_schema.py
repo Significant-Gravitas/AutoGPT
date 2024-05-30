@@ -1,6 +1,6 @@
 import enum
 from textwrap import indent
-from typing import Optional
+from typing import Optional, overload
 
 from jsonschema import Draft7Validator, ValidationError
 from pydantic import BaseModel
@@ -57,30 +57,8 @@ class JSONSchema(BaseModel):
 
     @staticmethod
     def from_dict(schema: dict) -> "JSONSchema":
-        def resolve_references(schema: dict, definitions: dict) -> dict:
-            """
-            Recursively resolve type $refs in the JSON schema with their definitions.
-            """
-            if isinstance(schema, dict):
-                if "$ref" in schema:
-                    ref_path = schema["$ref"].split("/")[
-                        2:
-                    ]  # Split and remove '#/definitions'
-                    ref_value = definitions
-                    for key in ref_path:
-                        ref_value = ref_value[key]
-                    return resolve_references(ref_value, definitions)
-                else:
-                    return {
-                        k: resolve_references(v, definitions) for k, v in schema.items()
-                    }
-            elif isinstance(schema, list):
-                return [resolve_references(item, definitions) for item in schema]
-            else:
-                return schema
-
         definitions = schema.get("definitions", {})
-        schema = resolve_references(schema, definitions)
+        schema = _resolve_type_refs_in_schema(schema, definitions)
 
         return JSONSchema(
             description=schema.get("description"),
@@ -147,21 +125,55 @@ class JSONSchema(BaseModel):
 
     @property
     def typescript_type(self) -> str:
+        if not self.type:
+            return "any"
         if self.type == JSONSchema.Type.BOOLEAN:
             return "boolean"
-        elif self.type in {JSONSchema.Type.INTEGER, JSONSchema.Type.NUMBER}:
+        if self.type in {JSONSchema.Type.INTEGER, JSONSchema.Type.NUMBER}:
             return "number"
-        elif self.type == JSONSchema.Type.STRING:
+        if self.type == JSONSchema.Type.STRING:
             return "string"
-        elif self.type == JSONSchema.Type.ARRAY:
+        if self.type == JSONSchema.Type.ARRAY:
             return f"Array<{self.items.typescript_type}>" if self.items else "Array"
-        elif self.type == JSONSchema.Type.OBJECT:
+        if self.type == JSONSchema.Type.OBJECT:
             if not self.properties:
                 return "Record<string, any>"
             return self.to_typescript_object_interface()
-        elif self.enum:
+        if self.enum:
             return " | ".join(repr(v) for v in self.enum)
+
+        raise NotImplementedError(
+            f"JSONSchema.typescript_type does not support Type.{self.type.name} yet"
+        )
+
+
+@overload
+def _resolve_type_refs_in_schema(schema: dict, definitions: dict) -> dict:
+    ...
+
+
+@overload
+def _resolve_type_refs_in_schema(schema: list, definitions: dict) -> list:
+    ...
+
+
+def _resolve_type_refs_in_schema(schema: dict | list, definitions: dict) -> dict | list:
+    """
+    Recursively resolve type $refs in the JSON schema with their definitions.
+    """
+    if isinstance(schema, dict):
+        if "$ref" in schema:
+            ref_path = schema["$ref"].split("/")[2:]  # Split and remove '#/definitions'
+            ref_value = definitions
+            for key in ref_path:
+                ref_value = ref_value[key]
+            return _resolve_type_refs_in_schema(ref_value, definitions)
         else:
-            raise NotImplementedError(
-                f"JSONSchema.typescript_type does not support Type.{self.type.name} yet"
-            )
+            return {
+                k: _resolve_type_refs_in_schema(v, definitions)
+                for k, v in schema.items()
+            }
+    elif isinstance(schema, list):
+        return [_resolve_type_refs_in_schema(item, definitions) for item in schema]
+    else:
+        return schema

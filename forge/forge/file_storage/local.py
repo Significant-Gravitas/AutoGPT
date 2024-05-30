@@ -8,7 +8,7 @@ import inspect
 import logging
 from contextlib import contextmanager
 from pathlib import Path
-from typing import IO, Any, Generator, Literal
+from typing import Any, BinaryIO, Generator, Literal, TextIO, overload
 
 from .base import FileStorage, FileStorageConfiguration
 
@@ -42,15 +42,57 @@ class LocalFileStorage(FileStorage):
     def initialize(self) -> None:
         self.root.mkdir(exist_ok=True, parents=True)
 
+    @overload
+    def open_file(
+        self,
+        path: str | Path,
+        mode: Literal["w", "r"] = "r",
+        binary: Literal[False] = False,
+    ) -> TextIO:
+        ...
+
+    @overload
+    def open_file(
+        self, path: str | Path, mode: Literal["w", "r"], binary: Literal[True]
+    ) -> BinaryIO:
+        ...
+
+    @overload
+    def open_file(self, path: str | Path, *, binary: Literal[True]) -> BinaryIO:
+        ...
+
+    @overload
     def open_file(
         self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
-    ) -> IO:
+    ) -> TextIO | BinaryIO:
+        ...
+
+    def open_file(
+        self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
+    ) -> TextIO | BinaryIO:
         """Open a file in the storage."""
         return self._open_file(path, f"{mode}b" if binary else mode)
 
-    def _open_file(self, path: str | Path, mode: str) -> IO:
+    def _open_file(self, path: str | Path, mode: str) -> TextIO | BinaryIO:
         full_path = self.get_path(path)
+        if any(m in mode for m in ("w", "a", "x")):
+            full_path.parent.mkdir(parents=True, exist_ok=True)
         return open(full_path, mode)  # type: ignore
+
+    @overload
+    def read_file(self, path: str | Path, binary: Literal[False] = False) -> str:
+        """Read a file in the storage as text."""
+        ...
+
+    @overload
+    def read_file(self, path: str | Path, binary: Literal[True]) -> bytes:
+        """Read a file in the storage as binary."""
+        ...
+
+    @overload
+    def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
+        """Read a file in the storage."""
+        ...
 
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
         """Read a file in the storage."""
@@ -60,7 +102,7 @@ class LocalFileStorage(FileStorage):
     async def write_file(self, path: str | Path, content: str | bytes) -> None:
         """Write to a file in the storage."""
         with self._open_file(path, "wb" if type(content) is bytes else "w") as file:
-            file.write(content)
+            file.write(content)  # type: ignore
 
         if self.on_write_file:
             path = Path(path)

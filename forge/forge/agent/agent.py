@@ -24,7 +24,6 @@ from forge.agent_protocol.models.task import (
     TaskStepsListResponse,
 )
 from forge.file_storage.base import FileStorage
-from forge.utils.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +78,8 @@ class Agent:
 
         else:
             logger.warning(
-                f"Frontend not found. {frontend_path} does not exist. The frontend will not be served"
+                f"Frontend not found. {frontend_path} does not exist. "
+                "The frontend will not be served."
             )
         app.add_middleware(AgentMiddleware, agent=self)
 
@@ -94,34 +94,25 @@ class Agent:
         """
         Create a task for the agent.
         """
-        try:
-            task = await self.db.create_task(
-                input=task_request.input,
-                additional_input=task_request.additional_input,
-            )
-            return task
-        except Exception as e:
-            raise
+        task = await self.db.create_task(
+            input=task_request.input,
+            additional_input=task_request.additional_input,
+        )
+        return task
 
     async def list_tasks(self, page: int = 1, pageSize: int = 10) -> TaskListResponse:
         """
         List all tasks that the agent has created.
         """
-        try:
-            tasks, pagination = await self.db.list_tasks(page, pageSize)
-            response = TaskListResponse(tasks=tasks, pagination=pagination)
-            return response
-        except Exception as e:
-            raise
+        tasks, pagination = await self.db.list_tasks(page, pageSize)
+        response = TaskListResponse(tasks=tasks, pagination=pagination)
+        return response
 
     async def get_task(self, task_id: str) -> Task:
         """
         Get a task by ID.
         """
-        try:
-            task = await self.db.get_task(task_id)
-        except Exception as e:
-            raise
+        task = await self.db.get_task(task_id)
         return task
 
     async def list_steps(
@@ -130,12 +121,9 @@ class Agent:
         """
         List the IDs of all steps that the task has created.
         """
-        try:
-            steps, pagination = await self.db.list_steps(task_id, page, pageSize)
-            response = TaskStepsListResponse(steps=steps, pagination=pagination)
-            return response
-        except Exception as e:
-            raise
+        steps, pagination = await self.db.list_steps(task_id, page, pageSize)
+        response = TaskStepsListResponse(steps=steps, pagination=pagination)
+        return response
 
     async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
         """
@@ -147,11 +135,8 @@ class Agent:
         """
         Get a step by ID.
         """
-        try:
-            step = await self.db.get_step(task_id, step_id)
-            return step
-        except Exception as e:
-            raise
+        step = await self.db.get_step(task_id, step_id)
+        return step
 
     async def list_artifacts(
         self, task_id: str, page: int = 1, pageSize: int = 10
@@ -159,62 +144,45 @@ class Agent:
         """
         List the artifacts that the task has created.
         """
-        try:
-            artifacts, pagination = await self.db.list_artifacts(
-                task_id, page, pageSize
-            )
-            return TaskArtifactsListResponse(artifacts=artifacts, pagination=pagination)
-
-        except Exception as e:
-            raise
+        artifacts, pagination = await self.db.list_artifacts(task_id, page, pageSize)
+        return TaskArtifactsListResponse(artifacts=artifacts, pagination=pagination)
 
     async def create_artifact(
-        self, task_id: str, file: UploadFile, relative_path: str
+        self, task_id: str, file: UploadFile, relative_path: str = ""
     ) -> Artifact:
         """
         Create an artifact for the task.
         """
-        data = None
         file_name = file.filename or str(uuid4())
-        try:
-            data = b""
-            while contents := file.file.read(1024 * 1024):
-                data += contents
-            # Check if relative path ends with filename
-            if relative_path.endswith(file_name):
-                file_path = relative_path
-            else:
-                file_path = os.path.join(relative_path, file_name)
+        data = b""
+        while contents := file.file.read(1024 * 1024):
+            data += contents
+        # Check if relative path ends with filename
+        if relative_path.endswith(file_name):
+            file_path = relative_path
+        else:
+            file_path = os.path.join(relative_path, file_name)
 
-            await self.workspace.write_file(file_path, data)
+        await self.workspace.write_file(file_path, data)
 
-            artifact = await self.db.create_artifact(
-                task_id=task_id,
-                file_name=file_name,
-                relative_path=relative_path,
-                agent_created=False,
-            )
-        except Exception as e:
-            raise
+        artifact = await self.db.create_artifact(
+            task_id=task_id,
+            file_name=file_name,
+            relative_path=relative_path,
+            agent_created=False,
+        )
         return artifact
 
-    async def get_artifact(self, task_id: str, artifact_id: str) -> Artifact:
+    async def get_artifact(self, task_id: str, artifact_id: str) -> StreamingResponse:
         """
         Get an artifact by ID.
         """
-        try:
-            artifact = await self.db.get_artifact(artifact_id)
-            if artifact.file_name not in artifact.relative_path:
-                file_path = os.path.join(artifact.relative_path, artifact.file_name)
-            else:
-                file_path = artifact.relative_path
-            retrieved_artifact = self.workspace.read_file(file_path)
-        except NotFoundError as e:
-            raise
-        except FileNotFoundError as e:
-            raise
-        except Exception as e:
-            raise
+        artifact = await self.db.get_artifact(artifact_id)
+        if artifact.file_name not in artifact.relative_path:
+            file_path = os.path.join(artifact.relative_path, artifact.file_name)
+        else:
+            file_path = artifact.relative_path
+        retrieved_artifact = self.workspace.read_file(file_path, binary=True)
 
         return StreamingResponse(
             BytesIO(retrieved_artifact),
