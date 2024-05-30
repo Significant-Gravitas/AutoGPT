@@ -1,6 +1,3 @@
-from pathlib import Path
-
-import yaml
 from pydantic import BaseModel, Field
 
 DEFAULT_AI_NAME = "AutoGPT"
