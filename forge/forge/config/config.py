@@ -62,7 +62,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # )
     llm_provider: ModelProviderName = UserConfigurable(
         default=ModelProviderName.OPENAI,
-        from_env=lambda: ModelProviderName(os.getenv("LLM_PROVIDER"))
+        from_env=lambda: ModelProviderName(os.getenv("LLM_PROVIDER")),
     )
     fast_llm: ModelName = UserConfigurable(
         default=OpenAIModelName.GPT3,
