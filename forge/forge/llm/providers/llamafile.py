@@ -1,29 +1,32 @@
 import enum
 import logging
 from pathlib import Path
-from typing import Any, Iterator, Optional, TypeVar
+from typing import Any, Iterator, Optional, Sequence
 
 import requests
 from openai.types.chat import (
-    ChatCompletion,
     ChatCompletionMessage,
     ChatCompletionMessageParam,
+    CompletionCreateParams,
 )
-from overrides import overrides
+from pydantic import SecretStr
 
 from forge.json.parsing import json_loads
+from forge.models.config import UserConfigurable
 
-from .openai import OpenAICredentials, OpenAIProvider
+from ._openai_base import BaseOpenAIChatProvider
 from .schema import (
     AssistantToolCall,
     AssistantToolCallDict,
     ChatMessage,
     ChatModelInfo,
+    CompletionModelFunction,
+    ModelProviderConfiguration,
+    ModelProviderCredentials,
     ModelProviderName,
+    ModelProviderSettings,
     ModelTokenizer,
 )
-
-_T = TypeVar("_T")
 
 
 class LlamafileModelName(str, enum.Enum):
@@ -44,10 +47,18 @@ LLAMAFILE_CHAT_MODELS = {
     ]
 }
 
+LLAMAFILE_EMBEDDING_MODELS = {}
 
-class LlamafileTokenizer(ModelTokenizer):
 
-    def __init__(self, credentials: OpenAICredentials):
+class LlamafileCredentials(ModelProviderCredentials):
+    api_key = SecretStr("sk-no-key-required")
+    api_base: SecretStr = UserConfigurable(  # type: ignore
+        default=SecretStr("http://localhost:8080/v1"), from_env="LLAMAFILE_API_BASE"
+    )
+
+
+class LlamafileTokenizer(ModelTokenizer[int]):
+    def __init__(self, credentials: LlamafileCredentials):
         self._credentials = credentials
 
     @property
@@ -60,50 +71,64 @@ class LlamafileTokenizer(ModelTokenizer):
 
     def encode(self, text: str) -> list[int]:
         response = requests.post(
-            url=f"{self._tokenizer_base_url}/tokenize",
-            json={"content": text}
+            url=f"{self._tokenizer_base_url}/tokenize", json={"content": text}
         )
         response.raise_for_status()
         return response.json()["tokens"]
 
     def decode(self, tokens: list[int]) -> str:
         response = requests.post(
-            url=f"{self._tokenizer_base_url}/detokenize",
-            json={"tokens": tokens}
+            url=f"{self._tokenizer_base_url}/detokenize", json={"tokens": tokens}
         )
         response.raise_for_status()
         return response.json()["content"]
 
 
-class LlamafileProvider(OpenAIProvider):
+class LlamafileSettings(ModelProviderSettings):
+    credentials: Optional[LlamafileCredentials]  # type: ignore
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
-    async def get_available_models(self) -> list[ChatModelInfo]:
+class LlamafileProvider(
+    BaseOpenAIChatProvider[LlamafileModelName, LlamafileSettings],
+    # TODO: add and test support for embedding models
+    # BaseOpenAIEmbeddingProvider[LlamafileModelName, LlamafileSettings],
+):
+    EMBEDDING_MODELS = LLAMAFILE_EMBEDDING_MODELS
+    CHAT_MODELS = LLAMAFILE_CHAT_MODELS
+    MODELS = {**CHAT_MODELS, **EMBEDDING_MODELS}
+
+    default_settings = LlamafileSettings(
+        name="llamafile_provider",
+        description=(
+            "Provides chat completion and embedding services "
+            "through a llamafile instance"
+        ),
+        configuration=ModelProviderConfiguration(),
+    )
+
+    _settings: LlamafileSettings  # type: ignore
+    _credentials: LlamafileCredentials  # type: ignore
+
+    async def get_available_models(self) -> Sequence[ChatModelInfo[LlamafileModelName]]:
         _models = (await self._client.models.list()).data
         # note: at the moment, llamafile only serves one model at a time (so this
         # list will only ever have one value). however, in the future, llamafile
         # may support multiple models, so leaving this method as-is for now.
 
         # clean up model names
-        # e.g. 'mistral-7b-instruct-v0.2.Q5_K_M.gguf' -> 'mistral-7b-instruct-v0.2'
-        # e.g. '/Users/kate/models/mistral-7b-instruct-v0.2.Q5_K_M.gguf' -> 'mistral-7b-instruct-v0.2
+        # e.g. 'mistral-7b-instruct-v0.2.Q5_K_M.gguf'
+        #   -> 'mistral-7b-instruct-v0.2'
+        # e.g. '/Users/kate/models/mistral-7b-instruct-v0.2.Q5_K_M.gguf'
+        #   ->                    'mistral-7b-instruct-v0.2'
         return [
             LLAMAFILE_CHAT_MODELS[_id]
             for m in _models
             if (_id := Path(m.id).name.split(".")[0]) in LLAMAFILE_CHAT_MODELS
         ]
 
-    @overrides
-    def get_tokenizer(self, model_name: LlamafileModelName) -> ModelTokenizer:
+    def get_tokenizer(self, model_name: LlamafileModelName) -> LlamafileTokenizer:
         return LlamafileTokenizer(self._credentials)
 
-    @overrides
-    def count_tokens(self, text: str, model_name: LlamafileModelName) -> int:
-        return len(self.get_tokenizer(model_name).encode(text))
-
-    @overrides
     def count_message_tokens(
         self,
         messages: ChatMessage | list[ChatMessage],
@@ -125,8 +150,10 @@ class LlamafileProvider(OpenAIProvider):
             ntokens = 0
             for message in messages:
                 if (
-                        message.role == ChatMessage.Role.USER or
-                        message.role == ChatMessage.Role.SYSTEM  # note that 'system' messages will get converted to 'user' messages before being sent to the model
+                    message.role == ChatMessage.Role.USER
+                    # note that 'system' messages will get converted
+                    # to 'user' messages before being sent to the model
+                    or message.role == ChatMessage.Role.SYSTEM
                 ):
                     # 5 tokens for [INST], [/INST], which actually get
                     # tokenized into "[, INST, ]" and "[, /, INST, ]"
@@ -135,7 +162,9 @@ class LlamafileProvider(OpenAIProvider):
                 elif message.role == ChatMessage.Role.ASSISTANT:
                     assistant_num_added += 1  # for </s>
                 else:
-                    raise ValueError(f"{model_name} does not support role: {message.role}")
+                    raise ValueError(
+                        f"{model_name} does not support role: {message.role}"
+                    )
 
                 ntokens += self.count_tokens(message.content, model_name)
 
@@ -143,11 +172,36 @@ class LlamafileProvider(OpenAIProvider):
             return total_token_count
 
         else:
-            raise NotImplementedError(f"count_message_tokens not implemented for model {model_name}")
+            raise NotImplementedError(
+                f"count_message_tokens not implemented for model {model_name}"
+            )
+
+    def _get_chat_completion_args(
+        self,
+        prompt_messages: list[ChatMessage],
+        model: LlamafileModelName,
+        functions: list[CompletionModelFunction] | None = None,
+        max_output_tokens: int | None = None,
+        **kwargs,
+    ) -> tuple[
+        list[ChatCompletionMessageParam], CompletionCreateParams, dict[str, Any]
+    ]:
+        messages, completion_kwargs, parse_kwargs = super()._get_chat_completion_args(
+            prompt_messages, model, functions, max_output_tokens, **kwargs
+        )
+
+        if model == LlamafileModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT:
+            messages = self._adapt_chat_messages_for_mistral_instruct(messages)
+
+        if "seed" not in kwargs:
+            # FIXME: temporarily hard-coded for reproducibility, instead the
+            #  seed should be set from config
+            completion_kwargs["seed"] = 0
+
+        return messages, completion_kwargs, parse_kwargs
 
     def _adapt_chat_messages_for_mistral_instruct(
-            self,
-            messages: list[ChatCompletionMessageParam]
+        self, messages: list[ChatCompletionMessageParam]
     ) -> list[ChatCompletionMessageParam]:
         """
         Munge the messages to be compatible with the mistral-7b-instruct chat
@@ -155,50 +209,53 @@ class LlamafileProvider(OpenAIProvider):
         - only supports 'user' and 'assistant' roles.
         - expects messages to alternate between user/assistant roles.
 
-        See details here: https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2#instruction-format
+        See details here:
+        https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2#instruction-format
         """
-        adapted_messages = []
+        adapted_messages: list[ChatCompletionMessageParam] = []
         for message in messages:
-
             # convert 'system' role to 'user' role as mistral-7b-instruct does
             # not support 'system'
             if message["role"] == ChatMessage.Role.SYSTEM:
                 message["role"] = ChatMessage.Role.USER
 
-            if len(adapted_messages) == 0:
+            if (
+                len(adapted_messages) == 0
+                or message["role"] != (last_message := adapted_messages[-1])["role"]
+            ):
                 adapted_messages.append(message)
-
             else:
-                if message["role"] == adapted_messages[-1]["role"]:
-                    # if the curr message has the same role as the previous one,
-                    # concat the current message content to the prev message
-                    adapted_messages[-1]["content"] += " " + message["content"]
-                else:
-                    adapted_messages.append(message)
+                if not message.get("content"):
+                    continue
+
+                # if the curr message has the same role as the previous one,
+                # concat the current message content to the prev message
+                if message["role"] == "user" and last_message["role"] == "user":
+                    # user messages can contain other types of content blocks
+                    if not isinstance(last_message["content"], list):
+                        last_message["content"] = [
+                            {"type": "text", "text": last_message["content"]}
+                        ]
+
+                    last_message["content"].extend(
+                        message["content"]
+                        if isinstance(message["content"], list)
+                        else [{"type": "text", "text": message["content"]}]
+                    )
+                elif message["role"] != "user" and last_message["role"] != "user":
+                    last_message["content"] = (
+                        (last_message.get("content") or "")
+                        + "\n\n"
+                        + (message.get("content") or "")
+                    ).strip()
 
         return adapted_messages
 
-    @overrides
-    async def _create_chat_completion(
-        self,
-        messages: list[ChatCompletionMessageParam],
-        model: LlamafileModelName,
-        *_,
-        **kwargs,
-    ) -> tuple[ChatCompletion, float, int, int]:
-        if model == LlamafileModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT:
-            messages = self._adapt_chat_messages_for_mistral_instruct(messages)
-
-        if "seed" not in kwargs:
-            # TODO: temporarily hard-coded for reproducibility, instead the
-            #  seed should be set from config
-            kwargs["seed"] = 0
-
-        return await super()._create_chat_completion(messages, model, **kwargs)
-
-    @overrides
     def _parse_assistant_tool_calls(
-        self, assistant_message: ChatCompletionMessage, compat_mode: bool = False
+        self,
+        assistant_message: ChatCompletionMessage,
+        compat_mode: bool = False,
+        **kwargs,
     ):
         tool_calls: list[AssistantToolCall] = []
         parse_errors: list[Exception] = []

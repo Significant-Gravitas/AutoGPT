@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Iterator, Optional, TypeVar
+from typing import Any, Callable, Iterator, Optional, Sequence, TypeVar
 
 from pydantic import ValidationError
 
@@ -25,7 +25,7 @@ from .schema import (
 
 _T = TypeVar("_T")
 
-ModelName = AnthropicModelName | GroqModelName | OpenAIModelName
+ModelName = AnthropicModelName | GroqModelName | LlamafileModelName | OpenAIModelName
 EmbeddingModelProvider = OpenAIProvider
 
 CHAT_MODELS = {
@@ -62,10 +62,14 @@ class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
 
         self._provider_instances = {}
 
-    async def get_available_models(self) -> list[ChatModelInfo[ModelName]]:
+    async def get_available_models(self) -> Sequence[ChatModelInfo[ModelName]]:
+        # TODO: support embeddings
+        return await self.get_available_chat_models()
+
+    async def get_available_chat_models(self) -> Sequence[ChatModelInfo[ModelName]]:
         models = []
         for provider in self.get_available_providers():
-            models.extend(await provider.get_available_models())
+            models.extend(await provider.get_available_chat_models())
         return models
 
     def get_token_limit(self, model_name: ModelName) -> int:
@@ -165,4 +169,10 @@ class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
         return f"{self.__class__.__name__}()"
 
 
-ChatModelProvider = AnthropicProvider | GroqProvider | OpenAIProvider | MultiProvider
+ChatModelProvider = (
+    AnthropicProvider
+    | GroqProvider
+    | LlamafileProvider
+    | OpenAIProvider
+    | MultiProvider
+)
