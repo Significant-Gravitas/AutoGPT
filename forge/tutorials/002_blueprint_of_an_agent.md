@@ -34,7 +34,7 @@ Anatomy of an Agent from the Agent Landscape Survey
 ### **Profile**  
 Humans naturally adapt our mindset based on the tasks we're tackling, whether it's writing, cooking, or playing sports. Similarly, agents can be conditioned or "profiled" to specialize in specific tasks.
 
-The profile of an agent is it's personality, mindset, and high-level instructions. Research indicates that merely informing an agent that it's an expert in a certain domain can boost its performance.
+The profile of an agent is its personality, mindset, and high-level instructions. Research indicates that merely informing an agent that it's an expert in a certain domain can boost its performance.
 
 | **Potential Applications of Profiling** | **Description**                                                                                          |
 |-----------------------------------------|----------------------------------------------------------------------------------------------------------|

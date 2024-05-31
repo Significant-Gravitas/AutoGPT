@@ -26,7 +26,7 @@ Example:
 ```json
 {
   "category": ["basic"],
-  "task": "Print the the capital of America to a .txt file",
+  "task": "Print the capital of America to a .txt file",
   "dependencies": ["TestWriteFile"], // the class name of the test
   "ground": {
     "answer": "Washington",
@@ -57,7 +57,7 @@ This is the default method of evaluation. It will compare the files specified in
 
 ### python
 
-This runs a python function in the specified "files" which captures the the print statements to be scored using the "should_contain" and "should_not_contain" ground truths.
+This runs a python function in the specified "files" which captures the print statements to be scored using the "should_contain" and "should_not_contain" ground truths.
 
 ### llm
 
