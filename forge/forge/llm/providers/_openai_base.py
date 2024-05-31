@@ -340,11 +340,11 @@ class BaseOpenAIChatProvider(
             int: Number of prompt tokens used
             int: Number of completion tokens used
         """
+        completion_kwargs["model"] = completion_kwargs.get("model") or model
 
         @self._retry_api_request
         async def _create_chat_completion_with_retry() -> ChatCompletion:
             return await self._client.chat.completions.create(
-                model=model,
                 **completion_kwargs,  # type: ignore
             )
 
