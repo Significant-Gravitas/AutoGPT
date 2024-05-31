@@ -271,9 +271,7 @@ class BaseOpenAIChatProvider(
         max_output_tokens: Optional[int] = None,
         **kwargs,
     ) -> tuple[
-        list[ChatCompletionMessageParam],
-        CompletionCreateParams,
-        dict[str, Any],
+        list[ChatCompletionMessageParam], CompletionCreateParams, dict[str, Any]
     ]:
         """Prepare keyword arguments for a chat completion API call
 
