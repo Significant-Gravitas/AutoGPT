@@ -4,8 +4,6 @@ from typing import Iterator
 
 from forge.agent.protocols import CommandProvider, DirectiveProvider, MessageProvider
 from forge.command import Command, command
-from forge.config.ai_profile import AIProfile
-from forge.config.config import Config
 from forge.llm.providers import ChatMessage
 from forge.models.json_schema import JSONSchema
 from forge.utils.const import FINISH_COMMAND
@@ -17,16 +15,7 @@ logger = logging.getLogger(__name__)
 class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
     """Component for system messages and commands."""
 
-    def __init__(self, config: Config, profile: AIProfile):
-        self.legacy_config = config
-        self.profile = profile
-
     def get_constraints(self) -> Iterator[str]:
-        if self.profile.api_budget > 0.0:
-            yield (
-                f"It takes money to let you run. "
-                f"Your API budget is ${self.profile.api_budget:.3f}"
-            )
         yield "Exclusively use the commands listed below."
         yield (
             "You can only act proactively, and are unable to start background jobs or "
