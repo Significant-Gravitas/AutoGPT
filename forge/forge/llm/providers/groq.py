@@ -7,7 +7,10 @@ from typing import Any, Optional
 import tiktoken
 from pydantic import SecretStr
 
-from forge.llm.providers.schema import (
+from forge.models.config import UserConfigurable
+
+from ._openai_base import BaseOpenAIChatProvider
+from .schema import (
     ChatModelInfo,
     ModelProviderBudget,
     ModelProviderConfiguration,
@@ -16,9 +19,6 @@ from forge.llm.providers.schema import (
     ModelProviderSettings,
     ModelTokenizer,
 )
-from forge.models.config import UserConfigurable
-
-from ._openai_base import BaseOpenAIChatProvider
 
 
 class GroqModelName(str, enum.Enum):

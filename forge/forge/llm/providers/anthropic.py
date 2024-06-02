@@ -105,15 +105,12 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
     default_settings = AnthropicSettings(
         name="anthropic_provider",
         description="Provides access to Anthropic's API.",
-        configuration=ModelProviderConfiguration(
-            retries_per_request=7,
-        ),
+        configuration=ModelProviderConfiguration(),
         credentials=None,
         budget=ModelProviderBudget(),
     )
 
     _settings: AnthropicSettings
-    _configuration: ModelProviderConfiguration
     _credentials: AnthropicCredentials
     _budget: ModelProviderBudget
 
@@ -136,6 +133,11 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
         )
 
     async def get_available_models(self) -> Sequence[ChatModelInfo[AnthropicModelName]]:
+        return await self.get_available_chat_models()
+
+    async def get_available_chat_models(
+        self,
+    ) -> Sequence[ChatModelInfo[AnthropicModelName]]:
         return list(ANTHROPIC_CHAT_MODELS.values())
 
     def get_token_limit(self, model_name: AnthropicModelName) -> int:

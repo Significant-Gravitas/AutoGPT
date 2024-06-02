@@ -17,7 +17,11 @@ from openai.types.chat import (
 from pydantic import SecretStr
 
 from forge.json.parsing import json_loads
-from forge.llm.providers.schema import (
+from forge.models.config import UserConfigurable
+from forge.models.json_schema import JSONSchema
+
+from ._openai_base import BaseOpenAIChatProvider, BaseOpenAIEmbeddingProvider
+from .schema import (
     AssistantToolCall,
     AssistantToolCallDict,
     ChatMessage,
@@ -32,10 +36,6 @@ from forge.llm.providers.schema import (
     ModelProviderSettings,
     ModelTokenizer,
 )
-from forge.models.config import UserConfigurable
-from forge.models.json_schema import JSONSchema
-
-from ._openai_base import BaseOpenAIChatProvider, BaseOpenAIEmbeddingProvider
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")

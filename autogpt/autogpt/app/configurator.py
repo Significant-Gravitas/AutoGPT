@@ -108,7 +108,7 @@ async def check_model(
 ) -> ModelName:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
     multi_provider = MultiProvider()
-    models = await multi_provider.get_available_models()
+    models = await multi_provider.get_available_chat_models()
 
     if any(model_name == m.name for m in models):
         return model_name
