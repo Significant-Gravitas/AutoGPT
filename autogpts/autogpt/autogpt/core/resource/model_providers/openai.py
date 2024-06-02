@@ -78,6 +78,7 @@ class OpenAIModelName(str, enum.Enum):
     GPT4_VISION = "gpt-4-vision-preview"
     GPT4 = GPT4_ROLLING
     GPT4_32k = GPT4_ROLLING_32k
+    GPT4_O = "gpt-4o"
 
 
 OPEN_AI_EMBEDDING_MODELS = {
@@ -164,6 +165,14 @@ OPEN_AI_CHAT_MODELS = {
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=0.01 / 1000,
             completion_token_cost=0.03 / 1000,
+            max_tokens=128000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT4_O,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.005 / 1000,
+            completion_token_cost=0.015 / 1000,
             max_tokens=128000,
             has_function_call_api=True,
         ),
@@ -320,6 +329,14 @@ class OpenAIProvider(
 
         if self._credentials.api_type == "azure":
             from openai import AsyncAzureOpenAI
+            
+            from autogpt.config import (
+                ConfigBuilder,
+            )
+            # Set up configuration
+            config = ConfigBuilder.build_config_from_env()
+            self._credentials.load_azure_config(config.azure_config_file)
+            # print('self._credentials  ',self._credentials)
 
             # API key and org (if configured) are passed, the rest of the required
             # credentials is loaded from the environment by the AzureOpenAI client.
