@@ -1,7 +1,7 @@
 # AutoGPT Agent User Guide
 
 !!! note
-    This guide assumes you are in the `autogpts/autogpt` folder, where the AutoGPT Agent
+    This guide assumes you are in the `autogpt` folder, where the AutoGPT Agent
     is located.
 
 ## Command Line Interface
@@ -54,11 +54,6 @@ Options:
   -c, --continuous                Enable Continuous Mode
   -y, --skip-reprompt             Skips the re-prompting messages at the
                                   beginning of the script
-  -C, --ai-settings FILE          Specifies which ai_settings.yaml file to
-                                  use, relative to the AutoGPT root directory.
-                                  Will also automatically skip the re-prompt.
-  -P, --prompt-settings FILE      Specifies which prompt_settings.yaml file to
-                                  use.
   -l, --continuous-limit INTEGER  Defines the number of times to run in
                                   continuous mode
   --speak                         Enable Speak Mode
@@ -130,8 +125,6 @@ Usage: python -m autogpt serve [OPTIONS]
   agent for every task.
 
 Options:
-  -P, --prompt-settings FILE  Specifies which prompt_settings.yaml file to
-                              use.
   --debug                     Enable Debug Mode
   --gpt3only                  Enable GPT3.5 Only Mode
   --gpt4only                  Enable GPT4 Only Mode
@@ -176,7 +169,7 @@ Here are some common arguments you can use when running AutoGPT:
     There are shorthands for some of these flags, for example `-P` for `--prompt-settings`.  
     Use `./autogpt.sh --help` for more information.
 
-[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/.env.template
+[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt/.env.template
 
 ## Agent State
 [agent state]: #agent-state
@@ -214,16 +207,18 @@ To print out debug logs:
 ./autogpt.sh --debug
 ```
 
-## Disabling Command Categories
+## Disabling Commands
 
-If you want to selectively disable some command groups, you can use the
-`DISABLED_COMMAND_CATEGORIES` config in your `.env`. You can find the list of available
-categories [here][command categories].
+The best way to disable commands is to disable or remove the [component][components] that provides them.
+However, if you want to selectively disable some commands, you can use the `DISABLED_COMMANDS` config in your `.env`.
+Put the names of the commands you want to disable, separated by commas.
+You can find the list of commands in built-in components [here][commands].
 
-For example, to disable coding related features, set it to the value below:
+For example, to disable python coding features, set it to the value below:
 
 ```ini
-DISABLED_COMMAND_CATEGORIES=autogpt.commands.execute_code
+DISABLED_COMMANDS=execute_python_code,execute_python_file
 ```
 
-[command categories]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/autogpt/autogpt/commands/__init__.py
+[components]: ./components/components.md
+[commands]: ./components/built-in-components.md
