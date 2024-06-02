@@ -2,24 +2,16 @@ from __future__ import annotations
 
 import enum
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Optional, ParamSpec, TypeVar
+from typing import Any, Optional
 
-import sentry_sdk
-import tenacity
 import tiktoken
-from groq import APIConnectionError, APIStatusError
 from pydantic import SecretStr
 
-from forge.json.parsing import json_loads
-from forge.llm.providers.schema import (
-    AssistantChatMessage,
-    AssistantFunctionCall,
-    AssistantToolCall,
-    BaseChatModelProvider,
-    ChatMessage,
+from forge.models.config import UserConfigurable
+
+from ._openai_base import BaseOpenAIChatProvider
+from .schema import (
     ChatModelInfo,
-    ChatModelResponse,
-    CompletionModelFunction,
     ModelProviderBudget,
     ModelProviderConfiguration,
     ModelProviderCredentials,
@@ -27,18 +19,6 @@ from forge.llm.providers.schema import (
     ModelProviderSettings,
     ModelTokenizer,
 )
-from forge.models.config import UserConfigurable
-
-from .openai import format_function_def_for_openai
-from .utils import validate_tool_calls
-
-if TYPE_CHECKING:
-    from groq.types.chat import ChatCompletion, CompletionCreateParams
-    from groq.types.chat.chat_completion_message import ChatCompletionMessage
-    from groq.types.chat.chat_completion_message_param import ChatCompletionMessageParam
-
-_T = TypeVar("_T")
-_P = ParamSpec("_P")
 
 
 class GroqModelName(str, enum.Enum):
@@ -87,10 +67,6 @@ GROQ_CHAT_MODELS = {
 }
 
 
-class GroqConfiguration(ModelProviderConfiguration):
-    fix_failed_parse_tries: int = UserConfigurable(3)
-
-
 class GroqCredentials(ModelProviderCredentials):
     """Credentials for Groq."""
 
@@ -111,24 +87,24 @@ class GroqCredentials(ModelProviderCredentials):
 
 
 class GroqSettings(ModelProviderSettings):
-    configuration: GroqConfiguration  # type: ignore
     credentials: Optional[GroqCredentials]  # type: ignore
     budget: ModelProviderBudget  # type: ignore
 
 
-class GroqProvider(BaseChatModelProvider[GroqModelName, GroqSettings]):
+class GroqProvider(BaseOpenAIChatProvider[GroqModelName, GroqSettings]):
+    CHAT_MODELS = GROQ_CHAT_MODELS
+    MODELS = CHAT_MODELS
+
     default_settings = GroqSettings(
         name="groq_provider",
         description="Provides access to Groq's API.",
-        configuration=GroqConfiguration(
-            retries_per_request=7,
-        ),
+        configuration=ModelProviderConfiguration(),
         credentials=None,
         budget=ModelProviderBudget(),
     )
 
     _settings: GroqSettings
-    _configuration: GroqConfiguration
+    _configuration: ModelProviderConfiguration
     _credentials: GroqCredentials
     _budget: ModelProviderBudget
 
@@ -137,11 +113,6 @@ class GroqProvider(BaseChatModelProvider[GroqModelName, GroqSettings]):
         settings: Optional[GroqSettings] = None,
         logger: Optional[logging.Logger] = None,
     ):
-        if not settings:
-            settings = self.default_settings.copy(deep=True)
-        if not settings.credentials:
-            settings.credentials = GroqCredentials.from_env()
-
         super(GroqProvider, self).__init__(settings=settings, logger=logger)
 
         from groq import AsyncGroq
@@ -150,284 +121,6 @@ class GroqProvider(BaseChatModelProvider[GroqModelName, GroqSettings]):
             **self._credentials.get_api_access_kwargs()  # type: ignore
         )
 
-    async def get_available_models(self) -> list[ChatModelInfo[GroqModelName]]:
-        _models = (await self._client.models.list()).data
-        return [GROQ_CHAT_MODELS[m.id] for m in _models if m.id in GROQ_CHAT_MODELS]
-
-    def get_token_limit(self, model_name: GroqModelName) -> int:
-        """Get the token limit for a given model."""
-        return GROQ_CHAT_MODELS[model_name].max_tokens
-
     def get_tokenizer(self, model_name: GroqModelName) -> ModelTokenizer[Any]:
         # HACK: No official tokenizer is available for Groq
         return tiktoken.encoding_for_model("gpt-3.5-turbo")
-
-    def count_tokens(self, text: str, model_name: GroqModelName) -> int:
-        return len(self.get_tokenizer(model_name).encode(text))
-
-    def count_message_tokens(
-        self,
-        messages: ChatMessage | list[ChatMessage],
-        model_name: GroqModelName,
-    ) -> int:
-        if isinstance(messages, ChatMessage):
-            messages = [messages]
-        # HACK: No official tokenizer (for text or messages) is available for Groq.
-        # Token overhead of messages is unknown and may be inaccurate.
-        return self.count_tokens(
-            "\n\n".join(f"{m.role.upper()}: {m.content}" for m in messages), model_name
-        )
-
-    async def create_chat_completion(
-        self,
-        model_prompt: list[ChatMessage],
-        model_name: GroqModelName,
-        completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
-        functions: Optional[list[CompletionModelFunction]] = None,
-        max_output_tokens: Optional[int] = None,
-        prefill_response: str = "",
-        **kwargs,
-    ) -> ChatModelResponse[_T]:
-        """Create a completion using the Groq API."""
-        groq_messages, completion_kwargs = self._get_chat_completion_args(
-            prompt_messages=model_prompt,
-            functions=functions,
-            max_output_tokens=max_output_tokens,
-            **kwargs,
-        )
-
-        total_cost = 0.0
-        attempts = 0
-        while True:
-            completion_kwargs["messages"] = groq_messages.copy()
-            _response, _cost, t_input, t_output = await self._create_chat_completion(
-                model=model_name,
-                completion_kwargs=completion_kwargs,
-            )
-            total_cost += _cost
-
-            # If parsing the response fails, append the error to the prompt, and let the
-            # LLM fix its mistake(s).
-            attempts += 1
-            parse_errors: list[Exception] = []
-
-            _assistant_msg = _response.choices[0].message
-
-            tool_calls, _errors = self._parse_assistant_tool_calls(_assistant_msg)
-            parse_errors += _errors
-
-            # Validate tool calls
-            if not parse_errors and tool_calls and functions:
-                parse_errors += validate_tool_calls(tool_calls, functions)
-
-            assistant_msg = AssistantChatMessage(
-                content=_assistant_msg.content or "",
-                tool_calls=tool_calls or None,
-            )
-
-            parsed_result: _T = None  # type: ignore
-            if not parse_errors:
-                try:
-                    parsed_result = completion_parser(assistant_msg)
-                except Exception as e:
-                    parse_errors.append(e)
-
-            if not parse_errors:
-                if attempts > 1:
-                    self._logger.debug(
-                        f"Total cost for {attempts} attempts: ${round(total_cost, 5)}"
-                    )
-
-                return ChatModelResponse(
-                    response=AssistantChatMessage(
-                        content=_assistant_msg.content or "",
-                        tool_calls=tool_calls or None,
-                    ),
-                    parsed_result=parsed_result,
-                    model_info=GROQ_CHAT_MODELS[model_name],
-                    prompt_tokens_used=t_input,
-                    completion_tokens_used=t_output,
-                )
-
-            else:
-                self._logger.debug(
-                    f"Parsing failed on response: '''{_assistant_msg}'''"
-                )
-                parse_errors_fmt = "\n\n".join(
-                    f"{e.__class__.__name__}: {e}" for e in parse_errors
-                )
-                self._logger.warning(
-                    f"Parsing attempt #{attempts} failed: {parse_errors_fmt}"
-                )
-                for e in parse_errors:
-                    sentry_sdk.capture_exception(
-                        error=e,
-                        extras={"assistant_msg": _assistant_msg, "i_attempt": attempts},
-                    )
-
-                if attempts < self._configuration.fix_failed_parse_tries:
-                    groq_messages.append(
-                        _assistant_msg.dict(exclude_none=True)  # type: ignore
-                    )
-                    groq_messages.append(
-                        {
-                            "role": "system",
-                            "content": (
-                                f"ERROR PARSING YOUR RESPONSE:\n\n{parse_errors_fmt}"
-                            ),
-                        }
-                    )
-                    continue
-                else:
-                    raise parse_errors[0]
-
-    def _get_chat_completion_args(
-        self,
-        prompt_messages: list[ChatMessage],
-        functions: Optional[list[CompletionModelFunction]] = None,
-        max_output_tokens: Optional[int] = None,
-        **kwargs,  # type: ignore
-    ) -> tuple[list[ChatCompletionMessageParam], CompletionCreateParams]:
-        """Prepare chat completion arguments and keyword arguments for API call.
-
-        Args:
-            model_prompt: List of ChatMessages.
-            functions: Optional list of functions available to the LLM.
-            kwargs: Additional keyword arguments.
-
-        Returns:
-            list[ChatCompletionMessageParam]: Prompt messages for the OpenAI call
-            dict[str, Any]: Any other kwargs for the OpenAI call
-        """
-        kwargs: CompletionCreateParams = kwargs  # type: ignore
-        if max_output_tokens:
-            kwargs["max_tokens"] = max_output_tokens
-
-        if functions:
-            kwargs["tools"] = [
-                {"type": "function", "function": format_function_def_for_openai(f)}
-                for f in functions
-            ]
-            if len(functions) == 1:
-                # force the model to call the only specified function
-                kwargs["tool_choice"] = {
-                    "type": "function",
-                    "function": {"name": functions[0].name},
-                }
-
-        if extra_headers := self._configuration.extra_request_headers:
-            # 'extra_headers' is not on CompletionCreateParams, but is on chat.create()
-            kwargs["extra_headers"] = kwargs.get("extra_headers", {})  # type: ignore
-            kwargs["extra_headers"].update(extra_headers.copy())  # type: ignore
-
-        groq_messages: list[ChatCompletionMessageParam] = [
-            message.dict(  # type: ignore
-                include={"role", "content", "tool_calls", "tool_call_id", "name"},
-                exclude_none=True,
-            )
-            for message in prompt_messages
-        ]
-
-        if "messages" in kwargs:
-            groq_messages += kwargs["messages"]
-            del kwargs["messages"]  # type: ignore - messages are added back later
-
-        return groq_messages, kwargs
-
-    async def _create_chat_completion(
-        self, model: GroqModelName, completion_kwargs: CompletionCreateParams
-    ) -> tuple[ChatCompletion, float, int, int]:
-        """
-        Create a chat completion using the Groq API with retry handling.
-
-        Params:
-            completion_kwargs: Keyword arguments for an Groq Messages API call
-
-        Returns:
-            Message: The message completion object
-            float: The cost ($) of this completion
-            int: Number of input tokens used
-            int: Number of output tokens used
-        """
-
-        @self._retry_api_request
-        async def _create_chat_completion_with_retry() -> ChatCompletion:
-            return await self._client.chat.completions.create(
-                model=model, **completion_kwargs  # type: ignore
-            )
-
-        response = await _create_chat_completion_with_retry()
-
-        if not response.usage:
-            self._logger.warning(
-                "Groq chat completion response does not contain a usage field",
-                response,
-            )
-            return response, 0, 0, 0
-        else:
-            cost = self._budget.update_usage_and_cost(
-                model_info=GROQ_CHAT_MODELS[model],
-                input_tokens_used=response.usage.prompt_tokens,
-                output_tokens_used=response.usage.completion_tokens,
-            )
-            return (
-                response,
-                cost,
-                response.usage.prompt_tokens,
-                response.usage.completion_tokens,
-            )
-
-    def _parse_assistant_tool_calls(
-        self, assistant_message: ChatCompletionMessage, compat_mode: bool = False
-    ):
-        tool_calls: list[AssistantToolCall] = []
-        parse_errors: list[Exception] = []
-
-        if assistant_message.tool_calls:
-            for _tc in assistant_message.tool_calls:
-                try:
-                    parsed_arguments = json_loads(_tc.function.arguments)
-                except Exception as e:
-                    err_message = (
-                        f"Decoding arguments for {_tc.function.name} failed: "
-                        + str(e.args[0])
-                    )
-                    parse_errors.append(
-                        type(e)(err_message, *e.args[1:]).with_traceback(
-                            e.__traceback__
-                        )
-                    )
-                    continue
-
-                tool_calls.append(
-                    AssistantToolCall(
-                        id=_tc.id,
-                        type=_tc.type,
-                        function=AssistantFunctionCall(
-                            name=_tc.function.name,
-                            arguments=parsed_arguments,
-                        ),
-                    )
-                )
-
-            # If parsing of all tool calls succeeds in the end, we ignore any issues
-            if len(tool_calls) == len(assistant_message.tool_calls):
-                parse_errors = []
-
-        return tool_calls, parse_errors
-
-    def _retry_api_request(self, func: Callable[_P, _T]) -> Callable[_P, _T]:
-        return tenacity.retry(
-            retry=(
-                tenacity.retry_if_exception_type(APIConnectionError)
-                | tenacity.retry_if_exception(
-                    lambda e: isinstance(e, APIStatusError) and e.status_code >= 500
-                )
-            ),
-            wait=tenacity.wait_exponential(),
-            stop=tenacity.stop_after_attempt(self._configuration.retries_per_request),
-            after=tenacity.after_log(self._logger, logging.DEBUG),
-        )(func)
-
-    def __repr__(self):
-        return "GroqProvider()"

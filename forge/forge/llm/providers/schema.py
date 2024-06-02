@@ -12,11 +12,12 @@ from typing import (
     Literal,
     Optional,
     Protocol,
+    Sequence,
     TypedDict,
     TypeVar,
 )
 
-from pydantic import BaseModel, Field, SecretStr, validator
+from pydantic import BaseModel, Field, SecretStr
 
 from forge.logging.utils import fmt_kwargs
 from forge.models.config import (
@@ -189,7 +190,8 @@ class ModelResponse(BaseModel):
 
 
 class ModelProviderConfiguration(SystemConfiguration):
-    retries_per_request: int = UserConfigurable()
+    retries_per_request: int = UserConfigurable(7)
+    fix_failed_parse_tries: int = UserConfigurable(3)
     extra_request_headers: dict[str, str] = Field(default_factory=dict)
 
 
@@ -297,6 +299,12 @@ class BaseModelProvider(
         self._logger = logger or logging.getLogger(self.__module__)
 
     @abc.abstractmethod
+    async def get_available_models(
+        self,
+    ) -> Sequence["ChatModelInfo[_ModelName] | EmbeddingModelInfo[_ModelName]"]:
+        ...
+
+    @abc.abstractmethod
     def count_tokens(self, text: str, model_name: _ModelName) -> int:
         ...
 
@@ -339,7 +347,7 @@ class ModelTokenizer(Protocol, Generic[_T]):
 class EmbeddingModelInfo(ModelInfo[_ModelName]):
     """Struct for embedding model information."""
 
-    service = ModelProviderService.EMBEDDING
+    service: Literal[ModelProviderService.EMBEDDING] = ModelProviderService.EMBEDDING  # type: ignore # noqa
     max_tokens: int
     embedding_dimensions: int
 
@@ -348,15 +356,16 @@ class EmbeddingModelResponse(ModelResponse):
     """Standard response struct for a response from an embedding model."""
 
     embedding: Embedding = Field(default_factory=list)
-
-    @validator("completion_tokens_used")
-    def _verify_no_completion_tokens_used(cls, v: int):
-        if v > 0:
-            raise ValueError("Embeddings should not have completion tokens used.")
-        return v
+    completion_tokens_used: int = Field(default=0, const=True)
 
 
 class BaseEmbeddingModelProvider(BaseModelProvider[_ModelName, _ModelProviderSettings]):
+    @abc.abstractmethod
+    async def get_available_embedding_models(
+        self,
+    ) -> Sequence[EmbeddingModelInfo[_ModelName]]:
+        ...
+
     @abc.abstractmethod
     async def create_embedding(
         self,
@@ -376,7 +385,7 @@ class BaseEmbeddingModelProvider(BaseModelProvider[_ModelName, _ModelProviderSet
 class ChatModelInfo(ModelInfo[_ModelName]):
     """Struct for language model information."""
 
-    service = ModelProviderService.CHAT
+    service: Literal[ModelProviderService.CHAT] = ModelProviderService.CHAT  # type: ignore # noqa
     max_tokens: int
     has_function_call_api: bool = False
 
@@ -390,7 +399,7 @@ class ChatModelResponse(ModelResponse, Generic[_T]):
 
 class BaseChatModelProvider(BaseModelProvider[_ModelName, _ModelProviderSettings]):
     @abc.abstractmethod
-    async def get_available_models(self) -> list[ChatModelInfo[_ModelName]]:
+    async def get_available_chat_models(self) -> Sequence[ChatModelInfo[_ModelName]]:
         ...
 
     @abc.abstractmethod
