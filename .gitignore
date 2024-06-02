@@ -170,3 +170,5 @@ pri*
 # ignore
 ig*
 .github_access_token
+autogpts/autogpt/data/
+autogpts/autogpt/logs
