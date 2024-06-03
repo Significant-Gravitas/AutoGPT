@@ -1,6 +1,6 @@
 # 🧩 Components
 
-Components are the building blocks of [🤖 Agents](./agents.md). They are classes inheriting `AgentComponent` or implementing one or more [⚙️ Protocols](./protocols.md) that give agent additional abilities or processing. 
+Components are the building blocks of [🤖 Agents](../../../autogpt/autogpt/agents/README.md). They are classes inheriting `AgentComponent` or implementing one or more [⚙️ Protocols](../../../docs/content/forge/components/protocols.md) that give agent additional abilities or processing. 
 
 Components can be used to implement various functionalities like providing messages to the prompt, executing code, or interacting with external services.
 They can be enabled or disabled, ordered, and can rely on each other.
