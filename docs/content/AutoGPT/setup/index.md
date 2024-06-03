@@ -28,27 +28,6 @@
 - [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/)
 
 
-### 🗝️ Getting an OpenAI API key
-
-Get your OpenAI API key from:
-[https://platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys).
-
-!!! attention
-    To use the OpenAI API with AutoGPT, we strongly recommend **setting up billing**
-    (AKA paid account). Free accounts are [limited][openai/api limits] to 3 API calls per
-    minute, which can cause the application to crash.
-
-    You can set up a paid account at [Manage account > Billing > Overview](https://platform.openai.com/account/billing/overview).
-
-[openai/api limits]: https://platform.openai.com/docs/guides/rate-limits/free-tier-rate-limits
-
-!!! important
-    It's highly recommended that you keep track of your API costs on [the Usage page](https://platform.openai.com/account/usage).
-    You can also set limits on how much you spend on [the Usage limits page](https://platform.openai.com/account/billing/limits).
-
-![For OpenAI API key to work, set up paid account at OpenAI API > Billing](../../imgs/openai-api-key-billing-paid-account.png)
-
-
 ## Setting up AutoGPT
 
 ### Getting AutoGPT
@@ -83,10 +62,45 @@ Once you have cloned or downloaded the project, you can find the AutoGPT Agent i
     cp .env.template .env
     ```
 3. Open the `.env` file in a text editor.
+4. Set API keys for the LLM providers that you want to use: see [below](#setting-up-llm-providers).
+5. Enter any other API keys or tokens for services you would like to use.
+
+    !!! note
+        To activate and adjust a setting, remove the `# ` prefix.
+
+6. Save and close the `.env` file.
+7. _Optional: run `poetry install` to install all required dependencies._ The
+    application also checks for and installs any required dependencies when it starts.
+
+You should now be able to explore the CLI (`./autogpt.sh --help`) and run the application.
+
+See the [user guide](../usage.md) for further instructions.
+
+[show hidden files/Windows]: https://support.microsoft.com/en-us/windows/view-hidden-files-and-folders-in-windows-97fbc472-c603-9d90-91d0-1166d1d9f4b5
+[show hidden files/macOS]: https://www.pcmag.com/how-to/how-to-access-your-macs-hidden-files
+
+## Setting up LLM providers
+
+### OpenAI
+
+Get your OpenAI API key from:
+[https://platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys).
+
+!!! attention
+    To use AutoGPT with GPT-4, you need to set up a paid OpenAI account with some money
+    in it. Please refer to OpenAI for further instructions ([link][openai/gpt-4-access]).
+    Free accounts are [limited][openai/api limits] to GPT-3.5 with only 3 requests per minute.
+
+    You can set up a paid account at [Manage account > Billing > Overview](https://platform.openai.com/account/billing/overview).
+
+[openai/gpt-4-access]: https://help.openai.com/en/articles/7102672-how-can-i-access-gpt-4-gpt-4-turbo-and-gpt-4o#h_9bddcd317c
+[openai/api limits]: https://platform.openai.com/docs/guides/rate-limits/free-tier-rate-limits
+
+1. Open `.env`
 4. Find the line that says `OPENAI_API_KEY=`.
 5. Insert your OpenAI API Key directly after = without quotes or spaces..
     ```yaml
-    OPENAI_API_KEY=sk-qwertykeys123456
+    OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     ```
 
     !!! info "Using a GPT Azure-instance"
@@ -97,31 +111,21 @@ Once you have cloned or downloaded the project, you can find the AutoGPT Agent i
         `azure_api_base`, `azure_api_version` and deployment IDs for the models that you
         want to use.
 
-        E.g. if you want to use `gpt-3.5-turbo-16k` and `gpt-4-0314`:
+        E.g. if you want to use `gpt-3.5-turbo` and `gpt-4-turbo`:
 
         ```yaml
         # Please specify all of these values as double-quoted strings
         # Replace string in angled brackets (<>) to your own deployment Name
         azure_model_map:
-            gpt-3.5-turbo-16k: "<auto-gpt-deployment>"
+            gpt-3.5-turbo: "<gpt-35-turbo-deployment-id>"
+            gpt-4-turbo: "<gpt-4-turbo-deployment-id>"
             ...
         ```
 
         Details can be found in the [openai-python docs], and in the [Azure OpenAI docs] for the embedding model.
         If you're on Windows you may need to install an [MSVC library](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170).
 
-6. Enter any other API keys or tokens for services you would like to use.
+!!! important
+    Keep an eye on your API costs on [the Usage page](https://platform.openai.com/account/usage).
 
-    !!! note
-        To activate and adjust a setting, remove the `# ` prefix.
-
-7. Save and close the `.env` file.
-8. _Optional: run `poetry install` to install all required dependencies._ The
-    application also checks for and installs any required dependencies when it starts.
-
-You should now be able to explore the CLI (`./autogpt.sh --help`) and run the application.
-
-See the [user guide](../usage.md) for further instructions.
-
-[show hidden files/Windows]: https://support.microsoft.com/en-us/windows/view-hidden-files-and-folders-in-windows-97fbc472-c603-9d90-91d0-1166d1d9f4b5
-[show hidden files/macOS]: https://www.pcmag.com/how-to/how-to-access-your-macs-hidden-files
+[openai-python docs]: https://github.com/openai/openai-python?tab=readme-ov-file#microsoft-azure-openai
