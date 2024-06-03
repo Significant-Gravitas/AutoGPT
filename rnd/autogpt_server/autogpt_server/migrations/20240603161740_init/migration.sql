@@ -44,6 +44,7 @@ CREATE TABLE "AgentNodeExecution" (
     "outputData" TEXT NOT NULL,
     "outputTypeId" TEXT,
     "executionStatus" TEXT NOT NULL,
+    "executionStateData" TEXT NOT NULL,
     CONSTRAINT "AgentNodeExecution_agentNodeId_fkey" FOREIGN KEY ("agentNodeId") REFERENCES "AgentNode" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "AgentNodeExecution_outputTypeId_fkey" FOREIGN KEY ("outputTypeId") REFERENCES "AgentComponentOutput" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );

@@ -93,6 +93,9 @@ model AgentNodeExecution {
   // sqlite does not support enum
   // enum Status { STARTED, RUNNING, SUCCESS, FAILED }
   executionStatus String
+
+  // JSON serialized object of the execution state: information required to resume the execution.
+  executionStateData String
 }
 
 // This model describes a file that can be used as input/output of an AgentNodeExecution.
