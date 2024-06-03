@@ -5,10 +5,10 @@ from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.config.config import Config
 from forge.llm.prompting import ChatPrompt, LanguageModelClassification, PromptStrategy
+from forge.llm.providers import MultiProvider
 from forge.llm.providers.schema import (
     AssistantChatMessage,
     ChatMessage,
-    ChatModelProvider,
     CompletionModelFunction,
 )
 from forge.models.config import SystemConfiguration, UserConfigurable
@@ -21,53 +21,48 @@ class AgentProfileGeneratorConfiguration(SystemConfiguration):
     model_classification: LanguageModelClassification = UserConfigurable(
         default=LanguageModelClassification.SMART_MODEL
     )
-    _example_call: object = [
-        {
-            "type": "function",
-            "function": {
-                "name": "create_agent",
-                "arguments": {
-                    "name": "CMOGPT",
-                    "description": (
-                        "a professional digital marketer AI that assists Solopreneurs "
-                        "in growing their businesses by providing "
-                        "world-class expertise in solving marketing problems "
-                        "for SaaS, content products, agencies, and more."
+    _example_call: object = {
+        "name": "create_agent",
+        "arguments": {
+            "name": "CMOGPT",
+            "description": (
+                "a professional digital marketer AI that assists Solopreneurs "
+                "in growing their businesses by providing "
+                "world-class expertise in solving marketing problems "
+                "for SaaS, content products, agencies, and more."
+            ),
+            "directives": {
+                "best_practices": [
+                    (
+                        "Engage in effective problem-solving, prioritization, "
+                        "planning, and supporting execution to address your "
+                        "marketing needs as your virtual "
+                        "Chief Marketing Officer."
                     ),
-                    "directives": {
-                        "best_practices": [
-                            (
-                                "Engage in effective problem-solving, prioritization, "
-                                "planning, and supporting execution to address your "
-                                "marketing needs as your virtual "
-                                "Chief Marketing Officer."
-                            ),
-                            (
-                                "Provide specific, actionable, and concise advice to "
-                                "help you make informed decisions without the use of "
-                                "platitudes or overly wordy explanations."
-                            ),
-                            (
-                                "Identify and prioritize quick wins and cost-effective "
-                                "campaigns that maximize results with minimal time and "
-                                "budget investment."
-                            ),
-                            (
-                                "Proactively take the lead in guiding you and offering "
-                                "suggestions when faced with unclear information or "
-                                "uncertainty to ensure your marketing strategy remains "
-                                "on track."
-                            ),
-                        ],
-                        "constraints": [
-                            "Do not suggest illegal or unethical plans or strategies.",
-                            "Take reasonable budgetary limits into account.",
-                        ],
-                    },
-                },
+                    (
+                        "Provide specific, actionable, and concise advice to "
+                        "help you make informed decisions without the use of "
+                        "platitudes or overly wordy explanations."
+                    ),
+                    (
+                        "Identify and prioritize quick wins and cost-effective "
+                        "campaigns that maximize results with minimal time and "
+                        "budget investment."
+                    ),
+                    (
+                        "Proactively take the lead in guiding you and offering "
+                        "suggestions when faced with unclear information or "
+                        "uncertainty to ensure your marketing strategy remains "
+                        "on track."
+                    ),
+                ],
+                "constraints": [
+                    "Do not suggest illegal or unethical plans or strategies.",
+                    "Take reasonable budgetary limits into account.",
+                ],
             },
-        }
-    ]
+        },
+    }
     system_prompt: str = UserConfigurable(
         default=(
             "Your job is to respond to a user-defined task, given in triple quotes, by "
@@ -141,7 +136,7 @@ class AgentProfileGeneratorConfiguration(SystemConfiguration):
                     required=True,
                 ),
             },
-        ).schema
+        ).dict()
     )
 
 
@@ -160,7 +155,7 @@ class AgentProfileGenerator(PromptStrategy):
         self._model_classification = model_classification
         self._system_prompt_message = system_prompt
         self._user_prompt_template = user_prompt_template
-        self._create_agent_function = CompletionModelFunction.parse(
+        self._create_agent_function = CompletionModelFunction.parse_obj(
             create_agent_function
         )
 
@@ -183,7 +178,7 @@ class AgentProfileGenerator(PromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessage,
+        response: AssistantChatMessage,
     ) -> tuple[AIProfile, AIDirectives]:
         """Parse the actual text response from the objective model.
 
@@ -192,18 +187,17 @@ class AgentProfileGenerator(PromptStrategy):
 
         Returns:
             The parsed response.
-
         """
         try:
-            if not response_content.tool_calls:
+            if not response.tool_calls:
                 raise ValueError(
                     f"LLM did not call {self._create_agent_function.name} function; "
                     "agent profile creation failed"
                 )
-            arguments: object = response_content.tool_calls[0].function.arguments
+            arguments: object = response.tool_calls[0].function.arguments
             ai_profile = AIProfile(
-                ai_name=arguments.get("name"),
-                ai_role=arguments.get("description"),
+                ai_name=arguments.get("name"),  # type: ignore
+                ai_role=arguments.get("description"),  # type: ignore
             )
             ai_directives = AIDirectives(
                 best_practices=arguments.get("directives", {}).get("best_practices"),
@@ -211,7 +205,7 @@ class AgentProfileGenerator(PromptStrategy):
                 resources=[],
             )
         except KeyError:
-            logger.debug(f"Failed to parse this response content: {response_content}")
+            logger.debug(f"Failed to parse this response content: {response}")
             raise
         return ai_profile, ai_directives
 
@@ -219,7 +213,7 @@ class AgentProfileGenerator(PromptStrategy):
 async def generate_agent_profile_for_task(
     task: str,
     app_config: Config,
-    llm_provider: ChatModelProvider,
+    llm_provider: MultiProvider,
 ) -> tuple[AIProfile, AIDirectives]:
     """Generates an AIConfig object from the given string.
 

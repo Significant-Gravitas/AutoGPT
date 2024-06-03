@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 import logging
-from typing import TYPE_CHECKING, Callable, Optional, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Optional, ParamSpec, Sequence, TypeVar
 
 import sentry_sdk
 import tenacity
@@ -10,13 +10,15 @@ import tiktoken
 from anthropic import APIConnectionError, APIStatusError
 from pydantic import SecretStr
 
-from forge.llm.providers.schema import (
+from forge.models.config import UserConfigurable
+
+from .schema import (
     AssistantChatMessage,
     AssistantFunctionCall,
     AssistantToolCall,
+    BaseChatModelProvider,
     ChatMessage,
     ChatModelInfo,
-    ChatModelProvider,
     ChatModelResponse,
     CompletionModelFunction,
     ModelProviderBudget,
@@ -27,8 +29,6 @@ from forge.llm.providers.schema import (
     ModelTokenizer,
     ToolResultMessage,
 )
-from forge.models.config import Configurable, UserConfigurable
-
 from .utils import validate_tool_calls
 
 if TYPE_CHECKING:
@@ -77,21 +77,17 @@ ANTHROPIC_CHAT_MODELS = {
 }
 
 
-class AnthropicConfiguration(ModelProviderConfiguration):
-    fix_failed_parse_tries: int = UserConfigurable(3)
-
-
 class AnthropicCredentials(ModelProviderCredentials):
     """Credentials for Anthropic."""
 
-    api_key: SecretStr = UserConfigurable(from_env="ANTHROPIC_API_KEY")
+    api_key: SecretStr = UserConfigurable(from_env="ANTHROPIC_API_KEY")  # type: ignore
     api_base: Optional[SecretStr] = UserConfigurable(
         default=None, from_env="ANTHROPIC_API_BASE_URL"
     )
 
     def get_api_access_kwargs(self) -> dict[str, str]:
         return {
-            k: (v.get_secret_value() if type(v) is SecretStr else v)
+            k: v.get_secret_value()
             for k, v in {
                 "api_key": self.api_key,
                 "base_url": self.api_base,
@@ -101,24 +97,20 @@ class AnthropicCredentials(ModelProviderCredentials):
 
 
 class AnthropicSettings(ModelProviderSettings):
-    configuration: AnthropicConfiguration
-    credentials: Optional[AnthropicCredentials]
-    budget: ModelProviderBudget
+    credentials: Optional[AnthropicCredentials]  # type: ignore
+    budget: ModelProviderBudget  # type: ignore
 
 
-class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
+class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSettings]):
     default_settings = AnthropicSettings(
         name="anthropic_provider",
         description="Provides access to Anthropic's API.",
-        configuration=AnthropicConfiguration(
-            retries_per_request=7,
-        ),
+        configuration=ModelProviderConfiguration(),
         credentials=None,
         budget=ModelProviderBudget(),
     )
 
     _settings: AnthropicSettings
-    _configuration: AnthropicConfiguration
     _credentials: AnthropicCredentials
     _budget: ModelProviderBudget
 
@@ -136,27 +128,31 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
 
         from anthropic import AsyncAnthropic
 
-        self._client = AsyncAnthropic(**self._credentials.get_api_access_kwargs())
+        self._client = AsyncAnthropic(
+            **self._credentials.get_api_access_kwargs()  # type: ignore
+        )
 
-    async def get_available_models(self) -> list[ChatModelInfo]:
+    async def get_available_models(self) -> Sequence[ChatModelInfo[AnthropicModelName]]:
+        return await self.get_available_chat_models()
+
+    async def get_available_chat_models(
+        self,
+    ) -> Sequence[ChatModelInfo[AnthropicModelName]]:
         return list(ANTHROPIC_CHAT_MODELS.values())
 
-    def get_token_limit(self, model_name: str) -> int:
+    def get_token_limit(self, model_name: AnthropicModelName) -> int:
         """Get the token limit for a given model."""
         return ANTHROPIC_CHAT_MODELS[model_name].max_tokens
 
-    @classmethod
-    def get_tokenizer(cls, model_name: AnthropicModelName) -> ModelTokenizer:
+    def get_tokenizer(self, model_name: AnthropicModelName) -> ModelTokenizer[Any]:
         # HACK: No official tokenizer is available for Claude 3
         return tiktoken.encoding_for_model(model_name)
 
-    @classmethod
-    def count_tokens(cls, text: str, model_name: AnthropicModelName) -> int:
+    def count_tokens(self, text: str, model_name: AnthropicModelName) -> int:
         return 0  # HACK: No official tokenizer is available for Claude 3
 
-    @classmethod
     def count_message_tokens(
-        cls,
+        self,
         messages: ChatMessage | list[ChatMessage],
         model_name: AnthropicModelName,
     ) -> int:
@@ -195,7 +191,7 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
                 cost,
                 t_input,
                 t_output,
-            ) = await self._create_chat_completion(completion_kwargs)
+            ) = await self._create_chat_completion(model_name, completion_kwargs)
             total_cost += cost
             self._logger.debug(
                 f"Completion usage: {t_input} input, {t_output} output "
@@ -245,7 +241,7 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
                 )
                 if attempts < self._configuration.fix_failed_parse_tries:
                     anthropic_messages.append(
-                        _assistant_msg.dict(include={"role", "content"})
+                        _assistant_msg.dict(include={"role", "content"})  # type: ignore
                     )
                     anthropic_messages.append(
                         {
@@ -312,7 +308,6 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
     def _get_chat_completion_args(
         self,
         prompt_messages: list[ChatMessage],
-        model: AnthropicModelName,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
         **kwargs,
@@ -321,7 +316,6 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
 
         Args:
             prompt_messages: List of ChatMessages.
-            model: The model to use.
             functions: Optional list of functions available to the LLM.
             kwargs: Additional keyword arguments.
 
@@ -329,8 +323,6 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
             list[MessageParam]: Prompt messages for the Anthropic call
             dict[str, Any]: Any other kwargs for the Anthropic call
         """
-        kwargs["model"] = model
-
         if functions:
             kwargs["tools"] = [
                 {
@@ -433,7 +425,7 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
         return messages, kwargs  # type: ignore
 
     async def _create_chat_completion(
-        self, completion_kwargs: MessageCreateParams
+        self, model: AnthropicModelName, completion_kwargs: MessageCreateParams
     ) -> tuple[Message, float, int, int]:
         """
         Create a chat completion using the Anthropic API with retry handling.
@@ -449,17 +441,15 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
         """
 
         @self._retry_api_request
-        async def _create_chat_completion_with_retry(
-            completion_kwargs: MessageCreateParams,
-        ) -> Message:
+        async def _create_chat_completion_with_retry() -> Message:
             return await self._client.beta.tools.messages.create(
-                **completion_kwargs  # type: ignore
+                model=model, **completion_kwargs  # type: ignore
             )
 
-        response = await _create_chat_completion_with_retry(completion_kwargs)
+        response = await _create_chat_completion_with_retry()
 
         cost = self._budget.update_usage_and_cost(
-            model_info=ANTHROPIC_CHAT_MODELS[completion_kwargs["model"]],
+            model_info=ANTHROPIC_CHAT_MODELS[model],
             input_tokens_used=response.usage.input_tokens,
             output_tokens_used=response.usage.output_tokens,
         )
@@ -472,7 +462,10 @@ class AnthropicProvider(Configurable[AnthropicSettings], ChatModelProvider):
             AssistantToolCall(
                 id=c.id,
                 type="function",
-                function=AssistantFunctionCall(name=c.name, arguments=c.input),
+                function=AssistantFunctionCall(
+                    name=c.name,
+                    arguments=c.input,  # type: ignore
+                ),
             )
             for c in assistant_message.content
             if c.type == "tool_use"

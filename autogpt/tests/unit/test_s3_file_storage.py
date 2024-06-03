@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from botocore.exceptions import ClientError
-from forge.file_storage import S3FileStorage, S3FileStorageConfiguration
+from forge.file_storage.s3 import S3FileStorage, S3FileStorageConfiguration
 
 if not (os.getenv("S3_ENDPOINT_URL") and os.getenv("AWS_ACCESS_KEY_ID")):
     pytest.skip("S3 environment variables are not set", allow_module_level=True)
@@ -22,7 +22,7 @@ def s3_root() -> Path:
 
 
 @pytest.fixture
-def s3_storage_uninitialized(s3_bucket_name: str, s3_root: Path) -> S3FileStorage:
+def s3_storage_uninitialized(s3_bucket_name: str, s3_root: Path):
     os.environ["STORAGE_BUCKET"] = s3_bucket_name
     storage_config = S3FileStorageConfiguration.from_env()
     storage_config.root = s3_root
@@ -36,12 +36,13 @@ def test_initialize(s3_bucket_name: str, s3_storage_uninitialized: S3FileStorage
 
     # test that the bucket doesn't exist yet
     with pytest.raises(ClientError):
-        s3.meta.client.head_bucket(Bucket=s3_bucket_name)
+        s3.meta.client.head_bucket(Bucket=s3_bucket_name)  # pyright: ignore
 
     s3_storage_uninitialized.initialize()
 
     # test that the bucket has been created
-    s3.meta.client.head_bucket(Bucket=s3_bucket_name)
+    s3.meta.client.head_bucket(Bucket=s3_bucket_name)  # pyright: ignore
+    # FIXME: remove the "pyright: ignore" comments after moving this test file to forge
 
 
 def test_workspace_bucket_name(
@@ -52,7 +53,7 @@ def test_workspace_bucket_name(
 
 
 @pytest.fixture
-def s3_storage(s3_storage_uninitialized: S3FileStorage) -> S3FileStorage:
+def s3_storage(s3_storage_uninitialized: S3FileStorage):
     (s3_storage := s3_storage_uninitialized).initialize()
     yield s3_storage  # type: ignore
 
@@ -71,7 +72,7 @@ TEST_FILES: list[tuple[str | Path, str]] = [
 
 
 @pytest_asyncio.fixture
-async def s3_storage_with_files(s3_storage: S3FileStorage) -> S3FileStorage:
+async def s3_storage_with_files(s3_storage: S3FileStorage):
     for file_name, file_content in TEST_FILES:
         s3_storage._bucket.Object(str(s3_storage.get_path(file_name))).put(
             Body=file_content

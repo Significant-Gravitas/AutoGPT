@@ -36,15 +36,16 @@ class AgentComponent(ABC):
 class ComponentEndpointError(Exception):
     """Error of a single protocol method on a component."""
 
-    def __init__(self, message: str = ""):
+    def __init__(self, message: str, component: AgentComponent):
         self.message = message
+        self.triggerer = component
         super().__init__(message)
 
 
 class EndpointPipelineError(ComponentEndpointError):
-    """Error of an entire pipline of one endpoint."""
+    """Error of an entire pipeline of one endpoint."""
 
 
 class ComponentSystemError(EndpointPipelineError):
     """Error of a group of pipelines;
-    multiple different enpoints."""
+    multiple different endpoints."""

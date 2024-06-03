@@ -25,7 +25,7 @@ from forge.agent_protocol.models import (
 )
 from forge.config.config import Config
 from forge.file_storage import FileStorage
-from forge.llm.providers import ChatModelProvider, ModelProviderBudget
+from forge.llm.providers import ModelProviderBudget, MultiProvider
 from forge.models.action import ActionErrorResult, ActionSuccessResult
 from forge.utils.const import ASK_COMMAND, FINISH_COMMAND
 from forge.utils.exceptions import AgentFinished, NotFoundError
@@ -33,8 +33,7 @@ from hypercorn.asyncio import serve as hypercorn_serve
 from hypercorn.config import Config as HypercornConfig
 from sentry_sdk import set_user
 
-from autogpt.agent_factory.configurators import configure_agent_with_state
-from autogpt.agent_factory.generators import generate_agent_for_task
+from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agents.agent_manager import AgentManager
 from autogpt.app.utils import is_port_free
 
@@ -49,7 +48,7 @@ class AgentProtocolServer:
         app_config: Config,
         database: AgentDB,
         file_storage: FileStorage,
-        llm_provider: ChatModelProvider,
+        llm_provider: MultiProvider,
     ):
         self.app_config = app_config
         self.db = database
@@ -134,8 +133,10 @@ class AgentProtocolServer:
             input=task_request.input,
             additional_input=task_request.additional_input,
         )
-        logger.debug(f"Creating agent for task: '{task.input}'")
-        task_agent = await generate_agent_for_task(
+        # TODO: re-evaluate performance benefit of task-oriented profiles
+        # logger.debug(f"Creating agent for task: '{task.input}'")
+        # task_agent = await generate_agent_for_task(
+        task_agent = create_agent(
             agent_id=task_agent_id(task.task_id),
             task=task.input,
             app_config=self.app_config,
@@ -444,9 +445,7 @@ class AgentProtocolServer:
         agent_id = task_agent_id(task_id)
         return self.file_storage.clone_with_subroot(f"agents/{agent_id}/workspace")
 
-    def _get_task_llm_provider(
-        self, task: Task, step_id: str = ""
-    ) -> ChatModelProvider:
+    def _get_task_llm_provider(self, task: Task, step_id: str = "") -> MultiProvider:
         """
         Configures the LLM provider with headers to link outgoing requests to the task.
         """

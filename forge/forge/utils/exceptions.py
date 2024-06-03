@@ -7,7 +7,7 @@ from typing import Optional
 def get_exception_message():
     """Get current exception type and message."""
     exc_type, exc_value, _ = sys.exc_info()
-    exception_message = f"{exc_type.__name__}: {exc_value}"
+    exception_message = f"{exc_type.__name__}: {exc_value}" if exc_type else exc_value
     return exception_message
 
 

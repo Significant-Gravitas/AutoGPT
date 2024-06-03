@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from forge.json import json_loads
+from forge.json.parsing import json_loads
 
 _JSON_FIXABLE: list[tuple[str, str]] = [
     # Missing comma
@@ -31,7 +31,7 @@ _JSON_FIXABLE: list[tuple[str, str]] = [
         '```json\n{"name": "John Doe", "age": 30}\n```',
         '{"name": "John Doe", "age": 30}',
     ),
-    # Mutliple problems
+    # Multiple problems
     (
         '{"name":"John Doe" "age": 30\n "empty": "","address": '
         "// random comment\n"

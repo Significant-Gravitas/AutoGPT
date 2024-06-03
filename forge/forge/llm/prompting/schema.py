@@ -27,7 +27,7 @@ class ChatPrompt(BaseModel):
     prefill_response: str = ""
 
     def raw(self) -> list[ChatMessageDict]:
-        return [m.dict() for m in self.messages]
+        return [m.dict() for m in self.messages]  # type: ignore
 
     def __str__(self):
         return "\n\n".join(

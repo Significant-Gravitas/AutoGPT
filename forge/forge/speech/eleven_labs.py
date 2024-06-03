@@ -66,7 +66,7 @@ class ElevenLabsSpeech(VoiceBase):
         if voice and voice not in PLACEHOLDERS:
             self._voices[voice_index] = voice
 
-    def _speech(self, text: str, voice_index: int = 0) -> bool:
+    def _speech(self, text: str, voice_id: int = 0) -> bool:
         """Speak text using elevenlabs.io's API
 
         Args:
@@ -77,7 +77,7 @@ class ElevenLabsSpeech(VoiceBase):
             bool: True if the request was successful, False otherwise
         """
         tts_url = (
-            f"https://api.elevenlabs.io/v1/text-to-speech/{self._voices[voice_index]}"
+            f"https://api.elevenlabs.io/v1/text-to-speech/{self._voices[voice_id]}"
         )
         response = requests.post(tts_url, headers=self._headers, json={"text": text})
 

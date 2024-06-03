@@ -1,11 +1,14 @@
 [flake8]
 max-line-length = 88
-extend-exclude =
-    .*_cache/,
-    .venv,
+# Ignore rules that conflict with Black code style
+extend-ignore = E203, W503
+exclude =
+    .git,
+    __pycache__/,
+    *.pyc,
+    .pytest_cache/,
+    venv*/,
+    .venv/,
     data/,
     logs/,
     tests/unit/data/,
-extend-ignore =
-    # No whitespace before ':' conflicts with Black style for slices
-    E203,

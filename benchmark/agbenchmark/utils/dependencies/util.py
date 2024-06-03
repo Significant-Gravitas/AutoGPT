@@ -38,7 +38,8 @@ def strip_nodeid_parameters(nodeid: str) -> str:
 
 def get_absolute_nodeid(nodeid: str, scope: str) -> str:
     """
-    Transform a possibly relative node id to an absolute one using the scope in which it is used.
+    Transform a possibly relative node id to an absolute one
+    using the scope in which it is used.
 
     >>> scope = 'test_file.py::TestClass::test'
     >>> get_absolute_nodeid('test2', scope)
@@ -49,7 +50,7 @@ def get_absolute_nodeid(nodeid: str, scope: str) -> str:
     'test_file2.py::TestClass2::test2'
     """
     parts = nodeid.split("::")
-    # Completely relative (test_name), so add the full current scope (either file::class or file)
+    # Completely relative (test_name): add the full current scope (file::class or file)
     if len(parts) == 1:
         base_nodeid = scope.rsplit("::", 1)[0]
         nodeid = f"{base_nodeid}::{nodeid}"

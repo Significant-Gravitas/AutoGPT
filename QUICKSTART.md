@@ -95,9 +95,9 @@ Examples: `SwiftyosAssistant`, `PwutsPRAgent`, `MySuperAgent`
 
 ## Running your Agent
 
-Your agent can started using the `./run agent start YOUR_AGENT_NAME`
+Your agent can be started using the command: `./run agent start YOUR_AGENT_NAME`
 
-This start the agent on `http://localhost:8000/`
+This starts the agent on the URL: `http://localhost:8000/`
 
 ![Start the Agent](docs/content/imgs/quickstart/009_start_agent.png)
 

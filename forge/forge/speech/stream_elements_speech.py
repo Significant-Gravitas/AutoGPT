@@ -24,8 +24,7 @@ class StreamElementsSpeech(VoiceBase):
         """Setup the voices, API key, etc."""
         self.config = config
 
-    def _speech(self, text: str, voice: str, _: int = 0) -> bool:
-        voice = self.config.voice
+    def _speech(self, text: str, voice_id: int = 0) -> bool:
         """Speak text using the streamelements API
 
         Args:
@@ -35,6 +34,7 @@ class StreamElementsSpeech(VoiceBase):
         Returns:
             bool: True if the request was successful, False otherwise
         """
+        voice = self.config.voice
         tts_url = (
             f"https://api.streamelements.com/kappa/v2/speech?voice={voice}&text={text}"
         )
