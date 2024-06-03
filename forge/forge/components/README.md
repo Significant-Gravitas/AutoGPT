@@ -9,7 +9,7 @@ Components assigned in the agent's `__init__` via `self` are automatically detec
 For example inside `__init__`: `self.my_component = MyComponent()`.
 You can use any valid Python variable name, what matters for the component to be detected is its type (`AgentComponent` or any protocol inheriting from it).
 
-Visit [Built-in Components](./built-in-components.md) to see what components are available out of the box.
+Visit [Built-in Components](../../../docs/content/forge/components/built-in-components.md) to see what components are available out of the box.
 
 ```py
 from forge.agent import BaseAgent
