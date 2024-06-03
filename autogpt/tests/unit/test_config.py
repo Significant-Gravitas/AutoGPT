@@ -8,13 +8,12 @@ from typing import Any
 from unittest import mock
 
 import pytest
-from forge.config.config import Config, ConfigBuilder
-from forge.llm.providers.schema import ChatModelInfo, ModelProviderName
+from forge.config.config import GPT_3_MODEL, GPT_4_MODEL, Config, ConfigBuilder
 from openai.pagination import AsyncPage
 from openai.types import Model
 from pydantic import SecretStr
 
-from autogpt.app.configurator import GPT_3_MODEL, GPT_4_MODEL, apply_overrides_to_config
+from autogpt.app.configurator import apply_overrides_to_config
 
 
 def test_initial_values(config: Config) -> None:
@@ -46,11 +45,7 @@ async def test_fallback_to_gpt3_if_gpt4_not_available(
         )
     )
 
-    await apply_overrides_to_config(
-        config=config,
-        gpt3only=False,
-        gpt4only=False,
-    )
+    await apply_overrides_to_config(config=config)
 
     assert config.fast_llm == GPT_3_MODEL
     assert config.smart_llm == GPT_3_MODEL
@@ -139,43 +134,3 @@ def test_azure_config(config_with_azure: Config) -> None:
         credentials.get_model_access_kwargs(config_with_azure.smart_llm)["model"]
         == "FAST-LLM_ID"
     )
-
-
-@pytest.mark.asyncio
-async def test_create_config_gpt4only(config: Config) -> None:
-    with mock.patch(
-        "forge.llm.providers.multi.MultiProvider.get_available_models"
-    ) as mock_get_models:
-        mock_get_models.return_value = [
-            ChatModelInfo(
-                name=GPT_4_MODEL,
-                provider_name=ModelProviderName.OPENAI,
-                max_tokens=4096,
-            )
-        ]
-        await apply_overrides_to_config(
-            config=config,
-            gpt4only=True,
-        )
-        assert config.fast_llm == GPT_4_MODEL
-        assert config.smart_llm == GPT_4_MODEL
-
-
-@pytest.mark.asyncio
-async def test_create_config_gpt3only(config: Config) -> None:
-    with mock.patch(
-        "forge.llm.providers.multi.MultiProvider.get_available_models"
-    ) as mock_get_models:
-        mock_get_models.return_value = [
-            ChatModelInfo(
-                name=GPT_3_MODEL,
-                provider_name=ModelProviderName.OPENAI,
-                max_tokens=4096,
-            )
-        ]
-        await apply_overrides_to_config(
-            config=config,
-            gpt3only=True,
-        )
-        assert config.fast_llm == GPT_3_MODEL
-        assert config.smart_llm == GPT_3_MODEL
