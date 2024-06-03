@@ -1,5 +1,6 @@
 import enum
 import logging
+import re
 from pathlib import Path
 from typing import Any, Iterator, Optional, Sequence
 
@@ -30,14 +31,14 @@ from ..schema import (
 
 
 class LlamafileModelName(str, enum.Enum):
-    LLAMAFILE_MISTRAL_7B_INSTRUCT = "mistral-7b-instruct-v0"
+    MISTRAL_7B_INSTRUCT = "mistral-7b-instruct-v0.2"
 
 
 LLAMAFILE_CHAT_MODELS = {
     info.name: info
     for info in [
         ChatModelInfo(
-            name=LlamafileModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT,
+            name=LlamafileModelName.MISTRAL_7B_INSTRUCT,
             provider_name=ModelProviderName.LLAMAFILE,
             prompt_token_cost=0.0,
             completion_token_cost=0.0,
@@ -114,16 +115,32 @@ class LlamafileProvider(
         # note: at the moment, llamafile only serves one model at a time (so this
         # list will only ever have one value). however, in the future, llamafile
         # may support multiple models, so leaving this method as-is for now.
+        self._logger.debug(f"Retrieved models: {_models}")
 
-        # clean up model names
+        # Clean up model names:
+        # 1. Remove file extension
+        # 2. Remove quantization info
         # e.g. 'mistral-7b-instruct-v0.2.Q5_K_M.gguf'
         #   -> 'mistral-7b-instruct-v0.2'
         # e.g. '/Users/kate/models/mistral-7b-instruct-v0.2.Q5_K_M.gguf'
         #   ->                    'mistral-7b-instruct-v0.2'
+        # e.g. 'llava-v1.5-7b-q4.gguf'
+        #   -> 'llava-v1.5-7b'
+        def clean_model_name(model_file: str) -> str:
+            name_without_ext = Path(model_file).name.rsplit(".", 1)[0]
+            name_without_Q = re.match(
+                r"^[a-zA-Z0-9]+([.\-](?!([qQ]|B?F)\d{1,2})[a-zA-Z0-9]+)*",
+                name_without_ext,
+            )
+            return name_without_Q.group() if name_without_Q else name_without_ext
+
+        clean_model_ids = [clean_model_name(m.id) for m in _models]
+        self._logger.debug(f"Cleaned model IDs: {clean_model_ids}")
+
         return [
-            LLAMAFILE_CHAT_MODELS[_id]
-            for m in _models
-            if (_id := Path(m.id).name.split(".")[0]) in LLAMAFILE_CHAT_MODELS
+            LLAMAFILE_CHAT_MODELS[id]
+            for id in clean_model_ids
+            if id in LLAMAFILE_CHAT_MODELS
         ]
 
     def get_tokenizer(self, model_name: LlamafileModelName) -> LlamafileTokenizer:
@@ -137,7 +154,7 @@ class LlamafileProvider(
         if isinstance(messages, ChatMessage):
             messages = [messages]
 
-        if model_name == LlamafileModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT:
+        if model_name == LlamafileModelName.MISTRAL_7B_INSTRUCT:
             # For mistral-instruct, num added tokens depends on if the message
             # is a prompt/instruction or an assistant-generated message.
             # - prompt gets [INST], [/INST] added and the first instruction
@@ -190,7 +207,7 @@ class LlamafileProvider(
             prompt_messages, model, functions, max_output_tokens, **kwargs
         )
 
-        if model == LlamafileModelName.LLAMAFILE_MISTRAL_7B_INSTRUCT:
+        if model == LlamafileModelName.MISTRAL_7B_INSTRUCT:
             messages = self._adapt_chat_messages_for_mistral_instruct(messages)
 
         if "seed" not in kwargs:
