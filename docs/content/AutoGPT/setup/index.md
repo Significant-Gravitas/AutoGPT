@@ -197,6 +197,18 @@ If you don't know which to choose, you can safely go with OpenAI*.
 With llamafile you can run models locally, which means no need to set up billing,
 and guaranteed data privacy.
 
+!!! warning
+    At the moment, llamafile only serves one model at a time. This means you can not
+    set `SMART_LLM` and `FAST_LLM` to two different llamafile models.
+
+!!! note
+    These instructions will download and use `mistral-7b-instruct-v0.2.Q5_K_M.llamafile`.
+    `mistral-7b-instruct-v0.2` is currently the only tested and supported model.
+    If you want to try other models, you'll have to add them to `LlamafileModelName` in
+    [`llamafile.py`][forge/llamafile.py].
+    For optimal results, you may also have to add some logic to adapt the message format,
+    like `LlamafileProvider._adapt_chat_messages_for_mistral_instruct(..)` does.
+
 1. Run the llamafile setup script:
    ```shell
    ./scripts/llamafile/setup.sh
@@ -207,5 +219,9 @@ and guaranteed data privacy.
    ./scripts/llamafile/serve.sh
    ```
 
-3. If the server is not running on `http://localhost:8080/v1`, adjust `LLAMAFILE_API_BASE`
-   in `.env` with the right base URL
+3. In `.env`, set `SMART_LLM`/`FAST_LLM` or both to `mistral-7b-instruct-v0.2`
+
+4. If the server is running on different address than `http://localhost:8080/v1`,
+   set `LLAMAFILE_API_BASE` in `.env` to the right base URL
+
+[forge/llamafile.py]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/forge/forge/llm/providers/llamafile/llamafile.py
