@@ -26,7 +26,7 @@ GPT_4_MODEL = OpenAIModelName.GPT4
 GPT_3_MODEL = OpenAIModelName.GPT3
 
 
-class Config(BaseConfig):
+class AppConfig(BaseConfig):
     name: str = "Auto-GPT configuration"
     description: str = "Default configuration for the Auto-GPT application."
 
@@ -102,11 +102,11 @@ class Config(BaseConfig):
         return v
 
 
-class ConfigBuilder(Configurable[Config]):
-    default_settings = Config()
+class ConfigBuilder(Configurable[AppConfig]):
+    default_settings = AppConfig()
 
     @classmethod
-    def build_config_from_env(cls, project_root: Path = PROJECT_ROOT) -> Config:
+    def build_config_from_env(cls, project_root: Path = PROJECT_ROOT) -> AppConfig:
         """Initialize the Config class"""
 
         config = cls.build_agent_configuration()
@@ -128,7 +128,7 @@ class ConfigBuilder(Configurable[Config]):
         return config
 
 
-def assert_config_has_openai_api_key(config: Config) -> None:
+def assert_config_has_openai_api_key(config: AppConfig) -> None:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
     key_pattern = r"^sk-(proj-)?\w{48}"
     openai_api_key = (

@@ -15,7 +15,7 @@ from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.agents.config import Config, ConfigBuilder
+from autogpt.app.config import AppConfig, ConfigBuilder
 from autogpt.app.main import _configure_llm_provider
 
 pytest_plugins = [
@@ -71,12 +71,12 @@ def setup_logger():
 
 
 @pytest.fixture
-def llm_provider(config: Config) -> MultiProvider:
+def llm_provider(config: AppConfig) -> MultiProvider:
     return _configure_llm_provider(config)
 
 
 @pytest.fixture
-def agent(config: Config, llm_provider: MultiProvider, storage: FileStorage) -> Agent:
+def agent(config: AppConfig, llm_provider: MultiProvider, storage: FileStorage) -> Agent:
     ai_profile = AIProfile(
         ai_name="Base",
         ai_role="A base AI",

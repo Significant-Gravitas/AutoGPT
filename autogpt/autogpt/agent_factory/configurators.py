@@ -6,14 +6,14 @@ from forge.file_storage.base import FileStorage
 from forge.llm.providers import MultiProvider
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.agents.config import Config
+from autogpt.app.config import AppConfig
 
 
 def create_agent(
     agent_id: str,
     task: str,
     ai_profile: AIProfile,
-    app_config: Config,
+    app_config: AppConfig,
     file_storage: FileStorage,
     llm_provider: MultiProvider,
     directives: Optional[AIDirectives] = None,
@@ -37,7 +37,7 @@ def create_agent(
 
 def configure_agent_with_state(
     state: AgentSettings,
-    app_config: Config,
+    app_config: AppConfig,
     file_storage: FileStorage,
     llm_provider: MultiProvider,
 ) -> Agent:
@@ -50,7 +50,7 @@ def configure_agent_with_state(
 
 
 def _configure_agent(
-    app_config: Config,
+    app_config: AppConfig,
     llm_provider: MultiProvider,
     file_storage: FileStorage,
     agent_id: str = "",
@@ -88,7 +88,7 @@ def create_agent_state(
     task: str,
     ai_profile: AIProfile,
     directives: AIDirectives,
-    app_config: Config,
+    app_config: AppConfig,
 ) -> AgentSettings:
     return AgentSettings(
         agent_id=agent_id,

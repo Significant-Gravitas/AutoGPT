@@ -5,7 +5,7 @@ from forge.models.config import SystemSettings, UserConfigurable
 from forge.speech.say import TTSConfig
 
 
-class BaseConfig(SystemSettings, arbitrary_types_allowed=True):
+class BaseConfig(SystemSettings):
     name: str = "Base configuration"
     description: str = "Default configuration for forge agent."
 

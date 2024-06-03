@@ -70,7 +70,7 @@ from .prompt_strategies.one_shot import (
 )
 
 if TYPE_CHECKING:
-    from autogpt.agents.config import Config
+    from autogpt.app.config import AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         settings: AgentSettings,
         llm_provider: MultiProvider,
         file_storage: FileStorage,
-        legacy_config: Config,
+        legacy_config: AppConfig,
     ):
         super().__init__(settings)
 

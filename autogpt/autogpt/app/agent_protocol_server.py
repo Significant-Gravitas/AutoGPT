@@ -35,7 +35,7 @@ from sentry_sdk import set_user
 from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agents.agent_manager import AgentManager
-from autogpt.agents.config import Config
+from autogpt.app.config import AppConfig
 from autogpt.app.utils import is_port_free
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ class AgentProtocolServer:
 
     def __init__(
         self,
-        app_config: Config,
+        app_config: AppConfig,
         database: AgentDB,
         file_storage: FileStorage,
         llm_provider: MultiProvider,

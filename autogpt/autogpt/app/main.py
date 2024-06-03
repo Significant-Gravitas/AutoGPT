@@ -32,8 +32,8 @@ from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agents.agent_manager import AgentManager
-from autogpt.agents.config import (
-    Config,
+from autogpt.app.config import (
+    AppConfig,
     ConfigBuilder,
     assert_config_has_openai_api_key,
 )
@@ -407,7 +407,7 @@ async def run_auto_gpt_server(
     )
 
 
-def _configure_llm_provider(config: Config) -> MultiProvider:
+def _configure_llm_provider(config: AppConfig) -> MultiProvider:
     multi_provider = MultiProvider()
     for model in [config.smart_llm, config.fast_llm]:
         # Ensure model providers for configured LLMs are available
@@ -650,7 +650,7 @@ def update_user(
 
 
 async def get_user_feedback(
-    config: Config,
+    config: AppConfig,
     ai_profile: AIProfile,
 ) -> tuple[UserFeedback, str, int | None]:
     """Gets the user's feedback on the assistant's reply.

@@ -6,11 +6,11 @@ from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.agents.config import Config
+from autogpt.app.config import AppConfig
 
 
 @pytest.fixture
-def dummy_agent(config: Config, llm_provider: MultiProvider):
+def dummy_agent(config: AppConfig, llm_provider: MultiProvider):
     ai_profile = AIProfile(
         ai_name="Dummy Agent",
         ai_role="Dummy Role",

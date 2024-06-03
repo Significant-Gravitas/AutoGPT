@@ -7,13 +7,13 @@ from typing import Literal, Optional
 import click
 from forge.llm.providers import ModelName, MultiProvider
 
-from autogpt.agents.config import GPT_3_MODEL, GPT_4_MODEL, Config
+from autogpt.app.config import GPT_3_MODEL, GPT_4_MODEL, AppConfig
 
 logger = logging.getLogger(__name__)
 
 
 async def apply_overrides_to_config(
-    config: Config,
+    config: AppConfig,
     continuous: bool = False,
     continuous_limit: Optional[int] = None,
     skip_reprompt: bool = False,
