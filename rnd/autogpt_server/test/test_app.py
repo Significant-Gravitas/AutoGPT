@@ -2,13 +2,14 @@ import pytest
 
 from autogpt_server.data import ExecutionQueue
 from autogpt_server.agent_api import start_server
-from autogpt_server.agent_executor import start_executor
+from autogpt_server.agent_executor import start_executors
 from fastapi.testclient import TestClient
+
 
 @pytest.fixture
 def client():
     execution_queue = ExecutionQueue()
-    start_executor(5, execution_queue)
+    start_executors(5, execution_queue)
     return TestClient(start_server(execution_queue, use_uvicorn=False))
 
 
@@ -27,5 +28,3 @@ def test_execute_agent(client):
 
     # TODO: Add assertion that the executor is executed after some time
     # Add this when db integration is done.
-
-
