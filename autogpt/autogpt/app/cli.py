@@ -1,5 +1,6 @@
 """Main script for the autogpt package."""
 from logging import _nameToLevel as logLevelMap
+from pathlib import Path
 from typing import Optional
 
 import click
@@ -114,7 +115,7 @@ def cli(ctx: click.Context):
 @click.option(
     "--config-file",
     help="Path to a json configuration file",
-    type=click.Path(exists=True, dir_okay=False, file_okay=True, resolve_path=True),
+    type=click.Path(exists=True, dir_okay=False, resolve_path=True),
 )
 def run(
     continuous: bool,
@@ -135,7 +136,7 @@ def run(
     log_level: Optional[str],
     log_format: Optional[str],
     log_file_format: Optional[str],
-    config_file: Optional[str],
+    config_file: Optional[Path],
 ) -> None:
     """
     Sets up and runs an agent, based on the task specified by the user, or resumes an

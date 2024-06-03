@@ -33,15 +33,6 @@ class WebSearchComponent(
     def __init__(self, config: Optional[WebSearchConfiguration] = None):
         super().__init__(config or WebSearchConfiguration())
 
-        if (
-            not self.config.google_api_key
-            or not self.config.google_custom_search_engine_id
-        ):
-            logger.info(
-                "Configure google_api_key and custom_search_engine_id "
-                "to use Google API search."
-            )
-
     def get_resources(self) -> Iterator[str]:
         yield "Internet access for searches and information gathering."
 

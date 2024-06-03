@@ -76,7 +76,7 @@ async def run_auto_gpt(
     constraints: Optional[list[str]] = None,
     best_practices: Optional[list[str]] = None,
     override_directives: bool = False,
-    config_file: Optional[str] = None,
+    config_file: Optional[Path] = None,
 ):
     # Set up configuration
     config = ConfigBuilder.build_config_from_env()
@@ -314,11 +314,10 @@ async def run_auto_gpt(
             )
 
     # Load component configuration from file
-    config_file_path: Optional[str] = config_file or config.config_file
-    if config_file_path:
+    if _config_file := config_file or config.config_file:
         try:
-            with open(config_file_path, "r") as f:
-                logger.info(f"Loading component configuration from {config_file_path}")
+            with open(_config_file, "r") as f:
+                logger.info(f"Loading component configuration from {config_file}")
                 agent.deserialize_configs(f.read())
         except Exception as e:
             logger.error(f"Could not load component configuration: {e}")
