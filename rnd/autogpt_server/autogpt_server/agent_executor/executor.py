@@ -1,7 +1,7 @@
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import Process
+from multiprocessing import Process, freeze_support
 
 from autogpt_server.data import ExecutionQueue
 
@@ -39,4 +39,5 @@ def start_executors(pool_size: int, queue: ExecutionQueue) -> None:
     executor_process = Process(
         target=AgentExecutor.start_executor, args=(pool_size, queue)
     )
+    freeze_support()
     executor_process.start()
