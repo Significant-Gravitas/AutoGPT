@@ -4,37 +4,36 @@ version = "0.1.0"
 description = ""
 authors = ["Nicholas Tindle <nicholas.tindle@agpt.co>"]
 readme = "README.md"
+packages = [{ include = "main.py", from = "." }]
 
 [tool.poetry.dependencies]
 python = "^3.11"
 cx-Freeze = "7.0.0"
-autogpt-forge = { path = "../forge", develop = true }
-agpt = { path = "../autogpt", develop = true }
-# agbenchmark = { path = "../benchmark" }
-autogpt_server = { path = "../rnd/autogpt_server", develop = true }
-
+fastapi = "^0.111.0"
+hypercorn = "^0.17.3"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 
-[tool.cxfreeze]
-executables = [
-    { script = "main.py", base = "console", target_name = "autogpt" },
-]
-
-[tool.cxfreeze.build_exe]
-excludes = []
-zip_include_packages = ["encodings", "PySide6", "shiboken6", "multiprocessing"]
-
-# [tool.cxfreeze.bdist_msi]
-# extensions = [
-#     { "extension" = "txt", "verb" = "open", executable = "notepad.exe", context = "Edit with hello" },
+# [tool.cxfreeze]
+# executables = [
+#     { script = "uvicorn", base = "console", target_name = "autogpt" },
 # ]
 
-[tool.cxfreeze.bdist_mac]
-# iconfile = 'icon.icns'
-bundle_name = 'AutoGPT'
-# plist_items = [["test", "test"], ["test2", "test2"]]
-include_resources = ['IMG_3775.jpeg']
+# [tool.cxfreeze.build_exe]
+# excludes = []
+# includes = ['main']
+# zip_include_packages = ["encodings", "PySide6", "shiboken6", "multiprocessing"]
+
+# # [tool.cxfreeze.bdist_msi]
+# # extensions = [
+# #     { "extension" = "txt", "verb" = "open", executable = "notepad.exe", context = "Edit with hello" },
+# # ]
+
+# [tool.cxfreeze.bdist_mac]
+# # iconfile = 'icon.icns'
+# bundle_name = 'AutoGPT'
+# # plist_items = [["test", "test"], ["test2", "test2"]]
+# include_resources = ['IMG_3775.jpeg']

@@ -1,12 +1,10 @@
-from multiprocessing import Process, freeze_support
+from multiprocessing import freeze_support
+from fastapi.responses import Response
+from fastapi import FastAPI
+
+app = FastAPI()
 
 
-def f():
-    print("Hello from cx_Freeze")
-
-from 
-
-
-if __name__ == "__main__":
-    freeze_support()
-    Process(target=f).start()
+@app.get("/")
+async def index() -> Response:
+    return Response(status_code=204)
