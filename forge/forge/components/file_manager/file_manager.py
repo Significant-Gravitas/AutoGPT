@@ -3,19 +3,20 @@ import os
 from pathlib import Path
 from typing import Iterator, Optional
 
+from pydantic import BaseModel
+
 from forge.agent import BaseAgentSettings
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.file_storage.base import FileStorage
-from forge.models.config import ComponentConfiguration
 from forge.models.json_schema import JSONSchema
 from forge.utils.file_operations import decode_textual_file
 
 logger = logging.getLogger(__name__)
 
 
-class FileManagerConfiguration(ComponentConfiguration):
+class FileManagerConfiguration(BaseModel):
     files_path: str
     workspace_path: str
 

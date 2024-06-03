@@ -10,21 +10,21 @@ from typing import Iterator, Literal, Optional
 import requests
 from openai import OpenAI
 from PIL import Image
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
 from forge.file_storage import FileStorage
 from forge.llm.providers.openai import OpenAICredentials
-from forge.models.config import ComponentConfiguration, FromEnv
+from forge.models.config import FromEnv
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError
 
 logger = logging.getLogger(__name__)
 
 
-class ImageGeneratorConfiguration(ComponentConfiguration):
+class ImageGeneratorConfiguration(BaseModel):
     image_provider: Literal["dalle"] | Literal["huggingface"] | Literal[
         "sdwebui"
     ] = "dalle"

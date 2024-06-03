@@ -7,6 +7,7 @@ from typing import Iterator, Literal, Optional, Type
 from urllib.request import urlretrieve
 
 from bs4 import BeautifulSoup
+from pydantic import BaseModel
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeDriverService
@@ -35,7 +36,6 @@ from forge.content_processing.html import extract_hyperlinks, format_hyperlinks
 from forge.content_processing.text import extract_information, summarize_text
 from forge.llm.providers import MultiProvider
 from forge.llm.providers.multi import ModelName
-from forge.models.config import ComponentConfiguration
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError, TooMuchOutputError
 from forge.utils.url_validator import validate_url
@@ -54,7 +54,7 @@ class BrowsingError(CommandExecutionError):
     """An error occurred while trying to browse the page"""
 
 
-class WebSeleniumConfiguration(ComponentConfiguration):
+class WebSeleniumConfiguration(BaseModel):
     model_name: ModelName = OpenAIModelName.GPT3
     web_browser: Literal["chrome"] | Literal["firefox"] | Literal["safari"] | Literal[
         "edge"

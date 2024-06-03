@@ -2,18 +2,19 @@ from __future__ import annotations
 
 from typing import Callable, Iterator, Optional
 
+from pydantic import BaseModel
+
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
 from forge.llm.prompting.utils import indent
 from forge.llm.providers import ChatMessage, MultiProvider
 from forge.llm.providers.multi import ModelName
 from forge.llm.providers.openai import OpenAIModelName
-from forge.models.config import ComponentConfiguration
 
 from .model import ActionResult, AnyProposal, Episode, EpisodicActionHistory
 
 
-class ActionHistoryConfiguration(ComponentConfiguration):
+class ActionHistoryConfiguration(BaseModel):
     model_name: ModelName = OpenAIModelName.GPT3
     max_tokens: int = 1024
     spacy_language_model: str = "en_core_web_sm"

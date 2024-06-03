@@ -10,9 +10,9 @@ from typing import Iterator, Literal, Optional
 import docker
 from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
-from pydantic import Field
+from pydantic import BaseModel, Field
 
-from forge.agent.components import ComponentConfiguration, ConfigurableComponent
+from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
 from forge.file_storage import FileStorage
@@ -53,7 +53,7 @@ class CodeExecutionError(CommandExecutionError):
     """The operation (an attempt to run arbitrary code) returned an error"""
 
 
-class CodeExecutorConfiguration(ComponentConfiguration):
+class CodeExecutorConfiguration(BaseModel):
     execute_local_commands: bool = False
     shell_command_control: Literal["allowlist"] | Literal["denylist"] = "allowlist"
     shell_allowlist: list[str] = Field(default_factory=list)

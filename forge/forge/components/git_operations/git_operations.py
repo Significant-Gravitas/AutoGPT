@@ -2,18 +2,18 @@ from pathlib import Path
 from typing import Iterator, Optional
 
 from git.repo import Repo
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
-from forge.models.config import ComponentConfiguration, FromEnv
+from forge.models.config import FromEnv
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError
 from forge.utils.url_validator import validate_url
 
 
-class GitOperationsConfiguration(ComponentConfiguration):
+class GitOperationsConfiguration(BaseModel):
     github_username: Optional[str] = FromEnv("GITHUB_USERNAME")
     github_api_key: Optional[SecretStr] = FromEnv("GITHUB_API_KEY")
 

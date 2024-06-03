@@ -4,12 +4,12 @@ import time
 from typing import Iterator, Optional
 
 from duckduckgo_search import DDGS
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
-from forge.models.config import ComponentConfiguration, FromEnv
+from forge.models.config import FromEnv
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import ConfigurationError
 
@@ -18,7 +18,7 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
 logger = logging.getLogger(__name__)
 
 
-class WebSearchConfiguration(ComponentConfiguration):
+class WebSearchConfiguration(BaseModel):
     google_api_key: Optional[SecretStr] = FromEnv("GOOGLE_API_KEY")
     google_custom_search_engine_id: Optional[SecretStr] = FromEnv(
         "GOOGLE_CUSTOM_SEARCH_ENGINE_ID"

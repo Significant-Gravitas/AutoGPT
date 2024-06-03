@@ -3,10 +3,10 @@ from __future__ import annotations
 from abc import ABC
 from typing import Callable, Generic, Optional, TypeVar
 
-from forge.models.config import ComponentConfiguration
+from pydantic import BaseModel
 
 T = TypeVar("T", bound="AgentComponent")
-C = TypeVar("C", bound=ComponentConfiguration)
+C = TypeVar("C", bound=BaseModel)
 
 
 class AgentComponent(ABC):
