@@ -62,8 +62,6 @@ async def run_auto_gpt(
     log_level: Optional[str] = None,
     log_format: Optional[str] = None,
     log_file_format: Optional[str] = None,
-    gpt3only: bool = False,
-    gpt4only: bool = False,
     browser_name: Optional[str] = None,
     allow_downloads: bool = False,
     skip_news: bool = False,
@@ -108,8 +106,6 @@ async def run_auto_gpt(
         continuous=continuous,
         continuous_limit=continuous_limit,
         skip_reprompt=skip_reprompt,
-        gpt3only=gpt3only,
-        gpt4only=gpt4only,
         browser_name=browser_name,
         allow_downloads=allow_downloads,
         skip_news=skip_news,
@@ -357,8 +353,6 @@ async def run_auto_gpt_server(
     log_level: Optional[str] = None,
     log_format: Optional[str] = None,
     log_file_format: Optional[str] = None,
-    gpt3only: bool = False,
-    gpt4only: bool = False,
     browser_name: Optional[str] = None,
     allow_downloads: bool = False,
     install_plugin_deps: bool = False,
@@ -391,8 +385,6 @@ async def run_auto_gpt_server(
 
     await apply_overrides_to_config(
         config=config,
-        gpt3only=gpt3only,
-        gpt4only=gpt4only,
         browser_name=browser_name,
         allow_downloads=allow_downloads,
     )

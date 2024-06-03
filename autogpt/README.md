@@ -68,8 +68,6 @@ Options:
                                   continuous mode
   --speak                         Enable Speak Mode
   --debug                         Enable Debug Mode
-  --gpt3only                      Enable GPT3.5 Only Mode
-  --gpt4only                      Enable GPT4 Only Mode
   -b, --browser-name TEXT         Specifies which web-browser to use when
                                   using selenium to scrape the web.
   --allow-downloads               Dangerous: Allows AutoGPT to download files
@@ -113,8 +111,6 @@ Usage: python -m autogpt serve [OPTIONS]
 
 Options:
   --debug                     Enable Debug Mode
-  --gpt3only                  Enable GPT3.5 Only Mode
-  --gpt4only                  Enable GPT4 Only Mode
   -b, --browser-name TEXT     Specifies which web-browser to use when using
                               selenium to scrape the web.
   --allow-downloads           Dangerous: Allows AutoGPT to download files
