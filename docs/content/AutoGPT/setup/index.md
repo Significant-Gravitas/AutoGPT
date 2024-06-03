@@ -82,6 +82,15 @@ See the [user guide](../usage.md) for further instructions.
 
 ## Setting up LLM providers
 
+You can use AutoGPT with any of the following LLM providers.
+Each of them comes with its own setup instructions.
+
+AutoGPT was originally built on top of OpenAI's GPT-4, but now you can get
+similar and interesting results using other models/providers too.
+If you don't know which to choose, you can safely go with OpenAI*.
+
+<small>* subject to change</small>
+
 ### OpenAI
 
 !!! attention
