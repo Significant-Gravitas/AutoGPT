@@ -76,7 +76,8 @@
 
 
 4. Download [`.env.template`][.env.template] and save it as `.env` in the AutoGPT folder.
-5. Follow the [configuration](#configuration) steps.
+5. Follow the standard [configuration instructions](../index.md#completing-the-setup),
+   from step 3 onwards and excluding `poetry install` steps.
 6. Pull the latest image from [Docker Hub]
 
     ```shell
@@ -90,47 +91,6 @@
 [.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt/.env.template
 [Docker Hub]: https://hub.docker.com/r/significantgravitas/auto-gpt
 
-## Configuration
-
-1. Open the `.env` file in a text editor. This file may
-    be hidden by default in some operating systems due to the dot prefix. To reveal
-    hidden files, follow the instructions for your specific operating system:
-    [Windows][show hidden files/Windows], [macOS][show hidden files/macOS].
-2. Find the line that says `OPENAI_API_KEY=`.
-3. After the `=`, enter your unique OpenAI API Key *without any quotes or spaces*.
-4. Enter any other API keys or tokens for services you would like to use.
-
-    !!! note
-        To activate and adjust a setting, remove the `# ` prefix.
-
-5. Save and close the `.env` file.
-
-!!! info "Using a GPT Azure-instance"
-    If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and
-    make an Azure configuration file:
-
-    - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all the deployment IDs for the relevant models in the `azure_model_map` section.
-
-    Example:
-
-    ```yaml
-    # Please specify all of these values as double-quoted strings
-    # Replace string in angled brackets (<>) to your own deployment Name
-    azure_model_map:
-        gpt-4-turbo-preview: "<gpt-4-turbo deployment ID>"
-        ...
-    ```
-
-    Details can be found in the [openai-python docs], and in the [Azure OpenAI docs] for the embedding model.
-    If you're on Windows you may need to install an [MSVC library](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170).
-
-    **Note:** Azure support has been dropped in `master`, so these instructions will only work with v0.4.7 (or earlier).
-
-[show hidden files/Windows]: https://support.microsoft.com/en-us/windows/view-hidden-files-and-folders-in-windows-97fbc472-c603-9d90-91d0-1166d1d9f4b5
-[show hidden files/macOS]: https://www.pcmag.com/how-to/how-to-access-your-macs-hidden-files
-[openai-python docs]: https://github.com/openai/openai-python#microsoft-azure-endpoints
-[Azure OpenAI docs]: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line
-
 ## Developer Setup
 
 !!! tip
@@ -138,7 +98,8 @@
     changes to the codebase.
 
 1. Copy `.env.template` to `.env`.
-2. Follow the standard [configuration](#configuration) steps above.
+2. Follow the standard [configuration instructions](../index.md#completing-the-setup),
+   from step 3 onwards and excluding `poetry install` steps.
 
 ## Running AutoGPT with Docker
 
