@@ -1,6 +1,5 @@
 """Main script for the autogpt package."""
 from logging import _nameToLevel as logLevelMap
-from pathlib import Path
 from typing import Optional
 
 import click

@@ -23,6 +23,7 @@ from selenium.webdriver.safari.options import Options as SafariOptions
 from selenium.webdriver.safari.webdriver import WebDriver as SafariDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
+from forge.llm.providers.openai import OpenAIModelName
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
@@ -32,7 +33,7 @@ from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.content_processing.html import extract_hyperlinks, format_hyperlinks
 from forge.content_processing.text import extract_information, summarize_text
-from forge.llm.providers import ChatModelInfo, MultiProvider
+from forge.llm.providers import MultiProvider
 from forge.llm.providers.multi import ModelName
 from forge.models.config import ComponentConfiguration
 from forge.models.json_schema import JSONSchema
@@ -54,6 +55,7 @@ class BrowsingError(CommandExecutionError):
 
 
 class WebSeleniumConfiguration(ComponentConfiguration):
+    model_name: ModelName = OpenAIModelName.GPT3
     web_browser: Literal["chrome"] | Literal["firefox"] | Literal["safari"] | Literal[
         "edge"
     ] = "chrome"
@@ -72,16 +74,12 @@ class WebSeleniumComponent(
 
     def __init__(
         self,
-        llm_model_name: ModelName,
         llm_provider: MultiProvider,
-        model_info: ChatModelInfo,
         data_dir: Path,
         config: Optional[WebSeleniumConfiguration] = None,
     ):
         super().__init__(config or WebSeleniumConfiguration())
-        self.model_name = llm_model_name
         self.llm_provider = llm_provider
-        self.model_info = model_info
         self.data_dir = data_dir
 
     def get_resources(self) -> Iterator[str]:
@@ -161,7 +159,7 @@ class WebSeleniumComponent(
             elif get_raw_content:
                 if (
                     output_tokens := self.llm_provider.count_tokens(
-                        text, self.model_info.name
+                        text, self.config.model_name
                     )
                 ) > MAX_RAW_CONTENT_LENGTH:
                     oversize_factor = round(output_tokens / MAX_RAW_CONTENT_LENGTH, 1)
@@ -379,7 +377,7 @@ class WebSeleniumComponent(
                 text,
                 topics_of_interest=topics_of_interest,
                 llm_provider=self.llm_provider,
-                model_name=self.model_name,
+                model_name=self.config.model_name,
                 spacy_model=self.config.browse_spacy_language_model,
             )
             return "\n".join(f"* {i}" for i in information)
@@ -388,7 +386,7 @@ class WebSeleniumComponent(
                 text,
                 question=question,
                 llm_provider=self.llm_provider,
-                model_name=self.model_name,
+                model_name=self.config.model_name,
                 spacy_model=self.config.browse_spacy_language_model,
             )
             return result

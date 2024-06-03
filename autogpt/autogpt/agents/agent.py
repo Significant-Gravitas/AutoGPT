@@ -124,9 +124,8 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         self.history = ActionHistoryComponent(
             settings.history,
             lambda x: self.llm_provider.count_tokens(x, self.llm.name),
-            legacy_config.fast_llm,
             llm_provider,
-            ActionHistoryConfiguration(max_tokens=self.send_token_limit),
+            ActionHistoryConfiguration(model_name=legacy_config.fast_llm, max_tokens=self.send_token_limit),
         ).run_after(WatchdogComponent)
         self.user_interaction = UserInteractionComponent(
             legacy_config.noninteractive_mode
@@ -142,9 +141,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         self.image_gen = ImageGeneratorComponent(self.file_manager.workspace)
         self.web_search = WebSearchComponent()
         self.web_selenium = WebSeleniumComponent(
-            legacy_config.fast_llm,
             llm_provider,
-            self.llm,
             legacy_config.app_data_dir,
         )
         self.context = ContextComponent(self.file_manager.workspace, settings.context)

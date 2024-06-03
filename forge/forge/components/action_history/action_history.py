@@ -7,12 +7,14 @@ from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
 from forge.llm.prompting.utils import indent
 from forge.llm.providers import ChatMessage, MultiProvider
 from forge.llm.providers.multi import ModelName
+from forge.llm.providers.openai import OpenAIModelName
 from forge.models.config import ComponentConfiguration
 
 from .model import ActionResult, AnyProposal, Episode, EpisodicActionHistory
 
 
 class ActionHistoryConfiguration(ComponentConfiguration):
+    model_name: ModelName = OpenAIModelName.GPT3
     max_tokens: int = 1024
     spacy_language_model: str = "en_core_web_sm"
 
@@ -29,14 +31,12 @@ class ActionHistoryComponent(
         self,
         event_history: EpisodicActionHistory[AnyProposal],
         count_tokens: Callable[[str], int],
-        llm_model_name: ModelName,
         llm_provider: MultiProvider,
         config: Optional[ActionHistoryConfiguration] = None,
     ) -> None:
         super().__init__(config or ActionHistoryConfiguration())
         self.event_history = event_history
         self.count_tokens = count_tokens
-        self.model_name = llm_model_name
         self.llm_provider = llm_provider
 
     def get_messages(self) -> Iterator[ChatMessage]:
@@ -53,7 +53,7 @@ class ActionHistoryComponent(
     async def after_execute(self, result: ActionResult) -> None:
         self.event_history.register_result(result)
         await self.event_history.handle_compression(
-            self.llm_provider, self.model_name, self.config.spacy_language_model
+            self.llm_provider, self.config.model_name, self.config.spacy_language_model
         )
 
     def _compile_progress(
