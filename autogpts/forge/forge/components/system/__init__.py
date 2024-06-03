@@ -1,1 +1,0 @@
-from .system import SystemComponent

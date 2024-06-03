@@ -93,12 +93,13 @@ To learn more about commands see [🛠️ Commands](./commands.md).
 
 After components provided all necessary data, the agent needs to build the final prompt that will be send to a llm.
 Currently, `PromptStrategy` (*not* a protocol) is responsible for building the final prompt.
-If you want to change the way the prompt is built, you need to create a new `PromptStrategy` class, and then call relavant methods in your agent class.
-You can have a look at the default strategy used by the AutoGPT Agent: [OneShotAgentPromptStrategy](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/autogpt/agents/prompt_strategies/one_shot.py), and how it's used in the [Agent](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/autogpt/agents/agent.py) (search for `self.prompt_strategy`).
+
+If you want to change the way the prompt is built, you need to create a new `PromptStrategy` class, and then call relevant methods in your agent class.
+You can have a look at the default strategy used by the AutoGPT Agent: [OneShotAgentPromptStrategy](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt/autogpt/agents/prompt_strategies/one_shot.py), and how it's used in the [Agent](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt/autogpt/agents/agent.py) (search for `self.prompt_strategy`).
 
 ## Example `UserInteractionComponent`
 
-Let's create a slighlty simplified version of the component that is used by the built-in agent.
+Let's create a slightly simplified version of the component that is used by the built-in agent.
 It gives an ability for the agent to ask user for input in the terminal.
 
 1. Create a class for the component that inherits from `CommandProvider`.
@@ -202,7 +203,7 @@ class MyAgent(Agent):
     def __init__(
         self,
         settings: AgentSettings,
-        llm_provider: ChatModelProvider,
+        llm_provider: MultiProvider,
         file_storage: FileStorage,
         legacy_config: Config,
     ):
@@ -219,7 +220,7 @@ class MyAgent(Agent):
     def __init__(
         self,
         settings: AgentSettings,
-        llm_provider: ChatModelProvider,
+        llm_provider: MultiProvider,
         file_storage: FileStorage,
         legacy_config: Config,
     ):
@@ -233,7 +234,7 @@ class MyAgent(Agent):
 
 ## Learn more
 
-The best place to see more examples is to look at the built-in components in the [autogpt/components](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/autogpt/components/) and [autogpt/commands](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/autogpt/commands/) directories.
+The best place to see more examples is to look at the built-in components in the [autogpt/components](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt/autogpt/components/) and [autogpt/commands](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt/autogpt/commands/) directories.
 
 Guide on how to extend the built-in agent and build your own: [🤖 Agents](./agents.md)  
 Order of some components matters, see [🧩 Components](./components.md) to learn more about components and how they can be customized.  

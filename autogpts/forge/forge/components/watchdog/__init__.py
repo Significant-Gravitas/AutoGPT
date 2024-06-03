@@ -1,1 +1,0 @@
-from .watchdog import WatchdogComponent

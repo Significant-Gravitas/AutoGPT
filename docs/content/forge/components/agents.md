@@ -1,1 +1,1 @@
-../../../../autogpts/autogpt/autogpt/agents/README.md
+../../../../autogpt/autogpt/agents/README.md

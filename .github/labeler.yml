@@ -1,10 +1,10 @@
 AutoGPT Agent:
 - changed-files:
-  - any-glob-to-any-file: autogpts/autogpt/**
+  - any-glob-to-any-file: autogpt/**
 
 Forge:
 - changed-files:
-  - any-glob-to-any-file: autogpts/forge/**
+  - any-glob-to-any-file: forge/**
 
 Benchmark:
 - changed-files:

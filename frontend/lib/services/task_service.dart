@@ -40,7 +40,7 @@ class TaskService {
   }
 
   /// Fetches all tasks across all pages.
-  // TODO: Temporaily make page size 10000 until pagination is fixed
+  // TODO: Temporarily make page size 10000 until pagination is fixed
   Future<List<Task>> fetchAllTasks({int pageSize = 10000}) async {
     int currentPage = 1;
     List<Task> allTasks = [];

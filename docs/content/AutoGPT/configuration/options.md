@@ -4,7 +4,6 @@ Configuration is controlled through the `Config` object. You can set configurati
 
 ## Environment Variables
 
-- `AI_SETTINGS_FILE`: Location of the AI Settings file relative to the AutoGPT root directory. Default: ai_settings.yaml
 - `AUDIO_TO_TEXT_PROVIDER`: Audio To Text Provider. Only option currently is `huggingface`. Default: huggingface
 - `AUTHORISE_COMMAND_KEY`: Key response accepted when authorising commands. Default: y
 - `ANTHROPIC_API_KEY`: Set this if you want to use Anthropic models with AutoGPT
@@ -23,21 +22,16 @@ Configuration is controlled through the `Config` object. You can set configurati
 - `GITHUB_USERNAME`: GitHub Username. Optional.
 - `GOOGLE_API_KEY`: Google API key. Optional.
 - `GOOGLE_CUSTOM_SEARCH_ENGINE_ID`: [Google custom search engine ID](https://programmablesearchengine.google.com/controlpanel/all). Optional.
+- `GROQ_API_KEY`: Set this if you want to use Groq models with AutoGPT
 - `HEADLESS_BROWSER`: Use a headless browser while AutoGPT uses a web browser. Setting to `False` will allow you to see AutoGPT operate the browser. Default: True
 - `HUGGINGFACE_API_TOKEN`: HuggingFace API, to be used for both image generation and audio to text. Optional.
 - `HUGGINGFACE_AUDIO_TO_TEXT_MODEL`: HuggingFace audio to text model. Default: CompVis/stable-diffusion-v1-4
 - `HUGGINGFACE_IMAGE_MODEL`: HuggingFace model to use for image generation. Default: CompVis/stable-diffusion-v1-4
 - `IMAGE_PROVIDER`: Image provider. Options are `dalle`, `huggingface`, and `sdwebui`. Default: dalle
 - `IMAGE_SIZE`: Default size of image to generate. Default: 256
-- `MEMORY_BACKEND`: Memory back-end to use. Currently `json_file` is the only supported and enabled backend. Default: json_file
-- `MEMORY_INDEX`: Value used in the Memory backend for scoping, naming, or indexing. Default: auto-gpt
 - `OPENAI_API_KEY`: *REQUIRED*- Your [OpenAI API Key](https://platform.openai.com/account/api-keys).
 - `OPENAI_ORGANIZATION`: Organization ID in OpenAI. Optional.
 - `PLAIN_OUTPUT`: Plain output, which disables the spinner. Default: False
-- `PROMPT_SETTINGS_FILE`: Location of the Prompt Settings file relative to the AutoGPT root directory. Default: prompt_settings.yaml
-- `REDIS_HOST`: Redis Host. Default: localhost
-- `REDIS_PASSWORD`: Redis Password. Optional. Default:
-- `REDIS_PORT`: Redis Port. Default: 6379
 - `RESTRICT_TO_WORKSPACE`: The restrict file reading and writing to the workspace directory. Default: True
 - `SD_WEBUI_AUTH`: Stable Diffusion Web UI username:password pair. Optional.
 - `SD_WEBUI_URL`: Stable Diffusion Web UI URL. Default: http://localhost:7860
