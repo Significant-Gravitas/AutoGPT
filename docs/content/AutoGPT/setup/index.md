@@ -79,27 +79,22 @@ See the [user guide](../usage.md) for further instructions.
 [show hidden files/Windows]: https://support.microsoft.com/en-us/windows/view-hidden-files-and-folders-in-windows-97fbc472-c603-9d90-91d0-1166d1d9f4b5
 [show hidden files/macOS]: https://www.pcmag.com/how-to/how-to-access-your-macs-hidden-files
 
+
 ## Setting up LLM providers
 
 ### OpenAI
 
-Get your OpenAI API key from:
-[https://platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys).
-
 !!! attention
-    To use AutoGPT with GPT-4, you need to set up a paid OpenAI account with some money
-    in it. Please refer to OpenAI for further instructions ([link][openai/gpt-4-access]).
-    Free accounts are [limited][openai/api limits] to GPT-3.5 with only 3 requests per minute.
+    To use AutoGPT with GPT-4 (recommended), you need to set up a paid OpenAI account
+    with some money in it. Please refer to OpenAI for further instructions ([link][openai/help-gpt-4-access]).
+    Free accounts are [limited][openai/api-limits] to GPT-3.5 with only 3 requests per minute.
 
-    You can set up a paid account at [Manage account > Billing > Overview](https://platform.openai.com/account/billing/overview).
-
-[openai/gpt-4-access]: https://help.openai.com/en/articles/7102672-how-can-i-access-gpt-4-gpt-4-turbo-and-gpt-4o#h_9bddcd317c
-[openai/api limits]: https://platform.openai.com/docs/guides/rate-limits/free-tier-rate-limits
-
-1. Open `.env`
-4. Find the line that says `OPENAI_API_KEY=`.
-5. Insert your OpenAI API Key directly after = without quotes or spaces..
-    ```yaml
+1. Make sure you have a paid account with some credits set up: [Settings > Organization > Billing][openai/billing]
+1. Get your OpenAI API key from: [API keys][openai/api-keys]
+2. Open `.env`
+3. Find the line that says `OPENAI_API_KEY=`
+4. Insert your OpenAI API Key directly after = without quotes or spaces:
+    ```ini
     OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     ```
 
@@ -122,10 +117,40 @@ Get your OpenAI API key from:
             ...
         ```
 
-        Details can be found in the [openai-python docs], and in the [Azure OpenAI docs] for the embedding model.
+        Details can be found in the [openai/python-sdk/azure], and in the [Azure OpenAI docs] for the embedding model.
         If you're on Windows you may need to install an [MSVC library](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170).
 
 !!! important
     Keep an eye on your API costs on [the Usage page](https://platform.openai.com/account/usage).
 
-[openai-python docs]: https://github.com/openai/openai-python?tab=readme-ov-file#microsoft-azure-openai
+
+[openai/billing]: https://platform.openai.com/account/billing/overview
+[openai/api-keys]: https://platform.openai.com/account/api-keys
+[openai/api-limits]: https://platform.openai.com/docs/guides/rate-limits/free-tier-rate-limits
+[openai/help-gpt-4-access]: https://help.openai.com/en/articles/7102672-how-can-i-access-gpt-4-gpt-4-turbo-and-gpt-4o#h_9bddcd317c
+[openai/python-sdk/azure]: https://github.com/openai/openai-python?tab=readme-ov-file#microsoft-azure-openai
+
+
+### Anthropic
+
+1. Make sure you have credits in your account: [Settings > Plans & billing][anthropic/billing]
+2. Get your Anthropic API key from [Settings > API keys][anthropic/api-keys]
+3. Open `.env`
+4. Find the line that says `ANTHROPIC_API_KEY=`
+5. Insert your Anthropic API Key directly after = without quotes or spaces:
+    ```ini
+    ANTHROPIC_API_KEY=sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    ```
+6. Set `SMART_LLM` and/or `FAST_LLM` to the Claude 3 model you want to use.
+   See Anthropic's [models overview][anthropic/models] for info on the available models.
+   Example:
+    ```ini
+    SMART_LLM=claude-3-opus-20240229
+    ```
+
+!!! important
+    Keep an eye on your API costs on [the Usage page](https://console.anthropic.com/settings/usage).
+
+[anthropic/billing]: https://console.anthropic.com/settings/plans
+[anthropic/api-keys]: https://console.anthropic.com/settings/keys
+[anthropic/models]: https://docs.anthropic.com/en/docs/models-overview
