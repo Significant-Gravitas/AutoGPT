@@ -29,7 +29,9 @@ class AgentExecutor:
                     time.sleep(1)
                     continue
                 executor.submit(
-                    AgentExecutor.__execute, execution.execution_id, execution.data
+                    AgentExecutor.__execute,
+                    execution.execution_id,
+                    execution.data,
                 )
 
 
