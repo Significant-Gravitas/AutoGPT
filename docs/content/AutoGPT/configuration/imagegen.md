@@ -12,12 +12,6 @@ In `.env`, make sure `IMAGE_PROVIDER` is commented (or set to `dalle`):
 # IMAGE_PROVIDER=dalle    # this is the default
 ```
 
-Further optional configuration:
-
-| Config variable  | Values             |                |
-| ---------------- | ------------------ | -------------- |
-| `IMAGE_SIZE`     | `256` `512` `1024` | default: `256` |
-
 ## Hugging Face
 
 To use text-to-image models from Hugging Face, you need a Hugging Face API token.

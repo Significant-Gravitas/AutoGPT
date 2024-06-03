@@ -74,18 +74,6 @@ class CodeExecutorComponent(
         super().__init__(config or CodeExecutorConfiguration())
         self.workspace = workspace
 
-        if not we_are_running_in_a_docker_container() and not is_docker_available():
-            logger.info(
-                "Docker is not available or does not support Linux containers. "
-                "The code execution commands will not be available."
-            )
-
-        if not self.config.execute_local_commands:
-            logger.info(
-                "Local shell commands are disabled. To enable them,"
-                " set EXECUTE_LOCAL_COMMANDS to 'True' in your config file."
-            )
-
     def get_commands(self) -> Iterator[Command]:
         if we_are_running_in_a_docker_container() or is_docker_available():
             yield self.execute_python_code

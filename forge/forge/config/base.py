@@ -16,9 +16,3 @@ class BaseConfig(SystemSettings):
     file_storage_backend: FileStorageBackendName = UserConfigurable(
         default=FileStorageBackendName.LOCAL, from_env="FILE_STORAGE_BACKEND"
     )
-
-    # Shell commands
-    execute_local_commands: bool = UserConfigurable(
-        default=False,
-        from_env=lambda: os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True",
-    )

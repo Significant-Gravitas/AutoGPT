@@ -189,7 +189,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             ai_profile=self.state.ai_profile,
             ai_directives=directives,
             commands=function_specs_from_commands(self.commands),
-            include_os_info=self.legacy_config.execute_local_commands,
+            include_os_info=self.code_executor.config.execute_local_commands,
         )
 
         self.log_cycle_handler.log_count_within_cycle = 0
