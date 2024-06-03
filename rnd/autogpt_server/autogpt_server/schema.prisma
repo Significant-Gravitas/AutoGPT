@@ -50,8 +50,8 @@ model AgentComponentOutput {
   outputSchema String
   description  String
 
-  AgentComponent   AgentComponent @relation(fields: [agentComponentId], references: [id])
   agentComponentId String
+  AgentComponent   AgentComponent @relation(fields: [agentComponentId], references: [id])
 
   // Prisma requires explicit back-references.
   ReferencedByAgentNode          AgentNode[]
