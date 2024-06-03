@@ -121,11 +121,12 @@ See the [user guide](../usage.md) for further instructions.
         If you're on Windows you may need to install an [MSVC library](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170).
 
 !!! important
-    Keep an eye on your API costs on [the Usage page](https://platform.openai.com/account/usage).
+    Keep an eye on your API costs on [the Usage page][openai/usage].
 
 
-[openai/billing]: https://platform.openai.com/account/billing/overview
 [openai/api-keys]: https://platform.openai.com/account/api-keys
+[openai/billing]: https://platform.openai.com/account/billing/overview
+[openai/usage]: https://platform.openai.com/account/usage
 [openai/api-limits]: https://platform.openai.com/docs/guides/rate-limits/free-tier-rate-limits
 [openai/help-gpt-4-access]: https://help.openai.com/en/articles/7102672-how-can-i-access-gpt-4-gpt-4-turbo-and-gpt-4o#h_9bddcd317c
 [openai/python-sdk/azure]: https://github.com/openai/openai-python?tab=readme-ov-file#microsoft-azure-openai
@@ -149,8 +150,34 @@ See the [user guide](../usage.md) for further instructions.
     ```
 
 !!! important
-    Keep an eye on your API costs on [the Usage page](https://console.anthropic.com/settings/usage).
+    Keep an eye on your API costs on [the Usage page][anthropic/usage].
 
-[anthropic/billing]: https://console.anthropic.com/settings/plans
 [anthropic/api-keys]: https://console.anthropic.com/settings/keys
+[anthropic/billing]: https://console.anthropic.com/settings/plans
+[anthropic/usage]: https://console.anthropic.com/settings/usage
 [anthropic/models]: https://docs.anthropic.com/en/docs/models-overview
+
+
+### Groq
+
+!!! note
+    Although Groq is supported, its built-in function calling API isn't mature.
+    Any features using this API may experience degraded performance.
+    Let us know your experience!
+
+1. Get your Groq API key from [Settings > API keys][groq/api-keys]
+2. Open `.env`
+3. Find the line that says `GROQ_API_KEY=`
+4. Insert your Anthropic API Key directly after = without quotes or spaces:
+    ```ini
+    GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    ```
+5. Set `SMART_LLM` and/or `FAST_LLM` to the Groq model you want to use.
+   See Groq's [models overview][groq/models] for info on the available models.
+   Example:
+    ```ini
+    SMART_LLM=llama3-70b-8192
+    ```
+
+[groq/api-keys]: https://console.groq.com/keys
+[groq/models]: https://console.groq.com/docs/models
