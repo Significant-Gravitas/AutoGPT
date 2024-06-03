@@ -209,15 +209,12 @@ and guaranteed data privacy.
     For optimal results, you may also have to add some logic to adapt the message format,
     like `LlamafileProvider._adapt_chat_messages_for_mistral_instruct(..)` does.
 
-1. Run the llamafile setup script:
+1. Run the llamafile serve script:
    ```shell
-   ./scripts/llamafile/setup.sh
+   python3 ./scripts/llamafile/serve.py
    ```
-
-2. Start the llamafile server:
-   ```shell
-   ./scripts/llamafile/serve.sh
-   ```
+   The first time this is run, it will download a file containing the model + runtime,
+   which may take a while and a few gigabytes of disk space.
 
 3. In `.env`, set `SMART_LLM`/`FAST_LLM` or both to `mistral-7b-instruct-v0.2`
 
