@@ -14,8 +14,8 @@ from pydantic import SecretStr
 from forge.json.parsing import json_loads
 from forge.models.config import UserConfigurable
 
-from ._openai_base import BaseOpenAIChatProvider
-from .schema import (
+from .._openai_base import BaseOpenAIChatProvider
+from ..schema import (
     AssistantToolCall,
     AssistantToolCallDict,
     ChatMessage,

@@ -1,13 +1,15 @@
-#!/bin/bash
-#
+#!/usr/bin/env bash
+
 # Use llamafile to server a (quantized) mistral-7b-instruct-v0.2 model
 #
 # Usage:
 #   cd <repo-root>/autogpt
-#   ./llamafile-integration/serve.sh
-#
+#   ./scripts/llamafile/serve.sh
 
-LLAMAFILE="./llamafile-integration/mistral-7b-instruct-v0.2.Q5_K_M.llamafile"
+# Go to autogpt/scripts/llamafile/
+cd "$(dirname "$0")"
+
+LLAMAFILE="./mistral-7b-instruct-v0.2.Q5_K_M.llamafile"
 
 "${LLAMAFILE}" \
 --server \

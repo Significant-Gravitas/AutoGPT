@@ -13,7 +13,7 @@ from pydantic import SecretStr, validator
 
 import forge
 from forge.file_storage import FileStorageBackendName
-from forge.llm.providers import CHAT_MODELS, ModelName, ModelProviderName
+from forge.llm.providers import CHAT_MODELS, ModelName
 from forge.llm.providers.openai import OpenAICredentials, OpenAIModelName
 from forge.logging.config import LoggingConfig
 from forge.models.config import Configurable, SystemSettings, UserConfigurable
@@ -56,14 +56,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Agent Control Settings #
     ##########################
     # Model configuration
-    # llm_provider: str = UserConfigurable(
-    #     default="openai",
-    #     from_env=lambda: os.getenv("LLM_PROVIDER")
-    # )
-    llm_provider: ModelProviderName = UserConfigurable(
-        default=ModelProviderName.OPENAI,
-        from_env=lambda: ModelProviderName(os.getenv("LLM_PROVIDER")),
-    )
     fast_llm: ModelName = UserConfigurable(
         default=OpenAIModelName.GPT3,
         from_env="FAST_LLM",

@@ -190,3 +190,22 @@ If you don't know which to choose, you can safely go with OpenAI*.
 
 [groq/api-keys]: https://console.groq.com/keys
 [groq/models]: https://console.groq.com/docs/models
+
+
+### Llamafile
+
+With llamafile you can run models locally, which means no need to set up billing,
+and guaranteed data privacy.
+
+1. Run the llamafile setup script:
+   ```shell
+   ./scripts/llamafile/setup.sh
+   ```
+
+2. Start the llamafile server:
+   ```shell
+   ./scripts/llamafile/serve.sh
+   ```
+
+3. If the server is not running on `http://localhost:8080/v1`, adjust `LLAMAFILE_API_BASE`
+   in `.env` with the right base URL
