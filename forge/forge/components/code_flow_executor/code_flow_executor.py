@@ -2,7 +2,7 @@
 
 import inspect
 import logging
-from typing import Iterator
+from typing import Any, Iterator
 
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
@@ -63,13 +63,17 @@ async def {name}(*args, **kwargs):
                 for name in self.available_functions.keys()
             ]
         )
-        result = {
+        locals: dict[str, Any] = {
             name + "_func": func for name, func in self.available_functions.items()
         }
-        code = f"{code_header}\n{python_code}\n\nexec_output = main()"
+        code = (
+            f"{code_header}\n"
+            f"{python_code}\n\n"
+            f"exec_output = main()"
+        )
         logger.debug(f"Code-Flow Execution code:\n{python_code}")
-        exec(code, result)
-        result = await result["exec_output"]
+        exec(code, locals)
+        result = await locals["exec_output"]
         logger.debug(f"Code-Flow Execution result:\n{result}")
         if inspect.isawaitable(result):
             result = await result
