@@ -77,7 +77,7 @@
 
 4. Download [`.env.template`][.env.template] and save it as `.env` in the AutoGPT folder.
 5. Follow the standard [configuration instructions](../index.md#completing-the-setup),
-   from step 3 onwards.
+   from step 3 onwards and excluding `poetry install` steps.
 6. Pull the latest image from [Docker Hub]
 
     ```shell
@@ -99,7 +99,7 @@
 
 1. Copy `.env.template` to `.env`.
 2. Follow the standard [configuration instructions](../index.md#completing-the-setup),
-   from step 3 onwards.
+   from step 3 onwards and excluding `poetry install` steps.
 
 ## Running AutoGPT with Docker
 
