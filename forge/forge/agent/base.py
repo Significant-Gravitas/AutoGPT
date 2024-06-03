@@ -287,7 +287,7 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
                         f"Component {component.__class__.__name__} "
                         "is attached to an agent but not added to components list"
                     )
-            # Skip collecting anf sorting and sort if ordering is explicit
+            # Skip collecting and sorting and sort if ordering is explicit
             return
         self.components = self._topological_sort(components)
 

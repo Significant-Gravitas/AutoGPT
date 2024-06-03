@@ -339,8 +339,11 @@ class BuiltinChallenge(BaseChallenge):
                     capture_output=True,
                     text=True,
                 )
+                logger.debug(f"EXIT CODE: {result.returncode}")
+                logger.debug(f"STDOUT: {result.stdout}")
+                logger.debug(f"STDERR: {result.stderr}")
                 if "error" in result.stderr or result.returncode != 0:
-                    yield "pytest", f"Error: {result.stderr}\n"
+                    yield "pytest", f"Error: {result.stderr.strip() or result.stdout}\n"
                 else:
                     yield "pytest", f"Output: {result.stdout}\n"
 

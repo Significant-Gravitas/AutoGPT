@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Optional, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Optional, ParamSpec, Sequence, TypeVar
 
 import sentry_sdk
 import tenacity
@@ -10,7 +10,9 @@ import tiktoken
 from anthropic import APIConnectionError, APIStatusError
 from pydantic import SecretStr
 
-from forge.llm.providers.schema import (
+from forge.models.config import UserConfigurable
+
+from .schema import (
     AssistantChatMessage,
     AssistantFunctionCall,
     AssistantToolCall,
@@ -27,8 +29,6 @@ from forge.llm.providers.schema import (
     ModelTokenizer,
     ToolResultMessage,
 )
-from forge.models.config import UserConfigurable
-
 from .utils import validate_tool_calls
 
 if TYPE_CHECKING:
@@ -77,10 +77,6 @@ ANTHROPIC_CHAT_MODELS = {
 }
 
 
-class AnthropicConfiguration(ModelProviderConfiguration):
-    fix_failed_parse_tries: int = UserConfigurable(3)
-
-
 class AnthropicCredentials(ModelProviderCredentials):
     """Credentials for Anthropic."""
 
@@ -101,7 +97,6 @@ class AnthropicCredentials(ModelProviderCredentials):
 
 
 class AnthropicSettings(ModelProviderSettings):
-    configuration: AnthropicConfiguration  # type: ignore
     credentials: Optional[AnthropicCredentials]  # type: ignore
     budget: ModelProviderBudget  # type: ignore
 
@@ -110,15 +105,12 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
     default_settings = AnthropicSettings(
         name="anthropic_provider",
         description="Provides access to Anthropic's API.",
-        configuration=AnthropicConfiguration(
-            retries_per_request=7,
-        ),
+        configuration=ModelProviderConfiguration(),
         credentials=None,
         budget=ModelProviderBudget(),
     )
 
     _settings: AnthropicSettings
-    _configuration: AnthropicConfiguration
     _credentials: AnthropicCredentials
     _budget: ModelProviderBudget
 
@@ -140,7 +132,12 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
             **self._credentials.get_api_access_kwargs()  # type: ignore
         )
 
-    async def get_available_models(self) -> list[ChatModelInfo[AnthropicModelName]]:
+    async def get_available_models(self) -> Sequence[ChatModelInfo[AnthropicModelName]]:
+        return await self.get_available_chat_models()
+
+    async def get_available_chat_models(
+        self,
+    ) -> Sequence[ChatModelInfo[AnthropicModelName]]:
         return list(ANTHROPIC_CHAT_MODELS.values())
 
     def get_token_limit(self, model_name: AnthropicModelName) -> int:

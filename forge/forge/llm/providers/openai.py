@@ -2,47 +2,33 @@ import enum
 import logging
 import os
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Coroutine,
-    Iterator,
-    Optional,
-    ParamSpec,
-    TypeVar,
-    cast,
-)
+from typing import Any, Callable, Iterator, Mapping, Optional, ParamSpec, TypeVar, cast
 
-import sentry_sdk
 import tenacity
 import tiktoken
 import yaml
 from openai._exceptions import APIStatusError, RateLimitError
-from openai.types import CreateEmbeddingResponse
+from openai.types import EmbeddingCreateParams
 from openai.types.chat import (
-    ChatCompletion,
-    ChatCompletionAssistantMessageParam,
     ChatCompletionMessage,
     ChatCompletionMessageParam,
+    CompletionCreateParams,
 )
-from openai.types.shared_params import FunctionDefinition
 from pydantic import SecretStr
 
 from forge.json.parsing import json_loads
-from forge.llm.providers.schema import (
-    AssistantChatMessage,
-    AssistantFunctionCall,
+from forge.models.config import UserConfigurable
+from forge.models.json_schema import JSONSchema
+
+from ._openai_base import BaseOpenAIChatProvider, BaseOpenAIEmbeddingProvider
+from .schema import (
     AssistantToolCall,
     AssistantToolCallDict,
-    BaseChatModelProvider,
-    BaseEmbeddingModelProvider,
     ChatMessage,
     ChatModelInfo,
-    ChatModelResponse,
     CompletionModelFunction,
     Embedding,
     EmbeddingModelInfo,
-    EmbeddingModelResponse,
     ModelProviderBudget,
     ModelProviderConfiguration,
     ModelProviderCredentials,
@@ -50,10 +36,6 @@ from forge.llm.providers.schema import (
     ModelProviderSettings,
     ModelTokenizer,
 )
-from forge.models.config import UserConfigurable
-from forge.models.json_schema import JSONSchema
-
-from .utils import validate_tool_calls
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
@@ -221,14 +203,13 @@ for base, copies in chat_model_mapping.items():
             copy_info.has_function_call_api = False
 
 
-OPEN_AI_MODELS = {
+OPEN_AI_MODELS: Mapping[
+    OpenAIModelName,
+    ChatModelInfo[OpenAIModelName] | EmbeddingModelInfo[OpenAIModelName],
+] = {
     **OPEN_AI_CHAT_MODELS,
     **OPEN_AI_EMBEDDING_MODELS,
 }
-
-
-class OpenAIConfiguration(ModelProviderConfiguration):
-    fix_failed_parse_tries: int = UserConfigurable(3)
 
 
 class OpenAICredentials(ModelProviderCredentials):
@@ -308,27 +289,28 @@ class OpenAICredentials(ModelProviderCredentials):
 
 
 class OpenAISettings(ModelProviderSettings):
-    configuration: OpenAIConfiguration  # type: ignore
     credentials: Optional[OpenAICredentials]  # type: ignore
     budget: ModelProviderBudget  # type: ignore
 
 
 class OpenAIProvider(
-    BaseChatModelProvider[OpenAIModelName, OpenAISettings],
-    BaseEmbeddingModelProvider[OpenAIModelName, OpenAISettings],
+    BaseOpenAIChatProvider[OpenAIModelName, OpenAISettings],
+    BaseOpenAIEmbeddingProvider[OpenAIModelName, OpenAISettings],
 ):
+    MODELS = OPEN_AI_MODELS
+    CHAT_MODELS = OPEN_AI_CHAT_MODELS
+    EMBEDDING_MODELS = OPEN_AI_EMBEDDING_MODELS
+
     default_settings = OpenAISettings(
         name="openai_provider",
         description="Provides access to OpenAI's API.",
-        configuration=OpenAIConfiguration(
-            retries_per_request=7,
-        ),
+        configuration=ModelProviderConfiguration(),
         credentials=None,
         budget=ModelProviderBudget(),
     )
 
     _settings: OpenAISettings
-    _configuration: OpenAIConfiguration
+    _configuration: ModelProviderConfiguration
     _credentials: OpenAICredentials
     _budget: ModelProviderBudget
 
@@ -337,11 +319,6 @@ class OpenAIProvider(
         settings: Optional[OpenAISettings] = None,
         logger: Optional[logging.Logger] = None,
     ):
-        if not settings:
-            settings = self.default_settings.copy(deep=True)
-        if not settings.credentials:
-            settings.credentials = OpenAICredentials.from_env()
-
         super(OpenAIProvider, self).__init__(settings=settings, logger=logger)
 
         if self._credentials.api_type == SecretStr("azure"):
@@ -359,20 +336,8 @@ class OpenAIProvider(
                 **self._credentials.get_api_access_kwargs()  # type: ignore
             )
 
-    async def get_available_models(self) -> list[ChatModelInfo[OpenAIModelName]]:
-        _models = (await self._client.models.list()).data
-        return [OPEN_AI_MODELS[m.id] for m in _models if m.id in OPEN_AI_MODELS]
-
-    def get_token_limit(self, model_name: OpenAIModelName) -> int:
-        """Get the token limit for a given model."""
-        return OPEN_AI_MODELS[model_name].max_tokens
-
     def get_tokenizer(self, model_name: OpenAIModelName) -> ModelTokenizer[int]:
         return tiktoken.encoding_for_model(model_name)
-
-    def count_tokens(self, text: str, model_name: OpenAIModelName) -> int:
-        encoding = self.get_tokenizer(model_name)
-        return len(encoding.encode(text))
 
     def count_message_tokens(
         self,
@@ -387,338 +352,87 @@ class OpenAIProvider(
                 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
             )
             tokens_per_name = -1  # if there's a name, the role is omitted
-            encoding_model = "gpt-3.5-turbo"
+        # TODO: check if this is still valid for gpt-4o
         elif model_name.startswith("gpt-4"):
             tokens_per_message = 3
             tokens_per_name = 1
-            encoding_model = "gpt-4"
         else:
             raise NotImplementedError(
                 f"count_message_tokens() is not implemented for model {model_name}.\n"
-                " See https://github.com/openai/openai-python/blob/main/chatml.md for"
-                " information on how messages are converted to tokens."
+                "See https://github.com/openai/openai-python/blob/120d225b91a8453e15240a49fb1c6794d8119326/chatml.md "  # noqa
+                "for information on how messages are converted to tokens."
             )
-        try:
-            encoding = tiktoken.encoding_for_model(encoding_model)
-        except KeyError:
-            logging.getLogger(__class__.__name__).warning(
-                f"Model {model_name} not found. Defaulting to cl100k_base encoding."
-            )
-            encoding = tiktoken.get_encoding("cl100k_base")
+        tokenizer = self.get_tokenizer(model_name)
 
         num_tokens = 0
         for message in messages:
             num_tokens += tokens_per_message
             for key, value in message.dict().items():
-                num_tokens += len(encoding.encode(value))
+                num_tokens += len(tokenizer.encode(value))
                 if key == "name":
                     num_tokens += tokens_per_name
         num_tokens += 3  # every reply is primed with <|start|>assistant<|message|>
         return num_tokens
 
-    async def create_chat_completion(
-        self,
-        model_prompt: list[ChatMessage],
-        model_name: OpenAIModelName,
-        completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
-        functions: Optional[list[CompletionModelFunction]] = None,
-        max_output_tokens: Optional[int] = None,
-        prefill_response: str = "",  # not supported by OpenAI
-        **kwargs,
-    ) -> ChatModelResponse[_T]:
-        """Create a completion using the OpenAI API and parse it."""
-
-        openai_messages, completion_kwargs = self._get_chat_completion_args(
-            model_prompt=model_prompt,
-            model_name=model_name,
-            functions=functions,
-            max_tokens=max_output_tokens,
-            **kwargs,
-        )
-        tool_calls_compat_mode = bool(functions and "tools" not in completion_kwargs)
-
-        total_cost = 0.0
-        attempts = 0
-        while True:
-            _response, _cost, t_input, t_output = await self._create_chat_completion(
-                messages=openai_messages,
-                **completion_kwargs,
-            )
-            total_cost += _cost
-
-            # If parsing the response fails, append the error to the prompt, and let the
-            # LLM fix its mistake(s).
-            attempts += 1
-            parse_errors: list[Exception] = []
-
-            _assistant_msg = _response.choices[0].message
-
-            tool_calls, _errors = self._parse_assistant_tool_calls(
-                _assistant_msg, tool_calls_compat_mode
-            )
-            parse_errors += _errors
-
-            # Validate tool calls
-            if not parse_errors and tool_calls and functions:
-                parse_errors += validate_tool_calls(tool_calls, functions)
-
-            assistant_msg = AssistantChatMessage(
-                content=_assistant_msg.content or "",
-                tool_calls=tool_calls or None,
-            )
-
-            parsed_result: _T = None  # type: ignore
-            if not parse_errors:
-                try:
-                    parsed_result = completion_parser(assistant_msg)
-                except Exception as e:
-                    parse_errors.append(e)
-
-            if not parse_errors:
-                if attempts > 1:
-                    self._logger.debug(
-                        f"Total cost for {attempts} attempts: ${round(total_cost, 5)}"
-                    )
-
-                return ChatModelResponse(
-                    response=AssistantChatMessage(
-                        content=_assistant_msg.content or "",
-                        tool_calls=tool_calls or None,
-                    ),
-                    parsed_result=parsed_result,
-                    model_info=OPEN_AI_CHAT_MODELS[model_name],
-                    prompt_tokens_used=t_input,
-                    completion_tokens_used=t_output,
-                )
-
-            else:
-                self._logger.debug(
-                    f"Parsing failed on response: '''{_assistant_msg}'''"
-                )
-                parse_errors_fmt = "\n\n".join(
-                    f"{e.__class__.__name__}: {e}" for e in parse_errors
-                )
-                self._logger.warning(
-                    f"Parsing attempt #{attempts} failed: {parse_errors_fmt}"
-                )
-                for e in parse_errors:
-                    sentry_sdk.capture_exception(
-                        error=e,
-                        extras={"assistant_msg": _assistant_msg, "i_attempt": attempts},
-                    )
-
-                if attempts < self._configuration.fix_failed_parse_tries:
-                    openai_messages.append(
-                        cast(
-                            ChatCompletionAssistantMessageParam,
-                            _assistant_msg.dict(exclude_none=True),
-                        )
-                    )
-                    openai_messages.append(
-                        {
-                            "role": "system",
-                            "content": (
-                                f"ERROR PARSING YOUR RESPONSE:\n\n{parse_errors_fmt}"
-                            ),
-                        }
-                    )
-                    continue
-                else:
-                    raise parse_errors[0]
-
-    async def create_embedding(
-        self,
-        text: str,
-        model_name: OpenAIModelName,
-        embedding_parser: Callable[[Embedding], Embedding],
-        **kwargs,
-    ) -> EmbeddingModelResponse:
-        """Create an embedding using the OpenAI API."""
-        embedding_kwargs = self._get_embedding_kwargs(model_name, **kwargs)
-        response = await self._create_embedding(text=text, **embedding_kwargs)
-
-        response = EmbeddingModelResponse(
-            embedding=embedding_parser(response.data[0].embedding),
-            model_info=OPEN_AI_EMBEDDING_MODELS[model_name],
-            prompt_tokens_used=response.usage.prompt_tokens,
-            completion_tokens_used=0,
-        )
-        self._budget.update_usage_and_cost(
-            model_info=response.model_info,
-            input_tokens_used=response.prompt_tokens_used,
-        )
-        return response
-
     def _get_chat_completion_args(
         self,
-        model_prompt: list[ChatMessage],
-        model_name: OpenAIModelName,
+        prompt_messages: list[ChatMessage],
+        model: OpenAIModelName,
         functions: Optional[list[CompletionModelFunction]] = None,
+        max_output_tokens: Optional[int] = None,
         **kwargs,
-    ) -> tuple[list[ChatCompletionMessageParam], dict[str, Any]]:
-        """Prepare chat completion arguments and keyword arguments for API call.
+    ) -> tuple[
+        list[ChatCompletionMessageParam], CompletionCreateParams, dict[str, Any]
+    ]:
+        """Prepare keyword arguments for an OpenAI chat completion call
 
         Args:
-            model_prompt: List of ChatMessages.
-            model_name: The model to use.
-            functions: Optional list of functions available to the LLM.
-            kwargs: Additional keyword arguments.
+            prompt_messages: List of ChatMessages
+            model: The model to use
+            functions (optional): List of functions available to the LLM
+            max_output_tokens (optional): Maximum number of tokens to generate
 
         Returns:
             list[ChatCompletionMessageParam]: Prompt messages for the OpenAI call
-            dict[str, Any]: Any other kwargs for the OpenAI call
+            CompletionCreateParams: Mapping of other kwargs for the OpenAI call
+            Mapping[str, Any]: Any keyword arguments to pass on to the completion parser
         """
-        kwargs.update(self._credentials.get_model_access_kwargs(model_name))
-
+        tools_compat_mode = False
         if functions:
-            if OPEN_AI_CHAT_MODELS[model_name].has_function_call_api:
-                kwargs["tools"] = [
-                    {"type": "function", "function": format_function_def_for_openai(f)}
-                    for f in functions
-                ]
-                if len(functions) == 1:
-                    # force the model to call the only specified function
-                    kwargs["tool_choice"] = {
-                        "type": "function",
-                        "function": {"name": functions[0].name},
-                    }
-            else:
+            if not OPEN_AI_CHAT_MODELS[model].has_function_call_api:
                 # Provide compatibility with older models
-                _functions_compat_fix_kwargs(functions, kwargs)
+                _functions_compat_fix_kwargs(functions, prompt_messages)
+                tools_compat_mode = True
+                functions = None
 
-        if extra_headers := self._configuration.extra_request_headers:
-            kwargs["extra_headers"] = kwargs.get("extra_headers", {})
-            kwargs["extra_headers"].update(extra_headers.copy())
-
-        if "messages" in kwargs:
-            model_prompt += kwargs["messages"]
-            del kwargs["messages"]
-
-        openai_messages = [
-            cast(
-                ChatCompletionMessageParam,
-                message.dict(
-                    include={"role", "content", "tool_calls", "name"},
-                    exclude_none=True,
-                ),
-            )
-            for message in model_prompt
-        ]
-
-        return openai_messages, kwargs
-
-    def _get_embedding_kwargs(
-        self,
-        model_name: OpenAIModelName,
-        **kwargs,
-    ) -> dict:
-        """Get kwargs for embedding API call.
-
-        Args:
-            model: The model to use.
-            kwargs: Keyword arguments to override the default values.
-
-        Returns:
-            The kwargs for the embedding API call.
-
-        """
-        kwargs.update(self._credentials.get_model_access_kwargs(model_name))
-
-        if extra_headers := self._configuration.extra_request_headers:
-            kwargs["extra_headers"] = kwargs.get("extra_headers", {})
-            kwargs["extra_headers"].update(extra_headers.copy())
-
-        return kwargs
-
-    async def _create_chat_completion(
-        self,
-        messages: list[ChatCompletionMessageParam],
-        model: OpenAIModelName,
-        *_,
-        **kwargs,
-    ) -> tuple[ChatCompletion, float, int, int]:
-        """
-        Create a chat completion using the OpenAI API with retry handling.
-
-        Params:
-            openai_messages: List of OpenAI-consumable message dict objects
-            model: The model to use for the completion
-
-        Returns:
-            ChatCompletion: The chat completion response object
-            float: The cost ($) of this completion
-            int: Number of prompt tokens used
-            int: Number of completion tokens used
-        """
-
-        @self._retry_api_request
-        async def _create_chat_completion_with_retry(
-            messages: list[ChatCompletionMessageParam], **kwargs
-        ) -> ChatCompletion:
-            return await self._client.chat.completions.create(
-                messages=messages,  # type: ignore
-                **kwargs,
-            )
-
-        completion = await _create_chat_completion_with_retry(
-            messages, model=model, **kwargs
+        openai_messages, kwargs, parse_kwargs = super()._get_chat_completion_args(
+            prompt_messages=prompt_messages,
+            model=model,
+            functions=functions,
+            max_output_tokens=max_output_tokens,
+            **kwargs,
         )
+        kwargs.update(self._credentials.get_model_access_kwargs(model))  # type: ignore
 
-        if completion.usage:
-            prompt_tokens_used = completion.usage.prompt_tokens
-            completion_tokens_used = completion.usage.completion_tokens
-        else:
-            prompt_tokens_used = completion_tokens_used = 0
+        if tools_compat_mode:
+            parse_kwargs["compat_mode"] = True
 
-        cost = self._budget.update_usage_and_cost(
-            model_info=OPEN_AI_CHAT_MODELS[model],
-            input_tokens_used=prompt_tokens_used,
-            output_tokens_used=completion_tokens_used,
-        )
-        self._logger.debug(
-            f"Completion usage: {prompt_tokens_used} input, "
-            f"{completion_tokens_used} output - ${round(cost, 5)}"
-        )
-        return completion, cost, prompt_tokens_used, completion_tokens_used
+        return openai_messages, kwargs, parse_kwargs
 
     def _parse_assistant_tool_calls(
-        self, assistant_message: ChatCompletionMessage, compat_mode: bool = False
+        self,
+        assistant_message: ChatCompletionMessage,
+        compat_mode: bool = False,
+        **kwargs,
     ) -> tuple[list[AssistantToolCall], list[Exception]]:
         tool_calls: list[AssistantToolCall] = []
         parse_errors: list[Exception] = []
 
-        if assistant_message.tool_calls:
-            for _tc in assistant_message.tool_calls:
-                try:
-                    parsed_arguments = json_loads(_tc.function.arguments)
-                except Exception as e:
-                    err_message = (
-                        f"Decoding arguments for {_tc.function.name} failed: "
-                        + str(e.args[0])
-                    )
-                    parse_errors.append(
-                        type(e)(err_message, *e.args[1:]).with_traceback(
-                            e.__traceback__
-                        )
-                    )
-                    continue
-
-                tool_calls.append(
-                    AssistantToolCall(
-                        id=_tc.id,
-                        type=_tc.type,
-                        function=AssistantFunctionCall(
-                            name=_tc.function.name,
-                            arguments=parsed_arguments,
-                        ),
-                    )
-                )
-
-            # If parsing of all tool calls succeeds in the end, we ignore any issues
-            if len(tool_calls) == len(assistant_message.tool_calls):
-                parse_errors = []
-
-        elif compat_mode and assistant_message.content:
+        if not compat_mode:
+            return super()._parse_assistant_tool_calls(
+                assistant_message=assistant_message, compat_mode=compat_mode, **kwargs
+            )
+        elif assistant_message.content:
             try:
                 tool_calls = list(
                     _tool_calls_compat_extract_calls(assistant_message.content)
@@ -728,21 +442,16 @@ class OpenAIProvider(
 
         return tool_calls, parse_errors
 
-    def _create_embedding(
-        self, text: str, *_, **kwargs
-    ) -> Coroutine[None, None, CreateEmbeddingResponse]:
-        """Create an embedding using the OpenAI API with retry handling."""
+    def _get_embedding_kwargs(
+        self, input: str | list[str], model: OpenAIModelName, **kwargs
+    ) -> EmbeddingCreateParams:
+        kwargs = super()._get_embedding_kwargs(input=input, model=model, **kwargs)
+        kwargs.update(self._credentials.get_model_access_kwargs(model))  # type: ignore
+        return kwargs
 
-        @self._retry_api_request
-        async def _create_embedding_with_retry(
-            text: str, *_, **kwargs
-        ) -> CreateEmbeddingResponse:
-            return await self._client.embeddings.create(
-                input=[text],
-                **kwargs,
-            )
-
-        return _create_embedding_with_retry(text, *_, **kwargs)
+    _get_embedding_kwargs.__doc__ = (
+        BaseOpenAIEmbeddingProvider._get_embedding_kwargs.__doc__
+    )
 
     def _retry_api_request(self, func: Callable[_P, _T]) -> Callable[_P, _T]:
         _log_retry_debug_message = tenacity.after_log(self._logger, logging.DEBUG)
@@ -775,24 +484,6 @@ class OpenAIProvider(
 
     def __repr__(self):
         return "OpenAIProvider()"
-
-
-def format_function_def_for_openai(self: CompletionModelFunction) -> FunctionDefinition:
-    """Returns an OpenAI-consumable function definition"""
-
-    return {
-        "name": self.name,
-        "description": self.description,
-        "parameters": {
-            "type": "object",
-            "properties": {
-                name: param.to_dict() for name, param in self.parameters.items()
-            },
-            "required": [
-                name for name, param in self.parameters.items() if param.required
-            ],
-        },
-    }
 
 
 def format_function_specs_as_typescript_ns(
@@ -871,7 +562,7 @@ def count_openai_functions_tokens(
 
 def _functions_compat_fix_kwargs(
     functions: list[CompletionModelFunction],
-    completion_kwargs: dict,
+    prompt_messages: list[ChatMessage],
 ):
     function_definitions = format_function_specs_as_typescript_ns(functions)
     function_call_schema = JSONSchema(
@@ -902,7 +593,7 @@ def _functions_compat_fix_kwargs(
             },
         ),
     )
-    completion_kwargs["messages"] = [
+    prompt_messages.append(
         ChatMessage.system(
             "# tool usage instructions\n\n"
             "Specify a '```tool_calls' block in your response,"
@@ -915,7 +606,7 @@ def _functions_compat_fix_kwargs(
             "For the function call itself, use one of the following"
             f" functions:\n\n{function_definitions}"
         ),
-    ]
+    )
 
 
 def _tool_calls_compat_extract_calls(response: str) -> Iterator[AssistantToolCall]:

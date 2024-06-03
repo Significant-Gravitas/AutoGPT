@@ -12,14 +12,15 @@ from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 def create_agent(
     agent_id: str,
     task: str,
-    ai_profile: AIProfile,
     app_config: Config,
     file_storage: FileStorage,
     llm_provider: MultiProvider,
+    ai_profile: Optional[AIProfile] = None,
     directives: Optional[AIDirectives] = None,
 ) -> Agent:
     if not task:
         raise ValueError("No task specified for new agent")
+    ai_profile = ai_profile or AIProfile()
     directives = directives or AIDirectives()
 
     agent = _configure_agent(
