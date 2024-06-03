@@ -1,9 +1,20 @@
 -- CreateTable
+CREATE TABLE "AgentGraph" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "name" TEXT,
+    "description" TEXT,
+    "startingAgentNodeId" TEXT NOT NULL,
+    CONSTRAINT "AgentGraph_startingAgentNodeId_fkey" FOREIGN KEY ("startingAgentNodeId") REFERENCES "AgentNode" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- CreateTable
 CREATE TABLE "AgentNode" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "agentComponentId" TEXT NOT NULL,
+    "agentGraphId" TEXT NOT NULL,
     "parentNodeId" TEXT,
     CONSTRAINT "AgentNode_agentComponentId_fkey" FOREIGN KEY ("agentComponentId") REFERENCES "AgentComponent" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "AgentNode_agentGraphId_fkey" FOREIGN KEY ("agentGraphId") REFERENCES "AgentGraph" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "AgentNode_parentNodeId_fkey" FOREIGN KEY ("parentNodeId") REFERENCES "AgentNode" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 

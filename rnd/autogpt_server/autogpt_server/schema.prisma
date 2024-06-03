@@ -9,12 +9,27 @@ generator client {
   interface            = "asyncio"
 }
 
+// This model describes the Agent Graph/Flow (Multi Agent System).
+model AgentGraph {
+  id          String  @id
+  name        String?
+  description String?
+
+  startingAgentNodeId String
+  StartingAgentNode   AgentNode @relation("AgentGraphRoot", fields: [startingAgentNodeId], references: [id])
+
+  AgentNodes AgentNode[] @relation("AgentGraphNodes")
+}
+
 // This model describes a single node in the Agent Graph/Flow (Multi Agent System).
 model AgentNode {
   id String @id
 
   agentComponentId String
   AgentComponent   AgentComponent @relation(fields: [agentComponentId], references: [id])
+
+  agentGraphId String
+  AgentGraph   AgentGraph @relation("AgentGraphNodes", fields: [agentGraphId], references: [id])
 
   // On which produced output, that the child node component should be executed.
   // The length has to be equal to ChildNodes(ChildNodes[i]) will be triggered by trigger[i]).
@@ -23,10 +38,13 @@ model AgentNode {
 
   // These fields define the node relations as a graph.
   parentNodeId String?
-  ParentNode   AgentNode?  @relation("AgentGraph", fields: [parentNodeId], references: [id])
-  ChildNodes   AgentNode[] @relation("AgentGraph")
+  ParentNode   AgentNode?  @relation("AgentGraphRelation", fields: [parentNodeId], references: [id])
+  ChildNodes   AgentNode[] @relation("AgentGraphRelation")
 
   ExecutionHistory AgentNodeExecution[]
+
+  // Prisma requires explicit back-references.
+  ReferencedByAgentGraphAsRoot AgentGraph[] @relation("AgentGraphRoot")
 }
 
 // This model describes a component that will be executed by the AgentNode.
@@ -88,6 +106,6 @@ model FileDefinition {
   encoding String?
 
   // Prisma requires explicit back-references.
-  ReferrencedByInputFiles  AgentNodeExecution[] @relation("InputFiles")
-  ReferrencedByOutputFiles AgentNodeExecution[] @relation("OutputFiles")
+  ReferencedByInputFiles  AgentNodeExecution[] @relation("InputFiles")
+  ReferencedByOutputFiles AgentNodeExecution[] @relation("OutputFiles")
 }
