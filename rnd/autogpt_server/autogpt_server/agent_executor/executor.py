@@ -3,13 +3,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Process
 
-from autogpt_server.data import ExecutionQueue
+from autogpt_server.data import ExecutionQueue, Execution
 
 logger = logging.getLogger(__name__)
 
 
 class AgentExecutor:
     # TODO: Replace this by an actual Agent Execution.
+    @staticmethod
     def __execute(id: str, data: str) -> None:
         logger.warning(f"Executor processing started, execution_id: {id}, data: {data}")
         for i in range(5):
@@ -21,10 +22,11 @@ class AgentExecutor:
             f"Executor processing completed, execution_id: {id}, data: {data}"
         )
 
+    @staticmethod
     def start_executor(pool_size: int, queue: ExecutionQueue) -> None:
         with ThreadPoolExecutor(max_workers=pool_size) as executor:
             while True:
-                execution = queue.get()
+                execution: Execution | None = queue.get()
                 if not execution:
                     time.sleep(1)
                     continue
@@ -32,7 +34,7 @@ class AgentExecutor:
                     AgentExecutor.__execute,
                     execution.execution_id,
                     execution.data,
-                )
+                )  # type: ignore
 
 
 def start_executors(pool_size: int, queue: ExecutionQueue) -> None:

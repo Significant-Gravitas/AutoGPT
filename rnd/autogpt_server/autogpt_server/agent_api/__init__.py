@@ -1,1 +1,1 @@
-from .server import start_server  # noqa
+from .server import start_server  # type: ignore # noqa

@@ -13,7 +13,7 @@ def client():
     return TestClient(start_server(execution_queue, use_uvicorn=False))
 
 
-def test_execute_agent(client):
+def test_execute_agent(client: TestClient):
     # Assert API is working
     response = client.post("/agents/dummy_agent_1/execute")
     assert response.status_code == 200
