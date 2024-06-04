@@ -26,32 +26,3 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 app = "autogpt_server.app:main"
-
-
-# [tool.cxfreeze]
-# executables = [
-#     { script = "autogpt_server/app.py", base = "console", target_name = "server" },
-# ]
-
-# [tool.cxfreeze.build_exe]
-# excludes = []
-# zip_include_packages = [
-#     "encodings",
-#     "multiprocessing",
-#     "uvicorn",
-#     "click",
-#     "pydantic",
-#     "fastapi",
-#     "uvicorn.loops",
-# ]
-
-# # [tool.cxfreeze.bdist_msi]
-# # extensions = [
-# #     { "extension" = "txt", "verb" = "open", executable = "notepad.exe", context = "Edit with hello" },
-# # ]
-
-# [tool.cxfreeze.bdist_mac]
-# # iconfile = 'icon.icns'
-# bundle_name = 'AutoGPT'
-# # plist_items = [["test", "test"], ["test2", "test2"]]
-# include_resources = ['IMG_3775.jpeg']
