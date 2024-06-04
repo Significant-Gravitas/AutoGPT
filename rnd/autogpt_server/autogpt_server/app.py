@@ -1,12 +1,12 @@
 from multiprocessing import freeze_support, set_start_method, get_start_method
-from autogpt_server.agent_api import start_server
-from autogpt_server.agent_executor import start_executors
+from autogpt_server.server import start_server
+from autogpt_server.executor import start_executor_manager
 from autogpt_server.data import ExecutionQueue
 
 
 def main() -> None:
     queue = ExecutionQueue()
-    start_executors(5, queue)
+    start_executor_manager(5, queue)
     start_server(queue)
 
 
