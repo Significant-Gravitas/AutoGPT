@@ -32,7 +32,7 @@ model AgentNode {
   AgentGraph   AgentGraph @relation("AgentGraphNodes", fields: [agentGraphId], references: [id])
 
   // List of produced output, that the child node component should be executed.
-  childNodeOutputTrigger AgentNodeTrigger[] @relation("TriggeredNode")
+  AgentOutputTriggers AgentNodeTrigger[] @relation("TriggeredNode")
 
   ExecutionHistory AgentNodeExecution[]
 
