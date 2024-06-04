@@ -108,8 +108,6 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         super().__init__(settings)
 
         self.llm_provider = llm_provider
-        self.ai_profile = settings.ai_profile
-        self.directives = settings.directives
         prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
         prompt_config.use_functions_api = (
             settings.config.use_functions_api
@@ -120,7 +118,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         self.commands: list[Command] = []
 
         # Components
-        self.system = SystemComponent(settings.ai_profile)
+        self.system = SystemComponent()
         self.history = ActionHistoryComponent(
             settings.history,
             lambda x: self.llm_provider.count_tokens(x, self.llm.name),

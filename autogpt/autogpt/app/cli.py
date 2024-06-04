@@ -28,8 +28,6 @@ def cli(ctx: click.Context):
     help="Defines the number of times to run in continuous mode",
 )
 @click.option("--speak", is_flag=True, help="Enable Speak Mode")
-@click.option("--gpt3only", is_flag=True, help="Enable GPT3.5 Only Mode")
-@click.option("--gpt4only", is_flag=True, help="Enable GPT4 Only Mode")
 @click.option(
     "--install-plugin-deps",
     is_flag=True,
@@ -121,8 +119,6 @@ def run(
     continuous: bool,
     continuous_limit: Optional[int],
     speak: bool,
-    gpt3only: bool,
-    gpt4only: bool,
     install_plugin_deps: bool,
     skip_news: bool,
     skip_reprompt: bool,
@@ -154,8 +150,6 @@ def run(
         log_level=log_level,
         log_format=log_format,
         log_file_format=log_file_format,
-        gpt3only=gpt3only,
-        gpt4only=gpt4only,
         skip_news=skip_news,
         install_plugin_deps=install_plugin_deps,
         override_ai_name=ai_name,
@@ -169,8 +163,6 @@ def run(
 
 
 @cli.command()
-@click.option("--gpt3only", is_flag=True, help="Enable GPT3.5 Only Mode")
-@click.option("--gpt4only", is_flag=True, help="Enable GPT4 Only Mode")
 @click.option(
     "--install-plugin-deps",
     is_flag=True,
@@ -198,8 +190,6 @@ def run(
     type=click.Choice([i.value for i in LogFormatName]),
 )
 def serve(
-    gpt3only: bool,
-    gpt4only: bool,
     install_plugin_deps: bool,
     debug: bool,
     log_level: Optional[str],
@@ -218,8 +208,6 @@ def serve(
         log_level=log_level,
         log_format=log_format,
         log_file_format=log_file_format,
-        gpt3only=gpt3only,
-        gpt4only=gpt4only,
         install_plugin_deps=install_plugin_deps,
     )
 

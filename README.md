@@ -43,7 +43,7 @@ This guide will walk you through the process of creating your own agent and usin
 
 **Makes agents easy to use!** The `frontend` gives you a user-friendly interface to control and monitor your agents. It connects to agents through the [agent protocol](#-agent-protocol), ensuring compatibility with many agents from both inside and outside of our ecosystem.
 
-<!-- TODO: instert screenshot of front end -->
+<!-- TODO: insert screenshot of front end -->
 
 The frontend works out-of-the-box with all agents in the repo. Just use the [CLI] to run your agent of choice!
 

@@ -7,7 +7,7 @@ from typing import Literal, Optional
 import click
 from forge.llm.providers import ModelName, MultiProvider
 
-from autogpt.app.config import GPT_3_MODEL, GPT_4_MODEL, AppConfig
+from autogpt.app.config import GPT_3_MODEL, AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +17,6 @@ async def apply_overrides_to_config(
     continuous: bool = False,
     continuous_limit: Optional[int] = None,
     skip_reprompt: bool = False,
-    gpt3only: bool = False,
-    gpt4only: bool = False,
     skip_news: bool = False,
 ) -> None:
     """Updates the config object with the given arguments.
@@ -33,8 +31,6 @@ async def apply_overrides_to_config(
         log_level (int): The global log level for the application.
         log_format (str): The format for the log(s).
         log_file_format (str): Override the format for the log file.
-        gpt3only (bool): Whether to enable GPT3.5 only mode.
-        gpt4only (bool): Whether to enable GPT4 only mode.
         skips_news (bool): Whether to suppress the output of latest news on startup.
     """
     config.continuous_mode = False
@@ -54,21 +50,9 @@ async def apply_overrides_to_config(
     if continuous_limit and not continuous:
         raise click.UsageError("--continuous-limit can only be used with --continuous")
 
-    # Set the default LLM models
-    if gpt3only:
-        # --gpt3only should always use gpt-3.5-turbo, despite user's FAST_LLM config
-        config.fast_llm = GPT_3_MODEL
-        config.smart_llm = GPT_3_MODEL
-    elif (
-        gpt4only
-        and (await check_model(GPT_4_MODEL, model_type="smart_llm")) == GPT_4_MODEL
-    ):
-        # --gpt4only should always use gpt-4, despite user's SMART_LLM config
-        config.fast_llm = GPT_4_MODEL
-        config.smart_llm = GPT_4_MODEL
-    else:
-        config.fast_llm = await check_model(config.fast_llm, "fast_llm")
-        config.smart_llm = await check_model(config.smart_llm, "smart_llm")
+    # Check availability of configured LLMs; fallback to other LLM if unavailable
+    config.fast_llm = await check_model(config.fast_llm, "fast_llm")
+    config.smart_llm = await check_model(config.smart_llm, "smart_llm")
 
     if skip_reprompt:
         config.skip_reprompt = True
@@ -82,7 +66,7 @@ async def check_model(
 ) -> ModelName:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
     multi_provider = MultiProvider()
-    models = await multi_provider.get_available_models()
+    models = await multi_provider.get_available_chat_models()
 
     if any(model_name == m.name for m in models):
         return model_name
