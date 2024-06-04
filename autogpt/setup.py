@@ -6,24 +6,29 @@ from cx_Freeze import setup, Executable
 import os
 
 packages = [
-    m.name
-    for m in iter_modules()
-    if m.ispkg and (".venv" in m.module_finder.path or "poetry" in m.module_finder.path)
+    m.name for m in iter_modules() if m.ispkg and ("poetry" in m.module_finder.path)
 ]
-packages.append("collections")
+
+print(packages)
+
 
 setup(
     executables=[
-        Executable("autogpt_server/app.py", target_name="server"),
+        Executable("autogpt/__main__.py", target_name="autogpt"),
         # Executable(which("hypercorn"), target_name="hypercorn"),
-        Executable(which("uvicorn"), target_name="uvicorn"),
     ],
     options={
         "build_exe": {
             "packages": packages,
             "includes": [
-                "autogpt_server",
+                "autogpt",
+                "spacy",
+                "spacy.lang",
+                "spacy.vocab",
+                "spacy.lang.lex_attrs",
                 "uvicorn.loops.auto",
+                "srsly.msgpack.util",
+                "blis",
                 "uvicorn.protocols.http.auto",
                 "uvicorn.protocols.websockets.auto",
                 "uvicorn.lifespan.on",
@@ -32,7 +37,7 @@ setup(
         },
         "bdist_mac": {
             "bundle_name": "AutoGPT",
-            "include_resources": ["IMG_3775.jpeg"],
+            "include_resources": [""],
         },
     },
 )
