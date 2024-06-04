@@ -31,26 +31,36 @@ model AgentNode {
   agentGraphId String
   AgentGraph   AgentGraph @relation("AgentGraphNodes", fields: [agentGraphId], references: [id])
 
-  // On which produced output, that the child node component should be executed.
-  // The length has to be equal to ChildNodes(ChildNodes[i]) will be triggered by trigger[i]).
-  // Or optionally equal to zero, which any types output will trigger the children.
-  childNodeOutputTrigger AgentComponentOutput[]
-
-  // These fields define the node relations as a graph.
-  parentNodeId String?
-  ParentNode   AgentNode?  @relation("AgentGraphRelation", fields: [parentNodeId], references: [id])
-  ChildNodes   AgentNode[] @relation("AgentGraphRelation")
+  // List of produced output, that the child node component should be executed.
+  childNodeOutputTrigger AgentNodeTrigger[] @relation("TriggeredNode")
 
   ExecutionHistory AgentNodeExecution[]
 
   // Prisma requires explicit back-references.
-  ReferencedByAgentGraphAsRoot AgentGraph[] @relation("AgentGraphRoot")
+  ReferencedByAgentGraphAsRoot AgentGraph[]       @relation("AgentGraphRoot")
+  ReferencedByAgentNodeTrigger AgentNodeTrigger[] @relation("TriggeringNode")
+}
+
+model AgentNodeTrigger {
+  id String @id
+
+  // The AgentNode that owns this trigger.
+  agentNodeId String
+  AgentNode   AgentNode @relation("TriggeringNode", fields: [agentNodeId], references: [id])
+
+  // The AgentNode that will be triggered.
+  triggerNodeId String
+  TriggerNode   AgentNode @relation("TriggeredNode", fields: [triggerNodeId], references: [id])
+
+  // The output that will trigger the child node.
+  triggerOutputId String
+  TriggerOutput   AgentComponentOutput @relation(fields: [triggerOutputId], references: [id])
 }
 
 // This model describes a component that will be executed by the AgentNode.
 model AgentComponent {
   id   String @id
-  name String
+  name String @unique
   code String
 
   // We allow a component to have multiple types of output.
@@ -72,8 +82,8 @@ model AgentComponentOutput {
   AgentComponent   AgentComponent @relation(fields: [agentComponentId], references: [id])
 
   // Prisma requires explicit back-references.
-  ReferencedByAgentNode          AgentNode[]
   ReferencedByAgentNodeExecution AgentNodeExecution[]
+  ReferencedByAgentNodeTrigger   AgentNodeTrigger[]
 }
 
 // This model describes the execution of an AgentNode.

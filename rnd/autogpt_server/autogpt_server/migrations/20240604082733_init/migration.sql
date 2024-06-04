@@ -12,10 +12,19 @@ CREATE TABLE "AgentNode" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "agentComponentId" TEXT NOT NULL,
     "agentGraphId" TEXT NOT NULL,
-    "parentNodeId" TEXT,
     CONSTRAINT "AgentNode_agentComponentId_fkey" FOREIGN KEY ("agentComponentId") REFERENCES "AgentComponent" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT "AgentNode_agentGraphId_fkey" FOREIGN KEY ("agentGraphId") REFERENCES "AgentGraph" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT "AgentNode_parentNodeId_fkey" FOREIGN KEY ("parentNodeId") REFERENCES "AgentNode" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    CONSTRAINT "AgentNode_agentGraphId_fkey" FOREIGN KEY ("agentGraphId") REFERENCES "AgentGraph" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "AgentNodeTrigger" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "agentNodeId" TEXT NOT NULL,
+    "triggerNodeId" TEXT NOT NULL,
+    "triggerOutputId" TEXT NOT NULL,
+    CONSTRAINT "AgentNodeTrigger_agentNodeId_fkey" FOREIGN KEY ("agentNodeId") REFERENCES "AgentNode" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "AgentNodeTrigger_triggerNodeId_fkey" FOREIGN KEY ("triggerNodeId") REFERENCES "AgentNode" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "AgentNodeTrigger_triggerOutputId_fkey" FOREIGN KEY ("triggerOutputId") REFERENCES "AgentComponentOutput" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -61,14 +70,6 @@ CREATE TABLE "FileDefinition" (
 );
 
 -- CreateTable
-CREATE TABLE "_AgentComponentOutputToAgentNode" (
-    "A" TEXT NOT NULL,
-    "B" TEXT NOT NULL,
-    CONSTRAINT "_AgentComponentOutputToAgentNode_A_fkey" FOREIGN KEY ("A") REFERENCES "AgentComponentOutput" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "_AgentComponentOutputToAgentNode_B_fkey" FOREIGN KEY ("B") REFERENCES "AgentNode" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-
--- CreateTable
 CREATE TABLE "_InputFiles" (
     "A" TEXT NOT NULL,
     "B" TEXT NOT NULL,
@@ -85,10 +86,7 @@ CREATE TABLE "_OutputFiles" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "_AgentComponentOutputToAgentNode_AB_unique" ON "_AgentComponentOutputToAgentNode"("A", "B");
-
--- CreateIndex
-CREATE INDEX "_AgentComponentOutputToAgentNode_B_index" ON "_AgentComponentOutputToAgentNode"("B");
+CREATE UNIQUE INDEX "AgentComponent_name_key" ON "AgentComponent"("name");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "_InputFiles_AB_unique" ON "_InputFiles"("A", "B");
