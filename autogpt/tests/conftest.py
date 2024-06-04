@@ -76,7 +76,9 @@ def llm_provider(config: AppConfig) -> MultiProvider:
 
 
 @pytest.fixture
-def agent(config: AppConfig, llm_provider: MultiProvider, storage: FileStorage) -> Agent:
+def agent(
+    config: AppConfig, llm_provider: MultiProvider, storage: FileStorage
+) -> Agent:
     ai_profile = AIProfile(
         ai_name="Base",
         ai_role="A base AI",

@@ -1,5 +1,3 @@
-import os
-
 from forge.file_storage import FileStorageBackendName
 from forge.models.config import SystemSettings, UserConfigurable
 from forge.speech.say import TTSConfig

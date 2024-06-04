@@ -19,7 +19,7 @@ from typing import (
 )
 
 from colorama import Fore
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, parse_raw_as, validator
 
 from forge.agent import protocols
 from forge.agent.components import (
@@ -274,16 +274,21 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
                 raise e
         return method_result
 
-    def serialize_configs(self) -> str:
+    class ModelContainer(BaseModel):
+        models: dict[str, BaseModel]
+
+    def dump_component_configs(self) -> str:
         configs = {}
         for component in self.components:
             if isinstance(component, ConfigurableComponent):
                 config_type_name = component.config.__class__.__name__
-                configs[config_type_name] = component.config.dict()
-        return json.dumps(configs, indent=4)
+                configs[config_type_name] = component.config
+        data = self.ModelContainer(models=configs).json()
+        raw = parse_raw_as(dict[str, dict[str, Any]], data)
+        return json.dumps(raw["models"], indent=4)
 
-    def deserialize_configs(self, serialized_configs: str):
-        configs_dict = json.loads(serialized_configs)
+    def load_component_configs(self, serialized_configs: str):
+        configs_dict = parse_raw_as(dict[str, dict[str, Any]], serialized_configs)
 
         for component in self.components:
             if not isinstance(component, ConfigurableComponent):
@@ -292,10 +297,9 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
             config_type_name = config_type.__name__
             if config_type_name in configs_dict:
                 # Parse the serialized data and update the existing config
-                updated_data = json.loads(json.dumps(configs_dict[config_type_name]))
-                component.config = self._update_config_with_defaults(
-                    component.config, updated_data
-                )
+                updated_data = configs_dict[config_type_name]
+                data = {**component.config.__dict__, **updated_data}
+                component.config = component.config.__class__(**data)
 
     def _update_config_with_defaults(
         self, config: BaseModel, data: dict[str, Any]

@@ -125,7 +125,9 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             settings.history,
             lambda x: self.llm_provider.count_tokens(x, self.llm.name),
             llm_provider,
-            ActionHistoryConfiguration(model_name=legacy_config.fast_llm, max_tokens=self.send_token_limit),
+            ActionHistoryConfiguration(
+                model_name=legacy_config.fast_llm, max_tokens=self.send_token_limit
+            ),
         ).run_after(WatchdogComponent)
         self.user_interaction = UserInteractionComponent(
             legacy_config.noninteractive_mode

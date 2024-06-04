@@ -32,12 +32,12 @@ from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agents.agent_manager import AgentManager
+from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
 from autogpt.app.config import (
     AppConfig,
     ConfigBuilder,
     assert_config_has_openai_api_key,
 )
-from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
@@ -318,7 +318,7 @@ async def run_auto_gpt(
         try:
             with open(_config_file, "r") as f:
                 logger.info(f"Loading component configuration from {config_file}")
-                agent.deserialize_configs(f.read())
+                agent.load_component_configs(f.read())
         except Exception as e:
             logger.error(f"Could not load component configuration: {e}")
 

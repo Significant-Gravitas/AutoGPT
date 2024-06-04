@@ -24,7 +24,6 @@ from selenium.webdriver.safari.options import Options as SafariOptions
 from selenium.webdriver.safari.webdriver import WebDriver as SafariDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
-from forge.llm.providers.openai import OpenAIModelName
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
@@ -36,6 +35,7 @@ from forge.content_processing.html import extract_hyperlinks, format_hyperlinks
 from forge.content_processing.text import extract_information, summarize_text
 from forge.llm.providers import MultiProvider
 from forge.llm.providers.multi import ModelName
+from forge.llm.providers.openai import OpenAIModelName
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError, TooMuchOutputError
 from forge.utils.url_validator import validate_url
