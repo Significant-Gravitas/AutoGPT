@@ -15,7 +15,6 @@ print(packages)
 setup(
     executables=[
         Executable("autogpt/__main__.py", target_name="autogpt"),
-        # Executable(which("hypercorn"), target_name="hypercorn"),
     ],
     options={
         "build_exe": {
