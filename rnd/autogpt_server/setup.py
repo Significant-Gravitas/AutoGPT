@@ -32,7 +32,11 @@ setup(
         },
         "bdist_mac": {
             "bundle_name": "AutoGPT",
-            "include_resources": ["IMG_3775.jpeg"],
+            # "include_resources": ["IMG_3775.jpeg"],
+        },
+        "bdist_dmg": {
+            "applications_shortcut": True,
+            "volume_label": "AutoGPT Server",
         },
     },
 )

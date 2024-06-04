@@ -44,5 +44,11 @@ install = ["build", "_dinstall"]
 [tool.poe.tasks._dbuild]
 cmd = "python setup.py build"
 
+[tool.poe.tasks.dist_mac]
+cmd = "python setup.py bdist_mac"
+
+[tool.poe.tasks.dist_dmg]
+cmd = "python setup.py bdist_dmg"
+
 [tool.poe.tasks._dinstall]
 cmd = "python setup.py install"
