@@ -7,7 +7,7 @@ from autogpt_server.data import ExecutionQueue
 def main() -> None:
     queue = ExecutionQueue()
     start_executors(5, queue)
-    start_server(queue, use_uvicorn=True)
+    start_server(queue)
 
 
 if __name__ == "__main__":
