@@ -21,7 +21,7 @@ setup(
             "packages": packages,
             "includes": [
                 "autogpt_server",
-                "uvicorn.loops.uvloop",
+                "uvicorn.loops.auto",
                 "uvicorn.protocols.http.auto",
                 "uvicorn.protocols.websockets.auto",
                 "uvicorn.lifespan.on",
