@@ -35,5 +35,5 @@ class AgentServer:
 def start_server(queue: ExecutionQueue, use_uvicorn: bool = True):
     app = AgentServer(queue).app
     if use_uvicorn:
-        uvicorn.run(app)
+        uvicorn.run(app, loop="uvloop")
     return app
