@@ -13,10 +13,10 @@ packages = [
 packages.append("collections")
 
 setup(
+    name="AutoGPT Server",
+    url="https://agpt.co",
     executables=[
         Executable("autogpt_server/app.py", target_name="server"),
-        # Executable(which("hypercorn"), target_name="hypercorn"),
-        Executable(which("uvicorn"), target_name="uvicorn"),
     ],
     options={
         "build_exe": {
@@ -32,11 +32,14 @@ setup(
         },
         "bdist_mac": {
             "bundle_name": "AutoGPT",
+            "iconfile": "../../assets/gpt_dark_RGB.icns",
             # "include_resources": ["IMG_3775.jpeg"],
         },
         "bdist_dmg": {
             "applications_shortcut": True,
             "volume_label": "AutoGPT Server",
         },
+        "bdist_msi": {},
+        "bdist_appimage": {},
     },
 )

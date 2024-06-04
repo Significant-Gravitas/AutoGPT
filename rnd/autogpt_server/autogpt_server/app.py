@@ -1,4 +1,5 @@
-from multiprocessing import freeze_support, set_start_method, get_start_method
+from multiprocessing import freeze_support
+from multiprocessing.spawn import freeze_support as freeze_support_spawn
 from autogpt_server.server import start_server
 from autogpt_server.executor import start_executor_manager
 from autogpt_server.data import ExecutionQueue
@@ -11,8 +12,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # These directives are required to make multiprocessing work with cx_Freeze and are both required and safe across platforms (Windows, macOS, Linux)
+    # They must be placed at the beginning of the executions before any other multiprocessing code is run
     freeze_support()
-    print(get_start_method())
-    set_start_method("fork", force=True)
-    print(get_start_method())
+    freeze_support_spawn()
     main()

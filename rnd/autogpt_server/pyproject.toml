@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "autogpt_server"
 version = "0.1.0"
-description = ""
+description = "An Agentic Experience"
 authors = [
     "SwiftyOS <craig.swift@agpt.co>",
     "Nicholas Tindle <nicholas.tindle@agpt.co>",
@@ -37,7 +37,8 @@ poetry_command = ""
 [tool.poe.tasks]
 test = "pytest"
 build = ["test", "_dbuild"]
-# This might break you python install :)
+
+# This might break your python install :)
 install = ["build", "_dinstall"]
 
 # https://cx-freeze.readthedocs.io/en/stable/index.html
