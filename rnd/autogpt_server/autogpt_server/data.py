@@ -22,7 +22,7 @@ class ExecutionQueue:
     """
 
     def __init__(self):
-        self.queue = Queue()
+        self.queue: Queue[Execution] = Queue()
 
     def add(self, data: str) -> str:
         execution_id = uuid.uuid4()
