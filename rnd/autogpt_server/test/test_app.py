@@ -1,19 +1,19 @@
 import pytest
-
-from autogpt_server.data import ExecutionQueue
-from autogpt_server.agent_api import start_server
-from autogpt_server.agent_executor import start_executors
 from fastapi.testclient import TestClient
+
+from autogpt_server.server import start_server
+from autogpt_server.executor import start_executor_manager
+from autogpt_server.data import ExecutionQueue
 
 
 @pytest.fixture
 def client():
     execution_queue = ExecutionQueue()
-    start_executors(5, execution_queue)
+    start_executor_manager(5, execution_queue)
     return TestClient(start_server(execution_queue, use_uvicorn=False))
 
 
-def test_execute_agent(client):
+def test_execute_agent(client: TestClient):
     # Assert API is working
     response = client.post("/agents/dummy_agent_1/execute")
     assert response.status_code == 200
