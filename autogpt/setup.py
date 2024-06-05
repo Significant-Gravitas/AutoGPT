@@ -6,13 +6,13 @@ from cx_Freeze import setup, Executable
 packages = [
     m.name
     for m in iter_modules()
-    if m.ispkg and ("poetry" in m.module_finder.path)  # type: ignore
+    if m.ispkg and m.module_finder and("poetry" in m.module_finder.path)  # type: ignore
 ]
 
 icon = (
     "../../assets/gpt_dark_RGB.icns"
     if which("sips")
-    else ".../../assets/gpt_dark_RGB.ico"
+    else "../../assets/gpt_dark_RGB.ico"
 )
 
 
