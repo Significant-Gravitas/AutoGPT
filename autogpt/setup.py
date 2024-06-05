@@ -1,12 +1,14 @@
-from shutil import which
 from pkgutil import iter_modules
+from shutil import which
 
-from cx_Freeze import setup, Executable
+from cx_Freeze import Executable, setup
 
 packages = [
     m.name
     for m in iter_modules()
-    if m.ispkg and m.module_finder and("poetry" in m.module_finder.path)  # type: ignore
+    if m.ispkg
+    and m.module_finder
+    and ("poetry" in m.module_finder.path)  # type: ignore
 ]
 
 icon = (
