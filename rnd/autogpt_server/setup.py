@@ -6,18 +6,24 @@ from cx_Freeze import setup, Executable
 packages = [
     m.name
     for m in iter_modules()
-    if m.ispkg and (".venv" in m.module_finder.path or "poetry" in m.module_finder.path) # type: ignore
+    if m.ispkg and (".venv" in m.module_finder.path or "poetry" in m.module_finder.path)  # type: ignore
 ]
 packages.append("collections")
 
 # if mac use the icns file, otherwise use the ico file
-icon = "../../assets/gpt_dark_RGB.icns" if which("sips") else ".../../assets/gpt_dark_RGB.ico"
+icon = (
+    "../../assets/gpt_dark_RGB.icns"
+    if which("sips")
+    else ".../../assets/gpt_dark_RGB.ico"
+)
 
 setup(
     name="AutoGPT Server",
     url="https://agpt.co",
     executables=[
-        Executable("autogpt_server/app.py", target_name="server", base="console", icon=icon),
+        Executable(
+            "autogpt_server/app.py", target_name="server", base="console", icon=icon
+        ),
     ],
     options={
         "build_exe": {

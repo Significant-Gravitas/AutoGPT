@@ -4,7 +4,9 @@ from pkgutil import iter_modules
 from cx_Freeze import setup, Executable
 
 packages = [
-    m.name for m in iter_modules() if m.ispkg and ("poetry" in m.module_finder.path) # type: ignore
+    m.name
+    for m in iter_modules()
+    if m.ispkg and ("poetry" in m.module_finder.path)  # type: ignore
 ]
 
 icon = (
@@ -16,7 +18,9 @@ icon = (
 
 setup(
     executables=[
-        Executable("autogpt/__main__.py", target_name="autogpt", base="console", icon=icon),
+        Executable(
+            "autogpt/__main__.py", target_name="autogpt", base="console", icon=icon
+        ),
     ],
     options={
         "build_exe": {
