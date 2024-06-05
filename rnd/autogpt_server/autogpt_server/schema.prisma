@@ -25,65 +25,64 @@ model AgentGraph {
 model AgentNode {
   id String @id
 
-  agentComponentId String
-  AgentComponent   AgentComponent @relation(fields: [agentComponentId], references: [id])
+  agentBlockId String
+  AgentBlock   AgentBlock @relation(fields: [agentBlockId], references: [id])
 
   agentGraphId String
   AgentGraph   AgentGraph @relation("AgentGraphNodes", fields: [agentGraphId], references: [id])
 
+  // List of consumed input, that the parent node component should provide.
+  Input AgentNodeLink[] @relation("AgentNodeInput")
+
   // List of produced output, that the child node component should be executed.
-  AgentOutputTriggers AgentNodeTrigger[] @relation("TriggeredNode")
+  Output AgentNodeLink[] @relation("AgentNodeOutput")
 
   ExecutionHistory AgentNodeExecution[]
 
   // Prisma requires explicit back-references.
-  ReferencedByAgentGraphAsRoot AgentGraph[]       @relation("AgentGraphRoot")
-  ReferencedByAgentNodeTrigger AgentNodeTrigger[] @relation("TriggeringNode")
+  ReferencedByAgentGraphAsRoot AgentGraph[] @relation("AgentGraphRoot")
 }
 
-model AgentNodeTrigger {
+model AgentNodeLink {
   id String @id
 
-  // The AgentNode that owns this trigger.
-  agentNodeId String
-  AgentNode   AgentNode @relation("TriggeringNode", fields: [agentNodeId], references: [id])
+  agentNodeInputId       String
+  AgentNodeInput         AgentNode             @relation("AgentNodeOutput", fields: [agentNodeInputId], references: [id]) // Output of the node is the input of the link.
+  agentNodeInputSchemaId String
+  AgentNodeInputSchema   AgentBlockInputOutput @relation("AgentNodeInputSchema", fields: [agentNodeInputSchemaId], references: [id])
 
-  // The AgentNode that will be triggered.
-  triggerNodeId String
-  TriggerNode   AgentNode @relation("TriggeredNode", fields: [triggerNodeId], references: [id])
-
-  // The output that will trigger the child node.
-  triggerOutputId String
-  TriggerOutput   AgentComponentOutput @relation(fields: [triggerOutputId], references: [id])
+  agentNodeOutputId       String
+  AgentNodeOutput         AgentNode             @relation("AgentNodeInput", fields: [agentNodeOutputId], references: [id]) // Input of the node is the output of the link.
+  agentNodeOutputSchemaId String
+  AgentNodeOutputSchema   AgentBlockInputOutput @relation("AgentNodeOutputSchema", fields: [agentNodeOutputSchemaId], references: [id])
 }
 
 // This model describes a component that will be executed by the AgentNode.
-model AgentComponent {
+model AgentBlock {
   id   String @id
   name String @unique
-  code String
 
   // We allow a component to have multiple types of output.
-  Output      AgentComponentOutput[]
-  inputSchema String
+  Input  AgentBlockInputOutput[] @relation("AgentBlockInput")
+  Output AgentBlockInputOutput[] @relation("AgentBlockOutput")
 
   // Prisma requires explicit back-references.
   ReferencedByAgentNode AgentNode[]
 }
 
-// This model describes the output (produced event) of an AgentComponent
-model AgentComponentOutput {
-  id           String @id
-  outputName   String
-  outputSchema String
-  description  String
-
-  agentComponentId String
-  AgentComponent   AgentComponent @relation(fields: [agentComponentId], references: [id])
+// This model describes the output (produced event) of an AgentBlock
+model AgentBlockInputOutput {
+  id          String @id
+  name        String
+  schema      String
+  description String
 
   // Prisma requires explicit back-references.
-  ReferencedByAgentNodeExecution AgentNodeExecution[]
-  ReferencedByAgentNodeTrigger   AgentNodeTrigger[]
+  ReferencedByAgentBlockInput       AgentBlock[]         @relation("AgentBlockInput")
+  ReferencedByAgentBlockOutput      AgentBlock[]         @relation("AgentBlockOutput")
+  ReferencedByAgentNodeLinkAsInput  AgentNodeLink[]      @relation("AgentNodeInputSchema")
+  ReferencedByAgentNodeLinkAsOutput AgentNodeLink[]      @relation("AgentNodeOutputSchema")
+  ReferencedByAgentNodeExecution    AgentNodeExecution[]
 }
 
 // This model describes the execution of an AgentNode.
@@ -94,11 +93,11 @@ model AgentNodeExecution {
   AgentNode   AgentNode @relation(fields: [agentNodeId], references: [id])
 
   inputData    String
-  inputFiles   FileDefinition[]      @relation("InputFiles")
+  inputFiles   FileDefinition[]       @relation("InputFiles")
   outputData   String
-  outputFiles  FileDefinition[]      @relation("OutputFiles")
+  outputFiles  FileDefinition[]       @relation("OutputFiles")
   outputTypeId String?
-  outputType   AgentComponentOutput? @relation(fields: [outputTypeId], references: [id])
+  outputType   AgentBlockInputOutput? @relation(fields: [outputTypeId], references: [id])
 
   // sqlite does not support enum
   // enum Status { STARTED, RUNNING, SUCCESS, FAILED }
