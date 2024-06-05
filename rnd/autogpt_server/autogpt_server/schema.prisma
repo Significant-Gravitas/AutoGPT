@@ -31,10 +31,10 @@ model AgentNode {
   agentGraphId String
   AgentGraph   AgentGraph @relation("AgentGraphNodes", fields: [agentGraphId], references: [id])
 
-  // List of consumed input, that the parent node component should provide.
+  // List of consumed input, that the parent node should provide.
   Input AgentNodeLink[] @relation("AgentNodeInput")
 
-  // List of produced output, that the child node component should be executed.
+  // List of produced output, that the child node should be executed.
   Output AgentNodeLink[] @relation("AgentNodeOutput")
 
   ExecutionHistory AgentNodeExecution[]
@@ -63,7 +63,7 @@ model AgentBlock {
   id   String @id
   name String @unique
 
-  // We allow a component to have multiple types of output.
+  // We allow a block to have multiple types of output.
   Input  AgentBlockInputOutput[] @relation("AgentBlockInput")
   Output AgentBlockInputOutput[] @relation("AgentBlockOutput")
 
