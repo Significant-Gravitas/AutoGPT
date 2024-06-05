@@ -3,18 +3,20 @@ from pkgutil import iter_modules
 
 from cx_Freeze import setup, Executable
 
-import os
-
 packages = [
-    m.name for m in iter_modules() if m.ispkg and ("poetry" in m.module_finder.path)
+    m.name for m in iter_modules() if m.ispkg and ("poetry" in m.module_finder.path) # type: ignore
 ]
 
-print(packages)
+icon = (
+    "../../assets/gpt_dark_RGB.icns"
+    if which("sips")
+    else ".../../assets/gpt_dark_RGB.ico"
+)
 
 
 setup(
     executables=[
-        Executable("autogpt/__main__.py", target_name="autogpt"),
+        Executable("autogpt/__main__.py", target_name="autogpt", base="console", icon=icon),
     ],
     options={
         "build_exe": {
@@ -36,7 +38,17 @@ setup(
         },
         "bdist_mac": {
             "bundle_name": "AutoGPT",
+            "iconfile": "../assets/gpt_dark_RGB.icns",
             "include_resources": [""],
+        },
+        "bdist_dmg": {
+            "applications_shortcut": True,
+            "volume_label": "AutoGPT",
+        },
+        "bdist_msi": {
+            "target_name": "AutoGPT",
+            "add_to_path": True,
+            "install_icon": "../assets/gpt_dark_RGB.ico",
         },
     },
 )

@@ -3,12 +3,10 @@ from pkgutil import iter_modules
 
 from cx_Freeze import setup, Executable
 
-import os
-
 packages = [
     m.name
     for m in iter_modules()
-    if m.ispkg and (".venv" in m.module_finder.path or "poetry" in m.module_finder.path)
+    if m.ispkg and (".venv" in m.module_finder.path or "poetry" in m.module_finder.path) # type: ignore
 ]
 packages.append("collections")
 
