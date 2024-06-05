@@ -43,6 +43,7 @@ model AgentNode {
   ReferencedByAgentGraphAsRoot AgentGraph[] @relation("AgentGraphRoot")
 }
 
+// This model describes the link between two AgentNodes.
 model AgentNodeLink {
   id String @id
 
