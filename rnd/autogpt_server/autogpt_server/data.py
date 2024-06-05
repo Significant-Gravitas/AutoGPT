@@ -9,16 +9,9 @@ class Event:
     executor manager (EM) and for the EM to send to the executors.
     """
     
-    def __init__(self, etype: str, data: Any):
-        self.etype = etype
-        self.data = data
-
-
-class Execution:
-    """Data model for an execution of an Agent"""
-
-    def __init__(self, execution_id: str, data: str):
+    def __init__(self, execution_id: str, etype: str, data: Any):
         self.execution_id = execution_id
+        self.etype = etype
         self.data = data
 
 
@@ -34,14 +27,14 @@ class ExecutionQueue:
     """
 
     def __init__(self):
-        self.queue: Queue[Execution] = Queue()
+        self.queue: Queue[Event] = Queue()
 
-    def add(self, data: str) -> str:
+    def add(self, etype: str, data: Any) -> str:
         execution_id = uuid.uuid4()
-        self.queue.put(Execution(str(execution_id), data))
+        self.queue.put(Event(str(execution_id), etype, data))
         return str(execution_id)
 
-    def get(self) -> Execution | None:
+    def get(self) -> Event | None:
         return self.queue.get()
 
     def empty(self) -> bool:

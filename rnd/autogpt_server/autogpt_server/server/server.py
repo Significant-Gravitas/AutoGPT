@@ -27,7 +27,7 @@ class AgentServer:
         self.app.include_router(self.router)
 
     def execute_agent(self, agent_id: str):
-        execution_id = self.execution_queue.add(agent_id)
+        execution_id = self.execution_queue.add("Execution", {"agent_id", agent_id})
         return {"execution_id": execution_id, "agent_id": agent_id}
 
 

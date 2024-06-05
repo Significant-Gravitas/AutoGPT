@@ -3,7 +3,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Process
 
-from autogpt_server.data import Execution, ExecutionQueue
+from autogpt_server.data import Event, ExecutionQueue
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ def execute_node(id: str, data: str) -> None:
 def start_executor(pool_size: int, queue: ExecutionQueue) -> None:
     with ThreadPoolExecutor(max_workers=pool_size) as executor:
         while True:
-            execution: Execution | None = queue.get()
+            execution: Event | None = queue.get()
             if not execution:
                 time.sleep(1)
                 continue
