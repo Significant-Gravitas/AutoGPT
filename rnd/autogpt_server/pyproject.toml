@@ -51,5 +51,8 @@ cmd = "python setup.py bdist_mac"
 [tool.poe.tasks.dist_dmg]
 cmd = "python setup.py bdist_dmg"
 
+[tool.poe.tasks.dist_msi]
+cmd = "python setup.py bdist_msi"
+
 [tool.poe.tasks._dinstall]
 cmd = "python setup.py install"

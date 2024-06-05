@@ -12,11 +12,14 @@ packages = [
 ]
 packages.append("collections")
 
+# if mac use the icns file, otherwise use the ico file
+icon = "../../assets/gpt_dark_RGB.icns" if which("sips") else ".../../assets/gpt_dark_RGB.ico"
+
 setup(
     name="AutoGPT Server",
     url="https://agpt.co",
     executables=[
-        Executable("autogpt_server/app.py", target_name="server"),
+        Executable("autogpt_server/app.py", target_name="server", base="console", icon=icon),
     ],
     options={
         "build_exe": {
@@ -39,7 +42,11 @@ setup(
             "applications_shortcut": True,
             "volume_label": "AutoGPT Server",
         },
-        "bdist_msi": {},
+        "bdist_msi": {
+            "target_name": "AutoGPTServer",
+            "add_to_path": True,
+            "install_icon": "../../assets/gpt_dark_RGB.ico",
+        },
         "bdist_appimage": {},
     },
 )
