@@ -71,7 +71,7 @@ model AgentBlock {
   ReferencedByAgentNode AgentNode[]
 }
 
-// This model describes the output (produced event) of an AgentBlock
+// This model describes the output (produced event) or input (consumed event) of an AgentBlock.
 model AgentBlockInputOutput {
   id          String @id
   name        String
