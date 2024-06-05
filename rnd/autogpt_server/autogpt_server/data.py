@@ -5,10 +5,10 @@ from multiprocessing import Queue
 
 class Event:
     """
-    Defines an event type for tiggers to send to the 
+    Defines an event type for tiggers to send to the
     executor manager (EM) and for the EM to send to the executors.
     """
-    
+
     def __init__(self, execution_id: str, etype: str, data: Any):
         self.execution_id = execution_id
         self.etype = etype
