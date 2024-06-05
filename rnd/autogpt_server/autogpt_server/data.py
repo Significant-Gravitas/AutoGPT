@@ -1,5 +1,17 @@
 import uuid
+from typing import Any
 from multiprocessing import Queue
+
+
+class Event:
+    """
+    Defines an event type for tiggers to send to the 
+    executor manager (EM) and for the EM to send to the executors.
+    """
+    
+    def __init__(self, etype: str, data: Any):
+        self.etype = etype
+        self.data = data
 
 
 class Execution:
