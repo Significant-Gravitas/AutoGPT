@@ -1,3 +1,5 @@
+import json
+import logging
 import math
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -10,6 +12,8 @@ from pyvis.network import Network
 
 from agbenchmark.generate_test import DATA_CATEGORY
 from agbenchmark.utils.utils import write_pretty_json
+
+logger = logging.getLogger(__name__)
 
 
 def bezier_curve(
@@ -53,8 +57,10 @@ def curved_edges(
     """
     ax = plt.gca()
     for u, v, data in G.edges(data=True):
-        src = np.array(pos[u])
-        dst = np.array(pos[v])
+        _src = pos[u]
+        _dst = pos[v]
+        src = np.array(_src)
+        dst = np.array(_dst)
 
         same_level = abs(src[1] - dst[1]) < 0.01
 
@@ -64,7 +70,7 @@ def curved_edges(
             arrow = patches.FancyArrowPatch(
                 posA=curve[0],  # type: ignore
                 posB=curve[-1],  # type: ignore
-                connectionstyle=f"arc3,rad=0.2",
+                connectionstyle="arc3,rad=0.2",
                 color="gray",
                 arrowstyle="-|>",
                 mutation_scale=15.0,
@@ -76,8 +82,8 @@ def curved_edges(
         else:
             ax.annotate(
                 "",
-                xy=dst,
-                xytext=src,
+                xy=_dst,
+                xytext=_src,
                 arrowprops=dict(
                     arrowstyle="-|>", color="gray", lw=1, shrinkA=10, shrinkB=10
                 ),
@@ -85,7 +91,8 @@ def curved_edges(
 
 
 def tree_layout(graph: nx.DiGraph, root_node: Any) -> Dict[Any, Tuple[float, float]]:
-    """Compute positions as a tree layout centered on the root with alternating vertical shifts."""
+    """Compute positions as a tree layout centered on the root
+    with alternating vertical shifts."""
     bfs_tree = nx.bfs_tree(graph, source=root_node)
     levels = {
         node: depth
@@ -133,7 +140,7 @@ def tree_layout(graph: nx.DiGraph, root_node: Any) -> Dict[Any, Tuple[float, flo
 def graph_spring_layout(
     dag: nx.DiGraph, labels: Dict[Any, str], tree: bool = True
 ) -> None:
-    num_nodes = len(dag.nodes())
+    num_nodes = len(list(dag.nodes()))
     # Setting up the figure and axis
     fig, ax = plt.subplots()
     ax.axis("off")  # Turn off the axis
@@ -221,8 +228,8 @@ def graph_interactive_network(
             f"{source_id_str}_to_{target_id_str}"  # Construct a unique edge id
         )
         if not (source_id_str in nt.get_nodes() and target_id_str in nt.get_nodes()):
-            print(
-                f"Skipping edge {source_id_str} -> {target_id_str} due to missing nodes."
+            logger.warning(
+                f"Skipping edge {source_id_str} -> {target_id_str} due to missing nodes"
             )
             continue
         nt.add_edge(source_id_str, target_id_str, id=edge_id_str)
@@ -271,9 +278,12 @@ def graph_interactive_network(
         "layout": {"hierarchical": hierarchical_options},
     }
 
-    # Serialize the graph to JSON
+    # Serialize the graph to JSON and save in appropriate locations
     graph_data = {"nodes": nt.nodes, "edges": nt.edges}
+    logger.debug(f"Generated graph data:\n{json.dumps(graph_data, indent=4)}")
 
+    # FIXME: use more reliable method to find the right location for these files.
+    #   This will fail in all cases except if run from the root of our repo.
     home_path = Path.cwd()
     write_pretty_json(graph_data, home_path / "frontend" / "public" / "graph.json")
 
@@ -281,10 +291,10 @@ def graph_interactive_network(
 
     # Optionally, save to a file
     # Sync with the flutter UI
-    # this literally only works in the AutoGPT repo, but this part of the code is not reached if BUILD_SKILL_TREE is false
+    # this literally only works in the AutoGPT repo, but this part of the code
+    # is not reached if BUILD_SKILL_TREE is false
     write_pretty_json(graph_data, flutter_app_path / "tree_structure.json")
     validate_skill_tree(graph_data, "")
-    import json
 
     # Extract node IDs with category "coding"
 
@@ -317,9 +327,6 @@ def graph_interactive_network(
         scrape_synthesize_tree,
         flutter_app_path / "scrape_synthesize_tree_structure.json",
     )
-    # If you want to convert back to JSON
-    filtered_json = json.dumps(graph_data, indent=4)
-    print(filtered_json)
 
     if html_graph_path:
         file_path = str(Path(html_graph_path).resolve())
@@ -329,11 +336,13 @@ def graph_interactive_network(
 
 def extract_subgraph_based_on_category(graph, category):
     """
-    Extracts a subgraph that includes all nodes and edges required to reach all nodes with a specified category.
+    Extracts a subgraph that includes all nodes and edges required to reach all nodes
+    with a specified category.
 
     :param graph: The original graph.
     :param category: The target category.
-    :return: Subgraph with nodes and edges required to reach the nodes with the given category.
+    :return: Subgraph with nodes and edges required to reach the nodes
+        with the given category.
     """
 
     subgraph = {"nodes": [], "edges": []}
@@ -421,7 +430,8 @@ def get_roots(graph):
 
 def validate_skill_tree(graph, skill_tree_name):
     """
-    Validate if a given graph represents a valid skill tree and raise appropriate exceptions if not.
+    Validate if a given graph represents a valid skill tree
+    and raise appropriate exceptions if not.
 
     :param graph: A dictionary representing the graph with 'nodes' and 'edges'.
     :raises: ValueError with a description of the invalidity.
@@ -431,7 +441,8 @@ def validate_skill_tree(graph, skill_tree_name):
     if cycle_path:
         cycle_str = " -> ".join(cycle_path)
         raise ValueError(
-            f"{skill_tree_name} skill tree is circular! Circular path detected: {cycle_str}."
+            f"{skill_tree_name} skill tree is circular! "
+            f"Detected circular path: {cycle_str}."
         )
 
     # Check for multiple roots

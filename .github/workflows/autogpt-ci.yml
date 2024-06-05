@@ -1,18 +1,18 @@
-name: AutoGPT Python CI
+name: AutoGPT CI
 
 on:
   push:
     branches: [ master, development, ci-test* ]
     paths:
       - '.github/workflows/autogpt-ci.yml'
-      - 'autogpts/autogpt/**'
-      - '!autogpts/autogpt/tests/vcr_cassettes'
+      - 'autogpt/**'
+      - '!autogpt/tests/vcr_cassettes'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
       - '.github/workflows/autogpt-ci.yml'
-      - 'autogpts/autogpt/**'
-      - '!autogpts/autogpt/tests/vcr_cassettes'
+      - 'autogpt/**'
+      - '!autogpt/tests/vcr_cassettes'
 
 concurrency:
   group: ${{ format('autogpt-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -20,81 +20,50 @@ concurrency:
 
 defaults:
   run:
-    working-directory: autogpts/autogpt
+    shell: bash
+    working-directory: autogpt
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    env:
-      min-python-version: "3.10"
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Set up Python ${{ env.min-python-version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.min-python-version }}
-
-      - id: get_date
-        name: Get date
-        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-      - name: Set up Python dependency cache
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pypoetry
-          key: ${{ runner.os }}-poetry-${{ hashFiles('autogpts/autogpt/pyproject.toml') }}-${{ steps.get_date.outputs.date }}
-
-      - name: Install Python dependencies
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          poetry install
-
-      - name: Lint with flake8
-        run: poetry run flake8
-
-      - name: Check black formatting
-        run: poetry run black . --check
-        if: success() || failure()
-
-      - name: Check isort formatting
-        run: poetry run isort . --check
-        if: success() || failure()
-
-      # - name: Check mypy formatting
-      #   run: poetry run mypy
-      #   if: success() || failure()
-
-      # - name: Check for unused imports and pass statements
-      #   run: |
-      #     cmd="autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring autogpt tests"
-      #     poetry run $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
-
   test:
     permissions:
       contents: read
-    runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10"]
-
-    services:
-      minio:
-        image: minio/minio:edge-cicd
-        ports:
-          - 9000:9000
-        options: >
-          --health-interval=10s --health-timeout=5s --health-retries=3
-          --health-cmd="curl -f http://localhost:9000/minio/health/live"
+        platform-os: [ubuntu, macos, macos-arm64, windows]
+    runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
 
     steps:
+      # Quite slow on macOS (2~4 minutes to set up Docker)
+      # - name: Set up Docker (macOS)
+      #   if: runner.os == 'macOS'
+      #   uses: crazy-max/ghaction-setup-docker@v3
+
+      - name: Start MinIO service (Linux)
+        if: runner.os == 'Linux'
+        working-directory: '.'
+        run: |
+          docker pull minio/minio:edge-cicd
+          docker run -d -p 9000:9000 minio/minio:edge-cicd
+
+      - name: Start MinIO service (macOS)
+        if: runner.os == 'macOS'
+        working-directory: ${{ runner.temp }}
+        run: |
+          brew install minio/stable/minio
+          mkdir data
+          minio server ./data &
+
+      # No MinIO on Windows:
+      # - Windows doesn't support running Linux Docker containers
+      # - It doesn't seem possible to start background processes on Windows. They are
+      #   killed after the step returns.
+      #   See: https://github.com/actions/runner/issues/598#issuecomment-2011890429
+
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: true
@@ -136,7 +105,7 @@ jobs:
           fi
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -145,15 +114,34 @@ jobs:
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
       - name: Set up Python dependency cache
-        uses: actions/cache@v3
+        # On Windows, unpacking cached dependencies takes longer than just installing them
+        if: runner.os != 'Windows'
+        uses: actions/cache@v4
         with:
-          path: ~/.cache/pypoetry
-          key: ${{ runner.os }}-poetry-${{ hashFiles('autogpts/autogpt/pyproject.toml') }}-${{ steps.get_date.outputs.date }}
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt/poetry.lock') }}
 
-      - name: Install Python dependencies
+      - name: Install Poetry (Unix)
+        if: runner.os != 'Windows'
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
-          poetry install
+
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+          fi
+
+      - name: Install Poetry (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
+
+          $env:PATH += ";$env:APPDATA\Python\Scripts"
+          echo "$env:APPDATA\Python\Scripts" >> $env:GITHUB_PATH
+
+      - name: Install Python dependencies
+        run: poetry install
 
       - name: Run pytest with coverage
         run: |
@@ -165,12 +153,15 @@ jobs:
           CI: true
           PLAIN_OUTPUT: True
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          S3_ENDPOINT_URL: http://localhost:9000
+          S3_ENDPOINT_URL: ${{ runner.os != 'Windows' && 'http://127.0.0.1:9000' || '' }}
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: autogpt-agent,${{ runner.os }}
 
       - id: setup_git_auth
         name: Set up git token authentication
@@ -178,7 +169,11 @@ jobs:
         if: success() || failure()
         run: |
           config_key="http.${{ github.server_url }}/.extraheader"
-          base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
+          if [ "${{ runner.os }}" = 'macOS' ]; then
+            base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64)
+          else
+            base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
+          fi
 
           git config "$config_key" \
             "Authorization: Basic $base64_pat"
@@ -239,12 +234,12 @@ jobs:
             echo "Adding label and comment..."
             echo $TOKEN | gh auth login --with-token
             gh issue edit $PR_NUMBER --add-label "behaviour change"
-            gh issue comment $PR_NUMBER --body "You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
+            gh issue comment $PR_NUMBER --body "You changed AutoGPT's behaviour on ${{ runner.os }}. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
           fi
 
       - name: Upload logs to artifact
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-logs
-          path: autogpts/autogpt/logs/
+          path: autogpt/logs/

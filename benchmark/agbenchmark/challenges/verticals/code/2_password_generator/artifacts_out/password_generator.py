@@ -21,7 +21,6 @@ def generate_password(length: int = 8) -> str:
 
 if __name__ == "__main__":
     password_length = (
-        int(sys.argv[sys.argv.index("--length") + 1])
-        if "--length" in sys.argv else 8
+        int(sys.argv[sys.argv.index("--length") + 1]) if "--length" in sys.argv else 8
     )
     print(generate_password(password_length))

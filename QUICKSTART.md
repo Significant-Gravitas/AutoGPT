@@ -39,9 +39,6 @@ This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux
 
     The first command you need to use is `./run setup` This will guide you through the process of setting up your system.
     Initially you will get instructions for installing flutter, chrome and setting up your github access token like the following image:
-
-    > Note: for advanced users. The github access token is only needed for the ./run arena enter command so the system can automatically create a PR
-
     
     ![Setup the Project](docs/content/imgs/quickstart/005_setup.png)
 
@@ -77,44 +74,30 @@ After executing the above commands, running `./run setup` should work successful
 
 #### Store Project Files within the WSL File System
 If you continue to experience issues, consider storing your project files within the WSL file system instead of the Windows file system. This method avoids issues related to path translations and permissions and provides a more consistent development environment.
-    
-    You can keep running the command to get feedback on where you are up to with your setup. 
-    When setup has been completed, the command will return an output like this:
 
-   ![Setup Complete](docs/content/imgs/quickstart/006_setup_complete.png)
+You can keep running the command to get feedback on where you are up to with your setup. 
+When setup has been completed, the command will return an output like this:
+
+![Setup Complete](docs/content/imgs/quickstart/006_setup_complete.png)
 
 ## Creating Your Agent
 
-    Now setup has been completed its time to create your agent template. 
-    Do so by running the `./run agent create YOUR_AGENT_NAME` replacing YOUR_AGENT_NAME with a name of your choice. Examples of valid names: swiftyosgpt or SwiftyosAgent or swiftyos_agent
+After completing the setup, the next step is to create your agent template.
+Execute the command `./run agent create YOUR_AGENT_NAME`, where `YOUR_AGENT_NAME` should be replaced with a name of your choosing.
 
-   ![Create an Agent](docs/content/imgs/quickstart/007_create_agent.png)
+Tips for naming your agent:
+* Give it its own unique name, or name it after yourself
+* Include an important aspect of your agent in the name, such as its purpose
 
-    Upon creating your agent its time to officially enter the Arena!
-    Do so by running `./run arena enter YOUR_AGENT_NAME`
+Examples: `SwiftyosAssistant`, `PwutsPRAgent`, `MySuperAgent`
 
-   ![Enter the Arena](docs/content/imgs/quickstart/008_enter_arena.png)
-
-   > Note: for advanced users, create a new branch and create a file called YOUR_AGENT_NAME.json in the arena directory. Then commit this and create a PR to merge into the main repo. Only single file entries will be permitted. The json file needs the following format. 
-   ```json
-   {
-    "github_repo_url": "https://github.com/Swiftyos/YourAgentName",
-    "timestamp": "2023-09-18T10:03:38.051498",
-    "commit_hash_to_benchmark": "ac36f7bfc7f23ad8800339fa55943c1405d80d5e",
-    "branch_to_benchmark": "master"
-   }
-   ```
-   - github_repo_url: the url to your fork
-   - timestamp: timestamp of the last update of this file
-   - commit_hash_to_benchmark: the commit hash of your entry. You update each time you have an something ready to be officially entered into the hackathon
-   - branch_to_benchmark: the branch you are using to develop your agent on, default is master.
-
+![Create an Agent](docs/content/imgs/quickstart/007_create_agent.png)
 
 ## Running your Agent
 
-Your agent can started using the `./run agent start YOUR_AGENT_NAME`
+Your agent can be started using the command: `./run agent start YOUR_AGENT_NAME`
 
-This start the agent on `http://localhost:8000/`
+This starts the agent on the URL: `http://localhost:8000/`
 
 ![Start the Agent](docs/content/imgs/quickstart/009_start_agent.png)
 
