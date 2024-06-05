@@ -58,9 +58,13 @@ class GitOperationsComponent(
             str: The result of the clone operation.
         """
         split_url = url.split("//")
-        auth_repo_url = (
-            f"//{self.config.github_username}:"
-            f"{self.config.github_api_key.get_secret_value()}@".join(split_url)
+        api_key = (
+            self.config.github_api_key.get_secret_value()
+            if self.config.github_api_key
+            else None
+        )
+        auth_repo_url = f"//{self.config.github_username}:" f"{api_key}@".join(
+            split_url
         )
         try:
             Repo.clone_from(url=auth_repo_url, to_path=clone_path)

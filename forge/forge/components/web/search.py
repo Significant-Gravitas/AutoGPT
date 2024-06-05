@@ -134,13 +134,17 @@ class WebSearchComponent(
         from googleapiclient.discovery import build
         from googleapiclient.errors import HttpError
 
-        assert self.config.google_api_key and self.config.google_custom_search_engine_id
-
         try:
             # Get the Google API key and Custom Search Engine ID from the config file
-            api_key = self.config.google_api_key.get_secret_value()
+            api_key = (
+                self.config.google_api_key.get_secret_value()
+                if self.config.google_api_key
+                else None
+            )
             custom_search_engine_id = (
                 self.config.google_custom_search_engine_id.get_secret_value()
+                if self.config.google_custom_search_engine_id
+                else None
             )
 
             # Initialize the Custom Search API service
