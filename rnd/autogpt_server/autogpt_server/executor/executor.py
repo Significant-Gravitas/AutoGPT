@@ -18,8 +18,8 @@ from autogpt_server.data.execution import (
 logger = logging.getLogger(__name__)
 
 
-def get_log_prefix(graph_exec_id: str, node_exec_id: str, block_name: str = "-"):
-    return f"[Execution graph-{graph_exec_id}|node-{node_exec_id}|{block_name}]"
+def get_log_prefix(run_id: str, exec_id: str, block_name: str = "-"):
+    return f"[Execution graph-{run_id}|node-{exec_id}|{block_name}]"
 
 
 async def execute_node(data: Execution) -> Execution | None:
@@ -33,8 +33,8 @@ async def execute_node(data: Execution) -> Execution | None:
     Returns:
         The subsequent node to be enqueued, or None if there is no subsequent node.
     """
-    graph_exec_id = data.graph_exec_id
-    node_exec_id = data.id
+    run_id = data.run_id
+    exec_id = data.id
     exec_data = data.data
     node_id = data.node_id
 
@@ -49,17 +49,17 @@ async def execute_node(data: Execution) -> Execution | None:
         return None
 
     # Execute the node
-    prefix = get_log_prefix(graph_exec_id, node_exec_id, node.block_name)
+    prefix = get_log_prefix(run_id, exec_id, node.block_name)
     logger.warning(f"{prefix} execute with input:\n{exec_data}")
-    await start_execution(node_exec_id)
+    await start_execution(exec_id)
 
     try:
         output_name, output_data = await node_block.execute(exec_data)
         logger.warning(f"{prefix} executed with output: `{output_name}`\n{output_data}")
-        await complete_execution(node_exec_id, (output_name, output_data))
+        await complete_execution(exec_id, (output_name, output_data))
     except Exception as e:
         logger.exception(f"{prefix} failed with error: %s", e)
-        await fail_execution(node_exec_id, e)
+        await fail_execution(exec_id, e)
         raise e
 
     # Try to enqueue next eligible nodes
@@ -69,7 +69,7 @@ async def execute_node(data: Execution) -> Execution | None:
 
     next_node_id = node.output_nodes[output_name]
     next_node = await graph.get_node(next_node_id)
-    next_node_input = await graph.get_node_input(next_node, graph_exec_id)
+    next_node_input = await graph.get_node_input(next_node, run_id)
 
     provided_input = set(next_node_input.keys())
     expected_input = set(next_node.input_schema.keys())
@@ -83,7 +83,7 @@ async def execute_node(data: Execution) -> Execution | None:
 
     logger.warning(f"{prefix} Enqueue next node {next_node_id}-{next_node.block_name}")
     return Execution(
-        graph_exec_id=graph_exec_id, node_id=next_node_id, data=next_node_input
+        run_id=run_id, node_id=next_node_id, data=next_node_input
     )
 
 
@@ -91,7 +91,7 @@ def execute_node_sync(data: Execution) -> Optional[tuple[str, str]]:
     """
     A synchronous version of `execute_node`, to be used in the ProcessPoolExecutor.
     """
-    prefix = get_log_prefix(data.graph_exec_id, data.id)
+    prefix = get_log_prefix(data.run_id, data.id)
     try:
         logger.warning(f"{prefix} Start execution")
         loop = asyncio.get_event_loop()

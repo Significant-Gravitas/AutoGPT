@@ -1,5 +1,4 @@
 import json
-import time
 
 from datetime import datetime
 from enum import Enum
@@ -11,8 +10,7 @@ from autogpt_server.data.db import BaseDbModel
 
 class Execution(BaseDbModel):
     """Data model for an execution of an Agent"""
-
-    graph_exec_id: str
+    run_id: str
     node_id: str
     data: dict[str, str]
 
@@ -53,7 +51,7 @@ async def add_execution(execution: Execution, queue: ExecutionQueue) -> Executio
     await AgentNodeExecution.prisma().create(
         data={
             "id": execution.id,
-            "executionId": execution.graph_exec_id,
+            "executionId": execution.run_id,
             "agentNodeId": execution.node_id,
             "executionStatus": ExecutionStatus.QUEUED,
             "inputData": json.dumps(execution.data),
@@ -63,9 +61,9 @@ async def add_execution(execution: Execution, queue: ExecutionQueue) -> Executio
     return queue.add(execution)
 
 
-async def start_execution(node_exec_id: str) -> None:
+async def start_execution(exec_id: str) -> None:
     await AgentNodeExecution.prisma().update(
-        where={"id": node_exec_id},
+        where={"id": exec_id},
         data={
             "executionStatus": ExecutionStatus.RUNNING,
             "startTime": datetime.now(),
@@ -73,11 +71,11 @@ async def start_execution(node_exec_id: str) -> None:
     )
 
 
-async def complete_execution(node_exec_id: str, output: (str, str)) -> None:
+async def complete_execution(exec_id: str, output: (str, str)) -> None:
     output_name, output_data = output
 
     await AgentNodeExecution.prisma().update(
-        where={"id": node_exec_id},
+        where={"id": exec_id},
         data={
             "executionStatus": ExecutionStatus.COMPLETED,
             "outputName": output_name,
@@ -87,12 +85,13 @@ async def complete_execution(node_exec_id: str, output: (str, str)) -> None:
     )
 
 
-async def fail_execution(node_exec_id: str, error: Exception) -> None:
+async def fail_execution(exec_id: str, error: Exception) -> None:
     await AgentNodeExecution.prisma().update(
-        where={"id": node_exec_id},
+        where={"id": exec_id},
         data={
             "executionStatus": ExecutionStatus.FAILED,
-            "error": str(error),
+            "outputName": "error",
+            "outputData": str(error),
             "endTime": datetime.now(),
         },
     )

@@ -36,7 +36,7 @@ class AgentServer:
         if not agent:
             raise HTTPException(status_code=404, detail=f"Agent #{agent_id} not found.")
 
-        graph_exec_id = str(uuid.uuid4())
+        run_id = str(uuid.uuid4())
         tasks = []
 
         # Currently, there is no constraint on the number of root nodes in the graph.
@@ -54,7 +54,7 @@ class AgentServer:
 
             task = execution.add_execution(
                 execution.Execution(
-                    graph_exec_id=graph_exec_id, node_id=node.id, data=node_input
+                    run_id=run_id, node_id=node.id, data=node_input
                 ),
                 self.execution_queue,
             )

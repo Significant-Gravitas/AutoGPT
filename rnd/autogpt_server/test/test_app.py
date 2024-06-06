@@ -76,9 +76,9 @@ async def test_agent_execution():
     input_data = {"input": text}
     executions = await test_server.execute_agent(test_graph.id, input_data)
 
-    # 2 executions should be created, one for each ParrotBlock, with same graph_exec_id.
+    # 2 executions should be created, one for each ParrotBlock, with same run_id.
     assert len(executions) == 2
-    assert executions[0].graph_exec_id == executions[1].graph_exec_id
+    assert executions[0].run_id == executions[1].run_id
     assert executions[0].node_id != executions[1].node_id
     assert executions[0].data == executions[1].data == input_data
 
