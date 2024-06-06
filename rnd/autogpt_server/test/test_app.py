@@ -22,28 +22,14 @@ async def create_test_graph() -> graph.Graph:
         ),
         graph.Node(block_name="PrintingBlock"),
     ]
-    edges = [
-        graph.Edge(
-            input_node=nodes[0].id,
-            input_name="output",
-            output_node=nodes[2].id,
-            output_name="text1",
-        ),
-        graph.Edge(
-            input_node=nodes[1].id,
-            input_name="output",
-            output_node=nodes[2].id,
-            output_name="text2",
-        ),
-        graph.Edge(
-            input_node=nodes[2].id,
-            input_name="combined_text",
-            output_node=nodes[3].id,
-            output_name="text",
-        ),
-    ]
+    nodes[0].connect(nodes[2], "output", "text1")
+    nodes[1].connect(nodes[2], "output", "text2")
+    nodes[2].connect(nodes[3], "combined_text", "text")
+
     test_graph = graph.Graph(
-        name="TestGraph", description="Test graph", nodes=nodes, edges=edges
+        name="TestGraph",
+        description="Test graph",
+        nodes=nodes,
     )
     await block.initialize_blocks()
     result = await graph.create_graph(test_graph)
@@ -52,7 +38,6 @@ async def create_test_graph() -> graph.Graph:
     assert result.name == test_graph.name
     assert result.description == test_graph.description
     assert len(result.nodes) == len(test_graph.nodes)
-    assert len(result.edges) == len(test_graph.edges)
 
     return result
 

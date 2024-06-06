@@ -29,10 +29,10 @@ model AgentNode {
   AgentGraph   AgentGraph @relation("AgentGraphNodes", fields: [agentGraphId], references: [id])
 
   // List of consumed input, that the parent node should provide.
-  Input AgentNodeLink[] @relation("AgentNodeInput")
+  Input AgentNodeLink[] @relation("AgentNodeSink")
 
   // List of produced output, that the child node should be executed.
-  Output AgentNodeLink[] @relation("AgentNodeOutput")
+  Output AgentNodeLink[] @relation("AgentNodeSource")
 
   // JSON serialized dict[str, str] containing predefined input values.
   constantInput String @default("{}")
@@ -44,13 +44,15 @@ model AgentNode {
 model AgentNodeLink {
   id String @id
 
-  agentNodeInputId String
-  AgentNodeInput   AgentNode @relation("AgentNodeOutput", fields: [agentNodeInputId], references: [id]) // Output of the node is the input of the link.
-  inputName        String
+  // Output of a node is connected to the source of the link.
+  agentNodeSourceId String
+  AgentNodeSource   AgentNode @relation("AgentNodeSource", fields: [agentNodeSourceId], references: [id])
+  sourceName        String
 
-  agentNodeOutputId String
-  AgentNodeOutput   AgentNode @relation("AgentNodeInput", fields: [agentNodeOutputId], references: [id]) // Input of the node is the output of the link.
-  outputName        String
+  // Input of a node is connected to the sink of the link.
+  agentNodeSinkId String
+  AgentNodeSink   AgentNode @relation("AgentNodeSink", fields: [agentNodeSinkId], references: [id])
+  sinkName        String
 }
 
 // This model describes a component that will be executed by the AgentNode.
