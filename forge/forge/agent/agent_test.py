@@ -13,7 +13,7 @@ from forge.agent_protocol.models.task import (
 from forge.file_storage.base import FileStorageConfiguration
 from forge.file_storage.local import LocalFileStorage
 
-from .agent import Agent
+from .agent import ProtocolAgent
 
 
 @pytest.fixture
@@ -21,7 +21,7 @@ def agent(test_workspace: Path):
     db = AgentDB("sqlite:///test.db")
     config = FileStorageConfiguration(root=test_workspace)
     workspace = LocalFileStorage(config)
-    return Agent(db, workspace)
+    return ProtocolAgent(db, workspace)
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ def file_upload():
 
 
 @pytest.mark.asyncio
-async def test_create_task(agent: Agent):
+async def test_create_task(agent: ProtocolAgent):
     task_request = TaskRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
@@ -42,7 +42,7 @@ async def test_create_task(agent: Agent):
 
 
 @pytest.mark.asyncio
-async def test_list_tasks(agent: Agent):
+async def test_list_tasks(agent: ProtocolAgent):
     task_request = TaskRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
@@ -52,7 +52,7 @@ async def test_list_tasks(agent: Agent):
 
 
 @pytest.mark.asyncio
-async def test_get_task(agent: Agent):
+async def test_get_task(agent: ProtocolAgent):
     task_request = TaskRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
@@ -63,7 +63,7 @@ async def test_get_task(agent: Agent):
 
 @pytest.mark.xfail(reason="execute_step is not implemented")
 @pytest.mark.asyncio
-async def test_execute_step(agent: Agent):
+async def test_execute_step(agent: ProtocolAgent):
     task_request = TaskRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
@@ -78,7 +78,7 @@ async def test_execute_step(agent: Agent):
 
 @pytest.mark.xfail(reason="execute_step is not implemented")
 @pytest.mark.asyncio
-async def test_get_step(agent: Agent):
+async def test_get_step(agent: ProtocolAgent):
     task_request = TaskRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
@@ -92,7 +92,7 @@ async def test_get_step(agent: Agent):
 
 
 @pytest.mark.asyncio
-async def test_list_artifacts(agent: Agent):
+async def test_list_artifacts(agent: ProtocolAgent):
     tasks = await agent.list_tasks()
     assert tasks.tasks, "No tasks in test.db"
 
@@ -101,7 +101,7 @@ async def test_list_artifacts(agent: Agent):
 
 
 @pytest.mark.asyncio
-async def test_create_artifact(agent: Agent, file_upload: UploadFile):
+async def test_create_artifact(agent: ProtocolAgent, file_upload: UploadFile):
     task_request = TaskRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
@@ -116,7 +116,7 @@ async def test_create_artifact(agent: Agent, file_upload: UploadFile):
 
 
 @pytest.mark.asyncio
-async def test_create_and_get_artifact(agent: Agent, file_upload: UploadFile):
+async def test_create_and_get_artifact(agent: ProtocolAgent, file_upload: UploadFile):
     task_request = TaskRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
