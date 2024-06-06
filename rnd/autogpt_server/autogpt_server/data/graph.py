@@ -13,6 +13,8 @@ class Node(BaseDbModel):
     input_schema: dict[str, str] = {}  # dict[input_name, type]
     output_schema: dict[str, str] = {}  # dict[output_name, type]
     input_nodes: dict[str, str] = {}  # dict[input_name, node_id]
+    # TODO: Make it `dict[str, list[str]]`, output can be connected to multiple blocks.
+    #       Other option is to use an edge-list, but it will complicate the rest code.
     output_nodes: dict[str, str] = {}  # dict[output_name, node_id]
 
     @staticmethod
@@ -26,7 +28,7 @@ class Node(BaseDbModel):
             input_nodes={v.sinkName: v.agentNodeSourceId for v in node.Input},
             output_nodes={v.sourceName: v.agentNodeSinkId for v in node.Output},
         )
-    
+
     def connect(self, node: "Node", source_name: str, sink_name: str):
         self.output_nodes[source_name] = node.id
         node.input_nodes[sink_name] = self.id
@@ -155,7 +157,7 @@ async def create_graph(graph: Graph) -> Graph:
                 }
             )
             for input_node, output_node in (
-                edge_source_names.keys() | edge_sink_names.keys()
+                    edge_source_names.keys() | edge_sink_names.keys()
             )
         ]
     )
