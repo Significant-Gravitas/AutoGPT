@@ -1,19 +1,13 @@
 import asyncio
 import logging
-
-from typing import Optional
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Process
+from typing import Optional
 
 from autogpt_server.data import block, db, graph
-from autogpt_server.data.execution import (
-    Execution,
-    ExecutionQueue,
-    add_execution,
-    complete_execution,
-    start_execution,
-    fail_execution,
-)
+from autogpt_server.data.execution import (Execution, ExecutionQueue,
+                                           add_execution, complete_execution,
+                                           fail_execution, start_execution)
 
 logger = logging.getLogger(__name__)
 
@@ -82,9 +76,7 @@ async def execute_node(data: Execution) -> Execution | None:
         return None
 
     logger.warning(f"{prefix} Enqueue next node {next_node_id}-{next_node.block_name}")
-    return Execution(
-        run_id=run_id, node_id=next_node_id, data=next_node_input
-    )
+    return Execution(run_id=run_id, node_id=next_node_id, data=next_node_input)
 
 
 def execute_node_sync(data: Execution) -> Optional[Execution | None]:

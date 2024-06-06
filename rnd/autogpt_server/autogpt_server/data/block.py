@@ -2,6 +2,8 @@ import json
 import jsonschema
 
 from abc import ABC, abstractmethod
+from typing import ClassVar
+
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 from typing import Any, ClassVar

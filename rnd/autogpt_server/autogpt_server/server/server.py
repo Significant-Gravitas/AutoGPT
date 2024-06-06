@@ -1,7 +1,7 @@
 import asyncio
 import uuid
-import uvicorn
 
+import uvicorn
 from fastapi import APIRouter, FastAPI, HTTPException
 
 from autogpt_server.data import db, execution, graph
@@ -49,9 +49,7 @@ class AgentServer:
                 )
 
             task = execution.add_execution(
-                execution.Execution(
-                    run_id=run_id, node_id=node.id, data=node_input
-                ),
+                execution.Execution(run_id=run_id, node_id=node.id, data=node_input),
                 self.execution_queue,
             )
 

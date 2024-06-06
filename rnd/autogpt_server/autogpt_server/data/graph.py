@@ -3,7 +3,6 @@ import json
 import uuid
 
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink, AgentNodeExecution
-from typing import Any
 
 from autogpt_server.data.db import BaseDbModel
 from autogpt_server.data.block import get_block
