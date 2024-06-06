@@ -6,6 +6,15 @@ from autogpt_server.executor import start_executor_manager
 from autogpt_server.server import start_server
 
 
+def background_process() -> None:
+    """
+    Runs the server in the background
+    """
+    freeze_support()
+    freeze_support_spawn()
+    main()
+
+
 def main() -> None:
     queue = ExecutionQueue()
     start_executor_manager(5, queue)
