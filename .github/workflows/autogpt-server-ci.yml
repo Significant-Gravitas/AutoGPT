@@ -205,5 +205,5 @@ jobs:
         with:
           name: build
           path: |
-            ./dist/
-            ./build/
+            AutoGPT/AutoGPT/rnd/autogpt_server/dist/
+            AutoGPT/AutoGPT/rnd/autogpt_server/build/
