@@ -110,7 +110,6 @@ jobs:
       - name: Run pytest with coverage
         run: |
           poetry run pytest -vv \
-            --numprocesses=logical --durations=10 \
             test
         env:
           CI: true
