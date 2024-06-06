@@ -44,7 +44,7 @@ setup(
         },
         "bdist_dmg": {
             "applications_shortcut": True,
-            "volume_label": "AutoGPT Server",
+            "volume_label": "AutoGPTServer",
         },
         "bdist_msi": {
             "target_name": "AutoGPTServer",

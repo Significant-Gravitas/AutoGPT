@@ -204,10 +204,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build
-          path: dist/
-
-      - name: Upload assets to artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: build
-          path: build/
+          path: |
+            /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/AutoGPTServer.dmg
+            /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.msi
+            /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.deb
+            /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.rpm
+            /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.tar.gz
+            /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.zip
+            /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.pkg
+            /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.app
+            /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.AppImage
