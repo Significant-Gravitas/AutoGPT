@@ -1,7 +1,7 @@
 from multiprocessing import freeze_support
 from multiprocessing.spawn import freeze_support as freeze_support_spawn
 
-from autogpt_server.data import ExecutionQueue
+from autogpt_server.data.execution import ExecutionQueue
 from autogpt_server.executor import start_executor_manager
 from autogpt_server.server import start_server
 
