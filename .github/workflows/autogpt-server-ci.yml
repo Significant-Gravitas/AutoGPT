@@ -115,11 +115,11 @@ jobs:
           CI: true
           PLAIN_OUTPUT: True
 
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          flags: autogpt-server,${{ runner.os }}
+      # - name: Upload coverage reports to Codecov
+      #   uses: codecov/codecov-action@v4
+      #   with:
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     flags: autogpt-server,${{ runner.os }}
 
   build:
     permissions:
@@ -205,5 +205,5 @@ jobs:
         with:
           name: build
           path: |
-            dist/
-            build/
+            ./dist/
+            ./build/
