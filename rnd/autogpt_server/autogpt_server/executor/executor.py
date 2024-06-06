@@ -12,6 +12,7 @@ from autogpt_server.data.execution import (
     add_execution,
     complete_execution,
     start_execution,
+    fail_execution,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,9 +53,14 @@ async def execute_node(data: Execution) -> Execution | None:
     logger.warning(f"{prefix} execute with input:\n{exec_data}")
     await start_execution(node_exec_id)
 
-    output_name, output_data = await node_block.execute(exec_data)
-    logger.warning(f"{prefix} executed with output: `{output_name}`\n{output_data}")
-    await complete_execution(node_exec_id, (output_name, output_data))
+    try:
+        output_name, output_data = await node_block.execute(exec_data)
+        logger.warning(f"{prefix} executed with output: `{output_name}`\n{output_data}")
+        await complete_execution(node_exec_id, (output_name, output_data))
+    except Exception as e:
+        logger.exception(f"{prefix} failed with error: %s", e)
+        await fail_execution(node_exec_id, e)
+        raise e
 
     # Try to enqueue next eligible nodes
     if output_name not in node.output_nodes:
@@ -102,7 +108,7 @@ def start_executor(pool_size: int, queue: ExecutionQueue) -> None:
 
     def on_complete_execution(f: asyncio.Future[Execution | None]) -> None:
         if f.exception():
-            logger.error("Error during execution!! ", f.exception())
+            logger.exception("Error during execution!! %s", f.exception())
         elif f.result():
             loop.run_until_complete(add_execution(f.result(), queue))
 

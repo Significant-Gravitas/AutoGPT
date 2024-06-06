@@ -13,7 +13,7 @@ class Edge(BaseDbModel):
     output_name: str
 
     @staticmethod
-    def to_edge(edge: AgentNodeLink):
+    def from_db(edge: AgentNodeLink):
         return Edge(
             id=edge.id,
             input_node=edge.agentNodeInputId,
@@ -32,7 +32,7 @@ class Node(BaseDbModel):
     output_nodes: dict[str, str] = {}  # dict[output_name, node_id]
 
     @staticmethod
-    def to_node(node: AgentNode):
+    def from_db(node: AgentNode):
         return Node(
             id=node.id,
             block_name=node.AgentBlock.name,
@@ -55,14 +55,14 @@ class Graph(BaseDbModel):
         return [node for node in self.nodes if not node.input_nodes]
 
     @staticmethod
-    def to_graph(graph: AgentGraph):
+    def from_db(graph: AgentGraph):
         return Graph(
             id=graph.id,
             name=graph.name,
             description=graph.description,
-            nodes=[Node.to_node(node) for node in graph.AgentNodes],
+            nodes=[Node.from_db(node) for node in graph.AgentNodes],
             edges=[
-                Edge.to_edge(edge) for node in graph.AgentNodes for edge in node.Output
+                Edge.from_db(edge) for node in graph.AgentNodes for edge in node.Output
             ],
         )
 
@@ -79,7 +79,7 @@ async def get_node(node_id: str) -> Node | None:
         where={"id": node_id},
         include=EXECUTION_NODE_INCLUDE,
     )
-    return Node.to_node(node) if node else None
+    return Node.from_db(node) if node else None
 
 
 async def get_graph(graph_id: str) -> Graph:
@@ -87,7 +87,7 @@ async def get_graph(graph_id: str) -> Graph:
         where={"id": graph_id},
         include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},
     )
-    return Graph.to_graph(graph) if graph else None
+    return Graph.from_db(graph) if graph else None
 
 
 async def get_node_input(node: Node, exec_id: str) -> dict[str, str]:

@@ -43,11 +43,7 @@ class ExecutionQueue:
         return execution
 
     def get(self) -> Execution | None:
-        while True:
-            if self.queue.empty():
-                time.sleep(0.1)
-                continue
-            return self.queue.get()
+        return self.queue.get()
 
     def empty(self) -> bool:
         return self.queue.empty()
@@ -86,6 +82,17 @@ async def complete_execution(node_exec_id: str, output: (str, str)) -> None:
             "executionStatus": ExecutionStatus.COMPLETED,
             "outputName": output_name,
             "outputData": output_data,
+            "endTime": datetime.now(),
+        },
+    )
+
+
+async def fail_execution(node_exec_id: str, error: Exception) -> None:
+    await AgentNodeExecution.prisma().update(
+        where={"id": node_exec_id},
+        data={
+            "executionStatus": ExecutionStatus.FAILED,
+            "error": str(error),
             "endTime": datetime.now(),
         },
     )

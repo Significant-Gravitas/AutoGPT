@@ -39,6 +39,7 @@ class AgentServer:
         graph_exec_id = str(uuid.uuid4())
         tasks = []
 
+        # Currently, there is no constraint on the number of root nodes in the graph.
         for node in agent.starting_nodes:
             provided = set(node_input.keys())
             expected = set(node.input_schema.keys()) - set(node.input_default.keys())
