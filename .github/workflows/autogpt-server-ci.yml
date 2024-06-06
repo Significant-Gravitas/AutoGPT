@@ -204,6 +204,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build
-          path: |
-            AutoGPT/AutoGPT/rnd/autogpt_server/dist/
-            AutoGPT/AutoGPT/rnd/autogpt_server/build/
+          path: dist/
+
+      - name: Upload assets to artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: build/
