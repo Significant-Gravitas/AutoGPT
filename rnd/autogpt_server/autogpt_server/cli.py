@@ -23,13 +23,6 @@ def run():
     import pathlib
     import subprocess
 
-    sp = subprocess.Popen(
-        ["poetry", "run", "python", "autogpt_server/cli.py", "background"],
-        stdout=subprocess.DEVNULL,  # Redirect standard output to devnull
-        stderr=subprocess.DEVNULL,  # Redirect standard error to devnull
-    )
-    print(f"Server running in process: {sp.pid}")
-
     # Define the path for the new directory and file
     home_dir = pathlib.Path.home()
     new_dir = home_dir / ".config" / "agpt"
@@ -37,6 +30,17 @@ def run():
 
     # Create the directory if it does not exist
     os.makedirs(new_dir, exist_ok=True)
+    if file_path.exists():
+        print("Server is already running")
+        return
+
+    sp = subprocess.Popen(
+        ["poetry", "run", "python", "autogpt_server/cli.py", "background"],
+        stdout=subprocess.DEVNULL,  # Redirect standard output to devnull
+        stderr=subprocess.DEVNULL,  # Redirect standard error to devnull
+    )
+    print(f"Server running in process: {sp.pid}")
+
     with open(file_path, "w") as file:
         file.write(str(sp.pid))
 
@@ -45,13 +49,18 @@ def run():
 def stop():
     import pathlib
     import subprocess
+    import os
 
     home_dir = pathlib.Path.home()
     new_dir = home_dir / ".config" / "agpt"
     file_path = new_dir / "running.tmp"
+    if not file_path.exists():
+        print("Server is not running")
+        return
 
     with open(file_path, "r") as file:
         pid = file.read()
+    os.remove(file_path)
 
     subprocess.Popen(["kill", pid])
     print("Server Stopped")
