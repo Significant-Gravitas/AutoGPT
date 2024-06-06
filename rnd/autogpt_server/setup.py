@@ -20,12 +20,14 @@ icon = (
 setup(
     name="AutoGPT Server",
     url="https://agpt.co",
+    # The entry points of the application
     executables=[
         Executable(
-            "autogpt_server/app.py", target_name="server", base="console", icon=icon
+            "autogpt_server/app.py", target_name="autogptserver", base="console", icon=icon
         ),
     ],
     options={
+      # Options for building all the executables
         "build_exe": {
             "packages": packages,
             "includes": [
@@ -35,22 +37,27 @@ setup(
                 "uvicorn.protocols.websockets.auto",
                 "uvicorn.lifespan.on",
             ],
+            # Exclude the two module from readability.compat as it causes issues
             "excludes": ["readability.compat.two"],
         },
+        # Mac .app specific options
         "bdist_mac": {
             "bundle_name": "AutoGPT",
             "iconfile": "../../assets/gpt_dark_RGB.icns",
             # "include_resources": ["IMG_3775.jpeg"],
         },
+        # Mac .dmg specific options
         "bdist_dmg": {
             "applications_shortcut": True,
             "volume_label": "AutoGPTServer",
         },
+        # Windows .msi specific options
         "bdist_msi": {
             "target_name": "AutoGPTServer",
             "add_to_path": True,
             "install_icon": "../../assets/gpt_dark_RGB.ico",
         },
+        # Linux .appimage specific options
         "bdist_appimage": {},
     },
 )
