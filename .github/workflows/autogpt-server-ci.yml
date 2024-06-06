@@ -217,7 +217,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: msi
-          path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.msi
+          path:  D:\a\AutoGPT\AutoGPT\rnd\autogpt_server\build\**\*.msi
 
       - name: Upload deb artifact
         uses: actions/upload-artifact@v4
