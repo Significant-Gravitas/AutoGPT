@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 import logging
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 import sentry_sdk
@@ -52,13 +51,6 @@ from forge.utils.exceptions import (
     UnknownCommandError,
 )
 from pydantic import Field
-
-from autogpt.app.log_cycle import (
-    CURRENT_CONTEXT_FILE_NAME,
-    NEXT_ACTION_FILE_NAME,
-    USER_INPUT_FILE_NAME,
-    LogCycleHandler,
-)
 
 from .prompt_strategies.one_shot import (
     OneShotAgentActionProposal,
@@ -140,12 +132,6 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             ContextComponent
         )
 
-        self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
-        """Timestamp the agent was created; only used for structured debug logging."""
-
-        self.log_cycle_handler = LogCycleHandler()
-        """LogCycleHandler for structured debug logging."""
-
         self.event_history = settings.history
         self.legacy_config = legacy_config
 
@@ -183,15 +169,6 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             include_os_info=self.legacy_config.execute_local_commands,
         )
 
-        self.log_cycle_handler.log_count_within_cycle = 0
-        self.log_cycle_handler.log_cycle(
-            self.state.ai_profile.ai_name,
-            self.created_at,
-            self.config.cycle_count,
-            prompt.raw(),
-            CURRENT_CONTEXT_FILE_NAME,
-        )
-
         logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
         output = await self.complete_and_parse(prompt)
         self.config.cycle_count += 1
@@ -214,14 +191,6 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             prefill_response=prompt.prefill_response,
         )
         result = response.parsed_result
-
-        self.log_cycle_handler.log_cycle(
-            self.state.ai_profile.ai_name,
-            self.created_at,
-            self.config.cycle_count,
-            result.thoughts.dict(),
-            NEXT_ACTION_FILE_NAME,
-        )
 
         await self.run_pipeline(AfterParse.after_parse, result)
 
@@ -266,13 +235,6 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         self, denied_proposal: OneShotAgentActionProposal, user_feedback: str
     ) -> ActionResult:
         result = ActionInterruptedByHuman(feedback=user_feedback)
-        self.log_cycle_handler.log_cycle(
-            self.state.ai_profile.ai_name,
-            self.created_at,
-            self.config.cycle_count,
-            user_feedback,
-            USER_INPUT_FILE_NAME,
-        )
 
         await self.run_pipeline(AfterExecute.after_execute, result)
 
