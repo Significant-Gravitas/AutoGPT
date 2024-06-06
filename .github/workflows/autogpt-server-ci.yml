@@ -180,7 +180,7 @@ jobs:
 
       - name: install rpm
         if: matrix.platform-os == 'ubuntu'
-        run: sudo apt install rpm
+        run: sudo apt-get install -y alien fakeroot rpm
 
       - name: Build distribution
         run: |
