@@ -2,17 +2,17 @@ name: AutoGPT Server CI
 
 on:
   push:
-    branches: [ master, development, ci-test* ]
+    branches: [master, development, ci-test*]
     paths:
-      - '.github/workflows/autogpt-server-ci.yml'
-      - 'rnd/autogpt_server/**'
-      - '!autogpt/tests/vcr_cassettes'
+      - ".github/workflows/autogpt-server-ci.yml"
+      - "rnd/autogpt_server/**"
+      - "!autogpt/tests/vcr_cassettes"
   pull_request:
-    branches: [ master, development, release-* ]
+    branches: [master, development, release-*]
     paths:
-      - '.github/workflows/autogpt-server-ci.yml'
-      - 'rnd/autogpt_server/**'
-      - '!autogpt/tests/vcr_cassettes'
+      - ".github/workflows/autogpt-server-ci.yml"
+      - "rnd/autogpt_server/**"
+      - "!autogpt/tests/vcr_cassettes"
 
 concurrency:
   group: ${{ format('autogpt-server-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -43,7 +43,7 @@ jobs:
 
       - name: Start MinIO service (Linux)
         if: runner.os == 'Linux'
-        working-directory: '.'
+        working-directory: "."
         run: |
           docker pull minio/minio:edge-cicd
           docker run -d -p 9000:9000 minio/minio:edge-cicd
@@ -67,7 +67,6 @@ jobs:
         with:
           fetch-depth: 0
           submodules: true
-
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -111,9 +110,8 @@ jobs:
       - name: Run pytest with coverage
         run: |
           poetry run pytest -vv \
-            --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
             --numprocesses=logical --durations=10 \
-            tests/unit tests/integration
+            test
         env:
           CI: true
           PLAIN_OUTPUT: True
@@ -123,14 +121,6 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: autogpt-server,${{ runner.os }}
-
-
-      - name: Upload logs to artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-logs
-          path: autogpt/logs/
 
   build:
     permissions:
@@ -144,7 +134,6 @@ jobs:
     runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -216,4 +205,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build
-          path: dist/
+          path: |
+            dist/
+            build/
