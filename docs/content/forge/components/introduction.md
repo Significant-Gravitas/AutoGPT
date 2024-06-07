@@ -1,5 +1,8 @@
 # Component Agents
 
+!!! note
+    Plugins no longer work with AutoGPT. They have been replaced by components.
+
 This guide explains the component-based architecture of AutoGPT agents. It's a new way of building agents that is more flexible and easier to extend. Components replace some agent's logic and plugins with a more modular and composable system.
 
 Agent is composed of *components*, and each *component* implements a range of *protocols* (interfaces), each one providing a specific functionality, e.g. additional commands or messages. Each *protocol* is handled in a specific order, defined by the agent. This allows for a clear separation of concerns and a more modular design.

@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 
 class FileManagerConfiguration(BaseModel):
     files_path: str
+    """Path to agent files, e.g. state"""
     workspace_path: str
+    """Path to files that agent has access to"""
 
     class Config:
         # Prevent mutation of the configuration

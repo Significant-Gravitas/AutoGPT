@@ -84,9 +84,6 @@ class BaseAgentConfiguration(SystemConfiguration):
     defaults to 75% of `llm.max_tokens`.
     """
 
-    summary_max_tlength: Optional[int] = None
-    # TODO: move to ActionHistoryConfiguration
-
     @validator("use_functions_api")
     def validate_openai_functions(cls, v: bool, values: dict[str, Any]):
         if v:

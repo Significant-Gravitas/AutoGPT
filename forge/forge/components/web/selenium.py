@@ -56,15 +56,20 @@ class BrowsingError(CommandExecutionError):
 
 class WebSeleniumConfiguration(BaseModel):
     model_name: ModelName = OpenAIModelName.GPT3
+    """Name of the llm model used to read websites"""
     web_browser: Literal["chrome"] | Literal["firefox"] | Literal["safari"] | Literal[
         "edge"
     ] = "chrome"
+    """Web browser used by Selenium"""
     headless: bool = True
+    """Run browser in headless mode"""
     user_agent: str = (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"
     )
+    """User agent used by the browser"""
     browse_spacy_language_model: str = "en_core_web_sm"
+    """Spacy language model used for chunking text"""
 
 
 class WebSeleniumComponent(

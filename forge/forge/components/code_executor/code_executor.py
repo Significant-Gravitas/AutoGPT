@@ -55,10 +55,15 @@ class CodeExecutionError(CommandExecutionError):
 
 class CodeExecutorConfiguration(BaseModel):
     execute_local_commands: bool = False
+    """Enable shell command execution"""
     shell_command_control: Literal["allowlist"] | Literal["denylist"] = "allowlist"
+    """Controls which list is used"""
     shell_allowlist: list[str] = Field(default_factory=list)
+    """List of allowed shell commands"""
     shell_denylist: list[str] = Field(default_factory=list)
+    """List of prohibited shell commands"""
     docker_container_name: str = "agent_sandbox"
+    """Name of the Docker container used for code execution"""
 
 
 class CodeExecutorComponent(
