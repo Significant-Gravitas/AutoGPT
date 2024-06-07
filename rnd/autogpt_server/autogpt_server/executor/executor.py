@@ -5,9 +5,14 @@ from multiprocessing import Process
 from typing import Optional
 
 from autogpt_server.data import block, db, graph
-from autogpt_server.data.execution import (Execution, ExecutionQueue,
-                                           add_execution, complete_execution,
-                                           fail_execution, start_execution)
+from autogpt_server.data.execution import (
+    Execution,
+    ExecutionQueue,
+    add_execution,
+    complete_execution,
+    fail_execution,
+    start_execution,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +77,8 @@ async def execute_node(data: Execution) -> Execution | None:
 
     if error := next_node_block.input_schema.validate_data(next_node_input):
         logger.warning(
-            f"{prefix} Skipped {next_node_id}-{next_node.block_name}, {error}")
+            f"{prefix} Skipped {next_node_id}-{next_node.block_name}, {error}"
+        )
         return None
 
     logger.warning(f"{prefix} Enqueue next node {next_node_id}-{next_node.block_name}")
