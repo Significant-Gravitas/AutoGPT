@@ -42,6 +42,10 @@ class Command(Generic[P, CO]):
         self.parameters = parameters
 
     @property
+    def name(self) -> str:
+        return self.names[0]  # TODO: fallback to other name if first one is taken
+
+    @property
     def is_async(self) -> bool:
         return inspect.iscoroutinefunction(self.method)
 
@@ -51,6 +55,21 @@ class Command(Generic[P, CO]):
         if type == inspect.Signature.empty:
             return None
         return type.__name__
+
+    @property
+    def header(self) -> str:
+        """Returns a function header representing the command's signature
+
+        Examples:
+        ```py
+        def execute_python_code(code: str) -> str:
+
+        async def extract_info_from_content(content: str, instruction: str, output_type: type[~T]) -> ~T:
+        """  # noqa
+        return (
+            f"{'async ' if self.is_async else ''}"
+            f"def {self.name}{inspect.signature(self.method)}:"
+        )
 
     def _parameters_match(
         self, func: Callable, parameters: list[CommandParameter]
@@ -78,7 +97,7 @@ class Command(Generic[P, CO]):
             for param in self.parameters
         ]
         return (
-            f"{self.names[0]}: {self.description.rstrip('.')}. "
+            f"{self.name}: {self.description.rstrip('.')}. "
             f"Params: ({', '.join(params)})"
         )
 

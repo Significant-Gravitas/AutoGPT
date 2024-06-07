@@ -1,12 +1,18 @@
 import re
 from logging import Logger
+from typing import Iterable, Sequence
 
+from forge.command import Command
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.json.parsing import extract_dict_from_json
 from forge.llm.prompting import ChatPrompt, LanguageModelClassification, PromptStrategy
-from forge.llm.providers import AssistantChatMessage, CompletionModelFunction
-from forge.llm.providers.schema import AssistantFunctionCall, ChatMessage
+from forge.llm.prompting.utils import indent
+from forge.llm.providers.schema import (
+    AssistantChatMessage,
+    AssistantFunctionCall,
+    ChatMessage,
+)
 from forge.models.config import SystemConfiguration
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import InvalidAgentResponseError
@@ -92,7 +98,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
             CodeFlowAgentActionProposal.schema()
         )
         self.logger = logger
-        self.commands: list[CompletionModelFunction] = []
+        self.commands: Sequence[Command] = []  # Sequence -> disallow list modification
 
     @property
     def model_classification(self) -> LanguageModelClassification:
@@ -105,7 +111,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
         task: str,
         ai_profile: AIProfile,
         ai_directives: AIDirectives,
-        commands: list[CompletionModelFunction],
+        commands: Sequence[Command],
         **extras,
     ) -> ChatPrompt:
         """Constructs and returns a prompt with the following structure:
@@ -115,7 +121,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
         system_prompt, response_prefill = self.build_system_prompt(
             ai_profile=ai_profile,
             ai_directives=ai_directives,
-            functions=commands,
+            commands=commands,
         )
 
         self.commands = commands
@@ -135,7 +141,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
         self,
         ai_profile: AIProfile,
         ai_directives: AIDirectives,
-        functions: list[CompletionModelFunction],
+        commands: Iterable[Command],
     ) -> tuple[str, str]:
         """
         Builds the system prompt.
@@ -153,7 +159,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
                 " in the next message. Your job is to complete the task, "
                 "and terminate when your task is done."
             ]
-            + ["## Available Functions\n" + self._generate_function_headers(functions)]
+            + ["## Available Functions\n" + self._generate_function_headers(commands)]
             + ["## RESPONSE FORMAT\n" + response_fmt_instruction]
         )
 
@@ -195,8 +201,29 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
             # "simple strategies with no legal complications.",
         ]
 
-    def _generate_function_headers(self, funcs: list[CompletionModelFunction]) -> str:
-        return "\n\n".join(f.fmt_header(force_async=True) for f in funcs)
+    def _generate_function_headers(self, commands: Iterable[Command]) -> str:
+        return "\n\n".join(
+            f.header
+            + "\n"
+            + indent(
+                (
+                    '"""\n'
+                    f"{f.description}\n\n"
+                    "Params:\n"
+                    + indent(
+                        "\n".join(
+                            f"{param.name}: {param.spec.description}"
+                            for param in f.parameters
+                            if param.spec.description
+                        )
+                    )
+                    + "\n"
+                    '"""\n'
+                    "pass"
+                ),
+            )
+            for f in commands
+        )
 
     async def parse_response_content(
         self,
@@ -220,21 +247,21 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
             raise ValueError("python_code is empty")
 
         available_functions = {
-            f.name: FunctionDef(
-                name=f.name,
-                arg_types=[(name, p.python_type) for name, p in f.parameters.items()],
-                arg_descs={name: p.description for name, p in f.parameters.items()},
+            c.name: FunctionDef(
+                name=c.name,
+                arg_types=[(p.name, p.spec.python_type) for p in c.parameters],
+                arg_descs={p.name: p.spec.description for p in c.parameters},
                 arg_defaults={
-                    name: p.default or "None"
-                    for name, p in f.parameters.items()
-                    if p.default or not p.required
+                    p.name: p.spec.default or "None"
+                    for p in c.parameters
+                    if p.spec.default or not p.spec.required
                 },
-                return_type=f.return_type,
+                return_type=c.return_type,
                 return_desc="Output of the function",
-                function_desc=f.description,
-                is_async=True,
+                function_desc=c.description,
+                is_async=c.is_async,
             )
-            for f in self.commands
+            for c in self.commands
         }
         available_functions.update(
             {

@@ -1,13 +1,16 @@
 import logging
+from typing import Optional
 
 import pytest
+from forge.agent.protocols import CommandProvider
+from forge.command import command
 from forge.components.code_flow_executor.code_flow_executor import (
     CodeFlowExecutionComponent,
 )
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.llm.providers import AssistantChatMessage
-from forge.llm.providers.schema import CompletionModelFunction, JSONSchema
+from forge.llm.providers.schema import JSONSchema
 
 from autogpt.agents.prompt_strategies.code_flow import CodeFlowAgentPromptStrategy
 
@@ -16,32 +19,38 @@ config = CodeFlowAgentPromptStrategy.default_configuration.copy(deep=True)
 prompt_strategy = CodeFlowAgentPromptStrategy(config, logger)
 
 
+class MockWebSearchProvider(CommandProvider):
+    def get_commands(self):
+        yield self.mock_web_search
+
+    @command(
+        description="Searches the web",
+        parameters={
+            "query": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The search query",
+                required=True,
+            ),
+            "num_results": JSONSchema(
+                type=JSONSchema.Type.INTEGER,
+                description="The number of results to return",
+                minimum=1,
+                maximum=10,
+                required=False,
+            ),
+        },
+    )
+    def mock_web_search(self, query: str, num_results: Optional[int] = None) -> str:
+        return "results"
+
+
 @pytest.mark.asyncio
 async def test_code_flow_build_prompt():
-    commands = [
-        CompletionModelFunction(
-            name="web_search",
-            description="Searches the web",
-            parameters={
-                "query": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    description="The search query",
-                    required=True,
-                ),
-                "num_results": JSONSchema(
-                    type=JSONSchema.Type.INTEGER,
-                    description="The number of results to return",
-                    minimum=1,
-                    maximum=10,
-                    required=False,
-                ),
-            },
-        ),
-    ]
+    commands = list(MockWebSearchProvider().get_commands())
 
     ai_profile = AIProfile()
     ai_profile.ai_name = "DummyGPT"
-    ai_profile.ai_goals = "A model for testing purpose"
+    ai_profile.ai_goals = ["A model for testing purposes"]
     ai_profile.ai_role = "Help Testing"
 
     ai_directives = AIDirectives()
@@ -59,7 +68,9 @@ async def test_code_flow_build_prompt():
         )
     )
     assert "DummyGPT" in prompt
-    assert "async def web_search(query: str, num_results: int = None)" in prompt
+    assert (
+        "def mock_web_search(query: str, num_results: Optional[int] = None)" in prompt
+    )
 
 
 @pytest.mark.asyncio

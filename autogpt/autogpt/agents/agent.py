@@ -41,7 +41,6 @@ from forge.llm.providers import (
     ChatModelResponse,
     MultiProvider,
 )
-from forge.llm.providers.utils import function_specs_from_commands
 from forge.models.action import (
     ActionErrorResult,
     ActionInterruptedByHuman,
@@ -184,7 +183,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             task=self.state.task,
             ai_profile=self.state.ai_profile,
             ai_directives=directives,
-            commands=function_specs_from_commands(self.commands),
+            commands=self.commands,
             include_os_info=self.legacy_config.execute_local_commands,
         )
 
