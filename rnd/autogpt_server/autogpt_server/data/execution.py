@@ -41,7 +41,7 @@ class ExecutionQueue:
         self.queue.put(execution)
         return execution
 
-    def get(self) -> Execution | None:
+    def get(self) -> Execution:
         return self.queue.get()
 
     def empty(self) -> bool:
@@ -72,7 +72,7 @@ async def start_execution(exec_id: str) -> None:
     )
 
 
-async def complete_execution(exec_id: str, output: (str, Any)) -> None:
+async def complete_execution(exec_id: str, output: tuple[str, Any]) -> None:
     output_name, output_data = output
 
     await AgentNodeExecution.prisma().update(

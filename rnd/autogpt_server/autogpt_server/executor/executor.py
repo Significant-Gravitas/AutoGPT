@@ -69,10 +69,14 @@ async def execute_node(data: Execution) -> Execution | None:
 
     next_node_id = node.output_nodes[output_name]
     next_node = await graph.get_node(next_node_id)
+    if not next_node:
+        logger.error(f"{prefix} Error, next node {next_node_id} not found.")
+        return None
+
     next_node_input = await graph.get_node_input(next_node, run_id)
     next_node_block = await next_node.block
 
-    if error := next_node_block.input_schema.validate(next_node_input):
+    if error := next_node_block.input_schema.validate_data(next_node_input):
         logger.warning(
             f"{prefix} Skipped {next_node_id}-{next_node.block_name}, {error}")
         return None
@@ -83,7 +87,7 @@ async def execute_node(data: Execution) -> Execution | None:
     )
 
 
-def execute_node_sync(data: Execution) -> Optional[tuple[str, str]]:
+def execute_node_sync(data: Execution) -> Optional[Execution | None]:
     """
     A synchronous version of `execute_node`, to be used in the ProcessPoolExecutor.
     """
@@ -94,7 +98,6 @@ def execute_node_sync(data: Execution) -> Optional[tuple[str, str]]:
         return loop.run_until_complete(execute_node(data))
     except Exception as e:
         logger.error(f"{prefix} Error: {e}")
-        return None
 
 
 def start_executor(pool_size: int, queue: ExecutionQueue) -> None:
@@ -102,11 +105,18 @@ def start_executor(pool_size: int, queue: ExecutionQueue) -> None:
     loop.run_until_complete(db.connect())
     loop.run_until_complete(block.initialize_blocks())
 
-    def on_complete_execution(f: asyncio.Future[Execution | None]) -> None:
-        if f.exception():
-            logger.exception("Error during execution!! %s", f.exception())
-        elif f.result():
-            loop.run_until_complete(add_execution(f.result(), queue))
+    def on_complete_execution(f: asyncio.Future[Execution | None]):
+        exception = f.exception()
+        if exception:
+            logger.exception("Error during execution!! %s", exception)
+            return exception
+
+        execution = f.result()
+        if execution: 
+            loop.run_until_complete(add_execution(execution, queue))
+            return exception
+        
+        return None
 
     logger.warning("Executor started!")
 
@@ -115,9 +125,8 @@ def start_executor(pool_size: int, queue: ExecutionQueue) -> None:
         initializer=db.connect_sync,
     ) as executor:
         while True:
-            execution: Execution | None = queue.get()
-            future = executor.submit(execute_node_sync, execution)
-            future.add_done_callback(on_complete_execution)
+            future = executor.submit(execute_node_sync, queue.get())
+            future.add_done_callback(on_complete_execution)  # type: ignore
 
 
 def start_executor_manager(pool_size: int, queue: ExecutionQueue) -> None:

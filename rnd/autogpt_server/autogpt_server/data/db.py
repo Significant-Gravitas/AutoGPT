@@ -20,9 +20,8 @@ async def disconnect():
 
 
 class BaseDbModel(BaseModel):
-    id: str
+    id: str = ""
 
-    def __init__(self, **data):
-        if "id" not in data:
-            data["id"] = str(uuid4())
+    def __init__(self, id: str = "", **data):
+        data["id"] = id or str(uuid4())
         super().__init__(**data)

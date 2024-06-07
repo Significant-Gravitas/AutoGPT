@@ -1,4 +1,3 @@
-import inspect
 import json
 import jsonschema
 
@@ -40,7 +39,7 @@ class BlockSchema(BaseModel):
 
     output_schema = BlockSchema({
         "on_complete": "string",
-        "on_failures": "string"",
+        "on_failures": "string",
     })
     """
     jsonschema: dict[str, Any]
@@ -48,7 +47,7 @@ class BlockSchema(BaseModel):
     def __init__(
             self,
             properties: dict[str, str | dict],
-            required: list[str] = None,
+            required: list[str] | None = None,
             **kwargs: Any
     ):
         schema = {
@@ -65,7 +64,7 @@ class BlockSchema(BaseModel):
     def __str__(self) -> str:
         return json.dumps(self.jsonschema)
 
-    def validate(self, data: BlockData) -> str | None:
+    def validate_data(self, data: BlockData) -> str | None:
         """
         Validate the data against the schema.
         Returns the validation error message if the data does not match the schema.
@@ -93,18 +92,20 @@ class BlockSchema(BaseModel):
 
 
 class Block(ABC, BaseModel):
+    @classmethod
     @property
     @abstractmethod
-    def input_schema(self) -> BlockSchema:
+    def input_schema(cls) -> BlockSchema:
         """
         The schema for the block input data.
         The top-level properties are the possible input name expected by the block.
         """
         pass
 
+    @classmethod
     @property
     @abstractmethod
-    def output_schema(self) -> BlockSchema:
+    def output_schema(cls) -> BlockSchema:
         """
         The schema for the block output.
         The top-level properties are the possible output name produced by the block.
@@ -112,26 +113,23 @@ class Block(ABC, BaseModel):
         pass
 
     @abstractmethod
-    def run(self, input_data: BlockData) -> (str, Any):
+    async def run(self, input_data: BlockData) -> tuple[str, Any]:
         """
         Run the block with the given input data.
         Args:
             input_data: The input data with the structure of input_schema.
         Returns:
-            The output data, with the structure of one entry of the output_schema.
+            The (output name, output data), matching the type in output_schema.
         """
         pass
 
-    async def execute(self, input_data: BlockData) -> (str, Any):
-        if error := self.input_schema.validate(input_data):
+    async def execute(self, input_data: BlockData) -> tuple[str, Any]:
+        if error := self.input_schema.validate_data(input_data):
             raise ValueError(
                 f"Unable to execute block with invalid input data: {error}"
             )
 
-        output = self.run(input_data)
-        if inspect.isawaitable(output):
-            output = await output
-        output_name, output_data = output
+        output_name, output_data = await self.run(input_data)
 
         if error := self.output_schema.validate_field(output_name, output_data):
             raise ValueError(
@@ -145,28 +143,28 @@ class Block(ABC, BaseModel):
 
 
 class ParrotBlock(Block):
-    input_schema: ClassVar[dict[str, str]] = BlockSchema({
+    input_schema: ClassVar[BlockSchema] = BlockSchema({  # type: ignore
         "input": "string",
     })
-    output_schema: ClassVar[dict[str, str]] = BlockSchema({
+    output_schema: ClassVar[BlockSchema] = BlockSchema({  # type: ignore
         "output": "string",
     })
 
-    def run(self, input_data: dict[str, str]) -> (str, str):
+    async def run(self, input_data: BlockData) -> tuple[str, Any]:
         return "output", input_data["input"]
 
 
 class TextCombinerBlock(Block):
-    input_schema: ClassVar[dict[str, str]] = BlockSchema({
+    input_schema: ClassVar[BlockSchema] = BlockSchema({  # type: ignore
         "text1": "string",
         "text2": "string",
         "format": "string",
     })
-    output_schema: ClassVar[dict[str, str]] = BlockSchema({
+    output_schema: ClassVar[BlockSchema] = BlockSchema({  # type: ignore
         "combined_text": "string",
     })
 
-    def run(self, input_data: dict[str, str]) -> (str, str):
+    async def run(self, input_data: BlockData) -> tuple[str, Any]:
         return "combined_text", input_data["format"].format(
             text1=input_data["text1"],
             text2=input_data["text2"],
@@ -174,14 +172,14 @@ class TextCombinerBlock(Block):
 
 
 class PrintingBlock(Block):
-    input_schema: ClassVar[dict[str, str]] = BlockSchema({
+    input_schema: ClassVar[BlockSchema] = BlockSchema({  # type: ignore
         "text": "string",
     })
-    output_schema: ClassVar[dict[str, str]] = BlockSchema({
+    output_schema: ClassVar[BlockSchema] = BlockSchema({  # type: ignore
         "status": "string",
     })
 
-    async def run(self, input_data: dict[str, str]) -> (str, str):
+    async def run(self, input_data: BlockData) -> tuple[str, Any]:
         print(input_data["text"])
         return "status", "printed"
 

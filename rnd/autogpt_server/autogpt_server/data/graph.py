@@ -19,12 +19,15 @@ class Node(BaseDbModel):
 
     @staticmethod
     def from_db(node: AgentNode):
+        if not node.AgentBlock:
+            raise ValueError(f"Invalid node {node.id}, invalid AgentBlock.")
+
         return Node(
             id=node.id,
             block_name=node.AgentBlock.name,
             input_default=json.loads(node.constantInput),
-            input_nodes={v.sinkName: v.agentNodeSourceId for v in node.Input},
-            output_nodes={v.sourceName: v.agentNodeSinkId for v in node.Output},
+            input_nodes={v.sinkName: v.agentNodeSourceId for v in node.Input or []},
+            output_nodes={v.sourceName: v.agentNodeSinkId for v in node.Output or []},
         )
 
     def connect(self, node: "Node", source_name: str, sink_name: str):
@@ -49,9 +52,9 @@ class Graph(BaseDbModel):
     def from_db(graph: AgentGraph):
         return Graph(
             id=graph.id,
-            name=graph.name,
-            description=graph.description,
-            nodes=[Node.from_db(node) for node in graph.AgentNodes],
+            name=graph.name or "",
+            description=graph.description or "",
+            nodes=[Node.from_db(node) for node in graph.AgentNodes or []],
         )
 
 
@@ -63,17 +66,17 @@ EXECUTION_NODE_INCLUDE = {
 
 
 async def get_node(node_id: str) -> Node | None:
-    node = await AgentNode.prisma().find_unique(
+    node = await AgentNode.prisma().find_unique_or_raise(
         where={"id": node_id},
-        include=EXECUTION_NODE_INCLUDE,
+        include=EXECUTION_NODE_INCLUDE,  # type: ignore
     )
     return Node.from_db(node) if node else None
 
 
-async def get_graph(graph_id: str) -> Graph:
+async def get_graph(graph_id: str) -> Graph | None:
     graph = await AgentGraph.prisma().find_unique(
         where={"id": graph_id},
-        include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},
+        include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
     )
     return Graph.from_db(graph) if graph else None
 
@@ -106,7 +109,7 @@ async def get_node_input(node: Node, exec_id: str) -> dict[str, Any]:
         **{
             name: json.loads(latest_executions[node_id].outputData)
             for name, node_id in node.input_nodes.items()
-            if node_id in latest_executions
+            if node_id in latest_executions and latest_executions[node_id].outputData
         },
     }
 
@@ -164,4 +167,7 @@ async def create_graph(graph: Graph) -> Graph:
         ]
     )
 
-    return await get_graph(graph.id)
+    graph = await get_graph(graph.id)
+    if not graph:
+        raise ValueError(f"Failed to create graph {graph.id}.")
+    return graph

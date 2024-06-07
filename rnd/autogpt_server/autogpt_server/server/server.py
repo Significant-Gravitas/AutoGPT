@@ -42,7 +42,7 @@ class AgentServer:
         # Currently, there is no constraint on the number of root nodes in the graph.
         for node in agent.starting_nodes:
             block = await node.block
-            if error := block.input_schema.validate(node_input):
+            if error := block.input_schema.validate_data(node_input):
                 raise HTTPException(
                     status_code=400,
                     detail=f"Input data doesn't match {node.block_name} input: {error}",

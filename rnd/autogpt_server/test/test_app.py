@@ -1,5 +1,3 @@
-import json
-
 import pytest
 
 from autogpt_server.data import block, db, graph
@@ -81,6 +79,7 @@ async def test_agent_execution():
     assert not test_queue.empty()
     next_execution = await execute_node(test_queue)
     assert test_queue.empty()
+    assert next_execution
     assert next_execution.keys() == {"text1", "text2", "format"}
     assert next_execution["text1"] == text
     assert next_execution["text2"] == text
@@ -88,6 +87,7 @@ async def test_agent_execution():
 
     # Executing TextCombinerBlock, PrintingBlock will be enqueued.
     next_execution = await execute_node(test_queue)
+    assert next_execution
     assert next_execution.keys() == {"text"}
     assert next_execution["text"] == f"{text},{text}"
 
