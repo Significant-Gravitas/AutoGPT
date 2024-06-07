@@ -59,5 +59,14 @@ setup(
         },
         # Linux .appimage specific options
         "bdist_appimage": {},
+        # Linux rpm specific options
+        "bdist_rpm": {
+            "name": "AutoGPTServer",
+            "description": "AutoGPT Server",
+            "version": "0.1",
+            "license": "UNKNOWNORPROPRIETARY",
+            "url": "https://agpt.co",
+            "long_description": "AutoGPT Server",
+        },
     },
 )
