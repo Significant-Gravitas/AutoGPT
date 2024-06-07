@@ -11,7 +11,7 @@ from autogpt_server.data.block import get_block
 
 class Node(BaseDbModel):
     block_name: str
-    input_default: dict[str, Any] = {}  # serialized default inu
+    input_default: dict[str, Any] = {}  # dict[input_name, default_value]
     input_nodes: dict[str, str] = {}  # dict[input_name, node_id]
     # TODO: Make it `dict[str, list[str]]`, output can be connected to multiple blocks.
     #       Other option is to use an edge-list, but it will complicate the rest code.
