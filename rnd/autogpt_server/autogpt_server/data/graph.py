@@ -107,7 +107,7 @@ async def get_node_input(node: Node, exec_id: str) -> dict[str, Any]:
     return {
         **node.input_default,
         **{
-            name: json.loads(latest_executions[node_id].outputData)
+            name: json.loads(latest_executions[node_id].outputData or "{}")
             for name, node_id in node.input_nodes.items()
             if node_id in latest_executions and latest_executions[node_id].outputData
         },
@@ -167,7 +167,7 @@ async def create_graph(graph: Graph) -> Graph:
         ]
     )
 
-    graph = await get_graph(graph.id)
-    if not graph:
-        raise ValueError(f"Failed to create graph {graph.id}.")
-    return graph
+    if created_graph := await get_graph(graph.id):
+        return created_graph
+
+    raise ValueError(f"Failed to create graph {graph.id}.")
