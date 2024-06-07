@@ -198,7 +198,7 @@ jobs:
         env:
           MAC_COMMAND: "poetry run poe dist_dmg"
           WINDOWS_COMMAND: "poetry run poe dist_msi"
-          LINUX_COMMAND: "poetry run poe dist_deb"
+          LINUX_COMMAND: "poetry run poe dist_appimage"
 
       # break this into seperate steps each with their own name that matches the file
       - name: Upload App artifact
