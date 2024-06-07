@@ -33,6 +33,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 app = "autogpt_server.app:main"
+cli = "autogpt_server.cli:start_cli"
 
 # https://poethepoet.natn.io/index.html
 [tool.poe]
@@ -61,3 +62,4 @@ cmd = "python setup.py bdist_msi"
 
 [tool.poe.tasks._dinstall]
 cmd = "python setup.py install"
+

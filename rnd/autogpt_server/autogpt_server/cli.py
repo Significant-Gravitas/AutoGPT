@@ -47,9 +47,9 @@ def run():
 
 @main.command()
 def stop():
+    import os
     import pathlib
     import subprocess
-    import os
 
     home_dir = pathlib.Path.home()
     new_dir = home_dir / ".config" / "agpt"
@@ -83,7 +83,15 @@ def event():
 
 main.add_command(test)
 
-if __name__ == "__main__":
+
+def start_cli() -> None:
+    """
+    Entry point into the cli
+    """
     freeze_support()
     freeze_support_spawn()
     main()
+
+
+if __name__ == "__main__":
+    start_cli()
