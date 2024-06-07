@@ -1,44 +1,118 @@
 import inspect
 import json
+import jsonschema
 
 from abc import ABC, abstractmethod
 from prisma.models import AgentBlock
 from pydantic import BaseModel
-from typing import ClassVar
+from typing import Any, ClassVar
+
+BlockData = dict[str, Any]
+
+
+class BlockSchema(BaseModel):
+    """
+    A schema for the block input and output data.
+    The dictionary structure is an object-typed `jsonschema`.
+    The top-level properties are the block input/output names.
+
+    You can initialize this class by providing a dictionary of properties.
+    The key is the string of the property name, and the value is either
+    a string of the type or a dictionary of the jsonschema.
+
+    You can also provide additional keyword arguments for additional properties.
+    Like `name`, `required` (by default all properties are required), etc.
+
+    Example:
+    input_schema = BlockSchema({
+        "system_prompt": "string",
+        "user_prompt": "string",
+        "max_tokens": "integer",
+        "user_info": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "age": {"type": "integer"},
+            },
+            "required": ["name"],
+        },
+    }, required=["system_prompt", "user_prompt"])
+
+    output_schema = BlockSchema({
+        "on_complete": "string",
+        "on_failures": "string"",
+    })
+    """
+    jsonschema: dict[str, Any]
+
+    def __init__(
+            self,
+            properties: dict[str, str | dict],
+            required: list[str] = None,
+            **kwargs: Any
+    ):
+        schema = {
+            "type": "object",
+            "properties": {
+                key: {"type": value} if isinstance(value, str) else value
+                for key, value in properties.items()
+            },
+            "required": required or list(properties.keys()),
+            **kwargs,
+        }
+        super().__init__(jsonschema=schema)
+
+    def __str__(self) -> str:
+        return json.dumps(self.jsonschema)
+
+    def validate(self, data: BlockData) -> str | None:
+        """
+        Validate the data against the schema.
+        Returns the validation error message if the data does not match the schema.
+        """
+        try:
+            jsonschema.validate(data, self.jsonschema)
+            return None
+        except jsonschema.ValidationError as e:
+            return str(e)
+
+    def validate_field(self, field_name: str, data: BlockData) -> str | None:
+        """
+        Validate the data against a specific property (one of the input/output name).
+        Returns the validation error message if the data does not match the schema.
+        """
+        property_schema = self.jsonschema["properties"].get(field_name)
+        if not property_schema:
+            return f"Invalid property name {field_name}"
+
+        try:
+            jsonschema.validate(data, property_schema)
+            return None
+        except jsonschema.ValidationError as e:
+            return str(e)
 
 
 class Block(ABC, BaseModel):
     @property
     @abstractmethod
-    def input_schema(self) -> dict[str, str]:
+    def input_schema(self) -> BlockSchema:
         """
-        The schema for the block input data. The keys are the names of the input,
-        and the values are the types of the input.
-        Example:
-        {
-            "system_prompt": "str",
-            "user_prompt": "str",
-            "max_tokens": "int",
-        }
+        The schema for the block input data.
+        The top-level properties are the possible input name expected by the block.
         """
         pass
 
     @property
     @abstractmethod
-    def output_schema(self) -> dict[str, str]:
+    def output_schema(self) -> BlockSchema:
         """
-        The schema for the block possible output. The keys are the names of the output,
-        and the values are the types of the output.
-        Example:
-        {
-            "on_completion": "str",
-            "on_failure": "str",
-        }
+        The schema for the block output.
+        The top-level properties are the possible output name produced by the block.
         """
         pass
 
     @abstractmethod
-    def run(self, input_data: dict[str, str]) -> (str, str):
+    def run(self, input_data: BlockData) -> (str, Any):
         """
         Run the block with the given input data.
         Args:
@@ -48,37 +122,49 @@ class Block(ABC, BaseModel):
         """
         pass
 
-    async def execute(self, input_data: dict[str, str]) -> dict[str, str]:
-        result = self.run(input_data)
-        if inspect.isawaitable(result):
-            return await result
-        return result
+    async def execute(self, input_data: BlockData) -> (str, Any):
+        if error := self.input_schema.validate(input_data):
+            raise ValueError(
+                f"Unable to execute block with invalid input data: {error}"
+            )
+
+        output = self.run(input_data)
+        if inspect.isawaitable(output):
+            output = await output
+        output_name, output_data = output
+
+        if error := self.output_schema.validate_field(output_name, output_data):
+            raise ValueError(
+                f"Unable to execute block with invalid output data: {error}"
+            )
+
+        return output_name, output_data
 
 
 # ===================== Inline-Block Implementations ===================== #
 
 
 class ParrotBlock(Block):
-    input_schema: ClassVar[dict[str, str]] = {
-        "input": "str",
-    }
-    output_schema: ClassVar[dict[str, str]] = {
-        "output": "str",
-    }
+    input_schema: ClassVar[dict[str, str]] = BlockSchema({
+        "input": "string",
+    })
+    output_schema: ClassVar[dict[str, str]] = BlockSchema({
+        "output": "string",
+    })
 
     def run(self, input_data: dict[str, str]) -> (str, str):
         return "output", input_data["input"]
 
 
 class TextCombinerBlock(Block):
-    input_schema: ClassVar[dict[str, str]] = {
-        "text1": "str",
-        "text2": "str",
-        "format": "str",
-    }
-    output_schema: ClassVar[dict[str, str]] = {
-        "combined_text": "str",
-    }
+    input_schema: ClassVar[dict[str, str]] = BlockSchema({
+        "text1": "string",
+        "text2": "string",
+        "format": "string",
+    })
+    output_schema: ClassVar[dict[str, str]] = BlockSchema({
+        "combined_text": "string",
+    })
 
     def run(self, input_data: dict[str, str]) -> (str, str):
         return "combined_text", input_data["format"].format(
@@ -88,14 +174,16 @@ class TextCombinerBlock(Block):
 
 
 class PrintingBlock(Block):
-    input_schema: ClassVar[dict[str, str]] = {
-        "text": "str",
-    }
-    output_schema: ClassVar[dict[str, str]] = {}
+    input_schema: ClassVar[dict[str, str]] = BlockSchema({
+        "text": "string",
+    })
+    output_schema: ClassVar[dict[str, str]] = BlockSchema({
+        "status": "string",
+    })
 
     async def run(self, input_data: dict[str, str]) -> (str, str):
         print(input_data["text"])
-        return "text", input_data["text"]
+        return "status", "printed"
 
 
 # ======================= Block Helper Functions ======================= #
@@ -118,8 +206,8 @@ async def initialize_blocks() -> None:
         await AgentBlock.prisma().create(
             data={
                 "name": block_name,
-                "inputSchema": json.dumps(block.input_schema),
-                "outputSchema": json.dumps(block.output_schema),
+                "inputSchema": str(block.input_schema),
+                "outputSchema": str(block.output_schema),
             }
         )
 

@@ -60,7 +60,7 @@ model AgentBlock {
   name String @id
 
   // We allow a block to have multiple types of input & output.
-  // JSON serialized dict[str, str], key: input/output name, value: data type.
+  // Serialized object-typed `jsonschema` with top-level properties as input/output name.
   inputSchema  String
   outputSchema String
 

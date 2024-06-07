@@ -1,7 +1,9 @@
+import json
+
 import pytest
 
 from autogpt_server.data import block, db, graph
-from autogpt_server.data.execution import Execution, ExecutionQueue, add_execution
+from autogpt_server.data.execution import ExecutionQueue, add_execution
 from autogpt_server.executor import executor
 from autogpt_server.server import server
 
@@ -42,11 +44,12 @@ async def create_test_graph() -> graph.Graph:
     return result
 
 
-async def execute_node(queue: ExecutionQueue) -> Execution | None:
+async def execute_node(queue: ExecutionQueue) -> dict | None:
     next_exec = await executor.execute_node(queue.get())
-    if next_exec:
-        return await add_execution(next_exec, queue)
-    return None
+    if not next_exec:
+        return None
+    await add_execution(next_exec, queue)
+    return next_exec.data
 
 
 @pytest.mark.asyncio
@@ -78,15 +81,15 @@ async def test_agent_execution():
     assert not test_queue.empty()
     next_execution = await execute_node(test_queue)
     assert test_queue.empty()
-    assert next_execution.data.keys() == {"text1", "text2", "format"}
-    assert next_execution.data["text1"] == text
-    assert next_execution.data["text2"] == text
-    assert next_execution.data["format"] == "{text1},{text2}"
+    assert next_execution.keys() == {"text1", "text2", "format"}
+    assert next_execution["text1"] == text
+    assert next_execution["text2"] == text
+    assert next_execution["format"] == "{text1},{text2}"
 
     # Executing TextCombinerBlock, PrintingBlock will be enqueued.
     next_execution = await execute_node(test_queue)
-    assert next_execution.data.keys() == {"text"}
-    assert next_execution.data["text"] == f"{text},{text}"
+    assert next_execution.keys() == {"text"}
+    assert next_execution["text"] == f"{text},{text}"
 
     # Executing PrintingBlock, no more tasks will be enqueued.
     next_execution = await execute_node(test_queue)

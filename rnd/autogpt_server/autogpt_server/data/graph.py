@@ -3,15 +3,15 @@ import json
 import uuid
 
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink, AgentNodeExecution
+from typing import Any
 
 from autogpt_server.data.db import BaseDbModel
+from autogpt_server.data.block import get_block
 
 
 class Node(BaseDbModel):
     block_name: str
-    input_default: dict[str, str] = {}  # dict[input_name, input_value]
-    input_schema: dict[str, str] = {}  # dict[input_name, type]
-    output_schema: dict[str, str] = {}  # dict[output_name, type]
+    input_default: dict[str, Any] = {}  # serialized default inu
     input_nodes: dict[str, str] = {}  # dict[input_name, node_id]
     # TODO: Make it `dict[str, list[str]]`, output can be connected to multiple blocks.
     #       Other option is to use an edge-list, but it will complicate the rest code.
@@ -23,8 +23,6 @@ class Node(BaseDbModel):
             id=node.id,
             block_name=node.AgentBlock.name,
             input_default=json.loads(node.constantInput),
-            input_schema=json.loads(node.AgentBlock.inputSchema),
-            output_schema=json.loads(node.AgentBlock.outputSchema),
             input_nodes={v.sinkName: v.agentNodeSourceId for v in node.Input},
             output_nodes={v.sourceName: v.agentNodeSinkId for v in node.Output},
         )
@@ -32,6 +30,10 @@ class Node(BaseDbModel):
     def connect(self, node: "Node", source_name: str, sink_name: str):
         self.output_nodes[source_name] = node.id
         node.input_nodes[sink_name] = self.id
+
+    @property
+    async def block(self):
+        return await get_block(self.block_name)
 
 
 class Graph(BaseDbModel):
@@ -76,7 +78,7 @@ async def get_graph(graph_id: str) -> Graph:
     return Graph.from_db(graph) if graph else None
 
 
-async def get_node_input(node: Node, exec_id: str) -> dict[str, str]:
+async def get_node_input(node: Node, exec_id: str) -> dict[str, Any]:
     """
     Get execution node input data from the previous node execution result.
     Args:
@@ -102,7 +104,7 @@ async def get_node_input(node: Node, exec_id: str) -> dict[str, str]:
     return {
         **node.input_default,
         **{
-            name: latest_executions[node_id].outputData
+            name: json.loads(latest_executions[node_id].outputData)
             for name, node_id in node.input_nodes.items()
             if node_id in latest_executions
         },

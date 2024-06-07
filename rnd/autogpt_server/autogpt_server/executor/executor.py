@@ -55,7 +55,7 @@ async def execute_node(data: Execution) -> Execution | None:
 
     try:
         output_name, output_data = await node_block.execute(exec_data)
-        logger.warning(f"{prefix} executed with output: `{output_name}`\n{output_data}")
+        logger.warning(f"{prefix} executed with output: `{output_name}`:{output_data}")
         await complete_execution(exec_id, (output_name, output_data))
     except Exception as e:
         logger.exception(f"{prefix} failed with error: %s", e)
@@ -70,15 +70,11 @@ async def execute_node(data: Execution) -> Execution | None:
     next_node_id = node.output_nodes[output_name]
     next_node = await graph.get_node(next_node_id)
     next_node_input = await graph.get_node_input(next_node, run_id)
+    next_node_block = await next_node.block
 
-    provided_input = set(next_node_input.keys())
-    expected_input = set(next_node.input_schema.keys())
-    if not expected_input.issubset(provided_input):
+    if error := next_node_block.input_schema.validate(next_node_input):
         logger.warning(
-            f"{prefix} Skipped {next_node_id}-{next_node.block_name}, "
-            f"expected input {expected_input} "
-            f"but still only got {provided_input}"
-        )
+            f"{prefix} Skipped {next_node_id}-{next_node.block_name}, {error}")
         return None
 
     logger.warning(f"{prefix} Enqueue next node {next_node_id}-{next_node.block_name}")

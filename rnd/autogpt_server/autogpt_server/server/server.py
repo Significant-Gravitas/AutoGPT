@@ -31,7 +31,7 @@ class AgentServer:
         self.app.on_event("startup")(db.connect)
         self.app.on_event("shutdown")(db.disconnect)
 
-    async def execute_agent(self, agent_id: str, node_input: dict[str, str]):
+    async def execute_agent(self, agent_id: str, node_input: dict):
         agent = await graph.get_graph(agent_id)
         if not agent:
             raise HTTPException(status_code=404, detail=f"Agent #{agent_id} not found.")
@@ -41,15 +41,11 @@ class AgentServer:
 
         # Currently, there is no constraint on the number of root nodes in the graph.
         for node in agent.starting_nodes:
-            provided = set(node_input.keys())
-            expected = set(node.input_schema.keys()) - set(node.input_default.keys())
-            if not expected.issubset(provided):
+            block = await node.block
+            if error := block.input_schema.validate(node_input):
                 raise HTTPException(
                     status_code=400,
-                    detail=(
-                        f"Input data does not match the expected input schema: "
-                        f"expected {expected}, only {provided} is provided."
-                    ),
+                    detail=f"Input data doesn't match {node.block_name} input: {error}",
                 )
 
             task = execution.add_execution(

@@ -4,6 +4,7 @@ from datetime import datetime
 from enum import Enum
 from multiprocessing import Queue
 from prisma.models import AgentNodeExecution
+from typing import Any
 
 from autogpt_server.data.db import BaseDbModel
 
@@ -12,7 +13,7 @@ class Execution(BaseDbModel):
     """Data model for an execution of an Agent"""
     run_id: str
     node_id: str
-    data: dict[str, str]
+    data: dict[str, Any]
 
 
 class ExecutionStatus(str, Enum):
@@ -71,7 +72,7 @@ async def start_execution(exec_id: str) -> None:
     )
 
 
-async def complete_execution(exec_id: str, output: (str, str)) -> None:
+async def complete_execution(exec_id: str, output: (str, Any)) -> None:
     output_name, output_data = output
 
     await AgentNodeExecution.prisma().update(
@@ -79,7 +80,7 @@ async def complete_execution(exec_id: str, output: (str, str)) -> None:
         data={
             "executionStatus": ExecutionStatus.COMPLETED,
             "outputName": output_name,
-            "outputData": output_data,
+            "outputData": json.dumps(output_data),
             "endTime": datetime.now(),
         },
     )
