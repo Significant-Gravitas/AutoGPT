@@ -51,10 +51,10 @@ class Command(Generic[P, CO]):
 
     @property
     def return_type(self) -> type:
-        type = inspect.signature(self.method).return_annotation
-        if type == inspect.Signature.empty:
+        _type = inspect.signature(self.method).return_annotation
+        if _type == inspect.Signature.empty:
             return None
-        return type.__name__
+        return _type.__name__
 
     @property
     def header(self) -> str:
