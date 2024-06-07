@@ -161,7 +161,7 @@ async def create_graph(graph: Graph) -> Graph:
                 }
             )
             for input_node, output_node in (
-                    edge_source_names.keys() | edge_sink_names.keys()
+                edge_source_names.keys() | edge_sink_names.keys()
             )
         ]
     )
