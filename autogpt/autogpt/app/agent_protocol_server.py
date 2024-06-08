@@ -6,7 +6,8 @@ from io import BytesIO
 from uuid import uuid4
 
 import orjson
-from fastapi import APIRouter, FastAPI, UploadFile
+from typing import Callable
+from fastapi import APIRouter, FastAPI, UploadFile, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -38,6 +39,15 @@ from autogpt.agents.agent_manager import AgentManager
 from autogpt.app.utils import is_port_free
 
 logger = logging.getLogger(__name__)
+
+
+def create_middleware(app: FastAPI):
+    async def add_custom_header(request: Request, call_next: Callable) -> Response:
+        response = await call_next(request)
+        response.headers["Content-Type"] = "application/json ; charset=UTF-8"
+        return response
+
+    app.middleware("http")(add_custom_header)
 
 
 class AgentProtocolServer:
@@ -76,7 +86,7 @@ class AgentProtocolServer:
             "Modified version of The Agent Protocol.",
             version="v0.4",
         )
-
+        create_middleware(app)
         # Configure CORS middleware
         default_origins = [f"http://localhost:{port}"]  # Default only local access
         configured_origins = [
@@ -88,7 +98,7 @@ class AgentProtocolServer:
 
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=origins,
+            allow_origins=["*"],
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],

@@ -17,7 +17,7 @@ class TaskRequestBody(BaseModel):
         description="Input prompt for the task.",
         example="Write the words you receive to the file 'output.txt'.",
     )
-    additional_input: dict[str, Any] = Field(default_factory=dict)
+    additional_input: Optional[dict[str, Any]] = Field(default_factory=dict)
 
 
 class Task(TaskRequestBody):
@@ -55,7 +55,7 @@ class StepRequestBody(BaseModel):
     input: str = Field(
         ..., description="Input prompt for the step.", example="Washington"
     )
-    additional_input: dict[str, Any] = Field(default_factory=dict)
+    additional_input: Optional[dict[str, Any]] = Field(default_factory=dict)
 
 
 class StepStatus(Enum):
