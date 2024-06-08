@@ -304,7 +304,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         except AgentException:
             raise
         except Exception as e:
-            raise CommandExecutionError(str(e))
+            raise CommandExecutionError(str(e)) from e
 
     def _get_command(self, command_name: str) -> Command:
         for command in reversed(self.commands):
