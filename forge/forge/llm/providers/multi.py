@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Iterator, Optional, Sequence, TypeVar
+from typing import Any, Awaitable, Callable, Iterator, Optional, Sequence, TypeVar
 
 from pydantic import ValidationError
 
@@ -93,7 +93,10 @@ class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
         self,
         model_prompt: list[ChatMessage],
         model_name: ModelName,
-        completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
+        completion_parser: (
+            Callable[[AssistantChatMessage], Awaitable[_T]]
+            | Callable[[AssistantChatMessage], _T]
+        ) = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
         prefill_response: str = "",

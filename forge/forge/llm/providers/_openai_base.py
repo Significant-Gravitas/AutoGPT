@@ -154,7 +154,10 @@ class BaseOpenAIChatProvider(
         self,
         model_prompt: list[ChatMessage],
         model_name: _ModelName,
-        completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
+        completion_parser: (
+            Callable[[AssistantChatMessage], Awaitable[_T]]
+            | Callable[[AssistantChatMessage], _T]
+        ) = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
         prefill_response: str = "",
@@ -208,9 +211,15 @@ class BaseOpenAIChatProvider(
             parsed_result: _T = None  # type: ignore
             if not parse_errors:
                 try:
-                    parsed_result = completion_parser(assistant_msg)
-                    if inspect.isawaitable(parsed_result):
-                        parsed_result = await parsed_result
+                    parsed_result = (
+                        await _result
+                        if inspect.isawaitable(
+                            _result := completion_parser(assistant_msg)
+                        )
+                        # cast(..) needed because inspect.isawaitable(..) loses type:
+                        # https://github.com/microsoft/pyright/issues/3690
+                        else cast(_T, _result)
+                    )
                 except Exception as e:
                     parse_errors.append(e)
 

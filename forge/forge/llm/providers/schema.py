@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import (
     TYPE_CHECKING,
     Any,
+    Awaitable,
     Callable,
     ClassVar,
     Generic,
@@ -455,7 +456,10 @@ class BaseChatModelProvider(BaseModelProvider[_ModelName, _ModelProviderSettings
         self,
         model_prompt: list[ChatMessage],
         model_name: _ModelName,
-        completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
+        completion_parser: (
+            Callable[[AssistantChatMessage], Awaitable[_T]]
+            | Callable[[AssistantChatMessage], _T]
+        ) = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
         prefill_response: str = "",
