@@ -10,8 +10,6 @@ from .parameter import CommandParameter
 P = ParamSpec("P")
 CO = TypeVar("CO")  # command output
 
-_CP = TypeVar("_CP", bound=CommandProvider)
-
 
 class Command(Generic[P, CO]):
     """A class representing a command.
@@ -26,20 +24,21 @@ class Command(Generic[P, CO]):
         self,
         names: list[str],
         description: str,
-        method: Callable[Concatenate[_CP, P], CO],
+        method: Callable[P, CO] | Callable[Concatenate[CommandProvider, P], CO],
         parameters: list[CommandParameter],
     ):
-        # Check if all parameters are provided
-        if not self._parameters_match(method, parameters):
-            raise ValueError(
-                f"Command {names[0]} has different parameters than provided schema"
-            )
         self.names = names
         self.description = description
         # Method technically has a `self` parameter, but we can ignore that
         # since Python passes it internally.
         self.method = cast(Callable[P, CO], method)
         self.parameters = parameters
+
+        # Check if all parameters are provided
+        if not self._parameters_match_signature():
+            raise ValueError(
+                f"Command {self.name} has different parameters than provided schema"
+            )
 
     @property
     def name(self) -> str:
@@ -71,18 +70,16 @@ class Command(Generic[P, CO]):
             f"def {self.name}{inspect.signature(self.method)}:"
         )
 
-    def _parameters_match(
-        self, func: Callable, parameters: list[CommandParameter]
-    ) -> bool:
+    def _parameters_match_signature(self) -> bool:
         # Get the function's signature
-        signature = inspect.signature(func)
+        signature = inspect.signature(self.method)
         # Extract parameter names, ignoring 'self' for methods
         func_param_names = [
             param.name
             for param in signature.parameters.values()
             if param.name != "self"
         ]
-        names = [param.name for param in parameters]
+        names = [param.name for param in self.parameters]
         # Check if sorted lists of names/keys are equal
         return sorted(func_param_names) == sorted(names)
 
