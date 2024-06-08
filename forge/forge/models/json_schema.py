@@ -3,7 +3,7 @@ import enum
 import typing
 from textwrap import indent
 from types import NoneType
-from typing import Any, Optional, TypedDict, overload
+from typing import Any, Optional, is_typeddict, overload
 
 from jsonschema import Draft7Validator, ValidationError
 from pydantic import BaseModel
@@ -171,7 +171,7 @@ class JSONSchema(BaseModel):
                 if (T_v := typing.get_args(T)[1])
                 else None,
             )
-        elif issubclass(T, TypedDict):
+        elif is_typeddict(T):
             partial_schema = JSONSchema(
                 type=JSONSchema.Type.OBJECT,
                 properties={

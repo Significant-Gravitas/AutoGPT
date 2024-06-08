@@ -1,4 +1,5 @@
 from typing import List, Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -46,31 +47,31 @@ class FunctionDef(BaseModel):
     function_template: str | None = None
     is_async: bool = False
 
-    def __generate_function_template(f) -> str:
+    def __generate_function_template(self) -> str:
         args_str = ", ".join(
             [
                 f"{name}: {type}"
                 + (
-                    f" = {f.arg_defaults.get(name, '')}"
-                    if name in f.arg_defaults
+                    f" = {self.arg_defaults.get(name, '')}"
+                    if name in self.arg_defaults
                     else ""
                 )
-                for name, type in f.arg_types
+                for name, type in self.arg_types
             ]
         )
         arg_desc = f"\n{' '*4}".join(
             [
-                f'{name} ({type}): {f.arg_descs.get(name, "-")}'
-                for name, type in f.arg_types
+                f'{name} ({type}): {self.arg_descs.get(name, "-")}'
+                for name, type in self.arg_types
             ]
         )
 
-        def_str = "async def" if "await " in f.function_code or f.is_async else "def"
-        ret_type_str = f" -> {f.return_type}" if f.return_type else ""
-        func_desc = f.function_desc.replace("\n", "\n    ")
+        _def = "async def" if "await " in self.function_code or self.is_async else "def"
+        _return_type = f" -> {self.return_type}" if self.return_type else ""
+        func_desc = self.function_desc.replace("\n", "\n    ")
 
         template = f"""
-{def_str} {f.name}({args_str}){ret_type_str}:
+{_def} {self.name}({args_str}){_return_type}:
     \"\"\"
     {func_desc}
 
@@ -78,7 +79,7 @@ class FunctionDef(BaseModel):
     {arg_desc}
 
     Returns:
-    {f.return_type}{': ' + f.return_desc if f.return_desc else ''}
+    {self.return_type}{': ' + self.return_desc if self.return_desc else ''}
     \"\"\"
     pass
 """
