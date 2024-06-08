@@ -6,7 +6,7 @@ class StepRequestBody {
 
   Map<String, dynamic> toJson() {
     Map<String, dynamic> result = {'input': input, 'additional_input': additionalInput};
-    result.removeWhere((_, v) => v != null);
+    result.removeWhere((_, v) => v == null);
     return result;
   }
 }
