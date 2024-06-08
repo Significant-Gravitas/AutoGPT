@@ -117,7 +117,7 @@ class _ChatViewState extends State<ChatView> {
                 try {
                   if (widget.viewModel.currentTaskId != null) {
                     widget.viewModel.sendChatMessage(
-                        (message == "") ? null : message,
+                        message,
                         continuousModeSteps: Provider.of<SettingsViewModel>(
                                 context,
                                 listen: false)
@@ -126,7 +126,7 @@ class _ChatViewState extends State<ChatView> {
                     String newTaskId = await taskViewModel.createTask(message);
                     widget.viewModel.setCurrentTaskId(newTaskId);
                     widget.viewModel.sendChatMessage(
-                        (message == "") ? null : message,
+                        message,
                         continuousModeSteps: Provider.of<SettingsViewModel>(
                                 context,
                                 listen: false)
