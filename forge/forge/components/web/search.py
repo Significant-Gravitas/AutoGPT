@@ -4,16 +4,23 @@ import time
 from typing import Iterator
 
 from duckduckgo_search import DDGS
+from pydantic import BaseModel
 
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.config.config import Config
 from forge.models.json_schema import JSONSchema
-from forge.utils.exceptions import ConfigurationError
+from forge.utils.exceptions import ConfigurationError, InvalidArgumentError
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3
 
 logger = logging.getLogger(__name__)
+
+
+class SearchResult(BaseModel):
+    title: str
+    url: str
+    excerpt: str = ""
 
 
 class WebSearchComponent(DirectiveProvider, CommandProvider):
@@ -61,7 +68,7 @@ class WebSearchComponent(DirectiveProvider, CommandProvider):
             ),
         },
     )
-    def web_search(self, query: str, num_results: int = 8) -> str:
+    def web_search(self, query: str, num_results: int = 8) -> list[SearchResult]:
         """Return the results of a Google search
 
         Args:
@@ -71,13 +78,13 @@ class WebSearchComponent(DirectiveProvider, CommandProvider):
         Returns:
             str: The results of the search.
         """
+        if not query:
+            raise InvalidArgumentError("'query' must be non-empty")
+
         search_results = []
         attempts = 0
 
         while attempts < DUCKDUCKGO_MAX_ATTEMPTS:
-            if not query:
-                return json.dumps(search_results)
-
             search_results = DDGS().text(query, max_results=num_results)
 
             if search_results:
@@ -86,22 +93,14 @@ class WebSearchComponent(DirectiveProvider, CommandProvider):
             time.sleep(1)
             attempts += 1
 
-        search_results = [
-            {
-                "title": r["title"],
-                "url": r["href"],
-                **({"exerpt": r["body"]} if r.get("body") else {}),
-            }
+        return [
+            SearchResult(
+                title=r["title"],
+                excerpt=r.get("body", ""),
+                url=r["href"],
+            )
             for r in search_results
         ]
-
-        results = ("## Search results\n") + "\n\n".join(
-            f"### \"{r['title']}\"\n"
-            f"**URL:** {r['url']}  \n"
-            "**Excerpt:** " + (f'"{exerpt}"' if (exerpt := r.get("exerpt")) else "N/A")
-            for r in search_results
-        )
-        return self.safe_google_results(results)
 
     @command(
         ["google"],
@@ -121,7 +120,7 @@ class WebSearchComponent(DirectiveProvider, CommandProvider):
             ),
         },
     )
-    def google(self, query: str, num_results: int = 8) -> str | list[str]:
+    def google(self, query: str, num_results: int = 8) -> list[SearchResult]:
         """Return the results of a Google search using the official Google API
 
         Args:
@@ -139,6 +138,7 @@ class WebSearchComponent(DirectiveProvider, CommandProvider):
             # Get the Google API key and Custom Search Engine ID from the config file
             api_key = self.legacy_config.google_api_key
             custom_search_engine_id = self.legacy_config.google_custom_search_engine_id
+            assert api_key and custom_search_engine_id  # checked in get_commands()
 
             # Initialize the Custom Search API service
             service = build("customsearch", "v1", developerKey=api_key)
@@ -151,44 +151,25 @@ class WebSearchComponent(DirectiveProvider, CommandProvider):
             )
 
             # Extract the search result items from the response
-            search_results = result.get("items", [])
-
-            # Create a list of only the URLs from the search results
-            search_results_links = [item["link"] for item in search_results]
+            return [
+                SearchResult(
+                    title=r.get("title", ""),
+                    excerpt=r.get("snippet", ""),
+                    url=r["link"],
+                )
+                for r in result.get("items", [])
+                if "link" in r
+            ]
 
         except HttpError as e:
             # Handle errors in the API call
             error_details = json.loads(e.content.decode())
 
             # Check if the error is related to an invalid or missing API key
-            if error_details.get("error", {}).get(
-                "code"
-            ) == 403 and "invalid API key" in error_details.get("error", {}).get(
-                "message", ""
+            if error_details.get("error", {}).get("code") == 403 and (
+                "invalid API key" in error_details["error"].get("message", "")
             ):
                 raise ConfigurationError(
                     "The provided Google API key is invalid or missing."
                 )
             raise
-        # google_result can be a list or a string depending on the search results
-
-        # Return the list of search result URLs
-        return self.safe_google_results(search_results_links)
-
-    def safe_google_results(self, results: str | list) -> str:
-        """
-            Return the results of a Google search in a safe format.
-
-        Args:
-            results (str | list): The search results.
-
-        Returns:
-            str: The results of the search.
-        """
-        if isinstance(results, list):
-            safe_message = json.dumps(
-                [result.encode("utf-8", "ignore").decode("utf-8") for result in results]
-            )
-        else:
-            safe_message = results.encode("utf-8", "ignore").decode("utf-8")
-        return safe_message

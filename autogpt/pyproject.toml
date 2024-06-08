@@ -69,6 +69,7 @@ benchmark = ["agbenchmark"]
 black = "^23.12.1"
 flake8 = "^7.0.0"
 gitpython = "^3.1.32"
+google-api-python-client-stubs = "^1.26.0"
 isort = "^5.13.1"
 pre-commit = "*"
 pyright = "^1.1.364"

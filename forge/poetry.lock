@@ -1969,13 +1969,13 @@ grpcio-gcp = ["grpcio-gcp (>=0.2.2,<1.0.dev0)"]
 
 [[package]]
 name = "google-api-python-client"
-version = "2.129.0"
+version = "2.132.0"
 description = "Google API Client Library for Python"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "google-api-python-client-2.129.0.tar.gz", hash = "sha256:984cc8cc8eb4923468b1926d2b8effc5b459a4dda3c845896eb87c153b28ef84"},
-    {file = "google_api_python_client-2.129.0-py2.py3-none-any.whl", hash = "sha256:d50f7e2dfdbb7fc2732f6a0cba1c54d7bb676390679526c6bb628c901e43ec86"},
+    {file = "google-api-python-client-2.132.0.tar.gz", hash = "sha256:d6340dc83b72d72333cee5d50f7dcfecbff66a8783164090e945f985ec4c374d"},
+    {file = "google_api_python_client-2.132.0-py2.py3-none-any.whl", hash = "sha256:cde87700bd4d37f39f5e940292c1c6cd0910990b5b01f50b1332a8cea38e8595"},
 ]
 
 [package.dependencies]
@@ -1984,6 +1984,22 @@ google-auth = ">=1.32.0,<2.24.0 || >2.24.0,<2.25.0 || >2.25.0,<3.0.0.dev0"
 google-auth-httplib2 = ">=0.2.0,<1.0.0"
 httplib2 = ">=0.19.0,<1.dev0"
 uritemplate = ">=3.0.1,<5"
+
+[[package]]
+name = "google-api-python-client-stubs"
+version = "1.26.0"
+description = "Type stubs for google-api-python-client"
+optional = false
+python-versions = "<4.0,>=3.7"
+files = [
+    {file = "google_api_python_client_stubs-1.26.0-py3-none-any.whl", hash = "sha256:0614b0cef5beac43e6ab02418f07e64ee66dc99ae4e377d54a155ac261533987"},
+    {file = "google_api_python_client_stubs-1.26.0.tar.gz", hash = "sha256:f3b38b46f7b5cf4f6e7cc63ca554a2d23096d49c841f38b9ea553a5237074b56"},
+]
+
+[package.dependencies]
+google-api-python-client = ">=2.130.0"
+types-httplib2 = ">=0.22.0.2"
+typing-extensions = ">=3.10.0"
 
 [[package]]
 name = "google-auth"
@@ -6148,6 +6164,17 @@ files = [
 ]
 
 [[package]]
+name = "types-httplib2"
+version = "0.22.0.20240310"
+description = "Typing stubs for httplib2"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "types-httplib2-0.22.0.20240310.tar.gz", hash = "sha256:1eda99fea18ec8a1dc1a725ead35b889d0836fec1b11ae6f1fe05440724c1d15"},
+    {file = "types_httplib2-0.22.0.20240310-py3-none-any.whl", hash = "sha256:8cd706fc81f0da32789a4373a28df6f39e9d5657d1281db4d2fd22ee29e83661"},
+]
+
+[[package]]
 name = "types-requests"
 version = "2.31.0.6"
 description = "Typing stubs for requests"
@@ -6830,4 +6857,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "e04a03e3f2663d3e54d5f4e6649cd4442cb00fd17ae5c68d06dbaadfc02ca309"
+content-hash = "120a407f04865b3d781b5ad3523b4e1bb5c8ca10664055f9fbdcec5b31dd075c"
