@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Callable, Concatenate, Generic, ParamSpec, TypeVar, cast
-
-from forge.agent.protocols import CommandProvider
+from typing import Callable, Generic, ParamSpec, TypeVar
 
 from .parameter import CommandParameter
 
@@ -24,14 +22,12 @@ class Command(Generic[P, CO]):
         self,
         names: list[str],
         description: str,
-        method: Callable[P, CO] | Callable[Concatenate[CommandProvider, P], CO],
+        method: Callable[P, CO],
         parameters: list[CommandParameter],
     ):
         self.names = names
         self.description = description
-        # Method technically has a `self` parameter, but we can ignore that
-        # since Python passes it internally.
-        self.method = cast(Callable[P, CO], method)
+        self.method = method
         self.parameters = parameters
 
         # Check if all parameters are provided
@@ -49,10 +45,10 @@ class Command(Generic[P, CO]):
         return inspect.iscoroutinefunction(self.method)
 
     @property
-    def return_type(self) -> type:
+    def return_type(self) -> str:
         _type = inspect.signature(self.method).return_annotation
         if _type == inspect.Signature.empty:
-            return None
+            return "None"
         return _type.__name__
 
     @property

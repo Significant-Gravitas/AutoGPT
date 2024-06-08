@@ -172,6 +172,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
 
     def response_format_instruction(self) -> tuple[str, str]:
         response_schema = self.response_schema.copy(deep=True)
+        assert response_schema.properties
 
         # Unindent for performance
         response_format = re.sub(
@@ -295,15 +296,15 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
         ).validate_code(parsed_response.python_code)
 
         # TODO: prevent combining finish with other functions
-        if re.search(r"finish\((.*?)\)", code_validation.functionCode):
-            finish_reason = re.search(
-                r"finish\((reason=)?(.*?)\)", code_validation.functionCode
-            ).group(2)
+        if _finish_call := re.search(
+            r"finish\((reason=)?(.*?)\)", code_validation.functionCode
+        ):
+            finish_reason = _finish_call.group(2)[1:-1]  # remove quotes
             result = OneShotAgentActionProposal(
                 thoughts=parsed_response.thoughts,
                 use_tool=AssistantFunctionCall(
                     name="finish",
-                    arguments={"reason": finish_reason[1:-1]},
+                    arguments={"reason": finish_reason},
                 ),
             )
         else:

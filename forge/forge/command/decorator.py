@@ -1,7 +1,7 @@
 import inspect
 import logging
 import re
-from typing import Callable, Concatenate, Optional
+from typing import Callable, Concatenate, Optional, TypeVar, cast
 
 from forge.agent.protocols import CommandProvider
 from forge.models.json_schema import JSONSchema
@@ -10,14 +10,17 @@ from .command import CO, Command, CommandParameter, P
 
 logger = logging.getLogger(__name__)
 
+_CP = TypeVar("_CP", bound=CommandProvider)
+
 
 def command(
     names: Optional[list[str]] = None,
     description: Optional[str] = None,
     parameters: Optional[dict[str, JSONSchema]] = None,
-) -> Callable[
-    [Callable[P, CO] | Callable[Concatenate[CommandProvider, P], CO]], Command[P, CO]
-]:
+) -> (
+    Callable[[Callable[Concatenate[_CP, P], CO]], Command[P, CO]]
+    | Callable[[Callable[P, CO]], Command[P, CO]]
+):
     """
     Make a `Command` from a function or a method on a `CommandProvider`.
     All parameters are optional if the decorated function has a fully featured
@@ -35,7 +38,7 @@ def command(
     """
 
     def decorator(
-        func: Callable[P, CO] | Callable[Concatenate[CommandProvider, P], CO]
+        func: Callable[P, CO] | Callable[Concatenate[_CP, P], CO]
     ) -> Command[P, CO]:
         # If names is not provided, use the function name
         _names = names or [func.__name__]
@@ -71,17 +74,18 @@ def command(
         ]
 
         # Wrap func with Command
-        command = Command[P, CO](
+        command = Command(
             names=_names,
             description=_description,
-            method=func,
+            # Method technically has a `self` parameter, but we can ignore that
+            # since Python passes it internally.
+            method=cast(Callable[P, CO], func),
             parameters=typed_parameters,
         )
 
         return command
 
-    # https://github.com/microsoft/pyright/issues/7369#issuecomment-2155968296
-    return decorator  # pyright: ignore
+    return decorator
 
 
 def get_clean_description_from_docstring(docstring: str) -> str:

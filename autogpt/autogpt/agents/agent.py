@@ -32,7 +32,6 @@ from forge.components.user_interaction import UserInteractionComponent
 from forge.components.watchdog import WatchdogComponent
 from forge.components.web import WebSearchComponent, WebSeleniumComponent
 from forge.file_storage.base import FileStorage
-from forge.llm.prompting import PromptStrategy
 from forge.llm.prompting.schema import ChatPrompt
 from forge.llm.prompting.utils import dump_prompt
 from forge.llm.providers import (
@@ -64,7 +63,10 @@ from autogpt.app.log_cycle import (
 )
 
 from .prompt_strategies.code_flow import CodeFlowAgentPromptStrategy
-from .prompt_strategies.one_shot import OneShotAgentActionProposal
+from .prompt_strategies.one_shot import (
+    OneShotAgentActionProposal,
+    OneShotAgentPromptStrategy,
+)
 
 if TYPE_CHECKING:
     from forge.config.config import Config
@@ -101,7 +103,9 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         llm_provider: MultiProvider,
         file_storage: FileStorage,
         legacy_config: Config,
-        prompt_strategy_class: type[PromptStrategy] = CodeFlowAgentPromptStrategy,
+        prompt_strategy_class: type[
+            OneShotAgentPromptStrategy | CodeFlowAgentPromptStrategy
+        ] = CodeFlowAgentPromptStrategy,
     ):
         super().__init__(settings)
 
