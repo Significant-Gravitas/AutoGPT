@@ -1,7 +1,9 @@
 import ast
 import enum
+import typing
 from textwrap import indent
-from typing import Any, Optional, overload
+from types import NoneType
+from typing import Any, Optional, TypedDict, overload
 
 from jsonschema import Draft7Validator, ValidationError
 from pydantic import BaseModel
@@ -25,6 +27,7 @@ class JSONSchema(BaseModel):
     default: Any = None
     items: Optional["JSONSchema"] = None
     properties: Optional[dict[str, "JSONSchema"]] = None
+    additional_properties: Optional["JSONSchema"] = None
     minimum: Optional[int | float] = None
     maximum: Optional[int | float] = None
     minItems: Optional[int] = None
@@ -49,6 +52,8 @@ class JSONSchema(BaseModel):
                 schema["required"] = [
                     name for name, prop in self.properties.items() if prop.required
                 ]
+            if self.additional_properties:
+                schema["additionalProperties"] = self.additional_properties.to_dict()
         elif self.enum:
             schema["enum"] = self.enum
         else:
@@ -69,9 +74,12 @@ class JSONSchema(BaseModel):
             type=schema["type"],
             default=ast.literal_eval(d) if (d := schema.get("default")) else None,
             enum=schema.get("enum"),
-            items=JSONSchema.from_dict(schema["items"]) if "items" in schema else None,
+            items=JSONSchema.from_dict(i) if (i := schema.get("items")) else None,
             properties=JSONSchema.parse_properties(schema)
             if schema["type"] == "object"
+            else None,
+            additional_properties=JSONSchema.from_dict(ap)
+            if schema["type"] == "object" and (ap := schema.get("additionalProperties"))
             else None,
             minimum=schema.get("minimum"),
             maximum=schema.get("maximum"),
@@ -128,16 +136,63 @@ class JSONSchema(BaseModel):
             f"interface {interface_name} " if interface_name else ""
         ) + f"{{\n{indent(attributes_string, '  ')}\n}}"
 
+    _PYTHON_TO_JSON_TYPE: dict[typing.Type, Type] = {
+        int: Type.INTEGER,
+        str: Type.STRING,
+        bool: Type.BOOLEAN,
+        float: Type.NUMBER,
+    }
+
+    @classmethod
+    def from_python_type(cls, T: typing.Type) -> "JSONSchema":
+        if _t := cls._PYTHON_TO_JSON_TYPE.get(T):
+            partial_schema = cls(type=_t, required=True)
+        elif (
+            typing.get_origin(T) is typing.Union and typing.get_args(T)[-1] is NoneType
+        ):
+            if len(typing.get_args(T)[:-1]) > 1:
+                raise NotImplementedError("Union types are currently not supported")
+            partial_schema = cls.from_python_type(typing.get_args(T)[0])
+            partial_schema.required = False
+            return partial_schema
+        elif issubclass(T, BaseModel):
+            partial_schema = JSONSchema.from_dict(T.schema())
+        elif T is list or typing.get_origin(T) is list:
+            partial_schema = JSONSchema(
+                type=JSONSchema.Type.ARRAY,
+                items=JSONSchema.from_python_type(T_v)
+                if (T_v := typing.get_args(T)[0])
+                else None,
+            )
+        elif T is dict or typing.get_origin(T) is dict:
+            partial_schema = JSONSchema(
+                type=JSONSchema.Type.OBJECT,
+                additional_properties=JSONSchema.from_python_type(T_v)
+                if (T_v := typing.get_args(T)[1])
+                else None,
+            )
+        elif issubclass(T, TypedDict):
+            partial_schema = JSONSchema(
+                type=JSONSchema.Type.OBJECT,
+                properties={
+                    k: JSONSchema.from_python_type(v)
+                    for k, v in T.__annotations__.items()
+                },
+            )
+        else:
+            raise TypeError(f"JSONSchema.from_python_type is not implemented for {T}")
+
+        partial_schema.required = True
+        return partial_schema
+
+    _JSON_TO_PYTHON_TYPE: dict[Type, typing.Type] = {
+        j: p for p, j in _PYTHON_TO_JSON_TYPE.items()
+    }
+
     @property
     def python_type(self) -> str:
-        if self.type == JSONSchema.Type.BOOLEAN:
-            return "bool"
-        elif self.type in {JSONSchema.Type.INTEGER}:
-            return "int"
-        elif self.type == JSONSchema.Type.NUMBER:
-            return "float"
-        elif self.type == JSONSchema.Type.STRING:
-            return "str"
+        if self.type in self._JSON_TO_PYTHON_TYPE:
+            return self._JSON_TO_PYTHON_TYPE[self.type].__name__
         elif self.type == JSONSchema.Type.ARRAY:
             return f"list[{self.items.python_type}]" if self.items else "list"
         elif self.type == JSONSchema.Type.OBJECT:
