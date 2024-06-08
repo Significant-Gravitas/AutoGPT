@@ -17,10 +17,7 @@ def command(
     names: Optional[list[str]] = None,
     description: Optional[str] = None,
     parameters: Optional[dict[str, JSONSchema]] = None,
-) -> (
-    Callable[[Callable[Concatenate[_CP, P], CO]], Command[P, CO]]
-    | Callable[[Callable[P, CO]], Command[P, CO]]
-):
+) -> Callable[[Callable[Concatenate[_CP, P], CO] | Callable[P, CO]], Command[P, CO]]:
     """
     Make a `Command` from a function or a method on a `CommandProvider`.
     All parameters are optional if the decorated function has a fully featured
@@ -38,7 +35,7 @@ def command(
     """
 
     def decorator(
-        func: Callable[P, CO] | Callable[Concatenate[_CP, P], CO]
+        func: Callable[Concatenate[_CP, P], CO] | Callable[P, CO]
     ) -> Command[P, CO]:
         # If names is not provided, use the function name
         _names = names or [func.__name__]
