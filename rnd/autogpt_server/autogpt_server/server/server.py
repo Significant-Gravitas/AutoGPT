@@ -1,11 +1,10 @@
 import uvicorn
-from fastapi import FastAPI, APIRouter
+from fastapi import APIRouter, FastAPI
 
 from autogpt_server.data import ExecutionQueue
 
 
 class AgentServer:
-
     def __init__(self, queue: ExecutionQueue):
         self.app = FastAPI(
             title="AutoGPT Agent Server",
