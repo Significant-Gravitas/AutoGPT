@@ -149,10 +149,10 @@ def start(agent_name: str, no_setup: bool):
             setup_process.wait()
             click.echo()
 
-        subprocess.Popen(["./run_benchmark", "serve"], cwd=agent_dir)
-        click.echo("⌛ (Re)starting benchmark server...")
-        wait_until_conn_ready(8080)
-        click.echo()
+        # subprocess.Popen(["./run_benchmark", "serve"], cwd=agent_dir)
+        # click.echo("⌛ (Re)starting benchmark server...")
+        # wait_until_conn_ready(8080)
+        # click.echo()
 
         subprocess.Popen(["./run"], cwd=agent_dir)
         click.echo(f"⌛ (Re)starting agent '{agent_name}'...")

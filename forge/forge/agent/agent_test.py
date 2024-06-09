@@ -13,7 +13,7 @@ from forge.agent_protocol.models.task import (
 from forge.file_storage.base import FileStorageConfiguration
 from forge.file_storage.local import LocalFileStorage
 
-from .agent import ProtocolAgent
+from .protocol import ProtocolAgent
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from forge.agent.forge import ForgeAgent
+from forge.agent.agent import ForgeAgent
 from forge.agent_protocol.database.db import AgentDB
 from forge.file_storage import FileStorageBackendName, get_storage
 
