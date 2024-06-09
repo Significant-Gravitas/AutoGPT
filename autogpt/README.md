@@ -132,7 +132,7 @@ For more comprehensive instructions, see the [user guide][docs/usage].
 [docs/plugins]: https://docs.agpt.co/autogpt/plugins
 
 ## 📚 Resources
-* 📔 AutoGPT [team wiki](https://github.com/Significant-Gravitas/Nexus/wiki)
+* 📔 AutoGPT [project wiki](https://github.com/Significant-Gravitas/AutoGPT/wiki)
 * 🧮 AutoGPT [project kanban](https://github.com/orgs/Significant-Gravitas/projects/1)
 * 🌃 AutoGPT [roadmap](https://github.com/orgs/Significant-Gravitas/projects/2)
 

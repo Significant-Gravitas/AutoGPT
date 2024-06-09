@@ -16,7 +16,7 @@ body:
         [discussions]: https://github.com/Significant-Gravitas/AutoGPT/discussions
         [#tech-support]: https://discord.com/channels/1092243196446249134/1092275629602394184
         [existing issues]: https://github.com/Significant-Gravitas/AutoGPT/issues?q=is%3Aissue
-        [wiki page on Contributing]: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing
+        [wiki page on Contributing]: https://github.com/Significant-Gravitas/AutoGPT/wiki/Contributing
 
   - type: checkboxes
     attributes:
