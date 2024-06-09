@@ -1,11 +1,11 @@
 # AutoGPT Contribution Guide
 If you are reading this, you are probably looking for our **[contribution guide]**,
-which is part of our [knowledge base].
+which is part of our [wiki].
 
 You can find our immediate priorities and their progress on our public [kanban board].
 
-[contribution guide]: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing
-[knowledge base]: https://github.com/Significant-Gravitas/Nexus/wiki
+[contribution guide]: https://github.com/Significant-Gravitas/AutoGPT/wiki/Contributing
+[wiki]: https://github.com/Significant-Gravitas/AutoGPT/wiki
 [kanban board]: https://github.com/orgs/Significant-Gravitas/projects/1
 
 ## In short
@@ -24,7 +24,7 @@ You can find our immediate priorities and their progress on our public [kanban b
 [dev channel]: https://discord.com/channels/1092243196446249134/1095817829405704305
 
 If you wish to involve with the project (beyond just contributing PRs), please read the
-wiki [catalyzing](https://github.com/Significant-Gravitas/Nexus/wiki/Catalyzing) page.
+wiki [catalyzing](https://github.com/Significant-Gravitas/AutoGPT/wiki/Catalyzing) page.
 
 In fact, why not just look through the whole wiki (it's only a few pages) and
 hop on our Discord. See you there! :-)
