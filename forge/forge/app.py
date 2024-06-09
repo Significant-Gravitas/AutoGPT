@@ -5,7 +5,6 @@ from forge.agent.agent import ForgeAgent
 from forge.agent_protocol.database.db import AgentDB
 from forge.file_storage import FileStorageBackendName, get_storage
 
-
 database_name = os.getenv("DATABASE_STRING")
 workspace = get_storage(FileStorageBackendName.LOCAL, root_path=Path("workspace"))
 database = AgentDB(database_name, debug_enabled=False)

@@ -3,9 +3,14 @@ import logging
 from typing import Any
 from uuid import uuid4
 
-from forge.agent.protocol import ProtocolAgent
 from forge.agent.base import BaseAgent, BaseAgentSettings
-from forge.agent.protocols import AfterExecute, CommandProvider, DirectiveProvider, MessageProvider
+from forge.agent.protocol import ProtocolAgent
+from forge.agent.protocols import (
+    AfterExecute,
+    CommandProvider,
+    DirectiveProvider,
+    MessageProvider,
+)
 from forge.agent_protocol.database.db import AgentDB
 from forge.agent_protocol.models.task import (
     Step,
@@ -20,15 +25,21 @@ from forge.llm.prompting.schema import ChatPrompt
 from forge.llm.prompting.utils import dump_prompt
 from forge.llm.providers.schema import AssistantFunctionCall
 from forge.llm.providers.utils import function_specs_from_commands
-from forge.models.action import ActionErrorResult, ActionProposal, ActionResult, ActionSuccessResult
+from forge.models.action import (
+    ActionErrorResult,
+    ActionProposal,
+    ActionResult,
+    ActionSuccessResult,
+)
+from forge.utils.exceptions import AgentException, AgentTerminated
 
 logger = logging.getLogger(__name__)
 
 
 class ForgeAgent(ProtocolAgent, BaseAgent):
     """
-    The goal of the Forge is to take care of the boilerplate code, so you can focus on
-    agent design.
+    The goal of the Forge is to take care of the boilerplate code,
+    so you can focus on agent design.
 
     There is a great paper surveying the agent landscape: https://arxiv.org/abs/2308.11432
     Which I would highly recommend reading as it will help you understand the possibilities.
@@ -36,12 +47,12 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
     ForgeAgent provides component support; https://docs.agpt.co/forge/components/introduction/
     Using Components is a new way of building agents that is more flexible and easier to extend.
     Components replace some agent's logic and plugins with a more modular and composable system.
-    """
+    """  # noqa: E501
 
     def __init__(self, database: AgentDB, workspace: FileStorage):
         """
-        The database is used to store tasks, steps and artifact metadata. The workspace is used to
-        store artifacts (files).
+        The database is used to store tasks, steps and artifact metadata.
+        The workspace is used to store artifacts (files).
         """
 
         # An example agent information; you can modify this to suit your needs
@@ -64,23 +75,25 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
         # Components provide additional functionality to the agent
         # There are NO components added by default in the BaseAgent
         # You can create your own components or add existing ones
-        # Built-in components: https://docs.agpt.co/forge/components/built-in-components/
+        # Built-in components:
+        #   https://docs.agpt.co/forge/components/built-in-components/
 
         # System component provides "finish" command and adds some prompt information
         self.system = SystemComponent()
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         """
-        The agent protocol, which is the core of the Forge, works by creating a task and then
-        executing steps for that task. This method is called when the agent is asked to create
-        a task.
+        The agent protocol, which is the core of the Forge,
+        works by creating a task and then executing steps for that task.
+        This method is called when the agent is asked to create a task.
 
-        We are hooking into function to add a custom log message. Though you can do anything you
-        want here.
+        We are hooking into function to add a custom log message.
+        Though you can do anything you want here.
         """
         task = await super().create_task(task_request)
         logger.info(
-            f"📦 Task created: {task.task_id} input: {task.input[:40]}{'...' if len(task.input) > 40 else ''}"
+            f"📦 Task created: {task.task_id} "
+            f"input: {task.input[:40]}{'...' if len(task.input) > 40 else ''}"
         )
         return task
 
@@ -114,7 +127,7 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
         as a step object. You can do everything in a single step or you can break it down into
         multiple steps. Returning a request to continue in the step output, the user can then decide
         if they want the agent to continue or not.
-        """
+        """  # noqa: E501
 
         step = await self.db.create_step(
             task_id=task_id, input=step_request, is_last=False
@@ -127,7 +140,7 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
         if isinstance(output, ActionSuccessResult):
             step.output = str(output.outputs)
         elif isinstance(output, ActionErrorResult):
-            step.error = output.reason
+            step.output = output.reason
 
         return step
 
@@ -137,8 +150,12 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
         # Get directives
         directives = self.state.directives.copy(deep=True)
         directives.resources += await self.run_pipeline(DirectiveProvider.get_resources)
-        directives.constraints += await self.run_pipeline(DirectiveProvider.get_constraints)
-        directives.best_practices += await self.run_pipeline(DirectiveProvider.get_best_practices)
+        directives.constraints += await self.run_pipeline(
+            DirectiveProvider.get_constraints
+        )
+        directives.best_practices += await self.run_pipeline(
+            DirectiveProvider.get_best_practices
+        )
 
         # Get commands
         self.commands = await self.run_pipeline(CommandProvider.get_commands)
@@ -154,10 +171,12 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
 
         # Call the LLM and parse result
         # THIS NEEDS TO BE REPLACED WITH YOUR LLM CALL/LOGIC
-        # Have a look at autogpt/agents/agent.py for an example (complete_and_parse function)
+        # Have a look at autogpt/agents/agent.py for an example (complete_and_parse)
         proposal = ActionProposal(
-            thoughts="I solve task!",
-            use_tool=AssistantFunctionCall(name="finish", arguments={}),
+            thoughts="I cannot solve the task!",
+            use_tool=AssistantFunctionCall(
+                name="finish", arguments={"reason": "Unimplemented logic"}
+            ),
         )
 
         self.config.cycle_count += 1
@@ -171,11 +190,21 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
         self.commands = await self.run_pipeline(CommandProvider.get_commands)
 
         # Execute the command
-        for command in reversed(self.commands):
-            if tool in command.names:
-                result = command()
-                if inspect.isawaitable(result):
-                    result = await result
+        try:
+            for c in reversed(self.commands):
+                if tool.name in c.names:
+                    command = c
+
+            command_result = command(**tool.arguments)
+            if inspect.isawaitable(command_result):
+                command_result = await command_result
+
+            result = ActionSuccessResult(outputs=command_result)
+        except AgentTerminated:
+            result = ActionSuccessResult(outputs="Agent terminated or finished")
+        except AgentException as e:
+            result = ActionErrorResult.from_exception(e)
+            logger.warning(f"{tool} raised an error: {e}")
 
         await self.run_pipeline(AfterExecute.after_execute, result)
 
