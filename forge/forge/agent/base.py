@@ -298,17 +298,6 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
                 data = {**component.config.__dict__, **updated_data}
                 component.config = component.config.__class__(**data)
 
-    def _update_config_with_defaults(
-        self, config: BaseModel, data: dict[str, Any]
-    ) -> BaseModel:
-        config_data = config.dict()
-        for key, value in data.items():
-            current_value = getattr(config, key, None)
-            if isinstance(current_value, BaseModel) and isinstance(value, dict):
-                value = self._update_config_with_defaults(current_value, value).dict()
-            config_data[key] = value
-        return config.__class__(**config_data)
-
     def _collect_components(self):
         components = [
             getattr(self, attr)

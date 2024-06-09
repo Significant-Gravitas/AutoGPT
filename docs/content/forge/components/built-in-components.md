@@ -124,13 +124,13 @@ Link to the appropriate settings page: [Hugging Face > Settings > Tokens](https:
 
 It is possible to use your own self-hosted Stable Diffusion WebUI with AutoGPT. **Make sure you are running WebUI with `--api` enabled.**
 
-| Config variable           | Details                                                       | Type                                    | Default                         |
-| ------------------------- | ------------------------------------------------------------- | --------------------------------------- | ------------------------------- |
+| Config variable           | Details                                                       | Type                                    | Default                           |
+| ------------------------- | ------------------------------------------------------------- | --------------------------------------- | --------------------------------- |
 | `image_provider`          | Image generation provider                                     | `"dalle" \| "huggingface" \| "sdwebui"` | `"dalle"`                         |
 | `huggingface_image_model` | Hugging Face image model, see [available models]              | `str`                                   | `"CompVis/stable-diffusion-v1-4"` |
-| `huggingface_api_token`   | Hugging Face API token, *ENV:* `HUGGINGFACE_API_TOKEN`        | `str`                                   | `None`                          |
-| `sd_webui_url`            | URL to self-hosted Stable Diffusion WebUI                     | `str`                                   | `"http://localhost:7860"`       |
-| `sd_webui_auth`           | Basic auth for Stable Diffusion WebUI, *ENV:* `SD_WEBUI_AUTH` | `str` of format `{username}:{password}` | `None`                          |
+| `huggingface_api_token`   | Hugging Face API token, *ENV:* `HUGGINGFACE_API_TOKEN`        | `str`                                   | `None`                            |
+| `sd_webui_url`            | URL to self-hosted Stable Diffusion WebUI                     | `str`                                   | `"http://localhost:7860"`         |
+| `sd_webui_auth`           | Basic auth for Stable Diffusion WebUI, *ENV:* `SD_WEBUI_AUTH` | `str` of format `{username}:{password}` | `None`                            |
 
 [available models]: https://huggingface.co/models?pipeline_tag=text-to-image
 
@@ -142,9 +142,9 @@ It is possible to use your own self-hosted Stable Diffusion WebUI with AutoGPT. 
 
 Allows agent to search the web. Google credentials aren't required for DuckDuckGo.
 
-| Config variable | Details                                   | Type  | Default |
-| --------------- | ----------------------------------------- | ----- | ------- |
-| `google_api_key` | Google API key, *ENV:* `GOOGLE_API_KEY`   | `str` | `None`  |
+| Config variable                  | Details                                                                 | Type  | Default |
+| -------------------------------- | ----------------------------------------------------------------------- | ----- | ------- |
+| `google_api_key`                 | Google API key, *ENV:* `GOOGLE_API_KEY`                                 | `str` | `None`  |
 | `google_custom_search_engine_id` | Google Custom Search Engine ID, *ENV:* `GOOGLE_CUSTOM_SEARCH_ENGINE_ID` | `str` | `None`  |
 
 **DirectiveProvider**
@@ -160,13 +160,13 @@ Allows agent to search the web. Google credentials aren't required for DuckDuckG
 
 Allows agent to read websites using Selenium.
 
-| Config variable | Details                                   | Type  | Default |
-| --------------- | ----------------------------------------- | ----- | ------- |
-| `model_name` | Name of the llm model used to read websites | `ModelName` | `"gpt-3.5-turbo"` |
-| `web_browser` | Web browser used by Selenium | `"chrome" \| "firefox" \| "safari" \| "edge"` | `"chrome"` |
-| `headless` | Run browser in headless mode | `bool` | `True` |
-| `user_agent` | User agent used by the browser | `str` | `"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"` |
-| `browse_spacy_language_model` | Spacy language model used for chunking text | `str` | `"en_core_web_sm"` |
+| Config variable               | Details                                     | Type                                          | Default                                                                                                                      |
+| ----------------------------- | ------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `model_name`                  | Name of the llm model used to read websites | `ModelName`                                   | `"gpt-3.5-turbo"`                                                                                                            |
+| `web_browser`                 | Web browser used by Selenium                | `"chrome" \| "firefox" \| "safari" \| "edge"` | `"chrome"`                                                                                                                   |
+| `headless`                    | Run browser in headless mode                | `bool`                                        | `True`                                                                                                                       |
+| `user_agent`                  | User agent used by the browser              | `str`                                         | `"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"` |
+| `browse_spacy_language_model` | Spacy language model used for chunking text | `str`                                         | `"en_core_web_sm"`                                                                                                           |
 
 **DirectiveProvider**
 
