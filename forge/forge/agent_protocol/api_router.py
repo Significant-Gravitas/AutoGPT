@@ -24,7 +24,7 @@ from .models import (
 )
 
 if TYPE_CHECKING:
-    from forge.agent.protocol import ProtocolAgent
+    from forge.agent.agent import ProtocolAgent
 
 base_router = APIRouter()
 logger = logging.getLogger(__name__)
