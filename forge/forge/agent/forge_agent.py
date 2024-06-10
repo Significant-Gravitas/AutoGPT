@@ -1,16 +1,16 @@
 import inspect
 import logging
-from typing import Any
+from typing import Any, Optional
 from uuid import uuid4
 
 from forge.agent.base import BaseAgent, BaseAgentSettings
-from forge.agent.agent import ProtocolAgent
 from forge.agent.protocols import (
     AfterExecute,
     CommandProvider,
     DirectiveProvider,
     MessageProvider,
 )
+from forge.agent_protocol.agent import ProtocolAgent
 from forge.agent_protocol.database.db import AgentDB
 from forge.agent_protocol.models.task import (
     Step,
@@ -18,6 +18,7 @@ from forge.agent_protocol.models.task import (
     Task,
     TaskRequestBody,
 )
+from forge.command.command import Command
 from forge.components.system.system import SystemComponent
 from forge.config.ai_profile import AIProfile
 from forge.file_storage.base import FileStorage
@@ -92,7 +93,7 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
         """
         task = await super().create_task(task_request)
         logger.info(
-            f"📦 Task created: {task.task_id} "
+            f"📦 Task created with ID: {task.task_id} and "
             f"input: {task.input[:40]}{'...' if len(task.input) > 40 else ''}"
         )
         return task
@@ -191,9 +192,13 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
 
         # Execute the command
         try:
+            command: Optional[Command] = None
             for c in reversed(self.commands):
                 if tool.name in c.names:
                     command = c
+
+            if command is None:
+                raise AgentException(f"Command {tool.name} not found")
 
             command_result = command(**tool.arguments)
             if inspect.isawaitable(command_result):
