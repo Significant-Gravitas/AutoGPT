@@ -21,7 +21,10 @@ class CodeFlowExecutionComponent(CommandProvider):
 
     def set_available_functions(self, functions: list[Command]):
         self.available_functions = {
-            name: function for function in functions for name in function.names
+            name: function
+            for function in functions
+            for name in function.names
+            if name != "execute_code_flow"
         }
 
     def get_commands(self) -> Iterator[Command]:
