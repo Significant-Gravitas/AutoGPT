@@ -4,7 +4,15 @@
 [![Twitter Follow](https://img.shields.io/twitter/follow/Auto_GPT?style=social)](https://twitter.com/Auto_GPT) &ensp;
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**AutoGPT** is the vision of the power of AI accessible to everyone, to use and to build on. Our mission is to provide the tools, so that you can focus on what matters:
+**AutoGPT** is a generalist LLM based AI agent that can autonomously accomplish minor tasks. 
+
+**Examples**:
+
+- Look up and summarize this research paper
+- Write a marketing for food supplements
+- Write a blog post detailing the news in AI
+
+Our mission is to provide the tools, so that you can focus on what matters:
 
 - 🏗️ **Building** - Lay the foundation for something amazing.
 - 🧪 **Testing** - Fine-tune your agent to perfection.
