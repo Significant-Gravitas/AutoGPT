@@ -10,7 +10,7 @@ from autogpt_server.data.block import get_block
 
 
 class Node(BaseDbModel):
-    block_name: str
+    block_id: str
     input_default: dict[str, Any] = {}  # dict[input_name, default_value]
     input_nodes: dict[str, str] = {}  # dict[input_name, node_id]
     # TODO: Make it `dict[str, list[str]]`, output can be connected to multiple blocks.
@@ -24,7 +24,7 @@ class Node(BaseDbModel):
 
         return Node(
             id=node.id,
-            block_name=node.AgentBlock.name,
+            block_id=node.AgentBlock.id,
             input_default=json.loads(node.constantInput),
             input_nodes={v.sinkName: v.agentNodeSourceId for v in node.Input or []},
             output_nodes={v.sourceName: v.agentNodeSinkId for v in node.Output or []},
@@ -36,7 +36,7 @@ class Node(BaseDbModel):
 
     @property
     async def block(self):
-        return await get_block(self.block_name)
+        return await get_block(self.block_id)
 
 
 class Graph(BaseDbModel):
@@ -129,7 +129,7 @@ async def create_graph(graph: Graph) -> Graph:
             AgentNode.prisma().create(
                 {
                     "id": node.id,
-                    "agentBlockName": node.block_name,
+                    "agentBlockId": node.block_id,
                     "agentGraphId": graph.id,
                     "constantInput": json.dumps(node.input_default),
                 }

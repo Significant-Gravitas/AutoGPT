@@ -15,12 +15,13 @@ async def create_test_graph() -> graph.Graph:
     ParrotBlock
     """
     nodes = [
-        graph.Node(block_name="ParrotBlock"),
-        graph.Node(block_name="ParrotBlock"),
+        graph.Node(block_id=block.ParrotBlock.id),
+        graph.Node(block_id=block.ParrotBlock.id),
         graph.Node(
-            block_name="TextCombinerBlock", input_default={"format": "{text1},{text2}"}
+            block_id=block.TextCombinerBlock.id,
+            input_default={"format": "{text1},{text2}"}
         ),
-        graph.Node(block_name="PrintingBlock"),
+        graph.Node(block_id=block.PrintingBlock.id),
     ]
     nodes[0].connect(nodes[2], "output", "text1")
     nodes[1].connect(nodes[2], "output", "text2")

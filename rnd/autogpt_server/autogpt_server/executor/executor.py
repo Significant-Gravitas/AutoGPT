@@ -43,13 +43,13 @@ async def execute_node(data: Execution) -> Execution | None:
         logger.error(f"Node {node_id} not found.")
         return None
 
-    node_block = await block.get_block(node.block_name)
+    node_block = await block.get_block(node.block_id)
     if not node_block:
-        logger.error(f"Block {node.block_name} not found.")
+        logger.error(f"Block {node.block_id} not found.")
         return None
 
     # Execute the node
-    prefix = get_log_prefix(run_id, exec_id, node.block_name)
+    prefix = get_log_prefix(run_id, exec_id, node_block.name)
     logger.warning(f"{prefix} execute with input:\n{exec_data}")
     await start_execution(exec_id)
 
@@ -78,10 +78,10 @@ async def execute_node(data: Execution) -> Execution | None:
 
     if error := next_node_block.input_schema.validate_data(next_node_input):
         logger.warning(
-            f"{prefix} Skipped {next_node_id}-{next_node.block_name}, {error}")
+            f"{prefix} Skipped {next_node_id}-{next_node_block.name}, {error}")
         return None
 
-    logger.warning(f"{prefix} Enqueue next node {next_node_id}-{next_node.block_name}")
+    logger.warning(f"{prefix} Enqueue next node {next_node_id}-{next_node_block.name}")
     return Execution(
         run_id=run_id, node_id=next_node_id, data=next_node_input
     )

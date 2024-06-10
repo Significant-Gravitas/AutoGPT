@@ -95,6 +95,17 @@ class Block(ABC, BaseModel):
     @classmethod
     @property
     @abstractmethod
+    def id(cls) -> str:
+        """
+        The unique identifier for the block, this value will be persisted in the DB.
+        So it should be a unique and constant across the application run.
+        Use the UUID format for the ID.
+        """
+        pass
+
+    @classmethod
+    @property
+    @abstractmethod
     def input_schema(cls) -> BlockSchema:
         """
         The schema for the block input data.
@@ -123,6 +134,11 @@ class Block(ABC, BaseModel):
         """
         pass
 
+    @classmethod
+    @property
+    def name(cls):
+        return cls.__name__
+
     async def execute(self, input_data: BlockData) -> tuple[str, Any]:
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
@@ -143,6 +159,7 @@ class Block(ABC, BaseModel):
 
 
 class ParrotBlock(Block):
+    id: ClassVar[str] = "1ff065e9-88e8-4358-9d82-8dc91f622ba9"  # type: ignore
     input_schema: ClassVar[BlockSchema] = BlockSchema({  # type: ignore
         "input": "string",
     })
@@ -155,6 +172,7 @@ class ParrotBlock(Block):
 
 
 class TextCombinerBlock(Block):
+    id: ClassVar[str] = "db7d8f02-2f44-4c55-ab7a-eae0941f0c30"  # type: ignore
     input_schema: ClassVar[BlockSchema] = BlockSchema({  # type: ignore
         "text1": "string",
         "text2": "string",
@@ -172,6 +190,7 @@ class TextCombinerBlock(Block):
 
 
 class PrintingBlock(Block):
+    id: ClassVar[str] = "f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c"  # type: ignore
     input_schema: ClassVar[BlockSchema] = BlockSchema({  # type: ignore
         "text": "string",
     })
@@ -192,25 +211,26 @@ AVAILABLE_BLOCKS: dict[str, Block] = {}
 async def initialize_blocks() -> None:
     global AVAILABLE_BLOCKS
 
-    AVAILABLE_BLOCKS = {block.__name__: block() for block in Block.__subclasses__()}
+    AVAILABLE_BLOCKS = {block.id: block() for block in Block.__subclasses__()}
 
-    for block_name, block in AVAILABLE_BLOCKS.items():
-        existing_block = await AgentBlock.prisma().find_first(
-            where={"name": block_name}
+    for block in AVAILABLE_BLOCKS.values():
+        existing_block = await AgentBlock.prisma().find_unique(
+            where={"id": block.id}
         )
         if existing_block:
             continue
 
         await AgentBlock.prisma().create(
             data={
-                "name": block_name,
+                "id": block.id,
+                "name": block.name,
                 "inputSchema": str(block.input_schema),
                 "outputSchema": str(block.output_schema),
             }
         )
 
 
-async def get_block(name: str) -> Block:
+async def get_block(block_id: str) -> Block:
     if not AVAILABLE_BLOCKS:
         await initialize_blocks()
-    return AVAILABLE_BLOCKS[name]
+    return AVAILABLE_BLOCKS[block_id]
