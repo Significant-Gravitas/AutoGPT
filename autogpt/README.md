@@ -86,7 +86,7 @@ Options:
   --override-directives           If specified, --constraint, --resource and
                                   --best-practice will override the AI's
                                   directives instead of being appended to them
-  --config-file TEXT              Path to the json configuration file.
+  --component-config-file TEXT    Path to the json configuration file.
   --help                          Show this message and exit.
 ```
 </details>

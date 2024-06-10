@@ -74,7 +74,7 @@ async def run_auto_gpt(
     constraints: Optional[list[str]] = None,
     best_practices: Optional[list[str]] = None,
     override_directives: bool = False,
-    config_file: Optional[Path] = None,
+    component_config_file: Optional[Path] = None,
 ):
     # Set up configuration
     config = ConfigBuilder.build_config_from_env()
@@ -325,10 +325,10 @@ async def run_auto_gpt(
         # ).add_done_callback(update_agent_directives)
 
     # Load component configuration from file
-    if _config_file := config_file or config.config_file:
+    if _config_file := component_config_file or config.component_config_file:
         try:
             with open(_config_file, "r") as f:
-                logger.info(f"Loading component configuration from {config_file}")
+                logger.info(f"Loading component configuration from {component_config_file}")
                 agent.load_component_configs(f.read())
         except Exception as e:
             logger.error(f"Could not load component configuration: {e}")

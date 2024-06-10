@@ -111,7 +111,7 @@ def cli(ctx: click.Context):
     type=click.Choice([i.value for i in LogFormatName]),
 )
 @click.option(
-    "--config-file",
+    "--component-config-file",
     help="Path to a json configuration file",
     type=click.Path(exists=True, dir_okay=False, resolve_path=True),
 )
@@ -132,7 +132,7 @@ def run(
     log_level: Optional[str],
     log_format: Optional[str],
     log_file_format: Optional[str],
-    config_file: Optional[Path],
+    component_config_file: Optional[Path],
 ) -> None:
     """
     Sets up and runs an agent, based on the task specified by the user, or resumes an
@@ -158,7 +158,7 @@ def run(
         constraints=list(constraint),
         best_practices=list(best_practice),
         override_directives=override_directives,
-        config_file=config_file,
+        component_config_file=component_config_file,
     )
 
 

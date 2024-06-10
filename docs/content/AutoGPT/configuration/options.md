@@ -7,7 +7,7 @@ Configuration is controlled through the `Config` object. You can set configurati
 - `AUTHORISE_COMMAND_KEY`: Key response accepted when authorising commands. Default: y
 - `ANTHROPIC_API_KEY`: Set this if you want to use Anthropic models with AutoGPT
 - `AZURE_CONFIG_FILE`: Location of the Azure Config file relative to the AutoGPT root directory. Default: azure.yaml
-- `CONFIG_FILE`: Path to the component configuration file (json) for an agent. Optional
+- `COMPONENT_CONFIG_FILE`: Path to the component configuration file (json) for an agent. Optional
 - `DISABLED_COMMANDS`: Commands to disable. Use comma separated names of commands. See the list of commands from built-in components [here](../components/components.md). Default: None
 - `ELEVENLABS_API_KEY`: ElevenLabs API Key. Optional.
 - `ELEVENLABS_VOICE_ID`: ElevenLabs Voice ID. Optional.
