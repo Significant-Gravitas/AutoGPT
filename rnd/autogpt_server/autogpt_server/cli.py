@@ -1,3 +1,7 @@
+"""
+The command line interface for the agent server
+"""
+
 from multiprocessing import freeze_support
 from multiprocessing.spawn import freeze_support as freeze_support_spawn
 
@@ -7,11 +11,13 @@ import click
 @click.group()
 def main():
     """AutoGPT Server CLI Tool"""
-    pass
 
 
 @main.command()
 def background() -> None:
+    """
+    Command to run the server in the background. Used by the run command
+    """
     from autogpt_server.app import background_process
 
     background_process()
@@ -19,6 +25,9 @@ def background() -> None:
 
 @main.command()
 def run():
+    """
+    Starts the server in the background and saves the PID
+    """
     import os
     import pathlib
     import subprocess
@@ -41,12 +50,15 @@ def run():
     )
     print(f"Server running in process: {sp.pid}")
 
-    with open(file_path, "w") as file:
+    with open(file_path, "w", encoding="utf-8") as file:
         file.write(str(sp.pid))
 
 
 @main.command()
 def stop():
+    """
+    Stops the server
+    """
     import os
     import pathlib
     import subprocess
@@ -58,7 +70,7 @@ def stop():
         print("Server is not running")
         return
 
-    with open(file_path, "r") as file:
+    with open(file_path, "r", encoding="utf-8") as file:
         pid = file.read()
     os.remove(file_path)
 
