@@ -15,9 +15,6 @@ model AgentGraph {
   name        String?
   description String?
 
-  startingAgentNodeId String
-  StartingAgentNode   AgentNode @relation("AgentGraphRoot", fields: [startingAgentNodeId], references: [id])
-
   AgentNodes AgentNode[] @relation("AgentGraphNodes")
 }
 
@@ -32,30 +29,30 @@ model AgentNode {
   AgentGraph   AgentGraph @relation("AgentGraphNodes", fields: [agentGraphId], references: [id])
 
   // List of consumed input, that the parent node should provide.
-  Input AgentNodeLink[] @relation("AgentNodeInput")
+  Input AgentNodeLink[] @relation("AgentNodeSink")
 
   // List of produced output, that the child node should be executed.
-  Output AgentNodeLink[] @relation("AgentNodeOutput")
+  Output AgentNodeLink[] @relation("AgentNodeSource")
+
+  // JSON serialized dict[str, str] containing predefined input values.
+  constantInput String @default("{}")
 
   ExecutionHistory AgentNodeExecution[]
-
-  // Prisma requires explicit back-references.
-  ReferencedByAgentGraphAsRoot AgentGraph[] @relation("AgentGraphRoot")
 }
 
 // This model describes the link between two AgentNodes.
 model AgentNodeLink {
   id String @id
 
-  agentNodeInputId       String
-  AgentNodeInput         AgentNode             @relation("AgentNodeOutput", fields: [agentNodeInputId], references: [id]) // Output of the node is the input of the link.
-  agentNodeInputSchemaId String
-  AgentNodeInputSchema   AgentBlockInputOutput @relation("AgentNodeInputSchema", fields: [agentNodeInputSchemaId], references: [id])
+  // Output of a node is connected to the source of the link.
+  agentNodeSourceId String
+  AgentNodeSource   AgentNode @relation("AgentNodeSource", fields: [agentNodeSourceId], references: [id])
+  sourceName        String
 
-  agentNodeOutputId       String
-  AgentNodeOutput         AgentNode             @relation("AgentNodeInput", fields: [agentNodeOutputId], references: [id]) // Input of the node is the output of the link.
-  agentNodeOutputSchemaId String
-  AgentNodeOutputSchema   AgentBlockInputOutput @relation("AgentNodeOutputSchema", fields: [agentNodeOutputSchemaId], references: [id])
+  // Input of a node is connected to the sink of the link.
+  agentNodeSinkId String
+  AgentNodeSink   AgentNode @relation("AgentNodeSink", fields: [agentNodeSinkId], references: [id])
+  sinkName        String
 }
 
 // This model describes a component that will be executed by the AgentNode.
@@ -63,49 +60,35 @@ model AgentBlock {
   id   String @id
   name String @unique
 
-  // We allow a block to have multiple types of output.
-  Input  AgentBlockInputOutput[] @relation("AgentBlockInput")
-  Output AgentBlockInputOutput[] @relation("AgentBlockOutput")
+  // We allow a block to have multiple types of input & output.
+  // Serialized object-typed `jsonschema` with top-level properties as input/output name.
+  inputSchema  String
+  outputSchema String
 
   // Prisma requires explicit back-references.
   ReferencedByAgentNode AgentNode[]
 }
 
-// This model describes the output (produced event) or input (consumed event) of an AgentBlock.
-model AgentBlockInputOutput {
-  id          String @id
-  name        String
-  schema      String
-  description String
-
-  // Prisma requires explicit back-references.
-  ReferencedByAgentBlockInput       AgentBlock[]         @relation("AgentBlockInput")
-  ReferencedByAgentBlockOutput      AgentBlock[]         @relation("AgentBlockOutput")
-  ReferencedByAgentNodeLinkAsInput  AgentNodeLink[]      @relation("AgentNodeInputSchema")
-  ReferencedByAgentNodeLinkAsOutput AgentNodeLink[]      @relation("AgentNodeOutputSchema")
-  ReferencedByAgentNodeExecution    AgentNodeExecution[]
-}
-
 // This model describes the execution of an AgentNode.
 model AgentNodeExecution {
-  id String @id
+  id          String @id
+  executionId String
 
   agentNodeId String
   AgentNode   AgentNode @relation(fields: [agentNodeId], references: [id])
 
-  inputData    String
-  inputFiles   FileDefinition[]       @relation("InputFiles")
-  outputData   String
-  outputFiles  FileDefinition[]       @relation("OutputFiles")
-  outputTypeId String?
-  outputType   AgentBlockInputOutput? @relation(fields: [outputTypeId], references: [id])
+  inputData   String?
+  inputFiles  FileDefinition[] @relation("InputFiles")
+  outputName  String?
+  outputData  String?
+  outputFiles FileDefinition[] @relation("OutputFiles")
 
   // sqlite does not support enum
-  // enum Status { STARTED, RUNNING, SUCCESS, FAILED }
+  // enum Status { QUEUED, RUNNING, SUCCESS, FAILED }
   executionStatus String
-
-  // JSON serialized object of the execution state: information required to resume the execution.
-  executionStateData String
+  creationTime    DateTime
+  startTime       DateTime?
+  endTime         DateTime?
 }
 
 // This model describes a file that can be used as input/output of an AgentNodeExecution.
