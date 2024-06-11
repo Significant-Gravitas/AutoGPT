@@ -42,6 +42,7 @@ class BlockSchema(BaseModel):
         "on_failures": "string",
     })
     """
+
     jsonschema: dict[str, Any]
 
     def __init__(

@@ -23,7 +23,13 @@ setup(
     # The entry points of the application
     executables=[
         Executable(
-            "autogpt_server/app.py", target_name="autogptserver", base="console", icon=icon
+            "autogpt_server/app.py",
+            target_name="agpt_server",
+            base="console",
+            icon=icon,
+        ),
+        Executable(
+            "autogpt_server/cli.py", target_name="agpt_server_cli", base="console", icon=icon
         ),
     ],
     options={

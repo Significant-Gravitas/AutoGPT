@@ -1,9 +1,8 @@
 import asyncio
 import logging
-
-from typing import Optional
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Process
+from typing import Optional
 
 from autogpt_server.data import block, db, graph
 from autogpt_server.data.execution import (
@@ -11,8 +10,8 @@ from autogpt_server.data.execution import (
     ExecutionQueue,
     add_execution,
     complete_execution,
-    start_execution,
     fail_execution,
+    start_execution,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,6 +75,11 @@ async def execute_node(data: Execution) -> Execution | None:
     next_node_input = await graph.get_node_input(next_node, run_id)
     next_node_block = await next_node.block
 
+    if not set(next_node.input_nodes).issubset(next_node_input):
+        logger.warning(f"{prefix} Skipped {next_node_id}-{next_node_block.name}, "
+                       f"missing: {set(next_node.input_nodes) - set(next_node_input)}")
+        return None
+
     if error := next_node_block.input_schema.validate_data(next_node_input):
         logger.warning(
             f"{prefix} Skipped {next_node_id}-{next_node_block.name}, {error}")
@@ -112,17 +116,17 @@ def start_executor(pool_size: int, queue: ExecutionQueue) -> None:
             return exception
 
         execution = f.result()
-        if execution: 
+        if execution:
             loop.run_until_complete(add_execution(execution, queue))
             return exception
-        
+
         return None
 
     logger.warning("Executor started!")
 
     with ProcessPoolExecutor(
-        max_workers=pool_size,
-        initializer=db.connect_sync,
+            max_workers=pool_size,
+            initializer=db.connect_sync,
     ) as executor:
         while True:
             future = executor.submit(execute_node_sync, queue.get())
