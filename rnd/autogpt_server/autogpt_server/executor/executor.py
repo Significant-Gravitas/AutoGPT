@@ -1,9 +1,8 @@
 import asyncio
 import logging
-
-from typing import Optional
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Process
+from typing import Optional
 
 from autogpt_server.data import block, db, graph
 from autogpt_server.data.execution import (
@@ -11,8 +10,8 @@ from autogpt_server.data.execution import (
     ExecutionQueue,
     add_execution,
     complete_execution,
-    start_execution,
     fail_execution,
+    start_execution,
 )
 
 logger = logging.getLogger(__name__)

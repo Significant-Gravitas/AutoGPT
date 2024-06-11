@@ -1,7 +1,7 @@
 import asyncio
 import uuid
-import uvicorn
 
+import uvicorn
 from fastapi import APIRouter, FastAPI, HTTPException
 
 from autogpt_server.data import db, execution, graph
