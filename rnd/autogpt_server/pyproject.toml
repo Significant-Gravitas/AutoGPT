@@ -21,6 +21,8 @@ ruff = "^0.4.8"
 flake8 = "^7.0.0"
 jsonschema = "^4.22.0"
 psutil = "^5.9.8"
+livekit = "^0.11.1"
+livekit-api = "^0.5.0"
 
 
 [tool.poetry.group.dev.dependencies]
