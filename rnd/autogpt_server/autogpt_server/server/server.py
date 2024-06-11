@@ -45,11 +45,13 @@ class AgentServer:
             if error := block.input_schema.validate_data(node_input):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Input data doesn't match {node.block_name} input: {error}",
+                    detail=f"Input data doesn't match {block.name} input: {error}",
                 )
 
             task = execution.add_execution(
-                execution.Execution(run_id=run_id, node_id=node.id, data=node_input),
+                execution.Execution(
+                    run_id=run_id, node_id=node.id, data=node_input
+                ),
                 self.execution_queue,
             )
 

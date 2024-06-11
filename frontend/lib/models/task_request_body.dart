@@ -5,6 +5,8 @@ class TaskRequestBody {
   TaskRequestBody({required this.input, this.additionalInput});
 
   Map<String, dynamic> toJson() {
-    return {'input': input, 'additional_input': additionalInput};
+    Map<String, dynamic> result = {'input': input, 'additional_input': additionalInput};
+    result.removeWhere((_, v) => v == null);
+    return result;
   }
 }

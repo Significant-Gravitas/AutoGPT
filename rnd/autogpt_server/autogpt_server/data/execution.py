@@ -11,7 +11,6 @@ from autogpt_server.data.db import BaseDbModel
 
 class Execution(BaseDbModel):
     """Data model for an execution of an Agent"""
-
     run_id: str
     node_id: str
     data: dict[str, Any]
