@@ -107,6 +107,12 @@ jobs:
       - name: Install Python dependencies
         run: poetry install
 
+    - name: Generate Prisma Client
+      run: poetry run prisma generate
+
+    # - name: Run Database Migrations
+    #  run: poetry run prisma migrate dev --name updates
+
       - name: Run pytest with coverage
         run: |
           poetry run pytest -vv \
@@ -177,6 +183,12 @@ jobs:
 
       - name: Install Python dependencies
         run: poetry install
+
+      - name: Generate Prisma Client
+        run: poetry run prisma generate
+
+      # - name: Run Database Migrations
+      #  run: poetry run prisma migrate dev --name updates
 
       - name: install rpm
         if: matrix.platform-os == 'ubuntu'
