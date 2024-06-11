@@ -22,8 +22,8 @@ model AgentGraph {
 model AgentNode {
   id String @id
 
-  agentBlockId String
-  AgentBlock   AgentBlock @relation(fields: [agentBlockId], references: [id])
+  agentBlockName String
+  AgentBlock     AgentBlock @relation(fields: [agentBlockName], references: [name])
 
   agentGraphId String
   AgentGraph   AgentGraph @relation("AgentGraphNodes", fields: [agentGraphId], references: [id])
@@ -57,8 +57,7 @@ model AgentNodeLink {
 
 // This model describes a component that will be executed by the AgentNode.
 model AgentBlock {
-  id   String @id
-  name String @unique
+  name String @id
 
   // We allow a block to have multiple types of input & output.
   // Serialized object-typed `jsonschema` with top-level properties as input/output name.
