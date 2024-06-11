@@ -16,6 +16,10 @@ prisma = "^0.13.1"
 pytest = "^8.2.1"
 uvicorn = { extras = ["standard"], version = "^0.30.1" }
 fastapi = "^0.109.0"
+pytest-asyncio = "^0.23.7"
+ruff = "^0.4.8"
+flake8 = "^7.0.0"
+jsonschema = "^4.22.0"
 
 
 [tool.poetry.group.dev.dependencies]
