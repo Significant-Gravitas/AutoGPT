@@ -44,7 +44,7 @@ def dummy_agent(config: AppConfig, llm_provider: MultiProvider):
         settings=agent_settings,
         llm_provider=llm_provider,
         file_storage=file_storage,
-        legacy_config=config,
+        app_config=config,
     )
 
     return agent

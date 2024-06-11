@@ -27,7 +27,6 @@ class GitOperationsComponent(
         super().__init__(config or GitOperationsConfiguration())
         self._enabled = bool(self.config.github_username and self.config.github_api_key)
         self._disabled_reason = "Configure github_username and github_api_key."
-        self.legacy_config = config
 
     def get_commands(self) -> Iterator[Command]:
         yield self.clone_repository

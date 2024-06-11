@@ -103,7 +103,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         settings: AgentSettings,
         llm_provider: MultiProvider,
         file_storage: FileStorage,
-        legacy_config: AppConfig,
+        app_config: AppConfig,
     ):
         super().__init__(settings)
 
@@ -124,11 +124,11 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             lambda x: self.llm_provider.count_tokens(x, self.llm.name),
             llm_provider,
             ActionHistoryConfiguration(
-                model_name=legacy_config.fast_llm, max_tokens=self.send_token_limit
+                model_name=app_config.fast_llm, max_tokens=self.send_token_limit
             ),
         ).run_after(WatchdogComponent)
         self.user_interaction = UserInteractionComponent(
-            legacy_config.noninteractive_mode
+            app_config.noninteractive_mode
         )
         self.file_manager = FileManagerComponent(file_storage, settings)
         self.code_executor = CodeExecutorComponent(
@@ -142,7 +142,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         self.web_search = WebSearchComponent()
         self.web_selenium = WebSeleniumComponent(
             llm_provider,
-            legacy_config.app_data_dir,
+            app_config.app_data_dir,
         )
         self.context = ContextComponent(self.file_manager.workspace, settings.context)
         self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(
@@ -156,7 +156,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         """LogCycleHandler for structured debug logging."""
 
         self.event_history = settings.history
-        self.legacy_config = legacy_config
+        self.app_config = app_config
 
     async def propose_action(self) -> OneShotAgentActionProposal:
         """Proposes the next action to execute, based on the task and current state.
@@ -324,7 +324,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             command
             for command in self.commands
             if not any(
-                name in self.legacy_config.disabled_commands for name in command.names
+                name in self.app_config.disabled_commands for name in command.names
             )
         ]
 

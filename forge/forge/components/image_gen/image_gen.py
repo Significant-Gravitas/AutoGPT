@@ -51,7 +51,6 @@ class ImageGeneratorComponent(
         self._enabled = bool(self.config.image_provider)
         self._disabled_reason = "No image provider set."
         self.workspace = workspace
-        self.legacy_config = config
 
     def get_commands(self) -> Iterator[Command]:
         if (

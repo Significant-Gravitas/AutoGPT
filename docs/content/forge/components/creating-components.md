@@ -205,10 +205,10 @@ class MyAgent(Agent):
         settings: AgentSettings,
         llm_provider: MultiProvider,
         file_storage: FileStorage,
-        legacy_config: Config,
+        app_config: Config,
     ):
         # Call the parent constructor to bring in the default components
-        super().__init__(settings, llm_provider, file_storage, legacy_config)
+        super().__init__(settings, llm_provider, file_storage, app_config)
         # Disable the default user interaction component by overriding it
         self.user_interaction = MyUserInteractionComponent()
 ```
@@ -222,14 +222,14 @@ class MyAgent(Agent):
         settings: AgentSettings,
         llm_provider: MultiProvider,
         file_storage: FileStorage,
-        legacy_config: Config,
+        app_config: Config,
     ):
         # Call the parent constructor to bring in the default components
-        super().__init__(settings, llm_provider, file_storage, legacy_config)
+        super().__init__(settings, llm_provider, file_storage, app_config)
         # Disable the default user interaction component
         self.user_interaction = None
         # Add our own component
-        self.my_user_interaction = MyUserInteractionComponent(legacy_config)
+        self.my_user_interaction = MyUserInteractionComponent(app_config)
 ```
 
 ## Learn more

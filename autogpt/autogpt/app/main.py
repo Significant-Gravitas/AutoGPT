@@ -453,15 +453,15 @@ async def run_interaction_loop(
         None
     """
     # These contain both application config and agent config, so grab them here.
-    legacy_config = agent.legacy_config
+    app_config = agent.app_config
     ai_profile = agent.state.ai_profile
     logger = logging.getLogger(__name__)
 
     cycle_budget = cycles_remaining = _get_cycle_budget(
-        legacy_config.continuous_mode, legacy_config.continuous_limit
+        app_config.continuous_mode, app_config.continuous_limit
     )
     spinner = Spinner(
-        "Thinking...", plain_output=legacy_config.logging.plain_console_output
+        "Thinking...", plain_output=app_config.logging.plain_console_output
     )
     stop_reason = None
 
@@ -536,7 +536,7 @@ async def run_interaction_loop(
         update_user(
             ai_profile,
             action_proposal,
-            speak_mode=legacy_config.tts_config.speak_mode,
+            speak_mode=app_config.tts_config.speak_mode,
         )
 
         ##################
@@ -545,7 +545,7 @@ async def run_interaction_loop(
         handle_stop_signal()
         if cycles_remaining == 1:  # Last cycle
             feedback_type, feedback, new_cycles_remaining = await get_user_feedback(
-                legacy_config,
+                app_config,
                 ai_profile,
             )
 

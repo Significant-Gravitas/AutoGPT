@@ -103,6 +103,6 @@ def agent(
         settings=agent_settings,
         llm_provider=llm_provider,
         file_storage=storage,
-        legacy_config=config,
+        app_config=config,
     )
     return agent

@@ -80,7 +80,7 @@ def _configure_agent(
         settings=agent_state,
         llm_provider=llm_provider,
         file_storage=file_storage,
-        legacy_config=app_config,
+        app_config=app_config,
     )
 
 
