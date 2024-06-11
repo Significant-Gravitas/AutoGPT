@@ -96,7 +96,6 @@ class Block(ABC, BaseModel):
     @classmethod
     @property
     @abstractmethod
-
     def id(cls) -> str:
         """
         The unique identifier for the block, this value will be persisted in the DB.
@@ -135,7 +134,6 @@ class Block(ABC, BaseModel):
             The (output name, output data), matching the type in output_schema.
         """
         pass
-
 
     @classmethod
     @property
@@ -231,7 +229,6 @@ async def initialize_blocks() -> None:
                 "outputSchema": str(block.output_schema),
             }
         )
-
 
 
 async def get_block(block_id: str) -> Block:
