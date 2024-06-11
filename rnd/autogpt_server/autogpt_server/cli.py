@@ -43,11 +43,12 @@ def start():
     if file_path.exists():
         with open(file_path, "r", encoding="utf-8") as file:
             pid = int(file.read())
-        if psutil.pid_exists(pid):
-            print("Server is already running")
-        else:
-            os.remove(file_path)
-            return
+            if psutil.pid_exists(pid):
+                print("Server is already running")
+                exit(1)
+            else:
+                print("PID does not exist deleting file")
+                os.remove(file_path)
 
     sp = subprocess.Popen(
         ["poetry", "run", "python", "autogpt_server/cli.py", "background"],
