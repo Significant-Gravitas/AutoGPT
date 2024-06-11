@@ -24,7 +24,7 @@ def background() -> None:
 
 
 @main.command()
-def run():
+def start():
     """
     Starts the server in the background and saves the PID
     """
