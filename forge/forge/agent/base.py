@@ -47,6 +47,11 @@ DEFAULT_TRIGGERING_PROMPT = (
 )
 
 
+#HACK: This is a workaround wrapper to de/serialize component configs until pydantic v2
+class ModelContainer(BaseModel):
+        models: dict[str, BaseModel]
+
+
 class BaseAgentConfiguration(SystemConfiguration):
     allow_fs_access: bool = UserConfigurable(default=False)
 
@@ -271,16 +276,13 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
                 raise e
         return method_result
 
-    class ModelContainer(BaseModel):
-        models: dict[str, BaseModel]
-
     def dump_component_configs(self) -> str:
         configs = {}
         for component in self.components:
             if isinstance(component, ConfigurableComponent):
                 config_type_name = component.config.__class__.__name__
                 configs[config_type_name] = component.config
-        data = self.ModelContainer(models=configs).json()
+        data = ModelContainer(models=configs).json()
         raw = parse_raw_as(dict[str, dict[str, Any]], data)
         return json.dumps(raw["models"], indent=4)
 

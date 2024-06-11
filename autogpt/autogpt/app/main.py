@@ -327,9 +327,8 @@ async def run_auto_gpt(
     # Load component configuration from file
     if _config_file := component_config_file or config.component_config_file:
         try:
-            with open(_config_file, "r") as f:
-                logger.info(f"Loading component configuration from {component_config_file}")
-                agent.load_component_configs(f.read())
+            logger.info(f"Loading component configuration from {_config_file}")
+            agent.load_component_configs(_config_file.read_text())
         except Exception as e:
             logger.error(f"Could not load component configuration: {e}")
 

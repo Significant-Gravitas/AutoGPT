@@ -33,9 +33,10 @@ class MyAgent(BaseAgent):
 ## Component configuration
 
 Each component can have its own configuration defined using a regular pydantic `BaseModel`.
-To make the configuration is loaded from the configuration file correctly, the component must inherit from `ConfigurableComponent[T]` where `T` is the configuration model it uses.
+To ensure the configuration is loaded from the file correctly, the component must inherit from `ConfigurableComponent[T]` where `T` is the configuration model it uses.
 `ConfigurableComponent` provides a `config` attribute that holds the configuration instance.
 It's possible to either set the `config` attribute directly or pass the configuration instance to the component's constructor.
+Extra configuration (i.e. for components that are not part of the agent) can be passed and will be silently ignored. Extra config won't be applied even if the component is added later.
 To see the configuration of built-in components visit [Built-in Components](./built-in-components.md).
 
 ```py
