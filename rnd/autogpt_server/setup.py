@@ -22,10 +22,13 @@ setup(
     url="https://agpt.co",
     executables=[
         Executable(
-            "autogpt_server/app.py", target_name="agpt_server", base="console", icon=icon
+            "autogpt_server/app.py",
+            target_name="agpt_server",
+            base="console",
+            icon=icon,
         ),
         Executable(
-            "autogpt_server/cli.py", target_name="agpt_scli", base="console", icon=icon
+            "autogpt_server/cli.py", target_name="agpt_cli", base="console", icon=icon
         ),
     ],
     options={
