@@ -24,13 +24,14 @@ def background() -> None:
 
 
 @main.command()
-def start():
+def startt():
     """
     Starts the server in the background and saves the PID
     """
     import os
     import pathlib
     import subprocess
+    import psutil
 
     # Define the path for the new directory and file
     home_dir = pathlib.Path.home()
@@ -40,8 +41,13 @@ def start():
     # Create the directory if it does not exist
     os.makedirs(new_dir, exist_ok=True)
     if file_path.exists():
-        print("Server is already running")
-        return
+        with open(file_path, "r", encoding="utf-8") as file:
+            pid = int(file.read())
+        if psutil.pid_exists(pid):
+            print("Server is already running")
+        else:
+            os.remove(file_path)
+            return
 
     sp = subprocess.Popen(
         ["poetry", "run", "python", "autogpt_server/cli.py", "background"],
