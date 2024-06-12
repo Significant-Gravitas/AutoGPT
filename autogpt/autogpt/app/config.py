@@ -41,7 +41,9 @@ class AppConfig(BaseConfig):
     exit_key: str = UserConfigurable(default="n", from_env="EXIT_KEY")
     noninteractive_mode: bool = False
     logging: LoggingConfig = LoggingConfig()
-    component_config_file: Optional[Path] = UserConfigurable(default=None, from_env="COMPONENT_CONFIG_FILE")
+    component_config_file: Optional[Path] = UserConfigurable(
+        default=None, from_env="COMPONENT_CONFIG_FILE"
+    )
 
     ##########################
     # Agent Control Settings #

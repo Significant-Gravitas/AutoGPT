@@ -25,9 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class ImageGeneratorConfiguration(BaseModel):
-    image_provider: Literal["dalle"] | Literal["huggingface"] | Literal[
-        "sdwebui"
-    ] = "dalle"
+    image_provider: Literal["dalle", "huggingface", "sdwebui"] = "dalle"
     huggingface_image_model: str = "CompVis/stable-diffusion-v1-4"
     huggingface_api_token: Optional[SecretStr] = FromEnv("HUGGINGFACE_API_TOKEN")
     sd_webui_url: str = "http://localhost:7860"
@@ -38,6 +36,7 @@ class ImageGeneratorComponent(
     CommandProvider, ConfigurableComponent[ImageGeneratorConfiguration]
 ):
     """A component that provides commands to generate images from text prompts."""
+
     config_class = ImageGeneratorConfiguration
 
     def __init__(
@@ -47,7 +46,7 @@ class ImageGeneratorComponent(
         openai_credentials: Optional[OpenAICredentials] = None,
     ):
         """openai_credentials only needed for `dalle` provider."""
-        super().__init__(config)
+        ConfigurableComponent.__init__(self, config)
         self.openai_credentials = openai_credentials
         self._enabled = bool(self.config.image_provider)
         self._disabled_reason = "No image provider set."
@@ -206,9 +205,6 @@ class ImageGeneratorComponent(
         assert response.data[0].b64_json is not None  # response_format = "b64_json"
 
         logger.info(f"Image Generated for prompt: {prompt}")
-
-        if not response.data[0].b64_json:
-            raise CommandExecutionError("No image data returned.")
 
         image_data = b64decode(response.data[0].b64_json)
 

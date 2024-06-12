@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class FileManagerConfiguration(BaseModel):
-    files_path: str
+    resources_path: str
     """Path to agent files, e.g. state"""
     workspace_path: str
     """Path to files that agent has access to"""
@@ -36,6 +36,7 @@ class FileManagerComponent(
     workspace manager (e.g. Agent output files) support and
     commands to perform operations on files and folders.
     """
+
     config_class = FileManagerConfiguration
 
     files: FileStorage
@@ -52,7 +53,7 @@ class FileManagerComponent(
     def __init__(
         self,
         file_storage: FileStorage,
-        state: BaseAgentSettings,
+        agent_state: BaseAgentSettings,
         config: Optional[FileManagerConfiguration] = None,
     ):
         """Initialise the FileManagerComponent.
@@ -64,23 +65,24 @@ class FileManagerComponent(
             config (FileManagerConfiguration, optional): The configuration for
             the file manager. Defaults to None.
         """
-        if not state.agent_id:
+        if not agent_state.agent_id:
             raise ValueError("Agent must have an ID.")
 
-        self.state = state
+        self.state = agent_state
 
         if not config:
             files_path = f"agents/{self.state.agent_id}/"
             workspace_path = f"agents/{self.state.agent_id}/workspace"
-            super().__init__(
+            ConfigurableComponent.__init__(
+                self,
                 FileManagerConfiguration(
-                    files_path=files_path, workspace_path=workspace_path
-                )
+                    resources_path=files_path, workspace_path=workspace_path
+                ),
             )
         else:
-            super().__init__(config)
+            ConfigurableComponent.__init__(self, config)
 
-        self.files = file_storage.clone_with_subroot(self.config.files_path)
+        self.files = file_storage.clone_with_subroot(self.config.resources_path)
         self.workspace = file_storage.clone_with_subroot(self.config.workspace_path)
         self._file_storage = file_storage
 

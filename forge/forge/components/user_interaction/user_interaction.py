@@ -11,9 +11,6 @@ from forge.utils.const import ASK_COMMAND
 class UserInteractionComponent(CommandProvider):
     """Provides commands to interact with the user."""
 
-    def __init__(self, noninteractive_mode: bool):
-        self._enabled = not noninteractive_mode
-
     def get_commands(self) -> Iterator[Command]:
         yield self.ask_user
 

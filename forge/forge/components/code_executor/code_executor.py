@@ -56,7 +56,7 @@ class CodeExecutionError(CommandExecutionError):
 class CodeExecutorConfiguration(BaseModel):
     execute_local_commands: bool = False
     """Enable shell command execution"""
-    shell_command_control: Literal["allowlist"] | Literal["denylist"] = "allowlist"
+    shell_command_control: Literal["allowlist", "denylist"] = "allowlist"
     """Controls which list is used"""
     shell_allowlist: list[str] = Field(default_factory=list)
     """List of allowed shell commands"""
@@ -70,6 +70,7 @@ class CodeExecutorComponent(
     CommandProvider, ConfigurableComponent[CodeExecutorConfiguration]
 ):
     """Provides commands to execute Python code and shell commands."""
+
     config_class = CodeExecutorConfiguration
 
     def __init__(
@@ -77,8 +78,20 @@ class CodeExecutorComponent(
         workspace: FileStorage,
         config: Optional[CodeExecutorConfiguration] = None,
     ):
-        super().__init__(config)
+        ConfigurableComponent.__init__(self, config)
         self.workspace = workspace
+
+        if not we_are_running_in_a_docker_container() and not is_docker_available():
+            logger.info(
+                "Docker is not available or does not support Linux containers. "
+                "The code execution commands will not be available."
+            )
+
+        if not self.config.execute_local_commands:
+            logger.info(
+                "Local shell commands are disabled. To enable them,"
+                " set EXECUTE_LOCAL_COMMANDS to 'True' in your config file."
+            )
 
     def get_commands(self) -> Iterator[Command]:
         if we_are_running_in_a_docker_container() or is_docker_available():

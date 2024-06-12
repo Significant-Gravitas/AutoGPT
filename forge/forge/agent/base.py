@@ -47,9 +47,9 @@ DEFAULT_TRIGGERING_PROMPT = (
 )
 
 
-#HACK: This is a workaround wrapper to de/serialize component configs until pydantic v2
+# HACK: This is a workaround wrapper to de/serialize component configs until pydantic v2
 class ModelContainer(BaseModel):
-        models: dict[str, BaseModel]
+    models: dict[str, BaseModel]
 
 
 class BaseAgentConfiguration(SystemConfiguration):

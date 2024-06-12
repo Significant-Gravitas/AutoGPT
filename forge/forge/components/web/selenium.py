@@ -57,9 +57,7 @@ class BrowsingError(CommandExecutionError):
 class WebSeleniumConfiguration(BaseModel):
     model_name: ModelName = OpenAIModelName.GPT3
     """Name of the llm model used to read websites"""
-    web_browser: Literal["chrome"] | Literal["firefox"] | Literal["safari"] | Literal[
-        "edge"
-    ] = "chrome"
+    web_browser: Literal["chrome", "firefox", "safari", "edge"] = "chrome"
     """Web browser used by Selenium"""
     headless: bool = True
     """Run browser in headless mode"""
@@ -76,6 +74,7 @@ class WebSeleniumComponent(
     DirectiveProvider, CommandProvider, ConfigurableComponent[WebSeleniumConfiguration]
 ):
     """Provides commands to browse the web using Selenium."""
+
     config_class = WebSeleniumConfiguration
 
     def __init__(
@@ -84,7 +83,7 @@ class WebSeleniumComponent(
         data_dir: Path,
         config: Optional[WebSeleniumConfiguration] = None,
     ):
-        super().__init__(config)
+        ConfigurableComponent.__init__(self, config)
         self.llm_provider = llm_provider
         self.data_dir = data_dir
 

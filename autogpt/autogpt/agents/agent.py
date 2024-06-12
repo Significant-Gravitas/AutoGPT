@@ -127,9 +127,8 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
                 model_name=app_config.fast_llm, max_tokens=self.send_token_limit
             ),
         ).run_after(WatchdogComponent)
-        self.user_interaction = UserInteractionComponent(
-            app_config.noninteractive_mode
-        )
+        if not app_config.noninteractive_mode:
+            self.user_interaction = UserInteractionComponent()
         self.file_manager = FileManagerComponent(file_storage, settings)
         self.code_executor = CodeExecutorComponent(
             self.file_manager.workspace,

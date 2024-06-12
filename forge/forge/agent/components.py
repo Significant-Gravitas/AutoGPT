@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from typing import Callable, ClassVar, Generic, Optional, TypeVar, get_args
+from abc import ABC
+from typing import Callable, ClassVar, Generic, Optional, TypeVar
 
 from pydantic import BaseModel
 
@@ -38,6 +38,7 @@ class AgentComponent(ABC):
 
 class ConfigurableComponent(ABC, Generic[C]):
     """A component that can be configured with a Pydantic model."""
+
     config_class: ClassVar
 
     def __init__(self, config: Optional[C]):
@@ -55,7 +56,7 @@ class ConfigurableComponent(ABC, Generic[C]):
     def config(self) -> C:
         if not hasattr(self, "_config") or self._config is None:
             self._config = self.config_class()
-        return self._config # type: ignore
+        return self._config  # type: ignore
 
     @config.setter
     def config(self, config: C):

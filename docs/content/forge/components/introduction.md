@@ -1,7 +1,10 @@
 # Component Agents
 
-!!! note
-    Plugins no longer work with AutoGPT. They have been replaced by components.
+!!! important
+    [Legacy plugins] no longer work with AutoGPT. They have been replaced by components,
+    although we're still working on a new system to load plug-in components.
+
+[Legacy plugins]: https://github.com/Significant-Gravitas/Auto-GPT-Plugins
 
 This guide explains the component-based architecture of AutoGPT agents. It's a new way of building agents that is more flexible and easier to extend. Components replace some agent's logic and plugins with a more modular and composable system.
 

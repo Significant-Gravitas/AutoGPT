@@ -18,7 +18,7 @@ class ActionHistoryConfiguration(BaseModel):
     model_name: ModelName = OpenAIModelName.GPT3
     """Name of the llm model used to compress the history"""
     max_tokens: int = 1024
-    """Maximum number of tokens to use for the history summary"""
+    """Maximum number of tokens to use up with generated history messages"""
     spacy_language_model: str = "en_core_web_sm"
     """Language model used for summary chunking using spacy"""
 
@@ -30,6 +30,7 @@ class ActionHistoryComponent(
     ConfigurableComponent[ActionHistoryConfiguration],
 ):
     """Keeps track of the event history and provides a summary of the steps."""
+
     config_class = ActionHistoryConfiguration
 
     def __init__(
@@ -39,7 +40,7 @@ class ActionHistoryComponent(
         llm_provider: MultiProvider,
         config: Optional[ActionHistoryConfiguration] = None,
     ) -> None:
-        super().__init__(config)
+        ConfigurableComponent.__init__(self, config)
         self.event_history = event_history
         self.count_tokens = count_tokens
         self.llm_provider = llm_provider
