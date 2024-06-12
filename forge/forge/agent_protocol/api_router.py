@@ -24,7 +24,7 @@ from .models import (
 )
 
 if TYPE_CHECKING:
-    from forge.agent.agent import Agent
+    from .agent import ProtocolAgent
 
 base_router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ async def create_agent_task(request: Request, task_request: TaskRequestBody) -> 
                 "artifacts": [],
             }
     """
-    agent: "Agent" = request["agent"]
+    agent: "ProtocolAgent" = request["agent"]
 
     try:
         task = await agent.create_task(task_request)
@@ -124,7 +124,7 @@ async def list_agent_tasks(
                 }
             }
     """
-    agent: "Agent" = request["agent"]
+    agent: "ProtocolAgent" = request["agent"]
     try:
         tasks = await agent.list_tasks(page, page_size)
         return tasks
@@ -185,7 +185,7 @@ async def get_agent_task(request: Request, task_id: str) -> Task:
                 ]
             }
     """  # noqa: E501
-    agent: "Agent" = request["agent"]
+    agent: "ProtocolAgent" = request["agent"]
     try:
         task = await agent.get_task(task_id)
         return task
@@ -239,7 +239,7 @@ async def list_agent_task_steps(
                 }
             }
     """  # noqa: E501
-    agent: "Agent" = request["agent"]
+    agent: "ProtocolAgent" = request["agent"]
     try:
         steps = await agent.list_steps(task_id, page, page_size)
         return steps
@@ -298,7 +298,7 @@ async def execute_agent_task_step(
                 ...
             }
     """
-    agent: "Agent" = request["agent"]
+    agent: "ProtocolAgent" = request["agent"]
     try:
         # An empty step request represents a yes to continue command
         if not step_request:
@@ -337,7 +337,7 @@ async def get_agent_task_step(request: Request, task_id: str, step_id: str) -> S
                 ...
             }
     """
-    agent: "Agent" = request["agent"]
+    agent: "ProtocolAgent" = request["agent"]
     try:
         step = await agent.get_step(task_id, step_id)
         return step
@@ -388,7 +388,7 @@ async def list_agent_task_artifacts(
                 }
             }
     """  # noqa: E501
-    agent: "Agent" = request["agent"]
+    agent: "ProtocolAgent" = request["agent"]
     try:
         artifacts = await agent.list_artifacts(task_id, page, page_size)
         return artifacts
@@ -430,7 +430,7 @@ async def upload_agent_task_artifacts(
                 "file_name": "main.py"
             }
     """  # noqa: E501
-    agent: "Agent" = request["agent"]
+    agent: "ProtocolAgent" = request["agent"]
 
     if file is None:
         raise HTTPException(status_code=400, detail="File must be specified")
@@ -468,7 +468,7 @@ async def download_agent_task_artifact(
         Response:
             <file_content_of_artifact>
     """
-    agent: "Agent" = request["agent"]
+    agent: "ProtocolAgent" = request["agent"]
     try:
         return await agent.get_artifact(task_id, artifact_id)
     except Exception:
