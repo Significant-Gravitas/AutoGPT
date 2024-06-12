@@ -3,17 +3,12 @@ from pathlib import Path
 import pytest
 from fastapi import UploadFile
 
-from forge.agent_protocol.database.db import AgentDB
-from forge.agent_protocol.models.task import (
-    StepRequestBody,
-    Task,
-    TaskListResponse,
-    TaskRequestBody,
-)
 from forge.file_storage.base import FileStorageConfiguration
 from forge.file_storage.local import LocalFileStorage
 
-from ..agent_protocol.agent import ProtocolAgent
+from .agent import ProtocolAgent
+from .database.db import AgentDB
+from .models.task import StepRequestBody, Task, TaskListResponse, TaskRequestBody
 
 
 @pytest.fixture
