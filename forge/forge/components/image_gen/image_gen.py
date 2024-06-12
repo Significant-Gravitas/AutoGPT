@@ -38,6 +38,7 @@ class ImageGeneratorComponent(
     CommandProvider, ConfigurableComponent[ImageGeneratorConfiguration]
 ):
     """A component that provides commands to generate images from text prompts."""
+    config_class = ImageGeneratorConfiguration
 
     def __init__(
         self,
@@ -46,7 +47,7 @@ class ImageGeneratorComponent(
         openai_credentials: Optional[OpenAICredentials] = None,
     ):
         """openai_credentials only needed for `dalle` provider."""
-        super().__init__(config or ImageGeneratorConfiguration())
+        super().__init__(config)
         self.openai_credentials = openai_credentials
         self._enabled = bool(self.config.image_provider)
         self._disabled_reason = "No image provider set."

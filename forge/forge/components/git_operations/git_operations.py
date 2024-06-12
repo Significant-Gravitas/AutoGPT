@@ -22,9 +22,10 @@ class GitOperationsComponent(
     CommandProvider, ConfigurableComponent[GitOperationsConfiguration]
 ):
     """Provides commands to perform Git operations."""
+    config_class = GitOperationsConfiguration
 
     def __init__(self, config: Optional[GitOperationsConfiguration] = None):
-        super().__init__(config or GitOperationsConfiguration())
+        super().__init__(config)
         self._enabled = bool(self.config.github_username and self.config.github_api_key)
         self._disabled_reason = "Configure github_username and github_api_key."
 

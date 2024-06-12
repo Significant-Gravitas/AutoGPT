@@ -30,6 +30,7 @@ class ActionHistoryComponent(
     ConfigurableComponent[ActionHistoryConfiguration],
 ):
     """Keeps track of the event history and provides a summary of the steps."""
+    config_class = ActionHistoryConfiguration
 
     def __init__(
         self,
@@ -38,7 +39,7 @@ class ActionHistoryComponent(
         llm_provider: MultiProvider,
         config: Optional[ActionHistoryConfiguration] = None,
     ) -> None:
-        super().__init__(config or ActionHistoryConfiguration())
+        super().__init__(config)
         self.event_history = event_history
         self.count_tokens = count_tokens
         self.llm_provider = llm_provider

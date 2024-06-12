@@ -76,6 +76,7 @@ class WebSeleniumComponent(
     DirectiveProvider, CommandProvider, ConfigurableComponent[WebSeleniumConfiguration]
 ):
     """Provides commands to browse the web using Selenium."""
+    config_class = WebSeleniumConfiguration
 
     def __init__(
         self,
@@ -83,7 +84,7 @@ class WebSeleniumComponent(
         data_dir: Path,
         config: Optional[WebSeleniumConfiguration] = None,
     ):
-        super().__init__(config or WebSeleniumConfiguration())
+        super().__init__(config)
         self.llm_provider = llm_provider
         self.data_dir = data_dir
 

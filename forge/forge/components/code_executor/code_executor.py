@@ -70,13 +70,14 @@ class CodeExecutorComponent(
     CommandProvider, ConfigurableComponent[CodeExecutorConfiguration]
 ):
     """Provides commands to execute Python code and shell commands."""
+    config_class = CodeExecutorConfiguration
 
     def __init__(
         self,
         workspace: FileStorage,
         config: Optional[CodeExecutorConfiguration] = None,
     ):
-        super().__init__(config or CodeExecutorConfiguration())
+        super().__init__(config)
         self.workspace = workspace
 
     def get_commands(self) -> Iterator[Command]:

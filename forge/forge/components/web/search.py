@@ -29,9 +29,10 @@ class WebSearchComponent(
     DirectiveProvider, CommandProvider, ConfigurableComponent[WebSearchConfiguration]
 ):
     """Provides commands to search the web."""
+    config_class = WebSearchConfiguration
 
     def __init__(self, config: Optional[WebSearchConfiguration] = None):
-        super().__init__(config or WebSearchConfiguration())
+        super().__init__(config)
 
     def get_resources(self) -> Iterator[str]:
         yield "Internet access for searches and information gathering."
