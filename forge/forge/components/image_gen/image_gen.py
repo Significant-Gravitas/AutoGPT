@@ -19,7 +19,6 @@ from forge.file_storage import FileStorage
 from forge.llm.providers.openai import OpenAICredentials
 from forge.models.config import FromEnv
 from forge.models.json_schema import JSONSchema
-from forge.utils.exceptions import CommandExecutionError
 
 logger = logging.getLogger(__name__)
 
