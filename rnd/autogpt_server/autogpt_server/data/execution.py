@@ -2,15 +2,16 @@ import json
 from datetime import datetime
 from enum import Enum
 from multiprocessing import Queue
+from typing import Any
 
 from prisma.models import AgentNodeExecution
-from typing import Any
 
 from autogpt_server.data.db import BaseDbModel
 
 
 class Execution(BaseDbModel):
     """Data model for an execution of an Agent"""
+
     run_id: str
     node_id: str
     data: dict[str, Any]
@@ -23,11 +24,6 @@ class ExecutionStatus(str, Enum):
     FAILED = "FAILED"
 
 
-# TODO: This shared class make api & executor coupled in one machine.
-# Replace this with a persistent & remote-hosted queue.
-# One very likely candidate would be persisted Redis (Redis Queue).
-# It will also open the possibility of using it for other purposes like
-# caching, execution engine broker (like Celery), user session management etc.
 class ExecutionQueue:
     """
     Queue for managing the execution of agents.
@@ -48,8 +44,39 @@ class ExecutionQueue:
         return self.queue.empty()
 
 
-async def add_execution(execution: Execution, queue: ExecutionQueue) -> Execution:
-    await AgentNodeExecution.prisma().create(
+class ExecutionResult(BaseDbModel):
+    run_id: str
+    execution_id: str
+    node_id: str
+    status: ExecutionStatus
+    input_data: dict[str, Any]
+    output_name: str
+    output_data: Any
+    creation_time: datetime
+    start_time: datetime | None
+    end_time: datetime | None
+
+    @staticmethod
+    def from_db(execution: AgentNodeExecution):
+        return ExecutionResult(
+            run_id=execution.executionId,
+            node_id=execution.agentNodeId,
+            execution_id=execution.id,
+            status=ExecutionStatus(execution.executionStatus),
+            input_data=json.loads(execution.inputData or "{}"),
+            output_name=execution.outputName or "",
+            output_data=json.loads(execution.outputData or "{}"),
+            creation_time=execution.creationTime,
+            start_time=execution.startTime,
+            end_time=execution.endTime,
+        )
+
+
+# --------------------- Model functions --------------------- #
+
+
+def add_execution(execution: Execution) -> None:
+    AgentNodeExecution.prisma().create(
         data={
             "id": execution.id,
             "executionId": execution.run_id,
@@ -59,11 +86,10 @@ async def add_execution(execution: Execution, queue: ExecutionQueue) -> Executio
             "creationTime": datetime.now(),
         }
     )
-    return queue.add(execution)
 
 
-async def start_execution(exec_id: str) -> None:
-    await AgentNodeExecution.prisma().update(
+def start_execution(exec_id: str) -> None:
+    AgentNodeExecution.prisma().update(
         where={"id": exec_id},
         data={
             "executionStatus": ExecutionStatus.RUNNING,
@@ -72,10 +98,10 @@ async def start_execution(exec_id: str) -> None:
     )
 
 
-async def complete_execution(exec_id: str, output: tuple[str, Any]) -> None:
+def complete_execution(exec_id: str, output: tuple[str, Any]) -> None:
     output_name, output_data = output
 
-    await AgentNodeExecution.prisma().update(
+    AgentNodeExecution.prisma().update(
         where={"id": exec_id},
         data={
             "executionStatus": ExecutionStatus.COMPLETED,
@@ -86,8 +112,8 @@ async def complete_execution(exec_id: str, output: tuple[str, Any]) -> None:
     )
 
 
-async def fail_execution(exec_id: str, error: Exception) -> None:
-    await AgentNodeExecution.prisma().update(
+def fail_execution(exec_id: str, error: Exception) -> None:
+    AgentNodeExecution.prisma().update(
         where={"id": exec_id},
         data={
             "executionStatus": ExecutionStatus.FAILED,
@@ -96,3 +122,11 @@ async def fail_execution(exec_id: str, error: Exception) -> None:
             "endTime": datetime.now(),
         },
     )
+
+
+def get_executions(run_id: str) -> list[ExecutionResult]:
+    executions = AgentNodeExecution.prisma().find_many(
+        where={"executionId": run_id},
+        order={"startTime": "asc"},
+    )
+    return [ExecutionResult.from_db(execution) for execution in executions]

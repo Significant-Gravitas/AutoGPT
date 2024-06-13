@@ -1,11 +1,11 @@
-import asyncio
 import json
 import uuid
 from typing import Any
 
-from prisma.models import AgentGraph, AgentNode, AgentNodeLink, AgentNodeExecution
-from autogpt_server.data.db import BaseDbModel
+from prisma.models import AgentGraph, AgentNode, AgentNodeExecution, AgentNodeLink
+
 from autogpt_server.data.block import get_block
+from autogpt_server.data.db import BaseDbModel
 
 
 class Node(BaseDbModel):
@@ -34,8 +34,8 @@ class Node(BaseDbModel):
         node.input_nodes[sink_name] = self.id
 
     @property
-    async def block(self):
-        return await get_block(self.block_id)
+    def block(self):
+        return get_block(self.block_id)
 
 
 class Graph(BaseDbModel):
@@ -64,23 +64,26 @@ EXECUTION_NODE_INCLUDE = {
 }
 
 
-async def get_node(node_id: str) -> Node | None:
-    node = await AgentNode.prisma().find_unique_or_raise(
+# --------------------- Model functions --------------------- #
+
+
+def get_node(node_id: str) -> Node | None:
+    node = AgentNode.prisma().find_unique_or_raise(
         where={"id": node_id},
         include=EXECUTION_NODE_INCLUDE,  # type: ignore
     )
     return Node.from_db(node) if node else None
 
 
-async def get_graph(graph_id: str) -> Graph | None:
-    graph = await AgentGraph.prisma().find_unique(
+def get_graph(graph_id: str) -> Graph | None:
+    graph = AgentGraph.prisma().find_unique(
         where={"id": graph_id},
         include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
     )
     return Graph.from_db(graph) if graph else None
 
 
-async def get_node_input(node: Node, exec_id: str) -> dict[str, Any]:
+def get_node_input(node: Node, exec_id: str) -> dict[str, Any]:
     """
     Get execution node input data from the previous node execution result.
     Args:
@@ -100,7 +103,7 @@ async def get_node_input(node: Node, exec_id: str) -> dict[str, Any]:
     )
 
     latest_executions: dict[str, AgentNodeExecution] = {
-        execution.agentNodeId: execution for execution in await query
+        execution.agentNodeId: execution for execution in query
     }
 
     return {
@@ -113,8 +116,8 @@ async def get_node_input(node: Node, exec_id: str) -> dict[str, Any]:
     }
 
 
-async def create_graph(graph: Graph) -> Graph:
-    await AgentGraph.prisma().create(
+def create_graph(graph: Graph) -> Graph:
+    AgentGraph.prisma().create(
         data={
             "id": graph.id,
             "name": graph.name,
@@ -123,19 +126,15 @@ async def create_graph(graph: Graph) -> Graph:
     )
 
     # TODO: replace bulk creation using create_many
-    await asyncio.gather(
-        *[
-            AgentNode.prisma().create(
-                {
-                    "id": node.id,
-                    "agentBlockId": node.block_id,
-                    "agentGraphId": graph.id,
-                    "constantInput": json.dumps(node.input_default),
-                }
-            )
-            for node in graph.nodes
-        ]
-    )
+    for node in graph.nodes:
+        AgentNode.prisma().create(
+            {
+                "id": node.id,
+                "agentBlockId": node.block_id,
+                "agentGraphId": graph.id,
+                "constantInput": json.dumps(node.input_default),
+            }
+        )
 
     edge_source_names = {
         (source_node.id, sink_node_id): output_name
@@ -149,24 +148,18 @@ async def create_graph(graph: Graph) -> Graph:
     }
 
     # TODO: replace bulk creation using create_many
-    await asyncio.gather(
-        *[
-            AgentNodeLink.prisma().create(
-                {
-                    "id": str(uuid.uuid4()),
-                    "sourceName": edge_source_names.get((input_node, output_node), ""),
-                    "sinkName": edge_sink_names.get((input_node, output_node), ""),
-                    "agentNodeSourceId": input_node,
-                    "agentNodeSinkId": output_node,
-                }
-            )
-            for input_node, output_node in (
-                    edge_source_names.keys() | edge_sink_names.keys()
-            )
-        ]
-    )
+    for input_node, output_node in edge_source_names.keys() | edge_sink_names.keys():
+        AgentNodeLink.prisma().create(
+            {
+                "id": str(uuid.uuid4()),
+                "sourceName": edge_source_names.get((input_node, output_node), ""),
+                "sinkName": edge_sink_names.get((input_node, output_node), ""),
+                "agentNodeSourceId": input_node,
+                "agentNodeSinkId": output_node,
+            }
+        )
 
-    if created_graph := await get_graph(graph.id):
+    if created_graph := get_graph(graph.id):
         return created_graph
 
     raise ValueError(f"Failed to create graph {graph.id}.")

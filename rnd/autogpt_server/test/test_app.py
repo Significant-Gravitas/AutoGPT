@@ -1,12 +1,12 @@
-import pytest
+import time
 
-from autogpt_server.data import block, db, graph
-from autogpt_server.data.execution import ExecutionQueue, add_execution
-from autogpt_server.executor import executor
-from autogpt_server.server import server
+from autogpt_server.data import block, db, execution, graph
+from autogpt_server.executor import ExecutionManager
+from autogpt_server.server import AgentServer
+from autogpt_server.util.service import PyroNameServer
 
 
-async def create_test_graph() -> graph.Graph:
+def create_test_graph() -> graph.Graph:
     """
     ParrotBlock
                 \
@@ -19,7 +19,7 @@ async def create_test_graph() -> graph.Graph:
         graph.Node(block_id=block.ParrotBlock.id),
         graph.Node(
             block_id=block.TextCombinerBlock.id,
-            input_default={"format": "{text1},{text2}"}
+            input_default={"format": "{text1},{text2}"},
         ),
         graph.Node(block_id=block.PrintingBlock.id),
     ]
@@ -32,8 +32,8 @@ async def create_test_graph() -> graph.Graph:
         description="Test graph",
         nodes=nodes,
     )
-    await block.initialize_blocks()
-    result = await graph.create_graph(test_graph)
+    block.initialize_blocks()
+    result = graph.create_graph(test_graph)
 
     # Assertions
     assert result.name == test_graph.name
@@ -43,55 +43,78 @@ async def create_test_graph() -> graph.Graph:
     return result
 
 
-async def execute_node(queue: ExecutionQueue) -> dict | None:
-    next_exec = await executor.execute_node(queue.get())
-    if not next_exec:
-        return None
-    await add_execution(next_exec, queue)
-    return next_exec.data
-
-
-@pytest.mark.asyncio
-async def test_agent_execution():
-    await db.connect()
-    test_graph = await create_test_graph()
-    test_queue = ExecutionQueue()
-    test_server = server.AgentServer(test_queue)
-
+def execute_agent(test_manager: ExecutionManager, test_graph: graph.Graph):
     # --- Test adding new executions --- #
     text = "Hello, World!"
     input_data = {"input": text}
-    executions = await test_server.execute_agent(test_graph.id, input_data)
+    executions = AgentServer.execute_agent(test_graph.id, input_data)["executions"]
 
     # 2 executions should be created, one for each ParrotBlock, with same run_id.
     assert len(executions) == 2
-    assert executions[0].run_id == executions[1].run_id
-    assert executions[0].node_id != executions[1].node_id
-    assert executions[0].data == executions[1].data == input_data
+    assert executions[0]["run_id"] == executions[1]["run_id"]
+    assert executions[0]["node_id"] != executions[1]["node_id"]
+    assert executions[0]["data"] == executions[1]["data"] == input_data
+    run_id = executions[0]["run_id"]
 
-    # --- Test Executing added tasks --- #
+    def is_execution_completed():
+        execs = AgentServer.get_executions(test_graph.id, run_id)
+        return test_manager.queue.empty() and len(execs) == 4
 
-    # Executing ParrotBlock1, TextCombinerBlock won't be enqueued yet.
-    assert not test_queue.empty()
-    next_execution = await execute_node(test_queue)
-    assert next_execution is None
+    # Wait for the executions to complete
+    for i in range(10):
+        if is_execution_completed():
+            break
+        time.sleep(1)
 
-    # Executing ParrotBlock2, TextCombinerBlock will be enqueued.
-    assert not test_queue.empty()
-    next_execution = await execute_node(test_queue)
-    assert test_queue.empty()
-    assert next_execution
-    assert next_execution.keys() == {"text1", "text2", "format"}
-    assert next_execution["text1"] == text
-    assert next_execution["text2"] == text
-    assert next_execution["format"] == "{text1},{text2}"
+    # Execution queue should be empty
+    assert is_execution_completed()
+    executions = AgentServer.get_executions(test_graph.id, run_id)
 
-    # Executing TextCombinerBlock, PrintingBlock will be enqueued.
-    next_execution = await execute_node(test_queue)
-    assert next_execution
-    assert next_execution.keys() == {"text"}
-    assert next_execution["text"] == f"{text},{text}"
+    # Executing ParrotBlock1
+    exec = executions[0]
+    assert exec.status == execution.ExecutionStatus.COMPLETED
+    assert exec.run_id == run_id
+    assert exec.output_name == "output"
+    assert exec.output_data == "Hello, World!"
+    assert exec.input_data == input_data
+    assert exec.node_id == test_graph.nodes[0].id
 
-    # Executing PrintingBlock, no more tasks will be enqueued.
-    next_execution = await execute_node(test_queue)
-    assert next_execution is None
+    # Executing ParrotBlock2
+    exec = executions[1]
+    assert exec.status == execution.ExecutionStatus.COMPLETED
+    assert exec.run_id == run_id
+    assert exec.output_name == "output"
+    assert exec.output_data == "Hello, World!"
+    assert exec.input_data == input_data
+    assert exec.node_id == test_graph.nodes[1].id
+
+    # Executing TextCombinerBlock
+    exec = executions[2]
+    assert exec.status == execution.ExecutionStatus.COMPLETED
+    assert exec.run_id == run_id
+    assert exec.output_name == "combined_text"
+    assert exec.output_data == "Hello, World!,Hello, World!"
+    assert exec.input_data == {
+        "format": "{text1},{text2}",
+        "text1": "Hello, World!",
+        "text2": "Hello, World!",
+    }
+    assert exec.node_id == test_graph.nodes[2].id
+
+    # Executing PrintingBlock
+    exec = executions[3]
+    assert exec.status == execution.ExecutionStatus.COMPLETED
+    assert exec.run_id == run_id
+    assert exec.output_name == "status"
+    assert exec.output_data == "printed"
+    assert exec.input_data == {"text": "Hello, World!,Hello, World!"}
+    assert exec.node_id == test_graph.nodes[3].id
+
+
+def test_agent_execution():
+    with PyroNameServer():
+        time.sleep(0.3)
+        db.connect()
+        test_graph = create_test_graph()
+        with ExecutionManager(1) as test_manager:
+            execute_agent(test_manager, test_graph)
