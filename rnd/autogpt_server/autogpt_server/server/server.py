@@ -3,7 +3,7 @@ import uuid
 import uvicorn
 from fastapi import APIRouter, FastAPI, HTTPException
 
-from autogpt_server.data import db, execution, graph
+from autogpt_server.data import db, execution, graph, block
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.util.process import AppProcess
 from autogpt_server.util.service import get_service_client
@@ -23,6 +23,16 @@ class AgentServer(AppProcess):
 
         # Define the API routes
         router = APIRouter()
+        router.add_api_route(
+            path="/blocks",
+            endpoint=AgentServer.get_agent_blocks,
+            methods=["GET"],
+        )
+        router.add_api_route(
+            path="/agents",
+            endpoint=AgentServer.get_agents,
+            methods=["GET"],
+        )
         router.add_api_route(
             path="/agents/{agent_id}",
             endpoint=AgentServer.get_agent,
@@ -53,6 +63,14 @@ class AgentServer(AppProcess):
         app.on_event("startup")(db.connect)
         app.on_event("shutdown")(db.disconnect)
         uvicorn.run(app)
+        
+    @staticmethod
+    def get_agent_blocks() -> list[dict]:
+        return [v.to_dict() for v in block.get_blocks()]
+        
+    @staticmethod
+    def get_agents() -> list[str]:
+        return graph.get_graphs()
 
     @staticmethod
     def get_agent(agent_id: str) -> graph.Graph:

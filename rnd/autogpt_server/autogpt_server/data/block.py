@@ -46,10 +46,10 @@ class BlockSchema(BaseModel):
     jsonschema: dict[str, Any]
 
     def __init__(
-        self,
-        properties: dict[str, str | dict],
-        required: list[str] | None = None,
-        **kwargs: Any,
+            self,
+            properties: dict[str, str | dict],
+            required: list[str] | None = None,
+            **kwargs: Any,
     ):
         schema = {
             "type": "object",
@@ -140,6 +140,14 @@ class Block(ABC, BaseModel):
     def name(cls):
         return cls.__name__
 
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "inputSchema": self.input_schema.jsonschema,
+            "outputSchema": self.output_schema.jsonschema,
+        }
+
     def execute(self, input_data: BlockData) -> tuple[str, Any]:
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
@@ -161,13 +169,13 @@ class Block(ABC, BaseModel):
 
 class ParrotBlock(Block):
     id: ClassVar[str] = "1ff065e9-88e8-4358-9d82-8dc91f622ba9"  # type: ignore
-    input_schema: ClassVar[BlockSchema] = BlockSchema(
-        {  # type: ignore
+    input_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
+        {
             "input": "string",
         }
     )
-    output_schema: ClassVar[BlockSchema] = BlockSchema(
-        {  # type: ignore
+    output_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
+        {
             "output": "string",
         }
     )
@@ -178,15 +186,15 @@ class ParrotBlock(Block):
 
 class TextCombinerBlock(Block):
     id: ClassVar[str] = "db7d8f02-2f44-4c55-ab7a-eae0941f0c30"  # type: ignore
-    input_schema: ClassVar[BlockSchema] = BlockSchema(
-        {  # type: ignore
+    input_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
+        {
             "text1": "string",
             "text2": "string",
             "format": "string",
         }
     )
-    output_schema: ClassVar[BlockSchema] = BlockSchema(
-        {  # type: ignore
+    output_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
+        {
             "combined_text": "string",
         }
     )
@@ -200,13 +208,13 @@ class TextCombinerBlock(Block):
 
 class PrintingBlock(Block):
     id: ClassVar[str] = "f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c"  # type: ignore
-    input_schema: ClassVar[BlockSchema] = BlockSchema(
-        {  # type: ignore
+    input_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
+        {
             "text": "string",
         }
     )
-    output_schema: ClassVar[BlockSchema] = BlockSchema(
-        {  # type: ignore
+    output_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
+        {
             "status": "string",
         }
     )
@@ -239,6 +247,12 @@ def initialize_blocks() -> None:
                 "outputSchema": str(block.output_schema),
             }
         )
+
+
+def get_blocks() -> list[Block]:
+    if not AVAILABLE_BLOCKS:
+        initialize_blocks()
+    return list(AVAILABLE_BLOCKS.values())
 
 
 def get_block(block_id: str) -> Block:

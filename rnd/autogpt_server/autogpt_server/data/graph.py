@@ -75,6 +75,10 @@ def get_node(node_id: str) -> Node | None:
     return Node.from_db(node) if node else None
 
 
+def get_graphs() -> list[str]:
+    return [graph.id for graph in AgentGraph.prisma().find_many()]  # type: ignore
+
+
 def get_graph(graph_id: str) -> Graph | None:
     graph = AgentGraph.prisma().find_unique(
         where={"id": graph_id},
