@@ -95,7 +95,6 @@ body:
       options:
         - GPT-3.5 (OpenAI)
         - GPT-4 (OpenAI)
-        - GPT-4(32k) (OpenAI)
         - GPT-4 (Azure)
         - Anthropic
         - Llamafile
