@@ -21,6 +21,8 @@ ruff = "^0.4.8"
 flake8 = "^7.0.0"
 jsonschema = "^4.22.0"
 psutil = "^5.9.8"
+pyro5 = "^5.15"
+tenacity = "^8.3.0"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -35,7 +37,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 app = "autogpt_server.app:main"
-cli = "autogpt_server.cli:start_cli"
+cli = "autogpt_server.cli:main"
 
 # https://poethepoet.natn.io/index.html
 [tool.poe]
