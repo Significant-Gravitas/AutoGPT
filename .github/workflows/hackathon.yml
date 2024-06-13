@@ -88,13 +88,13 @@ jobs:
         run: docker ps
 
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: true
 
       - name: Set up Python ${{ env.min-python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.min-python-version }}
 
@@ -107,7 +107,7 @@ jobs:
           curl -sSL https://install.python-poetry.org | python -
 
       - name: Install Node.js
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v4
         with:
           node-version: v18.15
 
@@ -117,7 +117,7 @@ jobs:
           branch=$(jq -r '.["branch_to_benchmark"]' arena/$AGENT_NAME.json)
           git clone "$link" -b "$branch" "$AGENT_NAME"
           cd $AGENT_NAME
-          cp ./autogpts/$AGENT_NAME/.env.example ./autogpts/$AGENT_NAME/.env || echo "file not found"
+          cp ./$AGENT_NAME/.env.example ./$AGENT_NAME/.env || echo "file not found"
           ./run agent start $AGENT_NAME
           cd ../benchmark
           poetry install

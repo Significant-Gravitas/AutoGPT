@@ -1,0 +1,268 @@
+name: AutoGPT Server CI
+
+on:
+  push:
+    branches: [master, development, ci-test*]
+    paths:
+      - ".github/workflows/autogpt-server-ci.yml"
+      - "rnd/autogpt_server/**"
+      - "!autogpt/tests/vcr_cassettes"
+  pull_request:
+    branches: [master, development, release-*]
+    paths:
+      - ".github/workflows/autogpt-server-ci.yml"
+      - "rnd/autogpt_server/**"
+      - "!autogpt/tests/vcr_cassettes"
+
+concurrency:
+  group: ${{ format('autogpt-server-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
+
+defaults:
+  run:
+    shell: bash
+    working-directory: rnd/autogpt_server
+
+jobs:
+  test:
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10"]
+        platform-os: [ubuntu, macos, macos-arm64, windows]
+    runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
+
+    steps:
+      # Quite slow on macOS (2~4 minutes to set up Docker)
+      # - name: Set up Docker (macOS)
+      #   if: runner.os == 'macOS'
+      #   uses: crazy-max/ghaction-setup-docker@v3
+
+      - name: Start MinIO service (Linux)
+        if: runner.os == 'Linux'
+        working-directory: "."
+        run: |
+          docker pull minio/minio:edge-cicd
+          docker run -d -p 9000:9000 minio/minio:edge-cicd
+
+      - name: Start MinIO service (macOS)
+        if: runner.os == 'macOS'
+        working-directory: ${{ runner.temp }}
+        run: |
+          brew install minio/stable/minio
+          mkdir data
+          minio server ./data &
+
+      # No MinIO on Windows:
+      # - Windows doesn't support running Linux Docker containers
+      # - It doesn't seem possible to start background processes on Windows. They are
+      #   killed after the step returns.
+      #   See: https://github.com/actions/runner/issues/598#issuecomment-2011890429
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - id: get_date
+        name: Get date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Set up Python dependency cache
+        # On Windows, unpacking cached dependencies takes longer than just installing them
+        if: runner.os != 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('rnd/autogpt_server/poetry.lock') }}
+
+      - name: Install Poetry (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+          fi
+
+      - name: Install Poetry (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
+
+          $env:PATH += ";$env:APPDATA\Python\Scripts"
+          echo "$env:APPDATA\Python\Scripts" >> $env:GITHUB_PATH
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Generate Prisma Client
+        run: poetry run prisma generate
+
+      - name: Run Database Migrations
+        run: poetry run prisma migrate dev --name updates
+
+      - name: Run pytest with coverage
+        run: |
+          poetry run pytest -vv \
+            test
+        env:
+          CI: true
+          PLAIN_OUTPUT: True
+
+      # - name: Upload coverage reports to Codecov
+      #   uses: codecov/codecov-action@v4
+      #   with:
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     flags: autogpt-server,${{ runner.os }}
+
+  build:
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10"]
+        platform-os: [ubuntu, macos, macos-arm64, windows]
+    runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - id: get_date
+        name: Get date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Set up Python dependency cache
+        # On Windows, unpacking cached dependencies takes longer than just installing them
+        if: runner.os != 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('rnd/autogpt_server/poetry.lock') }}
+
+      - name: Install Poetry (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+          fi
+
+      - name: Install Poetry (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
+
+          $env:PATH += ";$env:APPDATA\Python\Scripts"
+          echo "$env:APPDATA\Python\Scripts" >> $env:GITHUB_PATH
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Generate Prisma Client
+        run: poetry run prisma generate
+
+      - name: Run Database Migrations
+        run: poetry run prisma migrate dev --name updates
+
+      - name: install rpm
+        if: matrix.platform-os == 'ubuntu'
+        run: sudo apt-get install -y alien fakeroot rpm
+
+      - name: Build distribution
+        run: |
+          case "${{ matrix.platform-os }}" in
+            "macos" | "macos-arm64")
+              ${MAC_COMMAND}
+              ;;
+            "windows")
+              ${WINDOWS_COMMAND}
+              ;;
+            *)
+              ${LINUX_COMMAND}
+              ;;
+          esac
+        env:
+          MAC_COMMAND: "poetry run poe dist_dmg"
+          WINDOWS_COMMAND: "poetry run poe dist_msi"
+          LINUX_COMMAND: "poetry run poe dist_appimage"
+
+      # break this into seperate steps each with their own name that matches the file
+      - name: Upload App artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: autogptserver-app-${{ matrix.platform-os }}
+          path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.app
+
+      - name: Upload dmg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: autogptserver-dmg-${{ matrix.platform-os }}
+          path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/AutoGPTServer.dmg
+
+      - name: Upload msi artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: autogptserver-msi-${{ matrix.platform-os }}
+          path: D:\a\AutoGPT\AutoGPT\rnd\autogpt_server\dist\*.msi
+
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: autogptserver-deb-${{ matrix.platform-os }}
+          path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.deb
+
+      - name: Upload rpm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: autogptserver-rpm-${{ matrix.platform-os }}
+          path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.rpm
+
+      - name: Upload tar.gz artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: autogptserver-tar.gz-${{ matrix.platform-os }}
+          path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.tar.gz
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: autogptserver-zip-${{ matrix.platform-os }}
+          path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.zip
+
+      - name: Upload pkg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: autogptserver-pkg-${{ matrix.platform-os }}
+          path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.pkg
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: autogptserver-AppImage-${{ matrix.platform-os }}
+          path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.AppImage

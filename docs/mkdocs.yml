@@ -6,32 +6,41 @@ nav:
   - Home: index.md
 
   - AutoGPT Agent:
-    - Introduction: AutoGPT/index.md
-    - Setup:
-        - Setting up AutoGPT: AutoGPT/setup/index.md
-        - Set up with Docker: AutoGPT/setup/docker.md
-    - Usage: AutoGPT/usage.md
-    - Plugins: AutoGPT/plugins.md
-    # - Configuration:
-    #     - Options: AutoGPT/configuration/options.md
-    #     - Search: AutoGPT/configuration/search.md
-    #     - Memory: AutoGPT/configuration/memory.md
-    #     - Voice: AutoGPT/configuration/voice.md
-    #     - Image Generation: AutoGPT/configuration/imagegen.md
-    - Help us improve AutoGPT:
-        - Share your debug logs with us: AutoGPT/share-your-logs.md
-        - Contribution guide: contributing.md
-        - Running tests: AutoGPT/testing.md
-        - Code of Conduct: code-of-conduct.md
+      - Introduction: AutoGPT/index.md
+      - Setup:
+          - Setting up AutoGPT: AutoGPT/setup/index.md
+          - Set up with Docker: AutoGPT/setup/docker.md
+          - For Developers: AutoGPT/setup/for-developers.md
+          - Configuration:
+              - Options: AutoGPT/configuration/options.md
+              - Search: AutoGPT/configuration/search.md
+              - Voice: AutoGPT/configuration/voice.md
+              - Image Generation: AutoGPT/configuration/imagegen.md
+      - Usage: AutoGPT/usage.md
+      - Help us improve AutoGPT:
+          - Share your debug logs with us: AutoGPT/share-your-logs.md
+          - Contribution guide: contributing.md
+          - Running tests: AutoGPT/testing.md
+          - Code of Conduct: code-of-conduct.md
 
   - Benchmark:
-    - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark/README.md
+      - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark/README.md
 
   - Forge:
-    - Introduction: forge/get-started.md
+      - Introduction: forge/get-started.md
+      - Components:
+          - Introduction: forge/components/introduction.md
+          - Agents: forge/components/agents.md
+          - Components: forge/components/components.md
+          - Protocols: forge/components/protocols.md
+          - Commands: forge/components/commands.md
+          - Built in Components: forge/components/built-in-components.md
+          - Creating Components: forge/components/creating-components.md
 
   - Frontend:
-    - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/frontend/README.md
+      - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/frontend/README.md
+
+  - Docs: docs/index.md
 
   # - Challenges:
   #     - Introduction: challenges/introduction.md
@@ -98,8 +107,8 @@ markdown_extensions:
   - pymdownx.caret
   - pymdownx.details
   - pymdownx.emoji:
-      emoji_index: !!python/name:materialx.emoji.twemoji
-      emoji_generator: !!python/name:materialx.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.highlight
   - pymdownx.inlinehilite
   - pymdownx.keys
@@ -127,5 +136,5 @@ extra_javascript:
   - https://unpkg.com/tablesort@5.3.0/dist/tablesort.min.js
   - _javascript/tablesort.js
   - _javascript/mathjax.js
-  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
