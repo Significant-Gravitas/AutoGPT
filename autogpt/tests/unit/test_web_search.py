@@ -1,5 +1,6 @@
 import json
 
+from pydantic import SecretStr
 import pytest
 from forge.components.web.search import WebSearchComponent
 from forge.utils.exceptions import ConfigurationError
@@ -10,6 +11,8 @@ from autogpt.agents.agent import Agent
 
 @pytest.fixture
 def web_search_component(agent: Agent):
+    agent.web_search.config.google_api_key = SecretStr("test")
+    agent.web_search.config.google_custom_search_engine_id = SecretStr("test")
     return agent.web_search
 
 

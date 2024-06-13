@@ -145,28 +145,25 @@ class WebSearchComponent(
         from googleapiclient.errors import HttpError
 
         try:
+            # Should be the case if this command is enabled:
             assert self.config.google_api_key
             assert self.config.google_custom_search_engine_id
 
-            # Get the Google API key and Custom Search Engine ID from the config file
-            api_key = (
-                self.config.google_api_key.get_secret_value()
-                if self.config.google_api_key
-                else None
-            )
-            custom_search_engine_id = (
-                self.config.google_custom_search_engine_id.get_secret_value()
-                if self.config.google_custom_search_engine_id
-                else None
-            )
-
             # Initialize the Custom Search API service
-            service = build("customsearch", "v1", developerKey=api_key)
+            service = build(
+                "customsearch",
+                "v1",
+                developerKey=self.config.google_api_key.get_secret_value(),
+            )
 
             # Send the search query and retrieve the results
             result = (
                 service.cse()
-                .list(q=query, cx=custom_search_engine_id, num=num_results)
+                .list(
+                    q=query,
+                    cx=self.config.google_custom_search_engine_id.get_secret_value(),
+                    num=num_results,
+                )
                 .execute()
             )
 
