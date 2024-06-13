@@ -68,11 +68,11 @@ class FileManagerComponent(
         if not agent_state.agent_id:
             raise ValueError("Agent must have an ID.")
 
-        self.state = agent_state
+        self.agent_state = agent_state
 
         if not config:
-            files_path = f"agents/{self.state.agent_id}/"
-            workspace_path = f"agents/{self.state.agent_id}/workspace"
+            files_path = f"agents/{self.agent_state.agent_id}/"
+            workspace_path = f"agents/{self.agent_state.agent_id}/workspace"
             ConfigurableComponent.__init__(
                 self,
                 FileManagerConfiguration(
@@ -92,7 +92,7 @@ class FileManagerComponent(
             self._file_storage.make_dir(f"agents/{save_as_id}")
             # Save state
             await self._file_storage.write_file(
-                f"agents/{save_as_id}/{self.STATE_FILE}", self.state.json()
+                f"agents/{save_as_id}/{self.STATE_FILE}", self.agent_state.json()
             )
             # Copy workspace
             self._file_storage.copy(
@@ -101,7 +101,7 @@ class FileManagerComponent(
             )
         else:
             await self.files.write_file(
-                self.files.root / self.STATE_FILE, self.state.json()
+                self.files.root / self.STATE_FILE, self.agent_state.json()
             )
 
     def get_resources(self) -> Iterator[str]:

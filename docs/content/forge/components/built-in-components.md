@@ -1,7 +1,7 @@
 # Built-in Components
 
 This page lists all [🧩 Components](./components.md) and [⚙️ Protocols](./protocols.md) they implement that are natively provided. They are used by the AutoGPT agent.
-Some components have additional configuration options listed in the table, see [Component configuration](./components.md) to learn more.
+Some components have additional configuration options listed in the table, see [Component configuration](./components.md/#ordering-components) to learn more.
 
 !!! note
     If a configuration field uses environment variable, it still can be passed using configuration model. **Value from the configuration takes precedence over env var!** Env var will be only applied if value in the configuration is not set.

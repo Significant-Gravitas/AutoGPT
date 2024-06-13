@@ -5,8 +5,8 @@ from typing import Callable, ClassVar, Generic, Optional, TypeVar
 
 from pydantic import BaseModel
 
-T = TypeVar("T", bound="AgentComponent")
-C = TypeVar("C", bound=BaseModel)
+AC = TypeVar("AC", bound="AgentComponent")
+BM = TypeVar("BM", bound=BaseModel)
 
 
 class AgentComponent(ABC):
@@ -27,7 +27,7 @@ class AgentComponent(ABC):
         """Return the reason this component is disabled."""
         return self._disabled_reason
 
-    def run_after(self: T, *components: type[AgentComponent] | AgentComponent) -> T:
+    def run_after(self: AC, *components: type[AgentComponent] | AgentComponent) -> AC:
         """Set the components that this component should run after."""
         for component in components:
             t = component if isinstance(component, type) else type(component)
@@ -36,13 +36,13 @@ class AgentComponent(ABC):
         return self
 
 
-class ConfigurableComponent(ABC, Generic[C]):
+class ConfigurableComponent(ABC, Generic[BM]):
     """A component that can be configured with a Pydantic model."""
 
-    config_class: ClassVar
+    config_class: ClassVar[type[BM]] # type: ignore
 
-    def __init__(self, config: Optional[C]):
-        self._config: Optional[C] = config
+    def __init__(self, config: Optional[BM]):
+        self._config: Optional[BM] = config
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -53,13 +53,13 @@ class ConfigurableComponent(ABC, Generic[C]):
             )
 
     @property
-    def config(self) -> C:
+    def config(self) -> BM:
         if not hasattr(self, "_config") or self._config is None:
             self._config = self.config_class()
         return self._config  # type: ignore
 
     @config.setter
-    def config(self, config: C):
+    def config(self, config: BM):
         self._config = config
 
 

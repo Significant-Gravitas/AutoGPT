@@ -297,7 +297,7 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
             if config_type_name in configs_dict:
                 # Parse the serialized data and update the existing config
                 updated_data = configs_dict[config_type_name]
-                data = {**component.config.__dict__, **updated_data}
+                data = {**component.config.dict(), **updated_data}
                 component.config = component.config.__class__(**data)
 
     def _collect_components(self):
