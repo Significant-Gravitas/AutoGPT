@@ -39,7 +39,7 @@ class AgentComponent(ABC):
 class ConfigurableComponent(ABC, Generic[BM]):
     """A component that can be configured with a Pydantic model."""
 
-    config_class: ClassVar[type[BM]] # type: ignore
+    config_class: ClassVar[type[BM]]  # type: ignore
 
     def __init__(self, config: Optional[BM]):
         self._config: Optional[BM] = config

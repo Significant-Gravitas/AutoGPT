@@ -147,7 +147,7 @@ class WebSearchComponent(
         try:
             assert self.config.google_api_key
             assert self.config.google_custom_search_engine_id
-            
+
             # Get the Google API key and Custom Search Engine ID from the config file
             api_key = (
                 self.config.google_api_key.get_secret_value()
