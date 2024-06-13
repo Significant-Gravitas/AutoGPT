@@ -7,11 +7,13 @@ prisma = Prisma(auto_register=True)
 
 
 def connect():
-    prisma.connect()
+    if not prisma.is_connected():
+        prisma.connect()
 
 
 def disconnect():
-    prisma.disconnect()
+    if prisma.is_connected():
+        prisma.disconnect()
 
 
 class BaseDbModel(BaseModel):

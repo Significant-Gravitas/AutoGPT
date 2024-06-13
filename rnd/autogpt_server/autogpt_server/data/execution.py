@@ -75,7 +75,7 @@ class ExecutionResult(BaseDbModel):
 # --------------------- Model functions --------------------- #
 
 
-def add_execution(execution: Execution) -> None:
+def enqueue_execution(execution: Execution) -> None:
     AgentNodeExecution.prisma().create(
         data={
             "id": execution.id,

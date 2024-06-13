@@ -7,7 +7,7 @@ from autogpt_server.data import block, db, graph
 from autogpt_server.data.execution import (
     Execution,
     ExecutionQueue,
-    add_execution,
+    enqueue_execution,
     complete_execution,
     fail_execution,
     start_execution,
@@ -143,5 +143,5 @@ class ExecutionManager(AppService):
             raise Exception("Error adding execution ", e)
 
     def __add_execution(self, execution: Execution) -> Execution:
-        add_execution(execution)
+        enqueue_execution(execution)
         return self.queue.add(execution)
