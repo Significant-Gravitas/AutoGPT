@@ -46,7 +46,7 @@ class ConfigurableComponent(ABC, Generic[BM]):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        if not hasattr(cls, "config_class") or cls.config_class is None:
+        if getattr(cls, "config_class", None) is None:
             raise NotImplementedError(
                 f"ConfigurableComponent subclass {cls.__name__} "
                 "must define config_class class attribute."

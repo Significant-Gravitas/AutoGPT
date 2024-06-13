@@ -1,10 +1,10 @@
 import json
 
-from pydantic import SecretStr
 import pytest
 from forge.components.web.search import WebSearchComponent
 from forge.utils.exceptions import ConfigurationError
 from googleapiclient.errors import HttpError
+from pydantic import SecretStr
 
 from autogpt.agents.agent import Agent
 
