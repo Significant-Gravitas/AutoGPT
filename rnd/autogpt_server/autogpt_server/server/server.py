@@ -80,8 +80,8 @@ class AgentServer(AppProcess):
                     detail=f"Input data doesn't match {block.name} input: {error}",
                 )
 
-            executor_manager = get_service_client(ExecutionManager)
-            obj = executor_manager.add_execution(
+            execution_manager = get_service_client(ExecutionManager)
+            obj = execution_manager.add_execution(
                 run_id=run_id, node_id=node.id, data=node_input
             )
             executions.append(obj)
@@ -101,12 +101,12 @@ class AgentServer(AppProcess):
 
     @staticmethod
     def schedule_agent(agent_id: str, cron: str, input_data: dict) -> dict:
-        executor_manager = get_service_client(ExecutionScheduler)
+        execution_scheduler = get_service_client(ExecutionScheduler)
         return {
-            "id": executor_manager.add_execution_schedule(agent_id, cron, input_data)
+            "id": execution_scheduler.add_execution_schedule(agent_id, cron, input_data)
         }
 
     @staticmethod
     def get_execution_schedules(agent_id: str) -> list[dict]:
-        executor_manager = get_service_client(ExecutionScheduler)
-        return executor_manager.get_execution_schedules(agent_id)
+        execution_scheduler = get_service_client(ExecutionScheduler)
+        return execution_scheduler.get_execution_schedules(agent_id)
