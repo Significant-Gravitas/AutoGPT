@@ -9,8 +9,9 @@ async def test_realtime():
     api_queue = ExecutionQueue()
     exec_queue = ExecutionQueue()
     
-    start_realtime(api_queue, exec_queue)
     api_queue.add(Execution(run_id="1", node_id="2", data={}))
-    time.sleep(0.1) 
+    r = start_realtime(api_queue, exec_queue)
+    assert r
+    time.sleep(0.2) 
     msg: Execution = api_queue.get()
     assert msg.node_id == "hi"

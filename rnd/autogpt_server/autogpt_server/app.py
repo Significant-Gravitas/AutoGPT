@@ -4,6 +4,7 @@ from multiprocessing.spawn import freeze_support as freeze_support_spawn
 from autogpt_server.data.execution import ExecutionQueue
 from autogpt_server.executor import start_executor_manager
 from autogpt_server.server import start_server
+from autogpt_server.server.realtime import start_realtime
 
 
 def background_process() -> None:
@@ -18,9 +19,12 @@ def background_process() -> None:
     freeze_support()
     freeze_support_spawn()
     # Start the application
-    queue = ExecutionQueue()
-    start_executor_manager(5, queue)
-    start_server(queue)
+    ae_queue = ExecutionQueue()  # API <> Executor Queue
+    ar_queue = ExecutionQueue()  # API <> Realtime Queue
+    re_queue = ExecutionQueue()  # Realtime <> Executor Queue
+    start_executor_manager(5, ae_queue)
+    start_server(ae_queue)
+    start_realtime(ar_queue, re_queue)
 
 
 if __name__ == "__main__":
