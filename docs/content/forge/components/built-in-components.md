@@ -146,6 +146,7 @@ Allows agent to search the web. Google credentials aren't required for DuckDuckG
 | -------------------------------- | ----------------------------------------------------------------------- | ----- | ------- |
 | `google_api_key`                 | Google API key, *ENV:* `GOOGLE_API_KEY`                                 | `str` | `None`  |
 | `google_custom_search_engine_id` | Google Custom Search Engine ID, *ENV:* `GOOGLE_CUSTOM_SEARCH_ENGINE_ID` | `str` | `None`  |
+| `duckduckgo_max_attempts`        | Maximum number of attempts to search using DuckDuckGo                   | `int` | `3`     |
 
 **DirectiveProvider**
 

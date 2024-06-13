@@ -13,8 +13,6 @@ from forge.models.config import FromEnv
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import ConfigurationError
 
-DUCKDUCKGO_MAX_ATTEMPTS = 3
-
 logger = logging.getLogger(__name__)
 
 
@@ -23,6 +21,7 @@ class WebSearchConfiguration(BaseModel):
     google_custom_search_engine_id: Optional[SecretStr] = FromEnv(
         "GOOGLE_CUSTOM_SEARCH_ENGINE_ID"
     )
+    duckduckgo_max_attempts: int = 3
 
 
 class WebSearchComponent(
@@ -84,7 +83,7 @@ class WebSearchComponent(
         search_results = []
         attempts = 0
 
-        while attempts < DUCKDUCKGO_MAX_ATTEMPTS:
+        while attempts < self.config.duckduckgo_max_attempts:
             if not query:
                 return json.dumps(search_results)
 
@@ -146,6 +145,9 @@ class WebSearchComponent(
         from googleapiclient.errors import HttpError
 
         try:
+            assert self.config.google_api_key
+            assert self.config.google_custom_search_engine_id
+            
             # Get the Google API key and Custom Search Engine ID from the config file
             api_key = (
                 self.config.google_api_key.get_secret_value()
