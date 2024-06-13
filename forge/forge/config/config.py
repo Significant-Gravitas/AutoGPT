@@ -1,4 +1,5 @@
 """Configuration class to store the state of bools for different scripts access."""
+
 from __future__ import annotations
 
 import logging
@@ -210,7 +211,7 @@ class ConfigBuilder(Configurable[Config]):
 
 def assert_config_has_openai_api_key(config: Config) -> None:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
-    key_pattern = r"^sk-(proj-)?\w{48}"
+    key_pattern = r"^sk-[\w-]{40,}"
     openai_api_key = (
         config.openai_credentials.api_key.get_secret_value()
         if config.openai_credentials
