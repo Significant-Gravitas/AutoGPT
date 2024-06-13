@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from concurrent.futures import ProcessPoolExecutor
-from typing import Optional
+from typing import Optional, Any
 
 from autogpt_server.data import block, db, graph
 from autogpt_server.data.execution import (
@@ -135,10 +135,11 @@ class ExecutionManager(AppService):
                 future.add_done_callback(on_complete_execution)  # type: ignore
 
     @expose
-    def add_execution(self, run_id: str, node_id: str, data: dict) -> dict:
+    def add_execution(self, run_id: str, node_id: str, data: dict[str, Any]) -> str:
         try:
             execution = Execution(run_id=run_id, node_id=node_id, data=data)
-            return self.__add_execution(execution).dict()
+            self.__add_execution(execution)
+            return execution.id
         except Exception as e:
             raise Exception("Error adding execution ", e)
 

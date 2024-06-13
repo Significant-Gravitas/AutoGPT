@@ -47,14 +47,10 @@ def execute_agent(test_manager: ExecutionManager, test_graph: graph.Graph):
     # --- Test adding new executions --- #
     text = "Hello, World!"
     input_data = {"input": text}
-    executions = AgentServer.execute_agent(test_graph.id, input_data)["executions"]
-
-    # 2 executions should be created, one for each ParrotBlock, with same run_id.
+    response = AgentServer.execute_agent(test_graph.id, input_data)
+    executions = response["executions"]
+    run_id = response["run_id"]
     assert len(executions) == 2
-    assert executions[0]["run_id"] == executions[1]["run_id"]
-    assert executions[0]["node_id"] != executions[1]["node_id"]
-    assert executions[0]["data"] == executions[1]["data"] == input_data
-    run_id = executions[0]["run_id"]
 
     def is_execution_completed():
         execs = AgentServer.get_executions(test_graph.id, run_id)

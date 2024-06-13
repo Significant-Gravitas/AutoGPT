@@ -88,21 +88,24 @@ class AgentServer(AppProcess):
 
         run_id = str(uuid.uuid4())
         executions = []
+        execution_manager = get_service_client(ExecutionManager)
 
         # Currently, there is no constraint on the number of root nodes in the graph.
         for node in agent.starting_nodes:
-            block = node.block
-            if error := block.input_schema.validate_data(node_input):
+            node_block = node.block
+            if error := node_block.input_schema.validate_data(node_input):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Input data doesn't match {block.name} input: {error}",
+                    detail=f"Input data doesn't match {node_block.name} input: {error}",
                 )
 
-            execution_manager = get_service_client(ExecutionManager)
-            obj = execution_manager.add_execution(
+            exec_id = execution_manager.add_execution(
                 run_id=run_id, node_id=node.id, data=node_input
             )
-            executions.append(obj)
+            executions.append({
+                "exec_id": exec_id,
+                "node_id": node.id,
+            })
 
         return {
             "run_id": run_id,
