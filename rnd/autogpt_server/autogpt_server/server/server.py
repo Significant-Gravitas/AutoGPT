@@ -39,6 +39,11 @@ class AgentServer(AppProcess):
             methods=["GET"],
         )
         router.add_api_route(
+            path="/agents",
+            endpoint=AgentServer.create_agent,
+            methods=["POST"],
+        )
+        router.add_api_route(
             path="/agents/{agent_id}/execute",
             endpoint=AgentServer.execute_agent,
             methods=["POST"],
@@ -79,6 +84,13 @@ class AgentServer(AppProcess):
             raise HTTPException(status_code=404, detail=f"Agent #{agent_id} not found.")
 
         return agent
+
+    @staticmethod
+    def create_agent(agent: graph.Graph) -> graph.Graph:
+        agent.set_new_id()
+        for node in agent.nodes:
+            node.set_new_id()
+        return graph.create_graph(agent)
 
     @staticmethod
     def execute_agent(agent_id: str, node_input: dict) -> dict:
