@@ -7,8 +7,6 @@ import re
 from pathlib import Path
 from typing import Any, Optional, Union
 
-import click
-from colorama import Fore
 from pydantic import SecretStr, validator
 
 import forge
@@ -208,55 +206,93 @@ class ConfigBuilder(Configurable[Config]):
         return config
 
 
-def assert_config_has_openai_api_key(config: Config) -> None:
-    """Check if the OpenAI API key is set in config.py or as an environment variable."""
-    key_pattern = r"^sk-(proj-)?\w{48}"
-    openai_api_key = (
-        config.openai_credentials.api_key.get_secret_value()
-        if config.openai_credentials
-        else ""
-    )
+async def assert_config_has_required_llm_api_keys(config: Config) -> None:
+    """
+    Check if API keys (if required) are set for the configured SMART_LLM and FAST_LLM.
+    """
+    from pydantic import ValidationError
 
-    # If there's no credentials or empty API key, prompt the user to set it
-    if not openai_api_key:
-        logger.error(
-            "Please set your OpenAI API key in .env or as an environment variable."
-        )
-        logger.info(
-            "You can get your key from https://platform.openai.com/account/api-keys"
-        )
-        openai_api_key = click.prompt(
-            "Please enter your OpenAI API key if you have it",
-            default="",
-            show_default=False,
-        )
-        openai_api_key = openai_api_key.strip()
-        if re.search(key_pattern, openai_api_key):
-            os.environ["OPENAI_API_KEY"] = openai_api_key
-            if config.openai_credentials:
-                config.openai_credentials.api_key = SecretStr(openai_api_key)
-            else:
-                config.openai_credentials = OpenAICredentials(
-                    api_key=SecretStr(openai_api_key)
+    from forge.llm.providers.anthropic import AnthropicModelName
+    from forge.llm.providers.groq import GroqModelName
+
+    if set((config.smart_llm, config.fast_llm)).intersection(AnthropicModelName):
+        from forge.llm.providers.anthropic import AnthropicCredentials
+
+        try:
+            credentials = AnthropicCredentials.from_env()
+        except ValidationError as e:
+            if "api_key" in str(e):
+                logger.error(
+                    "Set your Anthropic API key in .env or as an environment variable"
                 )
-            print("OpenAI API key successfully set!")
-            print(
-                f"{Fore.YELLOW}NOTE: The API key you've set is only temporary. "
-                f"For longer sessions, please set it in the .env file{Fore.RESET}"
+                logger.info(
+                    "For further instructions: "
+                    "https://docs.agpt.co/autogpt/setup/#anthropic"
+                )
+
+            raise ValueError("Anthropic is unavailable: can't load credentials") from e
+
+        key_pattern = r"^sk-ant-api03-[\w\-]{95}"
+
+        # If key is set, but it looks invalid
+        if not re.search(key_pattern, credentials.api_key.get_secret_value()):
+            logger.warning(
+                "Possibly invalid Anthropic API key! "
+                f"Configured Anthropic API key does not match pattern '{key_pattern}'. "
+                "If this is a valid key, please report this warning to the maintainers."
             )
-        else:
-            print(f"{Fore.RED}Invalid OpenAI API key{Fore.RESET}")
-            exit(1)
-    # If key is set, but it looks invalid
-    elif not re.search(key_pattern, openai_api_key):
-        logger.error(
-            "Invalid OpenAI API key! "
-            "Please set your OpenAI API key in .env or as an environment variable."
-        )
-        logger.info(
-            "You can get your key from https://platform.openai.com/account/api-keys"
-        )
-        exit(1)
+
+    if set((config.smart_llm, config.fast_llm)).intersection(GroqModelName):
+        from groq import AuthenticationError
+
+        from forge.llm.providers.groq import GroqProvider
+
+        try:
+            groq = GroqProvider()
+            await groq.get_available_models()
+        except ValidationError as e:
+            if "api_key" not in str(e):
+                raise
+
+            logger.error("Set your Groq API key in .env or as an environment variable")
+            logger.info(
+                "For further instructions: https://docs.agpt.co/autogpt/setup/#groq"
+            )
+            raise ValueError("Groq is unavailable: can't load credentials")
+        except AuthenticationError as e:
+            logger.error("The Groq API key is invalid!")
+            logger.info(
+                "For instructions to get and set a new API key: "
+                "https://docs.agpt.co/autogpt/setup/#groq"
+            )
+            raise ValueError("Groq is unavailable: invalid API key") from e
+
+    if set((config.smart_llm, config.fast_llm)).intersection(OpenAIModelName):
+        from openai import AuthenticationError
+
+        from forge.llm.providers.openai import OpenAIProvider
+
+        try:
+            openai = OpenAIProvider()
+            await openai.get_available_models()
+        except ValidationError as e:
+            if "api_key" not in str(e):
+                raise
+
+            logger.error(
+                "Set your OpenAI API key in .env or as an environment variable"
+            )
+            logger.info(
+                "For further instructions: https://docs.agpt.co/autogpt/setup/#openai"
+            )
+            raise ValueError("OpenAI is unavailable: can't load credentials")
+        except AuthenticationError as e:
+            logger.error("The OpenAI API key is invalid!")
+            logger.info(
+                "For instructions to get and set a new API key: "
+                "https://docs.agpt.co/autogpt/setup/#openai"
+            )
+            raise ValueError("OpenAI is unavailable: invalid API key") from e
 
 
 def _safe_split(s: Union[str, None], sep: str = ",") -> list[str]:

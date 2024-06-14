@@ -28,7 +28,7 @@ from forge.file_storage.base import FileStorage
 logger = logging.getLogger(__name__)
 
 
-class Agent:
+class ProtocolAgent:
     def __init__(self, database: AgentDB, workspace: FileStorage):
         self.db = database
         self.workspace = workspace

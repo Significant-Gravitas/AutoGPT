@@ -464,7 +464,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
                 888      "Y88P"  888     "Y88888  "Y8888              
                                              888                      
                                         Y8b d88P                      
-                                         "Y88P"                v0.1.0
+                                         "Y88P"                v0.2.0
 
 
 [2023-09-27 15:39:07,832] [forge.sdk.agent] [INFO]      📝  Agent server starting on http://localhost:8000
