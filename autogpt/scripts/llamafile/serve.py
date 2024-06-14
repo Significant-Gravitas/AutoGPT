@@ -86,29 +86,13 @@ def main(llamafile: Optional[Path] = None, llamafile_url: Optional[str] = None):
         base_command = [llamafile]
     else:
         # Windows does not allow executables over 4GB, so we have to download a
-        # model-less llamafile.exe and extract the model weights (.gguf file)
-        # from the downloaded .llamafile.
+        # model-less llamafile.exe and run that instead.
         if not LLAMAFILE_EXE.is_file():
             download_file(LLAMAFILE_EXE_URL, LLAMAFILE_EXE)
             LLAMAFILE_EXE.chmod(0o755)
             subprocess.run([LLAMAFILE_EXE, "--version"], check=True)
 
-        model_file = llamafile.with_suffix(".gguf")
-        if not model_file.is_file():
-            import zipfile
-
-            with zipfile.ZipFile(llamafile, "r") as zip_ref:
-                gguf_file = next(
-                    (file for file in zip_ref.namelist() if file.endswith(".gguf")),
-                    None,
-                )
-                if not gguf_file:
-                    raise Exception("No .gguf file found in the zip file.")
-
-                zip_ref.extract(gguf_file)
-                Path(gguf_file).rename(model_file)
-
-        base_command = [LLAMAFILE_EXE, "-m", model_file]
+        base_command = [LLAMAFILE_EXE, "-m", llamafile]
 
     subprocess.run(
         [
