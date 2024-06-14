@@ -21,7 +21,11 @@ from forge.components.code_executor.code_executor import (
 )
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
-from forge.config.config import Config, ConfigBuilder, assert_config_has_openai_api_key
+from forge.config.config import (
+    Config,
+    ConfigBuilder,
+    assert_config_has_required_llm_api_keys,
+)
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
@@ -98,8 +102,7 @@ async def run_auto_gpt(
         tts_config=config.tts_config,
     )
 
-    # TODO: fill in llm values here
-    assert_config_has_openai_api_key(config)
+    await assert_config_has_required_llm_api_keys(config)
 
     await apply_overrides_to_config(
         config=config,
@@ -380,8 +383,7 @@ async def run_auto_gpt_server(
         tts_config=config.tts_config,
     )
 
-    # TODO: fill in llm values here
-    assert_config_has_openai_api_key(config)
+    await assert_config_has_required_llm_api_keys(config)
 
     await apply_overrides_to_config(
         config=config,
