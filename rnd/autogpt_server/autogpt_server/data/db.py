@@ -1,19 +1,18 @@
 from uuid import uuid4
-
 from prisma import Prisma
 from pydantic import BaseModel
 
 prisma = Prisma(auto_register=True)
 
 
-def connect():
+async def connect():
     if not prisma.is_connected():
-        prisma.connect()
+        await prisma.connect()
 
 
-def disconnect():
+async def disconnect():
     if prisma.is_connected():
-        prisma.disconnect()
+        await prisma.disconnect()
 
 
 class BaseDbModel(BaseModel):
@@ -22,6 +21,3 @@ class BaseDbModel(BaseModel):
     def __init__(self, id: str = "", **data):
         data["id"] = id or str(uuid4())
         super().__init__(**data)
-
-    def set_new_id(self):
-        self.id = str(uuid4())

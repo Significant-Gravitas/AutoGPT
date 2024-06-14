@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 from autogpt_server.data import block, db, execution, graph
@@ -6,7 +7,7 @@ from autogpt_server.server import AgentServer
 from autogpt_server.util.service import PyroNameServer
 
 
-def create_test_graph() -> graph.Graph:
+async def create_test_graph() -> graph.Graph:
     """
     ParrotBlock
                 \
@@ -32,39 +33,39 @@ def create_test_graph() -> graph.Graph:
         description="Test graph",
         nodes=nodes,
     )
-    block.initialize_blocks()
-    result = graph.create_graph(test_graph)
+    await block.initialize_blocks()
+    result = await graph.create_graph(test_graph)
 
     # Assertions
     assert result.name == test_graph.name
     assert result.description == test_graph.description
     assert len(result.nodes) == len(test_graph.nodes)
 
-    return result
+    return test_graph
 
 
-def execute_agent(test_manager: ExecutionManager, test_graph: graph.Graph):
+async def execute_agent(test_manager: ExecutionManager, test_graph: graph.Graph):
     # --- Test adding new executions --- #
     text = "Hello, World!"
     input_data = {"input": text}
-    response = AgentServer.execute_agent(test_graph.id, input_data)
+    response = await AgentServer.execute_agent(test_graph.id, input_data)
     executions = response["executions"]
     run_id = response["run_id"]
     assert len(executions) == 2
 
-    def is_execution_completed():
-        execs = AgentServer.get_executions(test_graph.id, run_id)
+    async def is_execution_completed():
+        execs = await AgentServer.get_executions(test_graph.id, run_id)
         return test_manager.queue.empty() and len(execs) == 4
 
     # Wait for the executions to complete
     for i in range(10):
-        if is_execution_completed():
+        if await is_execution_completed():
             break
         time.sleep(1)
 
     # Execution queue should be empty
     assert is_execution_completed()
-    executions = AgentServer.get_executions(test_graph.id, run_id)
+    executions = await AgentServer.get_executions(test_graph.id, run_id)
 
     # Executing ParrotBlock1
     exec = executions[0]
@@ -109,8 +110,9 @@ def execute_agent(test_manager: ExecutionManager, test_graph: graph.Graph):
 
 def test_agent_execution():
     with PyroNameServer():
-        time.sleep(0.3)
-        db.connect()
-        test_graph = create_test_graph()
+        time.sleep(0.5)
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(db.connect())
+        test_graph = loop.run_until_complete(create_test_graph())
         with ExecutionManager(1) as test_manager:
-            execute_agent(test_manager, test_graph)
+            loop.run_until_complete(execute_agent(test_manager, test_graph))

@@ -5,7 +5,7 @@ from autogpt_server.util.service import AppService, expose
 
 class ExecutionScheduler(AppService):
 
-    def run(self):
+    def run_service(self):
         while True:
             time.sleep(1)  # This will be replaced with apscheduler executor.
 

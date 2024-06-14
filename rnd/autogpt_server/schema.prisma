@@ -6,7 +6,7 @@ datasource db {
 generator client {
   provider             = "prisma-client-py"
   recursive_type_depth = 5
-  interface            = "sync"
+  interface            = "asyncio"
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).

@@ -1,8 +1,9 @@
 import json
+import jsonschema
+
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar
 
-import jsonschema
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
@@ -229,17 +230,16 @@ class PrintingBlock(Block):
 AVAILABLE_BLOCKS: dict[str, Block] = {}
 
 
-def initialize_blocks() -> None:
+async def initialize_blocks() -> None:
     global AVAILABLE_BLOCKS
 
     AVAILABLE_BLOCKS = {block.id: block() for block in Block.__subclasses__()}
 
     for block in AVAILABLE_BLOCKS.values():
-        existing_block = AgentBlock.prisma().find_unique(where={"id": block.id})
-        if existing_block:
+        if await AgentBlock.prisma().find_unique(where={"id": block.id}):
             continue
 
-        AgentBlock.prisma().create(
+        await AgentBlock.prisma().create(
             data={
                 "id": block.id,
                 "name": block.name,
@@ -249,13 +249,13 @@ def initialize_blocks() -> None:
         )
 
 
-def get_blocks() -> list[Block]:
+async def get_blocks() -> list[Block]:
     if not AVAILABLE_BLOCKS:
-        initialize_blocks()
+        await initialize_blocks()
     return list(AVAILABLE_BLOCKS.values())
 
 
-def get_block(block_id: str) -> Block:
+async def get_block(block_id: str) -> Block | None:
     if not AVAILABLE_BLOCKS:
-        initialize_blocks()
-    return AVAILABLE_BLOCKS[block_id]
+        await initialize_blocks()
+    return AVAILABLE_BLOCKS.get(block_id)

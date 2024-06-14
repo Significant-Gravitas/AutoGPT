@@ -10,9 +10,8 @@ from autogpt_server.util.service import (
 
 class TestService(AppService):
 
-    def run(self):
-        while True:
-            pass  # does nothing
+    def run_service(self):
+        super().run_service()
 
     @expose
     def add(self, a: int, b: int) -> int:
@@ -22,12 +21,19 @@ class TestService(AppService):
     def subtract(self, a: int, b: int) -> int:
         return a - b
 
+    @expose
+    def fun_with_async(self, a: int, b: int) -> int:
+        async def add_async(a: int, b: int) -> int:
+            return a + b
+        return self.run_and_wait(add_async(a, b))
+
 
 def test_service_creation():
     print("Starting TestService...")
     with PyroNameServer():
-        time.sleep(0.3)
+        time.sleep(0.5)
         with TestService():
             client = get_service_client(TestService)
             assert client.add(5, 3) == 8
             assert client.subtract(10, 4) == 6
+            assert client.fun_with_async(5, 3) == 8

@@ -1,12 +1,16 @@
+import time
+import asyncio
 import logging
 import threading
+
 from abc import abstractmethod
-from typing import Any, Callable, Type, TypeVar, cast
+from typing import Any, Callable, Type, TypeVar, cast, Coroutine
 
 from Pyro5 import api as pyro
 from Pyro5 import nameserver
 from tenacity import retry, stop_after_delay, wait_exponential
 
+from autogpt_server.data import db
 from autogpt_server.util.process import AppProcess
 
 logger = logging.getLogger(__name__)
@@ -20,17 +24,46 @@ class PyroNameServer(AppProcess):
 
 
 class AppService(AppProcess):
+
+    shared_event_loop: asyncio.AbstractEventLoop
+
     @classmethod
     @property
     def service_name(cls) -> str:
         return cls.__name__
 
     @abstractmethod
+    def run_service(self):
+        while True:
+            time.sleep(10)
+
+    def run_async(self, coro: Coroutine):
+        return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop)
+
+    def run_and_wait(self, coro: Coroutine):
+        future = self.run_async(coro)
+        return future.result()
+
     def run(self):
-        pass
+        # Initialize the async loop.
+        self.shared_event_loop = asyncio.new_event_loop()
+        async_thread = threading.Thread(target=self.__start_async_loop)
+        async_thread.daemon = True
+        async_thread.start()
+
+        # Initialize DB connection
+        asyncio.run_coroutine_threadsafe(db.connect(), self.shared_event_loop).result()
+
+        # Initialize pyro service
+        daemon_thread = threading.Thread(target=self.__start_pyro)
+        daemon_thread.daemon = True
+        daemon_thread.start()
+
+        # Run the main service (if it's not implemented, just sleep).
+        self.run_service()
 
     @conn_retry
-    def start_pyro(self):
+    def __start_pyro(self):
         daemon = pyro.Daemon()
         ns = pyro.locate_ns()
         uri = daemon.register(self)
@@ -38,11 +71,9 @@ class AppService(AppProcess):
         logger.warning(f"Service [{self.service_name}] Ready. Object URI = {uri}")
         daemon.requestLoop()
 
-    def execute_run_command(self, *args, **kwargs):
-        daemon_thread = threading.Thread(target=self.start_pyro)
-        daemon_thread.daemon = True
-        daemon_thread.start()
-        super().execute_run_command(*args, **kwargs)
+    def __start_async_loop(self):
+        asyncio.set_event_loop(self.shared_event_loop)
+        self.shared_event_loop.run_forever()
 
 
 T = TypeVar("T", bound=AppService)

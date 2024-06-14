@@ -75,8 +75,8 @@ class ExecutionResult(BaseDbModel):
 # --------------------- Model functions --------------------- #
 
 
-def enqueue_execution(execution: Execution) -> None:
-    AgentNodeExecution.prisma().create(
+async def enqueue_execution(execution: Execution) -> None:
+    await AgentNodeExecution.prisma().create(
         data={
             "id": execution.id,
             "executionId": execution.run_id,
@@ -88,8 +88,8 @@ def enqueue_execution(execution: Execution) -> None:
     )
 
 
-def start_execution(exec_id: str) -> None:
-    AgentNodeExecution.prisma().update(
+async def start_execution(exec_id: str) -> None:
+    await AgentNodeExecution.prisma().update(
         where={"id": exec_id},
         data={
             "executionStatus": ExecutionStatus.RUNNING,
@@ -98,10 +98,10 @@ def start_execution(exec_id: str) -> None:
     )
 
 
-def complete_execution(exec_id: str, output: tuple[str, Any]) -> None:
+async def complete_execution(exec_id: str, output: tuple[str, Any]) -> None:
     output_name, output_data = output
 
-    AgentNodeExecution.prisma().update(
+    await AgentNodeExecution.prisma().update(
         where={"id": exec_id},
         data={
             "executionStatus": ExecutionStatus.COMPLETED,
@@ -112,8 +112,8 @@ def complete_execution(exec_id: str, output: tuple[str, Any]) -> None:
     )
 
 
-def fail_execution(exec_id: str, error: Exception) -> None:
-    AgentNodeExecution.prisma().update(
+async def fail_execution(exec_id: str, error: Exception) -> None:
+    await AgentNodeExecution.prisma().update(
         where={"id": exec_id},
         data={
             "executionStatus": ExecutionStatus.FAILED,
@@ -124,9 +124,12 @@ def fail_execution(exec_id: str, error: Exception) -> None:
     )
 
 
-def get_executions(run_id: str) -> list[ExecutionResult]:
-    executions = AgentNodeExecution.prisma().find_many(
+async def get_executions(run_id: str) -> list[ExecutionResult]:
+    executions = await AgentNodeExecution.prisma().find_many(
         where={"executionId": run_id},
         order={"startTime": "asc"},
     )
-    return [ExecutionResult.from_db(execution) for execution in executions]
+    res = [ExecutionResult.from_db(execution) for execution in executions]
+    for execution in res:
+        print(execution.node_id, ' : ', execution.input_data, ' ', execution.output_data)
+    return res

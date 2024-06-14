@@ -70,31 +70,36 @@ class AgentServer(AppProcess):
         uvicorn.run(app)
         
     @staticmethod
-    def get_agent_blocks() -> list[dict]:
-        return [v.to_dict() for v in block.get_blocks()]
+    async def get_agent_blocks() -> list[dict]:
+        return [v.to_dict() for v in await block.get_blocks()]
         
     @staticmethod
-    def get_agents() -> list[str]:
-        return graph.get_graphs()
+    async def get_agents() -> list[str]:
+        return await graph.get_graphs()
 
     @staticmethod
-    def get_agent(agent_id: str) -> graph.Graph:
-        agent = graph.get_graph(agent_id)
+    async def get_agent(agent_id: str) -> graph.Graph:
+        agent = await graph.get_graph(agent_id)
         if not agent:
             raise HTTPException(status_code=404, detail=f"Agent #{agent_id} not found.")
 
         return agent
 
     @staticmethod
-    def create_agent(agent: graph.Graph) -> graph.Graph:
-        agent.set_new_id()
+    async def create_agent(agent: graph.Graph) -> graph.Graph:
+        agent.id = str(uuid.uuid4())
+
+        id_map = {node.id: str(uuid.uuid4()) for node in agent.nodes}
         for node in agent.nodes:
-            node.set_new_id()
-        return graph.create_graph(agent)
+            node.id = id_map[node.id]
+            node.input_nodes = {k: id_map[v] for k, v in node.input_nodes.items()}
+            node.output_nodes = {k: id_map[v] for k, v in node.output_nodes.items()}
+
+        return await graph.create_graph(agent)
 
     @staticmethod
-    def execute_agent(agent_id: str, node_input: dict) -> dict:
-        agent = graph.get_graph(agent_id)
+    async def execute_agent(agent_id: str, node_input: dict) -> dict:
+        agent = await graph.get_graph(agent_id)
         if not agent:
             raise HTTPException(status_code=404, detail=f"Agent #{agent_id} not found.")
 
@@ -104,7 +109,7 @@ class AgentServer(AppProcess):
 
         # Currently, there is no constraint on the number of root nodes in the graph.
         for node in agent.starting_nodes:
-            node_block = node.block
+            node_block = await block.get_block(node.block_id)
             if error := node_block.input_schema.validate_data(node_input):
                 raise HTTPException(
                     status_code=400,
@@ -125,12 +130,15 @@ class AgentServer(AppProcess):
         }
 
     @staticmethod
-    def get_executions(agent_id: str, run_id: str) -> list[execution.ExecutionResult]:
-        agent = graph.get_graph(agent_id)
+    async def get_executions(
+        agent_id: str,
+        run_id: str
+    ) -> list[execution.ExecutionResult]:
+        agent = await graph.get_graph(agent_id)
         if not agent:
             raise HTTPException(status_code=404, detail=f"Agent #{agent_id} not found.")
 
-        return execution.get_executions(run_id)
+        return await execution.get_executions(run_id)
 
     @staticmethod
     def schedule_agent(agent_id: str, cron: str, input_data: dict) -> dict:
