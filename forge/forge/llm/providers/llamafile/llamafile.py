@@ -117,23 +117,6 @@ class LlamafileProvider(
         # may support multiple models, so leaving this method as-is for now.
         self._logger.debug(f"Retrieved models: {_models}")
 
-        # Clean up model names:
-        # 1. Remove file extension
-        # 2. Remove quantization info
-        # e.g. 'mistral-7b-instruct-v0.2.Q5_K_M.gguf'
-        #   -> 'mistral-7b-instruct-v0.2'
-        # e.g. '/Users/kate/models/mistral-7b-instruct-v0.2.Q5_K_M.gguf'
-        #   ->                    'mistral-7b-instruct-v0.2'
-        # e.g. 'llava-v1.5-7b-q4.gguf'
-        #   -> 'llava-v1.5-7b'
-        def clean_model_name(model_file: str) -> str:
-            name_without_ext = Path(model_file).name.rsplit(".", 1)[0]
-            name_without_Q = re.match(
-                r"^[a-zA-Z0-9]+([.\-](?!([qQ]|B?F)\d{1,2})[a-zA-Z0-9]+)*",
-                name_without_ext,
-            )
-            return name_without_Q.group() if name_without_Q else name_without_ext
-
         clean_model_ids = [clean_model_name(m.id) for m in _models]
         self._logger.debug(f"Cleaned model IDs: {clean_model_ids}")
 
@@ -286,6 +269,32 @@ class LlamafileProvider(
                 parse_errors.append(e)
 
         return tool_calls, parse_errors
+
+
+def clean_model_name(model_file: str) -> str:
+    """
+    Clean up model names:
+    1. Remove file extension
+    2. Remove quantization info
+
+    Examples:
+    ```
+    raw:   'mistral-7b-instruct-v0.2.Q5_K_M.gguf'
+    clean: 'mistral-7b-instruct-v0.2'
+
+    raw: '/Users/kate/models/mistral-7b-instruct-v0.2.Q5_K_M.gguf'
+    clean:                  'mistral-7b-instruct-v0.2'
+
+    raw:   'llava-v1.5-7b-q4.gguf'
+    clean: 'llava-v1.5-7b'
+    ```
+    """
+    name_without_ext = Path(model_file).name.rsplit(".", 1)[0]
+    name_without_Q = re.match(
+        r"^[a-zA-Z0-9]+([.\-](?!([qQ]|B?F)\d{1,2})[a-zA-Z0-9]+)*",
+        name_without_ext,
+    )
+    return name_without_Q.group() if name_without_Q else name_without_ext
 
 
 def _tool_calls_compat_extract_calls(response: str) -> Iterator[AssistantToolCall]:
