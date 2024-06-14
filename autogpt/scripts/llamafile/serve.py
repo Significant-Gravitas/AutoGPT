@@ -83,16 +83,16 @@ def main(llamafile: Optional[Path] = None, llamafile_url: Optional[str] = None):
             subprocess.run([llamafile, "--version"], check=True)
 
     if platform.system() != "Windows":
-        base_command = [llamafile]
+        base_command = [f"./{llamafile}" if len(llamafile.parts) == 1 else llamafile]
     else:
         # Windows does not allow executables over 4GB, so we have to download a
         # model-less llamafile.exe and run that instead.
         if not LLAMAFILE_EXE.is_file():
             download_file(LLAMAFILE_EXE_URL, LLAMAFILE_EXE)
             LLAMAFILE_EXE.chmod(0o755)
-            subprocess.run([LLAMAFILE_EXE, "--version"], check=True)
+            subprocess.run([f".\\{LLAMAFILE_EXE}", "--version"], check=True)
 
-        base_command = [LLAMAFILE_EXE, "-m", llamafile]
+        base_command = [f".\\{LLAMAFILE_EXE}", "-m", llamafile]
 
     subprocess.run(
         [
