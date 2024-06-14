@@ -25,7 +25,7 @@ LLAMAFILE_EXE_URL = "https://github.com/Mozilla-Ocho/llamafile/releases/download
 @click.option(
     "--llamafile",
     type=click.Path(dir_okay=False),
-    help="Name of the llamafile to serve",
+    help=f"Name of the llamafile to serve. Default: {LLAMAFILE.name}",
 )
 @click.option("--llamafile_url", help="Download URL for the llamafile you want to use")
 def main(llamafile: Optional[Path] = None, llamafile_url: Optional[str] = None):
@@ -35,12 +35,16 @@ def main(llamafile: Optional[Path] = None, llamafile_url: Optional[str] = None):
         else:
             llamafile = Path(llamafile_url.rsplit("/", 1)[1])
             if llamafile.suffix != ".llamafile":
-                if not click.prompt(
-                    "The given URL does not end with '.llamafile'. "
-                    "Are you 100%% sure this URL will download a llamafile?",
-                    type=bool,
-                ):
-                    return
+                click.echo(
+                    click.style(
+                        "The given URL does not end with '.llamafile' -> "
+                        "can't get filename from URL. "
+                        "Specify the filename using --llamafile.",
+                        fg="red",
+                    ),
+                    err=True,
+                )
+                return
 
     if llamafile == LLAMAFILE and not llamafile_url:
         llamafile_url = LLAMAFILE_URL
@@ -77,12 +81,6 @@ def main(llamafile: Optional[Path] = None, llamafile_url: Optional[str] = None):
         if platform.system() != "Windows":
             llamafile.chmod(0o755)
             subprocess.run([llamafile, "--version"], check=True)
-
-        print(
-            "\n"
-            "NOTE: To use other models besides mistral-7b-instruct-v0.2, "
-            "download them into autogpt/scripts/llamafile/"
-        )
 
     if platform.system() != "Windows":
         base_command = [llamafile]
