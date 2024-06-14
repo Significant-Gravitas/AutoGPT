@@ -21,6 +21,7 @@ ruff = "^0.4.8"
 flake8 = "^7.0.0"
 jsonschema = "^4.22.0"
 psutil = "^5.9.8"
+openai = "^1.34.0"
 
 
 [tool.poetry.group.dev.dependencies]
