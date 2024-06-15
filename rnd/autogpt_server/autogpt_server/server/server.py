@@ -1,6 +1,7 @@
 import uuid
-
 import uvicorn
+
+from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI, HTTPException
 
 from autogpt_server.data import db, execution, graph, block
@@ -10,6 +11,13 @@ from autogpt_server.util.service import get_service_client
 
 
 class AgentServer(AppProcess):
+
+    @asynccontextmanager
+    async def lifespan(self, _: FastAPI):
+        await db.connect()
+        yield
+        await db.disconnect()
+
     def run(self):
         app = FastAPI(
             title="AutoGPT Agent Server",
@@ -19,6 +27,7 @@ class AgentServer(AppProcess):
             ),
             summary="AutoGPT Agent Server",
             version="0.1",
+            lifespan=self.lifespan,
         )
 
         # Define the API routes
@@ -65,14 +74,12 @@ class AgentServer(AppProcess):
         )
 
         app.include_router(router)
-        app.on_event("startup")(db.connect)
-        app.on_event("shutdown")(db.disconnect)
         uvicorn.run(app, host="0.0.0.0", port=8000)
-        
+
     @staticmethod
     async def get_agent_blocks() -> list[dict]:
         return [v.to_dict() for v in await block.get_blocks()]
-        
+
     @staticmethod
     async def get_agents() -> list[str]:
         return await graph.get_graphs()
@@ -136,8 +143,8 @@ class AgentServer(AppProcess):
 
     @staticmethod
     async def get_executions(
-        agent_id: str,
-        run_id: str
+            agent_id: str,
+            run_id: str
     ) -> list[execution.ExecutionResult]:
         agent = await graph.get_graph(agent_id)
         if not agent:

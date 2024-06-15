@@ -64,7 +64,7 @@ def execute_agent(test_manager: ExecutionManager, test_graph: graph.Graph, wait_
         time.sleep(1)
 
     # Execution queue should be empty
-    assert is_execution_completed()
+    assert wait_db(is_execution_completed())
     executions = wait_db(AgentServer.get_executions(test_graph.id, run_id))
 
     # Executing ParrotBlock1
@@ -112,7 +112,7 @@ def test_agent_execution():
     with PyroNameServer():
         time.sleep(0.5)
         with ExecutionManager(1) as test_manager:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.new_event_loop()
             wait = loop.run_until_complete
             
             wait(db.connect())
