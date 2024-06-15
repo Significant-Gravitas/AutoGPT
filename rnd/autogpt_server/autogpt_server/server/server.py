@@ -67,7 +67,7 @@ class AgentServer(AppProcess):
         app.include_router(router)
         app.on_event("startup")(db.connect)
         app.on_event("shutdown")(db.disconnect)
-        uvicorn.run(app)
+        uvicorn.run(app, host="0.0.0.0", port=8000)
         
     @staticmethod
     async def get_agent_blocks() -> list[dict]:
@@ -110,6 +110,11 @@ class AgentServer(AppProcess):
         # Currently, there is no constraint on the number of root nodes in the graph.
         for node in agent.starting_nodes:
             node_block = await block.get_block(node.block_id)
+            if not node_block:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Block #{node.block_id} not found.",
+                )
             if error := node_block.input_schema.validate_data(node_input):
                 raise HTTPException(
                     status_code=400,

@@ -20,7 +20,11 @@ expose = pyro.expose
 
 class PyroNameServer(AppProcess):
     def run(self):
-        nameserver.start_ns_loop()
+        try:
+            print("Starting NameServer loop")
+            nameserver.start_ns_loop()
+        except KeyboardInterrupt:
+            print("Shutting down NameServer")
 
 
 class AppService(AppProcess):
@@ -45,14 +49,13 @@ class AppService(AppProcess):
         return future.result()
 
     def run(self):
+        self.shared_event_loop = asyncio.get_event_loop()
+        self.shared_event_loop.run_until_complete(db.connect())
+
         # Initialize the async loop.
-        self.shared_event_loop = asyncio.new_event_loop()
         async_thread = threading.Thread(target=self.__start_async_loop)
         async_thread.daemon = True
         async_thread.start()
-
-        # Initialize DB connection
-        asyncio.run_coroutine_threadsafe(db.connect(), self.shared_event_loop).result()
 
         # Initialize pyro service
         daemon_thread = threading.Thread(target=self.__start_pyro)
@@ -72,7 +75,7 @@ class AppService(AppProcess):
         daemon.requestLoop()
 
     def __start_async_loop(self):
-        asyncio.set_event_loop(self.shared_event_loop)
+        # asyncio.set_event_loop(self.shared_event_loop)
         self.shared_event_loop.run_forever()
 
 

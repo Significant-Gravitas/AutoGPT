@@ -130,6 +130,4 @@ async def get_executions(run_id: str) -> list[ExecutionResult]:
         order={"startTime": "asc"},
     )
     res = [ExecutionResult.from_db(execution) for execution in executions]
-    for execution in res:
-        print(execution.node_id, ' : ', execution.input_data, ' ', execution.output_data)
     return res

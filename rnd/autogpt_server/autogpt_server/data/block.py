@@ -221,7 +221,6 @@ class PrintingBlock(Block):
     )
 
     def run(self, input_data: BlockData) -> tuple[str, Any]:
-        print(input_data["text"])
         return "status", "printed"
 
 

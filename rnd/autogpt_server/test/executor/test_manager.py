@@ -44,11 +44,11 @@ async def create_test_graph() -> graph.Graph:
     return test_graph
 
 
-async def execute_agent(test_manager: ExecutionManager, test_graph: graph.Graph):
+def execute_agent(test_manager: ExecutionManager, test_graph: graph.Graph, wait_db):
     # --- Test adding new executions --- #
     text = "Hello, World!"
     input_data = {"input": text}
-    response = await AgentServer.execute_agent(test_graph.id, input_data)
+    response = wait_db(AgentServer.execute_agent(test_graph.id, input_data))
     executions = response["executions"]
     run_id = response["run_id"]
     assert len(executions) == 2
@@ -59,13 +59,13 @@ async def execute_agent(test_manager: ExecutionManager, test_graph: graph.Graph)
 
     # Wait for the executions to complete
     for i in range(10):
-        if await is_execution_completed():
+        if wait_db(is_execution_completed()):
             break
         time.sleep(1)
 
     # Execution queue should be empty
     assert is_execution_completed()
-    executions = await AgentServer.get_executions(test_graph.id, run_id)
+    executions = wait_db(AgentServer.get_executions(test_graph.id, run_id))
 
     # Executing ParrotBlock1
     exec = executions[0]
@@ -111,8 +111,11 @@ async def execute_agent(test_manager: ExecutionManager, test_graph: graph.Graph)
 def test_agent_execution():
     with PyroNameServer():
         time.sleep(0.5)
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(db.connect())
-        test_graph = loop.run_until_complete(create_test_graph())
         with ExecutionManager(1) as test_manager:
-            loop.run_until_complete(execute_agent(test_manager, test_graph))
+            loop = asyncio.get_event_loop()
+            wait = loop.run_until_complete
+            
+            wait(db.connect())
+            test_graph = wait(create_test_graph())
+    
+            execute_agent(test_manager, test_graph, wait)

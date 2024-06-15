@@ -29,7 +29,6 @@ class TestService(AppService):
 
 
 def test_service_creation():
-    print("Starting TestService...")
     with PyroNameServer():
         time.sleep(0.5)
         with TestService():
