@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class FileManagerConfiguration(BaseModel):
-    resources_path: str
+    storage_path: str
     """Path to agent files, e.g. state"""
     workspace_path: str
     """Path to files that agent has access to"""
@@ -36,16 +36,7 @@ class FileManagerComponent(
     workspace manager (e.g. Agent output files) support and
     commands to perform operations on files and folders.
     """
-
     config_class = FileManagerConfiguration
-
-    files: FileStorage
-    """Agent-related files, e.g. state, logs.
-    Use `workspace` to access the agent's workspace files."""
-
-    workspace: FileStorage
-    """Workspace that the agent has access to, e.g. for reading/writing files.
-    Use `files` to access agent-related files, e.g. state, logs."""
 
     STATE_FILE = "state.json"
     """The name of the file where the agent's state is stored."""
@@ -71,19 +62,23 @@ class FileManagerComponent(
         self.agent_state = agent_state
 
         if not config:
-            files_path = f"agents/{self.agent_state.agent_id}/"
+            storage_path = f"agents/{self.agent_state.agent_id}/"
             workspace_path = f"agents/{self.agent_state.agent_id}/workspace"
             ConfigurableComponent.__init__(
                 self,
                 FileManagerConfiguration(
-                    resources_path=files_path, workspace_path=workspace_path
+                    storage_path=storage_path, workspace_path=workspace_path
                 ),
             )
         else:
             ConfigurableComponent.__init__(self, config)
 
-        self.files = file_storage.clone_with_subroot(self.config.resources_path)
+        self.storage = file_storage.clone_with_subroot(self.config.storage_path)
+        """Agent-related files, e.g. state, logs.
+        Use `workspace` to access the agent's workspace files."""
         self.workspace = file_storage.clone_with_subroot(self.config.workspace_path)
+        """Workspace that the agent has access to, e.g. for reading/writing files.
+        Use `storage` to access agent-related files, e.g. state, logs."""
         self._file_storage = file_storage
 
     async def save_state(self, save_as_id: Optional[str] = None) -> None:
@@ -100,8 +95,8 @@ class FileManagerComponent(
                 f"agents/{save_as_id}/workspace",
             )
         else:
-            await self.files.write_file(
-                self.files.root / self.STATE_FILE, self.agent_state.json()
+            await self.storage.write_file(
+                self.storage.root / self.STATE_FILE, self.agent_state.json()
             )
 
     def get_resources(self) -> Iterator[str]:
