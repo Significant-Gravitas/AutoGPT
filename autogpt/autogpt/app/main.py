@@ -36,7 +36,7 @@ from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
 from autogpt.app.config import (
     AppConfig,
     ConfigBuilder,
-    assert_config_has_openai_api_key,
+    assert_config_has_required_llm_api_keys,
 )
 
 if TYPE_CHECKING:
@@ -100,8 +100,7 @@ async def run_auto_gpt(
         tts_config=config.tts_config,
     )
 
-    # TODO: fill in llm values here
-    assert_config_has_openai_api_key(config)
+    await assert_config_has_required_llm_api_keys(config)
 
     await apply_overrides_to_config(
         config=config,
@@ -383,8 +382,7 @@ async def run_auto_gpt_server(
         tts_config=config.tts_config,
     )
 
-    # TODO: fill in llm values here
-    assert_config_has_openai_api_key(config)
+    await assert_config_has_required_llm_api_keys(config)
 
     await apply_overrides_to_config(
         config=config,

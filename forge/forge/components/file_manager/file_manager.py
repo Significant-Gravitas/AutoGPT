@@ -36,6 +36,7 @@ class FileManagerComponent(
     workspace manager (e.g. Agent output files) support and
     commands to perform operations on files and folders.
     """
+
     config_class = FileManagerConfiguration
 
     STATE_FILE = "state.json"

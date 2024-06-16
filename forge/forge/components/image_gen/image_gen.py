@@ -26,7 +26,9 @@ logger = logging.getLogger(__name__)
 class ImageGeneratorConfiguration(BaseModel):
     image_provider: Literal["dalle", "huggingface", "sdwebui"] = "dalle"
     huggingface_image_model: str = "CompVis/stable-diffusion-v1-4"
-    huggingface_api_token: Optional[SecretStr] = UserConfigurable(from_env="HUGGINGFACE_API_TOKEN")
+    huggingface_api_token: Optional[SecretStr] = UserConfigurable(
+        from_env="HUGGINGFACE_API_TOKEN"
+    )
     sd_webui_url: str = "http://localhost:7860"
     sd_webui_auth: Optional[SecretStr] = UserConfigurable(from_env="SD_WEBUI_AUTH")
 
