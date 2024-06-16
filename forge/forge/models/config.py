@@ -10,10 +10,6 @@ T = TypeVar("T")
 M = TypeVar("M", bound=BaseModel)
 
 
-def FromEnv(env_var: str, default: Optional[str] = None, exclude: bool = True):
-    return Field(default_factory=lambda: os.getenv(env_var, default), exclude=exclude)
-
-
 def UserConfigurable(
     default: T | UndefinedType = Undefined,
     *args,

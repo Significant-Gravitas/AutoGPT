@@ -17,7 +17,7 @@ from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
 from forge.file_storage import FileStorage
 from forge.llm.providers.openai import OpenAICredentials
-from forge.models.config import FromEnv
+from forge.models.config import UserConfigurable
 from forge.models.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)
@@ -26,9 +26,9 @@ logger = logging.getLogger(__name__)
 class ImageGeneratorConfiguration(BaseModel):
     image_provider: Literal["dalle", "huggingface", "sdwebui"] = "dalle"
     huggingface_image_model: str = "CompVis/stable-diffusion-v1-4"
-    huggingface_api_token: Optional[SecretStr] = FromEnv("HUGGINGFACE_API_TOKEN")
+    huggingface_api_token: Optional[SecretStr] = UserConfigurable(from_env="HUGGINGFACE_API_TOKEN")
     sd_webui_url: str = "http://localhost:7860"
-    sd_webui_auth: Optional[SecretStr] = FromEnv("SD_WEBUI_AUTH")
+    sd_webui_auth: Optional[SecretStr] = UserConfigurable(from_env="SD_WEBUI_AUTH")
 
 
 class ImageGeneratorComponent(

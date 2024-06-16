@@ -5,6 +5,8 @@ from typing import Callable, ClassVar, Generic, Optional, TypeVar
 
 from pydantic import BaseModel
 
+from forge.models.config import _update_user_config_from_env, deep_update
+
 AC = TypeVar("AC", bound="AgentComponent")
 BM = TypeVar("BM", bound=BaseModel)
 
@@ -41,8 +43,10 @@ class ConfigurableComponent(ABC, Generic[BM]):
 
     config_class: ClassVar[type[BM]]  # type: ignore
 
-    def __init__(self, config: Optional[BM]):
-        self._config: Optional[BM] = config
+    def __init__(self, configuration: Optional[BM]):
+        self._config: Optional[BM] = None
+        if configuration is not None:
+            self.config = configuration
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -55,11 +59,15 @@ class ConfigurableComponent(ABC, Generic[BM]):
     @property
     def config(self) -> BM:
         if not hasattr(self, "_config") or self._config is None:
-            self._config = self.config_class()
+            self.config = self.config_class()
         return self._config  # type: ignore
 
     @config.setter
     def config(self, config: BM):
+        if not hasattr(self, "_config") or self._config is None:
+            # Load configuration from environment variables
+            updated = _update_user_config_from_env(config)
+            config = self.config_class(**deep_update(config.dict(), updated))
         self._config = config
 
 

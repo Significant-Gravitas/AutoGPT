@@ -9,7 +9,7 @@ from pydantic import BaseModel, SecretStr
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
-from forge.models.config import FromEnv
+from forge.models.config import UserConfigurable
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import ConfigurationError
 
@@ -17,9 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 class WebSearchConfiguration(BaseModel):
-    google_api_key: Optional[SecretStr] = FromEnv("GOOGLE_API_KEY")
-    google_custom_search_engine_id: Optional[SecretStr] = FromEnv(
-        "GOOGLE_CUSTOM_SEARCH_ENGINE_ID"
+    google_api_key: Optional[SecretStr] = UserConfigurable(from_env="GOOGLE_API_KEY")
+    google_custom_search_engine_id: Optional[SecretStr] = UserConfigurable(
+        from_env="GOOGLE_CUSTOM_SEARCH_ENGINE_ID"
     )
     duckduckgo_max_attempts: int = 3
 
