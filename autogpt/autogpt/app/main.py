@@ -510,22 +510,25 @@ async def run_interaction_loop(
         ########
         handle_stop_signal()
         # Have the agent determine the next action to take.
-        with spinner:
-            try:
-                action_proposal = await agent.propose_action()
-            except InvalidAgentResponseError as e:
-                logger.warning(f"The agent's thoughts could not be parsed: {e}")
-                consecutive_failures += 1
-                if consecutive_failures >= 3:
-                    logger.error(
-                        "The agent failed to output valid thoughts"
-                        f" {consecutive_failures} times in a row. Terminating..."
-                    )
-                    raise AgentTerminated(
-                        "The agent failed to output valid thoughts"
-                        f" {consecutive_failures} times in a row."
-                    )
-                continue
+        if not (_ep := agent.event_history.current_episode) or _ep.result:
+            with spinner:
+                try:
+                    action_proposal = await agent.propose_action()
+                except InvalidAgentResponseError as e:
+                    logger.warning(f"The agent's thoughts could not be parsed: {e}")
+                    consecutive_failures += 1
+                    if consecutive_failures >= 3:
+                        logger.error(
+                            "The agent failed to output valid thoughts"
+                            f" {consecutive_failures} times in a row. Terminating..."
+                        )
+                        raise AgentTerminated(
+                            "The agent failed to output valid thoughts"
+                            f" {consecutive_failures} times in a row."
+                        )
+                    continue
+        else:
+            action_proposal = _ep.action
 
         consecutive_failures = 0
 
