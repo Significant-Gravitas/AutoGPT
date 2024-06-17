@@ -1,11 +1,11 @@
-import os
-import click
-from httpx import post
-import pydantic
-from openai import OpenAI
-import praw
 import datetime
+import os
+
+import click
+import praw
+import pydantic
 from dotenv import load_dotenv
+from openai import OpenAI
 
 load_dotenv()
 
