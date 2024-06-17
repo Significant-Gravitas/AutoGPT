@@ -118,7 +118,7 @@ for agent_dir in os.listdir(base_dir):
 
                 if os.path.exists(report_path):
                     # Load the JSON data from the file
-                    with open(report_path, "r") as f:
+                    with open(report_path, "r", encoding="utf-8") as f:
                         data = json.load(f)
                     benchmark_start_time = data.get("benchmark_start_time", "")
 

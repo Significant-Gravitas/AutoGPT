@@ -296,7 +296,7 @@ def benchmark_categories_list():
     # Use it as the base for the glob pattern, excluding 'deprecated' directory
     for data_file in glob.glob(glob_path, recursive=True):
         if "deprecated" not in data_file:
-            with open(data_file, "r") as f:
+            with open(data_file, "r", encoding="utf-8") as f:
                 try:
                     data = json.load(f)
                     categories.update(data.get("category", []))
@@ -340,7 +340,7 @@ def benchmark_tests_list():
     # Use it as the base for the glob pattern, excluding 'deprecated' directory
     for data_file in glob.glob(glob_path, recursive=True):
         if "deprecated" not in data_file:
-            with open(data_file, "r") as f:
+            with open(data_file, "r", encoding="utf-8") as f:
                 try:
                     data = json.load(f)
                     category = data.get("category", [])
@@ -389,7 +389,7 @@ def benchmark_tests_details(test_name):
     )
     # Use it as the base for the glob pattern, excluding 'deprecated' directory
     for data_file in glob.glob(glob_path, recursive=True):
-        with open(data_file, "r") as f:
+        with open(data_file, "r", encoding="utf-8") as f:
             try:
                 data = json.load(f)
                 if data.get("name") == test_name:

@@ -143,7 +143,7 @@ def run(
     exit_code = None
 
     if backend:
-        with open("backend/backend_stdout.txt", "w") as f:
+        with open("backend/backend_stdout.txt", "w", encoding="utf-8") as f:
             sys.stdout = f
             exit_code = run_benchmark(
                 config=agbenchmark_config,

@@ -32,7 +32,7 @@ from .base import BaseChallenge, ChallengeInfo
 
 logger = logging.getLogger(__name__)
 
-with open(Path(__file__).parent / "optional_categories.json") as f:
+with open(Path(__file__).parent / "optional_categories.json", encoding="utf-8") as f:
     OPTIONAL_CATEGORIES: list[str] = json.load(f)["optional_categories"]
 
 
@@ -307,30 +307,30 @@ class BuiltinChallenge(BaseChallenge):
                 # Otherwise, it is a specific file
                 matching_files = [os.path.join(script_dir, file_pattern)]
 
-            logger.debug(
-                f"Files to evaluate for pattern `{file_pattern}`: {matching_files}"
-            )
+        logger.debug(
+            f"Files to evaluate for pattern `{file_pattern}`: {matching_files}"
+        )
 
-            for file_path in matching_files:
-                relative_file_path = Path(file_path).relative_to(workspace)
-                logger.debug(
-                    f"Evaluating {relative_file_path} "
-                    f"(eval type: {ground.eval.type})..."
+        for file_path in matching_files:
+            relative_file_path = Path(file_path).relative_to(workspace)
+            logger.debug(
+                f"Evaluating {relative_file_path} "
+                f"(eval type: {ground.eval.type})..."
+            )
+            if ground.eval.type == "python":
+                result = subprocess.run(
+                    [sys.executable, file_path],
+                    cwd=os.path.abspath(workspace),
+                    capture_output=True,
+                    text=True,
                 )
-                if ground.eval.type == "python":
-                    result = subprocess.run(
-                        [sys.executable, file_path],
-                        cwd=os.path.abspath(workspace),
-                        capture_output=True,
-                        text=True,
-                    )
-                    if "error" in result.stderr or result.returncode != 0:
-                        yield relative_file_path, f"Error: {result.stderr}\n"
-                    else:
-                        yield relative_file_path, f"Output: {result.stdout}\n"
+                if "error" in result.stderr or result.returncode != 0:
+                    yield relative_file_path, f"Error: {result.stderr}\n"
                 else:
-                    with open(file_path, "r") as f:
-                        yield relative_file_path, f.read()
+                    yield relative_file_path, f"Output: {result.stdout}\n"
+            else:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    yield relative_file_path, f.read()
         else:
             if ground.eval.type == "pytest":
                 result = subprocess.run(

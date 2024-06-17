@@ -260,7 +260,7 @@ class OpenAICredentials(ModelProviderCredentials):
         return kwargs
 
     def load_azure_config(self, config_file: Path) -> None:
-        with open(config_file) as file:
+        with open(config_file, 'r', encoding='utf-8') as file:
             config_params = yaml.load(file, Loader=yaml.SafeLoader) or {}
 
         try:

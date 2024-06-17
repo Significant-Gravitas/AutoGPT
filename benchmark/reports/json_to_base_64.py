@@ -2,7 +2,7 @@ import base64
 import json
 
 # Load JSON data from a file
-with open("secrets.json", "r") as f:
+with open("secrets.json", "r", encoding="utf-8") as f:
     data = json.load(f)
 
 # Convert the JSON object into a string
