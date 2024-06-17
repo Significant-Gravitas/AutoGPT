@@ -133,7 +133,11 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
                 ChatMessage.system(system_prompt),
                 ChatMessage.user(f'"""{task}"""'),
                 *messages,
-                final_instruction_msg,
+                *(
+                    [final_instruction_msg]
+                    if not any(m.role == "assistant" for m in messages)
+                    else []
+                ),
             ],
             prefill_response=response_prefill,
         )

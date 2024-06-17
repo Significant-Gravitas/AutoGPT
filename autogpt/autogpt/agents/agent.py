@@ -113,13 +113,17 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
 
         # Components
         self.system = SystemComponent()
-        self.history = ActionHistoryComponent(
-            settings.history,
-            self.send_token_limit,
-            lambda x: self.llm_provider.count_tokens(x, self.llm.name),
-            legacy_config,
-            llm_provider,
-        ).run_after(WatchdogComponent)
+        self.history = (
+            ActionHistoryComponent(
+                settings.history,
+                self.send_token_limit,
+                lambda x: self.llm_provider.count_tokens(x, self.llm.name),
+                legacy_config,
+                llm_provider,
+            )
+            .run_after(WatchdogComponent)
+            .run_after(SystemComponent)
+        )
         self.user_interaction = UserInteractionComponent(legacy_config)
         self.file_manager = FileManagerComponent(settings, file_storage)
         self.code_executor = CodeExecutorComponent(
