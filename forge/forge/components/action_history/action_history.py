@@ -32,7 +32,7 @@ class ActionHistoryComponent(MessageProvider, AfterParse[AnyProposal], AfterExec
 
     def get_messages(self) -> Iterator[ChatMessage]:
         messages: list[ChatMessage] = []
-        steps: list[str] = []
+        step_summaries: list[str] = []
         tokens: int = 0
         n_episodes = len(self.event_history.episodes)
 
@@ -60,15 +60,15 @@ class ActionHistoryComponent(MessageProvider, AfterParse[AnyProposal], AfterExec
                     break
                 tokens += step_tokens
 
-            steps.insert(0, step)
+            step_summaries.insert(0, step)
 
-        if steps:
-            step_summaries = "\n\n".join(steps)
+        if step_summaries:
+            step_summaries_fmt = "\n\n".join(step_summaries)
             yield ChatMessage.system(
                 f"## Progress on your Task so far\n"
                 "Here is a summary of the steps that you have executed so far, "
                 "use this as your consideration for determining the next action!\n"
-                f"{step_summaries}"
+                f"{step_summaries_fmt}"
             )
 
         yield from messages
