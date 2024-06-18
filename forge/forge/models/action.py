@@ -13,7 +13,7 @@ class ActionProposal(BaseModel):
     thoughts: str | ModelWithSummary
     use_tool: AssistantFunctionCall
 
-    raw_message: AssistantChatMessage
+    raw_message: AssistantChatMessage = None
 
 
 AnyProposal = TypeVar("AnyProposal", bound=ActionProposal)
