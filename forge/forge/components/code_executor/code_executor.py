@@ -81,6 +81,18 @@ class CodeExecutorComponent(
         ConfigurableComponent.__init__(self, config)
         self.workspace = workspace
 
+        # Change container name if it's empty or default to prevent different agents
+        # from using the same container
+        field_info = self.config.__fields__["docker_container_name"]
+        if (
+            not self.config.docker_container_name
+            or self.config.docker_container_name == field_info.default
+        ):
+            random_prefix = "".join(random.choices(string.ascii_lowercase, k=8))
+            self.config.docker_container_name = (
+                f"{random_prefix}_{self.config.docker_container_name}"
+            )
+
         if not we_are_running_in_a_docker_container() and not is_docker_available():
             logger.info(
                 "Docker is not available or does not support Linux containers. "

@@ -59,7 +59,8 @@ class MyComponent(AgentComponent, ConfigurableComponent[MyConfig]):
 
 ### Sensitive information
 
-While it's possible to pass sensitive data directly in code to the configuration it's recommended to use `UserConfigurable(from_env="ENV_VAR_NAME")` field for sensitive data like API keys. The data will be loaded from the environment variable (keep in mind that value passed in code takes precedence).
+While it's possible to pass sensitive data directly in code to the configuration it's recommended to use `UserConfigurable(from_env="ENV_VAR_NAME")` field for sensitive data like API keys.
+The data will be loaded from the environment variable (keep in mind that value passed in code takes precedence).
 
 ```py
 from pydantic import BaseModel, SecretStr
