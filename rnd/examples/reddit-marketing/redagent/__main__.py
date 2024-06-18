@@ -5,6 +5,7 @@ import click
 import praw
 import pydantic
 from dotenv import load_dotenv
+from jinja2 import Environment, FileSystemLoader
 from openai import OpenAI
 
 load_dotenv()
@@ -38,7 +39,9 @@ def test():
 
 @main.command()
 @click.option("--no-post", is_flag=True, help="Allow the system to post comments")
-def start(no_post):
+@click.option("-s", "--subreddits", multiple=True, help="Subreddits to search in")
+@click.option("-p", "--product", help="The product you want to promote")
+def start(no_post, subreddits, product):
     client = OpenAI()
 
     reddit = praw.Reddit(
@@ -48,8 +51,6 @@ def start(no_post):
         username=os.environ.get("USERNAME"),
         password=os.environ.get("PASSWORD"),
     )
-    product = "AutoGPT Agent Server to run your own private agent locally. It can do thigns like personal writing editing"
-    subreddits = ["LocalLlama"]
     for sub in subreddits:
         posts = get_recent_posts(sub, reddit)
         for post in posts:
@@ -78,9 +79,52 @@ def get_recent_posts(subreddit, reddit, time_period=3):
     return posts
 
 
+def load_template(template_name, json_format, post, product):
+    # Define the template loader
+    loader = FileSystemLoader(".")
+    env = Environment(loader=loader)
+    # Define the template files
+    relevent_system_message_file = f"{template_name}.sys.j2"
+    relevent_task_message_file = f"{template_name}.user.j2"
+    sys_prompt = None
+    user_prompt = None
+    # Check if the files exist
+    if os.path.exists(relevent_system_message_file):
+        # Read in the file and render the template
+        with open(relevent_system_message_file, "r") as f:
+            system_template = env.get_template(f.name)
+            sys_prompt = system_template.render(
+                {
+                    "product": product,
+                    "json_fomat": json_format,
+                    "post_title": post.title,
+                    "post_text": post.selftext,
+                }
+            )
+    if os.path.exists(relevent_task_message_file):
+        # Read in the file and render the template
+        with open(relevent_task_message_file, "r") as f:
+            task_template = env.get_template(f.name)
+
+            user_prompt = task_template.render(
+                {
+                    "product": product,
+                    "json_fomat": json_format,
+                    "post_title": post.title,
+                    "post_text": post.selftext,
+                }
+            )
+
+    return sys_prompt, user_prompt
+
+
 def is_relevant(post, product, client: OpenAI) -> bool:
     json_format = """{"is_of_value": bool}"""
-    system_mesage = f"""
+    system_mesage, task_message = load_template(
+        "is_relevant", json_format, post, product
+    )
+    if not system_mesage:
+        system_mesage = f"""
     You are an expert at gurellia marketing and have been tasked with picking reddit posts that are relevant to your product.
 
     The product you are marketing is:
@@ -89,8 +133,9 @@ def is_relevant(post, product, client: OpenAI) -> bool:
     Reply in json format like so 
     {json_format}
     """
-    task_message = f"""Based on the following post, would posting a reply about your product add value to the discussion? 
-    Title: {post.title}
+    if not task_message:
+        task_message = f"""Based on the following post, would posting a reply about your product add value to the discussion? 
+        Title: {post.title}
     Content: {post.selftext}
     """
 
@@ -113,7 +158,12 @@ def is_relevant(post, product, client: OpenAI) -> bool:
 
 def post_marketing_message(post, product, client, no_post):
     json_format = """{"message": str}"""
-    system_mesage = f"""
+
+    system_mesage, task_message = load_template(
+        "marketing_message", json_format, post, product
+    )
+    if not system_mesage:
+        system_mesage = f"""
     You are an expert at gurellia marketing and have been tasked with writing a reddit comment subtelly promoting your product by telling how you had a simliar problem and used the product your promoting to help solver the problem. Make sure to explain how the product helped. 
 
     The product you are marketing is:
@@ -122,7 +172,8 @@ def post_marketing_message(post, product, client, no_post):
     Reply in json format like so 
     {json_format}
     """
-    task_message = f"""Based on the following post, write your gurilla marketing comment
+    if not task_message:
+        task_message = f"""Based on the following post, write your gurilla marketing comment
     Title: {post.title}
     Content: {post.selftext}
     """
