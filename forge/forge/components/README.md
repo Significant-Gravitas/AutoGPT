@@ -59,15 +59,17 @@ class MyComponent(AgentComponent, ConfigurableComponent[MyConfig]):
 
 ### Sensitive information
 
-While it's possible to pass sensitive data directly in code to the configuration it's recommended to use `UserConfigurable(from_env="ENV_VAR_NAME")` field for sensitive data like API keys.
-The data will be loaded from the environment variable (keep in mind that value passed in code takes precedence).
+While it's possible to pass sensitive data directly in code to the configuration it's recommended to use `UserConfigurable(from_env="ENV_VAR_NAME", exclude=True)` field for sensitive data like API keys.
+The data will be loaded from the environment variable but keep in mind that value passed in code takes precedence.
+All fields, even excluded ones (`exclude=True`) will be loaded when the configuration is loaded from the file.
+Exclusion allows you to skip them during *serialization*, non excluded `SecretStr` will be serialized literally as a `"**********"` string.
 
 ```py
 from pydantic import BaseModel, SecretStr
 from forge.models.config import UserConfigurable
 
 class SensitiveConfig(BaseModel):
-    api_key: SecretStr = UserConfigurable(from_env="API_KEY")
+    api_key: SecretStr = UserConfigurable(from_env="API_KEY", exclude=True)
 ```
 
 ## Ordering components

@@ -15,7 +15,9 @@ from forge.utils.url_validator import validate_url
 
 class GitOperationsConfiguration(BaseModel):
     github_username: Optional[str] = UserConfigurable(from_env="GITHUB_USERNAME")
-    github_api_key: Optional[SecretStr] = UserConfigurable(from_env="GITHUB_API_KEY")
+    github_api_key: Optional[SecretStr] = UserConfigurable(
+        from_env="GITHUB_API_KEY", exclude=True
+    )
 
 
 class GitOperationsComponent(

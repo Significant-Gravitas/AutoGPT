@@ -17,9 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 class WebSearchConfiguration(BaseModel):
-    google_api_key: Optional[SecretStr] = UserConfigurable(from_env="GOOGLE_API_KEY")
+    google_api_key: Optional[SecretStr] = UserConfigurable(
+        from_env="GOOGLE_API_KEY", exclude=True
+    )
     google_custom_search_engine_id: Optional[SecretStr] = UserConfigurable(
-        from_env="GOOGLE_CUSTOM_SEARCH_ENGINE_ID"
+        from_env="GOOGLE_CUSTOM_SEARCH_ENGINE_ID", exclude=True
     )
     duckduckgo_max_attempts: int = 3
 
