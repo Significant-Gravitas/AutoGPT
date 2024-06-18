@@ -42,44 +42,8 @@ class ActionHistoryComponent(MessageProvider, AfterParse[AnyProposal], AfterExec
             if i < 4:
                 messages.insert(0, episode.action.raw_message)
                 tokens += self.count_tokens(str(messages[0]))  # HACK
-                if _r := episode.result:
-                    if _r.status == "success":
-                        result_message = (
-                            ToolResultMessage(
-                                content=str(_r.outputs),
-                                tool_call_id=(
-                                    episode.action.raw_message.tool_calls[0].id
-                                ),
-                            )
-                            if episode.action.raw_message.tool_calls
-                            else ChatMessage.user(
-                                f"{episode.action.use_tool.name} returned: "
-                                + (
-                                    f"```\n{_r.outputs}\n```"
-                                    if "\n" in str(_r.outputs)
-                                    else f"`{_r.outputs}`"
-                                )
-                            )
-                        )
-                    elif _r.status == "error":
-                        result_message = (
-                            ToolResultMessage(
-                                content=f"{_r.reason}\n\n{_r.error or ''}".strip(),
-                                is_error=True,
-                                tool_call_id=(
-                                    episode.action.raw_message.tool_calls[0].id
-                                ),
-                            )
-                            if episode.action.raw_message.tool_calls
-                            else ChatMessage.user(
-                                f"{episode.action.use_tool.name} raised an error: ```\n"
-                                f"{_r.reason}\n"
-                                "```"
-                            )
-                        )
-                    else:
-                        result_message = ChatMessage.user(_r.feedback)
-
+                if episode.result:
+                    result_message = self._make_result_message(episode, episode.result)
                     messages.insert(1, result_message)
                     tokens += self.count_tokens(str(result_message))  # HACK
                 continue
@@ -117,6 +81,41 @@ class ActionHistoryComponent(MessageProvider, AfterParse[AnyProposal], AfterExec
         await self.event_history.handle_compression(
             self.llm_provider, self.legacy_config
         )
+
+    @staticmethod
+    def _make_result_message(episode: Episode, result: ActionResult) -> ChatMessage:
+        if result.status == "success":
+            return (
+                ToolResultMessage(
+                    content=str(result.outputs),
+                    tool_call_id=episode.action.raw_message.tool_calls[0].id,
+                )
+                if episode.action.raw_message.tool_calls
+                else ChatMessage.user(
+                    f"{episode.action.use_tool.name} returned: "
+                    + (
+                        f"```\n{result.outputs}\n```"
+                        if "\n" in str(result.outputs)
+                        else f"`{result.outputs}`"
+                    )
+                )
+            )
+        elif result.status == "error":
+            return (
+                ToolResultMessage(
+                    content=f"{result.reason}\n\n{result.error or ''}".strip(),
+                    is_error=True,
+                    tool_call_id=episode.action.raw_message.tool_calls[0].id,
+                )
+                if episode.action.raw_message.tool_calls
+                else ChatMessage.user(
+                    f"{episode.action.use_tool.name} raised an error: ```\n"
+                    f"{result.reason}\n"
+                    "```"
+                )
+            )
+        else:
+            return ChatMessage.user(result.feedback)
 
     def _compile_progress(
         self,
