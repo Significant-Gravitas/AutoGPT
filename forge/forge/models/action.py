@@ -4,7 +4,7 @@ from typing import Any, Literal, Optional, TypeVar
 
 from pydantic import BaseModel
 
-from forge.llm.providers.schema import AssistantFunctionCall
+from forge.llm.providers.schema import AssistantChatMessage, AssistantFunctionCall
 
 from .utils import ModelWithSummary
 
@@ -12,6 +12,8 @@ from .utils import ModelWithSummary
 class ActionProposal(BaseModel):
     thoughts: str | ModelWithSummary
     use_tool: AssistantFunctionCall
+
+    raw_message: AssistantChatMessage
 
 
 AnyProposal = TypeVar("AnyProposal", bound=ActionProposal)

@@ -5,18 +5,12 @@ from typing import TYPE_CHECKING, Callable, Iterator, Optional
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
 from forge.llm.prompting.utils import indent
 from forge.llm.providers import ChatMessage, MultiProvider
-from forge.llm.providers.schema import (
-    AssistantChatMessage,
-    AssistantToolCall,
-    ToolResultMessage,
-)
+from forge.llm.providers.schema import ToolResultMessage
 
 if TYPE_CHECKING:
     from forge.config.config import Config
 
 from .model import ActionResult, AnyProposal, Episode, EpisodicActionHistory
-
-_AUTOGPT_FAKE_TOOL_CALL_ID = "autogpt-fake-tool-call-id"
 
 
 class ActionHistoryComponent(MessageProvider, AfterParse[AnyProposal], AfterExecute):
@@ -46,42 +40,48 @@ class ActionHistoryComponent(MessageProvider, AfterParse[AnyProposal], AfterExec
         for i, episode in enumerate(reversed(self.event_history.episodes)):
             # Use full format for the latest 4 steps, summary or format for older steps
             if i < 4:
-                messages.insert(
-                    0,
-                    AssistantChatMessage(
-                        content=episode.action.json(exclude={"use_tool"}, indent=4),
-                        tool_calls=[
-                            AssistantToolCall(
-                                type="function",
-                                id=_AUTOGPT_FAKE_TOOL_CALL_ID,
-                                function=episode.action.use_tool,
-                            )
-                        ],
-                    ),
-                )
+                messages.insert(0, episode.action.raw_message)
                 tokens += self.count_tokens(str(messages[0]))  # HACK
                 if _r := episode.result:
                     if _r.status == "success":
-                        messages.insert(
-                            1,
+                        result_message = (
                             ToolResultMessage(
-                                content=_r.outputs,
-                                tool_call_id=_AUTOGPT_FAKE_TOOL_CALL_ID,
-                            ),
+                                content=str(_r.outputs),
+                                tool_call_id=(
+                                    episode.action.raw_message.tool_calls[0].id
+                                ),
+                            )
+                            if episode.action.raw_message.tool_calls
+                            else ChatMessage.user(
+                                f"{episode.action.use_tool.name} returned: "
+                                + (
+                                    f"```\n{_r.outputs}\n```"
+                                    if "\n" in str(_r.outputs)
+                                    else f"`{_r.outputs}`"
+                                )
+                            )
                         )
                     elif _r.status == "error":
-                        messages.insert(
-                            1,
+                        result_message = (
                             ToolResultMessage(
                                 content=f"{_r.reason}\n\n{_r.error or ''}".strip(),
                                 is_error=True,
-                                tool_call_id=_AUTOGPT_FAKE_TOOL_CALL_ID,
-                            ),
+                                tool_call_id=(
+                                    episode.action.raw_message.tool_calls[0].id
+                                ),
+                            )
+                            if episode.action.raw_message.tool_calls
+                            else ChatMessage.user(
+                                f"{episode.action.use_tool.name} raised an error: ```\n"
+                                f"{_r.reason}\n"
+                                "```"
+                            )
                         )
-                    elif _r.status == "interrupted_by_human":
-                        messages.insert(1, ChatMessage.user(_r.feedback))
+                    else:
+                        result_message = ChatMessage.user(_r.feedback)
 
-                    tokens += self.count_tokens(str(messages[0]))  # HACK
+                    messages.insert(1, result_message)
+                    tokens += self.count_tokens(str(result_message))  # HACK
                 continue
             elif episode.summary is None:
                 step_content = indent(episode.format(), 2).strip()
