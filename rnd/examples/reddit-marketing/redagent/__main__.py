@@ -37,7 +37,8 @@ def test():
 
 
 @main.command()
-def start():
+@click.option("--no-post", is_flag=True, help="Allow the system to post comments")
+def start(no_post):
     client = OpenAI()
 
     reddit = praw.Reddit(
@@ -54,7 +55,7 @@ def start():
         for post in posts:
             if is_relevant(post, product, client):
                 print(f"[Y] {post.title}")
-                post_marketing_message(post, product, client)
+                post_marketing_message(post, product, client, no_post)
             else:
                 print(f"[N] {post.title}")
 
@@ -110,7 +111,7 @@ def is_relevant(post, product, client: OpenAI) -> bool:
         return False
 
 
-def post_marketing_message(post, product, client):
+def post_marketing_message(post, product, client, no_post):
     json_format = """{"message": str}"""
     system_mesage = f"""
     You are an expert at gurellia marketing and have been tasked with writing a reddit comment subtelly promoting your product by telling how you had a simliar problem and used the product your promoting to help solver the problem. Make sure to explain how the product helped. 
@@ -137,7 +138,8 @@ def post_marketing_message(post, product, client):
     reply = Comment.model_validate_json(
         response.choices[0].message.content, strict=False
     )
-
+    if not no_post:
+        post.reply(reply)
     print(f"Replied to post: {reply}")
 
 
