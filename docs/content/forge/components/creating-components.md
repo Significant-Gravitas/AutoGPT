@@ -148,12 +148,12 @@ It gives an ability for the agent to ask user for input in the terminal.
         yield self.ask_user
     ```
 
-5. Since agent isn't always running in the terminal or interactive mode, we need to disable this component by setting `self._enabled` when it's not possible to ask for user input.
+5. Since agent isn't always running in the terminal or interactive mode, we need to disable this component by setting `self._enabled=False` when it's not possible to ask for user input.
 
     ```py
-    def __init__(self, config: Config):
+    def __init__(self, interactive_mode: bool):
         self.config = config
-        self._enabled = not config.noninteractive_mode
+        self._enabled = interactive_mode
     ```
 
 The final component should look like this:
@@ -164,10 +164,10 @@ class MyUserInteractionComponent(CommandProvider):
     """Provides commands to interact with the user."""
 
     # We pass config to check if we're in noninteractive mode
-    def __init__(self, config: Config):
+    def __init__(self, interactive_mode: bool):
         self.config = config
         # 5.
-        self._enabled = not config.noninteractive_mode
+        self._enabled = interactive_mode
 
     # 4.
     def get_commands(self) -> Iterator[Command]:
@@ -205,10 +205,10 @@ class MyAgent(Agent):
         settings: AgentSettings,
         llm_provider: MultiProvider,
         file_storage: FileStorage,
-        legacy_config: Config,
+        app_config: Config,
     ):
         # Call the parent constructor to bring in the default components
-        super().__init__(settings, llm_provider, file_storage, legacy_config)
+        super().__init__(settings, llm_provider, file_storage, app_config)
         # Disable the default user interaction component by overriding it
         self.user_interaction = MyUserInteractionComponent()
 ```
@@ -222,14 +222,14 @@ class MyAgent(Agent):
         settings: AgentSettings,
         llm_provider: MultiProvider,
         file_storage: FileStorage,
-        legacy_config: Config,
+        app_config: Config,
     ):
         # Call the parent constructor to bring in the default components
-        super().__init__(settings, llm_provider, file_storage, legacy_config)
+        super().__init__(settings, llm_provider, file_storage, app_config)
         # Disable the default user interaction component
         self.user_interaction = None
         # Add our own component
-        self.my_user_interaction = MyUserInteractionComponent(legacy_config)
+        self.my_user_interaction = MyUserInteractionComponent(app_config)
 ```
 
 ## Learn more

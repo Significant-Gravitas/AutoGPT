@@ -30,6 +30,48 @@ class MyAgent(BaseAgent):
         self.some_component = SomeComponent(self.hello_component)
 ```
 
+## Component configuration
+
+Each component can have its own configuration defined using a regular pydantic `BaseModel`.
+To ensure the configuration is loaded from the file correctly, the component must inherit from `ConfigurableComponent[T]` where `T` is the configuration model it uses.
+`ConfigurableComponent` provides a `config` attribute that holds the configuration instance.
+It's possible to either set the `config` attribute directly or pass the configuration instance to the component's constructor.
+Extra configuration (i.e. for components that are not part of the agent) can be passed and will be silently ignored. Extra config won't be applied even if the component is added later.
+To see the configuration of built-in components visit [Built-in Components](./built-in-components.md).
+
+```py
+from pydantic import BaseModel
+from forge.agent.components import ConfigurableComponent
+
+class MyConfig(BaseModel):
+    some_value: str
+
+class MyComponent(AgentComponent, ConfigurableComponent[MyConfig]):
+    def __init__(self, config: MyConfig):
+        super().__init__(config)
+        # This has the same effect as above:
+        # self.config = config
+
+    def get_some_value(self) -> str:
+        # Access the configuration like a regular model
+        return self.config.some_value
+```
+
+### Sensitive information
+
+While it's possible to pass sensitive data directly in code to the configuration it's recommended to use `UserConfigurable(from_env="ENV_VAR_NAME", exclude=True)` field for sensitive data like API keys.
+The data will be loaded from the environment variable but keep in mind that value passed in code takes precedence.
+All fields, even excluded ones (`exclude=True`) will be loaded when the configuration is loaded from the file.
+Exclusion allows you to skip them during *serialization*, non excluded `SecretStr` will be serialized literally as a `"**********"` string.
+
+```py
+from pydantic import BaseModel, SecretStr
+from forge.models.config import UserConfigurable
+
+class SensitiveConfig(BaseModel):
+    api_key: SecretStr = UserConfigurable(from_env="API_KEY", exclude=True)
+```
+
 ## Ordering components
 
 The execution order of components is important because some may depend on the results of the previous ones.
@@ -72,6 +114,7 @@ class MyAgent(Agent):
 ## Disabling components
 
 You can control which components are enabled by setting their `_enabled` attribute.
+Components are *enabled* by default.
 Either provide a `bool` value or a `Callable[[], bool]`, will be checked each time
 the component is about to be executed. This way you can dynamically enable or disable
 components based on some conditions.

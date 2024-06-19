@@ -16,6 +16,7 @@ def UserConfigurable(
     default_factory: Optional[Callable[[], T]] = None,
     from_env: Optional[str | Callable[[], T | None]] = None,
     description: str = "",
+    exclude: bool = False,
     **kwargs,
 ) -> T:
     # TODO: use this to auto-generate docs for the application configuration
@@ -25,6 +26,7 @@ def UserConfigurable(
         default_factory=default_factory,
         from_env=from_env,
         description=description,
+        exclude=exclude,
         **kwargs,
         user_configurable=True,
     )
