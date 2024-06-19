@@ -1,5 +1,3 @@
-import time
-
 from autogpt_server.util.service import (
     AppService,
     PyroNameServer,
@@ -30,7 +28,6 @@ class TestService(AppService):
 
 def test_service_creation():
     with PyroNameServer():
-        time.sleep(0.5)
         with TestService():
             client = get_service_client(TestService)
             assert client.add(5, 3) == 8
