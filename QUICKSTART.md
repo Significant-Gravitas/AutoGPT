@@ -69,6 +69,11 @@ sudo apt update
 sudo apt install dos2unix
 dos2unix ./run
 ```
+Now convert the `setup.sh` file using this command:
+
+```shell
+dos2unix setup.sh
+```
 
 After executing the above commands, running `./run setup` should work successfully. 
 
