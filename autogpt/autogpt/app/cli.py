@@ -29,24 +29,6 @@ def cli(ctx: click.Context):
 )
 @click.option("--speak", is_flag=True, help="Enable Speak Mode")
 @click.option(
-    "-b",
-    "--browser-name",
-    help="Specifies which web-browser to use when using selenium to scrape the web.",
-)
-@click.option(
-    "--allow-downloads",
-    is_flag=True,
-    help="Dangerous: Allows AutoGPT to download files natively.",
-)
-@click.option(
-    # TODO: this is a hidden option for now, necessary for integration testing.
-    # We should make this public once we're ready to roll out agent specific workspaces.
-    "--workspace-directory",
-    "-w",
-    type=click.Path(file_okay=False),
-    hidden=True,
-)
-@click.option(
     "--install-plugin-deps",
     is_flag=True,
     help="Installs external dependencies for 3rd party plugins.",
@@ -128,13 +110,15 @@ def cli(ctx: click.Context):
     ),
     type=click.Choice([i.value for i in LogFormatName]),
 )
+@click.option(
+    "--component-config-file",
+    help="Path to a json configuration file",
+    type=click.Path(exists=True, dir_okay=False, resolve_path=True),
+)
 def run(
     continuous: bool,
     continuous_limit: Optional[int],
     speak: bool,
-    browser_name: Optional[str],
-    allow_downloads: bool,
-    workspace_directory: Optional[Path],
     install_plugin_deps: bool,
     skip_news: bool,
     skip_reprompt: bool,
@@ -148,6 +132,7 @@ def run(
     log_level: Optional[str],
     log_format: Optional[str],
     log_file_format: Optional[str],
+    component_config_file: Optional[Path],
 ) -> None:
     """
     Sets up and runs an agent, based on the task specified by the user, or resumes an
@@ -165,10 +150,7 @@ def run(
         log_level=log_level,
         log_format=log_format,
         log_file_format=log_file_format,
-        browser_name=browser_name,
-        allow_downloads=allow_downloads,
         skip_news=skip_news,
-        workspace_directory=workspace_directory,
         install_plugin_deps=install_plugin_deps,
         override_ai_name=ai_name,
         override_ai_role=ai_role,
@@ -176,20 +158,11 @@ def run(
         constraints=list(constraint),
         best_practices=list(best_practice),
         override_directives=override_directives,
+        component_config_file=component_config_file,
     )
 
 
 @cli.command()
-@click.option(
-    "-b",
-    "--browser-name",
-    help="Specifies which web-browser to use when using selenium to scrape the web.",
-)
-@click.option(
-    "--allow-downloads",
-    is_flag=True,
-    help="Dangerous: Allows AutoGPT to download files natively.",
-)
 @click.option(
     "--install-plugin-deps",
     is_flag=True,
@@ -217,8 +190,6 @@ def run(
     type=click.Choice([i.value for i in LogFormatName]),
 )
 def serve(
-    browser_name: Optional[str],
-    allow_downloads: bool,
     install_plugin_deps: bool,
     debug: bool,
     log_level: Optional[str],
@@ -237,8 +208,6 @@ def serve(
         log_level=log_level,
         log_format=log_format,
         log_file_format=log_file_format,
-        browser_name=browser_name,
-        allow_downloads=allow_downloads,
         install_plugin_deps=install_plugin_deps,
     )
 
