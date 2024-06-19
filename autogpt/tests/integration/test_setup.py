@@ -3,8 +3,8 @@ from unittest.mock import patch
 import pytest
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
-from forge.config.config import Config
 
+from autogpt.app.config import AppConfig
 from autogpt.app.setup import (
     apply_overrides_to_ai_settings,
     interactively_revise_ai_settings,
@@ -39,7 +39,7 @@ async def test_apply_overrides_to_ai_settings():
 
 
 @pytest.mark.asyncio
-async def test_interactively_revise_ai_settings(config: Config):
+async def test_interactively_revise_ai_settings(config: AppConfig):
     ai_profile = AIProfile(ai_name="Test AI", ai_role="Test Role")
     directives = AIDirectives(
         resources=["Resource1"],

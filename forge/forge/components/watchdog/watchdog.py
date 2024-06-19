@@ -22,7 +22,7 @@ class WatchdogComponent(AfterParse[AnyProposal]):
 
     def __init__(
         self,
-        config: "BaseAgentConfiguration",
+        config: BaseAgentConfiguration,
         event_history: EpisodicActionHistory[AnyProposal],
     ):
         self.config = config
