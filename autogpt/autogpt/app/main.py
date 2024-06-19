@@ -21,11 +21,6 @@ from forge.components.code_executor.code_executor import (
 )
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
-from forge.config.config import (
-    Config,
-    ConfigBuilder,
-    assert_config_has_required_llm_api_keys,
-)
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
@@ -38,6 +33,11 @@ from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agents.agent_manager import AgentManager
 from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
+from autogpt.app.config import (
+    AppConfig,
+    ConfigBuilder,
+    assert_config_has_required_llm_api_keys,
+)
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
@@ -66,10 +66,7 @@ async def run_auto_gpt(
     log_level: Optional[str] = None,
     log_format: Optional[str] = None,
     log_file_format: Optional[str] = None,
-    browser_name: Optional[str] = None,
-    allow_downloads: bool = False,
     skip_news: bool = False,
-    workspace_directory: Optional[Path] = None,
     install_plugin_deps: bool = False,
     override_ai_name: Optional[str] = None,
     override_ai_role: Optional[str] = None,
@@ -77,6 +74,7 @@ async def run_auto_gpt(
     constraints: Optional[list[str]] = None,
     best_practices: Optional[list[str]] = None,
     override_directives: bool = False,
+    component_config_file: Optional[Path] = None,
 ):
     # Set up configuration
     config = ConfigBuilder.build_config_from_env()
@@ -109,8 +107,6 @@ async def run_auto_gpt(
         continuous=continuous,
         continuous_limit=continuous_limit,
         skip_reprompt=skip_reprompt,
-        browser_name=browser_name,
-        allow_downloads=allow_downloads,
         skip_news=skip_news,
     )
 
@@ -135,15 +131,12 @@ async def run_auto_gpt(
         print_python_version_info(logger)
         print_attribute("Smart LLM", config.smart_llm)
         print_attribute("Fast LLM", config.fast_llm)
-        print_attribute("Browser", config.selenium_web_browser)
         if config.continuous_mode:
             print_attribute("Continuous Mode", "ENABLED", title_color=Fore.YELLOW)
             if continuous_limit:
                 print_attribute("Continuous Limit", config.continuous_limit)
         if config.tts_config.speak_mode:
             print_attribute("Speak Mode", "ENABLED")
-        if config.allow_downloads:
-            print_attribute("Native Downloading", "ENABLED")
         if we_are_running_in_a_docker_container() or is_docker_available():
             print_attribute("Code Execution", "ENABLED")
         else:
@@ -330,6 +323,14 @@ async def run_auto_gpt(
         #     )
         # ).add_done_callback(update_agent_directives)
 
+    # Load component configuration from file
+    if _config_file := component_config_file or config.component_config_file:
+        try:
+            logger.info(f"Loading component configuration from {_config_file}")
+            agent.load_component_configs(_config_file.read_text())
+        except Exception as e:
+            logger.error(f"Could not load component configuration: {e}")
+
     #################
     # Run the Agent #
     #################
@@ -356,8 +357,6 @@ async def run_auto_gpt_server(
     log_level: Optional[str] = None,
     log_format: Optional[str] = None,
     log_file_format: Optional[str] = None,
-    browser_name: Optional[str] = None,
-    allow_downloads: bool = False,
     install_plugin_deps: bool = False,
 ):
     from .agent_protocol_server import AgentProtocolServer
@@ -387,8 +386,6 @@ async def run_auto_gpt_server(
 
     await apply_overrides_to_config(
         config=config,
-        browser_name=browser_name,
-        allow_downloads=allow_downloads,
     )
 
     llm_provider = _configure_llm_provider(config)
@@ -413,7 +410,7 @@ async def run_auto_gpt_server(
     )
 
 
-def _configure_llm_provider(config: Config) -> MultiProvider:
+def _configure_llm_provider(config: AppConfig) -> MultiProvider:
     multi_provider = MultiProvider()
     for model in [config.smart_llm, config.fast_llm]:
         # Ensure model providers for configured LLMs are available
@@ -453,15 +450,15 @@ async def run_interaction_loop(
         None
     """
     # These contain both application config and agent config, so grab them here.
-    legacy_config = agent.legacy_config
+    app_config = agent.app_config
     ai_profile = agent.state.ai_profile
     logger = logging.getLogger(__name__)
 
     cycle_budget = cycles_remaining = _get_cycle_budget(
-        legacy_config.continuous_mode, legacy_config.continuous_limit
+        app_config.continuous_mode, app_config.continuous_limit
     )
     spinner = Spinner(
-        "Thinking...", plain_output=legacy_config.logging.plain_console_output
+        "Thinking...", plain_output=app_config.logging.plain_console_output
     )
     stop_reason = None
 
@@ -539,7 +536,7 @@ async def run_interaction_loop(
         update_user(
             ai_profile,
             action_proposal,
-            speak_mode=legacy_config.tts_config.speak_mode,
+            speak_mode=app_config.tts_config.speak_mode,
         )
 
         ##################
@@ -548,7 +545,7 @@ async def run_interaction_loop(
         handle_stop_signal()
         if cycles_remaining == 1:  # Last cycle
             feedback_type, feedback, new_cycles_remaining = await get_user_feedback(
-                legacy_config,
+                app_config,
                 ai_profile,
             )
 
@@ -659,7 +656,7 @@ def update_user(
 
 
 async def get_user_feedback(
-    config: Config,
+    config: AppConfig,
     ai_profile: AIProfile,
 ) -> tuple[UserFeedback, str, int | None]:
     """Gets the user's feedback on the assistant's reply.

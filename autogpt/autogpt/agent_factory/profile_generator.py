@@ -3,7 +3,6 @@ import logging
 
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
-from forge.config.config import Config
 from forge.llm.prompting import ChatPrompt, LanguageModelClassification, PromptStrategy
 from forge.llm.providers import MultiProvider
 from forge.llm.providers.schema import (
@@ -13,6 +12,8 @@ from forge.llm.providers.schema import (
 )
 from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.models.json_schema import JSONSchema
+
+from autogpt.app.config import AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +213,7 @@ class AgentProfileGenerator(PromptStrategy):
 
 async def generate_agent_profile_for_task(
     task: str,
-    app_config: Config,
+    app_config: AppConfig,
     llm_provider: MultiProvider,
 ) -> tuple[AIProfile, AIDirectives]:
     """Generates an AIConfig object from the given string.
