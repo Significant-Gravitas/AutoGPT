@@ -22,6 +22,8 @@ class ActionHistoryConfiguration(BaseModel):
     """Maximum number of tokens to use up with generated history messages"""
     spacy_language_model: str = "en_core_web_sm"
     """Language model used for summary chunking using spacy"""
+    full_message_count: int = 4
+    """Number of latest non-summarized messages to include in the history"""
 
 
 class ActionHistoryComponent(
@@ -52,10 +54,10 @@ class ActionHistoryComponent(
         tokens: int = 0
         n_episodes = len(self.event_history.episodes)
 
-        # Include a summary for all except the latest 4 steps
+        # Include a summary for all except a few latest steps
         for i, episode in enumerate(reversed(self.event_history.episodes)):
-            # Use full format for the latest 4 steps, summary or format for older steps
-            if i < 4:
+            # Use full format for a few steps, summary or format for older steps
+            if i < self.config.full_message_count:
                 messages.insert(0, episode.action.raw_message)
                 tokens += self.count_tokens(str(messages[0]))  # HACK
                 if episode.result:
@@ -147,8 +149,8 @@ class ActionHistoryComponent(
         n_episodes = len(episode_history)
 
         for i, episode in enumerate(reversed(episode_history)):
-            # Use full format for the latest 4 steps, summary or format for older steps
-            if i < 4 or episode.summary is None:
+            # Use full format for a few latest steps, summary or format for older steps
+            if i < self.config.full_message_count or episode.summary is None:
                 step_content = indent(episode.format(), 2).strip()
             else:
                 step_content = episode.summary
