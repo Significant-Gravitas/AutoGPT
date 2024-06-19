@@ -82,7 +82,7 @@ class AgentServer(AppProcess):
 
     @staticmethod
     async def get_agents() -> list[str]:
-        return await graph.get_graphs()
+        return await graph.get_graph_ids()
 
     @staticmethod
     async def get_agent(agent_id: str) -> graph.Graph:

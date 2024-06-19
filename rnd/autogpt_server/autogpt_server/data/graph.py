@@ -71,7 +71,7 @@ async def get_node(node_id: str) -> Node | None:
     return Node.from_db(node) if node else None
 
 
-async def get_graphs() -> list[str]:
+async def get_graph_ids() -> list[str]:
     return [graph.id for graph in await AgentGraph.prisma().find_many()]  # type: ignore
 
 

@@ -79,10 +79,10 @@ class AppService(AppProcess):
         self.shared_event_loop.run_forever()
 
 
-T = TypeVar("T", bound=AppService)
+AS = TypeVar("AS", bound=AppService)
 
 
-def get_service_client(service_type: Type[T]) -> T:
+def get_service_client(service_type: Type[AS]) -> AS:
     service_name = service_type.service_name
 
     class DynamicClient:
@@ -97,4 +97,4 @@ def get_service_client(service_type: Type[T]) -> T:
         def __getattr__(self, name: str) -> Callable[..., Any]:
             return getattr(self.proxy, name)
 
-    return cast(T, DynamicClient())
+    return cast(AS, DynamicClient())

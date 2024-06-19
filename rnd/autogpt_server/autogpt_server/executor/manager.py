@@ -4,7 +4,9 @@ import logging
 from concurrent.futures import ProcessPoolExecutor
 from typing import Optional, Any
 
-from autogpt_server.data import block, db, graph
+from autogpt_server.data import db
+from autogpt_server.data.block import Block, get_block
+from autogpt_server.data.graph import Node, get_node, get_node_input
 from autogpt_server.data.execution import (
     Execution,
     ExecutionQueue,
@@ -42,12 +44,12 @@ def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> Execution 
     asyncio.set_event_loop(loop)
     wait = lambda f: loop.run_until_complete(f)
 
-    node: Optional[graph.Node] = wait(graph.get_node(node_id))
+    node: Optional[Node] = wait(get_node(node_id))
     if not node:
         logger.error(f"Node {node_id} not found.")
         return None
 
-    node_block: Optional[block.Block] = wait(block.get_block(node.block_id))
+    node_block: Optional[Block] = wait(get_block(node.block_id))
     if not node_block:
         logger.error(f"Block {node.block_id} not found.")
         return None
@@ -72,13 +74,13 @@ def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> Execution 
         return None
 
     next_node_id = node.output_nodes[output_name]
-    next_node: Optional[graph.Node] = wait(graph.get_node(next_node_id))
+    next_node: Optional[Node] = wait(get_node(next_node_id))
     if not next_node:
         logger.error(f"{prefix} Error, next node {next_node_id} not found.")
         return None
 
-    next_node_input: dict[str, Any] = wait(graph.get_node_input(next_node, run_id))
-    next_node_block: block.Block | None = wait(block.get_block(next_node.block_id))
+    next_node_input: dict[str, Any] = wait(get_node_input(next_node, run_id))
+    next_node_block: Block | None = wait(get_block(next_node.block_id))
     if not next_node_block:
         logger.error(f"{prefix} Error, next block {next_node.block_id} not found.")
         return None
