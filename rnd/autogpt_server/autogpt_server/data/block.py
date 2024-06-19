@@ -2,9 +2,10 @@ import json
 import jsonschema
 
 from abc import ABC, abstractmethod
+from typing import Any, ClassVar
+
 from prisma.models import AgentBlock
 from pydantic import BaseModel
-from typing import Any, ClassVar
 
 BlockData = dict[str, Any]
 
@@ -49,7 +50,7 @@ class BlockSchema(BaseModel):
             self,
             properties: dict[str, str | dict],
             required: list[str] | None = None,
-            **kwargs: Any
+            **kwargs: Any,
     ):
         schema = {
             "type": "object",
@@ -125,7 +126,7 @@ class Block(ABC, BaseModel):
         pass
 
     @abstractmethod
-    async def run(self, input_data: BlockData) -> tuple[str, Any]:
+    def run(self, input_data: BlockData) -> tuple[str, Any]:
         """
         Run the block with the given input data.
         Args:
@@ -140,13 +141,21 @@ class Block(ABC, BaseModel):
     def name(cls):
         return cls.__name__
 
-    async def execute(self, input_data: BlockData) -> tuple[str, Any]:
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "inputSchema": self.input_schema.jsonschema,
+            "outputSchema": self.output_schema.jsonschema,
+        }
+
+    def execute(self, input_data: BlockData) -> tuple[str, Any]:
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
                 f"Unable to execute block with invalid input data: {error}"
             )
 
-        output_name, output_data = await self.run(input_data)
+        output_name, output_data = self.run(input_data)
 
         if error := self.output_schema.validate_field(output_name, output_data):
             raise ValueError(
@@ -161,29 +170,37 @@ class Block(ABC, BaseModel):
 
 class ParrotBlock(Block):
     id: ClassVar[str] = "1ff065e9-88e8-4358-9d82-8dc91f622ba9"  # type: ignore
-    input_schema: ClassVar[BlockSchema] = BlockSchema({  # type: ignore
-        "input": "string",
-    })
-    output_schema: ClassVar[BlockSchema] = BlockSchema({  # type: ignore
-        "output": "string",
-    })
+    input_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
+        {
+            "input": "string",
+        }
+    )
+    output_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
+        {
+            "output": "string",
+        }
+    )
 
-    async def run(self, input_data: BlockData) -> tuple[str, Any]:
+    def run(self, input_data: BlockData) -> tuple[str, Any]:
         return "output", input_data["input"]
 
 
 class TextCombinerBlock(Block):
     id: ClassVar[str] = "db7d8f02-2f44-4c55-ab7a-eae0941f0c30"  # type: ignore
-    input_schema: ClassVar[BlockSchema] = BlockSchema({  # type: ignore
-        "text1": "string",
-        "text2": "string",
-        "format": "string",
-    })
-    output_schema: ClassVar[BlockSchema] = BlockSchema({  # type: ignore
-        "combined_text": "string",
-    })
+    input_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
+        {
+            "text1": "string",
+            "text2": "string",
+            "format": "string",
+        }
+    )
+    output_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
+        {
+            "combined_text": "string",
+        }
+    )
 
-    async def run(self, input_data: BlockData) -> tuple[str, Any]:
+    def run(self, input_data: BlockData) -> tuple[str, Any]:
         return "combined_text", input_data["format"].format(
             text1=input_data["text1"],
             text2=input_data["text2"],
@@ -192,15 +209,18 @@ class TextCombinerBlock(Block):
 
 class PrintingBlock(Block):
     id: ClassVar[str] = "f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c"  # type: ignore
-    input_schema: ClassVar[BlockSchema] = BlockSchema({  # type: ignore
-        "text": "string",
-    })
-    output_schema: ClassVar[BlockSchema] = BlockSchema({  # type: ignore
-        "status": "string",
-    })
+    input_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
+        {
+            "text": "string",
+        }
+    )
+    output_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
+        {
+            "status": "string",
+        }
+    )
 
-    async def run(self, input_data: BlockData) -> tuple[str, Any]:
-        print(input_data["text"])
+    def run(self, input_data: BlockData) -> tuple[str, Any]:
         return "status", "printed"
 
 
@@ -215,10 +235,7 @@ async def initialize_blocks() -> None:
     AVAILABLE_BLOCKS = {block.id: block() for block in Block.__subclasses__()}
 
     for block in AVAILABLE_BLOCKS.values():
-        existing_block = await AgentBlock.prisma().find_unique(
-            where={"id": block.id}
-        )
-        if existing_block:
+        if await AgentBlock.prisma().find_unique(where={"id": block.id}):
             continue
 
         await AgentBlock.prisma().create(
@@ -231,7 +248,13 @@ async def initialize_blocks() -> None:
         )
 
 
-async def get_block(block_id: str) -> Block:
+async def get_blocks() -> list[Block]:
     if not AVAILABLE_BLOCKS:
         await initialize_blocks()
-    return AVAILABLE_BLOCKS[block_id]
+    return list(AVAILABLE_BLOCKS.values())
+
+
+async def get_block(block_id: str) -> Block | None:
+    if not AVAILABLE_BLOCKS:
+        await initialize_blocks()
+    return AVAILABLE_BLOCKS.get(block_id)
