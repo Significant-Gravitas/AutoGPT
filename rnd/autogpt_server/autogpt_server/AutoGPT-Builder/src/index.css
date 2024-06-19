@@ -104,25 +104,3 @@ input::placeholder, textarea::placeholder {
 .sidebar h3 {
   margin: 0 0 20px;
 }
-
-.properties-sidebar {
-  position: fixed;
-  top: 0;
-  right: -600px;
-  width: 300px;
-  height: 100%;
-  background-color: #333;
-  color: #fff;
-  padding: 20px;
-  transition: right 0.3s ease;
-  z-index: 1000;
-  overflow-y: auto;
-}
-
-.properties-sidebar.open {
-  right: 0;
-}
-
-.properties-sidebar h3 {
-  margin: 0 0 20px;
-}

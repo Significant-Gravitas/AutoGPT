@@ -15,9 +15,7 @@ import Modal from 'react-modal';
 import CustomNode from './CustomNode';
 import './index.css';
 
-const initialNodes: Node[] = [
-  { id: '1', type: 'custom', data: { label: 'Start Node', title: 'Start Node', description: 'Start Node' }, position: { x: 250, y: 5 } },
-];
+const initialNodes: Node[] = [];
 
 const initialEdges: Edge[] = [];
 
@@ -35,7 +33,7 @@ interface AvailableNode {
 const Flow: React.FC = () => {
   const [nodes, setNodes] = useState<Node[]>(initialNodes);
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
-  const [nodeId, setNodeId] = useState<number>(2);
+  const [nodeId, setNodeId] = useState<number>(1);
   const [modalIsOpen, setModalIsOpen] = useState<boolean>(false);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [title, setTitle] = useState<string>('');
@@ -44,8 +42,6 @@ const Flow: React.FC = () => {
   const [variableValue, setVariableValue] = useState<string>('');
   const [printVariable, setPrintVariable] = useState<string>('');
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
-  const [isPropertiesSidebarOpen, setIsPropertiesSidebarOpen] = useState<boolean>(false);
-  const [propertiesNode, setPropertiesNode] = useState<Node | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [availableNodes, setAvailableNodes] = useState<AvailableNode[]>([]);
 
@@ -94,7 +90,6 @@ const Flow: React.FC = () => {
         setVariableName,
         setVariableValue,
         setPrintVariable,
-        openPropertiesSidebar: (node: Node) => openPropertiesSidebar(node),
       },
       position: { x: Math.random() * 400, y: Math.random() * 400 },
     };
@@ -122,23 +117,6 @@ const Flow: React.FC = () => {
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
-  };
-
-  const openPropertiesSidebar = (node: Node) => {
-    console.log(node);
-    setPropertiesNode(node);
-    setIsPropertiesSidebarOpen(true);
-  };
-    
-  const closePropertiesSidebar = () => {
-    setIsPropertiesSidebarOpen(false);
-    setPropertiesNode(null);
-  };
-    
-  const getNodeConnections = (nodeId: string) => {
-    const inputs = edges.filter(edge => edge.target === nodeId).length;
-    const outputs = edges.filter(edge => edge.source === nodeId).length;
-    return { inputs, outputs };
   };
 
   const filteredNodes = availableNodes.filter(node => node.name.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -281,26 +259,6 @@ const Flow: React.FC = () => {
           ))}
         </div>
       </div>
-      {propertiesNode && (
-        <div className={`properties-sidebar ${isPropertiesSidebarOpen ? 'open' : ''}`}>
-          <h3>Node Properties</h3>
-          <p><strong>Name:</strong> {propertiesNode?.data?.label}</p>
-          <p><strong>Title:</strong> {propertiesNode?.data?.title}</p>
-          <p><strong>Description:</strong> {propertiesNode?.data?.description}</p>
-          <p><strong>Inputs:</strong> {getNodeConnections(propertiesNode.id).inputs}</p>
-          <p><strong>Outputs:</strong> {getNodeConnections(propertiesNode.id).outputs}</p>
-          {propertiesNode.data?.variableName !== undefined && (
-            <p><strong>Variable Name:</strong> {propertiesNode.data.variableName}</p>
-          )}
-          {propertiesNode.data?.variableValue !== undefined && (
-            <p><strong>Variable Value:</strong> {propertiesNode.data.variableValue}</p>
-          )}
-          {propertiesNode.data?.printVariable !== undefined && (
-            <p><strong>Variable to Print:</strong> {propertiesNode.data.printVariable}</p>
-          )}
-          <button onClick={closePropertiesSidebar}>Close</button>
-        </div>
-      )}
     </div>
   );
 };
