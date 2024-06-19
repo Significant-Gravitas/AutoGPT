@@ -5,16 +5,16 @@ import shlex
 import string
 import subprocess
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Literal, Optional
 
 import docker
 from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
+from pydantic import BaseModel, Field
 
-from forge.agent import BaseAgentSettings
+from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
-from forge.config.config import Config
 from forge.file_storage import FileStorage
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import (
@@ -24,9 +24,6 @@ from forge.utils.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
-
-ALLOWLIST_CONTROL = "allowlist"
-DENYLIST_CONTROL = "denylist"
 
 
 def we_are_running_in_a_docker_container() -> bool:
@@ -56,15 +53,45 @@ class CodeExecutionError(CommandExecutionError):
     """The operation (an attempt to run arbitrary code) returned an error"""
 
 
-class CodeExecutorComponent(CommandProvider):
+class CodeExecutorConfiguration(BaseModel):
+    execute_local_commands: bool = False
+    """Enable shell command execution"""
+    shell_command_control: Literal["allowlist", "denylist"] = "allowlist"
+    """Controls which list is used"""
+    shell_allowlist: list[str] = Field(default_factory=list)
+    """List of allowed shell commands"""
+    shell_denylist: list[str] = Field(default_factory=list)
+    """List of prohibited shell commands"""
+    docker_container_name: str = "agent_sandbox"
+    """Name of the Docker container used for code execution"""
+
+
+class CodeExecutorComponent(
+    CommandProvider, ConfigurableComponent[CodeExecutorConfiguration]
+):
     """Provides commands to execute Python code and shell commands."""
 
+    config_class = CodeExecutorConfiguration
+
     def __init__(
-        self, workspace: FileStorage, state: BaseAgentSettings, config: Config
+        self,
+        workspace: FileStorage,
+        config: Optional[CodeExecutorConfiguration] = None,
     ):
+        ConfigurableComponent.__init__(self, config)
         self.workspace = workspace
-        self.state = state
-        self.legacy_config = config
+
+        # Change container name if it's empty or default to prevent different agents
+        # from using the same container
+        default_container_name = self.config.__fields__["docker_container_name"].default
+        if (
+            not self.config.docker_container_name
+            or self.config.docker_container_name == default_container_name
+        ):
+            random_suffix = "".join(random.choices(string.ascii_lowercase, k=8))
+            self.config.docker_container_name = (
+                f"{default_container_name}_{random_suffix}"
+            )
 
         if not we_are_running_in_a_docker_container() and not is_docker_available():
             logger.info(
@@ -72,7 +99,7 @@ class CodeExecutorComponent(CommandProvider):
                 "The code execution commands will not be available."
             )
 
-        if not self.legacy_config.execute_local_commands:
+        if not self.config.execute_local_commands:
             logger.info(
                 "Local shell commands are disabled. To enable them,"
                 " set EXECUTE_LOCAL_COMMANDS to 'True' in your config file."
@@ -83,7 +110,7 @@ class CodeExecutorComponent(CommandProvider):
             yield self.execute_python_code
             yield self.execute_python_file
 
-        if self.legacy_config.execute_local_commands:
+        if self.config.execute_local_commands:
             yield self.execute_shell
             yield self.execute_shell_popen
 
@@ -192,7 +219,7 @@ class CodeExecutorComponent(CommandProvider):
         logger.debug("App is not running in a Docker container")
         return self._run_python_code_in_docker(file_path, args)
 
-    def validate_command(self, command_line: str, config: Config) -> tuple[bool, bool]:
+    def validate_command(self, command_line: str) -> tuple[bool, bool]:
         """Check whether a command is allowed and whether it may be executed in a shell.
 
         If shell command control is enabled, we disallow executing in a shell, because
@@ -211,10 +238,10 @@ class CodeExecutorComponent(CommandProvider):
 
         command_name = shlex.split(command_line)[0]
 
-        if config.shell_command_control == ALLOWLIST_CONTROL:
-            return command_name in config.shell_allowlist, False
-        elif config.shell_command_control == DENYLIST_CONTROL:
-            return command_name not in config.shell_denylist, False
+        if self.config.shell_command_control == "allowlist":
+            return command_name in self.config.shell_allowlist, False
+        elif self.config.shell_command_control == "denylist":
+            return command_name not in self.config.shell_denylist, False
         else:
             return True, True
 
@@ -238,9 +265,7 @@ class CodeExecutorComponent(CommandProvider):
         Returns:
             str: The output of the command
         """
-        allow_execute, allow_shell = self.validate_command(
-            command_line, self.legacy_config
-        )
+        allow_execute, allow_shell = self.validate_command(command_line)
         if not allow_execute:
             logger.info(f"Command '{command_line}' not allowed")
             raise OperationNotAllowedError("This shell command is not allowed.")
@@ -287,9 +312,7 @@ class CodeExecutorComponent(CommandProvider):
         Returns:
             str: Description of the fact that the process started and its id
         """
-        allow_execute, allow_shell = self.validate_command(
-            command_line, self.legacy_config
-        )
+        allow_execute, allow_shell = self.validate_command(command_line)
         if not allow_execute:
             logger.info(f"Command '{command_line}' not allowed")
             raise OperationNotAllowedError("This shell command is not allowed.")
@@ -320,12 +343,10 @@ class CodeExecutorComponent(CommandProvider):
         """Run a Python script in a Docker container"""
         file_path = self.workspace.get_path(filename)
         try:
-            assert self.state.agent_id, "Need Agent ID to attach Docker container"
-
             client = docker.from_env()
             image_name = "python:3-alpine"
             container_is_fresh = False
-            container_name = f"{self.state.agent_id}_sandbox"
+            container_name = self.config.docker_container_name
             with self.workspace.mount() as local_path:
                 try:
                     container: DockerContainer = client.containers.get(

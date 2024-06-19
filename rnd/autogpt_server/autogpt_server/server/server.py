@@ -1,4 +1,6 @@
 import asyncio
+from contextlib import asynccontextmanager
+
 import uuid
 
 import uvicorn
@@ -8,7 +10,15 @@ from autogpt_server.data import db, execution, graph
 
 
 class AgentServer:
+
     def __init__(self, queue: execution.ExecutionQueue):
+
+        @asynccontextmanager
+        async def lifespan(app: FastAPI):
+            await db.connect()
+            yield
+            await db.disconnect()
+
         self.app = FastAPI(
             title="AutoGPT Agent Server",
             description=(
@@ -17,6 +27,7 @@ class AgentServer:
             ),
             summary="AutoGPT Agent Server",
             version="0.1",
+            lifespan=lifespan,
         )
         self.execution_queue = queue
 
@@ -28,8 +39,6 @@ class AgentServer:
             methods=["POST"],
         )
         self.app.include_router(self.router)
-        self.app.on_event("startup")(db.connect)
-        self.app.on_event("shutdown")(db.disconnect)
 
     async def execute_agent(self, agent_id: str, node_input: dict):
         agent = await graph.get_graph(agent_id)
@@ -49,9 +58,7 @@ class AgentServer:
                 )
 
             task = execution.add_execution(
-                execution.Execution(
-                    run_id=run_id, node_id=node.id, data=node_input
-                ),
+                execution.Execution(run_id=run_id, node_id=node.id, data=node_input),
                 self.execution_queue,
             )
 

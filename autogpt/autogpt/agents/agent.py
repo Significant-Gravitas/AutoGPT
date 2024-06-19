@@ -18,7 +18,11 @@ from forge.components.action_history import (
     ActionHistoryComponent,
     EpisodicActionHistory,
 )
-from forge.components.code_executor.code_executor import CodeExecutorComponent
+from forge.components.action_history.action_history import ActionHistoryConfiguration
+from forge.components.code_executor.code_executor import (
+    CodeExecutorComponent,
+    CodeExecutorConfiguration,
+)
 from forge.components.code_flow_executor.code_flow_executor import (
     CodeFlowExecutionComponent,
 )
@@ -61,7 +65,7 @@ from .prompt_strategies.one_shot import (
 )
 
 if TYPE_CHECKING:
-    from forge.config.config import Config
+    from autogpt.app.config import AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +98,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         settings: AgentSettings,
         llm_provider: MultiProvider,
         file_storage: FileStorage,
-        legacy_config: Config,
+        app_config: AppConfig,
         prompt_strategy_class: type[
             OneShotAgentPromptStrategy | CodeFlowAgentPromptStrategy
         ] = CodeFlowAgentPromptStrategy,
@@ -115,24 +119,28 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         self.system = SystemComponent()
         self.history = ActionHistoryComponent(
             settings.history,
-            self.send_token_limit,
             lambda x: self.llm_provider.count_tokens(x, self.llm.name),
-            legacy_config,
             llm_provider,
+            ActionHistoryConfiguration(
+                model_name=app_config.fast_llm, max_tokens=self.send_token_limit
+            ),
         ).run_after(WatchdogComponent)
-        self.user_interaction = UserInteractionComponent(legacy_config)
-        self.file_manager = FileManagerComponent(settings, file_storage)
+        if not app_config.noninteractive_mode:
+            self.user_interaction = UserInteractionComponent()
+        self.file_manager = FileManagerComponent(file_storage, settings)
         self.code_executor = CodeExecutorComponent(
             self.file_manager.workspace,
-            settings,
-            legacy_config,
+            CodeExecutorConfiguration(
+                docker_container_name=f"{settings.agent_id}_sandbox"
+            ),
         )
-        self.git_ops = GitOperationsComponent(legacy_config)
-        self.image_gen = ImageGeneratorComponent(
-            self.file_manager.workspace, legacy_config
+        self.git_ops = GitOperationsComponent()
+        self.image_gen = ImageGeneratorComponent(self.file_manager.workspace)
+        self.web_search = WebSearchComponent()
+        self.web_selenium = WebSeleniumComponent(
+            llm_provider,
+            app_config.app_data_dir,
         )
-        self.web_search = WebSearchComponent(legacy_config)
-        self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
         self.context = ContextComponent(self.file_manager.workspace, settings.context)
         self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(
             ContextComponent
@@ -140,7 +148,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         self.code_flow_executor = CodeFlowExecutionComponent()
 
         self.event_history = settings.history
-        self.legacy_config = legacy_config
+        self.app_config = app_config
 
     async def propose_action(self) -> OneShotAgentActionProposal:
         """Proposes the next action to execute, based on the task and current state.
@@ -174,7 +182,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             ai_profile=self.state.ai_profile,
             ai_directives=directives,
             commands=self.commands,
-            include_os_info=self.legacy_config.execute_local_commands,
+            include_os_info=self.code_executor.config.execute_local_commands,
         )
 
         logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
@@ -189,14 +197,14 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
-        response: ChatModelResponse[
-            OneShotAgentActionProposal
-        ] = await self.llm_provider.create_chat_completion(
-            prompt.messages,
-            model_name=self.llm.name,
-            completion_parser=self.prompt_strategy.parse_response_content,
-            functions=prompt.functions,
-            prefill_response=prompt.prefill_response,
+        response: ChatModelResponse[OneShotAgentActionProposal] = (
+            await self.llm_provider.create_chat_completion(
+                prompt.messages,
+                model_name=self.llm.name,
+                completion_parser=self.prompt_strategy.parse_response_content,
+                functions=prompt.functions,
+                prefill_response=prompt.prefill_response,
+            )
         )
         result = response.parsed_result
 
@@ -286,7 +294,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             command
             for command in self.commands
             if not any(
-                name in self.legacy_config.disabled_commands for name in command.names
+                name in self.app_config.disabled_commands for name in command.names
             )
         ]
 

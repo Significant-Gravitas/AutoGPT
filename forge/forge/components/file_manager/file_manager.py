@@ -3,7 +3,10 @@ import os
 from pathlib import Path
 from typing import Iterator, Optional
 
+from pydantic import BaseModel
+
 from forge.agent import BaseAgentSettings
+from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.file_storage.base import FileStorage
@@ -13,67 +16,89 @@ from forge.utils.file_operations import decode_textual_file
 logger = logging.getLogger(__name__)
 
 
-class FileManagerComponent(DirectiveProvider, CommandProvider):
+class FileManagerConfiguration(BaseModel):
+    storage_path: str
+    """Path to agent files, e.g. state"""
+    workspace_path: str
+    """Path to files that agent has access to"""
+
+    class Config:
+        # Prevent mutation of the configuration
+        # as this wouldn't be reflected in the file storage
+        allow_mutation = False
+
+
+class FileManagerComponent(
+    DirectiveProvider, CommandProvider, ConfigurableComponent[FileManagerConfiguration]
+):
     """
     Adds general file manager (e.g. Agent state),
     workspace manager (e.g. Agent output files) support and
     commands to perform operations on files and folders.
     """
 
-    files: FileStorage
-    """Agent-related files, e.g. state, logs.
-    Use `workspace` to access the agent's workspace files."""
-
-    workspace: FileStorage
-    """Workspace that the agent has access to, e.g. for reading/writing files.
-    Use `files` to access agent-related files, e.g. state, logs."""
+    config_class = FileManagerConfiguration
 
     STATE_FILE = "state.json"
     """The name of the file where the agent's state is stored."""
 
-    def __init__(self, state: BaseAgentSettings, file_storage: FileStorage):
-        self.state = state
+    def __init__(
+        self,
+        file_storage: FileStorage,
+        agent_state: BaseAgentSettings,
+        config: Optional[FileManagerConfiguration] = None,
+    ):
+        """Initialise the FileManagerComponent.
+        Either `agent_id` or `config` must be provided.
 
-        if not state.agent_id:
+        Args:
+            file_storage (FileStorage): The file storage instance to use.
+            state (BaseAgentSettings): The agent's state.
+            config (FileManagerConfiguration, optional): The configuration for
+            the file manager. Defaults to None.
+        """
+        if not agent_state.agent_id:
             raise ValueError("Agent must have an ID.")
 
-        self.files = file_storage.clone_with_subroot(f"agents/{state.agent_id}/")
-        self.workspace = file_storage.clone_with_subroot(
-            f"agents/{state.agent_id}/workspace"
-        )
+        self.agent_state = agent_state
+
+        if not config:
+            storage_path = f"agents/{self.agent_state.agent_id}/"
+            workspace_path = f"agents/{self.agent_state.agent_id}/workspace"
+            ConfigurableComponent.__init__(
+                self,
+                FileManagerConfiguration(
+                    storage_path=storage_path, workspace_path=workspace_path
+                ),
+            )
+        else:
+            ConfigurableComponent.__init__(self, config)
+
+        self.storage = file_storage.clone_with_subroot(self.config.storage_path)
+        """Agent-related files, e.g. state, logs.
+        Use `workspace` to access the agent's workspace files."""
+        self.workspace = file_storage.clone_with_subroot(self.config.workspace_path)
+        """Workspace that the agent has access to, e.g. for reading/writing files.
+        Use `storage` to access agent-related files, e.g. state, logs."""
         self._file_storage = file_storage
 
-    async def save_state(self, save_as: Optional[str] = None) -> None:
-        """Save the agent's state to the state file."""
-        state: BaseAgentSettings = getattr(self, "state")
-        if save_as:
-            temp_id = state.agent_id
-            state.agent_id = save_as
-            self._file_storage.make_dir(f"agents/{save_as}")
+    async def save_state(self, save_as_id: Optional[str] = None) -> None:
+        """Save the agent's data and state."""
+        if save_as_id:
+            self._file_storage.make_dir(f"agents/{save_as_id}")
             # Save state
             await self._file_storage.write_file(
-                f"agents/{save_as}/{self.STATE_FILE}", state.json()
+                f"agents/{save_as_id}/{self.STATE_FILE}", self.agent_state.json()
             )
             # Copy workspace
             self._file_storage.copy(
-                f"agents/{temp_id}/workspace",
-                f"agents/{save_as}/workspace",
+                self.config.workspace_path,
+                f"agents/{save_as_id}/workspace",
             )
-            state.agent_id = temp_id
         else:
-            await self.files.write_file(self.files.root / self.STATE_FILE, state.json())
-
-    def change_agent_id(self, new_id: str):
-        """Change the agent's ID and update the file storage accordingly."""
-        state: BaseAgentSettings = getattr(self, "state")
-        # Rename the agent's files and workspace
-        self._file_storage.rename(f"agents/{state.agent_id}", f"agents/{new_id}")
-        # Update the file storage objects
-        self.files = self._file_storage.clone_with_subroot(f"agents/{new_id}/")
-        self.workspace = self._file_storage.clone_with_subroot(
-            f"agents/{new_id}/workspace"
-        )
-        state.agent_id = new_id
+            await self.storage.write_file(
+                self.storage.root / self.STATE_FILE, self.agent_state.json()
+            )
 
     def get_resources(self) -> Iterator[str]:
         yield "The ability to read and write files."
