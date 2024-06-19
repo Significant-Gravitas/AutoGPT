@@ -5,20 +5,18 @@ import logging
 from typing import Literal, Optional
 
 import click
-from colorama import Back, Style
-from forge.config.config import GPT_3_MODEL, Config
 from forge.llm.providers import ModelName, MultiProvider
+
+from autogpt.app.config import GPT_3_MODEL, AppConfig
 
 logger = logging.getLogger(__name__)
 
 
 async def apply_overrides_to_config(
-    config: Config,
+    config: AppConfig,
     continuous: bool = False,
     continuous_limit: Optional[int] = None,
     skip_reprompt: bool = False,
-    browser_name: Optional[str] = None,
-    allow_downloads: bool = False,
     skip_news: bool = False,
 ) -> None:
     """Updates the config object with the given arguments.
@@ -33,8 +31,6 @@ async def apply_overrides_to_config(
         log_level (int): The global log level for the application.
         log_format (str): The format for the log(s).
         log_file_format (str): Override the format for the log file.
-        browser_name (str): The name of the browser to use for scraping the web.
-        allow_downloads (bool): Whether to allow AutoGPT to download files natively.
         skips_news (bool): Whether to suppress the output of latest news on startup.
     """
     config.continuous_mode = False
@@ -60,23 +56,6 @@ async def apply_overrides_to_config(
 
     if skip_reprompt:
         config.skip_reprompt = True
-
-    if browser_name:
-        config.selenium_web_browser = browser_name
-
-    if allow_downloads:
-        logger.warning(
-            msg=f"{Back.LIGHTYELLOW_EX}"
-            "AutoGPT will now be able to download and save files to your machine."
-            f"{Back.RESET}"
-            " It is recommended that you monitor any files it downloads carefully.",
-        )
-        logger.warning(
-            msg=f"{Back.RED + Style.BRIGHT}"
-            "NEVER OPEN FILES YOU AREN'T SURE OF!"
-            f"{Style.RESET_ALL}",
-        )
-        config.allow_downloads = True
 
     if skip_news:
         config.skip_news = True

@@ -1,30 +1,44 @@
 import json
 import logging
 import time
-from typing import Iterator
+from typing import Iterator, Optional
 
 from duckduckgo_search import DDGS
+from pydantic import BaseModel, SecretStr
 
+from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
-from forge.config.config import Config
+from forge.models.config import UserConfigurable
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import ConfigurationError
-
-DUCKDUCKGO_MAX_ATTEMPTS = 3
 
 logger = logging.getLogger(__name__)
 
 
-class WebSearchComponent(DirectiveProvider, CommandProvider):
+class WebSearchConfiguration(BaseModel):
+    google_api_key: Optional[SecretStr] = UserConfigurable(
+        from_env="GOOGLE_API_KEY", exclude=True
+    )
+    google_custom_search_engine_id: Optional[SecretStr] = UserConfigurable(
+        from_env="GOOGLE_CUSTOM_SEARCH_ENGINE_ID", exclude=True
+    )
+    duckduckgo_max_attempts: int = 3
+
+
+class WebSearchComponent(
+    DirectiveProvider, CommandProvider, ConfigurableComponent[WebSearchConfiguration]
+):
     """Provides commands to search the web."""
 
-    def __init__(self, config: Config):
-        self.legacy_config = config
+    config_class = WebSearchConfiguration
+
+    def __init__(self, config: Optional[WebSearchConfiguration] = None):
+        ConfigurableComponent.__init__(self, config)
 
         if (
-            not self.legacy_config.google_api_key
-            or not self.legacy_config.google_custom_search_engine_id
+            not self.config.google_api_key
+            or not self.config.google_custom_search_engine_id
         ):
             logger.info(
                 "Configure google_api_key and custom_search_engine_id "
@@ -37,10 +51,7 @@ class WebSearchComponent(DirectiveProvider, CommandProvider):
     def get_commands(self) -> Iterator[Command]:
         yield self.web_search
 
-        if (
-            self.legacy_config.google_api_key
-            and self.legacy_config.google_custom_search_engine_id
-        ):
+        if self.config.google_api_key and self.config.google_custom_search_engine_id:
             yield self.google
 
     @command(
@@ -74,7 +85,7 @@ class WebSearchComponent(DirectiveProvider, CommandProvider):
         search_results = []
         attempts = 0
 
-        while attempts < DUCKDUCKGO_MAX_ATTEMPTS:
+        while attempts < self.config.duckduckgo_max_attempts:
             if not query:
                 return json.dumps(search_results)
 
@@ -136,17 +147,25 @@ class WebSearchComponent(DirectiveProvider, CommandProvider):
         from googleapiclient.errors import HttpError
 
         try:
-            # Get the Google API key and Custom Search Engine ID from the config file
-            api_key = self.legacy_config.google_api_key
-            custom_search_engine_id = self.legacy_config.google_custom_search_engine_id
+            # Should be the case if this command is enabled:
+            assert self.config.google_api_key
+            assert self.config.google_custom_search_engine_id
 
             # Initialize the Custom Search API service
-            service = build("customsearch", "v1", developerKey=api_key)
+            service = build(
+                "customsearch",
+                "v1",
+                developerKey=self.config.google_api_key.get_secret_value(),
+            )
 
             # Send the search query and retrieve the results
             result = (
                 service.cse()
-                .list(q=query, cx=custom_search_engine_id, num=num_results)
+                .list(
+                    q=query,
+                    cx=self.config.google_custom_search_engine_id.get_secret_value(),
+                    num=num_results,
+                )
                 .execute()
             )
 
