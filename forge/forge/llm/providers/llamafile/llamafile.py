@@ -115,10 +115,10 @@ class LlamafileProvider(
         # note: at the moment, llamafile only serves one model at a time (so this
         # list will only ever have one value). however, in the future, llamafile
         # may support multiple models, so leaving this method as-is for now.
-        self._logger.debug(f"Retrieved models: {_models}")
+        self._logger.debug(f"Retrieved llamafile models: {_models}")
 
         clean_model_ids = [clean_model_name(m.id) for m in _models]
-        self._logger.debug(f"Cleaned model IDs: {clean_model_ids}")
+        self._logger.debug(f"Cleaned llamafile model IDs: {clean_model_ids}")
 
         return [
             LLAMAFILE_CHAT_MODELS[id]
