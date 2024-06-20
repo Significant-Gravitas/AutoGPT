@@ -5,14 +5,27 @@ from unittest.mock import patch
 
 import pytest
 from forge.components.image_gen import ImageGeneratorComponent
+from forge.components.image_gen.image_gen import ImageGeneratorConfiguration
+from forge.file_storage.base import FileStorage
+from forge.llm.providers.openai import OpenAICredentials
 from PIL import Image
-
-from autogpt.agents.agent import Agent
+from pydantic import SecretStr
 
 
 @pytest.fixture
-def image_gen_component(agent: Agent):
-    return agent.image_gen
+def image_gen_component(storage: FileStorage):
+    cred = OpenAICredentials.from_env()
+    return ImageGeneratorComponent(storage, openai_credentials=cred)
+
+
+@pytest.fixture
+def huggingface_image_gen_component(storage: FileStorage):
+    config = ImageGeneratorConfiguration(
+        image_provider="huggingface",
+        huggingface_api_token=SecretStr("1"),
+        huggingface_image_model="CompVis/stable-diffusion-v1-4",
+    )
+    return ImageGeneratorComponent(storage, config=config)
 
 
 @pytest.fixture(params=[256, 512, 1024])
@@ -25,16 +38,11 @@ def image_size(request):
 @pytest.mark.vcr
 def test_dalle(
     image_gen_component: ImageGeneratorComponent,
-    agent: Agent,
-    storage,
     image_size,
-    cached_openai_client,
 ):
     """Test DALL-E image generation."""
     generate_and_validate(
         image_gen_component,
-        agent,
-        storage,
         image_provider="dalle",
         image_size=image_size,
     )
@@ -51,16 +59,12 @@ def test_dalle(
 )
 def test_huggingface(
     image_gen_component: ImageGeneratorComponent,
-    agent: Agent,
-    storage,
     image_size,
     image_model,
 ):
     """Test HuggingFace image generation."""
     generate_and_validate(
         image_gen_component,
-        agent,
-        storage,
         image_provider="huggingface",
         image_size=image_size,
         hugging_face_image_model=image_model,
@@ -68,14 +72,10 @@ def test_huggingface(
 
 
 @pytest.mark.xfail(reason="SD WebUI call does not work.")
-def test_sd_webui(
-    image_gen_component: ImageGeneratorComponent, agent: Agent, storage, image_size
-):
+def test_sd_webui(image_gen_component: ImageGeneratorComponent, image_size):
     """Test SD WebUI image generation."""
     generate_and_validate(
         image_gen_component,
-        agent,
-        storage,
         image_provider="sd_webui",
         image_size=image_size,
     )
@@ -83,7 +83,7 @@ def test_sd_webui(
 
 @pytest.mark.xfail(reason="SD WebUI call does not work.")
 def test_sd_webui_negative_prompt(
-    image_gen_component: ImageGeneratorComponent, storage, image_size
+    image_gen_component: ImageGeneratorComponent, image_size
 ):
     gen_image = functools.partial(
         image_gen_component.generate_image_with_sd_webui,
@@ -114,17 +114,15 @@ def lst(txt):
 
 def generate_and_validate(
     image_gen_component: ImageGeneratorComponent,
-    agent: Agent,
-    storage,
     image_size,
     image_provider,
     hugging_face_image_model=None,
     **kwargs,
 ):
     """Generate an image and validate the output."""
-    agent.legacy_config.image_provider = image_provider
+    image_gen_component.config.image_provider = image_provider
     if hugging_face_image_model:
-        agent.legacy_config.huggingface_image_model = hugging_face_image_model
+        image_gen_component.config.huggingface_image_model = hugging_face_image_model
     prompt = "astronaut riding a horse"
 
     image_path = lst(image_gen_component.generate_image(prompt, image_size, **kwargs))
@@ -149,9 +147,7 @@ def generate_and_validate(
 )
 @pytest.mark.parametrize("delay", [10, 0])
 def test_huggingface_fail_request_with_delay(
-    image_gen_component: ImageGeneratorComponent,
-    agent: Agent,
-    storage,
+    huggingface_image_gen_component: ImageGeneratorComponent,
     image_size,
     image_model,
     return_text,
@@ -173,14 +169,12 @@ def test_huggingface_fail_request_with_delay(
             mock_post.return_value.ok = False
             mock_post.return_value.text = return_text
 
-        agent.legacy_config.image_provider = "huggingface"
-        agent.legacy_config.huggingface_api_token = "mock-api-key"
-        agent.legacy_config.huggingface_image_model = image_model
+        huggingface_image_gen_component.config.huggingface_image_model = image_model
         prompt = "astronaut riding a horse"
 
         with patch("time.sleep") as mock_sleep:
             # Verify request fails.
-            result = image_gen_component.generate_image(prompt, image_size)
+            result = huggingface_image_gen_component.generate_image(prompt, image_size)
             assert result == "Error creating image."
 
             # Verify retry was called with delay if delay is in return_text
@@ -191,10 +185,8 @@ def test_huggingface_fail_request_with_delay(
 
 
 def test_huggingface_fail_request_no_delay(
-    mocker, image_gen_component: ImageGeneratorComponent, agent: Agent
+    mocker, huggingface_image_gen_component: ImageGeneratorComponent
 ):
-    agent.legacy_config.huggingface_api_token = "1"
-
     # Mock requests.post
     mock_post = mocker.patch("requests.post")
     mock_post.return_value.status_code = 500
@@ -206,10 +198,9 @@ def test_huggingface_fail_request_no_delay(
     # Mock time.sleep
     mock_sleep = mocker.patch("time.sleep")
 
-    agent.legacy_config.image_provider = "huggingface"
-    agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
-
-    result = image_gen_component.generate_image("astronaut riding a horse", 512)
+    result = huggingface_image_gen_component.generate_image(
+        "astronaut riding a horse", 512
+    )
 
     assert result == "Error creating image."
 
@@ -218,10 +209,8 @@ def test_huggingface_fail_request_no_delay(
 
 
 def test_huggingface_fail_request_bad_json(
-    mocker, image_gen_component: ImageGeneratorComponent, agent: Agent
+    mocker, huggingface_image_gen_component: ImageGeneratorComponent
 ):
-    agent.legacy_config.huggingface_api_token = "1"
-
     # Mock requests.post
     mock_post = mocker.patch("requests.post")
     mock_post.return_value.status_code = 500
@@ -231,10 +220,9 @@ def test_huggingface_fail_request_bad_json(
     # Mock time.sleep
     mock_sleep = mocker.patch("time.sleep")
 
-    agent.legacy_config.image_provider = "huggingface"
-    agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
-
-    result = image_gen_component.generate_image("astronaut riding a horse", 512)
+    result = huggingface_image_gen_component.generate_image(
+        "astronaut riding a horse", 512
+    )
 
     assert result == "Error creating image."
 
@@ -243,17 +231,14 @@ def test_huggingface_fail_request_bad_json(
 
 
 def test_huggingface_fail_request_bad_image(
-    mocker, image_gen_component: ImageGeneratorComponent, agent: Agent
+    mocker, huggingface_image_gen_component: ImageGeneratorComponent
 ):
-    agent.legacy_config.huggingface_api_token = "1"
-
     # Mock requests.post
     mock_post = mocker.patch("requests.post")
     mock_post.return_value.status_code = 200
 
-    agent.legacy_config.image_provider = "huggingface"
-    agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
-
-    result = image_gen_component.generate_image("astronaut riding a horse", 512)
+    result = huggingface_image_gen_component.generate_image(
+        "astronaut riding a horse", 512
+    )
 
     assert result == "Error creating image."

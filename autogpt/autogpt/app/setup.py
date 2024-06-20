@@ -4,8 +4,9 @@ from typing import Optional
 
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
-from forge.config.config import Config
 from forge.logging.utils import print_attribute
+
+from autogpt.app.config import AppConfig
 
 from .input import clean_input
 
@@ -46,7 +47,7 @@ def apply_overrides_to_ai_settings(
 async def interactively_revise_ai_settings(
     ai_profile: AIProfile,
     directives: AIDirectives,
-    app_config: Config,
+    app_config: AppConfig,
 ):
     """Interactively revise the AI settings.
 
