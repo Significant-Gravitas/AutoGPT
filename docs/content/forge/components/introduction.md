@@ -10,7 +10,7 @@ This guide explains the component-based architecture of AutoGPT agents. It's a n
 
 Agent is composed of *components*, and each *component* implements a range of *protocols* (interfaces), each one providing a specific functionality, e.g. additional commands or messages. Each *protocol* is handled in a specific order, defined by the agent. This allows for a clear separation of concerns and a more modular design.
 
-This system is simple, flexible, requires basically no configuration, and doesn't hide any data - anything can still be passed or accessed directly from or between components.
+This system is simple, flexible, and doesn't hide any data - anything can still be passed or accessed directly from or between components.
 
 ### Definitions & Guides
 

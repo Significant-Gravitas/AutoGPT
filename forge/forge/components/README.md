@@ -33,7 +33,7 @@ class MyAgent(BaseAgent):
 ## Component configuration
 
 Each component can have its own configuration defined using a regular pydantic `BaseModel`.
-To ensure the configuration is loaded from the file correctly, the component must inherit from `ConfigurableComponent[T]` where `T` is the configuration model it uses.
+To ensure the configuration is loaded from the file correctly, the component must inherit from `ConfigurableComponent[BM]` where `BM` is the configuration model it uses.
 `ConfigurableComponent` provides a `config` attribute that holds the configuration instance.
 It's possible to either set the `config` attribute directly or pass the configuration instance to the component's constructor.
 Extra configuration (i.e. for components that are not part of the agent) can be passed and will be silently ignored. Extra config won't be applied even if the component is added later.
@@ -71,6 +71,12 @@ from forge.models.config import UserConfigurable
 class SensitiveConfig(BaseModel):
     api_key: SecretStr = UserConfigurable(from_env="API_KEY", exclude=True)
 ```
+
+### Configuration serialization
+
+`BaseAgent` provides two methods:
+1. `dump_component_configs`: Serializes all components' configurations as json string.
+1. `load_component_configs`: Deserializes json string to configuration and applies it.
 
 ## Ordering components
 

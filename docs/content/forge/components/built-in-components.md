@@ -1,7 +1,7 @@
 # Built-in Components
 
 This page lists all [🧩 Components](./components.md) and [⚙️ Protocols](./protocols.md) they implement that are natively provided. They are used by the AutoGPT agent.
-Some components have additional configuration options listed in the table, see [Component configuration](./components.md/#ordering-components) to learn more.
+Some components have additional configuration options listed in the table, see [Component configuration](./components.md/#component-configuration) to learn more.
 
 !!! note
     If a configuration field uses environment variable, it still can be passed using configuration model. **Value from the configuration takes precedence over env var!** Env var will be only applied if value in the configuration is not set.
@@ -13,7 +13,7 @@ Essential component to allow an agent to finish.
 **DirectiveProvider**
 
 - Constraints about API budget
-  
+
 **MessageProvider**
 
 - Current time and date
@@ -38,7 +38,7 @@ Necessary for saving and loading agent's state (preserving session).
 
 | Config variable  | Details                                | Type  | Default                            |
 | ---------------- | -------------------------------------- | ----- | ---------------------------------- |
-| `files_path`     | Path to agent files, e.g. state        | `str` | `agents/{agent_id}/`[^1]           |
+| `storage_path`     | Path to agent files, e.g. state        | `str` | `agents/{agent_id}/`[^1]           |
 | `workspace_path` | Path to files that agent has access to | `str` | `agents/{agent_id}/workspace/`[^1] |
 
 [^1] This option is set dynamically during component construction as opposed to by default inside the configuration model, `{agent_id}` is replaced with the agent's unique identifier.

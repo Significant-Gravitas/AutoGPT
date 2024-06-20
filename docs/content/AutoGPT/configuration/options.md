@@ -1,7 +1,7 @@
 # Configuration
 
-Configuration is controlled through the `Config` object. You can set configuration variables via the `.env` file. If you don't have a `.env` file, create a copy of `.env.template` in your `AutoGPT` folder and name it `.env`.
-
+Configuration of sensitive data such as API is controlled using environment variables.
+You can set configuration variables via the `.env` file. If you don't have a `.env` file, create a copy of `.env.template` in your `AutoGPT` folder and name it `.env`.
 ## Environment Variables
 
 - `AUTHORISE_COMMAND_KEY`: Key response accepted when authorising commands. Default: y
