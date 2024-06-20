@@ -174,7 +174,7 @@ const Flow: React.FC = () => {
           return acc;
         }, {} as { [key: string]: string }),
       }));
-  
+
       // Create agent payload
       const payload = {
         id: '',
@@ -182,9 +182,9 @@ const Flow: React.FC = () => {
         description: 'Agent Description',
         nodes: formattedNodes,
       };
-  
+
       console.log('Agent creation payload:', payload);
-  
+
       // Create the agent
       const createResponse = await fetch('http://192.168.0.215:8000/agents', {
         method: 'POST',
@@ -193,15 +193,15 @@ const Flow: React.FC = () => {
         },
         body: JSON.stringify(payload),
       });
-  
+
       if (!createResponse.ok) {
         throw new Error(`HTTP error! Status: ${createResponse.status}`);
       }
-  
+
       const createData = await createResponse.json();
       const agentId = createData.id;
       setAgentId(agentId);
-  
+
       // Collect the initial inputs for the agent's nodes
       const nodeInput = nodes.reduce((acc, node) => {
         if (node.data.hardcodedValues && Object.keys(node.data.hardcodedValues).length > 0) {
@@ -209,20 +209,20 @@ const Flow: React.FC = () => {
         }
         return acc;
       }, {} as { [key: string]: any });
-  
+
       // Adjust node input for PrintingBlock to include 'text' directly
       const nodeInputForExecution = Object.keys(nodeInput).reduce((acc, key) => {
         acc[key] = nodeInput[key];
         return acc;
       }, {} as { [key: string]: any });
-  
+
       // Ensure nodeInput for PrintingBlock includes 'text'
       if (!nodeInputForExecution['1'] || !nodeInputForExecution['1'].text) {
-        nodeInputForExecution['1'] = { text: 'hello' };
+        nodeInputForExecution['1'] = { text: '' };
       }
-  
+
       console.log('Node input for execution:', nodeInputForExecution);
-  
+
       // Payload for executing the agent
       const executeResponse = await fetch(`http://192.168.0.215:8000/agents/${agentId}/execute`, {
         method: 'POST',
@@ -231,28 +231,70 @@ const Flow: React.FC = () => {
         },
         body: JSON.stringify(nodeInputForExecution['1']),
       });
-  
+
       if (!executeResponse.ok) {
         throw new Error(`HTTP error! Status: ${executeResponse.status}`);
       }
-  
+
       const executeData = await executeResponse.json();
       const runId = executeData.run_id;
-  
+
       console.log(`Agent ${agentId} is executing with run ID ${runId}`);
-  
-      const watchExecution = async () => {
-        const watchResponse = await fetch(`http://192.168.0.215:8000/agents/${agentId}/executions/${runId}`);
-  
-        if (!watchResponse.ok) {
-          throw new Error(`HTTP error! Status: ${watchResponse.status}`);
-        }
-  
-        const executionData = await watchResponse.json();
-        console.log('Execution data:', executionData);
+
+      const startPolling = () => {
+        const endTime = Date.now() + 60000; // 60 seconds timeout
+
+        const poll = async () => {
+          if (Date.now() >= endTime) {
+            console.log('Polling timeout reached.');
+            return;
+          }
+
+          try {
+            const response = await fetch(`http://192.168.0.215:8000/agents/${agentId}/executions/${runId}`);
+            if (!response.ok) {
+              throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('Execution status:', data);
+
+            // Update the node statuses in the state
+            const updatedNodes = nodes.map(node => {
+              const nodeExecution = data.find((exec: any) => exec.node_id === node.id);
+              if (nodeExecution) {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    status: nodeExecution.status,
+                    output_data: nodeExecution.output_data,
+                  },
+                };
+              }
+              return node;
+            });
+
+            setNodes(updatedNodes);
+
+            // Check if all nodes are completed
+            const allCompleted = data.every((exec: any) => exec.status === 'COMPLETED');
+            if (allCompleted) {
+              console.log('All nodes are completed.');
+              return;
+            }
+
+            setTimeout(poll, 100); // Poll every 0.1 seconds
+          } catch (error) {
+            console.error('Error during polling:', error);
+            setTimeout(poll, 100); // Continue polling on error
+          }
+        };
+
+        poll();
       };
-  
-      watchExecution();
+
+      startPolling();
     } catch (error) {
       console.error('Error running agent:', error);
     }
