@@ -48,7 +48,6 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
     const newValues = { ...data.hardcodedValues, [key]: value };
     data.setHardcodedValues(newValues);
   };
-  
 
   const isHandleConnected = (key: string) => {
     return data.connections.some((conn: string) => {

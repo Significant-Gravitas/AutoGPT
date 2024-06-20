@@ -25,7 +25,7 @@ interface AvailableNode {
   id: string;
   name: string;
   description: string;
-  inputSchema?: { properties: { [key: string]: any } };
+  inputSchema?: { properties: { [key: string]: any }; required?: string[] };
   outputSchema?: { properties: { [key: string]: any } };
 }
 
@@ -154,13 +154,38 @@ const Flow: React.FC = () => {
 
   const filteredNodes = availableNodes.filter(node => node.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
+  const prepareNodeInputData = (node: Node, allNodes: Node[], allEdges: Edge[]) => {
+    const nodeSchema = availableNodes.find(n => n.id === node.data.block_id);
+    if (!nodeSchema || !nodeSchema.inputSchema) return {};
+
+    let inputData: { [key: string]: any } = {};
+    const inputProperties = nodeSchema.inputSchema.properties;
+    const requiredProperties = nodeSchema.inputSchema.required || [];
+
+    // Initialize inputData with default values for all required properties
+    requiredProperties.forEach(prop => {
+      inputData[prop] = '';
+    });
+
+    Object.keys(inputProperties).forEach(prop => {
+      const inputEdge = allEdges.find(edge => edge.target === node.id && edge.targetHandle === prop);
+      if (inputEdge) {
+        const sourceNode = allNodes.find(n => n.id === inputEdge.source);
+        inputData[prop] = sourceNode?.data.output_data || '';
+      } else if (node.data.hardcodedValues && node.data.hardcodedValues[prop]) {
+        inputData[prop] = node.data.hardcodedValues[prop];
+      }
+    });
+
+    return inputData;
+  };
+
   const runAgent = async () => {
     try {
-      // Format each node as required by the backend
       const formattedNodes = nodes.map(node => ({
         id: node.id,
         block_id: node.data.block_id,
-        input_default: node.data.hardcodedValues || {},
+        input_default: prepareNodeInputData(node, nodes, edges),
         input_nodes: edges.filter(edge => edge.target === node.id).reduce((acc, edge) => {
           if (edge.targetHandle) {
             acc[edge.targetHandle] = edge.source;
@@ -175,7 +200,6 @@ const Flow: React.FC = () => {
         }, {} as { [key: string]: string }),
       }));
 
-      // Create agent payload
       const payload = {
         id: '',
         name: 'Agent Name',
@@ -183,9 +207,6 @@ const Flow: React.FC = () => {
         nodes: formattedNodes,
       };
 
-      console.log('Agent creation payload:', payload);
-
-      // Create the agent
       const createResponse = await fetch('http://192.168.0.215:8000/agents', {
         method: 'POST',
         headers: {
@@ -202,34 +223,29 @@ const Flow: React.FC = () => {
       const agentId = createData.id;
       setAgentId(agentId);
 
-      // Collect the initial inputs for the agent's nodes
-      const nodeInput = nodes.reduce((acc, node) => {
-        if (node.data.hardcodedValues && Object.keys(node.data.hardcodedValues).length > 0) {
-          acc[node.id] = node.data.hardcodedValues;
+      const initialNodeInput = nodes.reduce((acc, node) => {
+        acc[node.id] = prepareNodeInputData(node, nodes, edges);
+        return acc;
+      }, {} as { [key: string]: any });
+
+      // Ensure the top-level structure of the input matches the expected schema
+      const nodeInputForExecution = Object.keys(initialNodeInput).reduce((acc, key) => {
+        const blockId = nodes.find(node => node.id === key)?.data.block_id;
+        const nodeSchema = availableNodes.find(n => n.id === blockId);
+        if (nodeSchema && nodeSchema.inputSchema) {
+          Object.keys(nodeSchema.inputSchema.properties).forEach(prop => {
+            acc[prop] = initialNodeInput[key][prop];
+          });
         }
         return acc;
       }, {} as { [key: string]: any });
 
-      // Adjust node input for PrintingBlock to include 'text' directly
-      const nodeInputForExecution = Object.keys(nodeInput).reduce((acc, key) => {
-        acc[key] = nodeInput[key];
-        return acc;
-      }, {} as { [key: string]: any });
-
-      // Ensure nodeInput for PrintingBlock includes 'text'
-      if (!nodeInputForExecution['1'] || !nodeInputForExecution['1'].text) {
-        nodeInputForExecution['1'] = { text: '' };
-      }
-
-      console.log('Node input for execution:', nodeInputForExecution);
-
-      // Payload for executing the agent
       const executeResponse = await fetch(`http://192.168.0.215:8000/agents/${agentId}/execute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(nodeInputForExecution['1']),
+        body: JSON.stringify(nodeInputForExecution),
       });
 
       if (!executeResponse.ok) {
@@ -239,10 +255,8 @@ const Flow: React.FC = () => {
       const executeData = await executeResponse.json();
       const runId = executeData.run_id;
 
-      console.log(`Agent ${agentId} is executing with run ID ${runId}`);
-
       const startPolling = () => {
-        const endTime = Date.now() + 60000; // 60 seconds timeout
+        const endTime = Date.now() + 60000;
 
         const poll = async () => {
           if (Date.now() >= endTime) {
@@ -257,9 +271,6 @@ const Flow: React.FC = () => {
             }
 
             const data = await response.json();
-            console.log('Execution status:', data);
-
-            // Update the node statuses in the state
             const updatedNodes = nodes.map(node => {
               const nodeExecution = data.find((exec: any) => exec.node_id === node.id);
               if (nodeExecution) {
@@ -277,17 +288,16 @@ const Flow: React.FC = () => {
 
             setNodes(updatedNodes);
 
-            // Check if all nodes are completed
             const allCompleted = data.every((exec: any) => exec.status === 'COMPLETED');
             if (allCompleted) {
               console.log('All nodes are completed.');
               return;
             }
 
-            setTimeout(poll, 100); // Poll every 0.1 seconds
+            setTimeout(poll, 100);
           } catch (error) {
             console.error('Error during polling:', error);
-            setTimeout(poll, 100); // Continue polling on error
+            setTimeout(poll, 100);
           }
         };
 
