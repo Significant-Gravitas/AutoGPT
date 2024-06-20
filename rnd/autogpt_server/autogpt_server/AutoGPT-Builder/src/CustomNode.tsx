@@ -44,8 +44,18 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
     ));
   };
 
-  const inputCount = data.inputSchema ? Object.keys(data.inputSchema.properties).length : 0;
-  const outputCount = data.outputSchema ? Object.keys(data.outputSchema.properties).length : 0;
+  const handleInputChange = (key: string, value: any) => {
+    const newValues = { ...data.hardcodedValues, [key]: value };
+    data.setHardcodedValues(newValues);
+  };
+  
+
+  const isHandleConnected = (key: string) => {
+    return data.connections.some((conn: string) => {
+      const [source, target] = conn.split(' -> ');
+      return target.includes(key) && target.includes(data.title);
+    });
+  };
 
   return (
     <div style={{ padding: '20px', border: '2px solid #fff', borderRadius: '20px', background: '#333', color: '#e0e0e0', width: '250px' }}>
@@ -63,6 +73,19 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
       <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', gap: '20px' }}>
         <div>
           {data.inputSchema && generateHandles(data.inputSchema, 'target')}
+          {data.inputSchema && Object.keys(data.inputSchema.properties).map(key => (
+            (!isHandleConnected(key) || data.connections.length === 0) && (
+              <div key={key} style={{ marginBottom: '5px' }}>
+                <input
+                  type="text"
+                  placeholder={`Enter ${key}`}
+                  value={data.hardcodedValues[key] || ''}
+                  onChange={(e) => handleInputChange(key, e.target.value)}
+                  style={{ width: '100%', padding: '5px', borderRadius: '4px', border: '1px solid #555', background: '#444', color: '#e0e0e0' }}
+                />
+              </div>
+            )
+          ))}
         </div>
         <div>
           {data.outputSchema && generateHandles(data.outputSchema, 'source')}
@@ -73,8 +96,6 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
           <h4>Node Properties</h4>
           <p><strong>Name:</strong> {data.title}</p>
           <p><strong>Description:</strong> {data.description}</p>
-          <p><strong>Number of Inputs:</strong> {inputCount}</p>
-          <p><strong>Number of Outputs:</strong> {outputCount}</p>
           {/* Add more properties here if needed */}
         </div>
       )}

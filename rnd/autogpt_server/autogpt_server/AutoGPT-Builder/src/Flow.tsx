@@ -16,9 +16,7 @@ import CustomNode from './CustomNode';
 import './index.css';
 
 const initialNodes: Node[] = [];
-
 const initialEdges: Edge[] = [];
-
 const nodeTypes: NodeTypes = {
   custom: CustomNode,
 };
@@ -26,6 +24,7 @@ const nodeTypes: NodeTypes = {
 interface AvailableNode {
   id: string;
   name: string;
+  description: string;
   inputSchema?: { properties: { [key: string]: any } };
   outputSchema?: { properties: { [key: string]: any } };
 }
@@ -44,6 +43,8 @@ const Flow: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [availableNodes, setAvailableNodes] = useState<AvailableNode[]>([]);
+  const [loadingStatus, setLoadingStatus] = useState<'loading' | 'failed' | 'loaded'>('loading');
+  const [agentId, setAgentId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('http://192.168.0.215:8000/blocks')
@@ -55,8 +56,12 @@ const Flow: React.FC = () => {
       })
       .then(data => {
         setAvailableNodes(data);
+        setLoadingStatus('loaded');
       })
-      .catch(error => console.error('Error fetching nodes:', error));
+      .catch(error => {
+        console.error('Error fetching nodes:', error);
+        setLoadingStatus('failed');
+      });
   }, []);
 
   const onNodesChange: OnNodesChange = useCallback(
@@ -67,12 +72,30 @@ const Flow: React.FC = () => {
     (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
     []
   );
+
   const onConnect: OnConnect = useCallback(
-    (connection) => setEdges((eds) => addEdge(connection, eds)),
-    []
+    (connection) => {
+      setEdges((eds) => addEdge(connection, eds));
+      setNodes((nds) =>
+        nds.map((node) => {
+          if (node.id === connection.source) {
+            const connections = node.data.connections || [];
+            connections.push(`${node.data.title} ${connection.sourceHandle} -> ${connection.targetHandle}`);
+            return { ...node, data: { ...node.data, connections } };
+          }
+          if (node.id === connection.target) {
+            const connections = node.data.connections || [];
+            connections.push(`${connection.sourceHandle} -> ${node.data.title} ${connection.targetHandle}`);
+            return { ...node, data: { ...node.data, connections } };
+          }
+          return node;
+        })
+      );
+    },
+    [setEdges, setNodes]
   );
 
-  const addNode = (type: string, label: string) => {
+  const addNode = (type: string, label: string, description: string) => {
     const nodeSchema = availableNodes.find(node => node.name === label);
 
     const newNode: Node = {
@@ -81,15 +104,25 @@ const Flow: React.FC = () => {
       data: {
         label: label,
         title: `${type} ${nodeId}`,
-        description: `${type} Description ${nodeId}`,
+        description: `${description}`,
         inputSchema: nodeSchema?.inputSchema,
         outputSchema: nodeSchema?.outputSchema,
+        connections: [],
         variableName: '',
         variableValue: '',
         printVariable: '',
         setVariableName,
         setVariableValue,
         setPrintVariable,
+        hardcodedValues: {}, // Added hardcodedValues to store hardcoded inputs
+        setHardcodedValues: (values: { [key: string]: any }) => {
+          setNodes((nds) => nds.map((node) =>
+            node.id === nodeId.toString()
+              ? { ...node, data: { ...node.data, hardcodedValues: values } }
+              : node
+          ));
+        },
+        block_id: nodeSchema?.id || '',
       },
       position: { x: Math.random() * 400, y: Math.random() * 400 },
     };
@@ -121,6 +154,110 @@ const Flow: React.FC = () => {
 
   const filteredNodes = availableNodes.filter(node => node.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
+  const runAgent = async () => {
+    try {
+      // Format each node as required by the backend
+      const formattedNodes = nodes.map(node => ({
+        id: node.id,
+        block_id: node.data.block_id,
+        input_default: node.data.hardcodedValues || {},
+        input_nodes: edges.filter(edge => edge.target === node.id).reduce((acc, edge) => {
+          if (edge.targetHandle) {
+            acc[edge.targetHandle] = edge.source;
+          }
+          return acc;
+        }, {} as { [key: string]: string }),
+        output_nodes: edges.filter(edge => edge.source === node.id).reduce((acc, edge) => {
+          if (edge.sourceHandle) {
+            acc[edge.sourceHandle] = edge.target;
+          }
+          return acc;
+        }, {} as { [key: string]: string }),
+      }));
+  
+      // Create agent payload
+      const payload = {
+        id: '',
+        name: 'Agent Name',
+        description: 'Agent Description',
+        nodes: formattedNodes,
+      };
+  
+      console.log('Agent creation payload:', payload);
+  
+      // Create the agent
+      const createResponse = await fetch('http://192.168.0.215:8000/agents', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+  
+      if (!createResponse.ok) {
+        throw new Error(`HTTP error! Status: ${createResponse.status}`);
+      }
+  
+      const createData = await createResponse.json();
+      const agentId = createData.id;
+      setAgentId(agentId);
+  
+      // Collect the initial inputs for the agent's nodes
+      const nodeInput = nodes.reduce((acc, node) => {
+        if (node.data.hardcodedValues && Object.keys(node.data.hardcodedValues).length > 0) {
+          acc[node.id] = node.data.hardcodedValues;
+        }
+        return acc;
+      }, {} as { [key: string]: any });
+  
+      // Adjust node input for PrintingBlock to include 'text' directly
+      const nodeInputForExecution = Object.keys(nodeInput).reduce((acc, key) => {
+        acc[key] = nodeInput[key];
+        return acc;
+      }, {} as { [key: string]: any });
+  
+      // Ensure nodeInput for PrintingBlock includes 'text'
+      if (!nodeInputForExecution['1'] || !nodeInputForExecution['1'].text) {
+        nodeInputForExecution['1'] = { text: 'hello' };
+      }
+  
+      console.log('Node input for execution:', nodeInputForExecution);
+  
+      // Payload for executing the agent
+      const executeResponse = await fetch(`http://192.168.0.215:8000/agents/${agentId}/execute`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(nodeInputForExecution['1']),
+      });
+  
+      if (!executeResponse.ok) {
+        throw new Error(`HTTP error! Status: ${executeResponse.status}`);
+      }
+  
+      const executeData = await executeResponse.json();
+      const runId = executeData.run_id;
+  
+      console.log(`Agent ${agentId} is executing with run ID ${runId}`);
+  
+      const watchExecution = async () => {
+        const watchResponse = await fetch(`http://192.168.0.215:8000/agents/${agentId}/executions/${runId}`);
+  
+        if (!watchResponse.ok) {
+          throw new Error(`HTTP error! Status: ${watchResponse.status}`);
+        }
+  
+        const executionData = await watchResponse.json();
+        console.log('Execution data:', executionData);
+      };
+  
+      watchExecution();
+    } catch (error) {
+      console.error('Error running agent:', error);
+    }
+  };
+
   return (
     <div style={{ height: '100vh', position: 'relative', backgroundColor: '#121212' }}>
       <div style={{ position: 'absolute', top: '20px', left: isSidebarOpen ? '400px' : '20px', zIndex: 10, transition: 'left 0.3s ease' }}>
@@ -138,6 +275,26 @@ const Flow: React.FC = () => {
         >
           Nodes
         </button>
+        <button
+          onClick={runAgent}
+          style={{
+            padding: '10px 20px',
+            fontSize: '16px',
+            backgroundColor: 'green',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            marginLeft: '10px',
+          }}
+        >
+          Run
+        </button>
+        {agentId && (
+          <span style={{ marginLeft: '10px', color: '#fff', fontSize: '16px' }}>
+            Agent ID: {agentId}
+          </span>
+        )}
       </div>
       <div style={{ height: '100%', width: '100%' }}>
         <ReactFlow
@@ -247,20 +404,36 @@ const Flow: React.FC = () => {
             boxSizing: 'border-box',
           }}
         />
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-          {filteredNodes.map(node => (
-            <button
-              key={node.id}
-              onClick={() => addNode(node.name, node.name)}
-              style={sidebarButtonStyle}
-            >
-              {`Add ${node.name}`}
-            </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {loadingStatus === 'loading' && <p>Loading...</p>}
+          {loadingStatus === 'failed' && <p>Failed To Load Nodes</p>}
+          {loadingStatus === 'loaded' && filteredNodes.map(node => (
+            <div key={node.id} style={sidebarNodeRowStyle}>
+              <div>
+                <strong>{node.name}</strong>
+                <p>{node.description}</p>
+              </div>
+              <button
+                onClick={() => addNode(node.name, node.name, node.description)}
+                style={sidebarButtonStyle}
+              >
+                Add
+              </button>
+            </div>
           ))}
         </div>
       </div>
     </div>
   );
+};
+
+const sidebarNodeRowStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  backgroundColor: '#444',
+  padding: '10px',
+  borderRadius: '4px',
 };
 
 const sidebarButtonStyle = {

@@ -104,3 +104,17 @@ input::placeholder, textarea::placeholder {
 .sidebar h3 {
   margin: 0 0 20px;
 }
+
+.sidebarNodeRowStyle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #444;
+  padding: 10px;
+  border-radius: 4px;
+  cursor: grab;
+}
+
+.sidebarNodeRowStyle.dragging {
+  opacity: 0.5;
+}
