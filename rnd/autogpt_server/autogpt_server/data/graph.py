@@ -15,6 +15,7 @@ class Node(BaseDbModel):
     # TODO: Make it `dict[str, list[str]]`, output can be connected to multiple blocks.
     #       Other option is to use an edge-list, but it will complicate the rest code.
     output_nodes: dict[str, str] = {}  # dict[output_name, node_id]
+    metadata: dict[str, Any] = {}
 
     @staticmethod
     def from_db(node: AgentNode):
@@ -27,6 +28,7 @@ class Node(BaseDbModel):
             input_default=json.loads(node.constantInput),
             input_nodes={v.sinkName: v.agentNodeSourceId for v in node.Input or []},
             output_nodes={v.sourceName: v.agentNodeSinkId for v in node.Output or []},
+            metadata=json.loads(node.metadata),
         )
 
     def connect(self, node: "Node", source_name: str, sink_name: str):
@@ -133,6 +135,7 @@ async def create_graph(graph: Graph) -> Graph:
             "agentBlockId": node.block_id,
             "agentGraphId": graph.id,
             "constantInput": json.dumps(node.input_default),
+            "metadata": json.dumps(node.metadata),
         }) for node in graph.nodes
     ])
 

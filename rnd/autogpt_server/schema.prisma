@@ -37,6 +37,9 @@ model AgentNode {
   // JSON serialized dict[str, str] containing predefined input values.
   constantInput String @default("{}")
 
+  // JSON serialized dict[str, str] containing the node metadata.
+  metadata String @default("{}")
+
   ExecutionHistory AgentNodeExecution[]
 }
 
