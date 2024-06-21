@@ -66,7 +66,16 @@ const Flow: React.FC = () => {
   }, []);
 
   const onNodesChange: OnNodesChange = useCallback(
-    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
+    (changes) => setNodes((nds) => applyNodeChanges(changes, nds).map(node => ({
+      ...node,
+      data: {
+        ...node.data,
+        metadata: {
+          ...node.data.metadata,
+          position: node.position
+        }
+      }
+    }))),
     []
   );
 
@@ -114,6 +123,7 @@ const Flow: React.FC = () => {
 
   const addNode = (type: string, label: string, description: string) => {
     const nodeSchema = availableNodes.find(node => node.name === label);
+    const position = { x: Math.random() * 400, y: Math.random() * 400 };
 
     const newNode: Node = {
       id: nodeId.toString(),
@@ -141,10 +151,10 @@ const Flow: React.FC = () => {
         },
         block_id: nodeSchema?.id || '',
         metadata: {
-          position: { x: Math.random() * 400, y: Math.random() * 400 }, // Move position to metadata
+          position // Store position in metadata
         }
       },
-      position: { x: Math.random() * 400, y: Math.random() * 400 }, // Provide default value for React Flow
+      position,
     };
     setNodes((nds) => [...nds, newNode]);
     setNodeId((id) => id + 1);
@@ -219,39 +229,6 @@ const Flow: React.FC = () => {
     );
   };
 
-  const resetGraph = (newNodes: any[]) => {
-    setNodes(newNodes.map((node) => ({
-      id: node.id,
-      type: 'custom',
-      data: {
-        ...node.input_default,
-        label: node.id,
-        title: node.block_id,
-        description: node.description || '',
-        connections: [],
-        variableName: node.variableName || '',
-        variableValue: node.variableValue || '',
-        printVariable: node.printVariable || '',
-        block_id: node.block_id,
-        metadata: node.metadata,
-        setVariableName,
-        setVariableValue,
-        setPrintVariable,
-        setHardcodedValues: (values: { [key: string]: any }) => {
-          setNodes((nds) =>
-            nds.map((n) =>
-              n.id === node.id
-                ? { ...n, data: { ...n.data, hardcodedValues: values } }
-                : n
-            )
-          );
-        },
-      },
-      position: node.metadata.position,
-    })));
-    setEdges([]);
-  };
-
   const runAgent = async () => {
     try {
       const formattedNodes = nodes.map(node => ({
@@ -270,10 +247,7 @@ const Flow: React.FC = () => {
           }
           return acc;
         }, {} as { [key: string]: string }),
-        metadata: {
-          ...node.data.metadata,
-          position: node.position, // Include position in metadata
-        }
+        metadata: node.data.metadata // Include metadata in the payload
       }));
 
       const payload = {
@@ -410,7 +384,7 @@ const Flow: React.FC = () => {
       </div>
       <div style={{ height: '100%', width: '100%' }}>
         <ReactFlow
-          nodes={nodes.map(node => ({ ...node, position: node.data.metadata.position }))}
+          nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
