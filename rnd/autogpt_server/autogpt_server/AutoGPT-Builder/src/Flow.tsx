@@ -9,6 +9,7 @@ import ReactFlow, {
   OnEdgesChange,
   OnConnect,
   NodeTypes,
+  EdgeRemoveChange,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import Modal from 'react-modal';
@@ -68,8 +69,24 @@ const Flow: React.FC = () => {
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
     []
   );
+
   const onEdgesChange: OnEdgesChange = useCallback(
-    (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+    (changes) => {
+      const removedEdges = changes.filter((change): change is EdgeRemoveChange => change.type === 'remove');
+      setEdges((eds) => applyEdgeChanges(changes, eds));
+
+      if (removedEdges.length > 0) {
+        setNodes((nds) =>
+          nds.map((node) => {
+            const updatedConnections = node.data.connections.filter(
+              (conn: string) =>
+                !removedEdges.some((edge) => edge.id && conn.includes(edge.id))
+            );
+            return { ...node, data: { ...node.data, connections: updatedConnections } };
+          })
+        );
+      }
+    },
     []
   );
 
@@ -123,8 +140,11 @@ const Flow: React.FC = () => {
           ));
         },
         block_id: nodeSchema?.id || '',
+        metadata: {
+          position: { x: Math.random() * 400, y: Math.random() * 400 }, // Move position to metadata
+        }
       },
-      position: { x: Math.random() * 400, y: Math.random() * 400 },
+      position: { x: Math.random() * 400, y: Math.random() * 400 }, // Provide default value for React Flow
     };
     setNodes((nds) => [...nds, newNode]);
     setNodeId((id) => id + 1);
@@ -180,6 +200,58 @@ const Flow: React.FC = () => {
     return inputData;
   };
 
+  const updateNodeData = (execData: any) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === execData.node_id) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              status: execData.status,
+              output_data: execData.output_data,
+              isPropertiesOpen: true, // Open the properties
+            },
+          };
+        }
+        return node;
+      })
+    );
+  };
+
+  const resetGraph = (newNodes: any[]) => {
+    setNodes(newNodes.map((node) => ({
+      id: node.id,
+      type: 'custom',
+      data: {
+        ...node.input_default,
+        label: node.id,
+        title: node.block_id,
+        description: node.description || '',
+        connections: [],
+        variableName: node.variableName || '',
+        variableValue: node.variableValue || '',
+        printVariable: node.printVariable || '',
+        block_id: node.block_id,
+        metadata: node.metadata,
+        setVariableName,
+        setVariableValue,
+        setPrintVariable,
+        setHardcodedValues: (values: { [key: string]: any }) => {
+          setNodes((nds) =>
+            nds.map((n) =>
+              n.id === node.id
+                ? { ...n, data: { ...n.data, hardcodedValues: values } }
+                : n
+            )
+          );
+        },
+      },
+      position: node.metadata.position,
+    })));
+    setEdges([]);
+  };
+
   const runAgent = async () => {
     try {
       const formattedNodes = nodes.map(node => ({
@@ -198,6 +270,10 @@ const Flow: React.FC = () => {
           }
           return acc;
         }, {} as { [key: string]: string }),
+        metadata: {
+          ...node.data.metadata,
+          position: node.position, // Include position in metadata
+        }
       }));
 
       const payload = {
@@ -228,7 +304,6 @@ const Flow: React.FC = () => {
         return acc;
       }, {} as { [key: string]: any });
 
-      // Ensure the top-level structure of the input matches the expected schema
       const nodeInputForExecution = Object.keys(initialNodeInput).reduce((acc, key) => {
         const blockId = nodes.find(node => node.id === key)?.data.block_id;
         const nodeSchema = availableNodes.find(n => n.id === blockId);
@@ -271,22 +346,7 @@ const Flow: React.FC = () => {
             }
 
             const data = await response.json();
-            const updatedNodes = nodes.map(node => {
-              const nodeExecution = data.find((exec: any) => exec.node_id === node.id);
-              if (nodeExecution) {
-                return {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    status: nodeExecution.status,
-                    output_data: nodeExecution.output_data,
-                  },
-                };
-              }
-              return node;
-            });
-
-            setNodes(updatedNodes);
+            data.forEach(updateNodeData);
 
             const allCompleted = data.every((exec: any) => exec.status === 'COMPLETED');
             if (allCompleted) {
@@ -350,7 +410,7 @@ const Flow: React.FC = () => {
       </div>
       <div style={{ height: '100%', width: '100%' }}>
         <ReactFlow
-          nodes={nodes}
+          nodes={nodes.map(node => ({ ...node, position: node.data.metadata.position }))}
           edges={edges}
           nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}

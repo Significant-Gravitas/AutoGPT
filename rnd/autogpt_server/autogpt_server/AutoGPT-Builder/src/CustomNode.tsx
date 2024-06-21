@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -7,7 +7,14 @@ type Schema = {
 };
 
 const CustomNode: React.FC<NodeProps> = ({ data }) => {
-  const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
+  const [isPropertiesOpen, setIsPropertiesOpen] = useState(data.isPropertiesOpen || false);
+
+  // Automatically open properties when output_data or status is updated
+  useEffect(() => {
+    if (data.output_data || data.status) {
+      setIsPropertiesOpen(true);
+    }
+  }, [data.output_data, data.status]);
 
   const toggleProperties = () => {
     setIsPropertiesOpen(!isPropertiesOpen);
@@ -56,6 +63,10 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
     });
   };
 
+  const hasDisconnectedHandle = (key: string) => {
+    return !isHandleConnected(key) && !data.connections.some((conn: string) => conn.includes(key));
+  };
+
   return (
     <div style={{ padding: '20px', border: '2px solid #fff', borderRadius: '20px', background: '#333', color: '#e0e0e0', width: '250px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -73,7 +84,7 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
         <div>
           {data.inputSchema && generateHandles(data.inputSchema, 'target')}
           {data.inputSchema && Object.keys(data.inputSchema.properties).map(key => (
-            (!isHandleConnected(key) || data.connections.length === 0) && (
+            (hasDisconnectedHandle(key) || data.connections.length === 0) && (
               <div key={key} style={{ marginBottom: '5px' }}>
                 <input
                   type="text"
@@ -92,10 +103,9 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
       </div>
       {isPropertiesOpen && (
         <div style={{ marginTop: '10px', background: '#444', padding: '10px', borderRadius: '10px' }}>
-          <h4>Node Properties</h4>
-          <p><strong>Name:</strong> {data.title}</p>
-          <p><strong>Description:</strong> {data.description}</p>
-          {/* Add more properties here if needed */}
+          <h4>Node Output</h4>
+          <p><strong>Status:</strong> {data.status || 'N/A'}</p>
+          <p><strong>Output Data:</strong> {data.output_data || 'N/A'}</p>
         </div>
       )}
     </div>
