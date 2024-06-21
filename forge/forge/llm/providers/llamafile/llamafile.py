@@ -57,6 +57,16 @@ class LlamafileCredentials(ModelProviderCredentials):
         default=SecretStr("http://localhost:8080/v1"), from_env="LLAMAFILE_API_BASE"
     )
 
+    def get_api_access_kwargs(self) -> dict[str, str]:
+        return {
+            k: v.get_secret_value()
+            for k, v in {
+                "api_key": self.api_key,
+                "base_url": self.api_base,
+            }.items()
+            if v is not None
+        }
+
 
 class LlamafileTokenizer(ModelTokenizer[int]):
     def __init__(self, credentials: LlamafileCredentials):
