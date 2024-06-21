@@ -36,6 +36,8 @@ Adds ability to interact with user in CLI.
 Adds ability to read and write persistent files to local storage, Google Cloud Storage or Amazon's S3.
 Necessary for saving and loading agent's state (preserving session).
 
+**FileManagerConfiguration**
+
 | Config variable  | Details                                | Type  | Default                            |
 | ---------------- | -------------------------------------- | ----- | ---------------------------------- |
 | `storage_path`     | Path to agent files, e.g. state        | `str` | `agents/{agent_id}/`[^1]           |
@@ -57,6 +59,8 @@ Necessary for saving and loading agent's state (preserving session).
 
 Lets the agent execute non-interactive Shell commands and Python code. Python execution works only if Docker is available.
 
+**CodeExecutorConfiguration**
+
 | Config variable          | Details                                              | Type                        | Default           |
 | ------------------------ | ---------------------------------------------------- | --------------------------- | ----------------- |
 | `execute_local_commands` | Enable shell command execution                       | `bool`                      | `False`           |
@@ -75,6 +79,8 @@ Lets the agent execute non-interactive Shell commands and Python code. Python ex
 ## `ActionHistoryComponent`
 
 Keeps track of agent's actions and their outcomes. Provides their summary to the prompt.
+
+**ActionHistoryConfiguration**
 
 | Config variable        | Details                                                 | Type        | Default            |
 | ---------------------- | ------------------------------------------------------- | ----------- | ------------------ |
@@ -102,6 +108,8 @@ Keeps track of agent's actions and their outcomes. Provides their summary to the
 
 Adds ability to iteract with git repositories and GitHub.
 
+**GitOperationsConfiguration**
+
 | Config variable   | Details                                   | Type  | Default |
 | ----------------- | ----------------------------------------- | ----- | ------- |
 | `github_username` | GitHub username, *ENV:* `GITHUB_USERNAME` | `str` | `None`  |
@@ -124,6 +132,8 @@ Link to the appropriate settings page: [Hugging Face > Settings > Tokens](https:
 
 It is possible to use your own self-hosted Stable Diffusion WebUI with AutoGPT. **Make sure you are running WebUI with `--api` enabled.**
 
+**ImageGeneratorConfiguration**
+
 | Config variable           | Details                                                       | Type                                    | Default                           |
 | ------------------------- | ------------------------------------------------------------- | --------------------------------------- | --------------------------------- |
 | `image_provider`          | Image generation provider                                     | `"dalle" \| "huggingface" \| "sdwebui"` | `"dalle"`                         |
@@ -141,6 +151,8 @@ It is possible to use your own self-hosted Stable Diffusion WebUI with AutoGPT. 
 ## `WebSearchComponent`
 
 Allows agent to search the web. Google credentials aren't required for DuckDuckGo. [Instructions how to set up Google API key](../../AutoGPT/configuration/search.md)
+
+**WebSearchConfiguration**
 
 | Config variable                  | Details                                                                 | Type  | Default |
 | -------------------------------- | ----------------------------------------------------------------------- | ----- | ------- |
@@ -160,6 +172,8 @@ Allows agent to search the web. Google credentials aren't required for DuckDuckG
 ## `WebSeleniumComponent`
 
 Allows agent to read websites using Selenium.
+
+**WebSeleniumConfiguration**
 
 | Config variable               | Details                                     | Type                                          | Default                                                                                                                      |
 | ----------------------------- | ------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |

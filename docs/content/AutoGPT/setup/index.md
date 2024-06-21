@@ -51,39 +51,34 @@ Since we don't ship AutoGPT as a desktop application, you'll need to download th
 
 Once you have cloned or downloaded the project, you can find the AutoGPT Agent in the
 `autogpt/` folder.
-Inside this directory you need to configure environment variables in `.env` and optionally `.json` configuration file.
-Environment variables are moslty used for sensitive data like API keys, while `.json` configuration file is used for everything else.
-You can find more information about the environment variables in [Configuration](../configuration/options.md).
+Inside this folder you can configure the AutoGPT application with an `.env` file and (optionally) a JSON configuration file:
+- `.env` for environment variables, which are mostly used for sensitive data like API keys
+- a JSON configuration file to customize certain features of AutoGPT's [Components](../../forge/components/introduction.md)
+
+See the [Configuration](../configuration/options.md) reference for a list of available environment variables.
 
 1. Find the file named `.env.template`. This file may
     be hidden by default in some operating systems due to the dot prefix. To reveal
     hidden files, follow the instructions for your specific operating system:
     [Windows][show hidden files/Windows] and [macOS][show hidden files/macOS].
-1. Create a copy of `.env.template` and call it `.env`;
+2. Create a copy of `.env.template` and call it `.env`;
     if you're already in a command prompt/terminal window:
     ```shell
     cp .env.template .env
     ```
-1. Open the `.env` file in a text editor.
-1. Set API keys for the LLM providers that you want to use: see [below](#setting-up-llm-providers).
-1. Enter any other API keys or tokens for services you would like to use.
+3. Open the `.env` file in a text editor.
+4. Set API keys for the LLM providers that you want to use: see [below](#setting-up-llm-providers).
+5. Enter any other API keys or tokens for services you would like to use.
 
     !!! note
         To activate and adjust a setting, remove the `# ` prefix.
 
-1. Save and close the `.env` file.
-1. _Optional: run `poetry install` to install all required dependencies._ The
+6. Save and close the `.env` file.
+7. _Optional: run `poetry install` to install all required dependencies._ The
     application also checks for and installs any required dependencies when it starts.
-1. _Optional: configure the `.json` file with your desired settings._ The
-    application will use default settings if you don't provide a `.json` file.
-    Create a copy of `config.json.template` and call it whatever you like, for example `config.json`.
-    You can then adjust the settings in this file to your liking.
-    This file contains settings for individual [Components](../../forge/components/introduction.md) that AutoGPT uses.
-    To see what settings are available, check the [Built-in Components](../../forge/components/built-in-components.md).
-    To use the `.json` file, you need to provide the path to it when running the application using `--component-config-file` option:
-    ```shell
-    ./autogpt.sh run --component-config-file config.json
-    ```
+8. _Optional: configure the `.json` file with your desired settings._
+    The application will use default settings if you don't provide a `.json` file.
+    Learn how to [set up the JSON configuration file](../../forge/components/components.md#json-configuration)
 
 You should now be able to explore the CLI (`./autogpt.sh --help`) and run the application.
 
@@ -91,7 +86,6 @@ See the [user guide](../usage.md) for further instructions.
 
 [show hidden files/Windows]: https://support.microsoft.com/en-us/windows/view-hidden-files-and-folders-in-windows-97fbc472-c603-9d90-91d0-1166d1d9f4b5
 [show hidden files/macOS]: https://www.pcmag.com/how-to/how-to-access-your-macs-hidden-files
-
 
 ## Setting up LLM providers
 
