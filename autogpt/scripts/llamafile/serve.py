@@ -63,6 +63,8 @@ def main(llamafile: Optional[Path] = None, llamafile_url: Optional[str] = None):
     # Go to autogpt/scripts/llamafile/
     os.chdir(Path(__file__).resolve().parent)
 
+    on_windows = platform.system() == "Windows"
+
     if not llamafile.is_file():
         if not llamafile_url:
             click.echo(
@@ -78,12 +80,12 @@ def main(llamafile: Optional[Path] = None, llamafile_url: Optional[str] = None):
 
         download_file(llamafile_url, llamafile)
 
-        if platform.system() != "Windows":
+        if not on_windows:
             llamafile.chmod(0o755)
             subprocess.run([llamafile, "--version"], check=True)
 
-    if platform.system() != "Windows":
-        base_command = [f"./{llamafile}" if len(llamafile.parts) == 1 else llamafile]
+    if not on_windows:
+        base_command = [f"./{llamafile}"]
     else:
         # Windows does not allow executables over 4GB, so we have to download a
         # model-less llamafile.exe and run that instead.
