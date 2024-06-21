@@ -242,6 +242,8 @@ and guaranteed data privacy.
    The first time this is run, it will download a file containing the model + runtime,
    which may take a while and a few gigabytes of disk space.
 
+   To force GPU acceleration, add `--use-gpu` to the command.
+
 3. In `.env`, set `SMART_LLM`/`FAST_LLM` or both to `mistral-7b-instruct-v0.2`
 
 4. If the server is running on different address than `http://localhost:8080/v1`,
