@@ -29,11 +29,19 @@ LLAMAFILE_EXE_URL = "https://github.com/Mozilla-Ocho/llamafile/releases/download
 )
 @click.option("--llamafile_url", help="Download URL for the llamafile you want to use")
 @click.option(
+    "--host", help="Specify the address for the llamafile server to listen on"
+)
+@click.option(
+    "--port", type=int, help="Specify the port for the llamafile server to listen on"
+)
+@click.option(
     "--use-gpu", is_flag=True, help="Use an AMD or Nvidia GPU to speed up inference"
 )
 def main(
     llamafile: Optional[Path] = None,
     llamafile_url: Optional[str] = None,
+    host: Optional[str] = None,
+    port: Optional[int] = None,
     use_gpu: bool = False,
 ):
     if not llamafile:
@@ -103,6 +111,10 @@ def main(
 
         base_command = [f".\\{LLAMAFILE_EXE}", "-m", llamafile]
 
+    if host:
+        base_command.extend(["--host", host])
+    if port:
+        base_command.extend(["--port", str(port)])
     if use_gpu:
         base_command.extend(["-ngl", "9999"])
 
@@ -110,8 +122,6 @@ def main(
         [
             *base_command,
             "--server",
-            "--host",
-            "0.0.0.0",
             "--nobrowser",
             "--ctx-size",
             "0",
