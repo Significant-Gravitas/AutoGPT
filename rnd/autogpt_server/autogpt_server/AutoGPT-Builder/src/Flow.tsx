@@ -273,6 +273,39 @@ const Flow: React.FC = () => {
       const agentId = createData.id;
       setAgentId(agentId);
 
+      const responseNodes = createData.nodes.map((node: any) => ({
+        id: node.id,
+        type: 'custom',
+        position: node.metadata.position,
+        data: {
+          label: node.name,
+          title: `${node.name}`,
+          description: `${node.description}`,
+          inputSchema: availableNodes.find(n => n.id === node.block_id)?.inputSchema,
+          outputSchema: availableNodes.find(n => n.id === node.block_id)?.outputSchema,
+          connections: [],
+          variableName: '',
+          variableValue: '',
+          printVariable: '',
+          setVariableName,
+          setVariableValue,
+          setPrintVariable,
+          hardcodedValues: node.input_default,
+          setHardcodedValues: (values: { [key: string]: any }) => {
+            setNodes((nds) => nds.map((n) =>
+              n.id === node.id
+                ? { ...n, data: { ...n.data, hardcodedValues: values } }
+                : n
+            ));
+          },
+          block_id: node.block_id,
+          metadata: node.metadata
+        },
+      }));
+
+      setNodes(responseNodes);
+      setEdges([]); // Clear the edges and recreate them if needed based on the response
+
       const initialNodeInput = nodes.reduce((acc, node) => {
         acc[node.id] = prepareNodeInputData(node, nodes, edges);
         return acc;
@@ -328,10 +361,10 @@ const Flow: React.FC = () => {
               return;
             }
 
-            setTimeout(poll, 100);
+            setTimeout(poll, 1000);
           } catch (error) {
             console.error('Error during polling:', error);
-            setTimeout(poll, 100);
+            setTimeout(poll, 1000);
           }
         };
 
