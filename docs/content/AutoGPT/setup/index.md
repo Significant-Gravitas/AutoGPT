@@ -204,7 +204,25 @@ and guaranteed data privacy.
 !!! warning
     Due to the issues linked below, llamafiles don't work on WSL. To use a llamafile
     with AutoGPT in WSL, you will have to run the llamafile in Windows (outside WSL).
-    The llamafile server should then also be available in WSL.
+
+    <details>
+    <summary>Instructions</summary>
+
+    1. Get the `llamafile/serve.py` script through one of these two ways:
+        1. Clone the AutoGPT repo somewhere in your Windows environment,
+           with the script located at `autogpt/scripts/llamafile/serve.py`
+        2. Download just the [serve.py] script somewhere in your Windows environment
+    2. Make sure you have `click` installed: `pip install click`
+    3. Run `ip route | grep default | awk '{print $3}'` *inside WSL* to get the address
+       of the WSL host machine
+    4. Run `python3 serve.py --host {WSL_HOST_ADDR}`, where `{WSL_HOST_ADDR}`
+       is the address you found at step 3.
+       If port 8080 is taken, also specify a different port using `--port {PORT}`.
+    5. In WSL, set `LLAMAFILE_API_BASE=http://{WSL_HOST_ADDR}:8080/v1` in your `.env`.
+    6. Follow the rest of the regular instructions below.
+
+    [serve.py]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt/scripts/llamafile/serve.py
+    </details>
 
     * [Mozilla-Ocho/llamafile#356](https://github.com/Mozilla-Ocho/llamafile/issues/356)
     * [Mozilla-Ocho/llamafile#100](https://github.com/Mozilla-Ocho/llamafile/issues/100)
