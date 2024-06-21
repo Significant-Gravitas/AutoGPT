@@ -110,6 +110,8 @@ def main(
         [
             *base_command,
             "--server",
+            "--host",
+            "0.0.0.0",
             "--nobrowser",
             "--ctx-size",
             "0",
