@@ -201,6 +201,14 @@ and guaranteed data privacy.
     At the moment, llamafile only serves one model at a time. This means you can not
     set `SMART_LLM` and `FAST_LLM` to two different llamafile models.
 
+!!! warning
+    Due to the issues linked below, llamafiles don't work on WSL. To use a llamafile
+    with AutoGPT in WSL, you will have to run the llamafile in Windows (outside WSL).
+    The llamafile server should then also be available in WSL.
+
+    * [Mozilla-Ocho/llamafile#356](https://github.com/Mozilla-Ocho/llamafile/issues/356)
+    * [Mozilla-Ocho/llamafile#100](https://github.com/Mozilla-Ocho/llamafile/issues/100)
+
 !!! note
     These instructions will download and use `mistral-7b-instruct-v0.2.Q5_K_M.llamafile`.
     `mistral-7b-instruct-v0.2` is currently the only tested and supported model.
