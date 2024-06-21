@@ -28,7 +28,14 @@ LLAMAFILE_EXE_URL = "https://github.com/Mozilla-Ocho/llamafile/releases/download
     help=f"Name of the llamafile to serve. Default: {LLAMAFILE.name}",
 )
 @click.option("--llamafile_url", help="Download URL for the llamafile you want to use")
-def main(llamafile: Optional[Path] = None, llamafile_url: Optional[str] = None):
+@click.option(
+    "--use-gpu", is_flag=True, help="Use an AMD or Nvidia GPU to speed up inference"
+)
+def main(
+    llamafile: Optional[Path] = None,
+    llamafile_url: Optional[str] = None,
+    use_gpu: bool = False,
+):
     if not llamafile:
         if not llamafile_url:
             llamafile = LLAMAFILE
@@ -95,6 +102,9 @@ def main(llamafile: Optional[Path] = None, llamafile_url: Optional[str] = None):
             subprocess.run([f".\\{LLAMAFILE_EXE}", "--version"], check=True)
 
         base_command = [f".\\{LLAMAFILE_EXE}", "-m", llamafile]
+
+    if use_gpu:
+        base_command.extend(["-ngl", "9999"])
 
     subprocess.run(
         [
