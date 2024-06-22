@@ -4,7 +4,8 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from forge.components.code_executor.code_executor import (
+
+from . import (
     CodeExecutorComponent,
     is_docker_available,
     we_are_running_in_a_docker_container,
@@ -101,6 +102,22 @@ def test_execute_python_file_not_found(code_executor_component: CodeExecutorComp
         r"\[Errno 2\] No such file or directory",
     ):
         code_executor_component.execute_python_file(Path("notexist.py"))
+
+
+def test_execute_shell(
+    code_executor_component: CodeExecutorComponent, random_string: str
+):
+    code_executor_component.config.shell_command_control = "allowlist"
+    code_executor_component.config.shell_allowlist = ["echo"]
+    result = code_executor_component.execute_shell(f"echo 'Hello {random_string}!'")
+    assert f"Hello {random_string}!" in result
+
+
+def test_execute_shell_local_commands_not_allowed(
+    code_executor_component: CodeExecutorComponent, random_string: str
+):
+    with pytest.raises(OperationNotAllowedError, match="not allowed"):
+        code_executor_component.execute_shell(f"echo 'Hello {random_string}!'")
 
 
 def test_execute_shell_denylist_should_deny(

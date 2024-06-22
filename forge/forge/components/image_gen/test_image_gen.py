@@ -3,6 +3,7 @@ import hashlib
 from pathlib import Path
 from unittest.mock import patch
 
+from pydantic import SecretStr
 import pytest
 from forge.components.image_gen import ImageGeneratorComponent
 from forge.components.image_gen.image_gen import ImageGeneratorConfiguration

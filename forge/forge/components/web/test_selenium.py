@@ -1,19 +1,21 @@
+from pathlib import Path
 import pytest
-from forge.components.web.selenium import BrowsingError, WebSeleniumComponent
 
-from autogpt.agents.agent import Agent
+from forge.llm.providers.multi import MultiProvider
+
+from . import BrowsingError, WebSeleniumComponent
 
 
 @pytest.fixture
-def web_selenium_component(agent: Agent):
-    return agent.web_selenium
+def web_selenium_component(app_data_dir: Path):
+    return WebSeleniumComponent(MultiProvider(), app_data_dir)
 
 
-@pytest.mark.vcr
+@pytest.mark.vc
 @pytest.mark.requires_openai_api_key
 @pytest.mark.asyncio
 async def test_browse_website_nonexistent_url(
-    web_selenium_component: WebSeleniumComponent, cached_openai_client: None
+    web_selenium_component: WebSeleniumComponent
 ):
     url = "https://auto-gpt-thinks-this-website-does-not-exist.com"
     question = "How to execute a barrel roll"
