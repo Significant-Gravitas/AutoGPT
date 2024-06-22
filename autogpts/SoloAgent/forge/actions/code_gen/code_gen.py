@@ -50,27 +50,9 @@ async def generate_solana_code(agent, task_id: str, specification: str) -> str:
         "model": "gpt-3.5-turbo",
     }
     chat_response = await chat_completion_request(**chat_completion_kwargs)
-    generated_code = json.loads(
-        chat_response["choices"][0]["message"]["content"])
+    response_content = chat_response["choices"][0]["message"]["content"]
 
-    project_path = os.path.join(
-        agent.workspace.path, 'solana_mvp_project', 'onchain', 'programs', 'my_anchor_program')
-
-    await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'lib.rs'), data=generated_code['lib.rs'].encode()
-    )
-    await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'instructions.rs'), data=generated_code['instructions.rs'].encode()
-    )
-    await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'errors.rs'), data=generated_code['errors.rs'].encode()
-    )
-    await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'Cargo.toml'), data=generated_code['Cargo.toml'].encode()
-    )
-    await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'Anchor.toml'), data=generated_code['Anchor.toml'].encode()
-    )
+    LOG.info(f"Response content: {response_content}")
 
     return "Modular Solana on-chain code generated with Anchor and written to respective files."
 

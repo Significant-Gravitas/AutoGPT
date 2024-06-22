@@ -1,0 +1,18 @@
+// Modify the file to include functonality if needed for this {specification}
+
+// cargo.toml
+
+[package]
+name = "my_anchor_program"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+anchor-lang = "0.18.0"
+
+[features]
+default = ["program"]
+
+[workspace]
+members = ["programs/*"]
+
