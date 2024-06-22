@@ -78,12 +78,14 @@ def configure_logging(
     log_file_format: Optional[LogFormatName | str] = None,
     plain_console_output: Optional[bool] = None,
     config: Optional[LoggingConfig] = None,
+    config: Optional[LoggingConfig] = None,
     tts_config: Optional[TTSConfig] = None,
 ) -> None:
     """Configure the native logging module, based on the environment config and any
     specified overrides.
 
     Arguments override values specified in the environment.
+    Overrides are also applied to `config`, if passed.
     Overrides are also applied to `config`, if passed.
 
     Should be usable as `configure_logging(**config.logging.dict())`, where
@@ -110,7 +112,16 @@ def configure_logging(
             raise ValueError(f"Unknown log format '{log_format}'")
 
     config = config or LoggingConfig.from_env()
+    config = config or LoggingConfig.from_env()
 
+    # Aggregate env config + arguments
+    config.level = logging.DEBUG if debug else level or config.level
+    config.log_dir = log_dir or config.log_dir
+    config.log_format = log_format or (
+        LogFormatName.DEBUG if debug else config.log_format
+    )
+    config.log_file_format = log_file_format or log_format or config.log_file_format
+    config.plain_console_output = (
     # Aggregate env config + arguments
     config.level = logging.DEBUG if debug else level or config.level
     config.log_dir = log_dir or config.log_dir
@@ -129,8 +140,13 @@ def configure_logging(
     if config.log_format == LogFormatName.STRUCTURED:
         config.plain_console_output = True
         config.log_file_format = None
+    if config.log_format == LogFormatName.STRUCTURED:
+        config.plain_console_output = True
+        config.log_file_format = None
 
     # create log directory if it doesn't exist
+    if not config.log_dir.exists():
+        config.log_dir.mkdir()
     if not config.log_dir.exists():
         config.log_dir.mkdir()
 
@@ -145,6 +161,7 @@ def configure_logging(
 
     # Console output handlers
     stdout = logging.StreamHandler(stream=sys.stdout)
+    stdout.setLevel(config.level)
     stdout.setLevel(config.level)
     stdout.addFilter(BelowLevelFilter(logging.WARNING))
     stdout.setFormatter(console_formatter)
@@ -166,10 +183,17 @@ def configure_logging(
                 config.log_dir / LOG_FILE, "a", "utf-8"
             )
             activity_log_handler.setLevel(config.level)
+            activity_log_handler = logging.FileHandler(
+                config.log_dir / LOG_FILE, "a", "utf-8"
+            )
+            activity_log_handler.setLevel(config.level)
             activity_log_handler.setFormatter(file_output_formatter)
             log_handlers += [activity_log_handler]
 
         # ERROR log file handler
+        error_log_handler = logging.FileHandler(
+            config.log_dir / ERROR_LOG_FILE, "a", "utf-8"
+        )
         error_log_handler = logging.FileHandler(
             config.log_dir / ERROR_LOG_FILE, "a", "utf-8"
         )
@@ -180,6 +204,7 @@ def configure_logging(
     # Configure the root logger
     logging.basicConfig(
         format=console_format_template,
+        level=config.level,
         level=config.level,
         handlers=log_handlers,
     )
