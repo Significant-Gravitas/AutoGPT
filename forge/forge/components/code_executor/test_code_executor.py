@@ -5,13 +5,14 @@ from pathlib import Path
 
 import pytest
 
+from forge.file_storage.base import FileStorage
+from forge.utils.exceptions import InvalidArgumentError, OperationNotAllowedError
+
 from . import (
     CodeExecutorComponent,
     is_docker_available,
     we_are_running_in_a_docker_container,
 )
-from forge.file_storage.base import FileStorage
-from forge.utils.exceptions import InvalidArgumentError, OperationNotAllowedError
 
 
 @pytest.fixture

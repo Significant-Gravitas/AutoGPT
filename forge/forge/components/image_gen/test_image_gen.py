@@ -3,19 +3,19 @@ import hashlib
 from pathlib import Path
 from unittest.mock import patch
 
-from pydantic import SecretStr
 import pytest
+from PIL import Image
+from pydantic import SecretStr
+
 from forge.components.image_gen import ImageGeneratorComponent
 from forge.components.image_gen.image_gen import ImageGeneratorConfiguration
 from forge.file_storage.base import FileStorage
 from forge.llm.providers.openai import OpenAICredentials
-from PIL import Image
-from pydantic import SecretStr
 
 
 @pytest.fixture
 def image_gen_component(storage: FileStorage):
-    cred = OpenAICredentials.from_env()
+    cred = OpenAICredentials(api_key=SecretStr("test"))
     return ImageGeneratorComponent(storage, openai_credentials=cred)
 
 
@@ -35,7 +35,6 @@ def image_size(request):
     return request.param
 
 
-@pytest.mark.requires_openai_api_key
 @pytest.mark.vcr
 def test_dalle(
     image_gen_component: ImageGeneratorComponent,
@@ -53,7 +52,6 @@ def test_dalle(
     reason="The image is too big to be put in a cassette for a CI pipeline. "
     "We're looking into a solution."
 )
-@pytest.mark.requires_huggingface_api_key
 @pytest.mark.parametrize(
     "image_model",
     ["CompVis/stable-diffusion-v1-4", "stabilityai/stable-diffusion-2-1"],

@@ -6,6 +6,10 @@ import pytest
 from forge.file_storage.base import FileStorage, FileStorageConfiguration
 from forge.file_storage.local import LocalFileStorage
 
+pytest_plugins = [
+    "tests.vcr",
+]
+
 
 @pytest.fixture()
 def tmp_project_root(tmp_path: Path) -> Path:

@@ -306,7 +306,7 @@ tomli = {version = ">=2.0.1", markers = "python_version < \"3.11\""}
 
 [[package]]
 name = "autogpt-forge"
-version = "0.1.0"
+version = "0.2.0"
 description = ""
 optional = false
 python-versions = "^3.10"
@@ -359,7 +359,7 @@ watchdog = "4.0.0"
 webdriver-manager = "^4.0.1"
 
 [package.extras]
-benchmark = ["agbenchmark"]
+benchmark = ["agbenchmark @ file:///Users/czerwinski/Projects/AutoGPT/benchmark"]
 
 [package.source]
 type = "directory"
@@ -6946,4 +6946,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "a378031626ad6640c66c53d2b58266d7d464462b69f0b5b5b95c317bd20c6b79"
+content-hash = "d13c7dcda652cb218e880b9a3cc1bb3e886d418567e6fecead560f6a06ea352f"
