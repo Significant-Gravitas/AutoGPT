@@ -1,0 +1,16 @@
+// Modify the file to include functionality for {{ specification }}
+
+
+// errors.rs
+
+// This file contains the custom errors for the Anchor program.
+
+use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum MyProgramError {
+    #[msg("An error occurred.")]
+    SomeError,
+    // Add other errors here
+}
+

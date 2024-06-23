@@ -5,8 +5,10 @@ from __future__ import annotations
 from ..registry import action
 from forge.sdk import ForgeLogger, PromptEngine
 from forge.llm import chat_completion_request
-import json
 import os
+from forge.sdk import Agent, LocalWorkspace
+import re
+
 LOG = ForgeLogger(__name__)
 
 
@@ -23,8 +25,8 @@ LOG = ForgeLogger(__name__)
     ],
     output_type="str",
 )
-async def generate_solana_code(agent, task_id: str, specification: str) -> str:
-    prompt_engine = PromptEngine("gpt-3.5-turbo")
+async def generate_solana_code(agent: Agent, task_id: str, specification: str) -> str:
+    prompt_engine = PromptEngine("gpt-4o")
     lib_prompt = prompt_engine.load_prompt(
         "anchor-lib", specification=specification)
     instructions_prompt = prompt_engine.load_prompt(
@@ -43,35 +45,48 @@ async def generate_solana_code(agent, task_id: str, specification: str) -> str:
         {"role": "user", "content": errors_prompt},
         {"role": "user", "content": cargo_toml_prompt},
         {"role": "user", "content": anchor_toml_prompt},
+        {"role": "user", "content": "Return the whole code as a string with the file markers intact that you received in each of the input without changing their wording at all."}
     ]
 
     chat_completion_kwargs = {
         "messages": messages,
         "model": "gpt-3.5-turbo",
     }
+
     chat_response = await chat_completion_request(**chat_completion_kwargs)
-    generated_code = json.loads(
-        chat_response["choices"][0]["message"]["content"])
+    response_content = chat_response["choices"][0]["message"]["content"]
 
+    LOG.info(f"Response content: {response_content}")
+
+    try:
+        parts = parse_response_content(response_content)
+    except Exception as e:
+        LOG.error(f"Error parsing response content: {e}")
+        return "Failed to generate Solana on-chain code due to response parsing error."
+
+    base_path = agent.workspace.base_path if isinstance(
+        agent.workspace, LocalWorkspace) else str(agent.workspace.base_path)
     project_path = os.path.join(
-        agent.workspace.path, 'solana_mvp_project', 'onchain', 'programs', 'my_anchor_program')
+        base_path, 'solana_mvp_project', 'onchain', 'programs', 'my_anchor_program')
 
+    LOG.info(f"Parts: {response_content}")
     await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'lib.rs'), data=generated_code['lib.rs'].encode()
+        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'lib.rs'), data=parts['anchor-lib.rs'].encode()
     )
     await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'instructions.rs'), data=generated_code['instructions.rs'].encode()
+        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'instructions.rs'), data=parts['anchor-instructions.rs'].encode()
     )
     await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'errors.rs'), data=generated_code['errors.rs'].encode()
+        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'errors.rs'), data=parts['errors.rs'].encode()
     )
     await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'Cargo.toml'), data=generated_code['Cargo.toml'].encode()
+        task_id, "write_file", file_path=os.path.join(project_path, 'Cargo.toml'), data=parts['Cargo.toml'].encode()
     )
     await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'Anchor.toml'), data=generated_code['Anchor.toml'].encode()
+        task_id, "write_file", file_path=os.path.join(project_path, 'Anchor.toml'), data=parts['Anchor.toml'].encode()
     )
 
+    return "Modular Solana on-chain code generated with Anchor and written to respective files."
     return "Modular Solana on-chain code generated with Anchor and written to respective files."
 
 
@@ -115,26 +130,62 @@ async def generate_frontend_code(agent, task_id: str, specification: str) -> str
         "model": "gpt-3.5-turbo",
     }
     chat_response = await chat_completion_request(**chat_completion_kwargs)
-    generated_code = json.loads(
-        chat_response["choices"][0]["message"]["content"])
+    response_content = chat_response["choices"][0]["message"]["content"]
+
+    try:
+        parts = parse_response_content(response_content)
+    except Exception as e:
+        LOG.error(f"Error parsing response content: {e}")
+        return "Failed to generate Solana on-chain code due to response parsing error."
 
     project_path = os.path.join(
         agent.workspace.path, 'solana_mvp_project', 'frontend')
 
     await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'index.html'), data=generated_code['index.html'].encode()
+        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'index.html'), data=parts['index.html'].encode()
     )
     await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'styles.css'), data=generated_code['styles.css'].encode()
+        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'styles.css'), data=parts['styles.css'].encode()
     )
     await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'app.js'), data=generated_code['app.js'].encode()
+        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'app.js'), data=parts['app.js'].encode()
     )
     await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'package.json'), data=generated_code['package.json'].encode()
+        task_id, "write_file", file_path=os.path.join(project_path, 'package.json'), data=parts['package.json'].encode()
     )
     await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'webpack.config.js'), data=generated_code['webpack.config.js'].encode()
+        task_id, "write_file", file_path=os.path.join(project_path, 'webpack.config.js'), data=parts['webpack.config.js'].encode()
     )
 
     return "Modular frontend code generated and written to respective files."
+
+
+def parse_response_content(response_content: str) -> dict:
+    # This function will split the response content into different parts
+    parts = {
+        'anchor-lib.rs': '',
+        'anchor-instructions.rs': '',
+        'errors.rs': '',
+        'Cargo.toml': '',
+        'Anchor.toml': ''
+    }
+
+    current_part = None
+    for line in response_content.split('\n'):
+        if '// anchor-lib.rs' in line:
+            current_part = 'anchor-lib.rs'
+        elif '// anchor-instructions.rs' in line:
+            current_part = 'anchor-instructions.rs'
+        elif '// errors.rs' in line:
+            current_part = 'errors.rs'
+        elif '// Cargo.toml' in line:
+            current_part = 'Cargo.toml'
+        elif '// Anchor.toml' in line:
+            current_part = 'Anchor.toml'
+        elif current_part:
+            parts[current_part] += line + '\n'
+
+    for key in parts:
+        parts[key] = re.sub(r'```|rust|toml', '', parts[key]).strip()
+
+    return parts

@@ -1,0 +1,28 @@
+// Modify the file for this {{ specification }}
+
+// This is the main library file for the Anchor program.
+// It includes the program's entrypoint and instruction handlers.
+
+
+// anchor-lib.rs
+
+use anchor_lang::prelude::*;
+
+pub mod instructions;
+pub mod errors;
+
+use instructions::*;
+
+declare_id!("{{ program_id }}");
+
+#[program]
+mod my_anchor_program {
+    use super::*;
+
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+        instructions::initialize(ctx)
+    }
+
+    // Add other instruction handlers here
+}
+

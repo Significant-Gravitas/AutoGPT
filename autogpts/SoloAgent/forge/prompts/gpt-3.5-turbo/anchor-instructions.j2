@@ -1,0 +1,27 @@
+// Modify the file if needed for this {{ specification }}
+
+
+// anchor-instructions.rs
+
+// This file contains the instruction handlers for the Anchor program.
+
+use anchor_lang::prelude::*;
+use crate::errors::MyProgramError;
+
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    #[account(init, payer = user, space = 8 + 8)]
+    pub my_account: Account<'info, MyAccount>,
+    #[account(mut)]
+    pub user: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+    let my_account = &mut ctx.accounts.my_account;
+    my_account.data = 0;
+    Ok(())
+}
+
+// Define other instructions here
+
