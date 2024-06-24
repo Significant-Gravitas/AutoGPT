@@ -5,10 +5,9 @@ from __future__ import annotations
 from ..registry import action
 from forge.sdk import ForgeLogger, PromptEngine
 from forge.llm import chat_completion_request
-import json
 import os
 from forge.sdk import Agent, LocalWorkspace
-
+import re
 
 LOG = ForgeLogger(__name__)
 
@@ -27,7 +26,7 @@ LOG = ForgeLogger(__name__)
     output_type="str",
 )
 async def generate_solana_code(agent: Agent, task_id: str, specification: str) -> str:
-    prompt_engine = PromptEngine("gpt-3.5-turbo")
+    prompt_engine = PromptEngine("gpt-4o")
     lib_prompt = prompt_engine.load_prompt(
         "anchor-lib", specification=specification)
     instructions_prompt = prompt_engine.load_prompt(
@@ -46,6 +45,7 @@ async def generate_solana_code(agent: Agent, task_id: str, specification: str) -
         {"role": "user", "content": errors_prompt},
         {"role": "user", "content": cargo_toml_prompt},
         {"role": "user", "content": anchor_toml_prompt},
+        {"role": "user", "content": "Return the whole code as a string with the file markers intact that you received in each of the input without changing their wording at all."}
     ]
 
     chat_completion_kwargs = {
@@ -69,11 +69,12 @@ async def generate_solana_code(agent: Agent, task_id: str, specification: str) -
     project_path = os.path.join(
         base_path, 'solana_mvp_project', 'onchain', 'programs', 'my_anchor_program')
 
+    LOG.info(f"Parts: {response_content}")
     await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'lib.rs'), data=parts['lib.rs'].encode()
+        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'lib.rs'), data=parts['anchor-lib.rs'].encode()
     )
     await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'instructions.rs'), data=parts['instructions.rs'].encode()
+        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'instructions.rs'), data=parts['anchor-instructions.rs'].encode()
     )
     await agent.abilities.run_action(
         task_id, "write_file", file_path=os.path.join(project_path, 'src', 'errors.rs'), data=parts['errors.rs'].encode()
@@ -161,8 +162,8 @@ async def generate_frontend_code(agent, task_id: str, specification: str) -> str
 def parse_response_content(response_content: str) -> dict:
     # This function will split the response content into different parts
     parts = {
-        'lib.rs': '',
-        'instructions.rs': '',
+        'anchor-lib.rs': '',
+        'anchor-instructions.rs': '',
         'errors.rs': '',
         'Cargo.toml': '',
         'Anchor.toml': ''
@@ -170,10 +171,10 @@ def parse_response_content(response_content: str) -> dict:
 
     current_part = None
     for line in response_content.split('\n'):
-        if '// main.rs' in line:
-            current_part = 'lib.rs'
-        elif '// instructions.rs' in line:
-            current_part = 'instructions.rs'
+        if '// anchor-lib.rs' in line:
+            current_part = 'anchor-lib.rs'
+        elif '// anchor-instructions.rs' in line:
+            current_part = 'anchor-instructions.rs'
         elif '// errors.rs' in line:
             current_part = 'errors.rs'
         elif '// Cargo.toml' in line:
@@ -183,8 +184,7 @@ def parse_response_content(response_content: str) -> dict:
         elif current_part:
             parts[current_part] += line + '\n'
 
-    # Log each part to verify correct parsing
-    for key, content in parts.items():
-        LOG.info(f"Parsed content for {key}:\n{content}")
+    for key in parts:
+        parts[key] = re.sub(r'```|rust|toml', '', parts[key]).strip()
 
     return parts
