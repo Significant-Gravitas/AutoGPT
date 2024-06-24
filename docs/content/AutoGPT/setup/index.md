@@ -197,6 +197,8 @@ If you don't know which to choose, you can safely go with OpenAI*.
 With llamafile you can run models locally, which means no need to set up billing,
 and guaranteed data privacy.
 
+For more information and in-depth documentation, check out the [llamafile documentation].
+
 !!! warning
     At the moment, llamafile only serves one model at a time. This means you can not
     set `SMART_LLM` and `FAST_LLM` to two different llamafile models.
@@ -249,4 +251,5 @@ and guaranteed data privacy.
 4. If the server is running on different address than `http://localhost:8080/v1`,
    set `LLAMAFILE_API_BASE` in `.env` to the right base URL
 
+[llamafile documentation]: https://github.com/Mozilla-Ocho/llamafile#readme
 [forge/llamafile.py]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/forge/forge/llm/providers/llamafile/llamafile.py
