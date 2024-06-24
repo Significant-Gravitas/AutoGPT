@@ -8,9 +8,38 @@ from forge.llm import chat_completion_request
 import os
 from forge.sdk import Agent, LocalWorkspace
 import re
-
+import subprocess
 LOG = ForgeLogger(__name__)
 
+
+@action(
+    name="test_code",
+    description="Test the generated code for errors",
+    parameters=[
+        {
+            "name": "project_path",
+            "description": "Path to the project directory",
+            "type": "string",
+            "required": True,
+        }
+    ],
+    output_type="str",
+)
+
+async def test_code(agent: Agent, task_id: str, project_path: str) -> str:
+    try:
+        result = subprocess.run(['cargo', 'test'], cwd=project_path, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            LOG.error(f"Test failed with errors: {result.stderr}")
+            return result.stderr  # Return errors
+        else:
+            LOG.info(f"All tests passed: {result.stdout}")
+            return "All tests passed"
+
+    except Exception as e:
+        LOG.error(f"Error testing code: {e}")
+        return f"Failed to test code: {e}"
 
 @action(
     name="generate_solana_code",
@@ -26,6 +55,7 @@ LOG = ForgeLogger(__name__)
     output_type="str",
 )
 async def generate_solana_code(agent: Agent, task_id: str, specification: str) -> str:
+
     prompt_engine = PromptEngine("gpt-4o")
     lib_prompt = prompt_engine.load_prompt(
         "anchor-lib", specification=specification)
@@ -68,6 +98,8 @@ async def generate_solana_code(agent: Agent, task_id: str, specification: str) -
         agent.workspace, LocalWorkspace) else str(agent.workspace.base_path)
     project_path = os.path.join(
         base_path, 'solana_mvp_project', 'onchain', 'programs', 'my_anchor_program')
+    
+
 
     LOG.info(f"Parts: {response_content}")
     await agent.abilities.run_action(
@@ -85,8 +117,14 @@ async def generate_solana_code(agent: Agent, task_id: str, specification: str) -
     await agent.abilities.run_action(
         task_id, "write_file", file_path=os.path.join(project_path, 'Anchor.toml'), data=parts['Anchor.toml'].encode()
     )
+    test_result = await agent.abilities.run_action(task_id, "test_code", project_path=project_path)
+    if "All tests passed" not in test_result:
+            # Regenerate the code based on errors
+            LOG.info(f"Regenerating code due to errors: {test_result}")
+            return await generate_solana_code(agent, task_id, specification)
 
-    return "Modular Solana on-chain code generated with Anchor and written to respective files."
+    return "Solana on-chain code generated, tested, and verified successfully."
+
 
 
 @action(
