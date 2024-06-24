@@ -208,6 +208,16 @@ class LlamafileProvider(
             #  seed should be set from config
             completion_kwargs["seed"] = 0
 
+        # Convert all messages with content blocks to simple text messages
+        for message in messages:
+            if isinstance(content := message.get("content"), list):
+                message["content"] = "\n\n".join(
+                    b["text"]
+                    for b in content
+                    if b["type"] == "text"
+                    # FIXME: add support for images through image_data completion kwarg
+                )
+
         return messages, completion_kwargs, parse_kwargs
 
     def _adapt_chat_messages_for_mistral_instruct(
