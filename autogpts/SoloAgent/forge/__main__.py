@@ -37,14 +37,14 @@ if __name__ == "__main__":
     print(logo)
     port = os.getenv("PORT", 8000)
     LOG.info(f"Agent server starting on http://localhost:{port}")
+    print(f"Agent server starting on http://localhost:{port}")
     load_dotenv()
     forge.sdk.forge_log.setup_logger()
-
     uvicorn.run(
         "forge.app:app",
         host="localhost",
         port=int(port),
-        log_level="error",
+        log_level="debug",
         # Reload on changes to code or .env
         reload=True,
         reload_dirs=os.path.dirname(os.path.dirname(__file__)),

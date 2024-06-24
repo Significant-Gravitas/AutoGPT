@@ -86,7 +86,6 @@ async def generate_solana_code(agent: Agent, task_id: str, specification: str) -
     )
 
     return "Modular Solana on-chain code generated with Anchor and written to respective files."
-    return "Modular Solana on-chain code generated with Anchor and written to respective files."
 
 
 @action(

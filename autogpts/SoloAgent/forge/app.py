@@ -1,7 +1,7 @@
 import os
 
 from forge.agent import ForgeAgent
-from forge.sdk import LocalWorkspace
+from forge.sdk.workspace import LocalWorkspace
 
 from .db import ForgeDatabase
 
