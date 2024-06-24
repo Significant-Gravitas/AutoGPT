@@ -72,8 +72,7 @@ class ExecutionScheduler(AppService):
             schedule=cron,
             input_data=input_data,
         )
-        self.run_and_wait(model.add_schedule(schedule))
-        return schedule.id
+        return self.run_and_wait(model.add_schedule(schedule)).id
 
     @expose
     def get_execution_schedules(self, graph_id: str) -> dict[str, str]:

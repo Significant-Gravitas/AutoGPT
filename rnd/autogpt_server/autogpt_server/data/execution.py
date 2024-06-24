@@ -125,20 +125,6 @@ async def create_graph_execution(
     ]
 
 
-# async def get_connecting_input(node_id: str, output_name: str) -> list[tuple[str, str]]:
-#     """
-#     Get the connecting input names from the output name of the node.
-#     Returns:
-#         List of tuples of node id and input name.
-#     """
-#     return [
-#         (link.agentNodeSinkId, link.sinkName)
-#         for link in await AgentNodeLink.prisma().find_many(
-#             where={"agentNodeSourceId": node_id, "sourceName": output_name}
-#         )
-#     ]
-
-
 async def upsert_execution_input(
         node_id: str,
         graph_exec_id: str,

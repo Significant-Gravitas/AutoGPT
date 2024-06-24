@@ -8,7 +8,6 @@ from autogpt_server.data.db import BaseDbModel
 
 
 class ExecutionSchedule(BaseDbModel):
-    id: str
     graph_id: str
     schedule: str
     is_enabled: bool
@@ -70,8 +69,8 @@ async def get_schedules(graph_id: str) -> list[ExecutionSchedule]:
     ]
 
 
-async def add_schedule(schedule: ExecutionSchedule):
-    await AgentGraphExecutionSchedule.prisma().create(
+async def add_schedule(schedule: ExecutionSchedule) -> ExecutionSchedule:
+    obj = await AgentGraphExecutionSchedule.prisma().create(
         data={
             "id": schedule.id,
             "agentGraphId": schedule.graph_id,
@@ -80,6 +79,7 @@ async def add_schedule(schedule: ExecutionSchedule):
             "inputData": json.dumps(schedule.input_data),
         }
     )
+    return ExecutionSchedule.from_db(obj)
 
 
 async def update_schedule(schedule_id: str, is_enabled: bool):
