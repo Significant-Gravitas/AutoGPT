@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from concurrent.futures import ProcessPoolExecutor
-from typing import Any, Coroutine, Optional, TypeVar
+from typing import Any, Coroutine, TypeVar
 
 from autogpt_server.data import db
 from autogpt_server.data.block import Block, get_block
@@ -204,19 +204,19 @@ class ExecutionManager(AppService):
 
     @expose
     def add_execution(self, graph_id: str, data: dict[str, Any]) -> dict:
-        agent = self.run_and_wait(get_graph(graph_id))
-        if not agent:
-            raise Exception(f"Agent #{graph_id} not found.")
+        graph = self.run_and_wait(get_graph(graph_id))
+        if not graph:
+            raise Exception(f"Graph #{graph_id} not found.")
 
         # Currently, there is no constraint on the number of root nodes in the graph.
-        for node in agent.starting_nodes:
+        for node in graph.starting_nodes:
             valid, error = self.run_and_wait(validate_exec(node, data))
             if not valid:
                 raise Exception(error)
 
         graph_exec_id, node_execs = self.run_and_wait(create_graph_execution(
             graph_id=graph_id,
-            node_ids=[node.id for node in agent.starting_nodes],
+            node_ids=[node.id for node in graph.starting_nodes],
             data=data
         ))
 
