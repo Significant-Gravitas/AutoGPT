@@ -231,12 +231,12 @@ class ExecutionManager(AppService):
                 )
             )
             executions.append({
-                "exec_id": node_exec.node_exec_id,
+                "id": node_exec.node_exec_id,
                 "node_id": node_exec.node_id,
             })
 
         return {
-            "run_id": graph_exec_id,
+            "id": graph_exec_id,
             "executions": executions,
         }
 

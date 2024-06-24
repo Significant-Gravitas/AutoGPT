@@ -52,11 +52,11 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
     agent_server = AgentServer()
     response = await agent_server.execute_graph(test_graph.id, input_data)
     executions = response["executions"]
-    run_id = response["run_id"]
+    graph_exec_id = response["id"]
     assert len(executions) == 2
 
     async def is_execution_completed():
-        execs = await agent_server.get_executions(test_graph.id, run_id)
+        execs = await agent_server.get_executions(test_graph.id, graph_exec_id)
         return test_manager.queue.empty() and len(execs) == 4
 
     # Wait for the executions to complete
@@ -67,12 +67,12 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
 
     # Execution queue should be empty
     assert await is_execution_completed()
-    executions = await agent_server.get_executions(test_graph.id, run_id)
+    executions = await agent_server.get_executions(test_graph.id, graph_exec_id)
 
     # Executing ParrotBlock1
     exec = executions[0]
     assert exec.status == execution.ExecutionStatus.COMPLETED
-    assert exec.graph_exec_id == run_id
+    assert exec.graph_exec_id == graph_exec_id
     assert exec.output_data == {"output": ["Hello, World!"]}
     assert exec.input_data == {"input": text}
     assert exec.node_id == test_graph.nodes[0].id
@@ -80,7 +80,7 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
     # Executing ParrotBlock2
     exec = executions[1]
     assert exec.status == execution.ExecutionStatus.COMPLETED
-    assert exec.graph_exec_id == run_id
+    assert exec.graph_exec_id == graph_exec_id
     assert exec.output_data == {"output": ["Hello, World!"]}
     assert exec.input_data == {"input": text}
     assert exec.node_id == test_graph.nodes[1].id
@@ -88,7 +88,7 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
     # Executing TextCombinerBlock
     exec = executions[2]
     assert exec.status == execution.ExecutionStatus.COMPLETED
-    assert exec.graph_exec_id == run_id
+    assert exec.graph_exec_id == graph_exec_id
     assert exec.output_data == {"combined_text": ["Hello, World!,Hello, World!"]}
     assert exec.input_data == {
         "text1": "Hello, World!",
@@ -99,7 +99,7 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
     # Executing PrintingBlock
     exec = executions[3]
     assert exec.status == execution.ExecutionStatus.COMPLETED
-    assert exec.graph_exec_id == run_id
+    assert exec.graph_exec_id == graph_exec_id
     assert exec.output_data == {"status": ["printed"]}
     assert exec.input_data == {"text": "Hello, World!,Hello, World!"}
     assert exec.node_id == test_graph.nodes[3].id
