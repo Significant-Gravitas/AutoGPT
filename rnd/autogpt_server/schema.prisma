@@ -15,7 +15,8 @@ model AgentGraph {
   name        String?
   description String?
 
-  AgentNodes AgentNode[] @relation("AgentGraphNodes")
+  AgentNodes             AgentNode[]              @relation("AgentGraphNodes")
+  AgentExecutionSchedule AgentExecutionSchedule[]
 }
 
 // This model describes a single node in the Agent Graph/Flow (Multi Agent System).
@@ -107,4 +108,21 @@ model FileDefinition {
   // Prisma requires explicit back-references.
   ReferencedByInputFiles  AgentNodeExecution[] @relation("InputFiles")
   ReferencedByOutputFiles AgentNodeExecution[] @relation("OutputFiles")
+}
+
+// This model describes the recurring execution schedule of an Agent.
+model AgentExecutionSchedule {
+  id String @id
+
+  agentGraphId String
+  AgentGraph   AgentGraph @relation(fields: [agentGraphId], references: [id])
+
+  schedule  String // cron expression
+  isEnabled Boolean @default(true)
+  inputData String // JSON serialized object
+
+  // default and set the value on each update, lastUpdated field has no time zone.
+  lastUpdated DateTime @updatedAt
+
+  @@index([isEnabled])
 }
