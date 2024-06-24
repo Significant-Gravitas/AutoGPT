@@ -104,8 +104,8 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
       {isPropertiesOpen && (
         <div style={{ marginTop: '10px', background: '#444', padding: '10px', borderRadius: '10px' }}>
           <h4>Node Output</h4>
-          <p><strong>Status:</strong> {data.status || 'N/A'}</p>
-          <p><strong>Output Data:</strong> {data.output_data || 'N/A'}</p>
+          <p><strong>Status:</strong> {typeof data.status === 'object' ? JSON.stringify(data.status) : data.status || 'N/A'}</p>
+          <p><strong>Output Data:</strong> {typeof data.output_data === 'object' ? JSON.stringify(data.output_data) : data.output_data || 'N/A'}</p>
         </div>
       )}
     </div>
@@ -113,4 +113,3 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
 };
 
 export default CustomNode;
-

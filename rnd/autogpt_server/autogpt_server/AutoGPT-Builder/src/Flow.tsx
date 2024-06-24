@@ -30,6 +30,12 @@ interface AvailableNode {
   outputSchema?: { properties: { [key: string]: any } };
 }
 
+interface ExecData {
+  node_id: string;
+  status: string;
+  output_data: any;
+}
+
 const Flow: React.FC = () => {
   const [nodes, setNodes] = useState<Node[]>(initialNodes);
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
@@ -56,7 +62,10 @@ const Flow: React.FC = () => {
         return response.json();
       })
       .then(data => {
-        setAvailableNodes(data);
+        setAvailableNodes(data.map((node: AvailableNode) => ({
+          ...node,
+          description: typeof node.description === 'object' ? JSON.stringify(node.description) : node.description,
+        })));
         setLoadingStatus('loaded');
       })
       .catch(error => {
@@ -170,7 +179,18 @@ const Flow: React.FC = () => {
       setNodes((nds) =>
         nds.map((node) =>
           node.id === selectedNode.id
-            ? { ...node, data: { ...node.data, title, description, label: title, variableName, variableValue, printVariable } }
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  title,
+                  description,
+                  label: title,
+                  variableName,
+                  variableValue: typeof variableValue === 'object' ? JSON.stringify(variableValue) : variableValue,
+                  printVariable: typeof printVariable === 'object' ? JSON.stringify(printVariable) : printVariable,
+                },
+              }
             : node
         )
       );
@@ -210,7 +230,7 @@ const Flow: React.FC = () => {
     return inputData;
   };
 
-  const updateNodeData = (execData: any) => {
+  const updateNodeData = (execData: ExecData) => {
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === execData.node_id) {
