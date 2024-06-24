@@ -269,14 +269,14 @@ const Flow: React.FC = () => {
         }, {} as { [key: string]: string }),
         metadata: node.data.metadata // Include metadata in the payload
       }));
-
+  
       const payload = {
         id: '',
         name: 'Agent Name',
         description: 'Agent Description',
         nodes: formattedNodes,
       };
-
+  
       const createResponse = await fetch('http://192.168.0.215:8000/agents', {
         method: 'POST',
         headers: {
@@ -284,53 +284,66 @@ const Flow: React.FC = () => {
         },
         body: JSON.stringify(payload),
       });
-
+  
       if (!createResponse.ok) {
         throw new Error(`HTTP error! Status: ${createResponse.status}`);
       }
-
+  
       const createData = await createResponse.json();
       const agentId = createData.id;
       setAgentId(agentId);
-
-      const responseNodes = createData.nodes.map((node: any) => ({
-        id: node.id,
-        type: 'custom',
-        position: node.metadata.position,
-        data: {
-          label: node.name,
-          title: `${node.name}`,
-          description: `${node.description}`,
-          inputSchema: availableNodes.find(n => n.id === node.block_id)?.inputSchema,
-          outputSchema: availableNodes.find(n => n.id === node.block_id)?.outputSchema,
-          connections: [],
-          variableName: '',
-          variableValue: '',
-          printVariable: '',
-          setVariableName,
-          setVariableValue,
-          setPrintVariable,
-          hardcodedValues: node.input_default,
-          setHardcodedValues: (values: { [key: string]: any }) => {
-            setNodes((nds) => nds.map((n) =>
-              n.id === node.id
-                ? { ...n, data: { ...n.data, hardcodedValues: values } }
-                : n
-            ));
+  
+      const responseNodes = createData.nodes.map((node: any) => {
+        const block = availableNodes.find(n => n.id === node.block_id);
+        return {
+          id: node.id,
+          type: 'custom',
+          position: node.metadata.position,
+          data: {
+            label: block?.name || 'Unknown',
+            title: `${block?.name || 'Unknown'}`,
+            description: `${block?.description || ''}`,
+            inputSchema: block?.inputSchema,
+            outputSchema: block?.outputSchema,
+            connections: [],
+            variableName: '',
+            variableValue: '',
+            printVariable: '',
+            setVariableName,
+            setVariableValue,
+            setPrintVariable,
+            hardcodedValues: node.input_default,
+            setHardcodedValues: (values: { [key: string]: any }) => {
+              setNodes((nds) => nds.map((n) =>
+                n.id === node.id
+                  ? { ...n, data: { ...n.data, hardcodedValues: values } }
+                  : n
+              ));
+            },
+            block_id: node.block_id,
+            metadata: node.metadata
           },
-          block_id: node.block_id,
-          metadata: node.metadata
-        },
-      }));
-
+        };
+      });
+  
+      const newEdges = createData.nodes.flatMap((node: any) => {
+        return Object.entries(node.output_nodes).map(([sourceHandle, targetNodeId]) => ({
+          id: `${node.id}-${sourceHandle}-${targetNodeId}`,
+          source: node.id,
+          sourceHandle: sourceHandle,
+          target: targetNodeId,
+          targetHandle: Object.keys(node.input_nodes).find(key => node.input_nodes[key] === targetNodeId) || '',
+        }));
+      });
+  
       setNodes(responseNodes);
-      setEdges([]); // Clear the edges and recreate them if needed based on the response
-
+      setEdges(newEdges);
+  
       const initialNodeInput = nodes.reduce((acc, node) => {
         acc[node.id] = prepareNodeInputData(node, nodes, edges);
         return acc;
       }, {} as { [key: string]: any });
-
+  
       const nodeInputForExecution = Object.keys(initialNodeInput).reduce((acc, key) => {
         const blockId = nodes.find(node => node.id === key)?.data.block_id;
         const nodeSchema = availableNodes.find(n => n.id === blockId);
@@ -341,7 +354,7 @@ const Flow: React.FC = () => {
         }
         return acc;
       }, {} as { [key: string]: any });
-
+  
       const executeResponse = await fetch(`http://192.168.0.215:8000/agents/${agentId}/execute`, {
         method: 'POST',
         headers: {
@@ -349,53 +362,54 @@ const Flow: React.FC = () => {
         },
         body: JSON.stringify(nodeInputForExecution),
       });
-
+  
       if (!executeResponse.ok) {
         throw new Error(`HTTP error! Status: ${executeResponse.status}`);
       }
-
+  
       const executeData = await executeResponse.json();
       const runId = executeData.run_id;
-
+  
       const startPolling = () => {
         const endTime = Date.now() + 60000;
-
+  
         const poll = async () => {
           if (Date.now() >= endTime) {
             console.log('Polling timeout reached.');
             return;
           }
-
+  
           try {
             const response = await fetch(`http://192.168.0.215:8000/agents/${agentId}/executions/${runId}`);
             if (!response.ok) {
               throw new Error(`HTTP error! Status: ${response.status}`);
             }
-
+  
             const data = await response.json();
             data.forEach(updateNodeData);
-
+  
             const allCompleted = data.every((exec: any) => exec.status === 'COMPLETED');
             if (allCompleted) {
               console.log('All nodes are completed.');
               return;
             }
-
+  
             setTimeout(poll, 1000);
           } catch (error) {
             console.error('Error during polling:', error);
             setTimeout(poll, 1000);
           }
         };
-
+  
         poll();
       };
-
+  
       startPolling();
     } catch (error) {
       console.error('Error running agent:', error);
     }
   };
+  
 
   return (
     <div style={{ height: '100vh', position: 'relative', backgroundColor: '#121212' }}>
