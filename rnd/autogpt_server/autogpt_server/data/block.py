@@ -1,9 +1,8 @@
 import json
-import jsonschema
-
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar
 
+import jsonschema
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
@@ -91,6 +90,9 @@ class BlockSchema(BaseModel):
             return None
         except jsonschema.ValidationError as e:
             return str(e)
+        
+    def get_fields(self) -> set[str]:
+        return set(self.jsonschema["properties"].keys())
 
 
 class Block(ABC, BaseModel):
