@@ -74,8 +74,8 @@ class LlamafileCredentials(ModelProviderCredentials):
 
 
 class LlamafileSettings(ModelProviderSettings):
-    configuration: LlamafileConfiguration
-    credentials: Optional[LlamafileCredentials]
+    configuration: LlamafileConfiguration  # type: ignore
+    credentials: Optional[LlamafileCredentials] = None  # type: ignore
 
 
 class LlamafileTokenizer(ModelTokenizer[int]):
