@@ -51,6 +51,11 @@ LLAMAFILE_CHAT_MODELS = {
 LLAMAFILE_EMBEDDING_MODELS = {}
 
 
+class LlamafileConfiguration(ModelProviderConfiguration):
+    # TODO: implement 'seed' across forge.llm.providers
+    seed: Optional[int] = None
+
+
 class LlamafileCredentials(ModelProviderCredentials):
     api_key = SecretStr("sk-no-key-required")
     api_base: SecretStr = UserConfigurable(  # type: ignore
@@ -114,11 +119,12 @@ class LlamafileProvider(
             "Provides chat completion and embedding services "
             "through a llamafile instance"
         ),
-        configuration=ModelProviderConfiguration(),
+        configuration=LlamafileConfiguration(),
     )
 
-    _settings: LlamafileSettings  # type: ignore
-    _credentials: LlamafileCredentials  # type: ignore
+    _settings: LlamafileSettings
+    _credentials: LlamafileCredentials
+    _configuration: LlamafileConfiguration
 
     async def get_available_models(self) -> Sequence[ChatModelInfo[LlamafileModelName]]:
         _models = (await self._client.models.list()).data
@@ -203,10 +209,8 @@ class LlamafileProvider(
         if model == LlamafileModelName.MISTRAL_7B_INSTRUCT:
             messages = self._adapt_chat_messages_for_mistral_instruct(messages)
 
-        if "seed" not in kwargs:
-            # FIXME: temporarily hard-coded for reproducibility, instead the
-            #  seed should be set from config
-            completion_kwargs["seed"] = 0
+        if "seed" not in kwargs and self._configuration.seed is not None:
+            completion_kwargs["seed"] = self._configuration.seed
 
         # Convert all messages with content blocks to simple text messages
         for message in messages:
