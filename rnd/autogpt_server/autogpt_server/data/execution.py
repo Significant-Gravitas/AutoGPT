@@ -1,9 +1,8 @@
 import json
-
 from collections import defaultdict
 from datetime import datetime
 from enum import Enum
-from multiprocessing import Queue
+from multiprocessing import Manager
 from typing import Any
 
 from prisma.models import (
@@ -36,7 +35,7 @@ class ExecutionQueue:
     """
 
     def __init__(self):
-        self.queue: Queue[NodeExecution] = Queue()
+        self.queue = Manager().Queue()
 
     def add(self, execution: NodeExecution) -> NodeExecution:
         self.queue.put(execution)
@@ -233,7 +232,7 @@ async def get_node_execution_input(node_exec_id: str) -> dict[str, Any]:
     )
     if not execution.AgentNode:
         raise ValueError(f"Node {execution.agentNodeId} not found.")
-    
+
     exec_input = json.loads(execution.AgentNode.constantInput)
     for input_data in execution.Input or []:
         exec_input[input_data.name] = json.loads(input_data.data)

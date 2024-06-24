@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from concurrent.futures import ProcessPoolExecutor
-from typing import Any, Coroutine, TypeVar
+from typing import Any, Coroutine, Generator, TypeVar
 
 from autogpt_server.data import db
 from autogpt_server.data.block import Block, get_block
@@ -26,9 +26,10 @@ def get_log_prefix(graph_eid: str, node_eid: str, block_name: str = "-"):
 
 
 T = TypeVar("T")
+ExecutionStream = Generator[Execution, None, None]
 
 
-def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> list[Execution]:
+def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> ExecutionStream:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
     persist the execution result, and return the subsequent node to be executed.
@@ -53,12 +54,12 @@ def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> list[Execu
     node = wait(get_node(node_id))
     if not node:
         logger.error(f"Node {node_id} not found.")
-        return []
+        return
 
     node_block = wait(get_block(node.block_id))
     if not node_block:
         logger.error(f"Block {node.block_id} not found.")
-        return []
+        return
 
     # Execute the node
     prefix = get_log_prefix(graph_exec_id, node_exec_id, node_block.name)
@@ -66,15 +67,34 @@ def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> list[Execu
     wait(execution_update(node_exec_id, ExecutionStatus.RUNNING))
 
     try:
-        output_name, output_data = node_block.execute(exec_data)
-        logger.warning(f"{prefix} executed with output [{output_name}]:`{output_data}`")
-        wait(execution_update(node_exec_id, ExecutionStatus.COMPLETED))
-        wait(upsert_execution_output(node_exec_id, output_name, output_data))
+        for output_name, output_data in node_block.execute(exec_data):
+            logger.warning(f"{prefix} Executed, output [{output_name}]:`{output_data}`")
+            wait(execution_update(node_exec_id, ExecutionStatus.COMPLETED))
+            wait(upsert_execution_output(node_exec_id, output_name, output_data))
+
+            for execution in enqueue_next_nodes(
+                    loop, node, output_name, output_data, graph_exec_id
+            ):
+                yield execution
     except Exception as e:
         logger.exception(f"{prefix} failed with error: %s", e)
         wait(execution_update(node_exec_id, ExecutionStatus.FAILED))
         wait(upsert_execution_output(node_exec_id, "error", str(e)))
         raise e
+
+
+def enqueue_next_nodes(
+        loop: asyncio.AbstractEventLoop,
+        node: Node,
+        output_name: str,
+        output_data: Any,
+        graph_exec_id: str,
+) -> list[Execution]:
+    def wait(f: Coroutine[T, Any, T]) -> T:
+        return loop.run_until_complete(f)
+
+    prefix = get_log_prefix(graph_exec_id, node.id)
+    node_id = node.id
 
     # Try to enqueue next eligible nodes
     next_node_ids = [nid for name, nid in node.output_nodes if name == output_name]
@@ -86,7 +106,7 @@ def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> list[Execu
         next_node = wait(get_node(next_node_id))
         if not next_node:
             logger.error(f"{prefix} Error, next node {next_node_id} not found.")
-            return None
+            return
 
         next_node_input_name = next(
             name for name, nid in next_node.input_nodes if nid == node_id
@@ -102,7 +122,7 @@ def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> list[Execu
         is_valid, validation_resp = wait(validate_exec(next_node, next_node_input))
         if not is_valid:
             logger.warning(f"{prefix} Skipped {next_node_id}: {validation_resp}")
-            return None
+            return
 
         logger.warning(f"{prefix} Enqueue next node {next_node_id}-{validation_resp}")
         return Execution(
@@ -155,17 +175,16 @@ class Executor:
         cls.loop.run_until_complete(db.connect())
 
     @classmethod
-    def on_start_execution(cls, data: Execution) -> list[Execution]:
-        """
-        A synchronous version of `execute_node`, to be used in the ProcessPoolExecutor.
-        """
+    def on_start_execution(cls, q: ExecutionQueue, data: Execution) -> bool:
         prefix = get_log_prefix(data.graph_exec_id, data.node_exec_id)
         try:
             logger.warning(f"{prefix} Start execution")
-            return execute_node(cls.loop, data)
+            for execution in execute_node(cls.loop, data):
+                q.add(execution)
+            return True
         except Exception as e:
             logger.exception(f"{prefix} Error: {e}")
-            return []
+            return False
 
 
 class ExecutionManager(AppService):
@@ -175,32 +194,17 @@ class ExecutionManager(AppService):
         self.queue = ExecutionQueue()
 
     def run_service(self):
-        def on_complete_execution(f: asyncio.Future[list[Execution]]):
-            exception = f.exception()
-            if exception:
-                logger.exception("Error during execution!! %s", exception)
-                return exception
-
-            executions = f.result()
-            if not executions:
-                return None
-
-            return [
-                self.add_node_execution(execution)
-                for execution in executions
-            ]
-
         with ProcessPoolExecutor(
                 max_workers=self.pool_size,
                 initializer=Executor.on_executor_start,
         ) as executor:
             logger.warning(f"Execution manager started with {self.pool_size} workers.")
             while True:
-                future = executor.submit(
+                executor.submit(
                     Executor.on_start_execution,
-                    self.queue.get()
+                    self.queue,
+                    self.queue.get(),
                 )
-                future.add_done_callback(on_complete_execution)  # type: ignore
 
     @expose
     def add_execution(self, graph_id: str, data: dict[str, Any]) -> dict:
@@ -210,7 +214,8 @@ class ExecutionManager(AppService):
 
         # Currently, there is no constraint on the number of root nodes in the graph.
         for node in graph.starting_nodes:
-            valid, error = self.run_and_wait(validate_exec(node, data))
+            input_data = {**node.input_default, **data}
+            valid, error = self.run_and_wait(validate_exec(node, input_data))
             if not valid:
                 raise Exception(error)
 
@@ -222,12 +227,15 @@ class ExecutionManager(AppService):
 
         executions = []
         for node_exec in node_execs:
+            input_data = self.run_and_wait(
+                get_node_execution_input(node_exec.node_exec_id)
+            )
             self.add_node_execution(
                 Execution(
                     graph_exec_id=node_exec.graph_exec_id,
                     node_exec_id=node_exec.node_exec_id,
                     node_id=node_exec.node_id,
-                    data=data
+                    data=input_data,
                 )
             )
             executions.append({
