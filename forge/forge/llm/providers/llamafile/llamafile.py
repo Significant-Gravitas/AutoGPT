@@ -73,6 +73,11 @@ class LlamafileCredentials(ModelProviderCredentials):
         }
 
 
+class LlamafileSettings(ModelProviderSettings):
+    configuration: LlamafileConfiguration
+    credentials: Optional[LlamafileCredentials]
+
+
 class LlamafileTokenizer(ModelTokenizer[int]):
     def __init__(self, credentials: LlamafileCredentials):
         self._credentials = credentials
@@ -98,10 +103,6 @@ class LlamafileTokenizer(ModelTokenizer[int]):
         )
         response.raise_for_status()
         return response.json()["content"]
-
-
-class LlamafileSettings(ModelProviderSettings):
-    credentials: Optional[LlamafileCredentials]  # type: ignore
 
 
 class LlamafileProvider(
