@@ -22,8 +22,8 @@ def main(**kwargs):
     run_processes(
         [
             PyroNameServer(),
-            ExecutionScheduler(),
             ExecutionManager(pool_size=5),
+            ExecutionScheduler(),
             AgentServer(),
         ],
         **kwargs

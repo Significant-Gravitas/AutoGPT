@@ -1,12 +1,12 @@
 import asyncio
 import logging
-
+import uuid
 from concurrent.futures import ProcessPoolExecutor
 from typing import Optional, Any
 
 from autogpt_server.data import db
 from autogpt_server.data.block import Block, get_block
-from autogpt_server.data.graph import Node, get_node, get_node_input
+from autogpt_server.data.graph import Node, get_node, get_node_input, get_graph
 from autogpt_server.data.execution import (
     Execution,
     ExecutionQueue,
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_log_prefix(run_id: str, exec_id: str, block_name: str = "-"):
-    return f"[Execution graph-{run_id}|node-{exec_id}|{block_name}]"
+    return f"[ExecutionManager] [graph-{run_id}|node-{exec_id}|{block_name}]"
 
 
 def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> Execution | None:
@@ -80,26 +80,38 @@ def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> Execution 
         return None
 
     next_node_input: dict[str, Any] = wait(get_node_input(next_node, run_id))
-    next_node_block: Block | None = wait(get_block(next_node.block_id))
-    if not next_node_block:
-        logger.error(f"{prefix} Error, next block {next_node.block_id} not found.")
+    is_valid, validation_resp = wait(validate_exec(next_node, next_node_input))
+    if not is_valid:
+        logger.warning(f"{prefix} Skipped {next_node_id}: {validation_resp}")
         return None
 
-    if not set(next_node.input_nodes).issubset(next_node_input):
-        logger.warning(
-            f"{prefix} Skipped {next_node_id}-{next_node_block.name}, "
-            f"missing: {set(next_node.input_nodes) - set(next_node_input)}"
-        )
-        return None
-
-    if error := next_node_block.input_schema.validate_data(next_node_input):
-        logger.warning(
-            f"{prefix} Skipped {next_node_id}-{next_node_block.name}, {error}"
-        )
-        return None
-
-    logger.warning(f"{prefix} Enqueue next node {next_node_id}-{next_node_block.name}")
+    logger.warning(f"{prefix} Enqueue next node {next_node_id}-{validation_resp}")
     return Execution(run_id=run_id, node_id=next_node_id, data=next_node_input)
+
+
+async def validate_exec(node: Node, data: dict[str, Any]) -> tuple[bool, str]:
+    """
+    Validate the input data for a node execution.
+
+    Args:
+        node: The node to execute.
+        data: The input data for the node execution.
+
+    Returns:
+        A tuple of a boolean indicating if the data is valid, and a message if not.
+        Return the executed block name if the data is valid.
+    """
+    node_block: Block | None = await(get_block(node.block_id))
+    if not node_block:
+        return False, f"Block for {node.block_id} not found."
+
+    if not set(node.input_nodes).issubset(data):
+        return False, f"Input data missing: {set(node.input_nodes) - set(data)}"
+
+    if error := node_block.input_schema.validate_data(data):
+        return False, f"Input data doesn't match {node_block.name}: {error}"
+
+    return True, node_block.name
 
 
 class Executor:
@@ -138,7 +150,7 @@ class ExecutionManager(AppService):
 
             execution = f.result()
             if execution:
-                return self.__add_execution(execution)
+                return self.add_node_execution(execution)
 
             return None
 
@@ -155,14 +167,34 @@ class ExecutionManager(AppService):
                 future.add_done_callback(on_complete_execution)  # type: ignore
 
     @expose
-    def add_execution(self, run_id: str, node_id: str, data: dict[str, Any]) -> str:
-        try:
-            execution = Execution(run_id=run_id, node_id=node_id, data=data)
-            self.__add_execution(execution)
-            return execution.id
-        except Exception as e:
-            raise Exception("Error adding execution ", e)
+    def add_execution(self, graph_id: str, data: dict[str, Any]) -> dict:
+        run_id = str(uuid.uuid4())
 
-    def __add_execution(self, execution: Execution) -> Execution:
+        agent = self.run_and_wait(get_graph(graph_id))
+        if not agent:
+            raise Exception(f"Agent #{graph_id} not found.")
+
+        # Currently, there is no constraint on the number of root nodes in the graph.
+        for node in agent.starting_nodes:
+            valid, error = self.run_and_wait(validate_exec(node, data))
+            if not valid:
+                raise Exception(error)
+
+        executions = []
+        for node in agent.starting_nodes:
+            exec_id = self.add_node_execution(
+                Execution(run_id=run_id, node_id=node.id, data=data)
+            )
+            executions.append({
+                "exec_id": exec_id,
+                "node_id": node.id,
+            })
+
+        return {
+            "run_id": run_id,
+            "executions": executions,
+        }
+
+    def add_node_execution(self, execution: Execution) -> Execution:
         self.run_and_wait(enqueue_execution(execution))
         return self.queue.add(execution)
