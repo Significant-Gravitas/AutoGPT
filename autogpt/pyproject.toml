@@ -107,7 +107,3 @@ skip_glob = ["data"]
 pythonVersion = "3.10"
 exclude = ["data/**", "**/node_modules", "**/__pycache__", "**/.*"]
 ignore = ["../forge/**"]
-
-
-[tool.pytest.ini_options]
-markers = ["slow"]

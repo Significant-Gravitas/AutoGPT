@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from PIL import Image
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from forge.components.image_gen import ImageGeneratorComponent
 from forge.components.image_gen.image_gen import ImageGeneratorConfiguration
@@ -15,7 +15,11 @@ from forge.llm.providers.openai import OpenAICredentials
 
 @pytest.fixture
 def image_gen_component(storage: FileStorage):
-    cred = OpenAICredentials(api_key=SecretStr("test"))
+    try:
+        cred = OpenAICredentials.from_env()
+    except ValidationError:
+        cred = OpenAICredentials(api_key=SecretStr("test"))
+
     return ImageGeneratorComponent(storage, openai_credentials=cred)
 
 

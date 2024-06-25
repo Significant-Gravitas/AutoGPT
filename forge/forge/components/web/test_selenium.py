@@ -12,7 +12,6 @@ def web_selenium_component(app_data_dir: Path):
     return WebSeleniumComponent(MultiProvider(), app_data_dir)
 
 
-@pytest.mark.vc
 @pytest.mark.asyncio
 async def test_browse_website_nonexistent_url(
     web_selenium_component: WebSeleniumComponent,

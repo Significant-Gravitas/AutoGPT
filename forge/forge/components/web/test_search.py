@@ -4,7 +4,6 @@ import pytest
 from googleapiclient.errors import HttpError
 from pydantic import SecretStr
 
-from forge.components.web.search import WebSearchConfiguration
 from forge.utils.exceptions import ConfigurationError
 
 from . import WebSearchComponent
@@ -12,11 +11,12 @@ from . import WebSearchComponent
 
 @pytest.fixture
 def web_search_component():
-    config = WebSearchConfiguration(
-        google_api_key=SecretStr("test"),
-        google_custom_search_engine_id=SecretStr("test"),
-    )
-    return WebSearchComponent(config)
+    component = WebSearchComponent()
+    if component.config.google_api_key is None:
+        component.config.google_api_key = SecretStr("test")
+    if component.config.google_custom_search_engine_id is None:
+        component.config.google_custom_search_engine_id = SecretStr("test")
+    return component
 
 
 @pytest.mark.parametrize(
