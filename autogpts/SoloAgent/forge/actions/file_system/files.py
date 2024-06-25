@@ -1,7 +1,8 @@
 from typing import List
 
 from ..registry import action
-
+import os
+from forge.sdk import Agent, LocalWorkspace
 
 @action(
     name="list_files",
@@ -42,6 +43,7 @@ async def list_files(agent, task_id: str, path: str) -> List[str]:
     ],
     output_type="None",
 )
+
 async def write_file(agent, task_id: str, file_path: str, data: bytes):
     """
     Write data to a file
@@ -49,7 +51,14 @@ async def write_file(agent, task_id: str, file_path: str, data: bytes):
     if isinstance(data, str):
         data = data.encode()
 
-    agent.workspace.write(task_id=task_id, path=file_path, data=data)
+    base_path = agent.workspace.base_path if isinstance(agent.workspace, LocalWorkspace) else str(agent.workspace.base_path)
+    full_path = os.path.join(base_path, file_path)
+
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+
+    with open(full_path, 'wb') as f:
+        f.write(data)
+
     return await agent.db.create_artifact(
         task_id=task_id,
         file_name=file_path.split("/")[-1],

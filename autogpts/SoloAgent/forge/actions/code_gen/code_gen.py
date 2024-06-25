@@ -1,4 +1,6 @@
+
 from __future__ import annotations
+
 
 from ..registry import action
 from forge.sdk import ForgeLogger, PromptEngine
@@ -7,9 +9,9 @@ import os
 from forge.sdk import Agent, LocalWorkspace
 import re
 import subprocess
-
 LOG = ForgeLogger(__name__)
-MAX_ATTEMPTS = 3
+
+
 
 
 @action(
@@ -25,10 +27,11 @@ MAX_ATTEMPTS = 3
     ],
     output_type="str",
 )
+
 async def test_code(agent: Agent, task_id: str, project_path: str) -> str:
     try:
-        result = subprocess.run(
-            ['cargo', 'test'], cwd=project_path, capture_output=True, text=True)
+        result = subprocess.run(['cargo', 'test'], cwd=project_path, capture_output=True, text=True)
+
 
         if result.returncode != 0:
             LOG.error(f"Test failed with errors: {result.stderr}")
@@ -40,7 +43,6 @@ async def test_code(agent: Agent, task_id: str, project_path: str) -> str:
     except Exception as e:
         LOG.error(f"Error testing code: {e}")
         return f"Failed to test code: {e}"
-
 
 @action(
     name="generate_solana_code",
@@ -56,6 +58,7 @@ async def test_code(agent: Agent, task_id: str, project_path: str) -> str:
     output_type="str",
 )
 async def generate_solana_code(agent: Agent, task_id: str, specification: str) -> str:
+
     prompt_engine = PromptEngine("gpt-4o")
     lib_prompt = prompt_engine.load_prompt(
         "anchor-lib", specification=specification)
@@ -75,7 +78,7 @@ async def generate_solana_code(agent: Agent, task_id: str, specification: str) -
         {"role": "user", "content": errors_prompt},
         {"role": "user", "content": cargo_toml_prompt},
         {"role": "user", "content": anchor_toml_prompt},
-        {"role": "user", "content": "Return the whole code as a string with the file markers intact that you received in each of the input without changing their wording at all, also remove the prompts in the files when generating."}
+        {"role": "user", "content": "Return the whole code as a string with the file markers intact that you received in each of the input without changing their wording at all."}
     ]
 
     chat_completion_kwargs = {
@@ -94,41 +97,48 @@ async def generate_solana_code(agent: Agent, task_id: str, specification: str) -
         LOG.error(f"Error parsing response content: {e}")
         return "Failed to generate Solana on-chain code due to response parsing error."
 
-    project_base_path = agent.workspace.base_path if isinstance(
+    base_path = agent.workspace.base_path if isinstance(
         agent.workspace, LocalWorkspace) else str(agent.workspace.base_path)
-    project_path = os.path.join(
-        project_base_path, 'solana_mvp_project', 'onchain', 'programs', 'my_anchor_program')
-    src_path = os.path.join(project_path, 'src')
+    project_path = os.path.join(base_path, task_id)
+    LOG.info(f"Base path: {base_path}")
+    LOG.info(f"Project path: {project_path}")
+    cargo_toml_content = """
+    [package]
+    name = "my_anchor_program"
+    version = "0.1.0"
+    edition = "2018"
 
-    # Create necessary directories
-    os.makedirs(src_path, exist_ok=True)
+    [dependencies]
+    anchor-lang = "0.30.1"
+    """
 
-    # Write each part to the respective file
-    file_paths = {
-        'anchor-lib.rs': os.path.join(src_path, 'lib.rs'),
-        'anchor-instructions.rs': os.path.join(src_path, 'instructions.rs'),
-        'errors.rs': os.path.join(src_path, 'errors.rs'),
-        'Cargo.toml': os.path.join(project_path, 'Cargo.toml'),
-        'Anchor.toml': os.path.join(project_path, 'Anchor.toml'),
-    }
 
-    for key, file_path in file_paths.items():
-        if key in parts and parts[key]:
-            with open(file_path, 'w') as file:
-                file.write(parts[key])
-        else:
-            LOG.error(f"{key} content is missing.")
 
-    # Run tests in the project directory
-    test_result = await test_code(agent, task_id, project_path)
-    attempts = 0
-    while "All tests passed" not in test_result and attempts < MAX_ATTEMPTS:
-        # Regenerate the code based on errors
-        LOG.info(f"Regenerating code due to errors: {test_result}")
-        test_result = await generate_solana_code(agent, task_id, specification)
-        attempts += 1
+    LOG.info(f"id: {task_id}")
+    LOG.info(f"Parts: {response_content}")
+    await agent.abilities.run_action(
+        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'lib.rs'), data=parts['anchor-lib.rs'].encode()
+    )
+    await agent.abilities.run_action(
+        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'instructions.rs'), data=parts['anchor-instructions.rs'].encode()
+    )
+    await agent.abilities.run_action(
+        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'errors.rs'), data=parts['errors.rs'].encode()
+    )
+    await agent.abilities.run_action(
+        task_id, "write_file", file_path=os.path.join(project_path, 'Cargo.toml'), data=cargo_toml_content.encode()
+    )
+    await agent.abilities.run_action(
+        task_id, "write_file", file_path=os.path.join(project_path, 'Anchor.toml'), data=parts['Anchor.toml'].encode()
+    )
+    test_result = await agent.abilities.run_action(task_id, "test_code", project_path=project_path)
+    if "All tests passed" not in test_result:
+            # Regenerate the code based on errors
+            LOG.info(f"Regenerating code due to errors: {test_result}")
+            return await generate_solana_code(agent, task_id, specification)
 
     return "Solana on-chain code generated, tested, and verified successfully."
+
 
 
 @action(
@@ -177,34 +187,31 @@ async def generate_frontend_code(agent, task_id: str, specification: str) -> str
         parts = parse_response_content(response_content)
     except Exception as e:
         LOG.error(f"Error parsing response content: {e}")
-        return "Failed to generate frontend code due to response parsing error."
+        return "Failed to generate Solana on-chain code due to response parsing error."
 
-    project_path = os.path.join(
-        agent.workspace.path, 'solana_mvp_project', 'frontend')
+    project_path = os.path.join(agent.workspace.base_path, task_id)
 
-    # Create necessary directories
-    src_path = os.path.join(project_path, 'src')
-    os.makedirs(src_path, exist_ok=True)
-
-    file_paths = {
-        'index.html': os.path.join(src_path, 'index.html'),
-        'styles.css': os.path.join(src_path, 'styles.css'),
-        'app.js': os.path.join(src_path, 'app.js'),
-        'package.json': os.path.join(project_path, 'package.json'),
-        'webpack.config.js': os.path.join(project_path, 'webpack.config.js'),
-    }
-
-    for key, file_path in file_paths.items():
-        if key in parts and parts[key]:
-            with open(file_path, 'w') as file:
-                file.write(parts[key])
-        else:
-            LOG.error(f"{key} content is missing.")
+    await agent.abilities.run_action(
+        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'index.html'), data=parts['index.html'].encode()
+    )
+    await agent.abilities.run_action(
+        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'styles.css'), data=parts['styles.css'].encode()
+    )
+    await agent.abilities.run_action(
+        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'app.js'), data=parts['app.js'].encode()
+    )
+    await agent.abilities.run_action(
+        task_id, "write_file", file_path=os.path.join(project_path, 'package.json'), data=parts['package.json'].encode()
+    )
+    await agent.abilities.run_action(
+        task_id, "write_file", file_path=os.path.join(project_path, 'webpack.config.js'), data=parts['webpack.config.js'].encode()
+    )
 
     return "Modular frontend code generated and written to respective files."
 
 
 def parse_response_content(response_content: str) -> dict:
+    # This function will split the response content into different parts
     parts = {
         'anchor-lib.rs': '',
         'anchor-instructions.rs': '',
@@ -232,4 +239,3 @@ def parse_response_content(response_content: str) -> dict:
         parts[key] = re.sub(r'```|rust|toml', '', parts[key]).strip()
 
     return parts
-
