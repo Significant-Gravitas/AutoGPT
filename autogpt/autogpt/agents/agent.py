@@ -18,7 +18,6 @@ from forge.components.action_history import (
     ActionHistoryComponent,
     EpisodicActionHistory,
 )
-from forge.components.action_history.action_history import ActionHistoryConfiguration
 from forge.components.code_executor.code_executor import (
     CodeExecutorComponent,
     CodeExecutorConfiguration,
