@@ -78,9 +78,9 @@ class SensitiveConfig(BaseModel):
 1. `dump_component_configs`: Serializes all components' configurations as json string.
 1. `load_component_configs`: Deserializes json string to configuration and applies it.
 
-### Json configuration
+### JSON configuration
 
-You can specify a `.json` file to use for the configuration when launching an agent.
+You can specify a JSON file (e.g. `config.json`) to use for the configuration when launching an agent.
 This file contains settings for individual [Components](../components/introduction.md) that AutoGPT uses.
 To specify the file use `--component-config-file` CLI option, for example to use `config.json`:
 
@@ -92,7 +92,7 @@ To specify the file use `--component-config-file` CLI option, for example to use
     If you're using Docker to run AutoGPT, you need to mount or copy the configuration file to the container.
     See [Docker Guide](../../AutoGPT/setup/docker.md) for more information.
 
-### Example json configuration
+### Example JSON configuration
 
 You can copy configuration you want to change, for example to `autogpt/config.json` and modify it to your needs.
 *Most configuration has default values, it's better to set only values you want to modify.*

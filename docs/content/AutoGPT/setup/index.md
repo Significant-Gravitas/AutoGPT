@@ -52,6 +52,7 @@ Since we don't ship AutoGPT as a desktop application, you'll need to download th
 Once you have cloned or downloaded the project, you can find the AutoGPT Agent in the
 `autogpt/` folder.
 Inside this folder you can configure the AutoGPT application with an `.env` file and (optionally) a JSON configuration file:
+
 - `.env` for environment variables, which are mostly used for sensitive data like API keys
 - a JSON configuration file to customize certain features of AutoGPT's [Components](../../forge/components/introduction.md)
 
@@ -76,8 +77,8 @@ See the [Configuration](../configuration/options.md) reference for a list of ava
 6. Save and close the `.env` file.
 7. _Optional: run `poetry install` to install all required dependencies._ The
     application also checks for and installs any required dependencies when it starts.
-8. _Optional: configure the `.json` file with your desired settings._
-    The application will use default settings if you don't provide a `.json` file.
+8. _Optional: configure the JSON file (e.g. `config.json`) with your desired settings._
+    The application will use default settings if you don't provide a JSON configuration file.
     Learn how to [set up the JSON configuration file](../../forge/components/components.md#json-configuration)
 
 You should now be able to explore the CLI (`./autogpt.sh --help`) and run the application.

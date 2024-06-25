@@ -15,14 +15,14 @@
 ## Basic Setup
 
 1. Make sure you have Docker installed, see [requirements](#requirements)
-1. Create a project directory for AutoGPT
+2. Create a project directory for AutoGPT
 
     ```shell
     mkdir AutoGPT
     cd AutoGPT
     ```
 
-1. In the project directory, create a file called `docker-compose.yml`:
+3. In the project directory, create a file called `docker-compose.yml`:
 
     <details>
     <summary>
@@ -47,8 +47,6 @@
           #- type: bind
           #  source: ./azure.yaml
           #  target: /app/azure.yaml
-          ## component configuration file
-          #- ./config.json:/app/config.json
     ```
     </details>
 
@@ -74,20 +72,22 @@
           ## uncomment following lines if you want to make use of these files
           ## you must have them existing in the same folder as this docker-compose.yml
           ## component configuration file
-          #- ./config.json:/app/config.json
+          #- type: bind
+          #  source: ./config.json
+          #  target: /app/config.json
     ```
     </details>
 
 
 1. Download [`.env.template`][.env.template] and save it as `.env` in the AutoGPT folder.
-1. Follow the standard [configuration instructions](../index.md#completing-the-setup),
+2. Follow the standard [configuration instructions](../index.md#completing-the-setup),
    from step 3 onwards and excluding `poetry install` steps.
-1. Pull the latest image from [Docker Hub]
+3. Pull the latest image from [Docker Hub]
 
     ```shell
     docker pull significantgravitas/auto-gpt
     ```
-1. _Optional: mount configuration file._
+4. _Optional: mount configuration file._
       If you have component configuration file, for example `config.json`, place it in `autogpt/data/` directory. Or place it in `autogpt/` and uncomment the line in `docker-compose.yml` that mounts it.
       To learn more about configuring, see [Component configuration](../../forge/components/components.md#json-configuration)
 
@@ -105,7 +105,7 @@
     changes to the codebase.
 
 1. Copy `.env.template` to `.env`.
-1. Follow the standard [configuration instructions](../index.md#completing-the-setup),
+2. Follow the standard [configuration instructions](../index.md#completing-the-setup),
    from step 3 onwards and excluding `poetry install` steps.
 
 ## Running AutoGPT with Docker

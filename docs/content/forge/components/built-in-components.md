@@ -4,22 +4,22 @@ This page lists all [🧩 Components](./components.md) and [⚙️ Protocols](./
 Some components have additional configuration options listed in the table, see [Component configuration](./components.md/#component-configuration) to learn more.
 
 !!! note
-    If a configuration field uses environment variable, it still can be passed using configuration model. **Value from the configuration takes precedence over env var!** Env var will be only applied if value in the configuration is not set.
+    If a configuration field uses environment variable, it still can be passed using configuration model. ### Value from the configuration takes precedence over env var! Env var will be only applied if value in the configuration is not set.
 
 ## `SystemComponent`
 
 Essential component to allow an agent to finish.
 
-**DirectiveProvider**
+### DirectiveProvider
 
 - Constraints about API budget
 
-**MessageProvider**
+### MessageProvider
 
 - Current time and date
 - Remaining API budget and warnings if budget is low
 
-**CommandProvider**
+### CommandProvider
 
 - `finish` used when task is completed
 
@@ -27,7 +27,7 @@ Essential component to allow an agent to finish.
 
 Adds ability to interact with user in CLI.
 
-**CommandProvider**
+### CommandProvider
 
 - `ask_user` used to ask user for input
 
@@ -36,7 +36,7 @@ Adds ability to interact with user in CLI.
 Adds ability to read and write persistent files to local storage, Google Cloud Storage or Amazon's S3.
 Necessary for saving and loading agent's state (preserving session).
 
-**FileManagerConfiguration**
+### `FileManagerConfiguration`
 
 | Config variable  | Details                                | Type  | Default                            |
 | ---------------- | -------------------------------------- | ----- | ---------------------------------- |
@@ -45,11 +45,11 @@ Necessary for saving and loading agent's state (preserving session).
 
 [^1] This option is set dynamically during component construction as opposed to by default inside the configuration model, `{agent_id}` is replaced with the agent's unique identifier.
 
-**DirectiveProvider**
+### DirectiveProvider
 
 - Resource information that it's possible to read and write files
 
-**CommandProvider**
+### CommandProvider
 
 - `read_file` used to read file
 - `write_file` used to write file
@@ -59,7 +59,7 @@ Necessary for saving and loading agent's state (preserving session).
 
 Lets the agent execute non-interactive Shell commands and Python code. Python execution works only if Docker is available.
 
-**CodeExecutorConfiguration**
+### `CodeExecutorConfiguration`
 
 | Config variable          | Details                                              | Type                        | Default           |
 | ------------------------ | ---------------------------------------------------- | --------------------------- | ----------------- |
@@ -69,7 +69,7 @@ Lets the agent execute non-interactive Shell commands and Python code. Python ex
 | `shell_denylist`         | List of prohibited shell commands                    | `List[str]`                 | `[]`              |
 | `docker_container_name`  | Name of the Docker container used for code execution | `str`                       | `"agent_sandbox"` |
 
-**CommandProvider**
+### CommandProvider
 
 - `execute_shell` execute shell command
 - `execute_shell_popen` execute shell command with popen
@@ -80,7 +80,7 @@ Lets the agent execute non-interactive Shell commands and Python code. Python ex
 
 Keeps track of agent's actions and their outcomes. Provides their summary to the prompt.
 
-**ActionHistoryConfiguration**
+### `ActionHistoryConfiguration`
 
 | Config variable        | Details                                                 | Type        | Default            |
 | ---------------------- | ------------------------------------------------------- | ----------- | ------------------ |
@@ -88,19 +88,19 @@ Keeps track of agent's actions and their outcomes. Provides their summary to the
 | `max_tokens`           | Maximum number of tokens to use for the history summary | `int`       | `1024`             |
 | `spacy_language_model` | Language model used for summary chunking using spacy    | `str`       | `"en_core_web_sm"` |
 
-**MessageProvider**
+### MessageProvider
 
 - Agent's progress summary
 
-**AfterParse**
+### AfterParse
 
 - Register agent's action
 
-**ExecutionFailure**
+### ExecutionFailure
 
 - Rewinds the agent's action, so it isn't saved
 
-**AfterExecute**
+### AfterExecute
 
 - Saves the agent's action result in the history
 
@@ -108,14 +108,14 @@ Keeps track of agent's actions and their outcomes. Provides their summary to the
 
 Adds ability to iteract with git repositories and GitHub.
 
-**GitOperationsConfiguration**
+### `GitOperationsConfiguration`
 
 | Config variable   | Details                                   | Type  | Default |
 | ----------------- | ----------------------------------------- | ----- | ------- |
 | `github_username` | GitHub username, *ENV:* `GITHUB_USERNAME` | `str` | `None`  |
 | `github_api_key`  | GitHub API key, *ENV:* `GITHUB_API_KEY`   | `str` | `None`  |
 
-**CommandProvider**
+### CommandProvider
 
 - `clone_repository` used to clone a git repository
 
@@ -130,9 +130,9 @@ Link to the appropriate settings page: [Hugging Face > Settings > Tokens](https:
 
 ### Stable Diffusion WebUI
 
-It is possible to use your own self-hosted Stable Diffusion WebUI with AutoGPT. **Make sure you are running WebUI with `--api` enabled.**
+It is possible to use your own self-hosted Stable Diffusion WebUI with AutoGPT. ### Make sure you are running WebUI with `--api` enabled.
 
-**ImageGeneratorConfiguration**
+### `ImageGeneratorConfiguration`
 
 | Config variable           | Details                                                       | Type                                    | Default                           |
 | ------------------------- | ------------------------------------------------------------- | --------------------------------------- | --------------------------------- |
@@ -144,7 +144,7 @@ It is possible to use your own self-hosted Stable Diffusion WebUI with AutoGPT. 
 
 [available models]: https://huggingface.co/models?pipeline_tag=text-to-image
 
-**CommandProvider**
+### CommandProvider
 
 - `generate_image` used to generate an image given a prompt
 
@@ -152,7 +152,7 @@ It is possible to use your own self-hosted Stable Diffusion WebUI with AutoGPT. 
 
 Allows agent to search the web. Google credentials aren't required for DuckDuckGo. [Instructions how to set up Google API key](../../AutoGPT/configuration/search.md)
 
-**WebSearchConfiguration**
+### `WebSearchConfiguration`
 
 | Config variable                  | Details                                                                 | Type  | Default |
 | -------------------------------- | ----------------------------------------------------------------------- | ----- | ------- |
@@ -160,11 +160,11 @@ Allows agent to search the web. Google credentials aren't required for DuckDuckG
 | `google_custom_search_engine_id` | Google Custom Search Engine ID, *ENV:* `GOOGLE_CUSTOM_SEARCH_ENGINE_ID` | `str` | `None`  |
 | `duckduckgo_max_attempts`        | Maximum number of attempts to search using DuckDuckGo                   | `int` | `3`     |
 
-**DirectiveProvider**
+### DirectiveProvider
 
 - Resource information that it's possible to search the web
 
-**CommandProvider**
+### CommandProvider
 
 - `search_web` used to search the web using DuckDuckGo
 - `google` used to search the web using Google, requires API key
@@ -173,7 +173,7 @@ Allows agent to search the web. Google credentials aren't required for DuckDuckG
 
 Allows agent to read websites using Selenium.
 
-**WebSeleniumConfiguration**
+### `WebSeleniumConfiguration`
 
 | Config variable               | Details                                     | Type                                          | Default                                                                                                                      |
 | ----------------------------- | ------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
@@ -183,11 +183,11 @@ Allows agent to read websites using Selenium.
 | `user_agent`                  | User agent used by the browser              | `str`                                         | `"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"` |
 | `browse_spacy_language_model` | Spacy language model used for chunking text | `str`                                         | `"en_core_web_sm"`                                                                                                           |
 
-**DirectiveProvider**
+### DirectiveProvider
 
 - Resource information that it's possible to read websites
 
-**CommandProvider**
+### CommandProvider
 
 - `read_website` used to read a specific url and look for specific topics or answer a question
 
@@ -195,11 +195,11 @@ Allows agent to read websites using Selenium.
 
 Adds ability to keep up-to-date file and folder content in the prompt.
 
-**MessageProvider**
+### MessageProvider
 
 - Content of elements in the context
 
-**CommandProvider**
+### CommandProvider
 
 - `open_file` used to open a file into context
 - `open_folder` used to open a folder into context
@@ -209,6 +209,6 @@ Adds ability to keep up-to-date file and folder content in the prompt.
 
 Watches if agent is looping and switches to smart mode if necessary.
 
-**AfterParse**
+### AfterParse
 
 - Investigates what happened and switches to smart mode if necessary
