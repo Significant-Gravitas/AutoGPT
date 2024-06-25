@@ -145,7 +145,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(
             ContextComponent
         )
-        self.code_flow_executor = CodeFlowExecutionComponent()
+        self.code_flow_executor = CodeFlowExecutionComponent(lambda: self.commands)
 
         self.event_history = settings.history
         self.app_config = app_config
@@ -171,7 +171,6 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         # Get commands
         self.commands = await self.run_pipeline(CommandProvider.get_commands)
         self._remove_disabled_commands()
-        self.code_flow_executor.set_available_functions(self.commands)
 
         # Get messages
         messages = await self.run_pipeline(MessageProvider.get_messages)
@@ -222,7 +221,6 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         # Get commands
         self.commands = await self.run_pipeline(CommandProvider.get_commands)
         self._remove_disabled_commands()
-        self.code_flow_executor.set_available_functions(self.commands)
 
         try:
             return_value = await self._execute_tool(tool)
