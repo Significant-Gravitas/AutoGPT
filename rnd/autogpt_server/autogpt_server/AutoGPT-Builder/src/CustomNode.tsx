@@ -30,7 +30,7 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
             <Handle
               type={type}
               position={Position.Left}
-              id={`${type}-${key}`}
+              id={key}
               style={{ background: '#555', borderRadius: '50%' }}
             />
             <span style={{ color: '#e0e0e0', marginLeft: '10px' }}>{key}</span>
@@ -42,7 +42,7 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
             <Handle
               type={type}
               position={Position.Right}
-              id={`${type}-${key}`}
+              id={key}
               style={{ background: '#555', borderRadius: '50%' }}
             />
           </>
@@ -64,7 +64,7 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
   };
 
   const hasDisconnectedHandle = (key: string) => {
-    return !isHandleConnected(key) && !data.connections.some((conn: string) => conn.includes(key));
+    return !isHandleConnected(key);
   };
 
   return (
@@ -84,7 +84,7 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
         <div>
           {data.inputSchema && generateHandles(data.inputSchema, 'target')}
           {data.inputSchema && Object.keys(data.inputSchema.properties).map(key => (
-            (hasDisconnectedHandle(key) || data.connections.length === 0) && (
+            hasDisconnectedHandle(key) && (
               <div key={key} style={{ marginBottom: '5px' }}>
                 <input
                   type="text"

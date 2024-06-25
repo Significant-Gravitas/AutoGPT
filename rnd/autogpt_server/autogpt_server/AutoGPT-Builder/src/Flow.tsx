@@ -150,7 +150,7 @@ const Flow: React.FC = () => {
         setVariableName,
         setVariableValue,
         setPrintVariable,
-        hardcodedValues: {}, // Added hardcodedValues to store hardcoded inputs
+        hardcodedValues: {},
         setHardcodedValues: (values: { [key: string]: any }) => {
           setNodes((nds) => nds.map((node) =>
             node.id === nodeId.toString()
@@ -214,14 +214,14 @@ const Flow: React.FC = () => {
 
     // Initialize inputData with default values for all required properties
     requiredProperties.forEach(prop => {
-      inputData[prop] = '';
+      inputData[prop] = node.data.hardcodedValues[prop] || '';
     });
 
     Object.keys(inputProperties).forEach(prop => {
       const inputEdge = allEdges.find(edge => edge.target === node.id && edge.targetHandle === prop);
       if (inputEdge) {
         const sourceNode = allNodes.find(n => n.id === inputEdge.source);
-        inputData[prop] = sourceNode?.data.output_data || '';
+        inputData[prop] = sourceNode?.data.output_data || sourceNode?.data.hardcodedValues[prop] || '';
       } else if (node.data.hardcodedValues && node.data.hardcodedValues[prop]) {
         inputData[prop] = node.data.hardcodedValues[prop];
       }
@@ -267,16 +267,17 @@ const Flow: React.FC = () => {
           }
           return acc;
         }, {} as { [key: string]: string }),
-        metadata: node.data.metadata // Include metadata in the payload
+        metadata: node.data.metadata,
+        connections: node.data.connections // Ensure connections are preserved
       }));
-  
+
       const payload = {
         id: '',
         name: 'Agent Name',
         description: 'Agent Description',
         nodes: formattedNodes,
       };
-  
+
       const createResponse = await fetch('http://192.168.0.215:8000/agents', {
         method: 'POST',
         headers: {
@@ -284,17 +285,24 @@ const Flow: React.FC = () => {
         },
         body: JSON.stringify(payload),
       });
-  
+
       if (!createResponse.ok) {
         throw new Error(`HTTP error! Status: ${createResponse.status}`);
       }
-  
+
       const createData = await createResponse.json();
       const agentId = createData.id;
       setAgentId(agentId);
-  
+
       const responseNodes = createData.nodes.map((node: any) => {
         const block = availableNodes.find(n => n.id === node.block_id);
+        const connections = edges.filter(edge => edge.source === node.id || edge.target === node.id).map(edge => ({
+          id: edge.id,
+          source: edge.source,
+          sourceHandle: edge.sourceHandle,
+          target: edge.target,
+          targetHandle: edge.targetHandle
+        }));
         return {
           id: node.id,
           type: 'custom',
@@ -305,7 +313,7 @@ const Flow: React.FC = () => {
             description: `${block?.description || ''}`,
             inputSchema: block?.inputSchema,
             outputSchema: block?.outputSchema,
-            connections: [],
+            connections: connections.map(c => `${c.source}-${c.sourceHandle} -> ${c.target}-${c.targetHandle}`),
             variableName: '',
             variableValue: '',
             printVariable: '',
@@ -325,7 +333,7 @@ const Flow: React.FC = () => {
           },
         };
       });
-  
+
       const newEdges = createData.nodes.flatMap((node: any) => {
         return Object.entries(node.output_nodes).map(([sourceHandle, targetNodeId]) => ({
           id: `${node.id}-${sourceHandle}-${targetNodeId}`,
@@ -335,15 +343,15 @@ const Flow: React.FC = () => {
           targetHandle: Object.keys(node.input_nodes).find(key => node.input_nodes[key] === targetNodeId) || '',
         }));
       });
-  
+
       setNodes(responseNodes);
       setEdges(newEdges);
-  
+
       const initialNodeInput = nodes.reduce((acc, node) => {
         acc[node.id] = prepareNodeInputData(node, nodes, edges);
         return acc;
       }, {} as { [key: string]: any });
-  
+
       const nodeInputForExecution = Object.keys(initialNodeInput).reduce((acc, key) => {
         const blockId = nodes.find(node => node.id === key)?.data.block_id;
         const nodeSchema = availableNodes.find(n => n.id === blockId);
@@ -354,7 +362,7 @@ const Flow: React.FC = () => {
         }
         return acc;
       }, {} as { [key: string]: any });
-  
+
       const executeResponse = await fetch(`http://192.168.0.215:8000/agents/${agentId}/execute`, {
         method: 'POST',
         headers: {
@@ -362,54 +370,53 @@ const Flow: React.FC = () => {
         },
         body: JSON.stringify(nodeInputForExecution),
       });
-  
+
       if (!executeResponse.ok) {
         throw new Error(`HTTP error! Status: ${executeResponse.status}`);
       }
-  
+
       const executeData = await executeResponse.json();
       const runId = executeData.run_id;
-  
+
       const startPolling = () => {
         const endTime = Date.now() + 60000;
-  
+
         const poll = async () => {
           if (Date.now() >= endTime) {
             console.log('Polling timeout reached.');
             return;
           }
-  
+
           try {
             const response = await fetch(`http://192.168.0.215:8000/agents/${agentId}/executions/${runId}`);
             if (!response.ok) {
               throw new Error(`HTTP error! Status: ${response.status}`);
             }
-  
+
             const data = await response.json();
             data.forEach(updateNodeData);
-  
+
             const allCompleted = data.every((exec: any) => exec.status === 'COMPLETED');
             if (allCompleted) {
               console.log('All nodes are completed.');
               return;
             }
-  
+
             setTimeout(poll, 1000);
           } catch (error) {
             console.error('Error during polling:', error);
             setTimeout(poll, 1000);
           }
         };
-  
+
         poll();
       };
-  
+
       startPolling();
     } catch (error) {
       console.error('Error running agent:', error);
     }
   };
-  
 
   return (
     <div style={{ height: '100vh', position: 'relative', backgroundColor: '#121212' }}>
