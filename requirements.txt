@@ -51,3 +51,4 @@ pytest-integration
 pytest-mock
 vcrpy
 pytest-vcr
+anyio>=4.4.0 # not directly required, pinned by Snyk to avoid a vulnerability
