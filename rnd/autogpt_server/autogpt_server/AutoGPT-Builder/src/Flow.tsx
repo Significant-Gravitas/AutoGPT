@@ -402,10 +402,10 @@ const Flow: React.FC = () => {
               return;
             }
 
-            setTimeout(poll, 1000);
+            setTimeout(poll, 100);
           } catch (error) {
             console.error('Error during polling:', error);
-            setTimeout(poll, 1000);
+            setTimeout(poll, 100);
           }
         };
 

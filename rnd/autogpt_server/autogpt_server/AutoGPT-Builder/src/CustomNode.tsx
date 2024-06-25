@@ -58,7 +58,7 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
 
   const isHandleConnected = (key: string) => {
     return data.connections.some((conn: string) => {
-      const [source, target] = conn.split(' -> ');
+      const [, target] = conn.split(' -> ');
       return target.includes(key) && target.includes(data.title);
     });
   };
