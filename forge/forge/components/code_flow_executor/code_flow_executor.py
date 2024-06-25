@@ -18,14 +18,6 @@ class CodeFlowExecutionComponent(CommandProvider):
     def __init__(self, get_available_commands: Callable[[], Iterable[Command]]):
         self.get_available_commands = get_available_commands
 
-    def get_available_functions(self):
-        return {
-            name: command
-            for command in self.get_available_commands()
-            for name in command.names
-            if name != "execute_code_flow"
-        }
-
     def get_commands(self) -> Iterator[Command]:
         yield self.execute_code_flow
 
@@ -47,14 +39,14 @@ class CodeFlowExecutionComponent(CommandProvider):
         """Execute the code flow.
 
         Args:
-            python_code (str): The Python code to execute
-            callables (dict[str, Callable]): The dictionary of [name, callable] pairs to use in the code
+            python_code: The Python code to execute
+            plan_text: The plan implemented by the given Python code
 
         Returns:
             str: The result of the code execution
         """
         locals: dict[str, Any] = {}
-        locals.update(self.get_available_functions())
+        locals.update(self._get_available_functions())
         code = f"{python_code}" "\n\n" "exec_output = main()"
         logger.debug(f"Code-Flow Execution code:\n```py\n{code}\n```")
         exec(code, locals)
@@ -67,3 +59,11 @@ class CodeFlowExecutionComponent(CommandProvider):
         if len(result) > MAX_RESULT_LENGTH:
             result = result[:MAX_RESULT_LENGTH] + "...[Truncated, Content is too long]"
         return f"Execution Plan:\n{plan_text}\n\nExecution Output:\n{result}"
+
+    def _get_available_functions(self) -> dict[str, Callable]:
+        return {
+            name: command
+            for command in self.get_available_commands()
+            for name in command.names
+            if name != "execute_code_flow"
+        }

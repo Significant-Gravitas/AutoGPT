@@ -196,14 +196,12 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
-        response: ChatModelResponse[OneShotAgentActionProposal] = (
-            await self.llm_provider.create_chat_completion(
-                prompt.messages,
-                model_name=self.llm.name,
-                completion_parser=self.prompt_strategy.parse_response_content,
-                functions=prompt.functions,
-                prefill_response=prompt.prefill_response,
-            )
+        response: ChatModelResponse = await self.llm_provider.create_chat_completion(
+            prompt.messages,
+            model_name=self.llm.name,
+            completion_parser=self.prompt_strategy.parse_response_content,
+            functions=prompt.functions,
+            prefill_response=prompt.prefill_response,
         )
         result = response.parsed_result
 
