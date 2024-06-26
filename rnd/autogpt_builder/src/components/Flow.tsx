@@ -55,8 +55,10 @@ const Flow: React.FC = () => {
   const [loadingStatus, setLoadingStatus] = useState<'loading' | 'failed' | 'loaded'>('loading');
   const [agentId, setAgentId] = useState<string | null>(null);
 
+  const apiUrl = process.env.AGPT_SERVER_URL;
+
   useEffect(() => {
-    fetch('http://192.168.0.215:8000/blocks')
+    fetch('${apiUrl}/blocks')
       .then(response => {
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
@@ -280,7 +282,7 @@ const Flow: React.FC = () => {
         nodes: formattedNodes,
       };
 
-      const createResponse = await fetch('http://192.168.0.215:8000/agents', {
+      const createResponse = await fetch('${apiUrl}/agents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -365,7 +367,7 @@ const Flow: React.FC = () => {
         return acc;
       }, {} as { [key: string]: any });
 
-      const executeResponse = await fetch(`http://192.168.0.215:8000/agents/${agentId}/execute`, {
+      const executeResponse = await fetch(`${apiUrl}/agents/${agentId}/execute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -390,7 +392,7 @@ const Flow: React.FC = () => {
           }
 
           try {
-            const response = await fetch(`http://192.168.0.215:8000/agents/${agentId}/executions/${runId}`);
+            const response = await fetch(`${apiUrl}/agents/${agentId}/executions/${runId}`);
             if (!response.ok) {
               throw new Error(`HTTP error! Status: ${response.status}`);
             }
