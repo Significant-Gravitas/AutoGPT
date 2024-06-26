@@ -55,10 +55,10 @@ const Flow: React.FC = () => {
   const [loadingStatus, setLoadingStatus] = useState<'loading' | 'failed' | 'loaded'>('loading');
   const [agentId, setAgentId] = useState<string | null>(null);
 
-  const apiUrl = process.env.AGPT_SERVER_URL;
+  const apiUrl = 'http://localhost:8000'
 
   useEffect(() => {
-    fetch('${apiUrl}/blocks')
+    fetch(`${apiUrl}/blocks`)
       .then(response => {
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
@@ -282,7 +282,7 @@ const Flow: React.FC = () => {
         nodes: formattedNodes,
       };
 
-      const createResponse = await fetch('${apiUrl}/agents', {
+      const createResponse = await fetch(`${apiUrl}/agents`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
