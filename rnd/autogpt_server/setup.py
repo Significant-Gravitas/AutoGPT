@@ -82,12 +82,15 @@ setup(
             ],
             # Exclude the two module from readability.compat as it causes issues
             "excludes": ["readability.compat.two"],
+            "include_files": [
+                # source, destination in the bundle
+                ("../example_files", "example_files"),
+            ],
         },
         # Mac .app specific options
         "bdist_mac": {
             "bundle_name": "AutoGPT",
             "iconfile": "../../assets/gpt_dark_RGB.icns",
-            # "include_resources": ["IMG_3775.jpeg"],
         },
         # Mac .dmg specific options
         "bdist_dmg": {
