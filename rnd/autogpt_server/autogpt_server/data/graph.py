@@ -1,20 +1,30 @@
 import asyncio
 import json
 import uuid
-
 from typing import Any
-from prisma.models import AgentGraph, AgentNode, AgentNodeExecution, AgentNodeLink
+
+from prisma.models import AgentGraph, AgentNode, AgentNodeLink
+from pydantic import BaseModel
 
 from autogpt_server.data.db import BaseDbModel
+
+
+class Link(BaseModel):
+    name: str
+    node_id: str
+    
+    def __init__(self, name: str, node_id: str):
+        super().__init__(name=name, node_id=node_id)
+        
+    def __iter__(self):
+        return iter((self.name, self.node_id))
 
 
 class Node(BaseDbModel):
     block_id: str
     input_default: dict[str, Any] = {}  # dict[input_name, default_value]
-    input_nodes: dict[str, str] = {}  # dict[input_name, node_id]
-    # TODO: Make it `dict[str, list[str]]`, output can be connected to multiple blocks.
-    #       Other option is to use an edge-list, but it will complicate the rest code.
-    output_nodes: dict[str, str] = {}  # dict[output_name, node_id]
+    input_nodes: list[Link] = []  # dict[input_name, node_id]
+    output_nodes: list[Link] = []  # dict[output_name, node_id]
     metadata: dict[str, Any] = {}
 
     @staticmethod
@@ -26,14 +36,20 @@ class Node(BaseDbModel):
             id=node.id,
             block_id=node.AgentBlock.id,
             input_default=json.loads(node.constantInput),
-            input_nodes={v.sinkName: v.agentNodeSourceId for v in node.Input or []},
-            output_nodes={v.sourceName: v.agentNodeSinkId for v in node.Output or []},
+            input_nodes=[
+                Link(v.sinkName, v.agentNodeSourceId)
+                for v in node.Input or []
+            ],
+            output_nodes=[
+                Link(v.sourceName, v.agentNodeSinkId)
+                for v in node.Output or []
+            ],
             metadata=json.loads(node.metadata),
         )
 
     def connect(self, node: "Node", source_name: str, sink_name: str):
-        self.output_nodes[source_name] = node.id
-        node.input_nodes[sink_name] = self.id
+        self.output_nodes.append(Link(source_name, node.id))
+        node.input_nodes.append(Link(sink_name, self.id))
 
 
 class Graph(BaseDbModel):
@@ -85,41 +101,7 @@ async def get_graph(graph_id: str) -> Graph | None:
     return Graph.from_db(graph) if graph else None
 
 
-async def get_node_input(node: Node, exec_id: str) -> dict[str, Any]:
-    """
-    Get execution node input data from the previous node execution result.
-    Args:
-        node: The execution node.
-        exec_id: The execution ID.
-    Returns:
-        dictionary of input data, key is the input name, value is the input data.
-    """
-    query = await AgentNodeExecution.prisma().find_many(
-        where={  # type: ignore
-            "executionId": exec_id,
-            "agentNodeId": {"in": list(node.input_nodes.values())},
-            "executionStatus": "COMPLETED",
-        },
-        distinct=["agentNodeId"],  # type: ignore
-        order={"creationTime": "desc"},
-    )
-
-    latest_executions: dict[str, AgentNodeExecution] = {
-        execution.agentNodeId: execution for execution in query
-    }
-
-    return {
-        **node.input_default,
-        **{
-            name: json.loads(latest_executions[node_id].outputData or "{}")
-            for name, node_id in node.input_nodes.items()
-            if node_id in latest_executions and latest_executions[node_id].outputData
-        },
-    }
-
-
 async def create_graph(graph: Graph) -> Graph:
-
     await AgentGraph.prisma().create(
         data={
             "id": graph.id,
@@ -142,12 +124,12 @@ async def create_graph(graph: Graph) -> Graph:
     edge_source_names = {
         (source_node.id, sink_node_id): output_name
         for source_node in graph.nodes
-        for output_name, sink_node_id in source_node.output_nodes.items()
+        for output_name, sink_node_id in source_node.output_nodes
     }
     edge_sink_names = {
         (source_node_id, sink_node.id): input_name
         for sink_node in graph.nodes
-        for input_name, source_node_id in sink_node.input_nodes.items()
+        for input_name, source_node_id in sink_node.input_nodes
     }
 
     # TODO: replace bulk creation using create_many
