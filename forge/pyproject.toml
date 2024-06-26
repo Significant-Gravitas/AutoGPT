@@ -51,7 +51,7 @@ spacy = "^3.0.0"
 tenacity = "^8.2.2"
 tiktoken = ">=0.7.0,<1.0.0"
 toml = "^0.10.2"
-uvicorn = "^0.23.2"
+uvicorn = { extras = ["standard"], version = "^0.30.1" }
 watchdog = "4.0.0"
 webdriver-manager = "^4.0.1"
 
