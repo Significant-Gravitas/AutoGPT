@@ -1140,11 +1140,11 @@ files = []
 develop = true
 
 [package.dependencies]
-cx_Logging = {version = ">=3.1", markers = "sys_platform == \"win32\""}
+cx-Logging = {version = ">=3.1", markers = "sys_platform == \"win32\""}
 dmgbuild = {version = ">=1.6.1", markers = "sys_platform == \"darwin\""}
 filelock = {version = ">=3.12.3", markers = "sys_platform == \"linux\""}
 lief = {version = ">=0.12.0,<0.15.0", markers = "sys_platform == \"win32\""}
-patchelf = {version = ">=0.14", markers = "sys_platform == \"linux\" and (platform_machine == \"x86_64\" or platform_machine == \"i686\" or platform_machine == \"aarch64\" or platform_machine == \"armv7l\" or platform_machine == \"ppc64le\" or platform_machine == \"s390x\")"}
+patchelf = {version = ">=0.14", markers = "sys_platform == \"linux\" and (platform_machine == \"aarch64\" or platform_machine == \"armv7l\" or platform_machine == \"i686\" or platform_machine == \"ppc64le\" or platform_machine == \"s390x\" or platform_machine == \"x86_64\")"}
 setuptools = ">=65.6.3,<71"
 wheel = ">=0.42.0,<=0.43.0"
 
@@ -1154,8 +1154,10 @@ doc = ["furo (==2024.5.6)", "myst-parser (==3.0.1)", "sphinx (==7.3.7)", "sphinx
 test = ["coverage (==7.5.4)", "pluggy (==1.5.0)", "pytest (==8.2.2)", "pytest-cov (==5.0.0)", "pytest-datafiles (==3.0.0)", "pytest-mock (==3.14.0)", "pytest-timeout (==2.3.1)", "pytest-xdist[psutil] (==3.6.1)"]
 
 [package.source]
-type = "directory"
-url = "../../cx_Freeze"
+type = "git"
+url = "https://github.com/ntindle/cx_Freeze.git"
+reference = "main"
+resolved_reference = "876fe77c97db749b7b0aed93c12142a7226ee7e4"
 
 [[package]]
 name = "cx-logging"
@@ -6997,4 +6999,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "90207a3a9057945bcca6bf83473e4d95c07d226e7c2b0961829cc213ec2c8d73"
+content-hash = "0f198975b29b94700bd4b0179ebb285f4e12c2c5f408b0adb03916f06a064d15"
