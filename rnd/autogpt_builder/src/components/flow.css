@@ -1,4 +1,4 @@
-
+/* flow.css or index.css */
 
 body {
   margin: 0;
@@ -17,15 +17,17 @@ code {
 }
 
 button {
-  background-color: #333;
+  background-color: #444;
   color: #e0e0e0;
   padding: 10px;
   border: none;
   border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
 }
 
 button:hover {
-  background-color: #555;
+  background-color: #666;
 }
 
 input, textarea {
@@ -51,10 +53,11 @@ input::placeholder, textarea::placeholder {
   bottom: auto;
   margin-right: -50%;
   transform: translate(-50%, -50%);
-  background: #fff;
+  background: #333;
   padding: 20px;
   border: 1px solid #ccc;
   border-radius: 4px;
+  color: #e0e0e0;
 }
 
 .overlay {
@@ -117,4 +120,52 @@ input::placeholder, textarea::placeholder {
 
 .sidebarNodeRowStyle.dragging {
   opacity: 0.5;
+}
+
+.flow-container {
+  height: 100vh;
+  position: relative;
+  background-color: #121212;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.flow-controls {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 10;
+  display: flex;
+  gap: 10px;
+}
+
+.flow-controls button {
+  padding: 10px 20px;
+  font-size: 16px;
+  color: #e0e0e0;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.flow-controls button.nodes-button {
+  background-color: #555;
+}
+
+.flow-controls button.run-button {
+  background-color: #777;
+}
+
+.flow-controls button:hover {
+  background-color: #999;
+}
+
+.flow-wrapper {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }

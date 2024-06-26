@@ -421,35 +421,12 @@ const Flow: React.FC = () => {
   };
 
   return (
-    <div style={{ height: '100vh', position: 'relative', backgroundColor: '#121212' }}>
-      <div style={{ position: 'absolute', top: '20px', left: isSidebarOpen ? '400px' : '20px', zIndex: 10, transition: 'left 0.3s ease' }}>
-        <button
-          onClick={toggleSidebar}
-          style={{
-            padding: '10px 20px',
-            fontSize: '16px',
-            backgroundColor: '#007bff',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-          }}
-        >
+    <div className="flow-container">
+      <div className="flow-controls">
+        <button className="nodes-button" onClick={toggleSidebar}>
           Nodes
         </button>
-        <button
-          onClick={runAgent}
-          style={{
-            padding: '10px 20px',
-            fontSize: '16px',
-            backgroundColor: 'green',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            marginLeft: '10px',
-          }}
-        >
+        <button className="run-button" onClick={runAgent}>
           Run
         </button>
         {agentId && (
@@ -458,7 +435,7 @@ const Flow: React.FC = () => {
           </span>
         )}
       </div>
-      <div style={{ height: '100%', width: '100%' }}>
+      <div className="flow-wrapper">
         <ReactFlow
           nodes={nodes}
           edges={edges}
