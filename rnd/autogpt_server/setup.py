@@ -1,5 +1,7 @@
+from pathlib import Path
 from pkgutil import iter_modules
 from shutil import which
+from typing import Union
 
 from cx_Freeze import Executable, setup
 
@@ -16,6 +18,42 @@ icon = (
     if which("sips")
     else "../../assets/gpt_dark_RGB.ico"
 )
+
+
+def txt_to_rtf(input_file: Union[str, Path], output_file: Union[str, Path]) -> None:
+    """
+    Convert a text file to RTF format.
+
+    Args:
+    input_file (Union[str, Path]): Path to the input text file.
+    output_file (Union[str, Path]): Path to the output RTF file.
+
+    Returns:
+    None
+    """
+    input_path = Path(input_file)
+    output_path = Path(output_file)
+
+    with input_path.open("r", encoding="utf-8") as txt_file:
+        content = txt_file.read()
+
+    # RTF header
+    rtf = r"{\rtf1\ansi\deff0 {\fonttbl {\f0 Times New Roman;}}\f0\fs24 "
+
+    # Replace newlines with RTF newline
+    rtf += content.replace("\n", "\\par ")
+
+    # Close RTF document
+    rtf += "}"
+
+    with output_path.open("w", encoding="utf-8") as rtf_file:
+        rtf_file.write(rtf)
+
+
+# Convert LICENSE to LICENSE.rtf
+license_file = "LICENSE.rtf"
+txt_to_rtf('../../LICENSE', license_file)
+
 
 setup(
     name="AutoGPT Server",
@@ -41,10 +79,6 @@ setup(
             "packages": packages,
             "includes": [
                 "autogpt_server",
-                "uvicorn.loops.auto",
-                "uvicorn.protocols.http.auto",
-                "uvicorn.protocols.websockets.auto",
-                "uvicorn.lifespan.on",
             ],
             # Exclude the two module from readability.compat as it causes issues
             "excludes": ["readability.compat.two"],
@@ -65,6 +99,7 @@ setup(
             "target_name": "AutoGPTServer",
             "add_to_path": True,
             "install_icon": "../../assets/gpt_dark_RGB.ico",
+            "license_file": license_file,
         },
         # Linux .appimage specific options
         "bdist_appimage": {},
