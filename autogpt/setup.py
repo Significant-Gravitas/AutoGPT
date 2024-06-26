@@ -1,7 +1,7 @@
+import platform
+from pathlib import Path
 from pkgutil import iter_modules
 from typing import Union
-from pathlib import Path
-import platform
 
 from cx_Freeze import Executable, setup
 
@@ -53,7 +53,7 @@ def txt_to_rtf(input_file: Union[str, Path], output_file: Union[str, Path]) -> N
 
 # Convert LICENSE to LICENSE.rtf
 license_file = "LICENSE.rtf"
-txt_to_rtf('../LICENSE', license_file)
+txt_to_rtf("../LICENSE", license_file)
 
 
 setup(
