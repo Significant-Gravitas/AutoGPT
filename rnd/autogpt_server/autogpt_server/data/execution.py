@@ -240,12 +240,23 @@ async def get_node_execution_input(node_exec_id: str) -> dict[str, Any]:
     return merge_execution_input(exec_input)
 
 
+SPLIT = "_$_"
+
+
 def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
-    for key, value in sorted(data.items() or [], key=lambda x: x[0]):
-        if "_$_" not in key:
+    list_input = []
+    for key, value in data.items():
+        if SPLIT not in key:
             continue
-        # Special handling for list, merge <input_name>_$_<index> into [input_name].
-        name, _ = key.split("_$_")
+
+        name, index = key.split(SPLIT)
+        if not index.isdigit():
+            list_input.append((name, value, 0))
+        else:
+            list_input.append((name, value, int(index)))
+
+    for name, value, _ in sorted(list_input, key=lambda x: x[2]):
         data[name] = data.get(name, [])
         data[name].append(value)
+
     return data
