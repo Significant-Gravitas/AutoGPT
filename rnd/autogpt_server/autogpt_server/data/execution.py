@@ -236,4 +236,16 @@ async def get_node_execution_input(node_exec_id: str) -> dict[str, Any]:
     exec_input = json.loads(execution.AgentNode.constantInput)
     for input_data in execution.Input or []:
         exec_input[input_data.name] = json.loads(input_data.data)
-    return exec_input
+
+    return merge_execution_input(exec_input)
+
+
+def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
+    for key, value in sorted(data.items() or [], key=lambda x: x[0]):
+        if "_$_" not in key:
+            continue
+        # Special handling for list, merge <input_name>_$_<index> into [input_name].
+        name, _ = key.split("_$_")
+        data[name] = data.get(name, [])
+        data[name].append(value)
+    return data

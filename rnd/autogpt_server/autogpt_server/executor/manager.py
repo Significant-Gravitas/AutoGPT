@@ -6,8 +6,9 @@ from typing import Any, Coroutine, Generator, TypeVar
 from autogpt_server.data import db
 from autogpt_server.data.block import Block, get_block
 from autogpt_server.data.execution import (
-    get_node_execution_input,
     create_graph_execution,
+    get_node_execution_input,
+    merge_execution_input,
     update_execution_status as execution_update,
     upsert_execution_output,
     upsert_execution_input,
@@ -77,9 +78,10 @@ def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> ExecutionS
             ):
                 yield execution
     except Exception as e:
-        logger.exception(f"{prefix} failed with error: %s", e)
+        error_msg = f"{e.__class__.__name__}: {e}"
+        logger.exception(f"{prefix} failed with error. `%s`", error_msg)
         wait(execution_update(node_exec_id, ExecutionStatus.FAILED))
-        wait(upsert_execution_output(node_exec_id, "error", str(e)))
+        wait(upsert_execution_output(node_exec_id, "error", error_msg))
         raise e
 
 
@@ -151,13 +153,17 @@ async def validate_exec(node: Node, data: dict[str, Any]) -> tuple[bool, str]:
         A tuple of a boolean indicating if the data is valid, and a message if not.
         Return the executed block name if the data is valid.
     """
-    node_block: Block | None = await(get_block(node.block_id))
+    node_block: Block | None = await get_block(node.block_id)
     if not node_block:
         return False, f"Block for {node.block_id} not found."
 
-    input_fields = node_block.input_schema.get_fields()
-    if not input_fields.issubset(data):
-        return False, f"Input data missing: {input_fields - set(data)}"
+    input_fields_from_schema = node_block.input_schema.get_required_fields()
+    if not input_fields_from_schema.issubset(data):
+        return False, f"Input data missing: {input_fields_from_schema - set(data)}"
+
+    input_fields_from_nodes = {name for name, _ in node.input_nodes}
+    if not input_fields_from_nodes.issubset(data):
+        return False, f"Input data missing: {input_fields_from_nodes - set(data)}"
 
     if error := node_block.input_schema.validate_data(data):
         logger.error("Input value doesn't match schema: %s", error)
@@ -214,7 +220,7 @@ class ExecutionManager(AppService):
 
         # Currently, there is no constraint on the number of root nodes in the graph.
         for node in graph.starting_nodes:
-            input_data = {**node.input_default, **data}
+            input_data = merge_execution_input({**node.input_default, **data})
             valid, error = self.run_and_wait(validate_exec(node, input_data))
             if not valid:
                 raise Exception(error)

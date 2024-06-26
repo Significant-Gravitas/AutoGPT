@@ -94,6 +94,9 @@ class BlockSchema(BaseModel):
     def get_fields(self) -> set[str]:
         return set(self.jsonschema["properties"].keys())
 
+    def get_required_fields(self) -> set[str]:
+        return set(self.jsonschema["required"])
+
 
 BlockOutput = Generator[tuple[str, Any], None, None]
 
@@ -190,12 +193,15 @@ class ParrotBlock(Block):
         yield "output", input_data["input"]
 
 
-class TextCombinerBlock(Block):
+class TextFormatterBlock(Block):
     id: ClassVar[str] = "db7d8f02-2f44-4c55-ab7a-eae0941f0c30"  # type: ignore
     input_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
         {
-            "text1": "string",
-            "text2": "string",
+            "texts": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+            },
             "format": "string",
         }
     )
@@ -206,10 +212,7 @@ class TextCombinerBlock(Block):
     )
 
     def run(self, input_data: BlockData) -> BlockOutput:
-        yield "combined_text", input_data["format"].format(
-            text1=input_data["text1"],
-            text2=input_data["text2"],
-        )
+        yield "combined_text", input_data["format"].format(texts=input_data["texts"])
 
 
 class PrintingBlock(Block):
