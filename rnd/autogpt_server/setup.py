@@ -1,5 +1,6 @@
 from pathlib import Path
 from pkgutil import iter_modules
+import platform
 from shutil import which
 from typing import Union
 
@@ -12,12 +13,13 @@ packages = [
 ]
 packages.append("collections")
 
-# if mac use the icns file, otherwise use the ico file
-icon = (
-    "../../assets/gpt_dark_RGB.icns"
-    if which("sips")
-    else "../../assets/gpt_dark_RGB.ico"
-)
+# set the icon based on the platform
+icon = "../../assets/gpt_dark_RGB.ico"
+if platform.system() == "Darwin":
+    icon = "../../assets/gpt_dark_RGB.icns"
+elif platform.system() == "Linux":
+    icon = "../../assets/gpt_dark_RGB.png"
+
 
 
 def txt_to_rtf(input_file: Union[str, Path], output_file: Union[str, Path]) -> None:

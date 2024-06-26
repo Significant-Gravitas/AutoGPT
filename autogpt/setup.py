@@ -2,6 +2,7 @@ from pkgutil import iter_modules
 from shutil import which
 from typing import Union
 from pathlib import Path
+import platform
 
 from cx_Freeze import Executable, setup
 
@@ -13,11 +14,13 @@ packages = [
     and ("poetry" in m.module_finder.path)  # type: ignore
 ]
 
-icon = (
-    "../../assets/gpt_dark_RGB.icns"
-    if which("sips")
-    else "../../assets/gpt_dark_RGB.ico"
-)
+# set the icon based on the platform
+icon = "../../assets/gpt_dark_RGB.ico"
+if platform.system() == "Darwin":
+    icon = "../../assets/gpt_dark_RGB.icns"
+elif platform.system() == "Linux":
+    icon = "../../assets/gpt_dark_RGB.png"
+
 
 def txt_to_rtf(input_file: Union[str, Path], output_file: Union[str, Path]) -> None:
     """
