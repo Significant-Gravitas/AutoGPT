@@ -1,23 +1,36 @@
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Optional
 
 from git.repo import Repo
+from pydantic import BaseModel, SecretStr
 
+from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
-from forge.config.config import Config
+from forge.models.config import UserConfigurable
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError
 from forge.utils.url_validator import validate_url
 
 
-class GitOperationsComponent(CommandProvider):
+class GitOperationsConfiguration(BaseModel):
+    github_username: Optional[str] = UserConfigurable(from_env="GITHUB_USERNAME")
+    github_api_key: Optional[SecretStr] = UserConfigurable(
+        from_env="GITHUB_API_KEY", exclude=True
+    )
+
+
+class GitOperationsComponent(
+    CommandProvider, ConfigurableComponent[GitOperationsConfiguration]
+):
     """Provides commands to perform Git operations."""
 
-    def __init__(self, config: Config):
-        self._enabled = bool(config.github_username and config.github_api_key)
+    config_class = GitOperationsConfiguration
+
+    def __init__(self, config: Optional[GitOperationsConfiguration] = None):
+        ConfigurableComponent.__init__(self, config)
+        self._enabled = bool(self.config.github_username and self.config.github_api_key)
         self._disabled_reason = "Configure github_username and github_api_key."
-        self.legacy_config = config
 
     def get_commands(self) -> Iterator[Command]:
         yield self.clone_repository
@@ -48,9 +61,13 @@ class GitOperationsComponent(CommandProvider):
             str: The result of the clone operation.
         """
         split_url = url.split("//")
-        auth_repo_url = (
-            f"//{self.legacy_config.github_username}:"
-            f"{self.legacy_config.github_api_key}@".join(split_url)
+        api_key = (
+            self.config.github_api_key.get_secret_value()
+            if self.config.github_api_key
+            else None
+        )
+        auth_repo_url = f"//{self.config.github_username}:" f"{api_key}@".join(
+            split_url
         )
         try:
             Repo.clone_from(url=auth_repo_url, to_path=clone_path)

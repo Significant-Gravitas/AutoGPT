@@ -29,11 +29,14 @@ setup(
             icon=icon,
         ),
         Executable(
-            "autogpt_server/cli.py", target_name="agpt_server_cli", base="console", icon=icon
+            "autogpt_server/cli.py",
+            target_name="agpt_server_cli",
+            base="console",
+            icon=icon,
         ),
     ],
     options={
-      # Options for building all the executables
+        # Options for building all the executables
         "build_exe": {
             "packages": packages,
             "includes": [

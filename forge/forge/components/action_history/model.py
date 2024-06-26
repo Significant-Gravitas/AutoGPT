@@ -8,11 +8,11 @@ from pydantic.generics import GenericModel
 
 from forge.content_processing.text import summarize_text
 from forge.llm.prompting.utils import format_numbered_list, indent
+from forge.llm.providers.multi import ModelName
 from forge.models.action import ActionResult, AnyProposal
 from forge.models.utils import ModelWithSummary
 
 if TYPE_CHECKING:
-    from forge.config.config import Config
     from forge.llm.providers import MultiProvider
 
 
@@ -108,7 +108,10 @@ class EpisodicActionHistory(GenericModel, Generic[AnyProposal]):
             self.cursor = len(self.episodes)
 
     async def handle_compression(
-        self, llm_provider: MultiProvider, app_config: Config
+        self,
+        llm_provider: MultiProvider,
+        model_name: ModelName,
+        spacy_model: str,
     ) -> None:
         """Compresses each episode in the action history using an LLM.
 
@@ -131,7 +134,8 @@ class EpisodicActionHistory(GenericModel, Generic[AnyProposal]):
                     episode.format(),
                     instruction=compress_instruction,
                     llm_provider=llm_provider,
-                    config=app_config,
+                    model_name=model_name,
+                    spacy_model=spacy_model,
                 )
                 for episode in episodes_to_summarize
             ]
