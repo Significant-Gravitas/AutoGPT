@@ -1,7 +1,6 @@
 from pathlib import Path
 from pkgutil import iter_modules
 import platform
-from shutil import which
 from typing import Union
 
 from cx_Freeze import Executable, setup
@@ -19,7 +18,6 @@ if platform.system() == "Darwin":
     icon = "../../assets/gpt_dark_RGB.icns"
 elif platform.system() == "Linux":
     icon = "../../assets/gpt_dark_RGB.png"
-
 
 
 def txt_to_rtf(input_file: Union[str, Path], output_file: Union[str, Path]) -> None:

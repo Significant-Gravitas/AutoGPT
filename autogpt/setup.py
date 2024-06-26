@@ -1,5 +1,4 @@
 from pkgutil import iter_modules
-from shutil import which
 from typing import Union
 from pathlib import Path
 import platform
@@ -50,7 +49,6 @@ def txt_to_rtf(input_file: Union[str, Path], output_file: Union[str, Path]) -> N
 
     with output_path.open("w", encoding="utf-8") as rtf_file:
         rtf_file.write(rtf)
-
 
 
 # Convert LICENSE to LICENSE.rtf
