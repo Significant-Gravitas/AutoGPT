@@ -424,7 +424,7 @@ const Flow: React.FC = () => {
 
   return (
     <div className="flow-container">
-      <div className="flow-controls">
+      <div className={`flow-controls ${isSidebarOpen ? 'open' : ''}`}>
         <button className="nodes-button" onClick={toggleSidebar}>
           Nodes
         </button>

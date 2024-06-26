@@ -135,3 +135,16 @@ input::placeholder, textarea::placeholder {
   justify-content: center;
   align-items: center;
 }
+
+.flow-controls {
+  position: absolute;
+  left: -80px;
+  z-index: 1001;
+  display: flex;
+  gap: 10px;
+  transition: transform 0.3s ease;
+}
+
+.flow-controls.open {
+  transform: translateX(350px);
+}
