@@ -45,20 +45,20 @@ class ExecutionScheduler(AppService):
 
             log(f"Adding recurring job {schedule.id}: {schedule.schedule}")
             scheduler.add_job(
-                self.__execute_agent,
+                self.__execute_graph,
                 CronTrigger.from_crontab(schedule.schedule),
                 id=schedule.id,
-                args=[schedule.agent_id, schedule.input_data],
+                args=[schedule.graph_id, schedule.input_data],
                 replace_existing=True,
             )
 
-    def __execute_agent(self, agent_id: str, input_data: dict):
+    def __execute_graph(self, graph_id: str, input_data: dict):
         try:
-            log(f"Executing recurring job for agent #{agent_id}")
+            log(f"Executing recurring job for graph #{graph_id}")
             execution_manager = self.execution_manager_client
-            execution_manager.add_execution(agent_id, input_data)
+            execution_manager.add_execution(graph_id, input_data)
         except Exception as e:
-            logger.error(f"Error executing agent {agent_id}: {e}")
+            logger.exception(f"Error executing graph {graph_id}: {e}")
 
     @expose
     def update_schedule(self, schedule_id: str, is_enabled: bool) -> str:
@@ -66,17 +66,16 @@ class ExecutionScheduler(AppService):
         return schedule_id
 
     @expose
-    def add_execution_schedule(self, agent_id: str, cron: str, input_data: dict) -> str:
+    def add_execution_schedule(self, graph_id: str, cron: str, input_data: dict) -> str:
         schedule = model.ExecutionSchedule(
-            agent_id=agent_id,
+            graph_id=graph_id,
             schedule=cron,
             input_data=input_data,
         )
-        self.run_and_wait(model.add_schedule(schedule))
-        return schedule.id
+        return self.run_and_wait(model.add_schedule(schedule)).id
 
     @expose
-    def get_execution_schedules(self, agent_id: str) -> dict[str, str]:
-        query = model.get_schedules(agent_id)
+    def get_execution_schedules(self, graph_id: str) -> dict[str, str]:
+        query = model.get_schedules(graph_id)
         schedules: list[model.ExecutionSchedule] = self.run_and_wait(query)
         return {v.id: v.schedule for v in schedules}
