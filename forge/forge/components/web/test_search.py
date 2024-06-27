@@ -1,19 +1,22 @@
 import json
 
 import pytest
-from forge.components.web.search import WebSearchComponent
-from forge.utils.exceptions import ConfigurationError
 from googleapiclient.errors import HttpError
 from pydantic import SecretStr
 
-from autogpt.agents.agent import Agent
+from forge.utils.exceptions import ConfigurationError
+
+from . import WebSearchComponent
 
 
 @pytest.fixture
-def web_search_component(agent: Agent):
-    agent.web_search.config.google_api_key = SecretStr("test")
-    agent.web_search.config.google_custom_search_engine_id = SecretStr("test")
-    return agent.web_search
+def web_search_component():
+    component = WebSearchComponent()
+    if component.config.google_api_key is None:
+        component.config.google_api_key = SecretStr("test")
+    if component.config.google_custom_search_engine_id is None:
+        component.config.google_custom_search_engine_id = SecretStr("test")
+    return component
 
 
 @pytest.mark.parametrize(

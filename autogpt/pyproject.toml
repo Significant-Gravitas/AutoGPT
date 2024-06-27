@@ -85,7 +85,6 @@ pytest-integration = "*"
 pytest-mock = "*"
 pytest-recording = "*"
 pytest-xdist = "*"
-vcrpy = { git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master" }
 
 
 [build-system]
@@ -108,7 +107,3 @@ skip_glob = ["data"]
 pythonVersion = "3.10"
 exclude = ["data/**", "**/node_modules", "**/__pycache__", "**/.*"]
 ignore = ["../forge/**"]
-
-
-[tool.pytest.ini_options]
-markers = ["slow", "requires_openai_api_key", "requires_huggingface_api_key"]

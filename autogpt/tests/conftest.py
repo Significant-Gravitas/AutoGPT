@@ -20,7 +20,6 @@ from autogpt.app.main import _configure_llm_provider
 
 pytest_plugins = [
     "tests.integration.agent_factory",
-    "tests.vcr",
 ]
 
 

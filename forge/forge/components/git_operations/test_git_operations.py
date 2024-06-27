@@ -1,11 +1,11 @@
 import pytest
-from forge.components.git_operations import GitOperationsComponent
-from forge.file_storage.base import FileStorage
-from forge.utils.exceptions import CommandExecutionError
 from git.exc import GitCommandError
 from git.repo.base import Repo
 
-from autogpt.agents.agent import Agent
+from forge.file_storage.base import FileStorage
+from forge.utils.exceptions import CommandExecutionError
+
+from . import GitOperationsComponent
 
 
 @pytest.fixture
@@ -14,15 +14,14 @@ def mock_clone_from(mocker):
 
 
 @pytest.fixture
-def git_ops_component(agent: Agent):
-    return agent.git_ops
+def git_ops_component():
+    return GitOperationsComponent()
 
 
 def test_clone_auto_gpt_repository(
     git_ops_component: GitOperationsComponent,
     storage: FileStorage,
     mock_clone_from,
-    agent: Agent,
 ):
     mock_clone_from.return_value = None
 
@@ -46,7 +45,6 @@ def test_clone_repository_error(
     git_ops_component: GitOperationsComponent,
     storage: FileStorage,
     mock_clone_from,
-    agent: Agent,
 ):
     url = "https://github.com/this-repository/does-not-exist.git"
     clone_path = storage.get_path("does-not-exist")

@@ -12,9 +12,9 @@ from .models.task import StepRequestBody, Task, TaskListResponse, TaskRequestBod
 
 
 @pytest.fixture
-def agent(test_workspace: Path):
+def agent(tmp_project_root: Path):
     db = AgentDB("sqlite:///test.db")
-    config = FileStorageConfiguration(root=test_workspace)
+    config = FileStorageConfiguration(root=tmp_project_root)
     workspace = LocalFileStorage(config)
     return ProtocolAgent(db, workspace)
 

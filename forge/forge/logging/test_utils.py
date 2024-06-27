@@ -1,5 +1,6 @@
 import pytest
-from forge.logging.utils import remove_color_codes
+
+from .utils import remove_color_codes
 
 
 @pytest.mark.parametrize(
