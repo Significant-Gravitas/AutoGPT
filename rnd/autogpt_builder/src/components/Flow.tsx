@@ -282,7 +282,7 @@ const Flow: React.FC = () => {
         nodes: formattedNodes,
       };
 
-      const createResponse = await fetch(`${apiUrl}/agents`, {
+      const createResponse = await fetch(`${apiUrl}/graphs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -367,7 +367,7 @@ const Flow: React.FC = () => {
         return acc;
       }, {} as { [key: string]: any });
 
-      const executeResponse = await fetch(`${apiUrl}/agents/${agentId}/execute`, {
+      const executeResponse = await fetch(`${apiUrl}/graphs/${agentId}/execute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -392,7 +392,7 @@ const Flow: React.FC = () => {
           }
 
           try {
-            const response = await fetch(`${apiUrl}/agents/${agentId}/executions/${runId}`);
+            const response = await fetch(`${apiUrl}/graphs/${agentId}/executions/${runId}`);
             if (!response.ok) {
               throw new Error(`HTTP error! Status: ${response.status}`);
             }
