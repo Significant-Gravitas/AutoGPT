@@ -119,12 +119,12 @@ const Flow: React.FC = () => {
         nds.map((node) => {
           if (node.id === connection.source) {
             const connections = node.data.connections || [];
-            connections.push(`${node.data.title} ${connection.sourceHandle} -> ${connection.targetHandle}`);
+            connections.push(`${node.data.title} ${connection.sourceHandle} -> ${connection.target}`);
             return { ...node, data: { ...node.data, connections } };
           }
           if (node.id === connection.target) {
             const connections = node.data.connections || [];
-            connections.push(`${connection.sourceHandle} -> ${node.data.title} ${connection.targetHandle}`);
+            connections.push(`${connection.source} -> ${node.data.title} ${connection.targetHandle}`);
             return { ...node, data: { ...node.data, connections } };
           }
           return node;
@@ -222,10 +222,12 @@ const Flow: React.FC = () => {
     });
 
     Object.keys(inputProperties).forEach(prop => {
-      const inputEdge = allEdges.find(edge => edge.target === node.id && edge.targetHandle === prop);
-      if (inputEdge) {
-        const sourceNode = allNodes.find(n => n.id === inputEdge.source);
-        inputData[prop] = sourceNode?.data.output_data || sourceNode?.data.hardcodedValues[prop] || '';
+      const inputEdges = allEdges.filter(edge => edge.target === node.id && edge.targetHandle === prop);
+      if (inputEdges.length > 0) {
+        inputData[prop] = inputEdges.map(edge => {
+          const sourceNode = allNodes.find(n => n.id === edge.source);
+          return sourceNode?.data.output_data || sourceNode?.data.hardcodedValues[prop] || '';
+        })[0];  // Just get the first connected output
       } else if (node.data.hardcodedValues && node.data.hardcodedValues[prop]) {
         inputData[prop] = node.data.hardcodedValues[prop];
       }
@@ -259,20 +261,19 @@ const Flow: React.FC = () => {
         id: node.id,
         block_id: node.data.block_id,
         input_default: prepareNodeInputData(node, nodes, edges),
-        input_nodes: edges.filter(edge => edge.target === node.id).reduce((acc, edge) => {
-          if (edge.targetHandle) {
-            acc[edge.targetHandle] = edge.source;
-          }
-          return acc;
-        }, {} as { [key: string]: string }),
-        output_nodes: edges.filter(edge => edge.source === node.id).reduce((acc, edge) => {
-          if (edge.sourceHandle) {
-            acc[edge.sourceHandle] = edge.target;
-          }
-          return acc;
-        }, {} as { [key: string]: string }),
-        metadata: node.data.metadata,
-        connections: node.data.connections // Ensure connections are preserved
+        input_nodes: edges
+          .filter(edge => edge.target === node.id)
+          .map(edge => ({
+            name: edge.targetHandle || '',
+            node_id: edge.source,
+          })),
+        output_nodes: edges
+          .filter(edge => edge.source === node.id)
+          .map(edge => ({
+            name: edge.sourceHandle || '',
+            node_id: edge.target,
+          })),
+        metadata: node.data.metadata
       }));
 
       const payload = {
@@ -339,12 +340,12 @@ const Flow: React.FC = () => {
       });
 
       const newEdges = createData.nodes.flatMap((node: any) => {
-        return Object.entries(node.output_nodes).map(([sourceHandle, targetNodeId]) => ({
-          id: `${node.id}-${sourceHandle}-${targetNodeId}`,
+        return node.output_nodes.map((outputNode: { name: string; id: string }) => ({
+          node_id: `${node.id}-${outputNode.name}-${outputNode.id}`,
           source: node.id,
-          sourceHandle: sourceHandle,
-          target: targetNodeId,
-          targetHandle: Object.keys(node.input_nodes).find(key => node.input_nodes[key] === targetNodeId) || '',
+          sourceHandle: outputNode.name,
+          target: outputNode.id,
+          targetHandle: node.input_nodes.find((inputNode: { name: string; id: string }) => inputNode.id === outputNode.id)?.name || '',
         }));
       });
 
@@ -380,8 +381,7 @@ const Flow: React.FC = () => {
       }
 
       const executeData = await executeResponse.json();
-      const runId = executeData.run_id;
-
+      const runId = executeData.id; // Correctly capturing runId from executeData
       const startPolling = () => {
         const endTime = Date.now() + 60000;
 

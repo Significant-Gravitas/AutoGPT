@@ -67,6 +67,17 @@ const CustomNode: FC<NodeProps> = ({ data }) => {
     return !isHandleConnected(key);
   };
 
+  const getStatusValue = (statusData: any) => {
+    if (Array.isArray(statusData)) {
+      return statusData.join(', ');
+    }
+    if (typeof statusData === 'object') {
+      const values = Object.values(statusData);
+      return values.flat().join(', ');
+    }
+    return JSON.stringify(statusData);
+  };
+
   return (
     <div style={{ padding: '20px', border: '2px solid #fff', borderRadius: '20px', background: '#333', color: '#e0e0e0', width: '250px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -104,8 +115,8 @@ const CustomNode: FC<NodeProps> = ({ data }) => {
       {isPropertiesOpen && (
         <div style={{ marginTop: '10px', background: '#444', padding: '10px', borderRadius: '10px' }}>
           <h4>Node Output</h4>
-          <p><strong>Status:</strong> {typeof data.status === 'object' ? JSON.stringify(data.status) : data.status || 'N/A'}</p>
-          <p><strong>Output Data:</strong> {typeof data.output_data === 'object' ? JSON.stringify(data.output_data) : data.output_data || 'N/A'}</p>
+          <p><strong>Status:</strong> {typeof data.status === 'object' ? getStatusValue(data.status) : data.status || 'N/A'}</p>
+          <p><strong>Output Data:</strong> {getStatusValue(data.output_data)}</p>
         </div>
       )}
     </div>
