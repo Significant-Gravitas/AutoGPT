@@ -1,22 +1,25 @@
 .custom-node {
   padding: 20px;
   border: 2px solid #fff;
-  border-radius: 20px;
-  background: #333;
+  border-radius: 12px;
+  background: #1e1e1e;
   color: #e0e0e0;
-  width: 250px;
+  width: 260px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  font-family: 'Arial', sans-serif;
 }
 
 .node-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 15px;
 }
 
 .node-title {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: bold;
+  color: #61dafb;
 }
 
 .toggle-button {
@@ -24,6 +27,7 @@
   border: none;
   cursor: pointer;
   color: #e0e0e0;
+  font-size: 20px;
 }
 
 .node-content {
@@ -37,7 +41,7 @@
   display: flex;
   align-items: center;
   position: relative;
-  margin-bottom: 5px;
+  margin-bottom: 10px;
 }
 
 .handle-label {
@@ -47,30 +51,58 @@
 }
 
 .input-container {
-  margin-bottom: 5px;
+  margin-bottom: 10px;
 }
 
-.dynamic-textarea {
-  width: 100%;
-  padding: 5px;
-  border-radius: 4px;
+.clickable-input {
+  padding: 10px;
+  border-radius: 8px;
   border: 1px solid #555;
-  background: #444;
+  background: #2a2a2a;
   color: #e0e0e0;
-  resize: vertical; /* Allows resizing the textarea vertically */
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.3s;
+}
+
+.clickable-input:hover {
+  background: #444;
 }
 
 .node-properties {
-  margin-top: 10px;
-  background: #444;
-  padding: 10px;
-  border-radius: 10px;
+  margin-top: 20px;
+  background: #2a2a2a;
+  padding: 15px;
+  border-radius: 8px;
 }
 
 .node-properties h4 {
-  margin: 0;
+  margin: 0 0 10px 0;
 }
 
 .node-properties p {
   margin: 5px 0;
+}
+
+@media screen and (max-width: 768px) {
+  .custom-node {
+    width: 90%;
+    padding: 15px;
+  }
+
+  .node-content {
+    flex-direction: column;
+  }
+
+  .toggle-button {
+    font-size: 16px;
+  }
+
+  .node-title {
+    font-size: 18px;
+  }
+
+  .clickable-input {
+    padding: 8px;
+  }
 }
