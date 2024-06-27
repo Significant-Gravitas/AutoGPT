@@ -1,6 +1,6 @@
+from multiprocessing import freeze_support
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server import AgentServer
-from autogpt_server.util.data import get_data_path, get_config_path
 from autogpt_server.util.process import AppProcess
 from autogpt_server.util.service import PyroNameServer
 
@@ -28,6 +28,8 @@ def run_processes(processes: list[AppProcess], **kwargs):
 
 def main(**kwargs):
     settings = get_config_and_secrets()
+    freeze_support()
+
     run_processes(
         [
             PyroNameServer(),

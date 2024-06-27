@@ -11,6 +11,9 @@ packages = [
     if m.ispkg and m.module_finder and "poetry" in m.module_finder.path  # type: ignore
 ]
 packages.append("collections")
+packages.append("autogpt_server.util.service")
+packages.append("autogpt_server.executor.manager")
+packages.append("autogpt_server.util.service")
 
 # set the icon based on the platform
 icon = "../../assets/gpt_dark_RGB.ico"
@@ -77,7 +80,10 @@ setup(
         # Options for building all the executables
         "build_exe": {
             "packages": packages,
-            "includes": ["autogpt_server", "prisma"],
+            "includes": [
+                "autogpt_server",
+                "prisma",
+            ],
             # Exclude the two module from readability.compat as it causes issues
             "excludes": ["readability.compat.two"],
             "include_files": [

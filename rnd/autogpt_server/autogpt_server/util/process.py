@@ -11,9 +11,6 @@ class AppProcess(ABC):
     A class to represent an object that can be executed in a background process.
     """
     process: Optional[Process] = None
-    set_start_method('spawn', force=True)
-    freeze_support()
-    freeze_support_spawn()
 
     @abstractmethod
     def run(self):
