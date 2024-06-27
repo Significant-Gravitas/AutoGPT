@@ -359,7 +359,7 @@ watchdog = "4.0.0"
 webdriver-manager = "^4.0.1"
 
 [package.extras]
-benchmark = ["agbenchmark @ file:///home/reinier/code/agpt/AutoGPT/benchmark"]
+benchmark = ["agbenchmark @ file:///D:/AutoGPT/benchmark"]
 
 [package.source]
 type = "directory"
@@ -1131,67 +1131,33 @@ files = [
 ]
 
 [[package]]
-name = "cx-freeze"
-version = "7.0.0"
+name = "cx_Freeze"
+version = "7.1.1"
 description = "Create standalone executables from Python scripts"
 optional = false
 python-versions = ">=3.8"
-files = [
-    {file = "cx_Freeze-7.0.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:421920dbee2b4aab53a81f6c99d18b00baf622a328eae8e489f162154a46192a"},
-    {file = "cx_Freeze-7.0.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:5fa1ca4cf20c6ce45ce2e26bf8b2086525aaaa774e2ee1b16da4e0f9f18c7272"},
-    {file = "cx_Freeze-7.0.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:a520bc6772325c0e38924da1d827fe370702f8df397f483691b94d36179beef6"},
-    {file = "cx_Freeze-7.0.0-cp310-cp310-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:b89ed99a2f99fd2f3e28a91c85bdd75b4bfaf11b04729ba3282bfebdadadf880"},
-    {file = "cx_Freeze-7.0.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5174821c82826e5a57e43960877087f5af6073e3877b0b38a0be244111fe1a76"},
-    {file = "cx_Freeze-7.0.0-cp310-cp310-musllinux_1_1_aarch64.whl", hash = "sha256:cfd18cc00f3240b03d5bdf9515d59ace0881b5b5b6f2e7655d857d1fb71f351d"},
-    {file = "cx_Freeze-7.0.0-cp310-cp310-musllinux_1_1_ppc64le.whl", hash = "sha256:bac44e65bdfce0839b9a6d15373ea084fda3cdbd902351cde530991b450c2b2d"},
-    {file = "cx_Freeze-7.0.0-cp310-cp310-musllinux_1_1_x86_64.whl", hash = "sha256:51a374f273d575827efe4f7ed9a88b6cab78abffacb858c829d7cbe4dc4ff56e"},
-    {file = "cx_Freeze-7.0.0-cp310-cp310-win32.whl", hash = "sha256:6603e6c47a15bd84bfbb20d92dc01d5e586b54928eb618461d2f14305471d570"},
-    {file = "cx_Freeze-7.0.0-cp310-cp310-win_amd64.whl", hash = "sha256:d7ec847af5afbe3c638a096aae4ff5982a17d95e2fb7975e525ecf9505a185ea"},
-    {file = "cx_Freeze-7.0.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:04b7a2e5c53f5d537f3d958ebf2b0a0a7cbe8daf980cb0087559a3e698abc582"},
-    {file = "cx_Freeze-7.0.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:50e7e78001d4f78e70a403ecb5507685854ce1e6c3ff37bec1920eb6f2256534"},
-    {file = "cx_Freeze-7.0.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:2d37ed560e86ca7958684701a6ae7f3300226d0d7c861ca5b90c78bf4c619ad2"},
-    {file = "cx_Freeze-7.0.0-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:42145dc5c2c7a98c620b30b7e25661954817a13355c50c4219a4a4954b39db39"},
-    {file = "cx_Freeze-7.0.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6f9034d6f9c10d84d7edc0e4f4020e878de367e83c5877c039aa3c8b733bc318"},
-    {file = "cx_Freeze-7.0.0-cp311-cp311-musllinux_1_1_aarch64.whl", hash = "sha256:adc6bdba9ff8705745831620efb6ee5eff9ec6d31d9b8c56d2a61d6555299157"},
-    {file = "cx_Freeze-7.0.0-cp311-cp311-musllinux_1_1_ppc64le.whl", hash = "sha256:37a3234c0e54b4afd561b47be4f22a6496f9436275fb7b59d90d7a3269fb4d6f"},
-    {file = "cx_Freeze-7.0.0-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:83549f9f817cafa59ea2f6e2045c8fe119628458ff14bb732649b01b0a637f6d"},
-    {file = "cx_Freeze-7.0.0-cp311-cp311-win32.whl", hash = "sha256:c508cd354728367311a7deb5bb616eee441bf79c900e3129a49fd54a372dc223"},
-    {file = "cx_Freeze-7.0.0-cp311-cp311-win_amd64.whl", hash = "sha256:8fb71d23dba27dc40393a8b460bbf64759899246cd595860f66493cee64f27a5"},
-    {file = "cx_Freeze-7.0.0-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:648fd0acb439efe22dced2430cbaeca87e5ca9ab315d148933104376cca9553d"},
-    {file = "cx_Freeze-7.0.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:3125a8408da3ff4b0cf767689d678909f840dfe08633f5f2d3cfe333111dc334"},
-    {file = "cx_Freeze-7.0.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:07e56b06c7ca0bd2fc37e3783908767dbe1926e1e2609edcaefcc749ab584329"},
-    {file = "cx_Freeze-7.0.0-cp312-cp312-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:25531d5c61bb5e974d8a5d042f29a37a786e91c1d6f66e018fc50342a416f4e1"},
-    {file = "cx_Freeze-7.0.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f97154b4b60f6e1953ebce05803a5e11a35047d097fad60d7c181303b7c6ef6e"},
-    {file = "cx_Freeze-7.0.0-cp312-cp312-musllinux_1_1_aarch64.whl", hash = "sha256:2333db5cfa6db700c79fd45d614d38e9d698f1df2a3c7e21ccbcc63cc8a7a9b7"},
-    {file = "cx_Freeze-7.0.0-cp312-cp312-musllinux_1_1_ppc64le.whl", hash = "sha256:d45a58e0a9b010e0823c30fb8eb2077560d2bb0f78e4481a55bdb6ad0729f390"},
-    {file = "cx_Freeze-7.0.0-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:0422dbd426fd9f4f4ec0cadc7e3192d38227464daa3eb215b03eb577cd9a49d4"},
-    {file = "cx_Freeze-7.0.0-cp312-cp312-win32.whl", hash = "sha256:2018e9cbf8172da09b311cfc3906503ee6ae88665ec77c543013173b2532b731"},
-    {file = "cx_Freeze-7.0.0-cp312-cp312-win_amd64.whl", hash = "sha256:ae5facd782b220bca6828eb6fb1834540cf431b1a615cc63652641bd070b11e6"},
-    {file = "cx_Freeze-7.0.0-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:f06368dd41568572818c4abfcf9b45449dced3fa9f1b5f29e3523ba4ff7fcfbb"},
-    {file = "cx_Freeze-7.0.0-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e203d90d8fa1cc4489b15edac7dfdd983518a02999f275897160fc0ecfa98e4c"},
-    {file = "cx_Freeze-7.0.0-cp38-cp38-musllinux_1_1_x86_64.whl", hash = "sha256:f800b0bc2df14c66fcf2f220ecf273c5942d0b982268d8e5ccc9ef2fa56e576f"},
-    {file = "cx_Freeze-7.0.0-cp38-cp38-win32.whl", hash = "sha256:c52641ce2484222f4d60f0acbc79b2dfbfb984493101a4806c5af0ad379ebc82"},
-    {file = "cx_Freeze-7.0.0-cp38-cp38-win_amd64.whl", hash = "sha256:92a15613be3fcc7a310e825c92ae3e83a7e689ade00ce2ea981403e4317c7234"},
-    {file = "cx_Freeze-7.0.0-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:60a0f674b6a55fdf46d0cc59122551a79221ceecd038fed8533dcbceb9714435"},
-    {file = "cx_Freeze-7.0.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:bb15314e8395e9658a8a5e4e19558d0e096a68b76c744ba81ebc249061b7dd9e"},
-    {file = "cx_Freeze-7.0.0-cp39-cp39-musllinux_1_1_x86_64.whl", hash = "sha256:3290127acc67e830265265a911d9018640ffffb7fddb86eacb1e3d83ed4136c4"},
-    {file = "cx_Freeze-7.0.0-cp39-cp39-win32.whl", hash = "sha256:aa885f2fb29b9f7d9a7d8af223d38d98905484cc2356c474bb1d6fd1704323ad"},
-    {file = "cx_Freeze-7.0.0-cp39-cp39-win_amd64.whl", hash = "sha256:fe4dbbfd52454c8ddb550f112713ee2ac36cc024303557763b605e35cdb6b9a8"},
-    {file = "cx_freeze-7.0.0.tar.gz", hash = "sha256:b03f2854a15dd1e8962660d18882a71fefba0e1b6f68337193d4a072d1fc36e6"},
-]
+files = []
+develop = true
 
 [package.dependencies]
 cx-Logging = {version = ">=3.1", markers = "sys_platform == \"win32\""}
-filelock = {version = ">=3.11.0", markers = "sys_platform == \"linux\""}
+dmgbuild = {version = ">=1.6.1", markers = "sys_platform == \"darwin\""}
+filelock = {version = ">=3.12.3", markers = "sys_platform == \"linux\""}
 lief = {version = ">=0.12.0,<0.15.0", markers = "sys_platform == \"win32\""}
 patchelf = {version = ">=0.14", markers = "sys_platform == \"linux\" and (platform_machine == \"aarch64\" or platform_machine == \"armv7l\" or platform_machine == \"i686\" or platform_machine == \"ppc64le\" or platform_machine == \"s390x\" or platform_machine == \"x86_64\")"}
-setuptools = ">=62.6,<70"
+setuptools = ">=65.6.3,<71"
 wheel = ">=0.42.0,<=0.43.0"
 
 [package.extras]
-dev = ["bump-my-version (==0.20.1)", "cibuildwheel (==2.17.0)", "pre-commit (==3.7.0)"]
-doc = ["furo (==2024.1.29)", "myst-parser (==2.0.0)", "sphinx (==7.3.7)", "sphinx-new-tab-link (==0.4.0)", "sphinx-tabs (==3.4.5)"]
-test = ["coverage (==7.4.4)", "pluggy (==1.4.0)", "pytest (==8.1.1)", "pytest-cov (==5.0.0)", "pytest-datafiles (==3.0.0)", "pytest-mock (==3.14.0)", "pytest-timeout (==2.3.1)", "pytest-xdist[psutil] (==3.6.0)"]
+dev = ["bump-my-version (==0.24.0)", "cibuildwheel (==2.19.1)", "pre-commit (==3.5.0)", "pre-commit (==3.7.1)"]
+doc = ["furo (==2024.5.6)", "myst-parser (==3.0.1)", "sphinx (==7.3.7)", "sphinx-new-tab-link (==0.4.0)", "sphinx-tabs (==3.4.5)"]
+test = ["coverage (==7.5.4)", "pluggy (==1.5.0)", "pytest (==8.2.2)", "pytest-cov (==5.0.0)", "pytest-datafiles (==3.0.0)", "pytest-mock (==3.14.0)", "pytest-timeout (==2.3.1)", "pytest-xdist[psutil] (==3.6.1)"]
+
+[package.source]
+type = "git"
+url = "https://github.com/ntindle/cx_Freeze.git"
+reference = "main"
+resolved_reference = "876fe77c97db749b7b0aed93c12142a7226ee7e4"
 
 [[package]]
 name = "cx-logging"
@@ -1341,6 +1307,27 @@ files = [
 ]
 
 [[package]]
+name = "dmgbuild"
+version = "1.6.1"
+description = "macOS command line utility to build disk images"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "dmgbuild-1.6.1-py3-none-any.whl", hash = "sha256:45dba6af4a64872c6a91eb335ebeaf5e1f4f4f39c89fd77cf40e841bd1226166"},
+    {file = "dmgbuild-1.6.1.tar.gz", hash = "sha256:7ced2603d684e29c22b4cd507d1e15a1907e91b86259924b8cfe480d80553b43"},
+]
+
+[package.dependencies]
+ds-store = ">=1.1.0"
+mac-alias = ">=2.0.1"
+
+[package.extras]
+badge-icons = ["pyobjc-framework-Quartz (>=3.0.4)"]
+dev = ["pre-commit", "tox"]
+docs = ["sphinx", "sphinx-autobuild", "sphinx-rtd-theme"]
+test = ["pytest", "pytest-cov", "pytest-tldr"]
+
+[[package]]
 name = "docker"
 version = "7.0.0"
 description = "A Python library for the Docker Engine API."
@@ -1360,6 +1347,25 @@ urllib3 = ">=1.26.0"
 [package.extras]
 ssh = ["paramiko (>=2.4.3)"]
 websockets = ["websocket-client (>=1.3.0)"]
+
+[[package]]
+name = "ds-store"
+version = "1.3.1"
+description = "Manipulate Finder .DS_Store files from Python"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "ds_store-1.3.1-py3-none-any.whl", hash = "sha256:fbacbb0bd5193ab3e66e5a47fff63619f15e374ffbec8ae29744251a6c8f05b5"},
+    {file = "ds_store-1.3.1.tar.gz", hash = "sha256:c27d413caf13c19acb85d75da4752673f1f38267f9eb6ba81b3b5aa99c2d207c"},
+]
+
+[package.dependencies]
+mac-alias = ">=2.0.1"
+
+[package.extras]
+dev = ["pre-commit", "tox"]
+docs = ["sphinx", "sphinx-autobuild", "sphinx-rtd-theme"]
+test = ["pytest", "pytest-cov", "pytest-tldr"]
 
 [[package]]
 name = "duckduckgo-search"
@@ -2999,6 +3005,22 @@ cssselect = ["cssselect (>=0.7)"]
 html5 = ["html5lib"]
 htmlsoup = ["BeautifulSoup4"]
 source = ["Cython (>=3.0.7)"]
+
+[[package]]
+name = "mac-alias"
+version = "2.2.2"
+description = "Generate/parse Mac OS Alias records from Python"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "mac_alias-2.2.2-py3-none-any.whl", hash = "sha256:504ab8ac546f35bbd75ad014d6ad977c426660aa721f2cd3acf3dc2f664141bd"},
+    {file = "mac_alias-2.2.2.tar.gz", hash = "sha256:c99c728eb512e955c11f1a6203a0ffa8883b26549e8afe68804031aa5da856b7"},
+]
+
+[package.extras]
+dev = ["pre-commit", "tox"]
+docs = ["sphinx", "sphinx-autobuild", "sphinx-rtd-theme"]
+test = ["pytest", "pytest-cov", "pytest-tldr"]
 
 [[package]]
 name = "markupsafe"
@@ -5429,19 +5451,18 @@ tornado = ["tornado (>=5)"]
 
 [[package]]
 name = "setuptools"
-version = "69.0.3"
+version = "70.1.1"
 description = "Easily download, build, install, upgrade, and uninstall Python packages"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "setuptools-69.0.3-py3-none-any.whl", hash = "sha256:385eb4edd9c9d5c17540511303e39a147ce2fc04bc55289c322b9e5904fe2c05"},
-    {file = "setuptools-69.0.3.tar.gz", hash = "sha256:be1af57fc409f93647f2e8e4573a142ed38724b8cdd389706a867bb4efcf1e78"},
+    {file = "setuptools-70.1.1-py3-none-any.whl", hash = "sha256:a58a8fde0541dab0419750bcc521fbdf8585f6e5cb41909df3a472ef7b81ca95"},
+    {file = "setuptools-70.1.1.tar.gz", hash = "sha256:937a48c7cdb7a21eb53cd7f9b59e525503aa8abaf3584c730dc5f7a5bec3a650"},
 ]
 
 [package.extras]
-docs = ["furo", "jaraco.packaging (>=9.3)", "jaraco.tidelift (>=1.4)", "pygments-github-lexers (==0.0.5)", "rst.linker (>=1.9)", "sphinx (<7.2.5)", "sphinx (>=3.5)", "sphinx-favicon", "sphinx-inline-tabs", "sphinx-lint", "sphinx-notfound-page (>=1,<2)", "sphinx-reredirects", "sphinxcontrib-towncrier"]
-testing = ["build[virtualenv]", "filelock (>=3.4.0)", "flake8-2020", "ini2toml[lite] (>=0.9)", "jaraco.develop (>=7.21)", "jaraco.envs (>=2.2)", "jaraco.path (>=3.2.0)", "pip (>=19.1)", "pytest (>=6)", "pytest-black (>=0.3.7)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=2.2)", "pytest-mypy (>=0.9.1)", "pytest-perf", "pytest-ruff", "pytest-timeout", "pytest-xdist", "tomli-w (>=1.0.0)", "virtualenv (>=13.0.0)", "wheel"]
-testing-integration = ["build[virtualenv] (>=1.0.3)", "filelock (>=3.4.0)", "jaraco.envs (>=2.2)", "jaraco.path (>=3.2.0)", "packaging (>=23.1)", "pytest", "pytest-enabler", "pytest-xdist", "tomli", "virtualenv (>=13.0.0)", "wheel"]
+docs = ["furo", "jaraco.packaging (>=9.3)", "jaraco.tidelift (>=1.4)", "pygments-github-lexers (==0.0.5)", "pyproject-hooks (!=1.1)", "rst.linker (>=1.9)", "sphinx (>=3.5)", "sphinx-favicon", "sphinx-inline-tabs", "sphinx-lint", "sphinx-notfound-page (>=1,<2)", "sphinx-reredirects", "sphinxcontrib-towncrier"]
+testing = ["build[virtualenv] (>=1.0.3)", "filelock (>=3.4.0)", "importlib-metadata", "ini2toml[lite] (>=0.14)", "jaraco.develop (>=7.21)", "jaraco.envs (>=2.2)", "jaraco.path (>=3.2.0)", "jaraco.test", "mypy (==1.10.0)", "packaging (>=23.2)", "pip (>=19.1)", "pyproject-hooks (!=1.1)", "pytest (>=6,!=8.1.1)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=2.2)", "pytest-home (>=0.5)", "pytest-mypy", "pytest-perf", "pytest-ruff (>=0.3.2)", "pytest-subprocess", "pytest-timeout", "pytest-xdist (>=3)", "tomli", "tomli-w (>=1.0.0)", "virtualenv (>=13.0.0)", "wheel"]
 
 [[package]]
 name = "shellingham"
@@ -6978,4 +6999,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "a378031626ad6640c66c53d2b58266d7d464462b69f0b5b5b95c317bd20c6b79"
+content-hash = "0f198975b29b94700bd4b0179ebb285f4e12c2c5f408b0adb03916f06a064d15"
