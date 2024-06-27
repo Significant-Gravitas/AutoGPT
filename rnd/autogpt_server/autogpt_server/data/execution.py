@@ -236,4 +236,27 @@ async def get_node_execution_input(node_exec_id: str) -> dict[str, Any]:
     exec_input = json.loads(execution.AgentNode.constantInput)
     for input_data in execution.Input or []:
         exec_input[input_data.name] = json.loads(input_data.data)
-    return exec_input
+
+    return merge_execution_input(exec_input)
+
+
+SPLIT = "_$_"
+
+
+def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
+    list_input = []
+    for key, value in data.items():
+        if SPLIT not in key:
+            continue
+
+        name, index = key.split(SPLIT)
+        if not index.isdigit():
+            list_input.append((name, value, 0))
+        else:
+            list_input.append((name, value, int(index)))
+
+    for name, value, _ in sorted(list_input, key=lambda x: x[2]):
+        data[name] = data.get(name, [])
+        data[name].append(value)
+
+    return data

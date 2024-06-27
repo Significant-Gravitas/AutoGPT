@@ -12,7 +12,7 @@ async def create_test_graph() -> graph.Graph:
     """
     ParrotBlock
                 \
-                 ---- TextCombinerBlock ---- PrintingBlock
+                 ---- TextFormatterBlock ---- PrintingBlock
                 /
     ParrotBlock
     """
@@ -20,13 +20,16 @@ async def create_test_graph() -> graph.Graph:
         graph.Node(block_id=block.ParrotBlock.id),
         graph.Node(block_id=block.ParrotBlock.id),
         graph.Node(
-            block_id=block.TextCombinerBlock.id,
-            input_default={"format": "{text1},{text2}"},
+            block_id=block.TextFormatterBlock.id,
+            input_default={
+                "format": "{texts[0]},{texts[1]},{texts[2]}",
+                "texts_$_3": "!!!",
+            },
         ),
         graph.Node(block_id=block.PrintingBlock.id),
     ]
-    nodes[0].connect(nodes[2], "output", "text1")
-    nodes[1].connect(nodes[2], "output", "text2")
+    nodes[0].connect(nodes[2], "output", "texts_$_1")
+    nodes[1].connect(nodes[2], "output", "texts_$_2")
     nodes[2].connect(nodes[3], "combined_text", "text")
 
     test_graph = graph.Graph(
@@ -85,14 +88,14 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
     assert exec.input_data == {"input": text}
     assert exec.node_id == test_graph.nodes[1].id
 
-    # Executing TextCombinerBlock
+    # Executing TextFormatterBlock
     exec = executions[2]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data == {"combined_text": ["Hello, World!,Hello, World!"]}
+    assert exec.output_data == {"combined_text": ["Hello, World!,Hello, World!,!!!"]}
     assert exec.input_data == {
-        "text1": "Hello, World!",
-        "text2": "Hello, World!",
+        "texts_$_1": "Hello, World!",
+        "texts_$_2": "Hello, World!",
     }
     assert exec.node_id == test_graph.nodes[2].id
 
@@ -101,7 +104,7 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
     assert exec.output_data == {"status": ["printed"]}
-    assert exec.input_data == {"text": "Hello, World!,Hello, World!"}
+    assert exec.input_data == {"text": "Hello, World!,Hello, World!,!!!"}
     assert exec.node_id == test_graph.nodes[3].id
 
 
