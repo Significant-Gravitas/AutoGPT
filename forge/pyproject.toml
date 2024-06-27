@@ -67,7 +67,7 @@ pre-commit = "^3.3.3"
 boto3-stubs = { extras = ["s3"], version = "^1.33.6" }
 types-requests = "^2.31.0.2"
 pytest = "^7.4.0"
-pytest-asyncio = "^0.21.1"
+pytest-asyncio = "^0.23.3"
 pytest-cov = "^5.0.0"
 mock = "^5.1.0"
 pydevd-pycharm = "^233.6745.319"
