@@ -257,24 +257,31 @@ const Flow: React.FC = () => {
 
   const runAgent = async () => {
     try {
-      const formattedNodes = nodes.map(node => ({
-        id: node.id,
-        block_id: node.data.block_id,
-        input_default: prepareNodeInputData(node, nodes, edges),
-        input_nodes: edges
+      const formattedNodes = nodes.map(node => {
+        const inputDefault = prepareNodeInputData(node, nodes, edges);
+        const inputNodes = edges
           .filter(edge => edge.target === node.id)
           .map(edge => ({
             name: edge.targetHandle || '',
             node_id: edge.source,
-          })),
-        output_nodes: edges
+          }));
+
+        const outputNodes = edges
           .filter(edge => edge.source === node.id)
           .map(edge => ({
             name: edge.sourceHandle || '',
             node_id: edge.target,
-          })),
-        metadata: node.data.metadata
-      }));
+          }));
+
+        return {
+          id: node.id,
+          block_id: node.data.block_id,
+          input_default: inputNodes.length === 0 ? inputDefault : {},
+          input_nodes: inputNodes,
+          output_nodes: outputNodes,
+          metadata: node.data.metadata
+        };
+      });
 
       const payload = {
         id: '',
@@ -301,13 +308,6 @@ const Flow: React.FC = () => {
 
       const responseNodes = createData.nodes.map((node: any) => {
         const block = availableNodes.find(n => n.id === node.block_id);
-        const connections = edges.filter(edge => edge.source === node.id || edge.target === node.id).map(edge => ({
-          id: edge.id,
-          source: edge.source,
-          sourceHandle: edge.sourceHandle,
-          target: edge.target,
-          targetHandle: edge.targetHandle
-        }));
         return {
           id: node.id,
           type: 'custom',
@@ -318,7 +318,7 @@ const Flow: React.FC = () => {
             description: `${block?.description || ''}`,
             inputSchema: block?.inputSchema,
             outputSchema: block?.outputSchema,
-            connections: connections.map(c => `${c.source}-${c.sourceHandle} -> ${c.target}-${c.targetHandle}`),
+            connections: node.input_nodes.map((input: any) => `${input.node_id}-${input.name} -> ${node.id}`),
             variableName: '',
             variableValue: '',
             printVariable: '',
@@ -340,12 +340,12 @@ const Flow: React.FC = () => {
       });
 
       const newEdges = createData.nodes.flatMap((node: any) => {
-        return node.output_nodes.map((outputNode: { name: string; id: string }) => ({
-          node_id: `${node.id}-${outputNode.name}-${outputNode.id}`,
+        return node.output_nodes.map((outputNode: { name: string; node_id: string }) => ({
+          id: `${node.id}-${outputNode.name}-${outputNode.node_id}`,
           source: node.id,
           sourceHandle: outputNode.name,
-          target: outputNode.id,
-          targetHandle: node.input_nodes.find((inputNode: { name: string; id: string }) => inputNode.id === outputNode.id)?.name || '',
+          target: outputNode.node_id,
+          targetHandle: node.input_nodes.find((inputNode: { name: string; node_id: string }) => inputNode.node_id === outputNode.node_id)?.name || '',
         }));
       });
 
