@@ -14,7 +14,7 @@ def get_config_path() -> pathlib.Path:
 def get_frontend_path() -> pathlib.Path:
     if getattr(sys, "frozen", False):
         # The application is frozen
-        datadir = os.path.dirname(sys.executable)
+        datadir = pathlib.Path(os.path.dirname(sys.executable)) / "example_files"
     else:
         # The application is not frozen
         # Change this bit to match where you store your data files:

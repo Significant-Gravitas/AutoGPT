@@ -16,7 +16,7 @@ from autogpt_server.data.graph import (
     Link,
 )
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
-from autogpt_server.util.data import get_data_path, get_frontend_path
+from autogpt_server.util.data import get_frontend_path
 from autogpt_server.util.process import AppProcess
 from autogpt_server.util.service import get_service_client
 from autogpt_server.util.settings import Settings
@@ -96,7 +96,7 @@ class AgentServer(AppProcess):
         )
 
         app.mount(
-            path="/",
+            path="/frontend",
             app=StaticFiles(directory=get_frontend_path(), html=True),
             name="example_files",
         )

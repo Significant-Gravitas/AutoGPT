@@ -77,9 +77,7 @@ setup(
         # Options for building all the executables
         "build_exe": {
             "packages": packages,
-            "includes": [
-                "autogpt_server",
-            ],
+            "includes": ["autogpt_server", "prisma"],
             # Exclude the two module from readability.compat as it causes issues
             "excludes": ["readability.compat.two"],
             "include_files": [
