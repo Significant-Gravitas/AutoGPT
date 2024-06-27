@@ -3,6 +3,14 @@ import pathlib
 import sys
 
 
+def get_secrets_path() -> pathlib.Path:
+    return get_data_path() / "secrets"
+
+
+def get_config_path() -> pathlib.Path:
+    return get_data_path()
+
+
 def get_data_path() -> pathlib.Path:
     if getattr(sys, "frozen", False):
         # The application is frozen
@@ -10,5 +18,6 @@ def get_data_path() -> pathlib.Path:
     else:
         # The application is not frozen
         # Change this bit to match where you store your data files:
-        datadir = os.path.dirname(__file__)
+        filedir = os.path.dirname(__file__)
+        datadir = pathlib.Path(filedir).parent.parent
     return pathlib.Path(datadir)
