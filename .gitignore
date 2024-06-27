@@ -171,3 +171,4 @@ pri*
 ig*
 .github_access_token
 LICENSE.rtf
+rnd/autogpt_server/settings.py
