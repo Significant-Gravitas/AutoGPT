@@ -57,7 +57,7 @@ agbenchmark = { path = "../benchmark", optional = true }
 # agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
 psycopg2-binary = "^2.9.9"
 multidict = "6.0.5"
-cx-freeze = "7.0.0"
+cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main", develop = true }
 
 [tool.poetry.extras]
 benchmark = ["agbenchmark"]
