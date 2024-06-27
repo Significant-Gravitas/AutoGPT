@@ -3,7 +3,7 @@ from pathlib import Path
 from pkgutil import iter_modules
 from typing import Union
 
-from cx_Freeze import Executable, setup
+from cx_Freeze import Executable, setup # type: ignore
 
 packages = [
     m.name
