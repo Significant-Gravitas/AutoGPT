@@ -114,6 +114,37 @@ def event():
 def websocket(server_address):
     """
     Tests the websocket connection.
+    Request:
+    {
+       "method": "subscribe",
+       "params": {
+            "channel": "execution_result",
+            "graph_id": "id",
+            "run_id": "id",
+       }
+    }
+
+    Response:
+    {
+
+        "method": "subscribe",
+        "result": {
+            "channel": "execution_result",
+            "graph_id": "id",
+            "run_id": "id",
+        },
+        "success": true,
+    }
+    Message:
+    {
+        "channel": "execution_result",
+        "type": "update"
+        "data": {
+            "graph_id": "str",
+            "run_id": "str",
+            "exection_result": {}
+        }
+    }
     """
     import asyncio
     import websockets
