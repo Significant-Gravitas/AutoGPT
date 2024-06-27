@@ -1,8 +1,11 @@
+from typing import Annotated, Any, Dict
 import uuid
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 from contextlib import asynccontextmanager
-from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi import APIRouter, Body, FastAPI, HTTPException
 
 from autogpt_server.data import db, execution, block
 from autogpt_server.data.graph import (
@@ -13,8 +16,10 @@ from autogpt_server.data.graph import (
     Link,
 )
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
+from autogpt_server.util.data import get_frontend_path
 from autogpt_server.util.process import AppProcess
 from autogpt_server.util.service import get_service_client
+from autogpt_server.util.settings import Settings
 
 
 class AgentServer(AppProcess):
@@ -84,6 +89,17 @@ class AgentServer(AppProcess):
             endpoint=self.update_schedule,
             methods=["PUT"],
         )
+        router.add_api_route(
+            path="/settings",
+            endpoint=self.update_configuration,
+            methods=["POST"],
+        )
+
+        app.mount(
+            path="/frontend",
+            app=StaticFiles(directory=get_frontend_path(), html=True),
+            name="example_files",
+        )
 
         app.include_router(router)
         uvicorn.run(app, host="0.0.0.0", port=8000)
@@ -123,11 +139,12 @@ class AgentServer(AppProcess):
         try:
             return self.execution_manager_client.add_execution(graph_id, node_input)
         except Exception as e:
-            msg = e.__str__().encode().decode('unicode_escape')
+            msg = e.__str__().encode().decode("unicode_escape")
             raise HTTPException(status_code=400, detail=msg)
 
     async def get_executions(
-            self, graph_id: str, run_id: str) -> list[execution.ExecutionResult]:
+        self, graph_id: str, run_id: str
+    ) -> list[execution.ExecutionResult]:
         graph = await get_graph(graph_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Agent #{graph_id} not found.")
@@ -152,3 +169,31 @@ class AgentServer(AppProcess):
     def get_execution_schedules(self, graph_id: str) -> dict[str, str]:
         execution_scheduler = self.execution_scheduler_client
         return execution_scheduler.get_execution_schedules(graph_id)
+
+    def update_configuration(
+        self,
+        updated_settings: Annotated[
+            Dict[str, Any], Body(examples=[{"config": {"num_workers": 10}}])
+        ],
+    ):
+        settings = Settings()
+        try:
+            updated_fields = {"config": [], "secrets": []}
+            for key, value in updated_settings.get("config", {}).items():
+                if hasattr(settings.config, key):
+                    setattr(settings.config, key, value)
+                    updated_fields["config"].append(key)
+            for key, value in updated_settings.get("secrets", {}).items():
+                if hasattr(settings.secrets, key):
+                    setattr(settings.secrets, key, value)
+                    updated_fields["secrets"].append(key)
+            settings.save()
+            return JSONResponse(
+                content={
+                    "message": "Settings updated successfully",
+                    "updated_fields": updated_fields,
+                },
+                status_code=200,
+            )
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
