@@ -149,7 +149,7 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
         self.reset_trace()
 
         # Get directives
-        directives = self.state.directives.copy(deep=True)
+        directives = self.state.directives.model_copy(deep=True)
         directives.resources += await self.run_pipeline(DirectiveProvider.get_resources)
         directives.constraints += await self.run_pipeline(
             DirectiveProvider.get_constraints

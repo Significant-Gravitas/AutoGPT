@@ -197,7 +197,7 @@ chat_model_mapping = {
 }
 for base, copies in chat_model_mapping.items():
     for copy in copies:
-        copy_info = OPEN_AI_CHAT_MODELS[base].copy(update={"name": copy})
+        copy_info = OPEN_AI_CHAT_MODELS[base].model_copy(update={"name": copy})
         OPEN_AI_CHAT_MODELS[copy] = copy_info
         if copy.endswith(("-0301", "-0314")):
             copy_info.has_function_call_api = False
@@ -367,7 +367,7 @@ class OpenAIProvider(
         num_tokens = 0
         for message in messages:
             num_tokens += tokens_per_message
-            for key, value in message.dict().items():
+            for key, value in message.model_dump().items():
                 num_tokens += len(tokenizer.encode(value))
                 if key == "name":
                     num_tokens += tokens_per_name
@@ -625,4 +625,4 @@ def _tool_calls_compat_extract_calls(response: str) -> Iterator[AssistantToolCal
 
     for t in tool_calls:
         t["id"] = str(uuid.uuid4())
-        yield AssistantToolCall.parse_obj(t)
+        yield AssistantToolCall.model_validate(t)

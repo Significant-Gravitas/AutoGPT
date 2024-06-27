@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from pathlib import Path
 import click
 
 from agbenchmark.reports.processing.report_types import Report
@@ -14,7 +15,7 @@ def print_markdown_report(report_json_file: str):
     :param report_json_file: Path to the report.json file.
     :return: A string containing the Markdown formatted report.
     """
-    report = Report.parse_file(report_json_file)
+    report = Report.model_validate_json(Path(report_json_file).read_text())
 
     # Header and metadata
     click.echo("# Benchmark Report")

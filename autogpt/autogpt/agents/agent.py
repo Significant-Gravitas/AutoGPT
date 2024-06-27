@@ -100,7 +100,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         super().__init__(settings)
 
         self.llm_provider = llm_provider
-        prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
+        prompt_config = OneShotAgentPromptStrategy.default_configuration.model_copy(deep=True)
         prompt_config.use_functions_api = (
             settings.config.use_functions_api
             # Anthropic currently doesn't support tools + prefilling :(
@@ -150,13 +150,17 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             The command name and arguments, if any, and the agent's thoughts.
         """
         self.reset_trace()
+        #TODO kcze remove
+        configs = self.dump_component_configs()
+        logger.info(configs)
+        self.load_component_configs(configs)
 
         # Get directives
         resources = await self.run_pipeline(DirectiveProvider.get_resources)
         constraints = await self.run_pipeline(DirectiveProvider.get_constraints)
         best_practices = await self.run_pipeline(DirectiveProvider.get_best_practices)
 
-        directives = self.state.directives.copy(deep=True)
+        directives = self.state.directives.model_copy(deep=True)
         directives.resources += resources
         directives.constraints += constraints
         directives.best_practices += best_practices

@@ -6,7 +6,7 @@ from typing import ClassVar, Iterator, Literal
 import pytest
 import requests
 from agent_protocol_client import AgentApi, Step
-from pydantic import BaseModel, ValidationError, validator
+from pydantic import BaseModel, ValidationError, ValidationInfo, field_validator
 
 from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.utils.data_types import Category, EvalResult
@@ -214,17 +214,18 @@ class WebArenaChallengeSpec(BaseModel):
 
         eval_types: list[EvalType]
 
-        @validator("eval_types")
-        def check_eval_parameters(cls, v: list[EvalType], values):
-            if "string_match" in v and not values.get("reference_answers"):
+        @field_validator("eval_types")
+        @classmethod
+        def check_eval_parameters(cls, value: list[EvalType], info: ValidationInfo):
+            if "string_match" in value and not info.data["reference_answers"]:
                 raise ValueError("'string_match' eval_type requires reference_answers")
-            if "url_match" in v and not values.get("reference_url"):
+            if "url_match" in value and not info.data["reference_url"]:
                 raise ValueError("'url_match' eval_type requires reference_url")
-            if "program_html" in v and not values.get("program_html"):
+            if "program_html" in value and not info.data["program_html"]:
                 raise ValueError(
                     "'program_html' eval_type requires at least one program_html eval"
                 )
-            return v
+            return value
 
         @property
         def evaluators(self) -> list[_Eval]:
@@ -292,7 +293,7 @@ class WebArenaChallenge(BaseChallenge):
         results = requests.get(source_url).json()["data"]
         if not results:
             raise ValueError(f"Could not fetch challenge {source_uri}")
-        return cls.from_challenge_spec(WebArenaChallengeSpec.parse_obj(results[0]))
+        return cls.from_challenge_spec(WebArenaChallengeSpec.model_validate(results[0]))
 
     @classmethod
     def from_challenge_spec(
@@ -500,7 +501,7 @@ def load_webarena_challenges(
     skipped = 0
     for entry in challenge_dicts:
         try:
-            challenge_spec = WebArenaChallengeSpec.parse_obj(entry)
+            challenge_spec = WebArenaChallengeSpec.model_validate(entry)
         except ValidationError as e:
             failed += 1
             logger.warning(f"Error validating WebArena challenge entry: {entry}")

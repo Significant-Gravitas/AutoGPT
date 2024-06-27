@@ -120,7 +120,7 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
         logger: Optional[logging.Logger] = None,
     ):
         if not settings:
-            settings = self.default_settings.copy(deep=True)
+            settings = self.default_settings.model_copy(deep=True)
         if not settings.credentials:
             settings.credentials = AnthropicCredentials.from_env()
 
@@ -241,7 +241,7 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
                 )
                 if attempts < self._configuration.fix_failed_parse_tries:
                     anthropic_messages.append(
-                        _assistant_msg.dict(include={"role", "content"})  # type: ignore
+                        _assistant_msg.model_dump(include={"role", "content"})  # type: ignore
                     )
                     anthropic_messages.append(
                         {

@@ -25,7 +25,7 @@ class FileManagerConfiguration(BaseModel):
     class Config:
         # Prevent mutation of the configuration
         # as this wouldn't be reflected in the file storage
-        allow_mutation = False
+        frozen = False
 
 
 class FileManagerComponent(

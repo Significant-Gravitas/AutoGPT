@@ -100,7 +100,7 @@ def get_reports():
                         # Load the JSON data from the file
                         json_data = json.load(f)
                         print(f"Processing {report_file}")
-                        report = Report.parse_obj(json_data)
+                        report = Report.model_validate(json_data)
 
                         for test_name, test_data in report.tests.items():
                             test_json = {

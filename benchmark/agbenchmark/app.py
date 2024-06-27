@@ -52,7 +52,7 @@ while challenge_spec_files:
 
     logger.debug(f"Loading {challenge_relpath}...")
     try:
-        challenge_info = ChallengeInfo.parse_file(challenge_spec_file)
+        challenge_info = ChallengeInfo.model_validate_json(Path(challenge_spec_file).read_text())
     except ValidationError as e:
         if logging.getLogger().level == logging.DEBUG:
             logger.warning(f"Spec file {challenge_relpath} failed to load:\n{e}")
@@ -64,7 +64,7 @@ while challenge_spec_files:
         challenge_info.eval_id = str(uuid.uuid4())
         # this will sort all the keys of the JSON systematically
         # so that the order is always the same
-        write_pretty_json(challenge_info.dict(), challenge_spec_file)
+        write_pretty_json(challenge_info.model_dump(), challenge_spec_file)
 
     CHALLENGES[challenge_info.eval_id] = challenge_info
 
@@ -153,7 +153,7 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
         pids = find_agbenchmark_without_uvicorn()
         logger.info(f"pids already running with agbenchmark: {pids}")
 
-        logger.debug(f"Request to /reports: {body.dict()}")
+        logger.debug(f"Request to /reports: {body.model_dump()}")
 
         # Start the benchmark in a separate thread
         benchmark_process = Process(

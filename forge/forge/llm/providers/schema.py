@@ -289,7 +289,7 @@ class BaseModelProvider(
         logger: Optional[logging.Logger] = None,
     ):
         if not settings:
-            settings = self.default_settings.copy(deep=True)
+            settings = self.default_settings.model_copy(deep=True)
 
         self._settings = settings
         self._configuration = settings.configuration
@@ -356,7 +356,7 @@ class EmbeddingModelResponse(ModelResponse):
     """Standard response struct for a response from an embedding model."""
 
     embedding: Embedding = Field(default_factory=list)
-    completion_tokens_used: int = Field(default=0, const=True)
+    completion_tokens_used: int = Field(default=0, frozen=True)
 
 
 class BaseEmbeddingModelProvider(BaseModelProvider[_ModelName, _ModelProviderSettings]):
