@@ -1,6 +1,7 @@
 from typing import Annotated, Any, Dict
 import uuid
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ from autogpt_server.data.graph import (
     Link,
 )
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
+from autogpt_server.util.data import get_data_path, get_frontend_path
 from autogpt_server.util.process import AppProcess
 from autogpt_server.util.service import get_service_client
 from autogpt_server.util.settings import Settings
@@ -91,6 +93,12 @@ class AgentServer(AppProcess):
             path="/settings",
             endpoint=self.update_configuration,
             methods=["POST"],
+        )
+
+        app.mount(
+            path="/",
+            app=StaticFiles(directory=get_frontend_path(), html=True),
+            name="example_files",
         )
 
         app.include_router(router)
