@@ -7,6 +7,7 @@ import os
 LOG = ForgeLogger(__name__)
 API_KEY = os.getenv("ERASERIO_API_KEY")
 
+
 @action(
     name="gen-diagram-eraserio",
     description="Generate a code diagram using eraser.io",
@@ -26,9 +27,10 @@ API_KEY = os.getenv("ERASERIO_API_KEY")
     ],
     output_type="str"
 )
-async def generate_diagram(agent, task_id: str, specification: str, code: str) -> str:
+async def generate_architecture_diagram(agent, task_id: str, specification: str, code: str) -> str:
     prompt_engine = PromptEngine("gpt-3.5-turbo")
-    diagram_prompt = prompt_engine.load_prompt("diagram-prompt", specification=specification, code=code)
+    diagram_prompt = prompt_engine.load_prompt(
+        "diagram-prompt", specification=specification, code=code)
 
     url = "https://app.eraser.io/api/render/prompt"
 
@@ -57,3 +59,5 @@ async def generate_diagram(agent, task_id: str, specification: str, code: str) -
         return "Failed to generate diagram."
 
 
+async def generate_use_case_diagram(code):
+    pass
