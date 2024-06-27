@@ -214,20 +214,17 @@ const Flow: React.FC = () => {
 
     let inputData: { [key: string]: any } = {};
     const inputProperties = nodeSchema.inputSchema.properties;
-    const requiredProperties = nodeSchema.inputSchema.required || [];
-
-    // Initialize inputData with default values for all required properties
-    requiredProperties.forEach(prop => {
-      inputData[prop] = node.data.hardcodedValues[prop] || '';
-    });
 
     Object.keys(inputProperties).forEach(prop => {
       const inputEdges = allEdges.filter(edge => edge.target === node.id && edge.targetHandle === prop);
       if (inputEdges.length > 0) {
-        inputData[prop] = inputEdges.map(edge => {
-          const sourceNode = allNodes.find(n => n.id === edge.source);
-          return sourceNode?.data.output_data || sourceNode?.data.hardcodedValues[prop] || '';
-        })[0];  // Just get the first connected output
+        const sourceNode = allNodes.find(n => n.id === inputEdges[0].source);
+        if (sourceNode && sourceNode.data.output_data) {
+          // Map the output of the source node to the input of the target node
+          const sourceOutput = sourceNode.data.output_data;
+          const outputKey = Object.keys(sourceOutput)[0]; // Assume first output key
+          inputData[prop] = sourceOutput[outputKey];
+        }
       } else if (node.data.hardcodedValues && node.data.hardcodedValues[prop]) {
         inputData[prop] = node.data.hardcodedValues[prop];
       }
