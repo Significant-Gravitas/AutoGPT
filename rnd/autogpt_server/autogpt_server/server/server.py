@@ -2,7 +2,7 @@ import uuid
 import uvicorn
 
 from contextlib import asynccontextmanager
-from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException, WebSocket
 
 from autogpt_server.data import db, execution, block
 from autogpt_server.data.graph import (
@@ -18,7 +18,6 @@ from autogpt_server.util.service import get_service_client
 
 
 class AgentServer(AppProcess):
-
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
         await db.connect()
@@ -84,8 +83,15 @@ class AgentServer(AppProcess):
             endpoint=self.update_schedule,
             methods=["PUT"],
         )
-
         app.include_router(router)
+
+        @app.websocket("/ws")
+        async def websocket_endpoint(websocket: WebSocket):
+            await websocket.accept()
+            while True:
+                data = await websocket.receive_text()
+                await websocket.send_text(f"Message text was: {data}")
+
         uvicorn.run(app, host="0.0.0.0", port=8000)
 
     @property
@@ -123,11 +129,12 @@ class AgentServer(AppProcess):
         try:
             return self.execution_manager_client.add_execution(graph_id, node_input)
         except Exception as e:
-            msg = e.__str__().encode().decode('unicode_escape')
+            msg = e.__str__().encode().decode("unicode_escape")
             raise HTTPException(status_code=400, detail=msg)
 
     async def get_executions(
-            self, graph_id: str, run_id: str) -> list[execution.ExecutionResult]:
+        self, graph_id: str, run_id: str
+    ) -> list[execution.ExecutionResult]:
         graph = await get_graph(graph_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Agent #{graph_id} not found.")

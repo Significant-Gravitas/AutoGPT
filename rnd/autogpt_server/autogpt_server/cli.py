@@ -109,5 +109,15 @@ def event():
     print("Event sent")
 
 
+@test.command()
+def websocket():
+    """
+    Tests the websocket connection.
+    """
+    print("Testing WS")
+
+
+main.add_command(test)
+
 if __name__ == "__main__":
     main()
