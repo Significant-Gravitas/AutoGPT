@@ -110,10 +110,22 @@ def event():
 
 
 @test.command()
-def websocket():
+@click.argument("server_address")
+def websocket(server_address):
     """
     Tests the websocket connection.
     """
+    import asyncio
+    import websockets
+
+    async def send_message(server_address):
+        uri = f"ws://{server_address}"
+        async with websockets.connect(uri) as websocket:
+            await websocket.send("Hello World")
+            response = await websocket.recv()
+            print(f"Response from server: {response}")
+
+    asyncio.run(send_message(server_address))
     print("Testing WS")
 
 
