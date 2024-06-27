@@ -1,105 +1,65 @@
-# AutoGPT: build & use AI agents
+# SoloAgent: AI-Powered MVP Generator
 
-[![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt) &ensp;
-[![Twitter Follow](https://img.shields.io/twitter/follow/Auto_GPT?style=social)](https://twitter.com/Auto_GPT) &ensp;
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+## Overview
+SoloAgent is an innovative AI-powered tool designed to streamline the development of Minimum Viable Products (MVPs). By leveraging AI, SoloAgent allows developers to input prompts and receive both backend and frontend code as outputs, including unit tests, drastically reducing the time and effort required to build and test a fully functional MVP across various platforms and technologies.
 
-**AutoGPT** is a generalist LLM based AI agent that can autonomously accomplish minor tasks. 
+## Features
+- **AI-Powered Code Generation:** Input a prompt and receive backend and frontend code.
+- **Unit Test Generation:** Automatically generate unit tests for the generated code.
+- **Platform Agnostic:** Supports multiple platforms and technologies for versatile MVP development.
+- **End-to-End Solution:** Provides a complete solution, from backend logic to frontend interface and testing.
 
-**Examples**:
+## Getting Started
 
-- Look up and summarize this research paper
-- Write a marketing for food supplements
-- Write a blog post detailing the news in AI
+### Prerequisites
+- Python 3.8 or higher
+- Node.js and npm
+- An OpenAI API key
 
-Our mission is to provide the tools, so that you can focus on what matters:
+### Installation
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/botirk38/SoloAgent.git
+   cd SoloAgent
+   ```
 
-- 🏗️ **Building** - Lay the foundation for something amazing.
-- 🧪 **Testing** - Fine-tune your agent to perfection.
-- 🤝 **Delegating** - Let AI work for you, and have your ideas come to life.
+2. **Set up a virtual environment and install dependencies:**
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ./run setup
+   poetry shell
+    
+   ```
 
-Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI innovation.
+3. **Set up environment variables:**
+   Create a `.env` file in the root directory and add your OpenAI API key:
+   ```plaintext
+   OPENAI_API_KEY=your_openai_api_key
+   ```
 
-**📖 [Documentation](https://docs.agpt.co)**
-&ensp;|&ensp;
-**🚀 [Contributing](CONTRIBUTING.md)**
-&ensp;|&ensp;
-**🛠️ [Build your own Agent - Quickstart](QUICKSTART.md)**
-
-## 🧱 Building blocks
-
-### 🏗️ Forge
-
-**Forge your own agent!** &ndash; Forge is a ready-to-go template for your agent application. All the boilerplate code is already handled, letting you channel all your creativity into the things that set *your* agent apart. All tutorials are located [here](https://medium.com/@aiedge/autogpt-forge-e3de53cc58ec). Components from the [`forge.sdk`](/forge/forge/sdk) can also be used individually to speed up development and reduce boilerplate in your agent project.
-
-🚀 [**Getting Started with Forge**](https://github.com/Significant-Gravitas/AutoGPT/blob/master/forge/tutorials/001_getting_started.md) &ndash;
-This guide will walk you through the process of creating your own agent and using the benchmark and user interface.
-
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/forge) about Forge
-
-### 🎯 Benchmark
-
-**Measure your agent's performance!** The `agbenchmark` can be used with any agent that supports the agent protocol, and the integration with the project's [CLI] makes it even easier to use with AutoGPT and forge-based agents. The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
-
-<!-- TODO: insert visual demonstrating the benchmark -->
-
-📦 [`agbenchmark`](https://pypi.org/project/agbenchmark/) on Pypi
-&ensp;|&ensp;
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark) about the Benchmark
-
-### 💻 UI
-
-**Makes agents easy to use!** The `frontend` gives you a user-friendly interface to control and monitor your agents. It connects to agents through the [agent protocol](#-agent-protocol), ensuring compatibility with many agents from both inside and outside of our ecosystem.
-
-<!-- TODO: insert screenshot of front end -->
-
-The frontend works out-of-the-box with all agents in the repo. Just use the [CLI] to run your agent of choice!
-
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/frontend) about the Frontend
-
-### ⌨️ CLI
-
-[CLI]: #-cli
-
-To make it as easy as possible to use all of the tools offered by the repository, a CLI is included at the root of the repo:
-
-```shell
-$ ./run
-Usage: cli.py [OPTIONS] COMMAND [ARGS]...
-
-Options:
-  --help  Show this message and exit.
-
-Commands:
-  agent      Commands to create, start and stop agents
-  benchmark  Commands to start the benchmark and list tests and categories
-  setup      Installs dependencies needed for your system.
+### Usage
+```
+  ./run start SoloAgent
 ```
 
-Just clone the repo, install dependencies with `./run setup`, and you should be good to go!
+### Example Prompt
+```
+Create a simple to-do application with user authentication. The backend should be built with Node.js and Express, and the frontend should use React. Include unit tests for the API endpoints and React components.
+```
 
-## 🤔 Questions? Problems? Suggestions?
+## Documentation
+Detailed documentation explaining the approach, the AI model used, how the prompts are processed, and the code generation process can be found in the [docs](docs) directory.
 
-### Get help - [Discord 💬](https://discord.gg/autogpt)
+## Contributing
+We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.md) for more details.
 
-[![Join us on Discord](https://invidget.switchblade.xyz/autogpt)](https://discord.gg/autogpt)
+## License
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
 
-To report a bug or request a feature, create a [GitHub Issue](https://github.com/Significant-Gravitas/AutoGPT/issues/new/choose). Please ensure someone else hasn’t created an issue for the same topic.
-
-## 🤝 Sister projects
-
-### 🔄 Agent Protocol
-
-To maintain a uniform standard and ensure seamless compatibility with many current and future applications, AutoGPT employs the [agent protocol](https://agentprotocol.ai/) standard by the AI Engineer Foundation. This standardizes the communication pathways from your agent to the frontend and benchmark.
+## Contact
+For any questions or feedback, please open an issue on GitHub or contact us at [btrghstk@gmail.com].
 
 ---
 
-<p align="center">
-<a href="https://star-history.com/#Significant-Gravitas/AutoGPT">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Significant-Gravitas/AutoGPT&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Significant-Gravitas/AutoGPT&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Significant-Gravitas/AutoGPT&type=Date" />
-  </picture>
-</a>
-</p>
+Get ready to revolutionize MVP development with SoloAgent. We look forward to your feedback and contributions!
