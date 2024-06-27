@@ -12,7 +12,7 @@ python = "^3.10"
 pytest = "^7.3.2"
 requests = "^2.31.0"
 openai = "^1.7.2"
-pydantic = "^1.10.9"
+pydantic = "^2.7.2"
 python-dotenv = "^1.0.0"
 click = "^8.1.3"
 types-requests = "^2.31.0.1"
@@ -32,7 +32,7 @@ python-multipart = "^0.0.7"
 toml = "^0.10.2"
 # helicone = "^1.0.9"  # incompatible with openai@^1.0.0
 httpx = "^0.24.0"
-agent-protocol-client = "^1.1.0"
+agent-protocol-client = {git = "https://github.com/AI-Engineer-Foundation/agent-protocol.git", subdirectory = "packages/client/python"}
 click-default-group = "^1.2.4"
 tabulate = "^0.9.0"
 

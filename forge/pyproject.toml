@@ -9,6 +9,7 @@ packages = [{ include = "forge" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
+agent-protocol-client = {git = "https://github.com/AI-Engineer-Foundation/agent-protocol.git", subdirectory = "packages/client/python"}
 agbenchmark = { path = "../benchmark", optional = true }
 # agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
 aiohttp = "^3.8.5"
@@ -36,7 +37,7 @@ litellm = "^1.17.9"
 openai = "^1.7.2"
 Pillow = "*"
 playsound = "~1.2.2"
-pydantic = "*"
+pydantic = "^2.7.2"
 python-docx = "*"
 python-dotenv = "^1.0.0"
 python-multipart = "^0.0.7"

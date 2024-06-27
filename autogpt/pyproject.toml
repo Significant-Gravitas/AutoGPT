@@ -50,7 +50,7 @@ spacy = "^3.7.4"
 tenacity = "^8.2.2"
 
 # OpenAI and Generic plugins import
-openapi-python-client = "^0.14.0"
+openapi-python-client = "^0.21.0"
 
 # Benchmarking
 agbenchmark = { path = "../benchmark", optional = true }
