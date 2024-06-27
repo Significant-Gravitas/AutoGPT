@@ -1,7 +1,6 @@
 
 from __future__ import annotations
-
-
+from typing import Dict
 from ..registry import action
 from forge.sdk import ForgeLogger, PromptEngine
 from forge.llm import chat_completion_request
@@ -9,9 +8,13 @@ import os
 from forge.sdk import Agent, LocalWorkspace
 import re
 import subprocess
+import json
+
 LOG = ForgeLogger(__name__)
 
 
+CodeType = Dict[str, str]
+TestCaseType = Dict[str, str]
 
 
 @action(
@@ -27,11 +30,10 @@ LOG = ForgeLogger(__name__)
     ],
     output_type="str",
 )
-
 async def test_code(agent: Agent, task_id: str, project_path: str) -> str:
     try:
-        result = subprocess.run(['cargo', 'test'], cwd=project_path, capture_output=True, text=True)
-
+        result = subprocess.run(
+            ['cargo', 'test'], cwd=project_path, capture_output=True, text=True)
 
         if result.returncode != 0:
             LOG.error(f"Test failed with errors: {result.stderr}")
@@ -43,6 +45,7 @@ async def test_code(agent: Agent, task_id: str, project_path: str) -> str:
     except Exception as e:
         LOG.error(f"Error testing code: {e}")
         return f"Failed to test code: {e}"
+
 
 @action(
     name="generate_solana_code",
@@ -112,8 +115,6 @@ async def generate_solana_code(agent: Agent, task_id: str, specification: str) -
     anchor-lang = "0.30.1"
     """
 
-
-
     LOG.info(f"id: {task_id}")
     LOG.info(f"Parts: {response_content}")
     await agent.abilities.run_action(
@@ -133,12 +134,11 @@ async def generate_solana_code(agent: Agent, task_id: str, specification: str) -
     )
     test_result = await agent.abilities.run_action(task_id, "test_code", project_path=project_path)
     if "All tests passed" not in test_result:
-            # Regenerate the code based on errors
-            LOG.info(f"Regenerating code due to errors: {test_result}")
-            return await generate_solana_code(agent, task_id, specification)
+        # Regenerate the code based on errors
+        LOG.info(f"Regenerating code due to errors: {test_result}")
+        return await generate_solana_code(agent, task_id, specification)
 
     return "Solana on-chain code generated, tested, and verified successfully."
-
 
 
 @action(
@@ -210,6 +210,99 @@ async def generate_frontend_code(agent, task_id: str, specification: str) -> str
     return "Modular frontend code generated and written to respective files."
 
 
+@action(
+    name="generate_unit_tests",
+    description="Generates unit tests for Solana code.",
+    parameters=[
+        {
+            "name": "code_dict",
+            "description": "Dictionary containing file names and respective code generated.",
+            "type": "dict",
+            "required": True
+        }
+    ],
+    output_type="str",
+)
+async def generate_test_cases(agent: Agent, task_id: str, code_dict: CodeType) -> str:
+    prompt_engine = PromptEngine("gpt-3.5-turbo")
+    test_struct_prompt = prompt_engine.load_prompt("test-case-struct-return")
+
+    messages = [
+        {"role": "system", "content": "You are a code generation assistant specialized in generating test cases."},
+    ]
+
+    for file_name, code in code_dict.items():
+        LOG.info(f"File Name: {file_name}")
+        LOG.info(f"Code: {code}")
+        test_prompt = prompt_engine.load_prompt(
+            "test-case-generation", file_name=file_name, code=code)
+        messages.append({"role": "user", "content": test_prompt})
+
+    messages.append({"role": "user", "content": test_struct_prompt})
+
+    chat_completion_kwargs = {
+        "messages": messages,
+        "model": "gpt-3.5-turbo",
+    }
+
+    chat_response = await chat_completion_request(**chat_completion_kwargs)
+    response_content = chat_response["choices"][0]["message"]["content"]
+
+    LOG.info(f"Response content: {response_content}")
+
+    base_path = agent.workspace.base_path if isinstance(
+        agent.workspace, LocalWorkspace) else str(agent.workspace.base_path)
+    project_path = os.path.join(base_path, task_id)
+
+    try:
+        test_cases = parse_test_cases_response(response_content)
+    except Exception as e:
+        LOG.error(f"Error parsing test cases response: {e}")
+        return "Failed to generate test cases due to response parsing error."
+
+    for file_name, test_case in test_cases.items():
+        test_file_path = os.path.join(project_path, 'tests', file_name)
+        await agent.abilities.run_action(
+            task_id, "write_file", file_path=test_file_path, data=test_case.encode()
+        )
+
+    return "Test cases generated and written to respective files."
+
+
+def sanitize_json_string(json_string: str) -> str:
+    # Replace newlines and tabs with escaped versions
+    sanitized_string = json_string.replace(
+        '\n', '\\n').replace('\t', '\\t').replace('    ', '\\t')
+    return sanitized_string
+
+
+def parse_test_cases_response(response_content: str) -> TestCaseType:
+    try:
+        # Extract JSON part from response content
+        json_start = response_content.index('{')
+        json_end = response_content.rindex('}') + 1
+        json_content = response_content[json_start:json_end]
+
+        # Sanitize JSON content
+        sanitized_content = sanitize_json_string(json_content)
+
+        # Load JSON content
+        response_dict = json.loads(sanitized_content)
+
+        file_name = response_dict["file_name"]
+        test_file = response_dict["test_file"]
+
+        # Unescape newlines and tabs in test_file
+        test_file = test_file.replace('\\n', '\n').replace(
+            '\\t', '\t').strip().strip('"')
+
+        test_cases = {file_name: test_file}
+        return test_cases
+    except (json.JSONDecodeError, ValueError) as e:
+        LOG.error(f"Error decoding JSON response: {e}")
+        raise
+
+
 def parse_response_content(response_content: str) -> dict:
     # This function will split the response content into different parts
     parts = {
@@ -239,3 +332,16 @@ def parse_response_content(response_content: str) -> dict:
         parts[key] = re.sub(r'```|rust|toml', '', parts[key]).strip()
 
     return parts
+
+
+def parse_test_cases_response(response_content: str) -> TestCaseType:
+    # Correctly parse the JSON response content by escaping control characters
+    try:
+        response_dict = json.loads(response_content)
+        file_name = response_dict["file_name"]
+        test_file = response_dict["test_file"]
+        test_cases = {file_name: test_file}
+        return test_cases
+    except json.JSONDecodeError as e:
+        LOG.error(f"Error decoding JSON response: {e}")
+        raise
