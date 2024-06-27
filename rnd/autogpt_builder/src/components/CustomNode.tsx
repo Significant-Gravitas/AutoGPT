@@ -1,15 +1,21 @@
 import React, { useState, useEffect, FC, memo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import 'reactflow/dist/style.css';
+import './customnode.css'; // Ensure this CSS file is imported
+import ModalComponent from './ModalComponent'; // Import the modal component
 
 type Schema = {
+  type: string;
   properties: { [key: string]: any };
+  required?: string[];
 };
 
-const CustomNode: FC<NodeProps> = ({ data }) => {
+const CustomNode: FC<NodeProps> = ({ data, id }) => {
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(data.isPropertiesOpen || false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [modalValue, setModalValue] = useState<string>('');
 
-  // Automatically open properties when output_data or status is updated
   useEffect(() => {
     if (data.output_data || data.status) {
       setIsPropertiesOpen(true);
@@ -24,7 +30,7 @@ const CustomNode: FC<NodeProps> = ({ data }) => {
     if (!schema?.properties) return null;
     const keys = Object.keys(schema.properties);
     return keys.map((key) => (
-      <div key={key} style={{ display: 'flex', alignItems: 'center', position: 'relative', marginBottom: '5px' }}>
+      <div key={key} className="handle-container">
         {type === 'target' && (
           <>
             <Handle
@@ -33,12 +39,12 @@ const CustomNode: FC<NodeProps> = ({ data }) => {
               id={key}
               style={{ background: '#555', borderRadius: '50%' }}
             />
-            <span style={{ color: '#e0e0e0', marginLeft: '10px' }}>{key}</span>
+            <span className="handle-label">{key}</span>
           </>
         )}
         {type === 'source' && (
           <>
-            <span style={{ color: '#e0e0e0', marginRight: '10px' }}>{key}</span>
+            <span className="handle-label">{key}</span>
             <Handle
               type={type}
               position={Position.Right}
@@ -57,57 +63,160 @@ const CustomNode: FC<NodeProps> = ({ data }) => {
   };
 
   const isHandleConnected = (key: string) => {
-    return data.connections.some((conn: string) => {
-      const [, target] = conn.split(' -> ');
+    return data.connections && data.connections.some((conn: string) => {
+      const [source, target] = conn.split(' -> ');
       return target.includes(key) && target.includes(data.title);
     });
   };
 
-  const hasDisconnectedHandle = (key: string) => {
-    return !isHandleConnected(key);
+  const handleInputClick = (key: string) => {
+    setActiveKey(key);
+    setModalValue(data.hardcodedValues[key] || '');
+    setIsModalOpen(true);
+  };
+
+  const handleModalSave = (value: string) => {
+    if (activeKey) {
+      handleInputChange(activeKey, value);
+    }
+    setIsModalOpen(false);
+    setActiveKey(null);
+  };
+
+  const renderInputField = (key: string, schema: any) => {
+    switch (schema.type) {
+      case 'string':
+        return schema.enum ? (
+          <div key={key} className="input-container">
+            <select
+              value={data.hardcodedValues[key] || ''}
+              onChange={(e) => handleInputChange(key, e.target.value)}
+              className="select-input"
+            >
+              {schema.enum.map((option: string) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div key={key} className="input-container">
+            <div className="clickable-input" onClick={() => handleInputClick(key)}>
+              {data.hardcodedValues[key] || `Enter ${key}`}
+            </div>
+          </div>
+        );
+      case 'boolean':
+        return (
+          <div key={key} className="input-container">
+            <label className="radio-label">
+              <input
+                type="radio"
+                value="true"
+                checked={data.hardcodedValues[key] === true}
+                onChange={() => handleInputChange(key, true)}
+              />
+              True
+            </label>
+            <label className="radio-label">
+              <input
+                type="radio"
+                value="false"
+                checked={data.hardcodedValues[key] === false}
+                onChange={() => handleInputChange(key, false)}
+              />
+              False
+            </label>
+          </div>
+        );
+      case 'integer':
+      case 'number':
+        return (
+          <div key={key} className="input-container">
+            <input
+              type="number"
+              value={data.hardcodedValues[key] || ''}
+              onChange={(e) => handleInputChange(key, parseFloat(e.target.value))}
+              className="number-input"
+            />
+          </div>
+        );
+      case 'array':
+        if (schema.items && schema.items.type === 'string' && schema.items.enum) {
+          return (
+            <div key={key} className="input-container">
+              <select
+                value={data.hardcodedValues[key] || ''}
+                onChange={(e) => handleInputChange(key, e.target.value)}
+                className="select-input"
+              >
+                {schema.items.enum.map((option: string) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+          );
+        }
+        return null;
+      default:
+        return null;
+    }
   };
 
   return (
-    <div style={{ padding: '20px', border: '2px solid #fff', borderRadius: '20px', background: '#333', color: '#e0e0e0', width: '250px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-        <div style={{ fontSize: '18px', fontWeight: 'bold' }}>
-          {data?.title.replace(/\d+/g, '')}
-        </div>
-        <button
-          onClick={toggleProperties}
-          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#e0e0e0' }}
-        >
+    <div className="custom-node">
+      <div className="node-header">
+        <div className="node-title">{data?.title.replace(/\d+/g, '')}</div>
+        <button onClick={toggleProperties} className="toggle-button">
           &#9776;
         </button>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', gap: '20px' }}>
-        <div>
-          {data.inputSchema && generateHandles(data.inputSchema, 'target')}
-          {data.inputSchema && Object.keys(data.inputSchema.properties).map(key => (
-            hasDisconnectedHandle(key) && (
-              <div key={key} style={{ marginBottom: '5px' }}>
-                <input
-                  type="text"
-                  placeholder={`Enter ${key}`}
-                  value={data.hardcodedValues[key] || ''}
-                  onChange={(e) => handleInputChange(key, e.target.value)}
-                  style={{ width: '100%', padding: '5px', borderRadius: '4px', border: '1px solid #555', background: '#444', color: '#e0e0e0' }}
-                />
+      <div className="node-content">
+        <div className="input-section">
+          {data.inputSchema &&
+            Object.keys(data.inputSchema.properties).map((key) => (
+              <div key={key}>
+                <div className="handle-container">
+                  <Handle
+                    type="target"
+                    position={Position.Left}
+                    id={key}
+                    style={{ background: '#555', borderRadius: '50%' }}
+                  />
+                  <span className="handle-label">{key}</span>
+                </div>
+                {!isHandleConnected(key) && renderInputField(key, data.inputSchema.properties[key])}
               </div>
-            )
-          ))}
+            ))}
         </div>
-        <div>
+        <div className="output-section">
           {data.outputSchema && generateHandles(data.outputSchema, 'source')}
         </div>
       </div>
       {isPropertiesOpen && (
-        <div style={{ marginTop: '10px', background: '#444', padding: '10px', borderRadius: '10px' }}>
+        <div className="node-properties">
           <h4>Node Output</h4>
-          <p><strong>Status:</strong> {typeof data.status === 'object' ? JSON.stringify(data.status) : data.status || 'N/A'}</p>
-          <p><strong>Output Data:</strong> {typeof data.output_data === 'object' ? JSON.stringify(data.output_data) : data.output_data || 'N/A'}</p>
+          <p>
+            <strong>Status:</strong>{' '}
+            {typeof data.status === 'object' ? JSON.stringify(data.status) : data.status || 'N/A'}
+          </p>
+          <p>
+            <strong>Output Data:</strong>{' '}
+            {typeof data.output_data === 'object'
+              ? JSON.stringify(data.output_data)
+              : data.output_data || 'N/A'}
+          </p>
         </div>
       )}
+      <ModalComponent
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSave={handleModalSave}
+        value={modalValue}
+      />
     </div>
   );
 };
