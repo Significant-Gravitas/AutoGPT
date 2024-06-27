@@ -1,0 +1,150 @@
+/* flow.css or index.css */
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #121212;
+  color: #e0e0e0;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+button {
+  background-color: #444;
+  color: #e0e0e0;
+  padding: 10px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+button:hover {
+  background-color: #666;
+}
+
+input, textarea {
+  background-color: #333;
+  color: #e0e0e0;
+  border: 1px solid #555;
+  padding: 8px;
+  border-radius: 4px;
+  width: calc(100% - 18px);
+  box-sizing: border-box;
+  margin-top: 5px;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #aaa;
+}
+
+.modal {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  margin-right: -50%;
+  transform: translate(-50%, -50%);
+  background: #333;
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  color: #e0e0e0;
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.75);
+}
+
+.modal h2 {
+  margin-top: 0;
+}
+
+.modal button {
+  margin-right: 10px;
+}
+
+.modal form {
+  display: flex;
+  flex-direction: column;
+}
+
+.modal form div {
+  margin-bottom: 15px;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: -600px;
+  width: 350px;
+  height: 100%;
+  background-color: #333;
+  color: #fff;
+  padding: 20px;
+  transition: left 0.3s ease;
+  z-index: 1000;
+  overflow-y: auto;
+}
+
+.sidebar.open {
+  left: 0;
+}
+
+.sidebar h3 {
+  margin: 0 0 20px;
+}
+
+.sidebarNodeRowStyle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #444;
+  padding: 10px;
+  border-radius: 4px;
+  cursor: grab;
+}
+
+.sidebarNodeRowStyle.dragging {
+  opacity: 0.5;
+}
+
+.flow-container {
+  width: 100%;
+  height: 600px; /* Adjust this height as needed */
+  position: relative;
+}
+
+.flow-wrapper {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.flow-controls {
+  position: absolute;
+  left: -80px;
+  z-index: 1001;
+  display: flex;
+  gap: 10px;
+  transition: transform 0.3s ease;
+}
+
+.flow-controls.open {
+  transform: translateX(350px);
+}
