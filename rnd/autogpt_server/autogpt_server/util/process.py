@@ -12,7 +12,6 @@ class AppProcess(ABC):
 
     process: Optional[Process] = None
     set_start_method("spawn", force=True)
-    freeze_support()
 
     @abstractmethod
     def run(self):
