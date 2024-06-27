@@ -1,0 +1,76 @@
+.custom-node {
+  padding: 20px;
+  border: 2px solid #fff;
+  border-radius: 20px;
+  background: #333;
+  color: #e0e0e0;
+  width: 250px;
+}
+
+.node-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.node-title {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.toggle-button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #e0e0e0;
+}
+
+.node-content {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.handle-container {
+  display: flex;
+  align-items: center;
+  position: relative;
+  margin-bottom: 5px;
+}
+
+.handle-label {
+  color: #e0e0e0;
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
+.input-container {
+  margin-bottom: 5px;
+}
+
+.dynamic-textarea {
+  width: 100%;
+  padding: 5px;
+  border-radius: 4px;
+  border: 1px solid #555;
+  background: #444;
+  color: #e0e0e0;
+  resize: vertical; /* Allows resizing the textarea vertically */
+}
+
+.node-properties {
+  margin-top: 10px;
+  background: #444;
+  padding: 10px;
+  border-radius: 10px;
+}
+
+.node-properties h4 {
+  margin: 0;
+}
+
+.node-properties p {
+  margin: 5px 0;
+}
