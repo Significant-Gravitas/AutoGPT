@@ -1,11 +1,11 @@
 import time
-
 import pytest
 
 from autogpt_server.data import block, db, execution, graph
 from autogpt_server.executor import ExecutionManager
 from autogpt_server.server import AgentServer
 from autogpt_server.util.service import PyroNameServer
+from autogpt_server.blocks.sample import ParrotBlock, TextFormatterBlock, PrintingBlock
 
 
 async def create_test_graph() -> graph.Graph:
@@ -17,16 +17,16 @@ async def create_test_graph() -> graph.Graph:
     ParrotBlock
     """
     nodes = [
-        graph.Node(block_id=block.ParrotBlock.id),
-        graph.Node(block_id=block.ParrotBlock.id),
+        graph.Node(block_id=ParrotBlock.id),
+        graph.Node(block_id=ParrotBlock.id),
         graph.Node(
-            block_id=block.TextFormatterBlock.id,
+            block_id=TextFormatterBlock.id,
             input_default={
                 "format": "{texts[0]},{texts[1]},{texts[2]}",
                 "texts_$_3": "!!!",
             },
         ),
-        graph.Node(block_id=block.PrintingBlock.id),
+        graph.Node(block_id=PrintingBlock.id),
     ]
     nodes[0].connect(nodes[2], "output", "texts_$_1")
     nodes[1].connect(nodes[2], "output", "texts_$_2")
@@ -37,7 +37,6 @@ async def create_test_graph() -> graph.Graph:
         description="Test graph",
         nodes=nodes,
     )
-    await block.initialize_blocks()
     result = await graph.create_graph(test_graph)
 
     # Assertions
@@ -113,5 +112,6 @@ async def test_agent_execution():
     with PyroNameServer():
         with ExecutionManager(1) as test_manager:
             await db.connect()
+            await block.initialize_blocks()
             test_graph = await create_test_graph()
             await execute_graph(test_manager, test_graph)

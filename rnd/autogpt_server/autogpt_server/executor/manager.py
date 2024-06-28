@@ -57,7 +57,7 @@ def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> ExecutionS
         logger.error(f"Node {node_id} not found.")
         return
 
-    node_block = wait(get_block(node.block_id))
+    node_block = get_block(node.block_id)
     if not node_block:
         logger.error(f"Block {node.block_id} not found.")
         return
@@ -153,7 +153,7 @@ async def validate_exec(node: Node, data: dict[str, Any]) -> tuple[bool, str]:
         A tuple of a boolean indicating if the data is valid, and a message if not.
         Return the executed block name if the data is valid.
     """
-    node_block: Block | None = await get_block(node.block_id)
+    node_block: Block | None = get_block(node.block_id)
     if not node_block:
         return False, f"Block for {node.block_id} not found."
 

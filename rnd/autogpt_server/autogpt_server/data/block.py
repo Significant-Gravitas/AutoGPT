@@ -1,6 +1,5 @@
-import json
 from abc import ABC, abstractmethod
-from typing import Any, Generator, ClassVar
+from typing import Any, Generator, Generic, TypeVar, Type
 
 import jsonschema
 from prisma.models import AgentBlock
@@ -15,73 +14,32 @@ class BlockSchema(BaseModel):
     The dictionary structure is an object-typed `jsonschema`.
     The top-level properties are the block input/output names.
 
-    You can initialize this class by providing a dictionary of properties.
-    The key is the string of the property name, and the value is either
-    a string of the type or a dictionary of the jsonschema.
-
-    You can also provide additional keyword arguments for additional properties.
-    Like `name`, `required` (by default all properties are required), etc.
-
-    Example:
-    input_schema = BlockSchema({
-        "system_prompt": "string",
-        "user_prompt": "string",
-        "max_tokens": "integer",
-        "user_info": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "age": {"type": "integer"},
-            },
-            "required": ["name"],
-        },
-    }, required=["system_prompt", "user_prompt"])
-
-    output_schema = BlockSchema({
-        "on_complete": "string",
-        "on_failures": "string",
-    })
+    BlockSchema is inherently a pydantic schema with some helper methods.
     """
 
-    jsonschema: dict[str, Any]
-
-    def __init__(
-            self,
-            properties: dict[str, str | dict],
-            required: list[str] | None = None,
-            **kwargs: Any,
-    ):
-        schema = {
-            "type": "object",
-            "properties": {
-                key: {"type": value} if isinstance(value, str) else value
-                for key, value in properties.items()
-            },
-            "required": required or list(properties.keys()),
-            **kwargs,
-        }
-        super().__init__(jsonschema=schema)
-
-    def __str__(self) -> str:
-        return json.dumps(self.jsonschema)
-
-    def validate_data(self, data: BlockData) -> str | None:
+    @classmethod
+    def validate_data(cls, data: BlockData) -> str | None:
         """
         Validate the data against the schema.
         Returns the validation error message if the data does not match the schema.
         """
         try:
-            jsonschema.validate(data, self.jsonschema)
+            jsonschema.validate(data, cls.model_json_schema())
             return None
         except jsonschema.ValidationError as e:
             return str(e)
 
-    def validate_field(self, field_name: str, data: BlockData) -> str | None:
+    @classmethod
+    def validate_field(cls, field_name: str, data: BlockData) -> str | None:
         """
         Validate the data against a specific property (one of the input/output name).
         Returns the validation error message if the data does not match the schema.
         """
-        property_schema = self.jsonschema["properties"].get(field_name)
+        model_schema = cls.model_json_schema().get("properties", {})
+        if not model_schema:
+            return f"Invalid model schema {cls}"
+
+        property_schema = model_schema.get(field_name)
         if not property_schema:
             return f"Invalid property name {field_name}"
 
@@ -91,17 +49,29 @@ class BlockSchema(BaseModel):
         except jsonschema.ValidationError as e:
             return str(e)
 
-    def get_fields(self) -> set[str]:
-        return set(self.jsonschema["properties"].keys())
+    @classmethod
+    def get_fields(cls) -> set[str]:
+        return set(cls.model_json_schema().get("properties", {}).keys())
 
-    def get_required_fields(self) -> set[str]:
-        return set(self.jsonschema["required"])
+    @classmethod
+    def get_required_fields(cls) -> set[str]:
+        return set(cls.model_json_schema().get("required", {}))
 
 
 BlockOutput = Generator[tuple[str, Any], None, None]
+BlockSchemaInputType = TypeVar('BlockSchemaInputType', bound=BlockSchema)
+BlockSchemaOutputType = TypeVar('BlockSchemaOutputType', bound=BlockSchema)
 
 
-class Block(ABC, BaseModel):
+class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
+    def __init__(
+            self,
+            input_schema: Type[BlockSchemaInputType] = None,
+            output_schema: Type[BlockSchemaOutputType] = None,
+    ):
+        self.input_schema = input_schema
+        self.output_schema = output_schema
+
     @classmethod
     @property
     @abstractmethod
@@ -113,28 +83,8 @@ class Block(ABC, BaseModel):
         """
         pass
 
-    @classmethod
-    @property
     @abstractmethod
-    def input_schema(cls) -> BlockSchema:
-        """
-        The schema for the block input data.
-        The top-level properties are the possible input name expected by the block.
-        """
-        pass
-
-    @classmethod
-    @property
-    @abstractmethod
-    def output_schema(cls) -> BlockSchema:
-        """
-        The schema for the block output.
-        The top-level properties are the possible output name produced by the block.
-        """
-        pass
-
-    @abstractmethod
-    def run(self, input_data: BlockData) -> BlockOutput:
+    def run(self, input_data: BlockSchemaInputType) -> BlockOutput:
         """
         Run the block with the given input data.
         Args:
@@ -155,8 +105,8 @@ class Block(ABC, BaseModel):
         return {
             "id": self.id,
             "name": self.name,
-            "inputSchema": self.input_schema.jsonschema,
-            "outputSchema": self.output_schema.jsonschema,
+            "inputSchema": self.input_schema.model_json_schema(),
+            "outputSchema": self.output_schema.model_json_schema(),
         }
 
     def execute(self, input_data: BlockData) -> BlockOutput:
@@ -165,7 +115,7 @@ class Block(ABC, BaseModel):
                 f"Unable to execute block with invalid input data: {error}"
             )
 
-        for output_name, output_data in self.run(input_data):
+        for output_name, output_data in self.run(self.input_schema(**input_data)):
             if error := self.output_schema.validate_field(output_name, output_data):
                 raise ValueError(
                     f"Unable to execute block with invalid output data: {error}"
@@ -173,75 +123,12 @@ class Block(ABC, BaseModel):
             yield output_name, output_data
 
 
-# ===================== Inline-Block Implementations ===================== #
-
-
-class ParrotBlock(Block):
-    id: ClassVar[str] = "1ff065e9-88e8-4358-9d82-8dc91f622ba9"  # type: ignore
-    input_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
-        {
-            "input": "string",
-        }
-    )
-    output_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
-        {
-            "output": "string",
-        }
-    )
-
-    def run(self, input_data: BlockData) -> BlockOutput:
-        yield "output", input_data["input"]
-
-
-class TextFormatterBlock(Block):
-    id: ClassVar[str] = "db7d8f02-2f44-4c55-ab7a-eae0941f0c30"  # type: ignore
-    input_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
-        {
-            "texts": {
-                "type": "array",
-                "items": {"type": "string"},
-                "minItems": 1,
-            },
-            "format": "string",
-        }
-    )
-    output_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
-        {
-            "combined_text": "string",
-        }
-    )
-
-    def run(self, input_data: BlockData) -> BlockOutput:
-        yield "combined_text", input_data["format"].format(texts=input_data["texts"])
-
-
-class PrintingBlock(Block):
-    id: ClassVar[str] = "f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c"  # type: ignore
-    input_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
-        {
-            "text": "string",
-        }
-    )
-    output_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
-        {
-            "status": "string",
-        }
-    )
-
-    def run(self, input_data: BlockData) -> BlockOutput:
-        yield "status", "printed"
-
-
 # ======================= Block Helper Functions ======================= #
 
-AVAILABLE_BLOCKS: dict[str, Block] = {}
+from autogpt_server.blocks import AVAILABLE_BLOCKS  # noqa: E402
 
 
 async def initialize_blocks() -> None:
-    global AVAILABLE_BLOCKS
-
-    AVAILABLE_BLOCKS = {block.id: block() for block in Block.__subclasses__()}
-
     for block in AVAILABLE_BLOCKS.values():
         if await AgentBlock.prisma().find_unique(where={"id": block.id}):
             continue
@@ -256,13 +143,9 @@ async def initialize_blocks() -> None:
         )
 
 
-async def get_blocks() -> list[Block]:
-    if not AVAILABLE_BLOCKS:
-        await initialize_blocks()
+def get_blocks() -> list[Block]:
     return list(AVAILABLE_BLOCKS.values())
 
 
-async def get_block(block_id: str) -> Block | None:
-    if not AVAILABLE_BLOCKS:
-        await initialize_blocks()
+def get_block(block_id: str) -> Block | None:
     return AVAILABLE_BLOCKS.get(block_id)
