@@ -1,13 +1,12 @@
 from __future__ import annotations
-from typing import Dict, Any
 from ..registry import action
-from forge.sdk import ForgeLogger, PromptEngine
+from forge.sdk import ForgeLogger, PromptEngine, Agent, LocalWorkspace
 from forge.llm import chat_completion_request
 import os
-from forge.sdk import Agent
 import subprocess
 import json
-from ..models import Code, TestCase
+from typing import Dict
+from .models import Code, TestCase
 
 LOG = ForgeLogger(__name__)
 
@@ -53,32 +52,57 @@ async def test_code(agent: Agent, task_id: str, project_path: str) -> str:
             "required": True
         }
     ],
-    output_type="str",
+    output_type="TestCase object",
 )
-async def generate_test_cases(agent: Agent, task_id: str, code_dict: Dict[str, str]) -> str:
-    code_type = Code(code_dict)
-    messages = [
-        {"role": "system", "content": "You are a code generation assistant specialized in generating test cases."}
-    ] + [
-        {"role": "user", "content": load_test_prompt(file_name, code)}
-        for file_name, code in code_type.items()
-    ] + [{"role": "user", "content": load_test_struct_prompt()}]
-
-    response_content = await get_chat_response(messages)
-
+async def generate_test_cases(agent: Agent, task_id: str, code_dict: Dict[str, str]) -> TestCase:
     try:
+        prompt_engine = PromptEngine("gpt-3.5-turbo")
+        messages = [
+            {"role": "system", "content": "You are a code generation assistant specialized in generating test cases."}]
+
+        test_prompt_template, test_struct_template, folder_name = determine_templates(
+            next(iter(code_dict)))
+        if not test_prompt_template:
+            return "Unsupported file type."
+
+        code = Code(code_dict)
+        for file_name, code_content in code.items():
+            LOG.info(f"File Name: {file_name}")
+            LOG.info(f"Code: {code_content}")
+            test_prompt = prompt_engine.load_prompt(
+                test_prompt_template, file_name=file_name, code=code_content)
+            messages.append({"role": "user", "content": test_prompt})
+
+        test_struct_prompt = prompt_engine.load_prompt(test_struct_template)
+        messages.append({"role": "user", "content": test_struct_prompt})
+
+        response_content = await get_chat_response(messages)
+        LOG.info(f"Response content: {response_content}")
+
+        project_path = get_project_path(agent, task_id, folder_name)
+        os.makedirs(project_path, exist_ok=True)
+
         test_cases = parse_test_cases_response(response_content)
+        await write_test_cases(agent, task_id, project_path, test_cases)
+
+        return test_cases
+
     except Exception as e:
-        LOG.error(f"Error parsing test cases response: {e}")
-        return "Failed to generate test cases due to response parsing error."
-
-    project_path = os.path.join(agent.workspace.base_path, task_id)
-    await write_test_files(agent, task_id, project_path, TestCase(test_cases))
-
-    return "Test cases generated and written to respective files."
+        LOG.error(f"Error generating test cases: {e}")
+        return "Failed to generate test cases due to an error."
 
 
-async def get_chat_response(messages: list[dict[str, Any]]) -> str:
+def determine_templates(first_file_name: str):
+    if first_file_name.endswith(('.js', '.ts')):
+        return "test-case-generation-frontend", "test-case-struct-return-frontend", 'frontend/tests'
+    elif first_file_name.endswith('.rs'):
+        return "test-case-generation", "test-case-struct-return", 'rust/tests'
+    else:
+        LOG.error(f"Unsupported file type for: {first_file_name}")
+        return None, None, None
+
+
+async def get_chat_response(messages: list) -> str:
     chat_completion_kwargs = {
         "messages": messages,
         "model": "gpt-3.5-turbo",
@@ -87,38 +111,33 @@ async def get_chat_response(messages: list[dict[str, Any]]) -> str:
     return chat_response["choices"][0]["message"]["content"]
 
 
+def get_project_path(agent: Agent, task_id: str, folder_name: str) -> str:
+    base_path = agent.workspace.base_path if isinstance(
+        agent.workspace, LocalWorkspace) else str(agent.workspace.base_path)
+    return os.path.join(base_path, task_id, folder_name)
+
+
+async def write_test_cases(agent: Agent, task_id: str, project_path: str, test_cases: TestCase):
+    for file_name, test_case in test_cases.items():
+        test_file_path = os.path.join(project_path, file_name)
+        await agent.abilities.run_action(task_id, "write_file", file_path=test_file_path, data=test_case.encode())
+
+
 def parse_test_cases_response(response_content: str) -> TestCase:
     try:
-        response_dict = json.loads(response_content)
-        test_cases = TestCase(
-            {response_dict["file_name"]: response_dict["test_file"]})
-        return test_cases
-    except json.JSONDecodeError as e:
+        json_start = response_content.index('{')
+        json_end = response_content.rindex('}') + 1
+        json_content = response_content[json_start:json_end]
+
+        LOG.info(f"JSON Content: {json_content}")
+
+        response_dict = json.loads(json_content)
+        file_name = response_dict["file_name"]
+        test_file = response_dict["test_file"].replace(
+            '\\n', '\n').replace('\\t', '\t').strip().strip('"')
+
+        return TestCase({file_name: test_file})
+    except (json.JSONDecodeError, ValueError) as e:
         LOG.error(f"Error decoding JSON response: {e}")
         raise
 
-
-async def write_code_files(agent: Agent, task_id: str, project_path: str, parts: Code) -> None:
-    for file_name, content in parts.items():
-        await write_file(agent, task_id, os.path.join(project_path, 'src', file_name), content.encode())
-
-
-async def write_test_files(agent: Agent, task_id: str, project_path: str, test_cases: TestCase) -> None:
-    for file_name, test_case in test_cases.items():
-        await write_file(agent, task_id, os.path.join(project_path, 'tests', file_name), test_case.encode())
-
-
-async def write_file(agent: Agent, task_id: str, file_path: str, data: bytes) -> None:
-    await agent.abilities.run_action(
-        task_id, "write_file", file_path=file_path, data=data
-    )
-
-
-def load_test_prompt(file_name: str, code: str) -> str:
-    prompt_engine = PromptEngine("gpt-3.5-turbo")
-    return prompt_engine.load_prompt("test-case-generation", file_name=file_name, code=code)
-
-
-def load_test_struct_prompt() -> str:
-    prompt_engine = PromptEngine("gpt-3.5-turbo")
-    return prompt_engine.load_prompt("test-case-struct-return")

@@ -1,6 +1,15 @@
-Return the tests in the following format:
+
+Return the tests in the following format according to JSON structure so that all problematic characters are escaped:
 
 {
-    "file_name": "{{ file_name | replace('.rs', '_test.rs') }}",
+    "file_name": "{{ "{{ file_name | replace('.rs', '_test.rs') }}" }}",
     "test_file": "<Code for the tests>"
 }
+
+// Example Response:
+{
+    "file_name": "{{ '{{ file_name | replace(\'.rs\', \'_test.rs\') }}' }}",
+    "test_file": "use super::*;\\n\\n#[cfg(test)]\\nmod tests {\\n    use super::*;\\n\\n    #[test]\\n    fn test_add() {\\n        assert_eq!(add(2, 3), 5);\\n        assert_eq!(add(-2, 3), 1);\\n        assert_eq!(add(0, 0), 0);\\n    }\\n\\n    #[test]\\n    fn test_subtract() {\\n        assert_eq!(subtract(5, 3), 2);\\n        assert_eq!(subtract(3, 5), -2);\\n        assert_eq!(subtract(0, 0), 0);\\n    }\\n}"
+}
+
+
