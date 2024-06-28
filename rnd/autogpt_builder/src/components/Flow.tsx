@@ -266,9 +266,31 @@ const Flow: React.FC = () => {
     );
   };
 
+  const validateNodeInputs = (nodes: Node[], edges: Edge[]): boolean => {
+    for (const node of nodes) {
+      const nodeSchema = availableNodes.find(n => n.id === node.data.block_id);
+      if (nodeSchema && nodeSchema.inputSchema) {
+        const inputProperties = nodeSchema.inputSchema.properties;
+        for (const prop of Object.keys(inputProperties)) {
+          const inputEdges = edges.filter(edge => edge.target === node.id && edge.targetHandle === prop);
+          if (inputEdges.length === 0 && !node.data.hardcodedValues[prop]) {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
+  };
+
   const runAgent = async () => {
     if (nodes.length === 0) {
       setFlashMessage("Please add nodes before pressing run");
+      setTimeout(() => setFlashMessage(null), 3000); // Ensure the flash message disappears after 3 seconds
+      return;
+    }
+
+    if (!validateNodeInputs(nodes, edges)) {
+      setFlashMessage("Please make sure you have added values to all inputs");
       setTimeout(() => setFlashMessage(null), 3000); // Ensure the flash message disappears after 3 seconds
       return;
     }
