@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, cast, Generator, Generic, TypeVar, Type
+from typing import Any, cast, ClassVar, Generator, Generic, TypeVar, Type
 
 import json
 import jsonref
@@ -11,9 +11,14 @@ BlockData = dict[str, Any]
 
 
 class BlockSchema(BaseModel):
+    
+    cached_jsonschema: ClassVar[dict[str, Any]] = {}
 
     @classmethod
     def jsonschema(cls) -> dict[str, Any]:
+        if cls.cached_jsonschema:
+            return cls.cached_jsonschema
+
         model = jsonref.replace_refs(cls.model_json_schema())
 
         def ref_to_dict(obj):
@@ -26,7 +31,8 @@ class BlockSchema(BaseModel):
                 return [ref_to_dict(item) for item in obj]
             return obj
 
-        return cast(dict[str, Any], ref_to_dict(model))
+        cls.cached_jsonschema = cast(dict[str, Any], ref_to_dict(model))
+        return cls.cached_jsonschema
 
     @classmethod
     def validate_data(cls, data: BlockData) -> str | None:
