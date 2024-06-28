@@ -1,7 +1,6 @@
 # type: ignore
 
 from datetime import datetime, timedelta
-from typing import ClassVar
 
 import praw
 from pydantic import BaseModel
@@ -32,26 +31,6 @@ def get_praw(creds: RedditCredentials) -> praw.Reddit:
         username=creds.username,
         password=creds.password,
     )
-
-
-class RedditCredentialsBlock(Block):
-    class Input(BlockSchema, RedditCredentials):
-        pass
-
-    class Output(BlockSchema):
-        reddit: RedditCredentials
-
-    def __init__(self):
-        super().__init__(
-            id="0c391c35-be7f-40e1-ac27-c3009391f244",
-            input_schema=RedditCredentialsBlock.Input,
-            output_schema=RedditCredentialsBlock.Output,
-        )
-
-    def run(self, input_data: RedditCredentials) -> BlockOutput:
-        client = get_praw(input_data)
-        client.user.me()
-        yield "credential", input_data
 
 
 class RedditGetPostsBlock(Block):
