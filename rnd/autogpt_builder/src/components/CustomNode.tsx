@@ -166,16 +166,6 @@ const CustomNode: FC<NodeProps> = ({ data, id }) => {
     }
   };
 
-  const getStatusValue = (statusData: any) => {
-    if (Array.isArray(statusData)) {
-      return statusData.join(', ');
-    }
-    if (typeof statusData === 'object') {
-      const values = Object.values(statusData);
-      return values.flat().join(', ');
-    }
-    return JSON.stringify(statusData);
-  };
 
   return (
     <div className="custom-node">
