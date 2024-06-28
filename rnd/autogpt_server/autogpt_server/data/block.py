@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Any, Generator, Generic, TypeVar, Type
+from typing import Any, cast, Generator, Generic, TypeVar, Type
 
 import json
+import jsonref
 import jsonschema
 from prisma.models import AgentBlock
 from pydantic import BaseModel
@@ -10,13 +11,22 @@ BlockData = dict[str, Any]
 
 
 class BlockSchema(BaseModel):
-    """
-    A schema for the block input and output data.
-    The dictionary structure is an object-typed `jsonschema`.
-    The top-level properties are the block input/output names.
 
-    BlockSchema is inherently a pydantic schema with some helper methods.
-    """
+    @classmethod
+    def jsonschema(cls) -> dict[str, Any]:
+        model = jsonref.replace_refs(cls.model_json_schema())
+
+        def ref_to_dict(obj):
+            if isinstance(obj, dict):
+                return {
+                    key: ref_to_dict(value)
+                    for key, value in obj.items() if not key.startswith("$")
+                }
+            elif isinstance(obj, list):
+                return [ref_to_dict(item) for item in obj]
+            return obj
+
+        return cast(dict[str, Any], ref_to_dict(model))
 
     @classmethod
     def validate_data(cls, data: BlockData) -> str | None:
@@ -25,7 +35,7 @@ class BlockSchema(BaseModel):
         Returns the validation error message if the data does not match the schema.
         """
         try:
-            jsonschema.validate(data, cls.model_json_schema())
+            jsonschema.validate(data, cls.jsonschema())
             return None
         except jsonschema.ValidationError as e:
             return str(e)
@@ -36,7 +46,7 @@ class BlockSchema(BaseModel):
         Validate the data against a specific property (one of the input/output name).
         Returns the validation error message if the data does not match the schema.
         """
-        model_schema = cls.model_json_schema().get("properties", {})
+        model_schema = cls.jsonschema().get("properties", {})
         if not model_schema:
             return f"Invalid model schema {cls}"
 
@@ -52,11 +62,15 @@ class BlockSchema(BaseModel):
 
     @classmethod
     def get_fields(cls) -> set[str]:
-        return set(cls.model_json_schema().get("properties", {}).keys())
+        return set(cls.model_fields.keys())
 
     @classmethod
     def get_required_fields(cls) -> set[str]:
-        return set(cls.model_json_schema().get("required", {}))
+        return {
+            field
+            for field, field_info in cls.model_fields.items()
+            if field_info.is_required()
+        }
 
 
 BlockOutput = Generator[tuple[str, Any], None, None]
@@ -105,8 +119,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         return {
             "id": self.id,
             "name": self.name,
-            "inputSchema": self.input_schema.model_json_schema(),
-            "outputSchema": self.output_schema.model_json_schema(),
+            "inputSchema": self.input_schema.jsonschema(),
+            "outputSchema": self.output_schema.jsonschema(),
         }
 
     def execute(self, input_data: BlockData) -> BlockOutput:
@@ -137,8 +151,8 @@ async def initialize_blocks() -> None:
             data={
                 "id": block.id,
                 "name": block.name,
-                "inputSchema": json.dumps(block.input_schema.model_json_schema()),
-                "outputSchema": json.dumps(block.output_schema.model_json_schema()),
+                "inputSchema": json.dumps(block.input_schema.jsonschema()),
+                "outputSchema": json.dumps(block.output_schema.jsonschema()),
             }
         )
 
