@@ -45,11 +45,8 @@
     "python.analysis.useLibraryCodeForTypes": true,
     "python.analysis.autoImportCompletions": true,
     "python.analysis.typeCheckingMode": "basic",
-    "python.analysis.completeFunctionParens": true,
     "python.analysis.inlayHints.functionReturnTypes": true,
-    "python.analysis.inlayHints.variableTypes": true,
     "python.analysis.autoFormatStrings": true,
-    "python.analysis.inlayHints.callArgumentNames": "partial",
     "python.analysis.fixAll": [
       "source.convertImportFormat",
       "source.unusedImports"
