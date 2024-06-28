@@ -38,6 +38,19 @@ interface ExecData {
   output_data: any;
 }
 
+const FlashMessage: React.FC<{ message: string; onClose: () => void }> = ({ message, onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 3000); // Flash message disappears after 3 seconds
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  return (
+    <div className="flash-message">
+      {message}
+    </div>
+  );
+};
+
 const Flow: React.FC = () => {
   const [nodes, setNodes] = useState<Node[]>(initialNodes);
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
@@ -54,6 +67,7 @@ const Flow: React.FC = () => {
   const [availableNodes, setAvailableNodes] = useState<AvailableNode[]>([]);
   const [loadingStatus, setLoadingStatus] = useState<'loading' | 'failed' | 'loaded'>('loading');
   const [agentId, setAgentId] = useState<string | null>(null);
+  const [flashMessage, setFlashMessage] = useState<string | null>(null);
 
   const apiUrl = 'http://localhost:8000'
 
@@ -253,6 +267,11 @@ const Flow: React.FC = () => {
   };
 
   const runAgent = async () => {
+    if (nodes.length === 0) {
+      setFlashMessage("Please add nodes before pressing run");
+      return;
+    }
+
     try {
       const formattedNodes = nodes.map(node => {
         const inputDefault = prepareNodeInputData(node, nodes, edges);
@@ -421,6 +440,7 @@ const Flow: React.FC = () => {
 
   return (
     <div className="flow-container">
+      {flashMessage && <FlashMessage message={flashMessage} onClose={() => setFlashMessage(null)} />}
       <div className={`flow-controls ${isSidebarOpen ? 'open' : ''}`}>
         <button className="nodes-button" onClick={toggleSidebar}>
           Nodes

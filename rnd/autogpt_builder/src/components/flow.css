@@ -148,3 +148,16 @@ input::placeholder, textarea::placeholder {
 .flow-controls.open {
   transform: translateX(350px);
 }
+
+.flash-message {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #ff4444;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 5px;
+  font-size: 16px;
+  z-index: 1000;
+}
