@@ -35,8 +35,6 @@ def get_praw(creds: RedditCredentials) -> praw.Reddit:
 
 
 class RedditCredentialsBlock(Block):
-    id: ClassVar[str] = "0c391c35-be7f-40e1-ac27-c3009391f244"
-
     class Input(BlockSchema, RedditCredentials):
         pass
 
@@ -45,6 +43,7 @@ class RedditCredentialsBlock(Block):
 
     def __init__(self):
         super().__init__(
+            id="0c391c35-be7f-40e1-ac27-c3009391f244",
             input_schema=RedditCredentialsBlock.Input,
             output_schema=RedditCredentialsBlock.Output,
         )
@@ -56,8 +55,6 @@ class RedditCredentialsBlock(Block):
 
 
 class RedditGetPostsBlock(Block):
-    id: ClassVar[str] = "c6731acb-4285-4ee1-bc9b-03d0766c370f"
-
     class Input(BlockSchema):
         creds: RedditCredentials
         subreddit: str
@@ -69,6 +66,7 @@ class RedditGetPostsBlock(Block):
 
     def __init__(self):
         super().__init__(
+            id="c6731acb-4285-4ee1-bc9b-03d0766c370f",
             input_schema=RedditGetPostsBlock.Input,
             output_schema=RedditGetPostsBlock.Output,
         )
@@ -94,8 +92,6 @@ class RedditGetPostsBlock(Block):
 
 
 class RedditPostCommentBlock(Block):
-    id: ClassVar[str] = "4a92261b-701e-4ffb-8970-675fd28e261f"
-
     class Input(BlockSchema):
         creds: RedditCredentials
         post_id: str
@@ -106,6 +102,7 @@ class RedditPostCommentBlock(Block):
 
     def __init__(self):
         super().__init__(
+            id="4a92261b-701e-4ffb-8970-675fd28e261f",
             input_schema=RedditPostCommentBlock.Input,
             output_schema=RedditPostCommentBlock.Output,
         )

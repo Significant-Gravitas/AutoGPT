@@ -1,13 +1,9 @@
 # type: ignore
 
-from typing import ClassVar
-
 from autogpt_server.data.block import Block, BlockSchema, BlockOutput
 
 
 class ParrotBlock(Block):
-    id: ClassVar[str] = "1ff065e9-88e8-4358-9d82-8dc91f622ba9"
-
     class Input(BlockSchema):
         input: str
 
@@ -16,6 +12,7 @@ class ParrotBlock(Block):
 
     def __init__(self):
         super().__init__(
+            id="1ff065e9-88e8-4358-9d82-8dc91f622ba9",
             input_schema=ParrotBlock.Input,
             output_schema=ParrotBlock.Output,
         )
@@ -25,8 +22,6 @@ class ParrotBlock(Block):
 
 
 class TextFormatterBlock(Block):
-    id: ClassVar[str] = "db7d8f02-2f44-4c55-ab7a-eae0941f0c30"
-
     class Input(BlockSchema):
         texts: list[str]
         format: str
@@ -36,6 +31,7 @@ class TextFormatterBlock(Block):
 
     def __init__(self):
         super().__init__(
+            id="db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
             input_schema=TextFormatterBlock.Input,
             output_schema=TextFormatterBlock.Output,
         )
@@ -45,8 +41,6 @@ class TextFormatterBlock(Block):
 
 
 class PrintingBlock(Block):
-    id: ClassVar[str] = "f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c"
-
     class Input(BlockSchema):
         text: str
 
@@ -55,6 +49,7 @@ class PrintingBlock(Block):
 
     def __init__(self):
         super().__init__(
+            id="f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c",
             input_schema=PrintingBlock.Input,
             output_schema=PrintingBlock.Output,
         )

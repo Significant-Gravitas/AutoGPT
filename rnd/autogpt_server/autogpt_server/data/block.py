@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Generator, Generic, TypeVar, Type
 
+import json
 import jsonschema
 from prisma.models import AgentBlock
 from pydantic import BaseModel
@@ -63,25 +64,25 @@ BlockSchemaInputType = TypeVar('BlockSchemaInputType', bound=BlockSchema)
 BlockSchemaOutputType = TypeVar('BlockSchemaOutputType', bound=BlockSchema)
 
 
+class EmptySchema(BlockSchema):
+    pass
+
+
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     def __init__(
             self,
-            input_schema: Type[BlockSchemaInputType] = None,
-            output_schema: Type[BlockSchemaOutputType] = None,
+            id: str = "",
+            input_schema: Type[BlockSchemaInputType] = EmptySchema,
+            output_schema: Type[BlockSchemaOutputType] = EmptySchema,
     ):
-        self.input_schema = input_schema
-        self.output_schema = output_schema
-
-    @classmethod
-    @property
-    @abstractmethod
-    def id(cls) -> str:
         """
         The unique identifier for the block, this value will be persisted in the DB.
         So it should be a unique and constant across the application run.
         Use the UUID format for the ID.
         """
-        pass
+        self.id = id
+        self.input_schema = input_schema
+        self.output_schema = output_schema
 
     @abstractmethod
     def run(self, input_data: BlockSchemaInputType) -> BlockOutput:
@@ -96,10 +97,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         """
         pass
 
-    @classmethod
     @property
-    def name(cls):
-        return cls.__name__
+    def name(self):
+        return self.__class__.__name__
 
     def to_dict(self):
         return {
@@ -137,8 +137,8 @@ async def initialize_blocks() -> None:
             data={
                 "id": block.id,
                 "name": block.name,
-                "inputSchema": str(block.input_schema),
-                "outputSchema": str(block.output_schema),
+                "inputSchema": json.dumps(block.input_schema.model_json_schema()),
+                "outputSchema": json.dumps(block.output_schema.model_json_schema()),
             }
         )
 
