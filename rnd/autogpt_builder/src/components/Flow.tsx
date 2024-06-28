@@ -269,6 +269,7 @@ const Flow: React.FC = () => {
   const runAgent = async () => {
     if (nodes.length === 0) {
       setFlashMessage("Please add nodes before pressing run");
+      setTimeout(() => setFlashMessage(null), 3000); // Ensure the flash message disappears after 3 seconds
       return;
     }
 
