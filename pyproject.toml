@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "github-oss-analytics"
+version = "0.1.0"
+description = "Contribution related analytics for OSS projects on GitHub"
+authors = ["Reinier van der Leer <pwuts@agpt.co>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
