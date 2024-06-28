@@ -3,6 +3,7 @@ import click
 from datetime import datetime, timezone
 
 from github import Auth, Github
+from github.IssueEvent import IssueEvent
 from github.NamedUser import NamedUser
 from github.PaginatedList import PaginatedList
 from github.PullRequest import PullRequest
@@ -83,163 +84,106 @@ def get_pr_metrics(
         days_since_activity = days_since(pr.updated_at)
         print(f"Updated: {pr.updated_at} ({days_since_activity} days ago)")
 
-    # from pprint import pprint
-    # print("Events:")
-    # review_request_events = []
-    # for event in pr.get_issue_events():
-    #     print(f"{event.created_at} <@{event.actor.login}> {event.event}")
-    #     pprint(vars(event._rawData))
-    #     if event.event == "review_requested":
-    #         review_request_events.append(event)
+    review_requests: list[IssueEvent] = []
+    for event in pr.get_issue_events():
+        if event.event == "review_requested":
+            review_requests.append(event)
 
     # Reviews
     review_threads: dict[int, list[PullRequestComment]] = defaultdict(list)
-    if (reviews := pr.get_reviews()).totalCount > 0:
-        for review in reviews:
-            print(f"🪵 Review {review.id} - {review.submitted_at} "
-                  f"({days_between(pr.created_at, review.submitted_at)} days since PR creation)")
-            print(f'"{review.body}"')
+    for review in pr.get_reviews():
+        print(
+            f"🪵 Review {review.id} - {review.submitted_at} "
+            f"({days_between(pr.created_at, review.submitted_at)} days since PR creation)"
+        )
+        print(f'"{review.body}"')
 
-            # FIXME: Measure response time relative to latest review_requested, ready_for_review, or commit
-            if review.user in maintainers and review.user != pr.user:
-                metrics.days_until_first_maintainer_review = min(
-                    _interval := days_between(pr.created_at, review.submitted_at),
-                    metrics.days_until_first_maintainer_review or _interval,
+        if review.user in maintainers and review.user != pr.user:
+            # Find the review request that this review fulfills
+            review_request = None
+            for request in review_requests:
+                if request.created_at > review.submitted_at:
+                    break
+                # TODO: better matching
+                review_request = request
+            print(f"🪵 Matched review request: {review_request}")
+
+            metrics.days_until_first_maintainer_review = min(
+                _interval := days_between(pr.created_at, review.submitted_at),
+                metrics.days_until_first_maintainer_review or _interval,
+            )
+            metrics.days_since_maintainer_review = min(
+                _interval := days_since(review.submitted_at),
+                metrics.days_since_maintainer_review or _interval,
+            )
+            if metrics.maintainer_response_stats is None:
+                metrics.maintainer_response_stats = LatencyStats(series=[])
+
+            # FIXME: Measure response time of EVERY maintainer review
+            # relative to latest review_requested, ready_for_review, or commit
+            metrics.maintainer_response_stats.series.append(
+                _interval := days_between(
+                    review_request.created_at if review_request else pr.created_at,
+                    review.submitted_at,
                 )
-                metrics.days_since_maintainer_review = min(
-                    _interval := days_since(review.submitted_at),
-                    metrics.days_since_maintainer_review or _interval,
-                )
-                if metrics.maintainer_response_stats is None:
-                    metrics.maintainer_response_stats = LatencyStats(series=[])
-                metrics.maintainer_response_stats.series.append(
-                    _interval := days_between(pr.created_at, review.submitted_at)
-                )
-                print(f"➡️ Adding {_interval} day interval to maintainer stats")
+            )
+            print(f"➡️ Adding {_interval} day interval to maintainer stats")
 
-            # Review comments
-            for review_comment in pr.get_single_review_comments(review.id):
-                thread_id = review_comment.in_reply_to_id or review_comment.id
-                thread = review_threads[thread_id]
+        # Review comments
+        for review_comment in pr.get_single_review_comments(review.id):
+            thread_id = review_comment.in_reply_to_id or review_comment.id
+            thread = review_threads[thread_id]
 
-                if review_comment.user == pr.user:
-                    print(
-                        f"🪵 Author responded: {review_comment.created_at} "
-                        f"({days_since(review_comment.created_at)} days ago)"
-                    )
-                    print(
-                        f"🪵 ID: {review_comment.id}; REPLY TO: {review_comment.in_reply_to_id}"
-                    )
-                    print(f'🪵 "{review_comment.body}"\n')
-
-                    metrics.days_since_author_comment = min(
-                        days_since(review_comment.created_at),
-                        metrics.days_since_author_comment,
-                    )
-
-                    if thread and (last_comment := thread[-1]).user in maintainers:
-                        if metrics.author_response_stats is None:
-                            metrics.author_response_stats = LatencyStats(series=[])
-                        metrics.author_response_stats.series.append(
-                            # HACK: assuming the user comment is a response to the last maintainer comment
-                            _interval := days_between(
-                                last_comment.created_at, review_comment.created_at
-                            )
-                        )
-                        print(
-                            f"➡️ Adding {_interval} day interval to "
-                            f"author stats ({review_comment.id} <> {last_comment.id})"
-                        )
-
-                elif review_comment.user in maintainers:
-                    print(
-                        f"🪵 Maintainer reviewed: {review_comment.created_at} "
-                        f"({days_since(review_comment.created_at)} days ago; "
-                        f"{days_between(pr.created_at, review_comment.created_at)} days after opening)"
-                    )
-                    print(
-                        f"🪵 ID: {review_comment.id}; REPLY TO: {review_comment.in_reply_to_id}"
-                    )
-                    print(f'🪵 "{review_comment.body}"\n')
-                    metrics.days_since_maintainer_comment = min(
-                        _interval := days_since(review_comment.created_at),
-                        metrics.days_since_maintainer_comment or _interval,
-                    )
-                    metrics.days_until_first_maintainer_comment = min(
-                        _interval := days_between(pr.created_at, review_comment.created_at),
-                        metrics.days_until_first_maintainer_comment or _interval,
-                    )
-
-                    last_comment = None
-                    if thread and (last_comment := thread[-1]).user not in maintainers:
-                        if metrics.maintainer_response_stats is None:
-                            metrics.maintainer_response_stats = LatencyStats(series=[])
-                        metrics.maintainer_response_stats.series.append(
-                            _interval := days_between(
-                                (
-                                    last_comment
-                                    if last_comment and last_comment.user == pr.user
-                                    else pr
-                                ).created_at,
-                                review_comment.created_at,
-                            )
-                        )
-                        print(
-                            f"➡️ Adding {_interval} day interval to "
-                            f"maintainer stats ({review_comment.id} <> "
-                            f"{last_comment.id if last_comment and last_comment.user == pr.user else f'PR {pr.number}'})"
-                        )
-                else:
-                    continue
-
-                thread.append(review_comment)
-
-    # Regular comments
-    if pr.comments:
-        last_comment = None
-
-        for comment in pr.get_issue_comments():
-            if comment.user == pr.user:
+            if review_comment.user == pr.user:
                 print(
-                    f"🪵 Author commented: {comment.created_at} "
-                    f"({days_since(comment.created_at)} days ago)"
+                    f"🪵 Author responded: {review_comment.created_at} "
+                    f"({days_since(review_comment.created_at)} days ago)"
                 )
-                print(f'🪵 "{comment.body}"\n')
+                print(
+                    f"🪵 ID: {review_comment.id}; REPLY TO: {review_comment.in_reply_to_id}"
+                )
+                print(f'🪵 "{review_comment.body}"\n')
+
                 metrics.days_since_author_comment = min(
-                    days_since(comment.created_at),
+                    days_since(review_comment.created_at),
                     metrics.days_since_author_comment,
                 )
 
-                if last_comment and last_comment.user in maintainers:
+                if thread and (last_comment := thread[-1]).user in maintainers:
                     if metrics.author_response_stats is None:
                         metrics.author_response_stats = LatencyStats(series=[])
                     metrics.author_response_stats.series.append(
                         # HACK: assuming the user comment is a response to the last maintainer comment
-                        _interval := days_between(last_comment.created_at, comment.created_at)
+                        _interval := days_between(
+                            last_comment.created_at, review_comment.created_at
+                        )
                     )
                     print(
                         f"➡️ Adding {_interval} day interval to "
-                        f"author stats ({comment.id} <> {last_comment.id})"
+                        f"author stats ({review_comment.id} <> {last_comment.id})"
                     )
-                last_comment = comment
 
-            elif comment.user in maintainers:
+            elif review_comment.user in maintainers:
                 print(
-                    f"🪵 Maintainer commented: {comment.created_at} "
-                    f"({days_since(comment.created_at)} days ago; "
-                    f"{days_between(pr.created_at, comment.created_at)} days after opening)"
+                    f"🪵 Maintainer reviewed: {review_comment.created_at} "
+                    f"({days_since(review_comment.created_at)} days ago; "
+                    f"{days_between(pr.created_at, review_comment.created_at)} days after opening)"
                 )
-                print(f'🪵 "{comment.body}"\n')
+                print(
+                    f"🪵 ID: {review_comment.id}; REPLY TO: {review_comment.in_reply_to_id}"
+                )
+                print(f'🪵 "{review_comment.body}"\n')
                 metrics.days_since_maintainer_comment = min(
-                    _interval := days_since(comment.created_at),
+                    _interval := days_since(review_comment.created_at),
                     metrics.days_since_maintainer_comment or _interval,
                 )
                 metrics.days_until_first_maintainer_comment = min(
-                    _interval := days_between(pr.created_at, comment.created_at),
+                    _interval := days_between(pr.created_at, review_comment.created_at),
                     metrics.days_until_first_maintainer_comment or _interval,
                 )
 
-                if not last_comment or last_comment.user not in maintainers:
+                last_comment = None
+                if thread and (last_comment := thread[-1]).user not in maintainers:
                     if metrics.maintainer_response_stats is None:
                         metrics.maintainer_response_stats = LatencyStats(series=[])
                     metrics.maintainer_response_stats.series.append(
@@ -249,15 +193,81 @@ def get_pr_metrics(
                                 if last_comment and last_comment.user == pr.user
                                 else pr
                             ).created_at,
-                            comment.created_at,
+                            review_comment.created_at,
                         )
                     )
                     print(
                         f"➡️ Adding {_interval} day interval to "
-                        f"maintainer stats ({comment.id} <> "
+                        f"maintainer stats ({review_comment.id} <> "
                         f"{last_comment.id if last_comment and last_comment.user == pr.user else f'PR {pr.number}'})"
                     )
-                last_comment = comment
+            else:
+                continue
+
+            thread.append(review_comment)
+
+    # Regular comments
+    last_comment = None
+    for comment in pr.get_issue_comments():
+        if comment.user == pr.user:
+            print(
+                f"🪵 Author commented: {comment.created_at} "
+                f"({days_since(comment.created_at)} days ago)"
+            )
+            print(f'🪵 "{comment.body}"\n')
+            metrics.days_since_author_comment = min(
+                days_since(comment.created_at),
+                metrics.days_since_author_comment,
+            )
+
+            if last_comment and last_comment.user in maintainers:
+                if metrics.author_response_stats is None:
+                    metrics.author_response_stats = LatencyStats(series=[])
+                metrics.author_response_stats.series.append(
+                    # HACK: assuming the user comment is a response to the last maintainer comment
+                    _interval := days_between(last_comment.created_at, comment.created_at)
+                )
+                print(
+                    f"➡️ Adding {_interval} day interval to "
+                    f"author stats ({comment.id} <> {last_comment.id})"
+                )
+            last_comment = comment
+
+        elif comment.user in maintainers:
+            print(
+                f"🪵 Maintainer commented: {comment.created_at} "
+                f"({days_since(comment.created_at)} days ago; "
+                f"{days_between(pr.created_at, comment.created_at)} days after opening)"
+            )
+            print(f'🪵 "{comment.body}"\n')
+            metrics.days_since_maintainer_comment = min(
+                _interval := days_since(comment.created_at),
+                metrics.days_since_maintainer_comment or _interval,
+            )
+            metrics.days_until_first_maintainer_comment = min(
+                _interval := days_between(pr.created_at, comment.created_at),
+                metrics.days_until_first_maintainer_comment or _interval,
+            )
+
+            if not last_comment or last_comment.user not in maintainers:
+                if metrics.maintainer_response_stats is None:
+                    metrics.maintainer_response_stats = LatencyStats(series=[])
+                metrics.maintainer_response_stats.series.append(
+                    _interval := days_between(
+                        (
+                            last_comment
+                            if last_comment and last_comment.user == pr.user
+                            else pr
+                        ).created_at,
+                        comment.created_at,
+                    )
+                )
+                print(
+                    f"➡️ Adding {_interval} day interval to "
+                    f"maintainer stats ({comment.id} <> "
+                    f"{last_comment.id if last_comment and last_comment.user == pr.user else f'PR {pr.number}'})"
+                )
+            last_comment = comment
 
     return metrics
 
