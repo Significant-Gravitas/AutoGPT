@@ -2,14 +2,13 @@ import json
 from datetime import datetime
 from typing import Optional, Any
 
-from prisma.models import AgentExecutionSchedule
+from prisma.models import AgentGraphExecutionSchedule
 
 from autogpt_server.data.db import BaseDbModel
 
 
 class ExecutionSchedule(BaseDbModel):
-    id: str
-    agent_id: str
+    graph_id: str
     schedule: str
     is_enabled: bool
     input_data: dict[str, Any]
@@ -25,10 +24,10 @@ class ExecutionSchedule(BaseDbModel):
         super().__init__(is_enabled=is_enabled, **kwargs)
 
     @staticmethod
-    def from_db(schedule: AgentExecutionSchedule):
+    def from_db(schedule: AgentGraphExecutionSchedule):
         return ExecutionSchedule(
             id=schedule.id,
-            agent_id=schedule.agentGraphId,
+            graph_id=schedule.agentGraphId,
             schedule=schedule.schedule,
             is_enabled=schedule.isEnabled,
             last_updated=schedule.lastUpdated.replace(tzinfo=None),
@@ -37,7 +36,7 @@ class ExecutionSchedule(BaseDbModel):
 
 
 async def get_active_schedules(last_fetch_time: datetime) -> list[ExecutionSchedule]:
-    query = AgentExecutionSchedule.prisma().find_many(
+    query = AgentGraphExecutionSchedule.prisma().find_many(
         where={
             "isEnabled": True,
             "lastUpdated": {"gt": last_fetch_time}
@@ -51,17 +50,17 @@ async def get_active_schedules(last_fetch_time: datetime) -> list[ExecutionSched
 
 
 async def disable_schedule(schedule_id: str):
-    await AgentExecutionSchedule.prisma().update(
+    await AgentGraphExecutionSchedule.prisma().update(
         where={"id": schedule_id},
         data={"isEnabled": False}
     )
 
 
-async def get_schedules(agent_id: str) -> list[ExecutionSchedule]:
-    query = AgentExecutionSchedule.prisma().find_many(
+async def get_schedules(graph_id: str) -> list[ExecutionSchedule]:
+    query = AgentGraphExecutionSchedule.prisma().find_many(
         where={
             "isEnabled": True,
-            "agentGraphId": agent_id,
+            "agentGraphId": graph_id,
         },
     )
     return [
@@ -70,20 +69,21 @@ async def get_schedules(agent_id: str) -> list[ExecutionSchedule]:
     ]
 
 
-async def add_schedule(schedule: ExecutionSchedule):
-    await AgentExecutionSchedule.prisma().create(
+async def add_schedule(schedule: ExecutionSchedule) -> ExecutionSchedule:
+    obj = await AgentGraphExecutionSchedule.prisma().create(
         data={
             "id": schedule.id,
-            "agentGraphId": schedule.agent_id,
+            "agentGraphId": schedule.graph_id,
             "schedule": schedule.schedule,
             "isEnabled": schedule.is_enabled,
             "inputData": json.dumps(schedule.input_data),
         }
     )
+    return ExecutionSchedule.from_db(obj)
 
 
 async def update_schedule(schedule_id: str, is_enabled: bool):
-    await AgentExecutionSchedule.prisma().update(
+    await AgentGraphExecutionSchedule.prisma().update(
         where={"id": schedule_id},
         data={"isEnabled": is_enabled}
     )

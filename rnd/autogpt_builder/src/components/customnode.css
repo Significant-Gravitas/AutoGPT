@@ -1,0 +1,143 @@
+.custom-node {
+  padding: 20px;
+  border: 2px solid #fff;
+  border-radius: 12px;
+  background: #1e1e1e;
+  color: #e0e0e0;
+  width: 260px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  font-family: 'Arial', sans-serif;
+}
+
+.node-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.node-title {
+  font-size: 20px;
+  font-weight: bold;
+  color: #61dafb;
+}
+
+.toggle-button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #e0e0e0;
+  font-size: 20px;
+}
+
+.node-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.input-section, .output-section {
+  flex: 1;
+}
+
+.handle-container {
+  display: flex;
+  align-items: center;
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.handle-label {
+  color: #e0e0e0;
+  margin-left: 10px;
+}
+
+.input-container {
+  margin-bottom: 10px;
+}
+
+.clickable-input {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #555;
+  background: #2a2a2a;
+  color: #e0e0e0;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.3s;
+}
+
+.clickable-input:hover {
+  background: #444;
+}
+
+.select-input {
+  width: 100%;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #555;
+  background: #2a2a2a;
+  color: #e0e0e0;
+  cursor: pointer;
+}
+
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.radio-label {
+  color: #e0e0e0;
+}
+
+.radio-label input {
+  margin-right: 10px;
+}
+
+.number-input {
+  width: 100%;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #555;
+  background: #2a2a2a;
+  color: #e0e0e0;
+}
+
+.node-properties {
+  margin-top: 20px;
+  background: #2a2a2a;
+  padding: 15px;
+  border-radius: 8px;
+}
+
+.node-properties h4 {
+  margin: 0 0 10px 0;
+}
+
+.node-properties p {
+  margin: 5px 0;
+}
+
+@media screen and (max-width: 768px) {
+  .custom-node {
+    width: 90%;
+    padding: 15px;
+  }
+
+  .node-content {
+    flex-direction: column;
+  }
+
+  .toggle-button {
+    font-size: 16px;
+  }
+
+  .node-title {
+    font-size: 18px;
+  }
+
+  .clickable-input {
+    padding: 8px;
+  }
+}
