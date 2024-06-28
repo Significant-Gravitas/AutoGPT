@@ -72,11 +72,18 @@ async def generate_architecture_diagram(agent: Agent, task_id: str, specificatio
             "description": "A dictionary containing filenames and code for a codebase.",
             "type": "Code object",
             "required": True
+        },
+
+        {
+            "name": "specification",
+            "description": "Specification of the project.",
+            "type": "str",
+            "required": True
         }
     ],
     output_type="str"
 )
-async def generate_use_case_diagram(agent: Agent, task_id: str, code: Code) -> str:
+async def generate_use_case_diagram(agent: Agent, task_id: str, code: Code, specification: str) -> str:
     try:
         prompt_engine = PromptEngine("gpt-3.5-turbo")
         usecase_diagram_template = prompt_engine.load_prompt(
