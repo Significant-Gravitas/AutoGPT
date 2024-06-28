@@ -37,7 +37,7 @@
       "path": "../rnd/autogpt_server"
     },
     {
-      "name": "root_folder",
+      "name": "[root]",
       "path": ".."
     }
   ],
