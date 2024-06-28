@@ -2,7 +2,6 @@ import os
 import sys
 from abc import ABC, abstractmethod
 from multiprocessing import Process, freeze_support, set_start_method
-from multiprocessing.spawn import freeze_support as freeze_support_spawn
 from typing import Optional
 
 
@@ -10,10 +9,9 @@ class AppProcess(ABC):
     """
     A class to represent an object that can be executed in a background process.
     """
+
     process: Optional[Process] = None
-    set_start_method('spawn', force=True)
-    freeze_support()
-    freeze_support_spawn()
+    set_start_method("spawn", force=True)
 
     @abstractmethod
     def run(self):
