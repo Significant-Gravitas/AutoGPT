@@ -5,9 +5,15 @@ description = "Contribution related analytics for OSS projects on GitHub"
 authors = ["Reinier van der Leer <pwuts@agpt.co>"]
 license = "MIT"
 readme = "README.md"
+packages = [{ include = "github-oss-analytics" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
+click = "^8.1.7"
+# githubkit = "^0.11.6"
+pydantic = "^2.7.4"
+pygithub = "^2.3.0"
+python-dotenv = "^1.0.1"
 
 
 [build-system]
