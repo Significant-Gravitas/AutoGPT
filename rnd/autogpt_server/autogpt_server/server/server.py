@@ -15,6 +15,7 @@ from autogpt_server.data.graph import (
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.util.process import AppProcess
 from autogpt_server.util.service import get_service_client
+from autogpt_server.server.routes import websocket_endpoint as ws_impl
 
 
 class AgentServer(AppProcess):
@@ -87,10 +88,7 @@ class AgentServer(AppProcess):
 
         @app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
-            await websocket.accept()
-            while True:
-                data = await websocket.receive_text()
-                await websocket.send_text(f"Message text was: {data}")
+            await ws_impl(websocket)
 
         uvicorn.run(app, host="0.0.0.0", port=8000)
 

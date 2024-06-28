@@ -114,47 +114,25 @@ def event():
 def websocket(server_address):
     """
     Tests the websocket connection.
-    Request:
-    {
-       "method": "subscribe",
-       "params": {
-            "channel": "execution_result",
-            "graph_id": "id",
-            "run_id": "id",
-       }
-    }
-
-    Response:
-    {
-
-        "method": "subscribe",
-        "result": {
-            "channel": "execution_result",
-            "graph_id": "id",
-            "run_id": "id",
-        },
-        "success": true,
-    }
-    Message:
-    {
-        "channel": "execution_result",
-        "type": "update"
-        "data": {
-            "graph_id": "str",
-            "run_id": "str",
-            "exection_result": {}
-        }
-    }
     """
     import asyncio
     import websockets
+    from autogpt_server.server.routes import Methods, WsMessage, ExecutionSubscription
 
     async def send_message(server_address):
         uri = f"ws://{server_address}"
         async with websockets.connect(uri) as websocket:
-            await websocket.send("Hello World")
+            await websocket.send(
+                WsMessage(
+                    method=Methods.SUBSCRIBE,
+                    data=ExecutionSubscription(
+                        channel="test", graph_id="asdasd", run_id="asdsa"
+                    ).model_dump(),
+                ).model_dump_json()
+            )
             response = await websocket.recv()
             print(f"Response from server: {response}")
+            await websocket.close()
 
     asyncio.run(send_message(server_address))
     print("Testing WS")
