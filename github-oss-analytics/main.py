@@ -45,16 +45,20 @@ def main(repo: str):
 
     open_pulls = github_repo.get_pulls("open")
     print(f"Repo has {open_pulls.totalCount} open PRs")
+    open_prs_metrics: list[PullRequestMetrics] = []
     for pr in open_pulls:
         print()
         metrics = get_pr_metrics(maintainers, pr)
+        open_prs_metrics.append(metrics)
 
         print(metrics.model_dump_json(indent=4))
 
-        if metrics.days_since_maintainer_comment is None:
+        if metrics.days_until_first_maintainer_review is None:
             print(
-                f"⚠️ NO MAINTAINER COMMENT AFTER {metrics.days_since_opened} DAYS!!!"
+                f"⚠️ NO MAINTAINER REVIEW AFTER {metrics.days_since_opened} DAYS!!!"
             )
+
+    plot_pr_mountain(open_prs_metrics)
 
 
 def get_pr_metrics(
@@ -270,6 +274,27 @@ def get_pr_metrics(
             last_comment = comment
 
     return metrics
+
+
+def plot_pr_mountain(prs_metrics: list[PullRequestMetrics]):
+    import matplotlib.pyplot as plt
+
+    # Extract days_since_opened from all metrics
+    days_since_opened = [metrics.days_since_opened for metrics in prs_metrics]
+
+    # Plot the CDF
+    plt.figure(figsize=(10, 6))
+    plt.plot(
+        range(1, len(days_since_opened) + 1),
+        sorted(days_since_opened),
+        marker=".",
+        linestyle="none",
+    )
+    plt.xlabel('# of PRs')
+    plt.ylabel('Days Since Opened')
+    plt.title("Open Pull Requests")
+    plt.grid(True)
+    plt.savefig("pr_mountain.png")
 
 
 def days_since(since: datetime) -> int:

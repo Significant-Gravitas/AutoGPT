@@ -11,6 +11,7 @@ packages = [{ include = "github-oss-analytics" }]
 python = "^3.10"
 click = "^8.1.7"
 # githubkit = "^0.11.6"
+matplotlib = "^3.9.0"
 pydantic = "^2.7.4"
 pygithub = "^2.3.0"
 python-dotenv = "^1.0.1"
