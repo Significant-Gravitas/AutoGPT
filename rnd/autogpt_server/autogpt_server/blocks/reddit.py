@@ -4,11 +4,12 @@ from datetime import datetime, timedelta
 from typing import ClassVar
 
 import praw
+from pydantic import BaseModel
 
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 
 
-class RedditCredentials(BlockSchema):
+class RedditCredentials(BaseModel):
     client_id: str
     client_secret: str
     username: str
@@ -16,7 +17,7 @@ class RedditCredentials(BlockSchema):
     user_agent: str
 
 
-class RedditPost(BlockSchema):
+class RedditPost(BaseModel):
     id: str
     subreddit: str
     title: str
@@ -36,10 +37,16 @@ def get_praw(creds: RedditCredentials) -> praw.Reddit:
 class RedditCredentialsBlock(Block):
     id: ClassVar[str] = "0c391c35-be7f-40e1-ac27-c3009391f244"
 
+    class Input(BlockSchema, RedditCredentials):
+        pass
+
+    class Output(BlockSchema):
+        reddit: RedditCredentials
+
     def __init__(self):
         super().__init__(
-            input_schema=RedditCredentials,
-            output_schema=RedditCredentials,
+            input_schema=RedditCredentialsBlock.Input,
+            output_schema=RedditCredentialsBlock.Output,
         )
 
     def run(self, input_data: RedditCredentials) -> BlockOutput:
