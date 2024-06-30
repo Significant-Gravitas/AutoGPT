@@ -13,7 +13,7 @@ class RedditCredentials(BaseModel):
     client_secret: str
     username: str
     password: str
-    user_agent: str
+    user_agent: str | None = None
 
 
 class RedditPost(BaseModel):
