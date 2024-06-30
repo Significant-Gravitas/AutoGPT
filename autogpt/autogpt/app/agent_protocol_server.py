@@ -451,7 +451,9 @@ class AgentProtocolServer:
         """
         task_llm_budget = self._task_budgets[task.task_id]
 
-        task_llm_provider_config = self.llm_provider._configuration.model_copy(deep=True)
+        task_llm_provider_config = self.llm_provider._configuration.model_copy(
+            deep=True
+        )
         _extra_request_headers = task_llm_provider_config.extra_request_headers
         _extra_request_headers["AP-TaskID"] = task.task_id
         if step_id:

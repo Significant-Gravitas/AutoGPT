@@ -3,10 +3,10 @@ import typing
 from typing import Any, Callable, Generic, Optional, Type, TypeVar, get_args
 
 from pydantic import BaseModel, Field, ValidationError
-from pydantic.fields import FieldInfo
-from pydantic._internal._model_construction import (
+from pydantic._internal._model_construction import (  # HACK shouldn't be used
     ModelMetaclass,
-)  # HACK shouldn't be used
+)
+from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined, PydanticUndefinedType
 
 T = TypeVar("T")

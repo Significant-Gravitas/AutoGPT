@@ -13,7 +13,7 @@ from forge.llm.providers import CHAT_MODELS, ModelName
 from forge.llm.providers.openai import OpenAICredentials, OpenAIModelName
 from forge.logging.config import LoggingConfig
 from forge.models.config import Configurable, UserConfigurable
-from pydantic import SecretStr, field_validator, ValidationInfo
+from pydantic import SecretStr, ValidationInfo, field_validator
 
 logger = logging.getLogger(__name__)
 

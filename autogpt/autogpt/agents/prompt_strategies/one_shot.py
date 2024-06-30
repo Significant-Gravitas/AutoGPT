@@ -96,7 +96,9 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         logger: Logger,
     ):
         self.config = configuration
-        self.response_schema = JSONSchema.from_dict(OneShotAgentActionProposal.model_json_schema())
+        self.response_schema = JSONSchema.from_dict(
+            OneShotAgentActionProposal.model_json_schema()
+        )
         self.logger = logger
 
     @property
@@ -274,5 +276,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 raise InvalidAgentResponseError("Assistant did not use a tool")
             assistant_reply_dict["use_tool"] = response.tool_calls[0].function
 
-        parsed_response = OneShotAgentActionProposal.model_validate(assistant_reply_dict)
+        parsed_response = OneShotAgentActionProposal.model_validate(
+            assistant_reply_dict
+        )
         return parsed_response

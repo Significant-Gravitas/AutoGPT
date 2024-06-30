@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 import inspect
-import json
 import logging
 from abc import ABCMeta, abstractmethod
 from typing import (
@@ -20,7 +19,7 @@ from typing import (
 
 from colorama import Fore
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
-from pydantic_core import to_json, from_json
+from pydantic_core import from_json, to_json
 
 from forge.agent import protocols
 from forge.agent.components import (
@@ -46,12 +45,6 @@ DEFAULT_TRIGGERING_PROMPT = (
     "and the progress you have made so far, "
     "and respond using the JSON schema specified previously:"
 )
-
-
-# HACK: This is a workaround wrapper to de/serialize component configs until pydantic v2
-#TODO kcze remove
-class ModelContainer(BaseModel):
-    models: dict[str, BaseModel]
 
 
 class BaseAgentConfiguration(SystemConfiguration):
@@ -285,14 +278,10 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
             if isinstance(component, ConfigurableComponent):
                 config_type_name = component.config.__class__.__name__
                 configs[config_type_name] = component.config
-        # data = ModelContainer(models=configs).model_dump_json()
-        # raw = parse_raw_as(dict[str, dict[str, Any]], data)
-        # return json.dumps(raw["models"], indent=4)
         return to_json(configs).decode()
 
     def load_component_configs(self, serialized_configs: str):
         configs_dict: dict[str, dict[str, Any]] = from_json(serialized_configs)
-        # configs_dict = parse_raw_as(dict[str, dict[str, Any]], serialized_configs)
 
         for component in self.components:
             if not isinstance(component, ConfigurableComponent):

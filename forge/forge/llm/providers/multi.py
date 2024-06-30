@@ -132,7 +132,9 @@ class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
             )
             if settings.credentials is None:
                 try:
-                    Credentials = get_args(settings.model_fields["credentials"].annotation)[0]
+                    Credentials = get_args(
+                        settings.model_fields["credentials"].annotation
+                    )[0]
                     settings.credentials = Credentials.from_env()
                 except ValidationError as e:
                     raise ValueError(

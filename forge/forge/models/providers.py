@@ -3,7 +3,7 @@ import enum
 import math
 from typing import Callable, Generic, TypeVar
 
-from pydantic import BaseModel, SecretBytes, SecretStr, Secret
+from pydantic import BaseModel, Secret, SecretBytes, SecretStr
 
 from forge.models.config import SystemConfiguration, UserConfigurable
 
