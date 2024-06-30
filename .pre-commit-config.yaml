@@ -97,7 +97,7 @@ repos:
         alias: pyright-benchmark
         entry: poetry -C benchmark run pyright
         args: [-p, benchmark, benchmark]
-        files: ^benchmark/(agbenchmark|tests)/
+        files: ^benchmark/(agbenchmark/|tests/|poetry\.lock$)
         types: [file]
         language: system
         pass_filenames: false
