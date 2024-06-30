@@ -48,7 +48,7 @@ async def create_test_graph() -> graph.Graph:
     return test_graph
 
 
-async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph):
+async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph) -> str:
     # --- Test adding new executions --- #
     text = "Hello, World!"
     input_data = {"input": text}
@@ -70,6 +70,12 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
 
     # Execution queue should be empty
     assert await is_execution_completed()
+    return graph_exec_id
+
+
+async def assert_executions(test_graph: graph.Graph, graph_exec_id: str):
+    text = "Hello, World!"
+    agent_server = AgentServer()
     executions = await agent_server.get_executions(test_graph.id, graph_exec_id)
 
     # Executing ParrotBlock1
@@ -115,4 +121,5 @@ async def test_agent_execution():
             await db.connect()
             await block.initialize_blocks()
             test_graph = await create_test_graph()
-            await execute_graph(test_manager, test_graph)
+            graph_exec_id = await execute_graph(test_manager, test_graph)
+            await assert_executions(test_graph, graph_exec_id)

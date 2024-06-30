@@ -37,8 +37,8 @@ class RedditGetPostsBlock(Block):
     class Input(BlockSchema):
         creds: RedditCredentials
         subreddit: str
-        last_minutes: int
-        last_post: str | None
+        last_minutes: int | None = None
+        last_post: str | None = None
 
     class Output(BlockSchema):
         post: RedditPost
@@ -53,10 +53,10 @@ class RedditGetPostsBlock(Block):
     def run(self, input_data: Input) -> BlockOutput:
         client = get_praw(input_data.creds)
         subreddit = client.subreddit(input_data.subreddit)
-        oldest_time = datetime.now() - timedelta(minutes=input_data.last_minutes)
 
         for post in subreddit.new(limit=None):
-            if post.created_utc < oldest_time.timestamp():
+            if input_data.last_post and post.created_utc < datetime.now() - \
+                    timedelta(minutes=input_data.last_minutes):
                 break
 
             if input_data.last_post and post.id == input_data.last_post:
