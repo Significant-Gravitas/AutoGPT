@@ -1,0 +1,17 @@
+
+
+
+Return the tests in the following format according to JSON structure so that all problematic characters are escaped:
+
+{
+    "file_name": "{{ "{{ file_name | replace('.js', '_test.js') | replace(\'.ts\', \'.test.ts\')  }}" }}",
+    "test_file": "<Code for the tests>"
+}
+
+// Example Response:
+
+{
+    "file_name": "{{ '{{ file_name | replace(\'.js\', \'.test.js\') | replace(\'.ts\', \'.test.ts\') }}' }}",
+    "test_file": "const {{ module_name }} = require('./{{ file_name }}');\\n\\nconst { add, subtract } = {{ module_name }};\\n\\n test('adds 2 + 3 to equal 5', () => {\\n  expect(add(2, 3)).toBe(5);\\n});\\n\\n test('adds -2 + 3 to equal 1', () => {\\n  expect(add(-2, 3)).toBe(1);\\n});\\n\\n test('adds 0 + 0 to equal 0', () => {\\n  expect(add(0, 0)).toBe(0);\\n});\\n\\n test('subtracts 5 - 3 to equal 2', () => {\\n  expect(subtract(5, 3)).toBe(2);\\n});\\n\\n test('subtracts 3 - 5 to equal -2', () => {\\n  expect(subtract(3, 5)).toBe(-2);\\n});\\n\\n test('subtracts 0 - 0 to equal 0', () => {\\n  expect(subtract(0, 0)).toBe(0);\\n});"
+}
+
