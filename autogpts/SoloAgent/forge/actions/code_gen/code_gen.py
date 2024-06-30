@@ -11,10 +11,25 @@ import subprocess
 import json
 
 LOG = ForgeLogger(__name__)
-
-
 CodeType = Dict[str, str]
 TestCaseType = Dict[str, str]
+
+
+ARGO_TOML_CONTENT = """
+[package]
+name = "my_anchor_program"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+anchor-lang = "0.30.1"
+"""
+
+ANCHOR_TOML_CONTENT = """
+[programs.localnet]
+my_anchor_program = "4d3d5ab7f6b5e4b2b7d1f5d6e4b7d1f5d6e4b7d1"
+"""
+
 
 
 @action(
@@ -81,7 +96,7 @@ async def generate_solana_code(agent: Agent, task_id: str, specification: str) -
         {"role": "user", "content": errors_prompt},
         {"role": "user", "content": cargo_toml_prompt},
         {"role": "user", "content": anchor_toml_prompt},
-        {"role": "user", "content": "Return the whole code as a string with the file markers intact that you received in each of the input without changing their wording at all."}
+        {"role": "user", "content": "Return the whole code as a string with the file markers intact that you received in each of the input without changing their wording at all and use // becore comments."}
     ]
 
     chat_completion_kwargs = {
@@ -105,36 +120,28 @@ async def generate_solana_code(agent: Agent, task_id: str, specification: str) -
     project_path = os.path.join(base_path, task_id)
     LOG.info(f"Base path: {base_path}")
     LOG.info(f"Project path: {project_path}")
-    cargo_toml_content = """
-    [package]
-    name = "my_anchor_program"
-    version = "0.1.0"
-    edition = "2018"
-
-    [dependencies]
-    anchor-lang = "0.30.1"
-    """
 
     LOG.info(f"id: {task_id}")
     LOG.info(f"Parts: {response_content}")
-    await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'lib.rs'), data=parts['anchor-lib.rs'].encode()
-    )
-    await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'instructions.rs'), data=parts['anchor-instructions.rs'].encode()
-    )
-    await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'src', 'errors.rs'), data=parts['errors.rs'].encode()
-    )
-    await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'Cargo.toml'), data=cargo_toml_content.encode()
-    )
-    await agent.abilities.run_action(
-        task_id, "write_file", file_path=os.path.join(project_path, 'Anchor.toml'), data=parts['Anchor.toml'].encode()
-    )
+
+    file_actions = [
+        ('src/lib.rs', parts['anchor-lib.rs']),
+        ('src/instructions.rs', parts['anchor-instructions.rs']),
+        ('src/errors.rs', parts['errors.rs']),
+        ('Cargo.toml', ARGO_TOML_CONTENT),
+        ('Anchor.toml', parts['Anchor.toml']),
+    ]
+
+    for file_path, file_content in file_actions:
+        print(f"Ready to write to {file_path}. Press 'y' to continue...")
+        if input().strip().lower() != 'y':
+            return f"Generation halted by user at {file_path}."
+
+        await agent.abilities.run_action(task_id, "write_file", file_path=os.path.join(project_path, file_path), data=file_content.encode())
+        print(f"{file_path} generated successfully.")
+
     test_result = await agent.abilities.run_action(task_id, "test_code", project_path=project_path)
     if "All tests passed" not in test_result:
-        # Regenerate the code based on errors
         LOG.info(f"Regenerating code due to errors: {test_result}")
         return await generate_solana_code(agent, task_id, specification)
 
@@ -334,14 +341,4 @@ def parse_response_content(response_content: str) -> dict:
     return parts
 
 
-def parse_test_cases_response(response_content: str) -> TestCaseType:
-    # Correctly parse the JSON response content by escaping control characters
-    try:
-        response_dict = json.loads(response_content)
-        file_name = response_dict["file_name"]
-        test_file = response_dict["test_file"]
-        test_cases = {file_name: test_file}
-        return test_cases
-    except json.JSONDecodeError as e:
-        LOG.error(f"Error decoding JSON response: {e}")
-        raise
+
