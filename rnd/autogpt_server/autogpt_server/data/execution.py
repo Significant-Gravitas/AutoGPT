@@ -242,17 +242,34 @@ async def get_node_execution_input(node_exec_id: str) -> dict[str, Any]:
 
 LIST_SPLIT = "_$_"
 DICT_SPLIT = "_#_"
+OBJC_SPLIT = "_@_"
 
 
 def parse_execution_output(output: tuple[str, Any], name: str) -> Any | None:
     # Allow extracting partial output data by name.
     output_name, output_data = output
+
     if name == output_name:
         return output_data
-    if isinstance(output_data, list) and name.startswith(f"{output_name}{LIST_SPLIT}"):
+
+    if name.startswith(f"{output_name}{LIST_SPLIT}"):
+        index = int(name.split(LIST_SPLIT)[1])
+        if not isinstance(output_data, list) or len(output_data) <= index:
+            return None
         return output_data[int(name.split(LIST_SPLIT)[1])]
-    if isinstance(output_data, dict) and name.startswith(f"{output_name}{DICT_SPLIT}"):
-        return output_data[name.split(DICT_SPLIT)[1]]
+
+    if name.startswith(f"{output_name}{DICT_SPLIT}"):
+        index = name.split(DICT_SPLIT)[1]
+        if not isinstance(output_data, dict) or index not in output_data:
+            return None
+        return output_data[index]
+
+    if name.startswith(f"{output_name}{OBJC_SPLIT}"):
+        index = name.split(OBJC_SPLIT)[1]
+        if isinstance(output_data, object) and hasattr(output_data, index):
+            return getattr(output_data, index)
+        return None
+
     return None
 
 
@@ -279,5 +296,14 @@ def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
         name, index = key.split(DICT_SPLIT)
         data[name] = data.get(name, {})
         data[name][index] = value
+
+    # Merge all input with <input_name>_@_<index> into a single object.
+    for key, value in data.items():
+        if OBJC_SPLIT not in key:
+            continue
+        name, index = key.split(OBJC_SPLIT)
+        if not isinstance(data[name], object):
+            data[name] = type("Object", (object,), data[name])()
+        setattr(data[name], index, value)
 
     return data
