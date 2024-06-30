@@ -13,7 +13,7 @@ from forge.llm.providers import CHAT_MODELS, ModelName
 from forge.llm.providers.openai import OpenAICredentials, OpenAIModelName
 from forge.logging.config import LoggingConfig
 from forge.models.config import Configurable, UserConfigurable
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, field_validator, ValidationInfo
 
 logger = logging.getLogger(__name__)
 
@@ -91,12 +91,10 @@ class AppConfig(BaseConfig):
         default=AZURE_CONFIG_FILE, from_env="AZURE_CONFIG_FILE"
     )
 
-    # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
     @field_validator("openai_functions")
     @classmethod
-    def validate_openai_functions(cls, value):
-        smart_llm = value["smart_llm"]
+    def validate_openai_functions(cls, value, info: ValidationInfo):
+        smart_llm = info.data["smart_llm"]
         assert CHAT_MODELS[smart_llm].has_function_call_api, (
             f"Model {smart_llm} does not support tool calling. "
             "Please disable OPENAI_FUNCTIONS or choose a suitable model."

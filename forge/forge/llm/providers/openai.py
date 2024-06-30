@@ -215,19 +215,25 @@ OPEN_AI_MODELS: Mapping[
 class OpenAICredentials(ModelProviderCredentials):
     """Credentials for OpenAI."""
 
-    api_key: SecretStr = UserConfigurable(from_env="OPENAI_API_KEY")  # type: ignore
+    api_key: Optional[SecretStr] = UserConfigurable(
+        default=None, from_env="OPENAI_API_KEY"  # type: ignore
+    )
     api_base: Optional[SecretStr] = UserConfigurable(
         default=None, from_env="OPENAI_API_BASE_URL"
     )
-    organization: Optional[SecretStr] = UserConfigurable(from_env="OPENAI_ORGANIZATION")
+    organization: Optional[SecretStr] = UserConfigurable(
+        default=None, from_env="OPENAI_ORGANIZATION"
+    )
 
     api_type: Optional[SecretStr] = UserConfigurable(
         default=None,
         from_env=lambda: cast(
             SecretStr | None,
-            "azure"
-            if os.getenv("USE_AZURE") == "True"
-            else os.getenv("OPENAI_API_TYPE"),
+            (
+                "azure"
+                if os.getenv("USE_AZURE") == "True"
+                else os.getenv("OPENAI_API_TYPE")
+            ),
         ),
     )
     api_version: Optional[SecretStr] = UserConfigurable(

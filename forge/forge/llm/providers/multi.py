@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Iterator, Optional, Sequence, TypeVar
+from typing import Any, Callable, Iterator, Optional, Sequence, TypeVar, get_args
 
 from pydantic import ValidationError
 
@@ -132,7 +132,7 @@ class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
             )
             if settings.credentials is None:
                 try:
-                    Credentials = settings.model_fields["credentials"].type_
+                    Credentials = get_args(settings.model_fields["credentials"].annotation)[0]
                     settings.credentials = Credentials.from_env()
                 except ValidationError as e:
                     raise ValueError(
