@@ -244,6 +244,18 @@ LIST_SPLIT = "_$_"
 DICT_SPLIT = "_#_"
 
 
+def parse_execution_output(output: tuple[str, Any], name: str) -> Any | None:
+    # Allow extracting partial output data by name.
+    output_name, output_data = output
+    if name == output_name:
+        return output_data
+    if isinstance(output_data, list) and name.startswith(f"{output_name}{LIST_SPLIT}"):
+        return output_data[int(name.split(LIST_SPLIT)[1])]
+    if isinstance(output_data, dict) and name.startswith(f"{output_name}{DICT_SPLIT}"):
+        return output_data[name.split(DICT_SPLIT)[1]]
+    return None
+
+
 def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
     # Merge all input with <input_name>_$_<index> into a single list.
     list_input = []
@@ -259,7 +271,7 @@ def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
     for name, value, _ in sorted(list_input, key=lambda x: x[2]):
         data[name] = data.get(name, [])
         data[name].append(value)
-        
+
     # Merge all input with <input_name>_#_<index> into a single dict.
     for key, value in data.items():
         if DICT_SPLIT not in key:

@@ -5,7 +5,8 @@ from autogpt_server.data import block, db, execution, graph
 from autogpt_server.executor import ExecutionManager
 from autogpt_server.server import AgentServer
 from autogpt_server.util.service import PyroNameServer
-from autogpt_server.blocks.sample import ParrotBlock, TextFormatterBlock, PrintingBlock
+from autogpt_server.blocks.sample import ParrotBlock, PrintingBlock
+from autogpt_server.blocks.text import TextFormatterBlock
 
 
 async def create_test_graph() -> graph.Graph:
@@ -30,7 +31,7 @@ async def create_test_graph() -> graph.Graph:
     ]
     nodes[0].connect(nodes[2], "output", "texts_$_1")
     nodes[1].connect(nodes[2], "output", "texts_$_2")
-    nodes[2].connect(nodes[3], "combined_text", "text")
+    nodes[2].connect(nodes[3], "output", "text")
 
     test_graph = graph.Graph(
         name="TestGraph",
@@ -91,7 +92,7 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
     exec = executions[2]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data == {"combined_text": ["Hello, World!,Hello, World!,!!!"]}
+    assert exec.output_data == {"output": ["Hello, World!,Hello, World!,!!!"]}
     assert exec.input_data == {
         "texts_$_1": "Hello, World!",
         "texts_$_2": "Hello, World!",

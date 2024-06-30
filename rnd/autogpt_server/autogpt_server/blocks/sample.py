@@ -21,25 +21,6 @@ class ParrotBlock(Block):
         yield "output", input_data.input
 
 
-class TextFormatterBlock(Block):
-    class Input(BlockSchema):
-        texts: list[str]
-        format: str
-
-    class Output(BlockSchema):
-        combined_text: str
-
-    def __init__(self):
-        super().__init__(
-            id="db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
-            input_schema=TextFormatterBlock.Input,
-            output_schema=TextFormatterBlock.Output,
-        )
-
-    def run(self, input_data: Input) -> BlockOutput:
-        yield "combined_text", input_data.format.format(texts=input_data.texts)
-
-
 class PrintingBlock(Block):
     class Input(BlockSchema):
         text: str

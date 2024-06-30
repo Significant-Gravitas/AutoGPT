@@ -9,6 +9,7 @@ from autogpt_server.data.execution import (
     create_graph_execution,
     get_node_execution_input,
     merge_execution_input,
+    parse_execution_output,
     update_execution_status as execution_update,
     upsert_execution_output,
     upsert_execution_input,
@@ -98,13 +99,11 @@ def enqueue_next_nodes(
     prefix = get_log_prefix(graph_exec_id, node.id)
     node_id = node.id
 
-    # Try to enqueue next eligible nodes
-    next_node_ids = [nid for name, nid in node.output_nodes if name == output_name]
-    if not next_node_ids:
-        logger.error(f"{prefix} Output [{output_name}] has no subsequent node.")
-        return []
+    def validate_next_node_execution(next_output_name: str, next_node_id: str):
+        next_data = parse_execution_output((output_name, output_data), next_output_name)
+        if next_data is None:
+            return
 
-    def validate_node_execution(next_node_id: str):
         next_node = wait(get_node(next_node_id))
         if not next_node:
             logger.error(f"{prefix} Error, next node {next_node_id} not found.")
@@ -117,7 +116,7 @@ def enqueue_next_nodes(
             node_id=next_node_id,
             graph_exec_id=graph_exec_id,
             input_name=next_node_input_name,
-            data=output_data
+            data=next_data
         ))
 
         next_node_input = wait(get_node_execution_input(next_node_exec_id))
@@ -135,9 +134,14 @@ def enqueue_next_nodes(
         )
 
     executions = []
-    for nid in next_node_ids:
-        if execution := validate_node_execution(nid):
+    for name, nid in node.output_nodes:
+        if execution := validate_next_node_execution(name, nid):
             executions.append(execution)
+
+    if not executions:
+        logger.error(f"{prefix} Output [{output_name}] has no subsequent node.")
+        return []
+
     return executions
 
 
