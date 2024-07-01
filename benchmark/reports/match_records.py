@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 class Metrics(BaseModel):
     difficulty: str
     success: bool
-    success_percent: float = Field(..., alias="success_%")
+    success_percent: float = Field(alias="success_%")
     run_time: Optional[str] = None
     fail_reason: Optional[str] = None
     attempted: Optional[bool] = None

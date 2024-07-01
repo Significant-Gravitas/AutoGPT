@@ -15,7 +15,13 @@ from agent_protocol_client import Configuration as ClientConfig
 from agent_protocol_client import Step
 from colorama import Fore, Style
 from openai import _load_client as get_openai_client
-from pydantic import BaseModel, Field, StringConstraints, ValidationInfo, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    field_validator,
+)
 
 from agbenchmark.agent_api_interface import download_agent_artifacts_into_folder
 from agbenchmark.agent_interface import copy_challenge_artifacts_into_workspace
@@ -38,15 +44,17 @@ with open(Path(__file__).parent / "optional_categories.json") as f:
 
 class BuiltinChallengeSpec(BaseModel):
     eval_id: str = ""
-    name: str
-    task: str
-    category: list[Category]
-    dependencies: list[str]
-    cutoff: int
+    name: str = ""
+    task: str = ""
+    category: list[Category] = Field(default_factory=list)
+    dependencies: list[str] = Field(default_factory=list)
+    cutoff: int = 0
 
     class Info(BaseModel):
         difficulty: DifficultyLevel
-        description: Annotated[str, StringConstraints(pattern=r"^Tests if the agent can.*")]
+        description: Annotated[
+            str, StringConstraints(pattern=r"^Tests if the agent can.*")
+        ]
         side_effects: list[str] = Field(default_factory=list)
 
     info: Info
@@ -60,22 +68,25 @@ class BuiltinChallengeSpec(BaseModel):
 
         class Eval(BaseModel):
             type: str
-            scoring: Optional[Literal["percentage", "scale", "binary"]]
-            template: Optional[Literal["rubric", "reference", "question", "custom"]]
-            examples: Optional[str]
+            scoring: Optional[Literal["percentage", "scale", "binary"]] = None
+            template: Optional[
+                Literal["rubric", "reference", "question", "custom"]
+            ] = None
+            examples: Optional[str] = None
 
             @field_validator("scoring", "template")
             @classmethod
             def validate_eval_fields(cls, value, info: ValidationInfo):
+                field_name = info.field_name
                 if "type" in info.data and info.data["type"] == "llm":
                     if value is None:
                         raise ValueError(
-                            f"{info.field_name} must be provided when eval type is 'llm'"
+                            f"{field_name} must be provided when eval type is 'llm'"
                         )
                 else:
                     if value is not None:
                         raise ValueError(
-                            f"{info.field_name} should only exist when eval type is 'llm'"
+                            f"{field_name} should only exist when eval type is 'llm'"
                         )
                 return value
 
@@ -143,7 +154,9 @@ class BuiltinChallenge(BaseChallenge):
 
     @classmethod
     def from_challenge_spec_file(cls, spec_file: Path) -> type["BuiltinChallenge"]:
-        challenge_spec = BuiltinChallengeSpec.model_validate_json(Path(spec_file).read_text())
+        challenge_spec = BuiltinChallengeSpec.model_validate_json(
+            Path(spec_file).read_text()
+        )
         challenge_spec.spec_file = spec_file
         return cls.from_challenge_spec(challenge_spec)
 

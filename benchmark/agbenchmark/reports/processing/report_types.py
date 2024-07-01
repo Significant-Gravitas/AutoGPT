@@ -6,7 +6,13 @@ import logging
 from typing import Annotated, Any, Dict, List
 
 from agent_protocol_client import Step
-from pydantic import BaseModel, Field, StringConstraints, ValidationInfo, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    field_validator,
+)
 
 datetime_format = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$"
 logger = logging.getLogger(__name__)

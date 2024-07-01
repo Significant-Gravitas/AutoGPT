@@ -16,16 +16,16 @@ logger = logging.getLogger(__name__)
 
 class ChallengeInfo(BaseModel):
     eval_id: str = ""
-    name: str
-    task: str
+    name: str = ""
+    task: str = ""
     task_artifacts_dir: Optional[Path] = None
-    category: list[Category]
+    category: list[Category] = Field(default_factory=list)
     difficulty: Optional[DifficultyLevel] = None
     description: Optional[str] = None
     dependencies: list[str] = Field(default_factory=list)
-    reference_answer: Optional[str]
+    reference_answer: Optional[str] = None
 
-    source_uri: str
+    source_uri: str = ""
     """Internal reference indicating the source of the challenge specification"""
 
     available: bool = True

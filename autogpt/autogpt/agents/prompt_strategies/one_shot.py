@@ -28,15 +28,13 @@ _RESPONSE_INTERFACE_NAME = "AssistantResponse"
 
 class AssistantThoughts(ModelWithSummary):
     observations: str = Field(
-        ..., description="Relevant observations from your last action (if any)"
+        description="Relevant observations from your last action (if any)"
     )
-    text: str = Field(..., description="Thoughts")
-    reasoning: str = Field(..., description="Reasoning behind the thoughts")
-    self_criticism: str = Field(..., description="Constructive self-criticism")
-    plan: list[str] = Field(
-        ..., description="Short list that conveys the long-term plan"
-    )
-    speak: str = Field(..., description="Summary of thoughts, to say to user")
+    text: str = Field(description="Thoughts")
+    reasoning: str = Field(description="Reasoning behind the thoughts")
+    self_criticism: str = Field(description="Constructive self-criticism")
+    plan: list[str] = Field(description="Short list that conveys the long-term plan")
+    speak: str = Field(description="Summary of thoughts, to say to user")
 
     def summary(self) -> str:
         return self.text

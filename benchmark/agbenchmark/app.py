@@ -16,7 +16,7 @@ from agent_protocol_client import AgentApi, ApiClient, ApiException, Configurati
 from agent_protocol_client.models import Task, TaskRequestBody
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Extra, ValidationError
+from pydantic import BaseModel, ValidationError
 
 from agbenchmark.challenges import ChallengeInfo
 from agbenchmark.config import AgentBenchmarkConfig
@@ -52,7 +52,9 @@ while challenge_spec_files:
 
     logger.debug(f"Loading {challenge_relpath}...")
     try:
-        challenge_info = ChallengeInfo.model_validate_json(Path(challenge_spec_file).read_text())
+        challenge_info = ChallengeInfo.model_validate_json(
+            Path(challenge_spec_file).read_text()
+        )
     except ValidationError as e:
         if logging.getLogger().level == logging.DEBUG:
             logger.warning(f"Spec file {challenge_relpath} failed to load:\n{e}")
@@ -112,7 +114,7 @@ class CreateReportRequest(BaseModel):
     mock: Optional[bool] = False
 
     class Config:
-        extra = Extra.forbid  # this will forbid any extra fields
+        extra = "forbid"  # this will forbid any extra fields
 
 
 updates_list = []

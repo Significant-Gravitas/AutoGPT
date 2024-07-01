@@ -195,19 +195,19 @@ class WebArenaChallengeSpec(BaseModel):
 
     class EvalSet(BaseModel):
         class StringMatchEvalSet(BaseModel):
-            exact_match: str | None
-            fuzzy_match: list[str] | None
-            must_include: list[str] | None
+            exact_match: str | None = None
+            fuzzy_match: list[str] | None = None
+            must_include: list[str] | None = None
 
-        reference_answers: StringMatchEvalSet | None
+        reference_answers: StringMatchEvalSet | None = None
         """For string_match eval, a set of criteria to judge the final answer"""
-        reference_answer_raw_annotation: str | None
-        string_note: str | None
-        annotation_note: str | None
+        reference_answer_raw_annotation: str | None = None
+        string_note: str | None = None
+        annotation_note: str | None = None
 
-        reference_url: str | None
+        reference_url: str | None = None
         """For url_match eval, the last URL that should be visited"""
-        url_note: str | None
+        url_note: str | None = None
 
         program_html: list[ProgramHtmlEval]
         """For program_html eval, a list of criteria to judge the site state by"""
