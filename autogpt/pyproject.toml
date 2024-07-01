@@ -43,10 +43,15 @@ sentry-sdk = "^1.40.4"
 # Benchmarking
 agbenchmark = { path = "../benchmark", optional = true }
 # agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
-cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main", develop = true }
+
+# Build
+cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main", optional = true }
+# HACK: switch to cx-freeze release package after #2442 and #2472 are merged: https://github.com/marcelotduarte/cx_Freeze/pulls?q=is:pr+%232442+OR+%232472+
+# cx-freeze = { version = "^7.2.0", optional = true }
 
 [tool.poetry.extras]
 benchmark = ["agbenchmark"]
+build = ["cx-freeze"]
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.12.1"

@@ -1072,7 +1072,7 @@ toml = ["tomli"]
 name = "cx_Freeze"
 version = "7.1.1"
 description = "Create standalone executables from Python scripts"
-optional = false
+optional = true
 python-versions = ">=3.8"
 files = []
 develop = true
@@ -1101,7 +1101,7 @@ resolved_reference = "876fe77c97db749b7b0aed93c12142a7226ee7e4"
 name = "cx-logging"
 version = "3.2.0"
 description = "Python and C interfaces for logging"
-optional = false
+optional = true
 python-versions = ">=3.8"
 files = [
     {file = "cx_Logging-3.2.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:d40c1a4dcd54eff3335f34a2f9af9e29f29b45441fa99f90d6710ffae130a826"},
@@ -1248,7 +1248,7 @@ files = [
 name = "dmgbuild"
 version = "1.6.1"
 description = "macOS command line utility to build disk images"
-optional = false
+optional = true
 python-versions = ">=3.7"
 files = [
     {file = "dmgbuild-1.6.1-py3-none-any.whl", hash = "sha256:45dba6af4a64872c6a91eb335ebeaf5e1f4f4f39c89fd77cf40e841bd1226166"},
@@ -1290,7 +1290,7 @@ websockets = ["websocket-client (>=1.3.0)"]
 name = "ds-store"
 version = "1.3.1"
 description = "Manipulate Finder .DS_Store files from Python"
-optional = false
+optional = true
 python-versions = ">=3.7"
 files = [
     {file = "ds_store-1.3.1-py3-none-any.whl", hash = "sha256:fbacbb0bd5193ab3e66e5a47fff63619f15e374ffbec8ae29744251a6c8f05b5"},
@@ -2765,7 +2765,7 @@ data = ["language-data (>=1.1,<2.0)"]
 name = "lief"
 version = "0.14.1"
 description = "Library to instrument executable formats"
-optional = false
+optional = true
 python-versions = ">=3.8"
 files = [
     {file = "lief-0.14.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:7a9a94882f9af110fb01b4558a58941d2352b9a4ae3fef15570a3fab921ff462"},
@@ -2923,7 +2923,7 @@ source = ["Cython (>=3.0.7)"]
 name = "mac-alias"
 version = "2.2.2"
 description = "Generate/parse Mac OS Alias records from Python"
-optional = false
+optional = true
 python-versions = ">=3.7"
 files = [
     {file = "mac_alias-2.2.2-py3-none-any.whl", hash = "sha256:504ab8ac546f35bbd75ad014d6ad977c426660aa721f2cd3acf3dc2f664141bd"},
@@ -3851,7 +3851,7 @@ testing = ["docopt", "pytest (<6.0.0)"]
 name = "patchelf"
 version = "0.17.2.1"
 description = "A small utility to modify the dynamic linker and RPATH of ELF executables."
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "patchelf-0.17.2.1-py2.py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.musllinux_1_1_aarch64.whl", hash = "sha256:fc329da0e8f628bd836dfb8eaf523547e342351fa8f739bf2b3fe4a6db5a297c"},
@@ -6471,7 +6471,7 @@ files = [
 name = "wheel"
 version = "0.43.0"
 description = "A built-package format for Python"
-optional = false
+optional = true
 python-versions = ">=3.8"
 files = [
     {file = "wheel-0.43.0-py3-none-any.whl", hash = "sha256:55c570405f142630c6b9f72fe09d9b67cf1477fcf543ae5b8dcb1f5b7377da81"},
@@ -6694,8 +6694,9 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 
 [extras]
 benchmark = ["agbenchmark"]
+build = ["cx-freeze"]
 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "fedcaea76d933574e26b853f42984c19428376369c75c6215c9d383ac3fda9c4"
+content-hash = "28ff24ead50f6cb99ede3c74ae7f57e88d8fb9d1278cdb2a14cc1ce57f56ed1e"
