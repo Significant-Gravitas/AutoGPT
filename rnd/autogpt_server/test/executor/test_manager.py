@@ -29,14 +29,16 @@ async def create_test_graph() -> graph.Graph:
         ),
         graph.Node(block_id=PrintingBlock().id),
     ]
-    nodes[0].connect(nodes[2], "output", "texts_$_1")
-    nodes[1].connect(nodes[2], "output", "texts_$_2")
-    nodes[2].connect(nodes[3], "output", "text")
-
+    links = [
+        graph.Link(nodes[0].id, nodes[2].id, "output", "texts_$_1"),
+        graph.Link(nodes[1].id, nodes[2].id, "output", "texts_$_2"),
+        graph.Link(nodes[2].id, nodes[3].id, "output", "text"),
+    ]
     test_graph = graph.Graph(
         name="TestGraph",
         description="Test graph",
         nodes=nodes,
+        links=links,
     )
     result = await graph.create_graph(test_graph)
 

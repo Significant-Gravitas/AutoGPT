@@ -17,7 +17,7 @@ from autogpt_server.data.execution import (
     ExecutionStatus,
     ExecutionQueue,
 )
-from autogpt_server.data.graph import Node, get_node, get_graph
+from autogpt_server.data.graph import Link, Node, get_node, get_graph
 from autogpt_server.util.service import AppService, expose
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,11 @@ def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> ExecutionS
             wait(upsert_execution_output(node_exec_id, output_name, output_data))
 
             for execution in enqueue_next_nodes(
-                    loop, node, output_name, output_data, graph_exec_id
+                loop=loop,
+                node=node,
+                output=(output_name, output_data),
+                graph_exec_id=graph_exec_id,
+                prefix=prefix,
             ):
                 yield execution
     except Exception as e:
@@ -89,18 +93,19 @@ def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> ExecutionS
 def enqueue_next_nodes(
         loop: asyncio.AbstractEventLoop,
         node: Node,
-        output_name: str,
-        output_data: Any,
+        output: tuple[str, Any],
         graph_exec_id: str,
+        prefix: str,
 ) -> list[Execution]:
     def wait(f: Coroutine[T, Any, T]) -> T:
         return loop.run_until_complete(f)
 
-    prefix = get_log_prefix(graph_exec_id, node.id)
-    node_id = node.id
+    def get_next_node_execution(node_link: Link) -> Execution | None:
+        next_output_name = node_link.source_name
+        next_input_name = node_link.sink_name
+        next_node_id = node_link.sink_id
 
-    def validate_next_node_execution(next_output_name: str, next_node_id: str):
-        next_data = parse_execution_output((output_name, output_data), next_output_name)
+        next_data = parse_execution_output(output, next_output_name)
         if next_data is None:
             return
 
@@ -109,23 +114,22 @@ def enqueue_next_nodes(
             logger.error(f"{prefix} Error, next node {next_node_id} not found.")
             return
 
-        next_node_input_name = next(
-            name for name, nid in next_node.input_nodes if nid == node_id
-        )
         next_node_exec_id = wait(upsert_execution_input(
             node_id=next_node_id,
             graph_exec_id=graph_exec_id,
-            input_name=next_node_input_name,
+            input_name=next_input_name,
             data=next_data
         ))
-
         next_node_input = wait(get_node_execution_input(next_node_exec_id))
-        is_valid, validation_resp = wait(validate_exec(next_node, next_node_input))
+
+        is_valid, validation_msg = validate_exec(next_node, next_node_input)
+        suffix = f"{next_output_name}~{next_input_name}#{next_node_id}:{validation_msg}"
+
         if not is_valid:
-            logger.warning(f"{prefix} Skipped {next_node_id}: {validation_resp}")
+            logger.warning(f"{prefix} Skipped queueing {suffix}")
             return
 
-        logger.warning(f"{prefix} Enqueue next node {next_node_id}-{validation_resp}")
+        logger.warning(f"{prefix} Enqueued {suffix}")
         return Execution(
             graph_exec_id=graph_exec_id,
             node_exec_id=next_node_exec_id,
@@ -133,19 +137,11 @@ def enqueue_next_nodes(
             data=next_node_input
         )
 
-    executions = []
-    for name, nid in node.output_nodes:
-        if execution := validate_next_node_execution(name, nid):
-            executions.append(execution)
-
-    if not executions:
-        logger.error(f"{prefix} Output [{output_name}] has no subsequent node.")
-        return []
-
-    return executions
+    executions = [get_next_node_execution(link) for link in node.output_links]
+    return [v for v in executions if v]
 
 
-async def validate_exec(node: Node, data: dict[str, Any]) -> tuple[bool, str]:
+def validate_exec(node: Node, data: dict[str, Any]) -> tuple[bool, str]:
     """
     Validate the input data for a node execution.
 
@@ -167,7 +163,7 @@ async def validate_exec(node: Node, data: dict[str, Any]) -> tuple[bool, str]:
     if not input_fields_from_schema.issubset(data):
         return False, f"{error_message} {input_fields_from_schema - set(data)}"
 
-    input_fields_from_nodes = {name for name, _ in node.input_nodes}
+    input_fields_from_nodes = {link.sink_name for link in node.input_links}
     if not input_fields_from_nodes.issubset(data):
         return False, f"{error_message} {input_fields_from_nodes - set(data)}"
 
@@ -228,7 +224,7 @@ class ExecutionManager(AppService):
         # Currently, there is no constraint on the number of root nodes in the graph.
         for node in graph.starting_nodes:
             input_data = merge_execution_input({**node.input_default, **data})
-            valid, error = self.run_and_wait(validate_exec(node, input_data))
+            valid, error = validate_exec(node, input_data)
             if not valid:
                 raise Exception(error)
 

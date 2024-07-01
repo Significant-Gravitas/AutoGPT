@@ -8,7 +8,7 @@ class TextMatcherBlock(Block):
     class Input(BlockSchema):
         text: str
         match: str
-        data: Any | None = None
+        data: Any
 
     class Output(BlockSchema):
         positive: Any

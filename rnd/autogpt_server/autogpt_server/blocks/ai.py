@@ -75,6 +75,7 @@ class LlmCallBlock(Block):
         ]
 
         logger.warning(f"LLM request: {prompt}")
+        retry_prompt = ""
         for retry_count in range(input_data.retry):
             response = openai.chat.completions.create(
                 model=input_data.config.model,
@@ -88,7 +89,7 @@ class LlmCallBlock(Block):
             if not parsed_error:
                 # convert parsed_dict into dict[str,str]
                 yield "response", {k: json.dumps(v) for k, v in parsed_dict.items()}
-                break
+                return
 
             retry_prompt = f"""
               |This is your previous error response:
@@ -103,4 +104,4 @@ class LlmCallBlock(Block):
             """
             prompt.append({"role": "user", "content": trim_prompt(retry_prompt)})
 
-        yield "error", prompt[-1]["content"]
+        yield "error", retry_prompt

@@ -1,7 +1,8 @@
 import time
 import pytest
 
-from autogpt_server.data import block, db, graph
+from autogpt_server.data import block, db
+from autogpt_server.data.graph import Graph, Link, Node, create_graph
 from autogpt_server.blocks.ai import LlmConfig, LlmCallBlock, LlmModel
 from autogpt_server.blocks.reddit import (
     RedditCredentials,
@@ -14,47 +15,31 @@ from autogpt_server.server import AgentServer
 from autogpt_server.util.service import PyroNameServer
 
 
-async def create_test_graph() -> graph.Graph:
+async def create_test_graph() -> Graph:
     #                                  /--- post_id -----------\                                                     /--- post_id        ---\
     # subreddit --> RedditGetPostsBlock ---- post_body -------- TextFormatterBlock ----- LlmCallBlock / TextRelevancy --- relevant/not   -- TextMatcherBlock -- Yes  {postid, text} --- RedditPostCommentBlock
     #                                  \--- post_title -------/                                                      \--- marketing_text ---/                -- No
 
     # Creds
     reddit_creds = RedditCredentials(
-        client_id="",
-        client_secret="",
-        username="",
-        password="",
-        user_agent="",
+        client_id="TODO_FILL_OUT_THIS",
+        client_secret="TODO_FILL_OUT_THIS",
+        username="TODO_FILL_OUT_THIS",
+        password="TODO_FILL_OUT_THIS",
+        user_agent="TODO_FILL_OUT_THIS",
     )
     openai_creds = LlmConfig(
         model=LlmModel.openai_gpt4,
-        api_key="",
+        api_key="TODO_FILL_OUT_THIS",
     )
-
-    # Nodes
-    reddit_get_post_node = graph.Node(block_id=RedditGetPostsBlock().id)
-    text_formatter_node = graph.Node(block_id=TextFormatterBlock().id)
-    llm_call_node = graph.Node(block_id=LlmCallBlock().id)
-    text_matcher_node = graph.Node(block_id=TextMatcherBlock().id)
-    reddit_comment_node = graph.Node(block_id=RedditPostCommentBlock().id)
-
-    nodes = [
-        reddit_get_post_node,
-        text_formatter_node,
-        llm_call_node,
-        text_matcher_node,
-        reddit_comment_node,
-    ]
-
-    # Input and connections
-    reddit_get_post_node.input_default = {
+    
+    # Hardcoded inputs
+    reddit_get_post_input = {
         "creds": reddit_creds,
         "last_minutes": 60,
+        "post_limit": 3,
     }
-    reddit_get_post_node.connect(text_formatter_node, "post", "named_texts")
-
-    text_formatter_node.input_default = {
+    text_formatter_input = {
         "format": """
 Based on the following post, write your marketing comment:
 * Post ID: {id}
@@ -62,17 +47,12 @@ Based on the following post, write your marketing comment:
 * Post Title: {title}
 * Post Body: {body}""".strip(),
     }
-    text_formatter_node.connect(llm_call_node, "output", "usr_prompt")
-
-    llm_call_node.input_default = {
+    llm_call_input = {
         "sys_prompt": """
-You are an expert at guerilla marketing.
-You have been tasked with writing a reddit comment subtlety promoting your product.
-You promote your product by telling how you had a similar problem and used the product your promoting to help solver the problem.
-Make sure to explain how the product helped to solve the problem.
-
-The product you are marketing is:
-AutoGPT agent, a tool for automating a large language model (LLM) for solving tasks.
+You are an expert at social media jokes.
+You have been tasked with writing a non-offensive joke as reddit comment.
+You reply the post that you find it relevant to be replied as a joke that relates to the post, using the same language and the slang of the post.
+Make sure it has to be funny.
 """,
         "config": openai_creds,
         "expected_format": {
@@ -81,19 +61,57 @@ AutoGPT agent, a tool for automating a large language model (LLM) for solving ta
             "marketing_text": "str, marketing text, this is empty on irrelevant posts",
         },
     }
-    llm_call_node.connect(text_matcher_node, "response", "data")
-    llm_call_node.connect(text_matcher_node, "response_#_post_id", "text")
+    text_matcher_input = {"match": "true"}
+    reddit_comment_input = {"creds": reddit_creds}
 
-    text_matcher_node.input_default = {"match": "true"}
-    text_matcher_node.connect(reddit_comment_node, "data_#_post_id", "post_id")
-    text_matcher_node.connect(reddit_comment_node, "data_#_marketing_text", "comment")
+    # Nodes
+    reddit_get_post_node = Node(
+        block_id=RedditGetPostsBlock().id,
+        input_default=reddit_get_post_input,
+    )
+    text_formatter_node = Node(
+        block_id=TextFormatterBlock().id,
+        input_default=text_formatter_input,
+    )
+    llm_call_node = Node(
+        block_id=LlmCallBlock().id,
+        input_default=llm_call_input
+    )
+    text_matcher_node = Node(
+        block_id=TextMatcherBlock().id,
+        input_default=text_matcher_input,
+    )
+    reddit_comment_node = Node(
+        block_id=RedditPostCommentBlock().id,
+        input_default=reddit_comment_input,
+    )
 
-    test_graph = graph.Graph(
+    nodes = [
+        reddit_get_post_node,
+        text_formatter_node,
+        llm_call_node,
+        text_matcher_node,
+        reddit_comment_node,
+    ]
+    
+    # Links
+    links = [
+        Link(reddit_get_post_node.id, text_formatter_node.id, "post", "named_texts"),
+        Link(text_formatter_node.id, llm_call_node.id, "output", "usr_prompt"),
+        Link(llm_call_node.id, text_matcher_node.id, "response", "data"),
+        Link(llm_call_node.id, text_matcher_node.id, "response_#_is_relevant", "text"),
+        Link(text_matcher_node.id, reddit_comment_node.id, "positive_#_post_id", "post_id"),
+        Link(text_matcher_node.id, reddit_comment_node.id, "positive_#_marketing_text", "comment"),
+    ]
+
+    # Create graph
+    test_graph = Graph(
         name="RedditMarketingAgent",
         description="Reddit marketing agent",
         nodes=nodes,
+        links=links,
     )
-    return await graph.create_graph(test_graph)
+    return await create_graph(test_graph)
 
 
 async def wait_execution(test_manager, graph_id, graph_exec_id) -> list:
@@ -103,32 +121,36 @@ async def wait_execution(test_manager, graph_id, graph_exec_id) -> list:
         List of execution:
             reddit_get_post_node 1 (produced 3 posts)
             text_formatter_node 3
-            llm_call_node 3 (produced 2 relevant posts, filter out 1)
-            text_matcher_node 2
+            llm_call_node 3 (assume there are only 2 relevant posts)
+            text_matcher_node 3
             reddit_comment_node 2
-        Total: 11
+        Total: 12
         """
-        return test_manager.queue.empty() and len(execs) == 11
+        return test_manager.queue.empty() and len(execs) == 12
 
     # Wait for the executions to complete
     for i in range(30):
         if await is_execution_completed():
             return await AgentServer().get_executions(graph_id, graph_exec_id)
         time.sleep(1)
-        
+
     assert False, "Execution did not complete in time."
 
 # Manual run
 @pytest.mark.asyncio(scope="session")
 @pytest.mark.skip
-async def test_reddit_marketing_agent():
+async def reddit_marketing_agent():
     with PyroNameServer():
         with ExecutionManager(1) as test_manager:
             await db.connect()
             await block.initialize_blocks()
             test_graph = await create_test_graph()
-            input_data = {"subreddit": "r/AutoGPT"}
+            input_data = {"subreddit": "indonesia"}
             response = await AgentServer().execute_graph(test_graph.id, input_data)
             print(response)
             result = await wait_execution(test_manager, test_graph.id, response["id"])
             print(result)
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(reddit_marketing_agent())

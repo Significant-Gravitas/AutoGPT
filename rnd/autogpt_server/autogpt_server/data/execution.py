@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from autogpt_server.util import json
 
+
 class NodeExecution(BaseModel):
     graph_exec_id: str
     node_exec_id: str
@@ -148,7 +149,6 @@ async def upsert_execution_input(
     json_data = json.dumps(data)
 
     if existing_execution:
-        print(f"Adding input {input_name}={data} to execution #{existing_execution.id}")
         await AgentNodeExecutionInputOutput.prisma().create(
             data={
                 "name": input_name,
@@ -159,7 +159,6 @@ async def upsert_execution_input(
         return existing_execution.id
 
     else:
-        print(f"Creating new execution for input {input_name}={data}")
         result = await AgentNodeExecution.prisma().create(
             data={
                 "agentNodeId": node_id,
