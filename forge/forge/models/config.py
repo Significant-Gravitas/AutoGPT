@@ -2,7 +2,7 @@ import os
 import typing
 from typing import Any, Callable, Generic, Optional, Type, TypeVar, get_args
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic._internal._model_construction import (  # HACK shouldn't be used
     ModelMetaclass,
 )
@@ -79,10 +79,9 @@ class SystemConfiguration(BaseModel):
 
         return _recursive_init_model(cls, infer_field_value, True)
 
-    class Config:
-        extra = "forbid"
-        use_enum_values = True
-        validate_assignment = True
+    model_config = ConfigDict(
+        extra="forbid", use_enum_values=True, validate_assignment=True
+    )
 
 
 SC = TypeVar("SC", bound=SystemConfiguration)
@@ -94,10 +93,9 @@ class SystemSettings(BaseModel):
     name: str
     description: str
 
-    class Config:
-        extra = "forbid"
-        use_enum_values = True
-        validate_assignment = True
+    model_config = ConfigDict(
+        extra="forbid", use_enum_values=True, validate_assignment=True
+    )
 
 
 S = TypeVar("S", bound=SystemSettings)

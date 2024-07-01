@@ -1,9 +1,9 @@
 import abc
 import enum
 import math
-from typing import Callable, Generic, TypeVar
+from typing import Generic, TypeVar
 
-from pydantic import BaseModel, Secret, SecretBytes, SecretStr
+from pydantic import BaseModel, ConfigDict, Secret, SecretBytes, SecretStr
 
 from forge.models.config import SystemConfiguration, UserConfigurable
 
@@ -38,12 +38,13 @@ class ProviderCredentials(SystemConfiguration):
     def unmasked(self) -> dict:
         return unmask(self)
 
-    class Config(SystemConfiguration.Config):
-        json_encoders: dict[type[Secret], Callable[[Secret], str | None]] = {
+    model_config = ConfigDict(
+        json_encoders={
             SecretStr: lambda v: v.get_secret_value() if v else None,
             SecretBytes: lambda v: v.get_secret_value() if v else None,
             Secret: lambda v: v.get_secret_value() if v else None,
         }
+    )
 
 
 def unmask(model: BaseModel):

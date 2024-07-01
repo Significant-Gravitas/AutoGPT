@@ -314,7 +314,7 @@ class AgentProtocolServer:
                             ""
                             if tool_result is None
                             else (
-                                orjson.loads(tool_result.json())
+                                orjson.loads(tool_result.model_dump_json())
                                 if not isinstance(tool_result, ActionErrorResult)
                                 else {
                                     "error": str(tool_result.error),

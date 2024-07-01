@@ -183,7 +183,7 @@ class WebArenaChallengeSpec(BaseModel):
     """The JungleGym site (base URL) at which to start"""
     require_login: bool
     require_reset: bool
-    storage_state: str | None
+    storage_state: str | None = None
 
     intent: str
     intent_template: str

@@ -17,9 +17,9 @@ urllib3 = "^1.25.3"
 
 [package.source]
 type = "git"
-url = "https://github.com/AI-Engineer-Foundation/agent-protocol.git"
+url = "https://github.com/kcze/agent-protocol.git"
 reference = "HEAD"
-resolved_reference = "1191f6cb4e624e87bed76f1e7e92de028e78dd7f"
+resolved_reference = "beb098517b0b9e255024d1b57df236f0329f4b1c"
 subdirectory = "packages/client/python"
 
 [[package]]
@@ -2948,4 +2948,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "7e396420e17319e93e7419dc8163cb5653d236b96d5e737567cbaeb064b83dbd"
+content-hash = "bb10586f232e2e0cfdb9359cbd6a157e8d0c30ebcea687093ef1aa8f49ac45b8"

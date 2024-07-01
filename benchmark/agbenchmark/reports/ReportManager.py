@@ -111,7 +111,7 @@ class SessionReportManager(BaseReportManager):
     def save(self) -> None:
         with self.report_file.open("w") as f:
             if self.report:
-                f.write(self.report.json(indent=4))
+                f.write(self.report.model_dump_json(indent=4))
             else:
                 json.dump(
                     {k: v.model_dump() for k, v in self.tests.items()}, f, indent=4

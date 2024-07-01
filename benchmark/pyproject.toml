@@ -28,7 +28,7 @@ pytest = "^7.3.2"
 pytest-asyncio = "^0.23.3"
 python-dotenv = "^1.0.0"
 python-multipart = "^0.0.7"
-agent-protocol-client = {git = "https://github.com/AI-Engineer-Foundation/agent-protocol.git", subdirectory = "packages/client/python"}
+agent-protocol-client = {git = "https://github.com/kcze/agent-protocol.git", subdirectory = "packages/client/python"}
 pyvis = "^0.3.2"
 requests = "^2.31.0"
 selenium = "^4.11.2"

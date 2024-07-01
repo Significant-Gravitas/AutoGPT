@@ -16,7 +16,7 @@ from agent_protocol_client import AgentApi, ApiClient, ApiException, Configurati
 from agent_protocol_client.models import Task, TaskRequestBody
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from agbenchmark.challenges import ChallengeInfo
 from agbenchmark.config import AgentBenchmarkConfig
@@ -113,8 +113,7 @@ class CreateReportRequest(BaseModel):
     # category: Optional[str] = []
     mock: Optional[bool] = False
 
-    class Config:
-        extra = "forbid"  # this will forbid any extra fields
+    model_config = ConfigDict(extra="forbid")
 
 
 updates_list = []
@@ -328,7 +327,9 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
                 config={},
             )
 
-            logger.debug(f"Returning evaluation data:\n{eval_info.json(indent=4)}")
+            logger.debug(
+                f"Returning evaluation data:\n{eval_info.model_dump_json(indent=4)}"
+            )
             return eval_info
         except ApiException as e:
             logger.error(f"Error {e} whilst trying to evaluate task: {task_id}")

@@ -201,7 +201,7 @@ class BuiltinChallenge(BaseChallenge):
                     task_id = step.task_id
 
                 n_steps += 1
-                steps.append(step.copy())
+                steps.append(step.model_copy())
                 if step.additional_output:
                     agent_task_cost = step.additional_output.get(
                         "task_total_cost",

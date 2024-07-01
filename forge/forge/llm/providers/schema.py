@@ -17,7 +17,7 @@ from typing import (
     TypeVar,
 )
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from forge.logging.utils import fmt_kwargs
 from forge.models.config import (
@@ -204,8 +204,7 @@ class ModelProviderCredentials(ProviderCredentials):
     api_version: SecretStr | None = UserConfigurable(default=None)
     deployment_id: SecretStr | None = UserConfigurable(default=None)
 
-    class Config(ProviderCredentials.Config):
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")
 
 
 class ModelProviderUsage(BaseModel):
