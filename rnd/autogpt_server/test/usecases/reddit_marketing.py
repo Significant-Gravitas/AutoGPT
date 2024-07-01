@@ -49,10 +49,10 @@ Based on the following post, write your marketing comment:
     }
     llm_call_input = {
         "sys_prompt": """
-You are an expert at social media jokes.
-You have been tasked with writing a non-offensive joke as reddit comment.
-You reply the post that you find it relevant to be replied as a joke that relates to the post, using the same language and the slang of the post.
-Make sure it has to be funny.
+You are an expert at marketing, and have been tasked with picking Reddit posts that are relevant to your product.
+The product you are marketing is: Auto-GPT an autonomous AI agent utilizing GPT model.
+You reply the post that you find it relevant to be replied with marketing text.
+Make sure to only comment on a relevant post.
 """,
         "config": openai_creds,
         "expected_format": {
@@ -137,15 +137,13 @@ async def wait_execution(test_manager, graph_id, graph_exec_id) -> list:
     assert False, "Execution did not complete in time."
 
 # Manual run
-@pytest.mark.asyncio(scope="session")
-@pytest.mark.skip
 async def reddit_marketing_agent():
     with PyroNameServer():
         with ExecutionManager(1) as test_manager:
             await db.connect()
             await block.initialize_blocks()
             test_graph = await create_test_graph()
-            input_data = {"subreddit": "indonesia"}
+            input_data = {"subreddit": "AutoGPT"}
             response = await AgentServer().execute_graph(test_graph.id, input_data)
             print(response)
             result = await wait_execution(test_manager, test_graph.id, response["id"])
