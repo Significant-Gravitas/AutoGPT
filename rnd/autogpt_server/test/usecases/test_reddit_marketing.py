@@ -120,6 +120,7 @@ async def wait_execution(test_manager, graph_id, graph_exec_id) -> list:
 
 # Manual run
 @pytest.mark.asyncio(scope="session")
+@pytest.mark.skip
 async def test_reddit_marketing_agent():
     with PyroNameServer():
         with ExecutionManager(1) as test_manager:
