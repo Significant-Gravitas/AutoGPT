@@ -18,12 +18,14 @@ fastapi = "^0.109.1"
 gitpython = "^3.1.32"
 httpx = "^0.24.0"
 matplotlib = "^3.7.2"
+multidict = "^6.0.5"
 networkx = "^3.1"
 openai = "^1.7.2"
 pandas = "^2.0.3"
 pexpect = "^4.8.0"
 psutil = "^5.9.5"
 pydantic = "^2.7.2"
+pydantic-settings = "^2.3.4"
 pytest = "^7.3.2"
 pytest-asyncio = "^0.23.3"
 python-dotenv = "^1.0.0"
@@ -4438,6 +4440,25 @@ files = [
 
 [package.dependencies]
 typing-extensions = ">=4.6.0,<4.7.0 || >4.7.0"
+
+[[package]]
+name = "pydantic-settings"
+version = "2.3.4"
+description = "Settings management using Pydantic"
+optional = true
+python-versions = ">=3.8"
+files = [
+    {file = "pydantic_settings-2.3.4-py3-none-any.whl", hash = "sha256:11ad8bacb68a045f00e4f862c7a718c8a9ec766aa8fd4c32e39a0594b207b53a"},
+    {file = "pydantic_settings-2.3.4.tar.gz", hash = "sha256:c5802e3d62b78e82522319bbc9b8f8ffb28ad1c988a99311d04f2a6051fca0a7"},
+]
+
+[package.dependencies]
+pydantic = ">=2.7.0"
+python-dotenv = ">=0.21.0"
+
+[package.extras]
+toml = ["tomli (>=2.0.1)"]
+yaml = ["pyyaml (>=6.0.1)"]
 
 [[package]]
 name = "pyflakes"
