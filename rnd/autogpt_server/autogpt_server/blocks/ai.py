@@ -1,4 +1,3 @@
-import json
 import logging
 from enum import Enum
 
@@ -6,6 +5,7 @@ import openai
 from pydantic import BaseModel
 
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.util import json
 
 logger = logging.getLogger(__name__)
 

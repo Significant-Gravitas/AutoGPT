@@ -1,4 +1,3 @@
-import json
 from collections import defaultdict
 from datetime import datetime
 from enum import Enum
@@ -12,6 +11,7 @@ from prisma.models import (
 )
 from pydantic import BaseModel
 
+from autogpt_server.util import json
 
 class NodeExecution(BaseModel):
     graph_exec_id: str

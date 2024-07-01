@@ -1,5 +1,7 @@
+import time
 import pytest
 
+from autogpt_server.data import block, db, graph
 from autogpt_server.blocks.ai import LlmConfig, LlmCallBlock, LlmModel
 from autogpt_server.blocks.reddit import (
     RedditCredentials,
@@ -7,7 +9,6 @@ from autogpt_server.blocks.reddit import (
     RedditPostCommentBlock,
 )
 from autogpt_server.blocks.text import TextFormatterBlock, TextMatcherBlock
-from autogpt_server.data import block, db, graph
 from autogpt_server.executor import ExecutionManager
 from autogpt_server.server import AgentServer
 from autogpt_server.util.service import PyroNameServer
@@ -96,9 +97,22 @@ AutoGPT agent, a tool for automating a large language model (LLM) for solving ta
     return await graph.create_graph(test_graph)
 
 
+async def wait_execution(test_manager, graph_id, graph_exec_id) -> list:
+    async def is_execution_completed():
+        execs = await AgentServer().get_executions(graph_id, graph_exec_id)
+        return test_manager.queue.empty() and len(execs) == 4
+
+    # Wait for the executions to complete
+    for i in range(10):
+        if await is_execution_completed():
+            break
+        time.sleep(1)
+        
+    return await AgentServer().get_executions(graph_id, graph_exec_id)
+
+
 # Manual run
 @pytest.mark.asyncio(scope="session")
-@pytest.mark.skip
 async def test_reddit_marketing_agent():
     with PyroNameServer():
         with ExecutionManager(1) as test_manager:
@@ -108,3 +122,5 @@ async def test_reddit_marketing_agent():
             input_data = {"subreddit": "r/AutoGPT"}
             response = await AgentServer().execute_graph(test_graph.id, input_data)
             print(response)
+            result = await wait_execution(test_manager, test_graph.id, response["id"])
+            print(result)

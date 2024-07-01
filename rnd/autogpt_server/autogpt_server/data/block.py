@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import Any, cast, ClassVar, Generator, Generic, TypeVar, Type
 
-import json
 import jsonref
 import jsonschema
 from prisma.models import AgentBlock
 from pydantic import BaseModel
+
+from autogpt_server.util import json
 
 BlockData = dict[str, Any]
 

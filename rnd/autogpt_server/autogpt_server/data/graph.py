@@ -1,5 +1,4 @@
 import asyncio
-import json
 import uuid
 from typing import Any
 
@@ -7,6 +6,7 @@ from prisma.models import AgentGraph, AgentNode, AgentNodeLink
 from pydantic import BaseModel
 
 from autogpt_server.data.db import BaseDbModel
+from autogpt_server.util import json
 
 
 class Link(BaseModel):
