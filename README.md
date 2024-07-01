@@ -24,7 +24,7 @@ Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI i
 &ensp;|&ensp;
 **🚀 [Contributing](CONTRIBUTING.md)**
 &ensp;|&ensp;
-**🛠️ [Build your own Agent - Quickstart](QUICKSTART.md)**
+**🛠️ [Build your own Agent - Quickstart](FORGE-QUICKSTART.md)**
 
 ## 🧱 Building blocks
 
