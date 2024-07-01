@@ -62,7 +62,7 @@ class BlockSchema(BaseModel):
             return f"Invalid property name {field_name}"
 
         try:
-            jsonschema.validate(data, property_schema)
+            jsonschema.validate(json.to_dict(data), property_schema)
             return None
         except jsonschema.ValidationError as e:
             return str(e)
@@ -139,7 +139,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         for output_name, output_data in self.run(self.input_schema(**input_data)):
             if error := self.output_schema.validate_field(output_name, output_data):
                 raise ValueError(
-                    f"Unable to execute block with invalid output data: {error}"
+                    f"Block produced an invalid output data: {error}"
                 )
             yield output_name, output_data
 

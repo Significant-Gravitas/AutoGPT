@@ -56,7 +56,8 @@ class LlmCallBlock(Block):
         """
 
         def trim_prompt(s: str) -> str:
-            return "\n".join([line.strip()[1:] for line in s.strip().split("\n")])
+            lines = s.strip().split("\n")
+            return "\n".join([line.strip().lstrip("|") for line in lines])
 
         def parse_response(resp: str) -> tuple[dict[str, str], str | None]:
             try:
@@ -65,7 +66,7 @@ class LlmCallBlock(Block):
                 if miss_keys:
                     return parsed, f"Missing keys: {miss_keys}"
                 return parsed, None
-            except json.JSONDecodeError as e:
+            except Exception as e:
                 return {}, f"JSON decode error: {e}"
 
         prompt = [

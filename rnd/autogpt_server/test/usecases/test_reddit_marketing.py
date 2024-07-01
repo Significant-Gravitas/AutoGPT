@@ -57,11 +57,10 @@ async def create_test_graph() -> graph.Graph:
     text_formatter_node.input_default = {
         "format": """
 Based on the following post, write your marketing comment:
-* Post ID: {named_texts[id]}
-* Post Subreddit: {named_texts[subreddit]}
-* Post Title: {named_texts[title]}
-* Post Body: {named_texts[body]}
-        """.strip(),
+* Post ID: {id}
+* Post Subreddit: {subreddit}
+* Post Title: {title}
+* Post Body: {body}""".strip(),
     }
     text_formatter_node.connect(llm_call_node, "output", "usr_prompt")
 
