@@ -86,7 +86,8 @@ class LlmCallBlock(Block):
 
             parsed_dict, parsed_error = parse_response(response_text)
             if not parsed_error:
-                yield "response", parsed_dict
+                # convert parsed_dict into dict[str,str]
+                yield "response", {k: json.dumps(v) for k, v in parsed_dict.items()}
                 break
 
             retry_prompt = f"""

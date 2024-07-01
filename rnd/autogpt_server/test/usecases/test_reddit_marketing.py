@@ -84,7 +84,7 @@ AutoGPT agent, a tool for automating a large language model (LLM) for solving ta
     llm_call_node.connect(text_matcher_node, "response", "data")
     llm_call_node.connect(text_matcher_node, "response_#_post_id", "text")
 
-    text_matcher_node.input_default = {"pattern": "true"}
+    text_matcher_node.input_default = {"match": "true"}
     text_matcher_node.connect(reddit_comment_node, "data_#_post_id", "post_id")
     text_matcher_node.connect(reddit_comment_node, "data_#_marketing_text", "comment")
 
@@ -99,16 +99,24 @@ AutoGPT agent, a tool for automating a large language model (LLM) for solving ta
 async def wait_execution(test_manager, graph_id, graph_exec_id) -> list:
     async def is_execution_completed():
         execs = await AgentServer().get_executions(graph_id, graph_exec_id)
-        return test_manager.queue.empty() and len(execs) == 4
+        """
+        List of execution:
+            reddit_get_post_node 1 (produced 3 posts)
+            text_formatter_node 3
+            llm_call_node 3 (produced 2 relevant posts, filter out 1)
+            text_matcher_node 2
+            reddit_comment_node 2
+        Total: 11
+        """
+        return test_manager.queue.empty() and len(execs) == 11
 
     # Wait for the executions to complete
-    for i in range(10):
+    for i in range(30):
         if await is_execution_completed():
-            break
+            return await AgentServer().get_executions(graph_id, graph_exec_id)
         time.sleep(1)
         
-    return await AgentServer().get_executions(graph_id, graph_exec_id)
-
+    assert False, "Execution did not complete in time."
 
 # Manual run
 @pytest.mark.asyncio(scope="session")
