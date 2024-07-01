@@ -6694,9 +6694,8 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 
 [extras]
 benchmark = ["agbenchmark"]
-build = ["cx-freeze"]
 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "28ff24ead50f6cb99ede3c74ae7f57e88d8fb9d1278cdb2a14cc1ce57f56ed1e"
+content-hash = "edf57ce8e945e262482ee8b63ad4c4d7beafb1fbfa1a7e7e408d144a2ad6e48a"
