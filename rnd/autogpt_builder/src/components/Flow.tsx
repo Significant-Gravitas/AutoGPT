@@ -268,12 +268,14 @@ const Flow: React.FC = () => {
       }
 
       const createData = await createResponse.json();
+
       const newAgentId = createData.id;
       setAgentId(newAgentId);
 
       console.log('Response from the API:', JSON.stringify(createData, null, 2));
 
       const executeResponse = await fetch(`${apiUrl}/graphs/${newAgentId}/execute`, {
+
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -288,15 +290,14 @@ const Flow: React.FC = () => {
       const executeData = await executeResponse.json();
       const runId = executeData.id;
 
+
       const pollExecution = async () => {
         const response = await fetch(`${apiUrl}/graphs/${newAgentId}/executions/${runId}`);
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
-
         const data = await response.json();
         data.forEach(updateNodeData);
-
         if (data.every((node: any) => node.status === 'COMPLETED')) {
           console.log('All nodes completed execution');
         } else {

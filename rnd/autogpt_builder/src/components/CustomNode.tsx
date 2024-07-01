@@ -320,6 +320,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     }
   };
 
+
   return (
     <div className="custom-node">
       <div className="node-header">
