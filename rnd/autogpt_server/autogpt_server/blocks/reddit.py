@@ -24,13 +24,18 @@ class RedditPost(BaseModel):
 
 
 def get_praw(creds: RedditCredentials) -> praw.Reddit:
-    return praw.Reddit(
+    client = praw.Reddit(
         client_id=creds.client_id,
         client_secret=creds.client_secret,
         user_agent=creds.user_agent,
         username=creds.username,
         password=creds.password,
     )
+    me = client.user.me()
+    if not me:
+        raise ValueError("Invalid Reddit credentials.")
+    print(f"Logged in as {me.name}")
+    return client
 
 
 class RedditGetPostsBlock(Block):
@@ -53,7 +58,6 @@ class RedditGetPostsBlock(Block):
     def run(self, input_data: Input) -> BlockOutput:
         client = get_praw(input_data.creds)
         subreddit = client.subreddit(input_data.subreddit)
-
         for post in subreddit.new(limit=None):
             if input_data.last_post and post.created_utc < datetime.now() - \
                     timedelta(minutes=input_data.last_minutes):
