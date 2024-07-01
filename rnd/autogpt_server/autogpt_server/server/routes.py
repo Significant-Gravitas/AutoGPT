@@ -1,16 +1,10 @@
-from os import WSTOPSIG
-from fastapi import WebSocket, WebSocketDisconnect
-from autogpt_server.executor import ExecutionManager
+from fastapi import WebSocket, WebSocketDisconnect, HTTPException
 import pydantic
 import typing
 import enum
-from autogpt_server.data import db, execution, block
+from autogpt_server.data import execution
 from autogpt_server.data.graph import (
-    create_graph,
     get_graph,
-    get_graph_ids,
-    Graph,
-    Link,
 )
 from datetime import datetime
 
@@ -111,7 +105,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         ).model_dump_json()
                     )
                 else:
-                    ex_sub = ExecutionSubscription.model_validate_json(message.data)
+                    ex_sub = ExecutionSubscription.model_validate(message.data)
                     subscriptions.append(
                         SubscriptionDetails(
                             event_type="ExecutionUpdates",
@@ -121,23 +115,30 @@ async def websocket_endpoint(websocket: WebSocket):
                         )
                     )
                     print("subscribed")
-                    send_data = WsMessage(
-                        method=Methods.SUBSCRIBE, success=True, channel=ex_sub.channel
+                    await websocket.send_text(
+                        WsMessage(
+                            method=Methods.SUBSCRIBE,
+                            success=True,
+                            channel=ex_sub.channel,
+                        ).model_dump_json()
                     )
 
             elif message.method == Methods.UNSUBSCRIBE:
                 print("unsubscribed")
-                send_data = WsMessage(
-                    method=Methods.SUBSCRIBE, success=True, channel="test"
+                await websocket.send_text(
+                    WsMessage(
+                        method=Methods.UNSUBSCRIBE, success=True, channel="test"
+                    ).model_dump_json()
                 )
             else:
                 print("Message type is not processed by the server")
-                send_data = WsMessage(
-                    method=Methods.ERROR,
-                    success=False,
-                    error="Message type is not processed by the server",
+                await websocket.send_text(
+                    WsMessage(
+                        method=Methods.ERROR,
+                        success=False,
+                        error="Message type is not processed by the server",
+                    ).model_dump_json()
                 )
 
-            await websocket.send_text(send_data.model_dump_json())
     except WebSocketDisconnect:
         print("Client Disconnected")
