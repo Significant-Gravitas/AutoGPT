@@ -1,4 +1,5 @@
 import re
+import json
 
 from typing import Any
 from pydantic import Field
@@ -7,7 +8,7 @@ from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 
 class TextMatcherBlock(Block):
     class Input(BlockSchema):
-        text: str = Field(description="Text to match")
+        text: Any = Field(description="Text to match")
         match: str = Field(description="Pattern (Regex) to match")
         data: Any = Field(description="Data to be forwarded to output")
         case_sensitive: bool = Field(description="Case sensitive match", default=True)
@@ -26,7 +27,7 @@ class TextMatcherBlock(Block):
     def run(self, input_data: Input) -> BlockOutput:
         output = input_data.data or input_data.text
         case = 0 if input_data.case_sensitive else re.IGNORECASE
-        if re.search(input_data.match, input_data.text, case):
+        if re.search(input_data.match, json.dumps(input_data.text), case):
             yield "positive", output
         else:
             yield "negative", output

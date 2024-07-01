@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 
 import praw
+from typing import Any
 from pydantic import BaseModel, Field
 
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
@@ -87,8 +88,9 @@ class RedditGetPostsBlock(Block):
 class RedditPostCommentBlock(Block):
     class Input(BlockSchema):
         creds: RedditCredentials = Field(description="Reddit credentials")
-        post_id: str = Field(description="Reddit post ID")
-        comment: str = Field(description="Comment text")
+        data: Any = Field(description="Reddit post")
+        # post_id: str = Field(description="Reddit post ID")
+        # comment: str = Field(description="Comment text")
 
     class Output(BlockSchema):
         comment_id: str
@@ -102,6 +104,6 @@ class RedditPostCommentBlock(Block):
 
     def run(self, input_data: Input) -> BlockOutput:
         client = get_praw(input_data.creds)
-        submission = client.submission(id=input_data.post_id)
-        comment = submission.reply(input_data.comment)
+        submission = client.submission(id=input_data.data["post_id"])
+        comment = submission.reply(input_data.data["marketing_text"])
         yield "comment_id", comment.id
