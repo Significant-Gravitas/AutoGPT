@@ -35,17 +35,16 @@ class AssistantThoughts(ModelWithSummary):
         "you can leave it empty",
     )
     observations: str = Field(
-        ..., description="Relevant observations from your last actions (if any)"
+        description="Relevant observations from your last actions (if any)"
     )
-    text: str = Field(..., description="Thoughts")
-    reasoning: str = Field(..., description="Reasoning behind the thoughts")
-    self_criticism: str = Field(..., description="Constructive self-criticism")
+    text: str = Field(description="Thoughts")
+    reasoning: str = Field(description="Reasoning behind the thoughts")
+    self_criticism: str = Field(description="Constructive self-criticism")
     plan: list[str] = Field(
-        ...,
         description="Short list that conveys the long-term plan, "
         "considering the progress on your task so far",
     )
-    speak: str = Field(..., description="Summary of thoughts, to say to user")
+    speak: str = Field(description="Summary of thoughts, to say to user")
 
     def summary(self) -> str:
         return self.text
@@ -105,7 +104,9 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         logger: Logger,
     ):
         self.config = configuration
-        self.response_schema = JSONSchema.from_dict(OneShotAgentActionProposal.schema())
+        self.response_schema = JSONSchema.from_dict(
+            OneShotAgentActionProposal.model_json_schema()
+        )
         self.logger = logger
 
     @property
@@ -192,7 +193,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         )
 
     def response_format_instruction(self, use_functions_api: bool) -> tuple[str, str]:
-        response_schema = self.response_schema.copy(deep=True)
+        response_schema = self.response_schema.model_copy(deep=True)
         assert response_schema.properties
         if use_functions_api and "use_tool" in response_schema.properties:
             del response_schema.properties["use_tool"]
@@ -284,6 +285,8 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 raise InvalidAgentResponseError("Assistant did not use a tool")
             assistant_reply_dict["use_tool"] = response.tool_calls[0].function
 
-        parsed_response = OneShotAgentActionProposal.parse_obj(assistant_reply_dict)
+        parsed_response = OneShotAgentActionProposal.model_validate(
+            assistant_reply_dict
+        )
         parsed_response.raw_message = response.copy()
         return parsed_response

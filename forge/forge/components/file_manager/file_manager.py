@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from typing import Iterator, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from forge.agent import BaseAgentSettings
 from forge.agent.components import ConfigurableComponent
@@ -22,10 +22,11 @@ class FileManagerConfiguration(BaseModel):
     workspace_path: str
     """Path to files that agent has access to"""
 
-    class Config:
+    model_config = ConfigDict(
         # Prevent mutation of the configuration
         # as this wouldn't be reflected in the file storage
-        allow_mutation = False
+        frozen=False
+    )
 
 
 class FileManagerComponent(
@@ -88,7 +89,8 @@ class FileManagerComponent(
             self._file_storage.make_dir(f"agents/{save_as_id}")
             # Save state
             await self._file_storage.write_file(
-                f"agents/{save_as_id}/{self.STATE_FILE}", self.agent_state.json()
+                f"agents/{save_as_id}/{self.STATE_FILE}",
+                self.agent_state.model_dump_json(),
             )
             # Copy workspace
             self._file_storage.copy(
@@ -97,7 +99,7 @@ class FileManagerComponent(
             )
         else:
             await self.storage.write_file(
-                self.storage.root / self.STATE_FILE, self.agent_state.json()
+                self.storage.root / self.STATE_FILE, self.agent_state.model_dump_json()
             )
 
     def get_resources(self) -> Iterator[str]:
