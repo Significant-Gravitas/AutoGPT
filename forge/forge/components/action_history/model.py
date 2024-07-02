@@ -3,8 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Generic
 
-from pydantic import Field
-from pydantic.generics import GenericModel
+from pydantic import BaseModel, Field
 
 from forge.content_processing.text import summarize_text
 from forge.llm.prompting.utils import format_numbered_list, indent
@@ -16,7 +15,7 @@ if TYPE_CHECKING:
     from forge.llm.providers import MultiProvider
 
 
-class Episode(GenericModel, Generic[AnyProposal]):
+class Episode(BaseModel, Generic[AnyProposal]):
     action: AnyProposal
     result: ActionResult | None
     summary: str | None = None
@@ -52,7 +51,7 @@ class Episode(GenericModel, Generic[AnyProposal]):
         return executed_action + action_result
 
 
-class EpisodicActionHistory(GenericModel, Generic[AnyProposal]):
+class EpisodicActionHistory(BaseModel, Generic[AnyProposal]):
     """Utility container for an action history"""
 
     episodes: list[Episode[AnyProposal]] = Field(default_factory=list)
