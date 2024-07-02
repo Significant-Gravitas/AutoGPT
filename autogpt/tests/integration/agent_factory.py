@@ -28,7 +28,7 @@ def dummy_agent(config: AppConfig, llm_provider: MultiProvider):
             smart_llm=config.smart_llm,
             use_functions_api=config.openai_functions,
         ),
-        history=Agent.default_settings.history.copy(deep=True),
+        history=Agent.default_settings.history.model_copy(deep=True),
     )
 
     local = config.file_storage_backend == FileStorageBackendName.LOCAL

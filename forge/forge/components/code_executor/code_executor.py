@@ -83,7 +83,9 @@ class CodeExecutorComponent(
 
         # Change container name if it's empty or default to prevent different agents
         # from using the same container
-        default_container_name = self.config.__fields__["docker_container_name"].default
+        default_container_name = self.config.model_fields[
+            "docker_container_name"
+        ].default
         if (
             not self.config.docker_container_name
             or self.config.docker_container_name == default_container_name
