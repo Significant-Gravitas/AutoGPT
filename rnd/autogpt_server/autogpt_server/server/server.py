@@ -18,7 +18,7 @@ from autogpt_server.data.graph import (
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.util.data import get_frontend_path
 from autogpt_server.util.process import AppProcess
-from autogpt_server.util.service import get_service_client
+from autogpt_server.util.service import get_service_client, expose  # type: ignore
 from autogpt_server.server.routes import websocket_endpoint as ws_impl
 from autogpt_server.util.settings import Settings
 
@@ -46,7 +46,7 @@ class AgentServer(AppProcess):
         router = APIRouter()
         router.add_api_route(
             path="/blocks",
-            endpoint=self.get_graph_blocks,
+            endpoint=self.get_graph_blocks,  # type: ignore
             methods=["GET"],
         )
         router.add_api_route(
@@ -66,7 +66,7 @@ class AgentServer(AppProcess):
         )
         router.add_api_route(
             path="/graphs/{graph_id}/execute",
-            endpoint=self.execute_graph,
+            endpoint=self.execute_graph,  # type: ignore
             methods=["POST"],
         )
         router.add_api_route(
@@ -76,7 +76,7 @@ class AgentServer(AppProcess):
         )
         router.add_api_route(
             path="/graphs/{graph_id}/schedules",
-            endpoint=self.create_schedule,
+            endpoint=self.create_schedule,  # type: ignore
             methods=["POST"],
         )
         router.add_api_route(
@@ -86,7 +86,7 @@ class AgentServer(AppProcess):
         )
         router.add_api_route(
             path="/graphs/schedules/{schedule_id}",
-            endpoint=self.update_schedule,
+            endpoint=self.update_schedule,  # type: ignore
             methods=["PUT"],
         )
 
@@ -105,7 +105,7 @@ class AgentServer(AppProcess):
         app.include_router(router)
 
         @app.websocket("/ws")
-        async def websocket_endpoint(websocket: WebSocket):
+        async def websocket_endpoint(websocket: WebSocket):  # type: ignore
             await ws_impl(websocket)
 
         uvicorn.run(app, host="0.0.0.0", port=8000)
@@ -118,7 +118,7 @@ class AgentServer(AppProcess):
     def execution_scheduler_client(self) -> ExecutionScheduler:
         return get_service_client(ExecutionScheduler)
 
-    async def get_graph_blocks(self) -> list[dict]:
+    async def get_graph_blocks(self) -> list[dict[Any, Any]]:
         return [v.to_dict() for v in await block.get_blocks()]
 
     async def get_graphs(self) -> list[str]:
@@ -141,9 +141,11 @@ class AgentServer(AppProcess):
 
         return await create_graph(graph)
 
-    async def execute_graph(self, graph_id: str, node_input: dict) -> dict:
+    async def execute_graph(
+        self, graph_id: str, node_input: dict[Any, Any]
+    ) -> dict[Any, Any]:
         try:
-            return self.execution_manager_client.add_execution(graph_id, node_input)
+            return self.execution_manager_client.add_execution(graph_id, node_input)  # type: ignore
         except Exception as e:
             msg = e.__str__().encode().decode("unicode_escape")
             raise HTTPException(status_code=400, detail=msg)
@@ -157,25 +159,32 @@ class AgentServer(AppProcess):
 
         return await execution.get_executions(run_id)
 
-    async def create_schedule(self, graph_id: str, cron: str, input_data: dict) -> dict:
+    async def create_schedule(
+        self, graph_id: str, cron: str, input_data: dict[Any, Any]
+    ) -> dict[Any, Any]:
         graph = await get_graph(graph_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         execution_scheduler = self.execution_scheduler_client
         return {
-            "id": execution_scheduler.add_execution_schedule(graph_id, cron, input_data)
+            "id": execution_scheduler.add_execution_schedule(graph_id, cron, input_data)  # type: ignore
         }
 
-    def update_schedule(self, schedule_id: str, input_data: dict) -> dict:
+    def update_schedule(
+        self, schedule_id: str, input_data: dict[Any, Any]
+    ) -> dict[Any, Any]:
         execution_scheduler = self.execution_scheduler_client
         is_enabled = input_data.get("is_enabled", False)
-        execution_scheduler.update_schedule(schedule_id, is_enabled)
+        execution_scheduler.update_schedule(schedule_id, is_enabled)  # type: ignore
         return {"id": schedule_id}
 
     def get_execution_schedules(self, graph_id: str) -> dict[str, str]:
         execution_scheduler = self.execution_scheduler_client
-        return execution_scheduler.get_execution_schedules(graph_id)
+        return execution_scheduler.get_execution_schedules(graph_id)  # type: ignore
 
+    @expose
+    def send_execution_update(self, execution_results: execution.ExecutionResult):
+        print(f"Recieved execution update: {execution_results}")
 
     def update_configuration(
         self,
@@ -185,14 +194,14 @@ class AgentServer(AppProcess):
     ):
         settings = Settings()
         try:
-            updated_fields = {"config": [], "secrets": []}
+            updated_fields: dict[Any, Any] = {"config": [], "secrets": []}
             for key, value in updated_settings.get("config", {}).items():
-                if hasattr(settings.config, key):
-                    setattr(settings.config, key, value)
+                if hasattr(settings.config, key):  # type: ignore
+                    setattr(settings.config, key, value)  # type: ignore
                     updated_fields["config"].append(key)
             for key, value in updated_settings.get("secrets", {}).items():
-                if hasattr(settings.secrets, key):
-                    setattr(settings.secrets, key, value)
+                if hasattr(settings.secrets, key):  # type: ignore
+                    setattr(settings.secrets, key, value)  # type: ignore
                     updated_fields["secrets"].append(key)
             settings.save()
             return JSONResponse(
