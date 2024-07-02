@@ -71,18 +71,25 @@
           - ./logs:/app/logs
           ## uncomment following lines if you want to make use of these files
           ## you must have them existing in the same folder as this docker-compose.yml
+          ## component configuration file
+          #- type: bind
+          #  source: ./config.json
+          #  target: /app/config.json
     ```
     </details>
 
 
-4. Download [`.env.template`][.env.template] and save it as `.env` in the AutoGPT folder.
-5. Follow the standard [configuration instructions](../index.md#completing-the-setup),
+1. Download [`.env.template`][.env.template] and save it as `.env` in the AutoGPT folder.
+2. Follow the standard [configuration instructions](../index.md#completing-the-setup),
    from step 3 onwards and excluding `poetry install` steps.
-6. Pull the latest image from [Docker Hub]
+3. Pull the latest image from [Docker Hub]
 
     ```shell
     docker pull significantgravitas/auto-gpt
     ```
+4. _Optional: mount configuration file._
+      If you have component configuration file, for example `config.json`, place it in `autogpt/data/` directory. Or place it in `autogpt/` and uncomment the line in `docker-compose.yml` that mounts it.
+      To learn more about configuring, see [Component configuration](../../forge/components/components.md#json-configuration)
 
 !!! note "Docker only supports headless browsing"
     AutoGPT uses a browser in headless mode by default: `HEADLESS_BROWSER=True`.

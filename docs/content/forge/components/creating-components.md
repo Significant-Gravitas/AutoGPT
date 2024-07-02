@@ -37,7 +37,7 @@ Since components are regular classes you can pass data (including other componen
 For example we can pass a config object and then retrieve an API key from it when needed:
 
 ```py
-class ConfigurableComponent(MessageProvider):
+class DataComponent(MessageProvider):
     def __init__(self, config: Config):
         self.config = config
 
@@ -50,6 +50,35 @@ class ConfigurableComponent(MessageProvider):
 
 !!! note
     Component-specific configuration handling isn't implemented yet.
+
+## Configuring components
+
+Components can be configured using a pydantic model.
+To make component configurable, it must inherit from `ConfigurableComponent[BM]` where `BM` is the configuration class inheriting from pydantic's `BaseModel`.
+You should pass the configuration instance to the `ConfigurableComponent`'s `__init__` or set its `config` property directly.
+Using configuration allows you to load confugration from a file, and also serialize and deserialize it easily for any agent.
+To learn more about configuration, including storing sensitive information and serialization see [Component Configuration](./components.md#component-configuration).
+
+```py
+# Example component configuration
+class UserGreeterConfiguration(BaseModel):
+    user_name: str
+
+class UserGreeterComponent(MessageProvider, ConfigurableComponent[UserGreeterConfiguration]):
+    def __init__(self):
+        # Creating configuration instance
+        # You could also pass it to the component constructor
+        # e.g. `def __init__(self, config: UserGreeterConfiguration):`
+        config = UserGreeterConfiguration(user_name="World")
+        # Passing the configuration instance to the parent class
+        UserGreeterComponent.__init__(self, config)
+        # This has the same effect as the line above:
+        # self.config = UserGreeterConfiguration(user_name="World")
+
+    def get_messages(self) -> Iterator[ChatMessage]:
+        # You can use the configuration like a regular model
+        yield ChatMessage.system(f"Hello, {self.config.user_name}!")
+```
 
 ## Providing commands
 

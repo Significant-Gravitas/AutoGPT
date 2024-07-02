@@ -1,6 +1,7 @@
 # Configuration
 
-Configuration is controlled through the `Config` object. You can set configuration variables via the `.env` file. If you don't have a `.env` file, create a copy of `.env.template` in your `AutoGPT` folder and name it `.env`.
+Configuration of sensitive settings such as API credentials is done through environment variables.
+You can set configuration variables via the `.env` file. If you don't have a `.env` file, create a copy of `.env.template` in your `AutoGPT` folder and name it `.env`.
 
 ## Environment Variables
 
@@ -21,7 +22,7 @@ Configuration is controlled through the `Config` object. You can set configurati
 - `GROQ_API_KEY`: Set this if you want to use Groq models with AutoGPT
 - `HUGGINGFACE_API_TOKEN`: HuggingFace API, to be used for both image generation and audio to text. Optional.
 - `HUGGINGFACE_IMAGE_MODEL`: HuggingFace model to use for image generation. Default: CompVis/stable-diffusion-v1-4
-- `OPENAI_API_KEY`: *REQUIRED*- Your [OpenAI API Key](https://platform.openai.com/account/api-keys).
+- `OPENAI_API_KEY`: Set this if you want to use OpenAI models; [OpenAI API Key](https://platform.openai.com/account/api-keys).
 - `OPENAI_ORGANIZATION`: Organization ID in OpenAI. Optional.
 - `PLAIN_OUTPUT`: Plain output, which disables the spinner. Default: False
 - `RESTRICT_TO_WORKSPACE`: The restrict file reading and writing to the workspace directory. Default: True
@@ -31,4 +32,3 @@ Configuration is controlled through the `Config` object. You can set configurati
 - `TEMPERATURE`: Value of temperature given to OpenAI. Value from 0 to 2. Lower is more deterministic, higher is more random. See https://platform.openai.com/docs/api-reference/completions/create#completions/create-temperature
 - `TEXT_TO_SPEECH_PROVIDER`: Text to Speech Provider. Options are `gtts`, `macos`, `elevenlabs`, and `streamelements`. Default: gtts
 - `USE_AZURE`: Use Azure's LLM Default: False
-- `WIPE_REDIS_ON_START`: Wipes data / index on start. Default: True

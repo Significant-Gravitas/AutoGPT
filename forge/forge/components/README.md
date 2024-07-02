@@ -33,7 +33,7 @@ class MyAgent(BaseAgent):
 ## Component configuration
 
 Each component can have its own configuration defined using a regular pydantic `BaseModel`.
-To ensure the configuration is loaded from the file correctly, the component must inherit from `ConfigurableComponent[T]` where `T` is the configuration model it uses.
+To ensure the configuration is loaded from the file correctly, the component must inherit from `ConfigurableComponent[BM]` where `BM` is the configuration model it uses.
 `ConfigurableComponent` provides a `config` attribute that holds the configuration instance.
 It's possible to either set the `config` attribute directly or pass the configuration instance to the component's constructor.
 Extra configuration (i.e. for components that are not part of the agent) can be passed and will be silently ignored. Extra config won't be applied even if the component is added later.
@@ -70,6 +70,73 @@ from forge.models.config import UserConfigurable
 
 class SensitiveConfig(BaseModel):
     api_key: SecretStr = UserConfigurable(from_env="API_KEY", exclude=True)
+```
+
+### Configuration serialization
+
+`BaseAgent` provides two methods:
+1. `dump_component_configs`: Serializes all components' configurations as json string.
+1. `load_component_configs`: Deserializes json string to configuration and applies it.
+
+### JSON configuration
+
+You can specify a JSON file (e.g. `config.json`) to use for the configuration when launching an agent.
+This file contains settings for individual [Components](../components/introduction.md) that AutoGPT uses.
+To specify the file use `--component-config-file` CLI option, for example to use `config.json`:
+
+```shell
+./autogpt.sh run --component-config-file config.json
+```
+
+!!! note
+    If you're using Docker to run AutoGPT, you need to mount or copy the configuration file to the container.
+    See [Docker Guide](../../AutoGPT/setup/docker.md) for more information.
+
+### Example JSON configuration
+
+You can copy configuration you want to change, for example to `autogpt/config.json` and modify it to your needs.
+*Most configuration has default values, it's better to set only values you want to modify.*
+You can see the available configuration fields and default values in [Build-in Components](./built-in-components.md).
+You can set sensitive variables in the `.json` file as well but it's recommended to use environment variables instead.
+
+```json
+{
+    "CodeExecutorConfiguration": {
+        "execute_local_commands": false,
+        "shell_command_control": "allowlist",
+        "shell_allowlist": ["cat", "echo"],
+        "shell_denylist": [],
+        "docker_container_name": "agent_sandbox"
+    },
+    "FileManagerConfiguration": {
+        "storage_path": "agents/AutoGPT/",
+        "workspace_path": "agents/AutoGPT/workspace"
+    },
+    "GitOperationsConfiguration": {
+        "github_username": null
+    },
+    "ActionHistoryConfiguration": {
+        "model_name": "gpt-3.5-turbo",
+        "max_tokens": 1024,
+        "spacy_language_model": "en_core_web_sm"
+    },
+    "ImageGeneratorConfiguration": {
+        "image_provider": "dalle",
+        "huggingface_image_model": "CompVis/stable-diffusion-v1-4",
+        "sd_webui_url": "http://localhost:7860"
+    },
+    "WebSearchConfiguration": {
+        "duckduckgo_max_attempts": 3
+    },
+    "WebSeleniumConfiguration": {
+        "model_name": "gpt-3.5-turbo",
+        "web_browser": "chrome",
+        "headless": true,
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
+        "browse_spacy_language_model": "en_core_web_sm"
+    }
+}
+
 ```
 
 ## Ordering components
