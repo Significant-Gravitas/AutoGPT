@@ -8,14 +8,14 @@ from agbenchmark.reports.processing.report_types import Report
 
 @click.command()
 @click.argument("report_json_file", type=click.Path(exists=True, dir_okay=False))
-def print_markdown_report(report_json_file: str):
+def print_markdown_report(report_json_file: Path):
     """
     Generates a Markdown report from a given report.json file.
 
     :param report_json_file: Path to the report.json file.
     :return: A string containing the Markdown formatted report.
     """
-    report = Report.model_validate_json(Path(report_json_file).read_text())
+    report = Report.model_validate_json(report_json_file.read_text())
 
     # Header and metadata
     click.echo("# Benchmark Report")

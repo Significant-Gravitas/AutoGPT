@@ -9,7 +9,6 @@ packages = [{ include = "forge" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-agent-protocol-client = {git = "https://github.com/kcze/agent-protocol.git", subdirectory = "packages/client/python"}
 agbenchmark = { path = "../benchmark", optional = true }
 # agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
 aiohttp = "^3.8.5"

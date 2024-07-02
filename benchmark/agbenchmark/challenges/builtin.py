@@ -44,11 +44,11 @@ with open(Path(__file__).parent / "optional_categories.json") as f:
 
 class BuiltinChallengeSpec(BaseModel):
     eval_id: str = ""
-    name: str = ""
-    task: str = ""
-    category: list[Category] = Field(default_factory=list)
-    dependencies: list[str] = Field(default_factory=list)
-    cutoff: int = 0
+    name: str
+    task: str
+    category: list[Category]
+    dependencies: list[str]
+    cutoff: int
 
     class Info(BaseModel):
         difficulty: DifficultyLevel
@@ -75,7 +75,6 @@ class BuiltinChallengeSpec(BaseModel):
             examples: Optional[str] = None
 
             @field_validator("scoring", "template")
-            @classmethod
             def validate_eval_fields(cls, value, info: ValidationInfo):
                 field_name = info.field_name
                 if "type" in info.data and info.data["type"] == "llm":
@@ -154,9 +153,7 @@ class BuiltinChallenge(BaseChallenge):
 
     @classmethod
     def from_challenge_spec_file(cls, spec_file: Path) -> type["BuiltinChallenge"]:
-        challenge_spec = BuiltinChallengeSpec.model_validate_json(
-            Path(spec_file).read_text()
-        )
+        challenge_spec = BuiltinChallengeSpec.model_validate_json(spec_file.read_text())
         challenge_spec.spec_file = spec_file
         return cls.from_challenge_spec(challenge_spec)
 

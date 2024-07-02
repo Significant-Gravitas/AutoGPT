@@ -215,9 +215,7 @@ OPEN_AI_MODELS: Mapping[
 class OpenAICredentials(ModelProviderCredentials):
     """Credentials for OpenAI."""
 
-    api_key: Optional[SecretStr] = UserConfigurable(
-        default=None, from_env="OPENAI_API_KEY"  # type: ignore
-    )
+    api_key: SecretStr = UserConfigurable(from_env="OPENAI_API_KEY")  # type: ignore
     api_base: Optional[SecretStr] = UserConfigurable(
         default=None, from_env="OPENAI_API_BASE_URL"
     )

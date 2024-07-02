@@ -37,7 +37,6 @@ class TestResult(BaseModel):
     """The (known) cost incurred by the run, e.g. from using paid LLM APIs"""
 
     @field_validator("fail_reason")
-    @classmethod
     def success_xor_fail_reason(cls, value, info: ValidationInfo):
         if bool(value) == bool(info.data["success"]):
             logger.error(

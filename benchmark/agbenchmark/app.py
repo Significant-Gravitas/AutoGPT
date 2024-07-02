@@ -53,7 +53,7 @@ while challenge_spec_files:
     logger.debug(f"Loading {challenge_relpath}...")
     try:
         challenge_info = ChallengeInfo.model_validate_json(
-            Path(challenge_spec_file).read_text()
+            challenge_spec_file.read_text()
         )
     except ValidationError as e:
         if logging.getLogger().level == logging.DEBUG:

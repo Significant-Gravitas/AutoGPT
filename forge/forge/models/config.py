@@ -31,13 +31,13 @@ def UserConfigurable(
         exclude=exclude,
         **kwargs,
     )
-    field_info.metadata.append("user_configurable")
+    field_info.metadata.append(("user_configurable", True))
     field_info.metadata.append(("from_env", from_env))
 
     return field_info  # type: ignore
 
 
-def _get_metadata(field: FieldInfo, key: str, default=None) -> Any:
+def _get_field_metadata(field: FieldInfo, key: str, default: Any = None) -> Any:
     for item in field.metadata:
         if isinstance(item, tuple) and item[0] == key:
             return item[1]
@@ -69,7 +69,7 @@ class SystemConfiguration(BaseModel):
                     else PydanticUndefined
                 )
             )
-            if from_env := _get_metadata(field, "from_env"):
+            if from_env := _get_field_metadata(field, "from_env"):
                 val_from_env = (
                     os.getenv(from_env) if type(from_env) is str else from_env()
                 )
@@ -77,7 +77,7 @@ class SystemConfiguration(BaseModel):
                     return val_from_env
             return default_value
 
-        return _recursive_init_model(cls, infer_field_value, True)
+        return _recursive_init_model(cls, infer_field_value)
 
     model_config = ConfigDict(
         extra="forbid", use_enum_values=True, validate_assignment=True
@@ -143,7 +143,9 @@ def _update_user_config_from_env(instance: BaseModel) -> dict[str, Any]:
             if field.default not in (None, PydanticUndefined)
             else (field.default_factory() if field.default_factory else None)
         )
-        if value == default_value and (from_env := _get_metadata(field, "from_env")):
+        if value == default_value and (
+            from_env := _get_field_metadata(field, "from_env")
+        ):
             val_from_env = os.getenv(from_env) if type(from_env) is str else from_env()
             if val_from_env is not None:
                 return val_from_env
@@ -164,7 +166,6 @@ def _update_user_config_from_env(instance: BaseModel) -> dict[str, Any]:
 def _recursive_init_model(
     model: Type[M],
     infer_field_value: Callable[[FieldInfo], Any],
-    validate: bool = False,
 ) -> M:
     """
     Recursively initialize the user configuration fields of a Pydantic model.
@@ -180,8 +181,7 @@ def _recursive_init_model(
     """
     user_config_fields = {}
     for name, field in model.model_fields.items():
-        # if getattr(field, "user_configurable", False):
-        if _get_metadata(field, "user_configurable"):
+        if _get_field_metadata(field, "user_configurable"):
             user_config_fields[name] = infer_field_value(field)
         elif isinstance(field.annotation, ModelMetaclass) and issubclass(
             field.annotation, SystemConfiguration
@@ -190,7 +190,6 @@ def _recursive_init_model(
                 user_config_fields[name] = _recursive_init_model(
                     model=field.annotation,
                     infer_field_value=infer_field_value,
-                    validate=validate,
                 )
             except ValidationError as e:
                 # Gracefully handle missing fields
@@ -200,10 +199,7 @@ def _recursive_init_model(
 
     user_config_fields = remove_none_items(user_config_fields)
 
-    if validate:
-        return model.model_validate(user_config_fields)
-    else:
-        return model.model_construct(**user_config_fields)
+    return model.model_validate(user_config_fields)
 
 
 def _recurse_user_config_fields(
@@ -235,7 +231,7 @@ def _recurse_user_config_fields(
         value = getattr(model, name)
 
         # Handle individual field
-        if _get_metadata(field, "user_configurable"):
+        if _get_field_metadata(field, "user_configurable"):
             user_config_fields[name] = infer_field_value(field, value)
 
         # Recurse into nested config object
@@ -297,9 +293,9 @@ def _recurse_user_config_values(
     """
     user_config_values = {}
 
-    for name, field in instance.model_fields.items():
-        value = instance.name  # type: ignore
-        if _get_metadata(field, "user_configurable"):
+    for name, value in instance.__dict__.items():
+        field = instance.model_fields[name]
+        if _get_field_metadata(field, "user_configurable"):
             user_config_values[name] = get_field_value(field, value)
         elif isinstance(value, SystemConfiguration):
             user_config_values[name] = _recurse_user_config_values(

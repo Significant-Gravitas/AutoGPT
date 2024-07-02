@@ -85,7 +85,6 @@ class BaseAgentConfiguration(SystemConfiguration):
     """
 
     @field_validator("use_functions_api")
-    @classmethod
     def validate_openai_functions(cls, value: bool, info: ValidationInfo):
         if value:
             smart_llm = info.data["smart_llm"]

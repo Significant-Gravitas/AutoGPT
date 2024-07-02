@@ -215,7 +215,6 @@ class WebArenaChallengeSpec(BaseModel):
         eval_types: list[EvalType]
 
         @field_validator("eval_types")
-        @classmethod
         def check_eval_parameters(cls, value: list[EvalType], info: ValidationInfo):
             if "string_match" in value and not info.data["reference_answers"]:
                 raise ValueError("'string_match' eval_type requires reference_answers")

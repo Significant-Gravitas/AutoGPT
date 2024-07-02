@@ -92,13 +92,13 @@ class AppConfig(BaseConfig):
     )
 
     @field_validator("openai_functions")
-    @classmethod
-    def validate_openai_functions(cls, value, info: ValidationInfo):
-        smart_llm = info.data["smart_llm"]
-        assert CHAT_MODELS[smart_llm].has_function_call_api, (
-            f"Model {smart_llm} does not support tool calling. "
-            "Please disable OPENAI_FUNCTIONS or choose a suitable model."
-        )
+    def validate_openai_functions(cls, value: bool, info: ValidationInfo):
+        if value:
+            smart_llm = info.data["smart_llm"]
+            assert CHAT_MODELS[smart_llm].has_function_call_api, (
+                f"Model {smart_llm} does not support tool calling. "
+                "Please disable OPENAI_FUNCTIONS or choose a suitable model."
+            )
         return value
 
 
