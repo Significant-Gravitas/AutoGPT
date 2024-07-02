@@ -9,6 +9,7 @@ class TextMatcherBlock(Block):
         text: str
         match: str
         data: Any
+        case_sensitive: bool = True
 
     class Output(BlockSchema):
         positive: Any
@@ -23,7 +24,8 @@ class TextMatcherBlock(Block):
 
     def run(self, input_data: Input) -> BlockOutput:
         output = input_data.data or input_data.text
-        if re.search(input_data.match, input_data.text):
+        case = 0 if input_data.case_sensitive else re.IGNORECASE
+        if re.search(input_data.match, input_data.text, case):
             yield "positive", output
         else:
             yield "negative", output

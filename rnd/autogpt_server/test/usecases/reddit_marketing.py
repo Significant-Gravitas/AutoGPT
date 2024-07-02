@@ -1,8 +1,7 @@
 import time
-import pytest
-
 from autogpt_server.data import block, db
 from autogpt_server.data.graph import Graph, Link, Node, create_graph
+from autogpt_server.data.execution import ExecutionStatus
 from autogpt_server.blocks.ai import LlmConfig, LlmCallBlock, LlmModel
 from autogpt_server.blocks.reddit import (
     RedditCredentials,
@@ -61,7 +60,7 @@ Make sure to only comment on a relevant post.
             "marketing_text": "str, marketing text, this is empty on irrelevant posts",
         },
     }
-    text_matcher_input = {"match": "true"}
+    text_matcher_input = {"match": "true", "case_sensitive": False}
     reddit_comment_input = {"creds": reddit_creds}
 
     # Nodes
@@ -93,15 +92,17 @@ Make sure to only comment on a relevant post.
         text_matcher_node,
         reddit_comment_node,
     ]
-    
+
     # Links
     links = [
         Link(reddit_get_post_node.id, text_formatter_node.id, "post", "named_texts"),
         Link(text_formatter_node.id, llm_call_node.id, "output", "usr_prompt"),
         Link(llm_call_node.id, text_matcher_node.id, "response", "data"),
         Link(llm_call_node.id, text_matcher_node.id, "response_#_is_relevant", "text"),
-        Link(text_matcher_node.id, reddit_comment_node.id, "positive_#_post_id", "post_id"),
-        Link(text_matcher_node.id, reddit_comment_node.id, "positive_#_marketing_text", "comment"),
+        Link(text_matcher_node.id, reddit_comment_node.id, "positive_#_post_id",
+             "post_id"),
+        Link(text_matcher_node.id, reddit_comment_node.id, "positive_#_marketing_text",
+             "comment"),
     ]
 
     # Create graph
@@ -121,22 +122,26 @@ async def wait_execution(test_manager, graph_id, graph_exec_id) -> list:
         List of execution:
             reddit_get_post_node 1 (produced 3 posts)
             text_formatter_node 3
-            llm_call_node 3 (assume there are only 2 relevant posts)
+            llm_call_node 3 (assume 3 of them relevant)
             text_matcher_node 3
-            reddit_comment_node 2
-        Total: 12
+            reddit_comment_node 3
+        Total: 13
         """
-        return test_manager.queue.empty() and len(execs) == 12
+        print("--------> Execution count: ", len(execs), [str(v.status) for v in execs])
+        return test_manager.queue.empty() and len(execs) == 13 and all(
+            v.status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]
+            for v in execs
+        )
 
     # Wait for the executions to complete
-    for i in range(30):
+    for i in range(120):
         if await is_execution_completed():
             return await AgentServer().get_executions(graph_id, graph_exec_id)
         time.sleep(1)
 
     assert False, "Execution did not complete in time."
 
-# Manual run
+
 async def reddit_marketing_agent():
     with PyroNameServer():
         with ExecutionManager(1) as test_manager:
@@ -149,6 +154,8 @@ async def reddit_marketing_agent():
             result = await wait_execution(test_manager, test_graph.id, response["id"])
             print(result)
 
+
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(reddit_marketing_agent())
