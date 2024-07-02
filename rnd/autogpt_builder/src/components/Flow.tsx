@@ -1,6 +1,5 @@
 "use client";
-
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import ReactFlow, {
   addEdge,
   applyNodeChanges,
@@ -11,26 +10,39 @@ import ReactFlow, {
   OnEdgesChange,
   OnConnect,
   NodeTypes,
-  EdgeRemoveChange,
+  Connection,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import Modal from 'react-modal';
 import CustomNode from './CustomNode';
 import './flow.css';
 
-const initialNodes: Node[] = [];
-const initialEdges: Edge[] = [];
-const nodeTypes: NodeTypes = {
-  custom: CustomNode,
+type Schema = {
+  type: string;
+  properties: { [key: string]: any };
+  required?: string[];
 };
 
-interface AvailableNode {
+type CustomNodeData = {
+  blockType: string;
+  title: string;
+  inputSchema: Schema;
+  outputSchema: Schema;
+  hardcodedValues: { [key: string]: any };
+  setHardcodedValues: (values: { [key: string]: any }) => void;
+  connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
+  isPropertiesOpen: boolean;
+  status?: string;
+  output_data?: any;
+  block_id: string;
+};
+
+type AvailableNode = {
   id: string;
   name: string;
   description: string;
-  inputSchema?: { properties: { [key: string]: any }; required?: string[] };
-  outputSchema?: { properties: { [key: string]: any } };
-}
+  inputSchema: Schema;
+  outputSchema: Schema;
+};
 
 interface ExecData {
   node_id: string;
@@ -38,94 +50,96 @@ interface ExecData {
   output_data: any;
 }
 
-const Flow: React.FC = () => {
-  const [nodes, setNodes] = useState<Node[]>(initialNodes);
-  const [edges, setEdges] = useState<Edge[]>(initialEdges);
-  const [nodeId, setNodeId] = useState<number>(1);
-  const [modalIsOpen, setModalIsOpen] = useState<boolean>(false);
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [title, setTitle] = useState<string>('');
-  const [description, setDescription] = useState<string>('');
-  const [variableName, setVariableName] = useState<string>('');
-  const [variableValue, setVariableValue] = useState<string>('');
-  const [printVariable, setPrintVariable] = useState<string>('');
-  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [availableNodes, setAvailableNodes] = useState<AvailableNode[]>([]);
-  const [loadingStatus, setLoadingStatus] = useState<'loading' | 'failed' | 'loaded'>('loading');
-  const [agentId, setAgentId] = useState<string | null>(null);
+const Sidebar: React.FC<{isOpen: boolean, availableNodes: AvailableNode[], addNode: (id: string, name: string) => void}> =
+  ({isOpen, availableNodes, addNode}) => {
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const apiUrl = 'http://localhost:8000'
+  if (!isOpen) return null;
+
+  const filteredNodes = availableNodes.filter(node =>
+    node.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <div style={{
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      bottom: 0,
+      width: '250px',
+      backgroundColor: '#333',
+      padding: '20px',
+      zIndex: 4,
+      overflowY: 'auto'
+    }}>
+      <h3 style={{color: '#fff'}}>Nodes</h3>
+      <input
+        type="text"
+        placeholder="Search nodes..."
+        style={{width: '100%', marginBottom: '10px', padding: '5px'}}
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+      />
+      {filteredNodes.map((node) => (
+        <div key={node.id} style={{marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+          <span style={{color: '#fff'}}>{node.name}</span>
+          <button onClick={() => addNode(node.id, node.name)}>Add</button>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const Flow: React.FC = () => {
+  const [nodes, setNodes] = useState<Node<CustomNodeData>[]>([]);
+  const [edges, setEdges] = useState<Edge[]>([]);
+  const [nodeId, setNodeId] = useState<number>(1);
+  const [availableNodes, setAvailableNodes] = useState<AvailableNode[]>([]);
+  const [agentId, setAgentId] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  const apiUrl = 'http://localhost:8000';
 
   useEffect(() => {
     fetch(`${apiUrl}/blocks`)
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        return response.json();
-      })
-      .then(data => {
-        setAvailableNodes(data.map((node: AvailableNode) => ({
-          ...node,
-          description: typeof node.description === 'object' ? JSON.stringify(node.description) : node.description,
-        })));
-        setLoadingStatus('loaded');
-      })
-      .catch(error => {
-        console.error('Error fetching nodes:', error);
-        setLoadingStatus('failed');
-      });
+      .then(response => response.json())
+      .then(data => setAvailableNodes(data))
+      .catch(error => console.error('Error fetching available blocks:', error));
   }, []);
 
+  const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
+
   const onNodesChange: OnNodesChange = useCallback(
-    (changes) => setNodes((nds) => applyNodeChanges(changes, nds).map(node => ({
-      ...node,
-      data: {
-        ...node.data,
-        metadata: {
-          ...node.data.metadata,
-          position: node.position
-        }
-      }
-    }))),
+    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
     []
   );
 
   const onEdgesChange: OnEdgesChange = useCallback(
-    (changes) => {
-      const removedEdges = changes.filter((change): change is EdgeRemoveChange => change.type === 'remove');
-      setEdges((eds) => applyEdgeChanges(changes, eds));
-
-      if (removedEdges.length > 0) {
-        setNodes((nds) =>
-          nds.map((node) => {
-            const updatedConnections = node.data.connections.filter(
-              (conn: string) =>
-                !removedEdges.some((edge) => edge.id && conn.includes(edge.id))
-            );
-            return { ...node, data: { ...node.data, connections: updatedConnections } };
-          })
-        );
-      }
-    },
+    (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
     []
   );
 
   const onConnect: OnConnect = useCallback(
-    (connection) => {
+    (connection: Connection) => {
       setEdges((eds) => addEdge(connection, eds));
       setNodes((nds) =>
         nds.map((node) => {
-          if (node.id === connection.source) {
-            const connections = node.data.connections || [];
-            connections.push(`${node.data.title} ${connection.sourceHandle} -> ${connection.target}`);
-            return { ...node, data: { ...node.data, connections } };
-          }
           if (node.id === connection.target) {
-            const connections = node.data.connections || [];
-            connections.push(`${connection.source} -> ${node.data.title} ${connection.targetHandle}`);
-            return { ...node, data: { ...node.data, connections } };
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                connections: [
+                  ...node.data.connections,
+                  {
+                    source: connection.source,
+                    sourceHandle: connection.sourceHandle,
+                    target: connection.target,
+                    targetHandle: connection.targetHandle,
+                  } as { source: string; sourceHandle: string; target: string; targetHandle: string },
+                ],
+              },
+            };
           }
           return node;
         })
@@ -134,127 +148,79 @@ const Flow: React.FC = () => {
     [setEdges, setNodes]
   );
 
-  const addNode = (type: string, label: string, description: string) => {
-    const nodeSchema = availableNodes.find(node => node.name === label);
-    const position = { x: Math.random() * 400, y: Math.random() * 400 };
+  const addNode = (blockId: string, nodeType: string) => {
+    const nodeSchema = availableNodes.find(node => node.id === blockId);
+    if (!nodeSchema) {
+      console.error(`Schema not found for block ID: ${blockId}`);
+      return;
+    }
 
-    const newNode: Node = {
+    const newNode: Node<CustomNodeData> = {
       id: nodeId.toString(),
       type: 'custom',
+      position: { x: Math.random() * 400, y: Math.random() * 400 },
       data: {
-        label: label,
-        title: `${type} ${nodeId}`,
-        description: `${description}`,
-        inputSchema: nodeSchema?.inputSchema,
-        outputSchema: nodeSchema?.outputSchema,
-        connections: [],
-        variableName: '',
-        variableValue: '',
-        printVariable: '',
-        setVariableName,
-        setVariableValue,
-        setPrintVariable,
+        blockType: nodeType,
+        title: `${nodeType} ${nodeId}`,
+        inputSchema: nodeSchema.inputSchema,
+        outputSchema: nodeSchema.outputSchema,
         hardcodedValues: {},
         setHardcodedValues: (values: { [key: string]: any }) => {
           setNodes((nds) => nds.map((node) =>
-            node.id === nodeId.toString()
+            node.id === newNode.id
               ? { ...node, data: { ...node.data, hardcodedValues: values } }
               : node
           ));
         },
-        block_id: nodeSchema?.id || '',
-        metadata: {
-          position // Store position in metadata
-        }
+        connections: [],
+        isPropertiesOpen: false,
+        block_id: blockId,
       },
-      position,
     };
+
     setNodes((nds) => [...nds, newNode]);
-    setNodeId((id) => id + 1);
+    setNodeId((prevId) => prevId + 1);
   };
 
-  const closeModal = () => {
-    setModalIsOpen(false);
-    setSelectedNode(null);
-  };
+  const prepareNodeInputData = (node: Node<CustomNodeData>, allNodes: Node<CustomNodeData>[], allEdges: Edge[]) => {
+    console.log("Preparing input data for node:", node.id, node.data.blockType);
 
-  const saveNodeData = () => {
-    if (selectedNode) {
-      setNodes((nds) =>
-        nds.map((node) =>
-          node.id === selectedNode.id
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  title,
-                  description,
-                  label: title,
-                  variableName,
-                  variableValue: typeof variableValue === 'object' ? JSON.stringify(variableValue) : variableValue,
-                  printVariable: typeof printVariable === 'object' ? JSON.stringify(printVariable) : printVariable,
-                },
-              }
-            : node
-        )
-      );
-      closeModal();
+    const blockSchema = availableNodes.find(n => n.id === node.data.block_id)?.inputSchema;
+
+    if (!blockSchema) {
+      console.error(`Schema not found for block ID: ${node.data.block_id}`);
+      return {};
     }
-  };
 
-  const toggleSidebar = () => {
-    setIsSidebarOpen(!isSidebarOpen);
-  };
+    let inputData: { [key: string]: any } = { ...node.data.hardcodedValues };
 
-  const filteredNodes = availableNodes.filter(node => node.name.toLowerCase().includes(searchQuery.toLowerCase()));
-
-  const prepareNodeInputData = (node: Node, allNodes: Node[], allEdges: Edge[]) => {
-    const nodeSchema = availableNodes.find(n => n.id === node.data.block_id);
-    if (!nodeSchema || !nodeSchema.inputSchema) return {};
-
-    let inputData: { [key: string]: any } = {};
-    const inputProperties = nodeSchema.inputSchema.properties;
-
-    Object.keys(inputProperties).forEach(prop => {
-      const inputEdges = allEdges.filter(edge => edge.target === node.id && edge.targetHandle === prop);
-      if (inputEdges.length > 0) {
-        const sourceNode = allNodes.find(n => n.id === inputEdges[0].source);
-        if (sourceNode && sourceNode.data.output_data) {
-          // Map the output of the source node to the input of the target node
-          const sourceOutput = sourceNode.data.output_data;
-          const outputKey = Object.keys(sourceOutput)[0]; // Assume first output key
-          inputData[prop] = sourceOutput[outputKey];
-        }
-      } else if (node.data.hardcodedValues && node.data.hardcodedValues[prop]) {
-        inputData[prop] = node.data.hardcodedValues[prop];
+    // Get data from connected nodes
+    const incomingEdges = allEdges.filter(edge => edge.target === node.id);
+    incomingEdges.forEach(edge => {
+      const sourceNode = allNodes.find(n => n.id === edge.source);
+      if (sourceNode && sourceNode.data.output_data) {
+        const outputKey = Object.keys(sourceNode.data.output_data)[0]; // Assuming single output
+        inputData[edge.targetHandle as string] = sourceNode.data.output_data[outputKey];
       }
     });
 
-    return inputData;
-  };
+    // Filter out any inputs that are not in the block's schema
+    Object.keys(inputData).forEach(key => {
+      if (!blockSchema.properties[key]) {
+        delete inputData[key];
+      }
+    });
 
-  const updateNodeData = (execData: ExecData) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === execData.node_id) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              status: execData.status,
-              output_data: execData.output_data,
-              isPropertiesOpen: true, // Open the properties
-            },
-          };
-        }
-        return node;
-      })
-    );
+    console.log(`Final prepared input for ${node.data.blockType} (${node.id}):`, inputData);
+    return inputData;
   };
 
   const runAgent = async () => {
     try {
+      console.log("All nodes before formatting:", nodes);
+
       const formattedNodes = nodes.map(node => {
+        console.log("Formatting node:", node.id, node.data.blockType);
         const inputDefault = prepareNodeInputData(node, nodes, edges);
         const inputNodes = edges
           .filter(edge => edge.target === node.id)
@@ -273,19 +239,21 @@ const Flow: React.FC = () => {
         return {
           id: node.id,
           block_id: node.data.block_id,
-          input_default: inputNodes.length === 0 ? inputDefault : {},
+          input_default: inputDefault,
           input_nodes: inputNodes,
           output_nodes: outputNodes,
-          metadata: node.data.metadata
+          metadata: { position: node.position }
         };
       });
 
       const payload = {
-        id: '',
+        id: agentId || '',
         name: 'Agent Name',
         description: 'Agent Description',
         nodes: formattedNodes,
       };
+
+      console.log("Payload being sent to the API:", JSON.stringify(payload, null, 2));
 
       const createResponse = await fetch(`${apiUrl}/graphs`, {
         method: 'POST',
@@ -300,77 +268,19 @@ const Flow: React.FC = () => {
       }
 
       const createData = await createResponse.json();
-      const agentId = createData.id;
-      setAgentId(agentId);
 
-      const responseNodes = createData.nodes.map((node: any) => {
-        const block = availableNodes.find(n => n.id === node.block_id);
-        return {
-          id: node.id,
-          type: 'custom',
-          position: node.metadata.position,
-          data: {
-            label: block?.name || 'Unknown',
-            title: `${block?.name || 'Unknown'}`,
-            description: `${block?.description || ''}`,
-            inputSchema: block?.inputSchema,
-            outputSchema: block?.outputSchema,
-            connections: node.input_nodes.map((input: any) => `${input.node_id}-${input.name} -> ${node.id}`),
-            variableName: '',
-            variableValue: '',
-            printVariable: '',
-            setVariableName,
-            setVariableValue,
-            setPrintVariable,
-            hardcodedValues: node.input_default,
-            setHardcodedValues: (values: { [key: string]: any }) => {
-              setNodes((nds) => nds.map((n) =>
-                n.id === node.id
-                  ? { ...n, data: { ...n.data, hardcodedValues: values } }
-                  : n
-              ));
-            },
-            block_id: node.block_id,
-            metadata: node.metadata
-          },
-        };
-      });
+      const newAgentId = createData.id;
+      setAgentId(newAgentId);
 
-      const newEdges = createData.nodes.flatMap((node: any) => {
-        return node.output_nodes.map((outputNode: { name: string; node_id: string }) => ({
-          id: `${node.id}-${outputNode.name}-${outputNode.node_id}`,
-          source: node.id,
-          sourceHandle: outputNode.name,
-          target: outputNode.node_id,
-          targetHandle: node.input_nodes.find((inputNode: { name: string; node_id: string }) => inputNode.node_id === outputNode.node_id)?.name || '',
-        }));
-      });
+      console.log('Response from the API:', JSON.stringify(createData, null, 2));
 
-      setNodes(responseNodes);
-      setEdges(newEdges);
+      const executeResponse = await fetch(`${apiUrl}/graphs/${newAgentId}/execute`, {
 
-      const initialNodeInput = nodes.reduce((acc, node) => {
-        acc[node.id] = prepareNodeInputData(node, nodes, edges);
-        return acc;
-      }, {} as { [key: string]: any });
-
-      const nodeInputForExecution = Object.keys(initialNodeInput).reduce((acc, key) => {
-        const blockId = nodes.find(node => node.id === key)?.data.block_id;
-        const nodeSchema = availableNodes.find(n => n.id === blockId);
-        if (nodeSchema && nodeSchema.inputSchema) {
-          Object.keys(nodeSchema.inputSchema.properties).forEach(prop => {
-            acc[prop] = initialNodeInput[key][prop];
-          });
-        }
-        return acc;
-      }, {} as { [key: string]: any });
-
-      const executeResponse = await fetch(`${apiUrl}/graphs/${agentId}/execute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(nodeInputForExecution),
+        body: JSON.stringify({}),
       });
 
       if (!executeResponse.ok) {
@@ -378,210 +288,100 @@ const Flow: React.FC = () => {
       }
 
       const executeData = await executeResponse.json();
-      const runId = executeData.id; // Correctly capturing runId from executeData
-      const startPolling = () => {
-        const endTime = Date.now() + 60000;
+      const runId = executeData.id;
 
-        const poll = async () => {
-          if (Date.now() >= endTime) {
-            console.log('Polling timeout reached.');
-            return;
-          }
 
-          try {
-            const response = await fetch(`${apiUrl}/graphs/${agentId}/executions/${runId}`);
-            if (!response.ok) {
-              throw new Error(`HTTP error! Status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            data.forEach(updateNodeData);
-
-            const allCompleted = data.every((exec: any) => exec.status === 'COMPLETED');
-            if (allCompleted) {
-              console.log('All nodes are completed.');
-              return;
-            }
-
-            setTimeout(poll, 100);
-          } catch (error) {
-            console.error('Error during polling:', error);
-            setTimeout(poll, 100);
-          }
-        };
-
-        poll();
+      const pollExecution = async () => {
+        const response = await fetch(`${apiUrl}/graphs/${newAgentId}/executions/${runId}`);
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        const data = await response.json();
+        data.forEach(updateNodeData);
+        if (data.every((node: any) => node.status === 'COMPLETED')) {
+          console.log('All nodes completed execution');
+        } else {
+          setTimeout(pollExecution, 1000);
+        }
       };
 
-      startPolling();
+      pollExecution();
+
     } catch (error) {
       console.error('Error running agent:', error);
     }
   };
 
+  const updateNodesWithExecutionData = (executionData: any[]) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        const nodeExecution = executionData.find((exec) => exec.node_id === node.id);
+        if (nodeExecution) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              status: nodeExecution.status,
+              output_data: nodeExecution.output_data,
+              isPropertiesOpen: true,
+            },
+          };
+        }
+        return node;
+      })
+    );
+  };
+
+  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+
+    const updateNodeData = (execData: ExecData) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === execData.node_id) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              status: execData.status,
+              output_data: execData.output_data,
+              isPropertiesOpen: true, // Open the properties
+            },
+          };
+        }
+        return node;
+      })
+    );
+  };
+
   return (
-    <div className="flow-container">
-      <div className={`flow-controls ${isSidebarOpen ? 'open' : ''}`}>
-        <button className="nodes-button" onClick={toggleSidebar}>
-          Nodes
-        </button>
-        <button className="run-button" onClick={runAgent}>
-          Run
-        </button>
-        {agentId && (
-          <span style={{ marginLeft: '10px', color: '#fff', fontSize: '16px' }}>
-            Agent ID: {agentId}
-          </span>
-        )}
-      </div>
-      <div className="flow-wrapper">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          fitView
-        />
-      </div>
-      {selectedNode && (
-        <Modal isOpen={modalIsOpen} onRequestClose={closeModal} contentLabel="Node Info" className="modal" overlayClassName="overlay">
-          <h2>Edit Node</h2>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              saveNodeData();
-            }}
-          >
-            <div>
-              <label>
-                Title:
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  required
-                />
-              </label>
-            </div>
-            <div>
-              <label>
-                Description:
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  required
-                />
-              </label>
-            </div>
-            {selectedNode.data.title.includes('Variable') && (
-              <>
-                <div>
-                  <label>
-                    Variable Name:
-                    <input
-                      type="text"
-                      value={variableName}
-                      onChange={(e) => setVariableName(e.target.value)}
-                      required
-                    />
-                  </label>
-                </div>
-                <div>
-                  <label>
-                    Variable Value:
-                    <input
-                      type="text"
-                      value={variableValue}
-                      onChange={(e) => setVariableValue(e.target.value)}
-                      required
-                    />
-                  </label>
-                </div>
-              </>
-            )}
-            {selectedNode.data.title.includes('Print') && (
-              <>
-                <div>
-                  <label>
-                    Variable to Print:
-                    <input
-                      type="text"
-                      value={printVariable}
-                      onChange={(e) => setPrintVariable(e.target.value)}
-                      required
-                    />
-                  </label>
-                </div>
-              </>
-            )}
-            <button type="submit">Save</button>
-            <button type="button" onClick={closeModal}>
-              Cancel
-            </button>
-          </form>
-        </Modal>
-      )}
-      <div className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
-        <h3 style={{ margin: '0 0 10px 0' }}>Nodes</h3>
-        <input
-          type="text"
-          placeholder="Search nodes..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{
-            padding: '10px',
-            fontSize: '16px',
-            backgroundColor: '#333',
-            color: '#e0e0e0',
-            border: '1px solid #555',
-            borderRadius: '4px',
-            marginBottom: '10px',
-            width: 'calc(100% - 22px)',
-            boxSizing: 'border-box',
-          }}
-        />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {loadingStatus === 'loading' && <p>Loading...</p>}
-          {loadingStatus === 'failed' && <p>Failed To Load Nodes</p>}
-          {loadingStatus === 'loaded' && filteredNodes.map(node => (
-            <div key={node.id} style={sidebarNodeRowStyle}>
-              <div>
-                <strong>{node.name}</strong>
-                <p>{node.description}</p>
-              </div>
-              <button
-                onClick={() => addNode(node.name, node.name, node.description)}
-                style={sidebarButtonStyle}
-              >
-                Add
-              </button>
-            </div>
-          ))}
+    <div style={{ height: '100vh', width: '100%' }}>
+      <button
+        onClick={toggleSidebar}
+        style={{
+          position: 'absolute',
+          left: isSidebarOpen ? '260px' : '10px',
+          top: '10px',
+          zIndex: 5,
+          transition: 'left 0.3s'
+        }}
+      >
+        {isSidebarOpen ? 'Hide Sidebar' : 'Show Sidebar'}
+      </button>
+      <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        nodeTypes={nodeTypes}
+      >
+        <div style={{ position: 'absolute', right: 10, top: 10, zIndex: 4 }}>
+          <button onClick={runAgent}>Run Agent</button>
         </div>
-      </div>
+      </ReactFlow>
     </div>
   );
-};
-
-const sidebarNodeRowStyle = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  backgroundColor: '#444',
-  padding: '10px',
-  borderRadius: '4px',
-};
-
-const sidebarButtonStyle = {
-  padding: '10px 20px',
-  fontSize: '16px',
-  backgroundColor: '#007bff',
-  color: '#fff',
-  border: 'none',
-  borderRadius: '4px',
-  cursor: 'pointer',
 };
 
 export default Flow;
