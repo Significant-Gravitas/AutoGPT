@@ -86,10 +86,9 @@ class ExecutionResult(BaseModel):
 
 # --------------------- Model functions --------------------- #
 
+
 async def create_graph_execution(
-        graph_id: str,
-        node_ids: list[str],
-        data: dict[str, Any]
+    graph_id: str, node_ids: list[str], data: dict[str, Any]
 ) -> tuple[str, list[ExecutionResult]]:
     """
     Create a new AgentGraphExecution record.
@@ -115,7 +114,7 @@ async def create_graph_execution(
                 ]
             },
         },
-        include={"AgentNodeExecutions": True}
+        include={"AgentNodeExecutions": True},
     )
 
     return result.id, [
@@ -125,10 +124,10 @@ async def create_graph_execution(
 
 
 async def upsert_execution_input(
-        node_id: str,
-        graph_exec_id: str,
-        input_name: str,
-        data: Any,
+    node_id: str,
+    graph_exec_id: str,
+    input_name: str,
+    data: Any,
 ) -> str:
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Input.
@@ -170,10 +169,11 @@ async def upsert_execution_input(
         )
         return result.id
 
+
 async def upsert_execution_output(
-        node_exec_id: str,
-        output_name: str,
-        output_data: Any,
+    node_exec_id: str,
+    output_name: str,
+    output_data: Any,
 ) -> None:
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
@@ -199,7 +199,7 @@ async def update_execution_status(node_exec_id: str, status: ExecutionStatus) ->
 
     count = await AgentNodeExecution.prisma().update(
         where={"id": node_exec_id},
-        data=data  # type: ignore
+        data=data,  # type: ignore
     )
     if count == 0:
         raise ValueError(f"Execution {node_exec_id} not found.")
@@ -212,6 +212,16 @@ async def get_executions(graph_exec_id: str) -> list[ExecutionResult]:
         order={"addedTime": "asc"},
     )
     res = [ExecutionResult.from_db(execution) for execution in executions]
+    return res
+
+
+async def get_execution(graph_exec_id: str, node_exec_id: str) -> ExecutionResult:
+    execution = await AgentNodeExecution.prisma().find_first_or_raise(
+        where={"agentGraphExecutionId": graph_exec_id, "id": node_exec_id},
+        include={"Input": True, "Output": True},
+        order={"addedTime": "asc"},
+    )
+    res = ExecutionResult.from_db(execution)
     return res
 
 
@@ -259,4 +269,3 @@ def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
         data[name].append(value)
 
     return data
- 
