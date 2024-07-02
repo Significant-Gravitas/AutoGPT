@@ -70,7 +70,7 @@ class _BaseOpenAIProvider(BaseModelProvider[_ModelName, _ModelProviderSettings])
         if not settings:
             settings = self.default_settings.model_copy(deep=True)
         if not settings.credentials:
-            settings.credentials = get_args(
+            settings.credentials = get_args(  # Union[Credentials, None] -> Credentials
                 self.default_settings.model_fields["credentials"].annotation
             )[0].from_env()
 
