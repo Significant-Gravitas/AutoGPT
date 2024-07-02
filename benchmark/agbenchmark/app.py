@@ -56,7 +56,8 @@ while challenge_spec_files:
     except ValidationError as e:
         if logging.getLogger().level == logging.DEBUG:
             logger.warning(f"Spec file {challenge_relpath} failed to load:\n{e}")
-        logger.debug(f"Invalid challenge spec: {challenge_spec_file.read_text()}")
+        with open(challenge_spec_file, 'r', encoding='utf-8') as f:
+            logger.debug(f"Invalid challenge spec: {f.read_text()}")
         continue
     challenge_info.spec_file = challenge_spec_file
 

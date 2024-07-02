@@ -34,7 +34,7 @@ def get_unique_categories() -> set[str]:
     glob_path = f"{challenges_dir}/**/data.json"
 
     for data_file in glob.glob(glob_path, recursive=True):
-        with open(data_file, "r") as f:
+        with open(data_file, "r", encoding="utf-8") as f:
             try:
                 challenge_data = json.load(f)
                 categories.update(challenge_data.get("category", []))

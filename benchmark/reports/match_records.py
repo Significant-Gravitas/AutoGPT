@@ -95,8 +95,8 @@ def get_reports():
             for report_file in report_files:
                 # Check if the report.json file exists
                 if os.path.isfile(report_file):
-                    # Open the report.json file
-                    with open(report_file, "r") as f:
+                    # Open the report.json file with UTF-8 encoding
+                    with open(report_file, "r", encoding="utf-8") as f:
                         # Load the JSON data from the file
                         json_data = json.load(f)
                         print(f"Processing {report_file}")
