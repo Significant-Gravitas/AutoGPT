@@ -27,7 +27,7 @@ def get_reports_data(report_path: str) -> dict[str, Any]:
         with open(Path(subdir) / file, "r") as f:
             # Load the JSON data from the file
             json_data = json.load(f)
-            converted_data = Report.parse_obj(json_data)
+            converted_data = Report.model_validate(json_data)
             # get the last directory name in the path as key
             reports_data[subdir_name] = converted_data
 

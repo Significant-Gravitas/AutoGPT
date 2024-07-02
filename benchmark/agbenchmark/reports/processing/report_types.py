@@ -6,7 +6,13 @@ import logging
 from typing import Annotated, Any, Dict, List
 
 from agent_protocol_client import Step
-from pydantic import BaseModel, Field, constr, validator
+from pydantic import (
+    BaseModel,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    field_validator,
+)
 
 datetime_format = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$"
 logger = logging.getLogger(__name__)
@@ -30,20 +36,20 @@ class TestResult(BaseModel):
     cost: float | None = None
     """The (known) cost incurred by the run, e.g. from using paid LLM APIs"""
 
-    @validator("fail_reason")
-    def success_xor_fail_reason(cls, v: str | None, values: dict[str, Any]):
-        if bool(v) == bool(values["success"]):
+    @field_validator("fail_reason")
+    def success_xor_fail_reason(cls, value, info: ValidationInfo):
+        if bool(value) == bool(info.data["success"]):
             logger.error(
                 "Error validating `success ^ fail_reason` on TestResult: "
-                f"success = {repr(values['success'])}; "
-                f"fail_reason = {repr(v)}"
+                f"success = {repr(info.data['success'])}; "
+                f"fail_reason = {repr(value)}"
             )
-        if v:
-            success = values["success"]
+        if value:
+            success = info.data["success"]
             assert not success, "fail_reason must only be specified if success=False"
         else:
-            assert values["success"], "fail_reason is required if success=False"
-        return v
+            assert info.data["success"], "fail_reason is required if success=False"
+        return value
 
 
 class TestMetrics(BaseModel):
@@ -88,7 +94,7 @@ class Test(BaseModel):
 class ReportBase(BaseModel):
     command: str
     completion_time: str | None = None
-    benchmark_start_time: Annotated[str, constr(regex=datetime_format)]
+    benchmark_start_time: Annotated[str, StringConstraints(pattern=datetime_format)]
     metrics: MetricsOverall
     config: Dict[str, str | dict[str, str]]
     agent_git_commit_sha: str | None = None

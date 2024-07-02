@@ -27,11 +27,11 @@ class ImageGeneratorConfiguration(BaseModel):
     image_provider: Literal["dalle", "huggingface", "sdwebui"] = "dalle"
     huggingface_image_model: str = "CompVis/stable-diffusion-v1-4"
     huggingface_api_token: Optional[SecretStr] = UserConfigurable(
-        from_env="HUGGINGFACE_API_TOKEN", exclude=True
+        None, from_env="HUGGINGFACE_API_TOKEN", exclude=True
     )
     sd_webui_url: str = "http://localhost:7860"
     sd_webui_auth: Optional[SecretStr] = UserConfigurable(
-        from_env="SD_WEBUI_AUTH", exclude=True
+        None, from_env="SD_WEBUI_AUTH", exclude=True
     )
 
 

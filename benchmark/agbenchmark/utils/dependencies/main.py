@@ -220,7 +220,7 @@ class DependencyManager(object):
         labels = {}
         for item in self.items:
             assert item.cls and issubclass(item.cls, BaseChallenge)
-            data = item.cls.info.dict()
+            data = item.cls.info.model_dump()
 
             node_name = get_name(item)
             data["name"] = node_name

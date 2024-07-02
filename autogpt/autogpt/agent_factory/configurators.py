@@ -104,5 +104,5 @@ def create_agent_state(
             allow_fs_access=not app_config.restrict_to_workspace,
             use_functions_api=app_config.openai_functions,
         ),
-        history=Agent.default_settings.history.copy(deep=True),
+        history=Agent.default_settings.history.model_copy(deep=True),
     )

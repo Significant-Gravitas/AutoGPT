@@ -57,7 +57,7 @@ class JSONSchema(BaseModel):
 
     @staticmethod
     def from_dict(schema: dict) -> "JSONSchema":
-        definitions = schema.get("definitions", {})
+        definitions = schema.get("$defs", {})
         schema = _resolve_type_refs_in_schema(schema, definitions)
 
         return JSONSchema(

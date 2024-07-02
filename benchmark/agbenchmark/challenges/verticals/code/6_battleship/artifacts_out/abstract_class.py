@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 
 
 # Models for the request and response payloads
@@ -10,7 +10,7 @@ class ShipPlacement(BaseModel):
     start: dict  # {"row": int, "column": str}
     direction: str
 
-    @validator("start")
+    @field_validator("start")
     def validate_start(cls, start):
         row, column = start.get("row"), start.get("column")
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 import inspect
-import json
 import logging
 from abc import ABCMeta, abstractmethod
 from typing import (
@@ -19,7 +18,8 @@ from typing import (
 )
 
 from colorama import Fore
-from pydantic import BaseModel, Field, parse_raw_as, validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic_core import from_json, to_json
 
 from forge.agent import protocols
 from forge.agent.components import (
@@ -47,11 +47,6 @@ DEFAULT_TRIGGERING_PROMPT = (
 )
 
 
-# HACK: This is a workaround wrapper to de/serialize component configs until pydantic v2
-class ModelContainer(BaseModel):
-    models: dict[str, BaseModel]
-
-
 class BaseAgentConfiguration(SystemConfiguration):
     allow_fs_access: bool = UserConfigurable(default=False)
 
@@ -77,10 +72,10 @@ class BaseAgentConfiguration(SystemConfiguration):
     `0` to stop the agent.
     """
 
-    cycles_remaining = cycle_budget
+    cycles_remaining: int = cycle_budget
     """The number of cycles remaining within the `cycle_budget`."""
 
-    cycle_count = 0
+    cycle_count: int = 0
     """The number of cycles that the agent has run since its initialization."""
 
     send_token_limit: Optional[int] = None
@@ -89,11 +84,11 @@ class BaseAgentConfiguration(SystemConfiguration):
     defaults to 75% of `llm.max_tokens`.
     """
 
-    @validator("use_functions_api")
-    def validate_openai_functions(cls, v: bool, values: dict[str, Any]):
-        if v:
-            smart_llm = values["smart_llm"]
-            fast_llm = values["fast_llm"]
+    @field_validator("use_functions_api")
+    def validate_openai_functions(cls, value: bool, info: ValidationInfo):
+        if value:
+            smart_llm = info.data["smart_llm"]
+            fast_llm = info.data["fast_llm"]
             assert all(
                 [
                     not any(s in name for s in {"-0301", "-0314"})
@@ -103,7 +98,7 @@ class BaseAgentConfiguration(SystemConfiguration):
                 f"Model {smart_llm} does not support OpenAI Functions. "
                 "Please disable OPENAI_FUNCTIONS or choose a suitable model."
             )
-        return v
+        return value
 
 
 class BaseAgentSettings(SystemSettings):
@@ -277,17 +272,15 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
         return method_result
 
     def dump_component_configs(self) -> str:
-        configs = {}
+        configs: dict[str, Any] = {}
         for component in self.components:
             if isinstance(component, ConfigurableComponent):
                 config_type_name = component.config.__class__.__name__
                 configs[config_type_name] = component.config
-        data = ModelContainer(models=configs).json()
-        raw = parse_raw_as(dict[str, dict[str, Any]], data)
-        return json.dumps(raw["models"], indent=4)
+        return to_json(configs).decode()
 
     def load_component_configs(self, serialized_configs: str):
-        configs_dict = parse_raw_as(dict[str, dict[str, Any]], serialized_configs)
+        configs_dict: dict[str, dict[str, Any]] = from_json(serialized_configs)
 
         for component in self.components:
             if not isinstance(component, ConfigurableComponent):
@@ -297,7 +290,7 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
             if config_type_name in configs_dict:
                 # Parse the serialized data and update the existing config
                 updated_data = configs_dict[config_type_name]
-                data = {**component.config.dict(), **updated_data}
+                data = {**component.config.model_dump(), **updated_data}
                 component.config = component.config.__class__(**data)
 
     def _collect_components(self):
@@ -353,7 +346,7 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
                 copied_item = item.copy()
             elif isinstance(item, BaseModel):
                 # Deep copy for Pydantic models (deep=True to also copy nested models)
-                copied_item = item.copy(deep=True)
+                copied_item = item.model_copy(deep=True)
             else:
                 # Deep copy for other objects
                 copied_item = copy.deepcopy(item)

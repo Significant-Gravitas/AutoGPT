@@ -1,9 +1,9 @@
 import abc
 import enum
 import math
-from typing import Callable, Generic, TypeVar
+from typing import Generic, TypeVar
 
-from pydantic import BaseModel, SecretBytes, SecretField, SecretStr
+from pydantic import BaseModel, ConfigDict, Secret, SecretBytes, SecretStr
 
 from forge.models.config import SystemConfiguration, UserConfigurable
 
@@ -38,17 +38,18 @@ class ProviderCredentials(SystemConfiguration):
     def unmasked(self) -> dict:
         return unmask(self)
 
-    class Config(SystemConfiguration.Config):
-        json_encoders: dict[type[SecretField], Callable[[SecretField], str | None]] = {
+    model_config = ConfigDict(
+        json_encoders={
             SecretStr: lambda v: v.get_secret_value() if v else None,
             SecretBytes: lambda v: v.get_secret_value() if v else None,
-            SecretField: lambda v: v.get_secret_value() if v else None,
+            Secret: lambda v: v.get_secret_value() if v else None,
         }
+    )
 
 
 def unmask(model: BaseModel):
     unmasked_fields = {}
-    for field_name, _ in model.__fields__.items():
+    for field_name, _ in model.model_fields.items():
         value = getattr(model, field_name)
         if isinstance(value, SecretStr):
             unmasked_fields[field_name] = value.get_secret_value()

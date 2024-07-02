@@ -67,7 +67,7 @@ class ConfigurableComponent(ABC, Generic[BM]):
         if not hasattr(self, "_config") or self._config is None:
             # Load configuration from environment variables
             updated = _update_user_config_from_env(config)
-            config = self.config_class(**deep_update(config.dict(), updated))
+            config = self.config_class(**deep_update(config.model_dump(), updated))
         self._config = config
 
 

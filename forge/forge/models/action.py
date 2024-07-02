@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import Any, Literal, Optional, TypeVar
 
 from pydantic import BaseModel
-from pydantic.schema import default_ref_template
+from pydantic.json_schema import (
+    DEFAULT_REF_TEMPLATE,
+    GenerateJsonSchema,
+    JsonSchemaMode,
+)
 
 from forge.llm.providers.schema import AssistantChatMessage, AssistantFunctionCall
 
@@ -20,13 +24,24 @@ class ActionProposal(BaseModel):
     """
 
     @classmethod
-    def schema(
-        cls, by_alias: bool = True, ref_template: str = default_ref_template, **kwargs
+    def model_json_schema(
+        cls,
+        by_alias: bool = True,
+        ref_template: str = DEFAULT_REF_TEMPLATE,
+        schema_generator: type[GenerateJsonSchema] = GenerateJsonSchema,
+        mode: JsonSchemaMode = "validation",
+        **kwargs,
     ):
         """
         The schema for this ActionProposal model, excluding the 'raw_message' property.
         """
-        schema = super().schema(by_alias=by_alias, ref_template=ref_template, **kwargs)
+        schema = super().model_json_schema(
+            by_alias=by_alias,
+            ref_template=ref_template,
+            schema_generator=schema_generator,
+            mode=mode,
+            **kwargs,
+        )
         if "raw_message" in schema["properties"]:  # must check because schema is cached
             del schema["properties"]["raw_message"]
         return schema

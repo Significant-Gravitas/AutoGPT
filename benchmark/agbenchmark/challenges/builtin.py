@@ -15,7 +15,13 @@ from agent_protocol_client import Configuration as ClientConfig
 from agent_protocol_client import Step
 from colorama import Fore, Style
 from openai import _load_client as get_openai_client
-from pydantic import BaseModel, Field, constr, validator
+from pydantic import (
+    BaseModel,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    field_validator,
+)
 
 from agbenchmark.agent_api_interface import download_agent_artifacts_into_folder
 from agbenchmark.agent_interface import copy_challenge_artifacts_into_workspace
@@ -46,7 +52,9 @@ class BuiltinChallengeSpec(BaseModel):
 
     class Info(BaseModel):
         difficulty: DifficultyLevel
-        description: Annotated[str, constr(regex=r"^Tests if the agent can.*")]
+        description: Annotated[
+            str, StringConstraints(pattern=r"^Tests if the agent can.*")
+        ]
         side_effects: list[str] = Field(default_factory=list)
 
     info: Info
@@ -60,23 +68,26 @@ class BuiltinChallengeSpec(BaseModel):
 
         class Eval(BaseModel):
             type: str
-            scoring: Optional[Literal["percentage", "scale", "binary"]]
-            template: Optional[Literal["rubric", "reference", "question", "custom"]]
-            examples: Optional[str]
+            scoring: Optional[Literal["percentage", "scale", "binary"]] = None
+            template: Optional[
+                Literal["rubric", "reference", "question", "custom"]
+            ] = None
+            examples: Optional[str] = None
 
-            @validator("scoring", "template", always=True)
-            def validate_eval_fields(cls, v, values, field):
-                if "type" in values and values["type"] == "llm":
-                    if v is None:
+            @field_validator("scoring", "template")
+            def validate_eval_fields(cls, value, info: ValidationInfo):
+                field_name = info.field_name
+                if "type" in info.data and info.data["type"] == "llm":
+                    if value is None:
                         raise ValueError(
-                            f"{field.name} must be provided when eval type is 'llm'"
+                            f"{field_name} must be provided when eval type is 'llm'"
                         )
                 else:
-                    if v is not None:
+                    if value is not None:
                         raise ValueError(
-                            f"{field.name} should only exist when eval type is 'llm'"
+                            f"{field_name} should only exist when eval type is 'llm'"
                         )
-                return v
+                return value
 
         eval: Eval
 
@@ -142,7 +153,7 @@ class BuiltinChallenge(BaseChallenge):
 
     @classmethod
     def from_challenge_spec_file(cls, spec_file: Path) -> type["BuiltinChallenge"]:
-        challenge_spec = BuiltinChallengeSpec.parse_file(spec_file)
+        challenge_spec = BuiltinChallengeSpec.model_validate_json(spec_file.read_text())
         challenge_spec.spec_file = spec_file
         return cls.from_challenge_spec(challenge_spec)
 
@@ -187,7 +198,7 @@ class BuiltinChallenge(BaseChallenge):
                     task_id = step.task_id
 
                 n_steps += 1
-                steps.append(step.copy())
+                steps.append(step.model_copy())
                 if step.additional_output:
                     agent_task_cost = step.additional_output.get(
                         "task_total_cost",

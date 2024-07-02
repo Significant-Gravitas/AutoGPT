@@ -25,4 +25,4 @@ class AIDirectives(BaseModel):
             resources=self.resources + other.resources,
             constraints=self.constraints + other.constraints,
             best_practices=self.best_practices + other.best_practices,
-        ).copy(deep=True)
+        ).model_copy(deep=True)
