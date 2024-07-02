@@ -111,17 +111,19 @@ class SessionReportManager(BaseReportManager):
     def save(self) -> None:
         with self.report_file.open("w") as f:
             if self.report:
-                f.write(self.report.json(indent=4))
+                f.write(self.report.model_dump_json(indent=4))
             else:
-                json.dump({k: v.dict() for k, v in self.tests.items()}, f, indent=4)
+                json.dump(
+                    {k: v.model_dump() for k, v in self.tests.items()}, f, indent=4
+                )
 
     def load(self) -> None:
         super().load()
 
         if "tests" in self.tests:
-            self.report = Report.parse_obj(self.tests)
+            self.report = Report.model_validate(self.tests)
         else:
-            self.tests = {n: Test.parse_obj(d) for n, d in self.tests.items()}
+            self.tests = {n: Test.model_validate(d) for n, d in self.tests.items()}
 
     def add_test_report(self, test_name: str, test_report: Test) -> None:
         if self.report:
@@ -155,7 +157,7 @@ class SessionReportManager(BaseReportManager):
                 total_cost=self.get_total_costs(),
             ),
             tests=copy.copy(self.tests),
-            config=config.dict(exclude={"reports_folder"}, exclude_none=True),
+            config=config.model_dump(exclude={"reports_folder"}, exclude_none=True),
         )
 
         agent_categories = get_highest_achieved_difficulty_per_category(self.report)
