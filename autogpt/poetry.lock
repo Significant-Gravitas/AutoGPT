@@ -351,7 +351,7 @@ watchdog = "4.0.0"
 webdriver-manager = "^4.0.1"
 
 [package.extras]
-benchmark = ["agbenchmark @ file:///Users/czerwinski/Projects/AutoGPT/benchmark"]
+benchmark = ["agbenchmark @ file:///home/reinier/code/agpt/AutoGPT/benchmark"]
 
 [package.source]
 type = "directory"
@@ -6794,4 +6794,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "635471a4231272ee37bbc8f6f94fcc5d7ddc392969e54599453ac08889193a8d"
+content-hash = "38a549db0d7726a14e3f990206928b6187e009aee31755b7286ede1c568d359b"
