@@ -24,7 +24,7 @@ from forge.config.ai_profile import AIProfile
 from forge.file_storage.base import FileStorage
 from forge.llm.prompting.schema import ChatPrompt
 from forge.llm.prompting.utils import dump_prompt
-from forge.llm.providers.schema import AssistantFunctionCall
+from forge.llm.providers.schema import AssistantChatMessage, AssistantFunctionCall
 from forge.llm.providers.utils import function_specs_from_commands
 from forge.models.action import (
     ActionErrorResult,
@@ -177,6 +177,9 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
             thoughts="I cannot solve the task!",
             use_tool=AssistantFunctionCall(
                 name="finish", arguments={"reason": "Unimplemented logic"}
+            ),
+            raw_message=AssistantChatMessage(
+                content="finish(reason='Unimplemented logic')"
             ),
         )
 

@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import Any, Literal, Optional, TypeVar
 
 from pydantic import BaseModel
+from pydantic.schema import default_ref_template
 
-from forge.llm.providers.schema import AssistantFunctionCall
+from forge.llm.providers.schema import AssistantChatMessage, AssistantFunctionCall
 
 from .utils import ModelWithSummary
 
@@ -12,6 +13,23 @@ from .utils import ModelWithSummary
 class ActionProposal(BaseModel):
     thoughts: str | ModelWithSummary
     use_tool: AssistantFunctionCall
+
+    raw_message: AssistantChatMessage = None  # type: ignore
+    """
+    The message from which the action proposal was parsed. To be set by the parser.
+    """
+
+    @classmethod
+    def schema(
+        cls, by_alias: bool = True, ref_template: str = default_ref_template, **kwargs
+    ):
+        """
+        The schema for this ActionProposal model, excluding the 'raw_message' property.
+        """
+        schema = super().schema(by_alias=by_alias, ref_template=ref_template, **kwargs)
+        if "raw_message" in schema["properties"]:  # must check because schema is cached
+            del schema["properties"]["raw_message"]
+        return schema
 
 
 AnyProposal = TypeVar("AnyProposal", bound=ActionProposal)
