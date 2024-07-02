@@ -42,7 +42,7 @@ def write_pid(pid: int):
 
 class MainApp(AppProcess):
     def run(self):
-        app.main(silent=True)
+        app.main(silent=True) # type: ignore
 
 
 @click.group()
@@ -66,12 +66,12 @@ def start():
         os.remove(get_pid_path())
 
     print("Starting server")
-    pid = MainApp().start(background=True, silent=True)
+    pid = MainApp().start(background=True, silent=True) # type: ignore
     print(f"Server running in process: {pid}")
 
     write_pid(pid)
     print("done")
-    os._exit(status=0)
+    os._exit(status=0) # type: ignore
 
 
 @main.command()
@@ -111,7 +111,7 @@ def event():
 
 @test.command()
 @click.argument("server_address")
-def websocket(server_address):
+def websocket(server_address: str):
     """
     Tests the websocket connection.
     """
@@ -119,19 +119,19 @@ def websocket(server_address):
     import websockets
     from autogpt_server.server.routes import Methods, WsMessage, ExecutionSubscription
 
-    async def send_message(server_address):
+    async def send_message(server_address: str):
         uri = f"ws://{server_address}"
         async with websockets.connect(uri) as websocket:
             try:
                 await websocket.send(
-                        WsMessage(
-                            method=Methods.SUBSCRIBE,
-                            data=ExecutionSubscription(
-                                channel="test", graph_id="asdasd", run_id="asdsa"
-                            ).model_dump(),
-                        ).model_dump_json()
-                    )
-                while True:    
+                    WsMessage(
+                        method=Methods.SUBSCRIBE,
+                        data=ExecutionSubscription(
+                            channel="test", graph_id="asdasd", run_id="asdsa"
+                        ).model_dump(),
+                    ).model_dump_json()
+                )
+                while True:
                     response = await websocket.recv()
                     print(f"Response from server: {response}")
                     await websocket.close()
