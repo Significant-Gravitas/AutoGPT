@@ -97,7 +97,6 @@ class BlockSchema(BaseModel):
     def get_required_fields(self) -> set[str]:
         return set(self.jsonschema["required"])
 
-
 BlockOutput = Generator[tuple[str, Any], None, None]
 
 
