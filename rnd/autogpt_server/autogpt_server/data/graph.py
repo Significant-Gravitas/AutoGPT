@@ -3,8 +3,7 @@ import uuid
 
 from typing import Any
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink
-from pydantic import BaseModel
-from pydantic.json_schema import SkipJsonSchema
+from pydantic import BaseModel, PrivateAttr
 
 from autogpt_server.data.db import BaseDbModel
 from autogpt_server.util import json
@@ -42,22 +41,30 @@ class Node(BaseDbModel):
     input_default: dict[str, Any] = {}  # dict[input_name, default_value]
     metadata: dict[str, Any] = {}
 
-    input_links: SkipJsonSchema[list[Link]] = []
-    output_links: SkipJsonSchema[list[Link]] = []
+    _input_links: list[Link] = PrivateAttr(default=[])
+    _output_links: list[Link] = PrivateAttr(default=[])
+
+    @property
+    def input_links(self) -> list[Link]:
+        return self._input_links
+
+    @property
+    def output_links(self) -> list[Link]:
+        return self._output_links
 
     @staticmethod
     def from_db(node: AgentNode):
         if not node.AgentBlock:
             raise ValueError(f"Invalid node {node.id}, invalid AgentBlock.")
-
-        return Node(
+        obj = Node(
             id=node.id,
             block_id=node.AgentBlock.id,
             input_default=json.loads(node.constantInput),
-            metadata=json.loads(node.metadata),
-            input_links=[Link.from_db(link) for link in node.Input or []],
-            output_links=[Link.from_db(link) for link in node.Output or []],
+            metadata=json.loads(node.metadata)
         )
+        obj._input_links = [Link.from_db(link) for link in node.Input or []]
+        obj._output_links = [Link.from_db(link) for link in node.Output or []]
+        return obj
 
 
 class Graph(BaseDbModel):
