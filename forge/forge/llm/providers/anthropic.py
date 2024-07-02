@@ -1,8 +1,19 @@
 from __future__ import annotations
 
 import enum
+import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Optional, ParamSpec, Sequence, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Awaitable,
+    Callable,
+    Optional,
+    ParamSpec,
+    Sequence,
+    TypeVar,
+    cast,
+)
 
 import sentry_sdk
 import tenacity
@@ -162,7 +173,10 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
         self,
         model_prompt: list[ChatMessage],
         model_name: AnthropicModelName,
-        completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
+        completion_parser: (
+            Callable[[AssistantChatMessage], Awaitable[_T]]
+            | Callable[[AssistantChatMessage], _T]
+        ) = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
         prefill_response: str = "",
@@ -228,7 +242,14 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
                             + "\n".join(str(e) for e in tool_call_errors)
                         )
 
-                parsed_result = completion_parser(assistant_msg)
+                # cast(..) needed because inspect.isawaitable(..) loses type info:
+                # https://github.com/microsoft/pyright/issues/3690
+                parsed_result = cast(
+                    _T,
+                    await _result
+                    if inspect.isawaitable(_result := completion_parser(assistant_msg))
+                    else _result,
+                )
                 break
             except Exception as e:
                 self._logger.debug(
