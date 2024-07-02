@@ -122,17 +122,21 @@ def websocket(server_address):
     async def send_message(server_address):
         uri = f"ws://{server_address}"
         async with websockets.connect(uri) as websocket:
-            await websocket.send(
-                WsMessage(
-                    method=Methods.SUBSCRIBE,
-                    data=ExecutionSubscription(
-                        channel="test", graph_id="asdasd", run_id="asdsa"
-                    ).model_dump(),
-                ).model_dump_json()
-            )
-            response = await websocket.recv()
-            print(f"Response from server: {response}")
-            await websocket.close()
+            try:
+                await websocket.send(
+                        WsMessage(
+                            method=Methods.SUBSCRIBE,
+                            data=ExecutionSubscription(
+                                channel="test", graph_id="asdasd", run_id="asdsa"
+                            ).model_dump(),
+                        ).model_dump_json()
+                    )
+                while True:    
+                    response = await websocket.recv()
+                    print(f"Response from server: {response}")
+                    await websocket.close()
+            except InterruptedError:
+                exit(0)
 
     asyncio.run(send_message(server_address))
     print("Testing WS")
