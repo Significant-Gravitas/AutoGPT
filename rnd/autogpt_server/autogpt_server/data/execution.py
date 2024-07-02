@@ -62,11 +62,11 @@ class ExecutionResult(BaseModel):
 
     @staticmethod
     def from_db(execution: AgentNodeExecution):
-        input_data = defaultdict()
+        input_data: dict[str, Any] = defaultdict()
         for data in execution.Input or []:
             input_data[data.name] = json.loads(data.data)
 
-        output_data = defaultdict(list)
+        output_data: dict[str, Any] = defaultdict(list)
         for data in execution.Output or []:
             output_data[data.name].append(json.loads(data.data))
 
@@ -197,11 +197,11 @@ async def update_execution_status(node_exec_id: str, status: ExecutionStatus) ->
         **({"endedTime": now} if status == ExecutionStatus.COMPLETED else {}),
     }
 
-    count = await AgentNodeExecution.prisma().update(
+    res = await AgentNodeExecution.prisma().update(
         where={"id": node_exec_id},
         data=data,  # type: ignore
     )
-    if count == 0:
+    if not res:
         raise ValueError(f"Execution {node_exec_id} not found.")
 
 
@@ -215,7 +215,9 @@ async def get_executions(graph_exec_id: str) -> list[ExecutionResult]:
     return res
 
 
-async def get_execution(graph_exec_id: str, node_exec_id: str) -> ExecutionResult:
+async def get_execution_result(
+    graph_exec_id: str, node_exec_id: str
+) -> ExecutionResult:
     execution = await AgentNodeExecution.prisma().find_first_or_raise(
         where={"agentGraphExecutionId": graph_exec_id, "id": node_exec_id},
         include={"Input": True, "Output": True},
@@ -253,7 +255,7 @@ SPLIT = "_$_"
 
 
 def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
-    list_input = []
+    list_input: list[Any] = []
     for key, value in data.items():
         if SPLIT not in key:
             continue
