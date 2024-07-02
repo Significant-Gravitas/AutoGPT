@@ -1,19 +1,20 @@
 import re
 
 from typing import Any
+from pydantic import Field
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 
 
 class TextMatcherBlock(Block):
     class Input(BlockSchema):
-        text: str
-        match: str
-        data: Any
-        case_sensitive: bool = True
+        text: str = Field(description="Text to match")
+        match: str = Field(description="Pattern (Regex) to match")
+        data: Any = Field(description="Data to be forwarded to output")
+        case_sensitive: bool = Field(description="Case sensitive match", default=True)
 
     class Output(BlockSchema):
-        positive: Any
-        negative: Any
+        positive: Any = Field(description="Output data if match is found")
+        negative: Any = Field(description="Output data if match is not found")
 
     def __init__(self):
         super().__init__(
@@ -33,9 +34,17 @@ class TextMatcherBlock(Block):
 
 class TextFormatterBlock(Block):
     class Input(BlockSchema):
-        texts: list[str] = []
-        named_texts: dict[str, str] = {}
-        format: str
+        texts: list[str] = Field(
+            description="Texts (list) to format",
+            default=[]
+        )
+        named_texts: dict[str, str] = Field(
+            description="Texts (dict) to format",
+            default={}
+        )
+        format: str = Field(
+            description="Template to format the text using `texts` and `named_texts`",
+        )
 
     class Output(BlockSchema):
         output: str

@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 
 import praw
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 
@@ -40,14 +40,23 @@ def get_praw(creds: RedditCredentials) -> praw.Reddit:
 
 class RedditGetPostsBlock(Block):
     class Input(BlockSchema):
-        creds: RedditCredentials
-        subreddit: str
-        last_minutes: int | None = None
-        last_post: str | None = None
-        post_limit: int | None = None
+        creds: RedditCredentials = Field(description="Reddit credentials")
+        subreddit: str = Field(description="Subreddit name")
+        last_minutes: int | None = Field(
+            description="Post time to stop minutes ago while fetching posts",
+            default=None
+        )
+        last_post: str | None = Field(
+            description="Post ID to stop when reached while fetching posts",
+            default=None
+        )
+        post_limit: int | None = Field(
+            description="Number of posts to fetch",
+            default=10
+        )
 
     class Output(BlockSchema):
-        post: RedditPost
+        post: RedditPost = Field(description="Reddit post")
 
     def __init__(self):
         super().__init__(
@@ -77,9 +86,9 @@ class RedditGetPostsBlock(Block):
 
 class RedditPostCommentBlock(Block):
     class Input(BlockSchema):
-        creds: RedditCredentials
-        post_id: str
-        comment: str
+        creds: RedditCredentials = Field(description="Reddit credentials")
+        post_id: str = Field(description="Reddit post ID")
+        comment: str = Field(description="Comment text")
 
     class Output(BlockSchema):
         comment_id: str
