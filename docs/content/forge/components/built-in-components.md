@@ -81,6 +81,7 @@ Keeps track of agent's actions and their outcomes. Provides their summary to the
 | `model_name`           | Name of the llm model used to compress the history      | `ModelName` | `"gpt-3.5-turbo"`  |
 | `max_tokens`           | Maximum number of tokens to use for the history summary | `int`       | `1024`             |
 | `spacy_language_model` | Language model used for summary chunking using spacy    | `str`       | `"en_core_web_sm"` |
+| `full_message_count`   | Number of cycles to include unsummarized in the prompt  | `int`       | `4`                |
 
 **MessageProvider**
 

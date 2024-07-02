@@ -111,14 +111,18 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
 
         # Components
         self.system = SystemComponent()
-        self.history = ActionHistoryComponent(
-            settings.history,
-            lambda x: self.llm_provider.count_tokens(x, self.llm.name),
-            llm_provider,
-            ActionHistoryConfiguration(
-                model_name=app_config.fast_llm, max_tokens=self.send_token_limit
-            ),
-        ).run_after(WatchdogComponent)
+        self.history = (
+            ActionHistoryComponent(
+                settings.history,
+                lambda x: self.llm_provider.count_tokens(x, self.llm.name),
+                llm_provider,
+                ActionHistoryConfiguration(
+                    model_name=app_config.fast_llm, max_tokens=self.send_token_limit
+                ),
+            )
+            .run_after(WatchdogComponent)
+            .run_after(SystemComponent)
+        )
         if not app_config.noninteractive_mode:
             self.user_interaction = UserInteractionComponent()
         self.file_manager = FileManagerComponent(file_storage, settings)
