@@ -1,33 +1,51 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Iterator, Optional
+from typing import Callable, Iterator, Optional
 
+from pydantic import BaseModel
+
+from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
 from forge.llm.prompting.utils import indent
 from forge.llm.providers import ChatMessage, MultiProvider
+from forge.llm.providers.multi import ModelName
+from forge.llm.providers.openai import OpenAIModelName
 from forge.llm.providers.schema import ToolResultMessage
-
-if TYPE_CHECKING:
-    from forge.config.config import Config
 
 from .model import ActionResult, AnyProposal, Episode, EpisodicActionHistory
 
 
-class ActionHistoryComponent(MessageProvider, AfterParse[AnyProposal], AfterExecute):
+class ActionHistoryConfiguration(BaseModel):
+    model_name: ModelName = OpenAIModelName.GPT3
+    """Name of the llm model used to compress the history"""
+    max_tokens: int = 1024
+    """Maximum number of tokens to use up with generated history messages"""
+    spacy_language_model: str = "en_core_web_sm"
+    """Language model used for summary chunking using spacy"""
+    full_message_count: int = 4
+    """Number of latest non-summarized messages to include in the history"""
+
+
+class ActionHistoryComponent(
+    MessageProvider,
+    AfterParse[AnyProposal],
+    AfterExecute,
+    ConfigurableComponent[ActionHistoryConfiguration],
+):
     """Keeps track of the event history and provides a summary of the steps."""
+
+    config_class = ActionHistoryConfiguration
 
     def __init__(
         self,
         event_history: EpisodicActionHistory[AnyProposal],
-        max_tokens: int,
         count_tokens: Callable[[str], int],
-        legacy_config: Config,
         llm_provider: MultiProvider,
+        config: Optional[ActionHistoryConfiguration] = None,
     ) -> None:
+        ConfigurableComponent.__init__(self, config)
         self.event_history = event_history
-        self.max_tokens = max_tokens
         self.count_tokens = count_tokens
-        self.legacy_config = legacy_config
         self.llm_provider = llm_provider
 
     def get_messages(self) -> Iterator[ChatMessage]:
@@ -36,10 +54,10 @@ class ActionHistoryComponent(MessageProvider, AfterParse[AnyProposal], AfterExec
         tokens: int = 0
         n_episodes = len(self.event_history.episodes)
 
-        # Include a summary for all except the latest 4 steps
+        # Include a summary for all except a few latest steps
         for i, episode in enumerate(reversed(self.event_history.episodes)):
-            # Use full format for the latest 4 steps, summary or format for older steps
-            if i < 4:
+            # Use full format for a few steps, summary or format for older steps
+            if i < self.config.full_message_count:
                 messages.insert(0, episode.action.raw_message)
                 tokens += self.count_tokens(str(messages[0]))  # HACK
                 if episode.result:
@@ -54,9 +72,9 @@ class ActionHistoryComponent(MessageProvider, AfterParse[AnyProposal], AfterExec
 
             step = f"* Step {n_episodes - i}: {step_content}"
 
-            if self.max_tokens and self.count_tokens:
+            if self.config.max_tokens and self.count_tokens:
                 step_tokens = self.count_tokens(step)
-                if tokens + step_tokens > self.max_tokens:
+                if tokens + step_tokens > self.config.max_tokens:
                     break
                 tokens += step_tokens
 
@@ -79,7 +97,7 @@ class ActionHistoryComponent(MessageProvider, AfterParse[AnyProposal], AfterExec
     async def after_execute(self, result: ActionResult) -> None:
         self.event_history.register_result(result)
         await self.event_history.handle_compression(
-            self.llm_provider, self.legacy_config
+            self.llm_provider, self.config.model_name, self.config.spacy_language_model
         )
 
     @staticmethod
@@ -131,8 +149,8 @@ class ActionHistoryComponent(MessageProvider, AfterParse[AnyProposal], AfterExec
         n_episodes = len(episode_history)
 
         for i, episode in enumerate(reversed(episode_history)):
-            # Use full format for the latest 4 steps, summary or format for older steps
-            if i < 4 or episode.summary is None:
+            # Use full format for a few latest steps, summary or format for older steps
+            if i < self.config.full_message_count or episode.summary is None:
                 step_content = indent(episode.format(), 2).strip()
             else:
                 step_content = episode.summary

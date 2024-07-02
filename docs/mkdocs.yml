@@ -15,7 +15,6 @@ nav:
               - Options: AutoGPT/configuration/options.md
               - Search: AutoGPT/configuration/search.md
               - Voice: AutoGPT/configuration/voice.md
-              - Image Generation: AutoGPT/configuration/imagegen.md
       - Usage: AutoGPT/usage.md
       - Help us improve AutoGPT:
           - Share your debug logs with us: AutoGPT/share-your-logs.md

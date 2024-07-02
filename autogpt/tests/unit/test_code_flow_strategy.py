@@ -110,15 +110,16 @@ async def test_code_flow_parse_response():
 
 @pytest.mark.asyncio
 async def test_code_flow_execution():
-    executor = CodeFlowExecutionComponent()
-    executor.available_functions = {
-        "test_func": Command(
-            names=["test_func"],
-            description="",
-            parameters=[],
-            method=lambda: "You've passed the test!",
-        )
-    }
+    executor = CodeFlowExecutionComponent(
+        lambda: [
+            Command(
+                names=["test_func"],
+                description="",
+                parameters=[],
+                method=lambda: "You've passed the test!",
+            )
+        ]
+    )
 
     result = await executor.execute_code_flow(
         python_code="async def main() -> str:\n    return test_func()",

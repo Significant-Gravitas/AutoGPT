@@ -265,4 +265,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: autogptserver-AppImage-${{ matrix.platform-os }}
-          path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.AppImage
+          path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/dist/*.AppImage

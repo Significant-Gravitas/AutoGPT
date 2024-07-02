@@ -23,7 +23,6 @@ from forge.agent_protocol.models import (
     TaskRequestBody,
     TaskStepsListResponse,
 )
-from forge.config.config import Config
 from forge.file_storage import FileStorage
 from forge.llm.providers import ModelProviderBudget, MultiProvider
 from forge.models.action import ActionErrorResult, ActionSuccessResult
@@ -35,6 +34,7 @@ from sentry_sdk import set_user
 
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agents.agent_manager import AgentManager
+from autogpt.app.config import AppConfig
 from autogpt.app.utils import is_port_free
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class AgentProtocolServer:
 
     def __init__(
         self,
-        app_config: Config,
+        app_config: AppConfig,
         database: AgentDB,
         file_storage: FileStorage,
         llm_provider: MultiProvider,

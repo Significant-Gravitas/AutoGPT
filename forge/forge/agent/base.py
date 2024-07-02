@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import inspect
+import json
 import logging
 from abc import ABCMeta, abstractmethod
 from typing import (
@@ -18,12 +19,13 @@ from typing import (
 )
 
 from colorama import Fore
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, parse_raw_as, validator
 
 from forge.agent import protocols
 from forge.agent.components import (
     AgentComponent,
     ComponentEndpointError,
+    ConfigurableComponent,
     EndpointPipelineError,
 )
 from forge.config.ai_directives import AIDirectives
@@ -43,6 +45,11 @@ DEFAULT_TRIGGERING_PROMPT = (
     "and the progress you have made so far, "
     "and respond using the JSON schema specified previously:"
 )
+
+
+# HACK: This is a workaround wrapper to de/serialize component configs until pydantic v2
+class ModelContainer(BaseModel):
+    models: dict[str, BaseModel]
 
 
 class BaseAgentConfiguration(SystemConfiguration):
@@ -81,9 +88,6 @@ class BaseAgentConfiguration(SystemConfiguration):
     The token limit for prompt construction. Should leave room for the completion;
     defaults to 75% of `llm.max_tokens`.
     """
-
-    summary_max_tlength: Optional[int] = None
-    # TODO: move to ActionHistoryConfiguration
 
     @validator("use_functions_api")
     def validate_openai_functions(cls, v: bool, values: dict[str, Any]):
@@ -271,6 +275,30 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
             except Exception as e:
                 raise e
         return method_result
+
+    def dump_component_configs(self) -> str:
+        configs = {}
+        for component in self.components:
+            if isinstance(component, ConfigurableComponent):
+                config_type_name = component.config.__class__.__name__
+                configs[config_type_name] = component.config
+        data = ModelContainer(models=configs).json()
+        raw = parse_raw_as(dict[str, dict[str, Any]], data)
+        return json.dumps(raw["models"], indent=4)
+
+    def load_component_configs(self, serialized_configs: str):
+        configs_dict = parse_raw_as(dict[str, dict[str, Any]], serialized_configs)
+
+        for component in self.components:
+            if not isinstance(component, ConfigurableComponent):
+                continue
+            config_type = type(component.config)
+            config_type_name = config_type.__name__
+            if config_type_name in configs_dict:
+                # Parse the serialized data and update the existing config
+                updated_data = configs_dict[config_type_name]
+                data = {**component.config.dict(), **updated_data}
+                component.config = component.config.__class__(**data)
 
     def _collect_components(self):
         components = [
