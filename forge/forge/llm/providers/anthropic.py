@@ -241,7 +241,7 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
                 )
                 if attempts < self._configuration.fix_failed_parse_tries:
                     anthropic_messages.append(
-                        _assistant_msg.model_dump(include={"role", "content"})
+                        _assistant_msg.model_dump(include={"role", "content"})  # type: ignore # noqa
                     )
                     anthropic_messages.append(
                         {
