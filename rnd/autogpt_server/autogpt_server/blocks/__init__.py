@@ -1,0 +1,9 @@
+from autogpt_server.blocks import sample, reddit, text, object, ai
+from autogpt_server.data.block import Block
+
+AVAILABLE_BLOCKS = {
+    block.id: block
+    for block in [v() for v in Block.__subclasses__()]
+}
+
+__all__ = ["ai", "object", "sample", "reddit", "text", "AVAILABLE_BLOCKS"]

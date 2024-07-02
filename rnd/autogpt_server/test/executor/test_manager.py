@@ -1,11 +1,12 @@
 import time
-
 import pytest
 
 from autogpt_server.data import block, db, execution, graph
 from autogpt_server.executor import ExecutionManager
 from autogpt_server.server import AgentServer
 from autogpt_server.util.service import PyroNameServer
+from autogpt_server.blocks.sample import ParrotBlock, PrintingBlock
+from autogpt_server.blocks.text import TextFormatterBlock
 
 
 async def create_test_graph() -> graph.Graph:
@@ -17,27 +18,28 @@ async def create_test_graph() -> graph.Graph:
     ParrotBlock
     """
     nodes = [
-        graph.Node(block_id=block.ParrotBlock.id),
-        graph.Node(block_id=block.ParrotBlock.id),
+        graph.Node(block_id=ParrotBlock().id),
+        graph.Node(block_id=ParrotBlock().id),
         graph.Node(
-            block_id=block.TextFormatterBlock.id,
+            block_id=TextFormatterBlock().id,
             input_default={
                 "format": "{texts[0]},{texts[1]},{texts[2]}",
                 "texts_$_3": "!!!",
             },
         ),
-        graph.Node(block_id=block.PrintingBlock.id),
+        graph.Node(block_id=PrintingBlock().id),
     ]
-    nodes[0].connect(nodes[2], "output", "texts_$_1")
-    nodes[1].connect(nodes[2], "output", "texts_$_2")
-    nodes[2].connect(nodes[3], "combined_text", "text")
-
+    links = [
+        graph.Link(nodes[0].id, nodes[2].id, "output", "texts_$_1"),
+        graph.Link(nodes[1].id, nodes[2].id, "output", "texts_$_2"),
+        graph.Link(nodes[2].id, nodes[3].id, "output", "text"),
+    ]
     test_graph = graph.Graph(
         name="TestGraph",
         description="Test graph",
         nodes=nodes,
+        links=links,
     )
-    await block.initialize_blocks()
     result = await graph.create_graph(test_graph)
 
     # Assertions
@@ -48,7 +50,7 @@ async def create_test_graph() -> graph.Graph:
     return test_graph
 
 
-async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph):
+async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph) -> str:
     # --- Test adding new executions --- #
     text = "Hello, World!"
     input_data = {"input": text}
@@ -70,6 +72,12 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
 
     # Execution queue should be empty
     assert await is_execution_completed()
+    return graph_exec_id
+
+
+async def assert_executions(test_graph: graph.Graph, graph_exec_id: str):
+    text = "Hello, World!"
+    agent_server = AgentServer()
     executions = await agent_server.get_executions(test_graph.id, graph_exec_id)
 
     # Executing ParrotBlock1
@@ -92,7 +100,7 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
     exec = executions[2]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data == {"combined_text": ["Hello, World!,Hello, World!,!!!"]}
+    assert exec.output_data == {"output": ["Hello, World!,Hello, World!,!!!"]}
     assert exec.input_data == {
         "texts_$_1": "Hello, World!",
         "texts_$_2": "Hello, World!",
@@ -113,5 +121,7 @@ async def test_agent_execution():
     with PyroNameServer():
         with ExecutionManager(1) as test_manager:
             await db.connect()
+            await block.initialize_blocks()
             test_graph = await create_test_graph()
-            await execute_graph(test_manager, test_graph)
+            graph_exec_id = await execute_graph(test_manager, test_graph)
+            await assert_executions(test_graph, graph_exec_id)

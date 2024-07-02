@@ -1,10 +1,10 @@
-import json
 from datetime import datetime
 from typing import Optional, Any
 
 from prisma.models import AgentGraphExecutionSchedule
 
 from autogpt_server.data.db import BaseDbModel
+from autogpt_server.util import json
 
 
 class ExecutionSchedule(BaseDbModel):
