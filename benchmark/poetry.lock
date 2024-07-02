@@ -17,7 +17,7 @@ urllib3 = "^1.25.3"
 
 [package.source]
 type = "git"
-url = "https://github.com/kcze/agent-protocol.git"
+url = "https://github.com/Significant-Gravitas/agent-protocol.git"
 reference = "HEAD"
 resolved_reference = "beb098517b0b9e255024d1b57df236f0329f4b1c"
 subdirectory = "packages/client/python"
@@ -2948,4 +2948,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "bb10586f232e2e0cfdb9359cbd6a157e8d0c30ebcea687093ef1aa8f49ac45b8"
+content-hash = "26bd75befe5223095b65be293086edf52f34f9043e49107c80a105dc0387dd6a"

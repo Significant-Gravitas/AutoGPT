@@ -10,7 +10,7 @@ files = []
 develop = false
 
 [package.dependencies]
-agent-protocol-client = {git = "https://github.com/kcze/agent-protocol.git", subdirectory = "packages/client/python"}
+agent-protocol-client = {git = "https://github.com/Significant-Gravitas/agent-protocol.git", subdirectory = "packages/client/python"}
 click = "^8.1.3"
 click-default-group = "^1.2.4"
 colorama = "^0.4.6"
@@ -45,7 +45,7 @@ url = "../benchmark"
 name = "agent-protocol-client"
 version = "1.1.0"
 description = "Agent Communication Protocol Client"
-optional = false
+optional = true
 python-versions = "^3.7"
 files = []
 develop = false
@@ -58,7 +58,7 @@ urllib3 = "^1.25.3"
 
 [package.source]
 type = "git"
-url = "https://github.com/kcze/agent-protocol.git"
+url = "https://github.com/Significant-Gravitas/agent-protocol.git"
 reference = "HEAD"
 resolved_reference = "beb098517b0b9e255024d1b57df236f0329f4b1c"
 subdirectory = "packages/client/python"
@@ -7002,4 +7002,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "b83145715d7eca43d145a8be255e793060f7c29b1fc82423bf410af43f36dd5b"
+content-hash = "ae056efba5ba4bf69ae1fe9aa84169e20b89368fbd982c7812c3b0f41d46c666"
