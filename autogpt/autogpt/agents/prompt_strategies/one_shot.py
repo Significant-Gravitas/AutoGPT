@@ -275,4 +275,5 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             assistant_reply_dict["use_tool"] = response.tool_calls[0].function
 
         parsed_response = OneShotAgentActionProposal.parse_obj(assistant_reply_dict)
+        parsed_response.raw_message = response.copy()
         return parsed_response
