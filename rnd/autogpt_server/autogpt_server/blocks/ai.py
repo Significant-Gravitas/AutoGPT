@@ -43,12 +43,13 @@ class LlmCallBlock(Block):
         expected_format = [f'"{k}": "{v}"' for k, v in
                            input_data.expected_format.items()]
 
+        format_prompt = ",\n  ".join(expected_format)
         sys_prompt = f"""
           |{input_data.sys_prompt}
           |
           |Reply in json format:
           |{{
-          |  {",\n  ".join(expected_format)}                  
+          |  {format_prompt}                
           |}}
         """
         usr_prompt = f"""
