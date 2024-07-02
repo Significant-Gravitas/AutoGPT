@@ -133,7 +133,11 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
                 ChatMessage.system(system_prompt),
                 ChatMessage.user(f'"""{task}"""'),
                 *messages,
-                final_instruction_msg,
+                *(
+                    [final_instruction_msg]
+                    if not any(m.role == "assistant" for m in messages)
+                    else []
+                ),
             ],
             prefill_response=response_prefill,
         )
@@ -295,6 +299,9 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
             available_functions=available_functions,
         ).validate_code(parsed_response.python_code)
 
+        clean_response = response.copy()
+        clean_response.content = parsed_response.json(indent=4)
+
         # TODO: prevent combining finish with other functions
         if _finish_call := re.search(
             r"finish\((reason=)?(.*?)\)", code_validation.functionCode
@@ -306,6 +313,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
                     name="finish",
                     arguments={"reason": finish_reason},
                 ),
+                raw_message=clean_response,
             )
         else:
             result = OneShotAgentActionProposal(
@@ -317,6 +325,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
                         "plan_text": parsed_response.immediate_plan,
                     },
                 ),
+                raw_message=clean_response,
             )
         return result
 
