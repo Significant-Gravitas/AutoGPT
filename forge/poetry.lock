@@ -4736,16 +4736,6 @@ toml = ["tomli (>=2.0.1)"]
 yaml = ["pyyaml (>=6.0.1)"]
 
 [[package]]
-name = "pydevd-pycharm"
-version = "233.15325.20"
-description = "PyCharm Debugger (used in PyCharm and PyDev)"
-optional = false
-python-versions = "*"
-files = [
-    {file = "pydevd-pycharm-233.15325.20.tar.gz", hash = "sha256:b0e4663b6ff8dec0cb974aa4a15312867fde32b10bbe6ab5353c8389efa4503c"},
-]
-
-[[package]]
 name = "pyflakes"
 version = "3.2.0"
 description = "passive checker of Python programs"
@@ -7095,4 +7085,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "04b8a740838163b07c8f769589add092f57ce2091c094a8ff1f986f73e0fd930"
+content-hash = "7523abd672967cbe924f045a00bf519ee08c8537fdf2f2191d2928201497d7b7"

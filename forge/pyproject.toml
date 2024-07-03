@@ -79,7 +79,6 @@ pytest-cov = "^5.0.0"
 pytest-mock = "*"
 pytest-recording = "*"
 mock = "^5.1.0"
-pydevd-pycharm = "^233.6745.319"
 vcrpy = { git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master" }
 
 
