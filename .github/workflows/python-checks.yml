@@ -1,0 +1,151 @@
+name: Python checks
+
+on:
+  push:
+    branches: [ master, development, ci-test* ]
+    paths:
+      - '.github/workflows/lint-ci.yml'
+      - 'autogpt/**'
+      - 'forge/**'
+      - 'benchmark/**'
+      - '**.py'
+      - '!autogpt/tests/vcr_cassettes'
+  pull_request:
+    branches: [ master, development, release-* ]
+    paths:
+      - '.github/workflows/lint-ci.yml'
+      - 'autogpt/**'
+      - 'forge/**'
+      - 'benchmark/**'
+      - '**.py'
+      - '!autogpt/tests/vcr_cassettes'
+
+concurrency:
+  group: ${{ format('lint-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  get-changed-parts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - id: changes-in
+        name: Determine affected subprojects
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            autogpt:
+              - autogpt/autogpt/**
+              - autogpt/tests/**
+              - autogpt/poetry.lock
+            forge:
+              - forge/forge/**
+              - forge/tests/**
+              - forge/poetry.lock
+            benchmark:
+              - benchmark/agbenchmark/**
+              - benchmark/tests/**
+              - benchmark/poetry.lock
+    outputs:
+      changed-parts: ${{ steps.changes-in.outputs.changes }}
+
+  lint:
+    needs: get-changed-parts
+    runs-on: ubuntu-latest
+    env:
+      min-python-version: "3.10"
+
+    strategy:
+      matrix:
+        sub-package: ${{ fromJson(needs.get-changed-parts.outputs.changed-parts) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ env.min-python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.min-python-version }}
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-${{ hashFiles(format('{0}/poetry.lock', matrix.sub-package)) }}
+
+      - name: Install Poetry
+        run: curl -sSL https://install.python-poetry.org | python3 -
+
+      # Install dependencies
+
+      - name: Install Python dependencies
+        run: poetry -C ${{ matrix.sub-package }} install
+
+      # Lint
+
+      - name: Lint (isort)
+        run: poetry run isort --check .
+        working-directory: ${{ matrix.sub-package }}
+
+      - name: Lint (Black)
+        if: success() || failure()
+        run: poetry run black --check .
+        working-directory: ${{ matrix.sub-package }}
+
+      - name: Lint (Flake8)
+        if: success() || failure()
+        run: poetry run flake8 .
+        working-directory: ${{ matrix.sub-package }}
+
+  types:
+    needs: get-changed-parts
+    runs-on: ubuntu-latest
+    env:
+      min-python-version: "3.10"
+
+    strategy:
+      matrix:
+        sub-package: ${{ fromJson(needs.get-changed-parts.outputs.changed-parts) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ env.min-python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.min-python-version }}
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-${{ hashFiles(format('{0}/poetry.lock', matrix.sub-package)) }}
+
+      - name: Install Poetry
+        run: curl -sSL https://install.python-poetry.org | python3 -
+
+      # Install dependencies
+
+      - name: Install Python dependencies
+        run: poetry -C ${{ matrix.sub-package }} install
+
+      # Typecheck
+
+      - name: Typecheck
+        if: success() || failure()
+        run: poetry run pyright
+        working-directory: ${{ matrix.sub-package }}

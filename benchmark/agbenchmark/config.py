@@ -4,7 +4,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseSettings, Field, validator
+from pydantic import Field, ValidationInfo, field_validator
+from pydantic_settings import BaseSettings
 
 
 def _calculate_info_test_path(base_path: Path, benchmark_start_time: datetime) -> Path:
@@ -57,7 +58,7 @@ class AgentBenchmarkConfig(BaseSettings, extra="allow"):
     subject application exposes an Agent Protocol compliant API.
     """
 
-    agbenchmark_config_dir: Path = Field(..., exclude=True)
+    agbenchmark_config_dir: Path = Field(exclude=True)
     """Path to the agbenchmark_config folder of the subject agent application."""
 
     categories: list[str] | None = None
@@ -101,11 +102,11 @@ class AgentBenchmarkConfig(BaseSettings, extra="allow"):
     def config_file(self) -> Path:
         return self.agbenchmark_config_dir / "config.json"
 
-    @validator("reports_folder", pre=True, always=True)
-    def set_reports_folder(cls, v, values):
-        if not v:
-            return values["agbenchmark_config_dir"] / "reports"
-        return v
+    @field_validator("reports_folder", mode="before")
+    def set_reports_folder(cls, value: Path, info: ValidationInfo):
+        if not value:
+            return info.data["agbenchmark_config_dir"] / "reports"
+        return value
 
     def get_report_dir(self, benchmark_start_time: datetime) -> Path:
         return _calculate_info_test_path(self.reports_folder, benchmark_start_time)

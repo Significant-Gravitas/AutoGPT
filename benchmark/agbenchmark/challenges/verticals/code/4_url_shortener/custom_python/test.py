@@ -1,3 +1,4 @@
+# pyright: reportMissingImports=false
 import unittest
 
 from url_shortener import retrieve_url, shorten_url

@@ -45,7 +45,7 @@ def update_regression_tests(
         # if the last 3 tests were successful, add to the regression tests
         test_report.metrics.is_regression = True
         SingletonReportManager().REGRESSION_MANAGER.add_test(
-            test_name, test_report.dict(include={"difficulty", "data_path"})
+            test_name, test_report.model_dump(include={"difficulty", "data_path"})
         )
 
 

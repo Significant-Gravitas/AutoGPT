@@ -16,7 +16,7 @@ from agent_protocol_client import AgentApi, ApiClient, ApiException, Configurati
 from agent_protocol_client.models import Task, TaskRequestBody
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Extra, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from agbenchmark.challenges import ChallengeInfo
 from agbenchmark.config import AgentBenchmarkConfig
@@ -52,7 +52,9 @@ while challenge_spec_files:
 
     logger.debug(f"Loading {challenge_relpath}...")
     try:
-        challenge_info = ChallengeInfo.parse_file(challenge_spec_file)
+        challenge_info = ChallengeInfo.model_validate_json(
+            challenge_spec_file.read_text()
+        )
     except ValidationError as e:
         if logging.getLogger().level == logging.DEBUG:
             logger.warning(f"Spec file {challenge_relpath} failed to load:\n{e}")
@@ -64,7 +66,7 @@ while challenge_spec_files:
         challenge_info.eval_id = str(uuid.uuid4())
         # this will sort all the keys of the JSON systematically
         # so that the order is always the same
-        write_pretty_json(challenge_info.dict(), challenge_spec_file)
+        write_pretty_json(challenge_info.model_dump(), challenge_spec_file)
 
     CHALLENGES[challenge_info.eval_id] = challenge_info
 
@@ -106,13 +108,12 @@ def find_agbenchmark_without_uvicorn():
 
 
 class CreateReportRequest(BaseModel):
-    test: str = None
-    test_run_id: str = None
+    test: str
+    test_run_id: str
     # category: Optional[str] = []
     mock: Optional[bool] = False
 
-    class Config:
-        extra = Extra.forbid  # this will forbid any extra fields
+    model_config = ConfigDict(extra="forbid")
 
 
 updates_list = []
@@ -153,7 +154,7 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
         pids = find_agbenchmark_without_uvicorn()
         logger.info(f"pids already running with agbenchmark: {pids}")
 
-        logger.debug(f"Request to /reports: {body.dict()}")
+        logger.debug(f"Request to /reports: {body.model_dump()}")
 
         # Start the benchmark in a separate thread
         benchmark_process = Process(
@@ -178,8 +179,8 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
             logger.debug(f"Benchmark finished running in {time.time() - start_time} s")
 
         # List all folders in the current working directory
-        path_reports = agbenchmark_config.reports_folder
-        folders = [folder for folder in path_reports.iterdir() if folder.is_dir()]
+        reports_folder = agbenchmark_config.reports_folder
+        folders = [folder for folder in reports_folder.iterdir() if folder.is_dir()]
 
         # Sort the folders based on their names
         sorted_folders = sorted(folders, key=lambda x: x.name)
@@ -196,13 +197,14 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
                     data = json.load(file)
                 logger.debug(f"Report data: {data}")
             else:
-                logger.error(
+                raise HTTPException(
+                    502,
                     "Could not get result after running benchmark: "
-                    f"'report.json' does not exist in '{latest_folder}'"
+                    f"'report.json' does not exist in '{latest_folder}'",
                 )
         else:
-            logger.error(
-                "Could not get result after running benchmark: no reports found"
+            raise HTTPException(
+                504, "Could not get result after running benchmark: no reports found"
             )
 
         return data
@@ -239,7 +241,9 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
                 api_instance = AgentApi(api_client)
                 task_input = challenge_info.task
 
-                task_request_body = TaskRequestBody(input=task_input)
+                task_request_body = TaskRequestBody(
+                    input=task_input, additional_input=None
+                )
                 task_response = await api_instance.create_agent_task(
                     task_request_body=task_request_body
                 )
@@ -276,7 +280,7 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
             # Forward the request
             response = await client.post(
                 new_url,
-                data=await request.body(),
+                content=await request.body(),
                 headers=dict(request.headers),
             )
 
@@ -323,7 +327,9 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
                 config={},
             )
 
-            logger.debug(f"Returning evaluation data:\n{eval_info.json(indent=4)}")
+            logger.debug(
+                f"Returning evaluation data:\n{eval_info.model_dump_json(indent=4)}"
+            )
             return eval_info
         except ApiException as e:
             logger.error(f"Error {e} whilst trying to evaluate task: {task_id}")

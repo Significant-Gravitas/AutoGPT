@@ -10,10 +10,6 @@ on:
         type: boolean
         description: 'Build from scratch, without using cached layers'
 
-defaults:
-  run:
-    working-directory: autogpts/autogpt
-
 env:
   IMAGE_NAME: auto-gpt
   DEPLOY_IMAGE_NAME: ${{ secrets.DOCKER_USER }}/auto-gpt
@@ -48,7 +44,7 @@ jobs:
       name: Build image
       uses: docker/build-push-action@v5
       with:
-        context: autogpts/autogpt
+        file: Dockerfile.autogpt
         build-args: BUILD_TYPE=release
         load: true    # save to docker images
         # push: true  # TODO: uncomment when this issue is fixed: https://github.com/moby/buildkit/issues/1555
@@ -87,5 +83,4 @@ jobs:
         vars_json: ${{ toJSON(vars) }}
 
       run: .github/workflows/scripts/docker-release-summary.sh >> $GITHUB_STEP_SUMMARY
-      working-directory: ./
       continue-on-error: true
