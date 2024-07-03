@@ -5,7 +5,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Optional, Union
 
 import forge
 from forge.config.base import BaseConfig
@@ -13,7 +13,7 @@ from forge.llm.providers import CHAT_MODELS, ModelName
 from forge.llm.providers.openai import OpenAICredentials, OpenAIModelName
 from forge.logging.config import LoggingConfig
 from forge.models.config import Configurable, UserConfigurable
-from pydantic import SecretStr, validator
+from pydantic import SecretStr, ValidationInfo, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -91,15 +91,15 @@ class AppConfig(BaseConfig):
         default=AZURE_CONFIG_FILE, from_env="AZURE_CONFIG_FILE"
     )
 
-    @validator("openai_functions")
-    def validate_openai_functions(cls, v: bool, values: dict[str, Any]):
-        if v:
-            smart_llm = values["smart_llm"]
+    @field_validator("openai_functions")
+    def validate_openai_functions(cls, value: bool, info: ValidationInfo):
+        if value:
+            smart_llm = info.data["smart_llm"]
             assert CHAT_MODELS[smart_llm].has_function_call_api, (
                 f"Model {smart_llm} does not support tool calling. "
                 "Please disable OPENAI_FUNCTIONS or choose a suitable model."
             )
-        return v
+        return value
 
 
 class ConfigBuilder(Configurable[AppConfig]):

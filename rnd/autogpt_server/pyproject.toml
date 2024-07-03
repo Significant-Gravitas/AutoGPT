@@ -25,10 +25,11 @@ tenacity = "^8.3.0"
 apscheduler = "^3.10.4"
 croniter = "^2.0.5"
 pytest-asyncio = "^0.23.7"
+pydantic-settings = "^2.3.4"
 
 
 [tool.poetry.group.dev.dependencies]
-cx-freeze = "7.0.0"
+cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main", develop = true }
 poethepoet = "^0.26.1"
 httpx = "^0.27.0"
 pytest-watcher = "^0.4.2"
