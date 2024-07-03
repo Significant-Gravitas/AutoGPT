@@ -14,7 +14,6 @@ from autogpt_server.data.graph import (
     get_graph,
     get_graph_ids,
     Graph,
-    Link,
 )
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.util.data import get_frontend_path
@@ -58,6 +57,11 @@ class AgentServer(AppProcess):
             path="/blocks",
             endpoint=self.get_graph_blocks,
             methods=["GET"],
+        )
+        router.add_api_route(
+            path="/blocks/{block_id}/execute",
+            endpoint=self.execute_graph_block,
+            methods=["POST"],
         )
         router.add_api_route(
             path="/graphs",
@@ -105,6 +109,8 @@ class AgentServer(AppProcess):
             methods=["POST"],
         )
 
+        app.add_exception_handler(500, self.handle_internal_error)
+
         app.mount(
             path="/frontend",
             app=StaticFiles(directory=get_frontend_path(), html=True),
@@ -122,19 +128,40 @@ class AgentServer(AppProcess):
     def execution_scheduler_client(self) -> ExecutionScheduler:
         return get_service_client(ExecutionScheduler)
 
-    def get_graph_blocks(self) -> list[dict]:
+    @classmethod
+    def handle_internal_error(cls, request, exc):
+        return JSONResponse(
+            content={
+                "message": f"{request.url.path} call failure",
+                "error": str(exc),
+            },
+            status_code=500,
+        )
+
+    @classmethod
+    def get_graph_blocks(cls) -> list[dict]:
         return [v.to_dict() for v in block.get_blocks().values()]
 
-    async def get_graphs(self) -> list[str]:
+    @classmethod
+    def execute_graph_block(cls, block_id: str, data: dict[str, Any]) -> list:
+        obj = block.get_block(block_id)
+        if not obj:
+            raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
+        return [{name: data} for name, data in obj.execute(data)]
+
+    @classmethod
+    async def get_graphs(cls) -> list[str]:
         return await get_graph_ids()
 
-    async def get_graph(self, graph_id: str) -> Graph:
+    @classmethod
+    async def get_graph(cls, graph_id: str) -> Graph:
         graph = await get_graph(graph_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         return graph
 
-    async def create_new_graph(self, graph: Graph) -> Graph:
+    @classmethod
+    async def create_new_graph(cls, graph: Graph) -> Graph:
         # TODO: replace uuid generation here to DB generated uuids.
         graph.id = str(uuid.uuid4())
         id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
@@ -155,8 +182,9 @@ class AgentServer(AppProcess):
             msg = e.__str__().encode().decode("unicode_escape")
             raise HTTPException(status_code=400, detail=msg)
 
+    @classmethod
     async def get_executions(
-        self, graph_id: str, run_id: str
+        cls, graph_id: str, run_id: str
     ) -> list[execution.ExecutionResult]:
         graph = await get_graph(graph_id)
         if not graph:
@@ -183,8 +211,9 @@ class AgentServer(AppProcess):
         execution_scheduler = self.execution_scheduler_client
         return execution_scheduler.get_execution_schedules(graph_id)
 
+    @classmethod
     def update_configuration(
-        self,
+        cls,
         updated_settings: Annotated[
             Dict[str, Any], Body(examples=[{"config": {"num_workers": 10}}])
         ],
