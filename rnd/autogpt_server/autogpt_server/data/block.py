@@ -1,9 +1,8 @@
 import json
-import jsonschema
-
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar
+from typing import Any, Generator, ClassVar
 
+import jsonschema
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
@@ -92,6 +91,15 @@ class BlockSchema(BaseModel):
         except jsonschema.ValidationError as e:
             return str(e)
 
+    def get_fields(self) -> set[str]:
+        return set(self.jsonschema["properties"].keys())
+
+    def get_required_fields(self) -> set[str]:
+        return set(self.jsonschema["required"])
+
+
+BlockOutput = Generator[tuple[str, Any], None, None]
+
 
 class Block(ABC, BaseModel):
     @classmethod
@@ -126,13 +134,15 @@ class Block(ABC, BaseModel):
         pass
 
     @abstractmethod
-    def run(self, input_data: BlockData) -> tuple[str, Any]:
+    def run(self, input_data: BlockData) -> BlockOutput:
         """
         Run the block with the given input data.
         Args:
             input_data: The input data with the structure of input_schema.
         Returns:
-            The (output name, output data), matching the type in output_schema.
+            A Generator that yields (output_name, output_data).
+            output_name: One of the output name defined in Block's output_schema.
+            output_data: The data for the output_name, matching the defined schema.
         """
         pass
 
@@ -149,20 +159,18 @@ class Block(ABC, BaseModel):
             "outputSchema": self.output_schema.jsonschema,
         }
 
-    def execute(self, input_data: BlockData) -> tuple[str, Any]:
+    def execute(self, input_data: BlockData) -> BlockOutput:
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
                 f"Unable to execute block with invalid input data: {error}"
             )
 
-        output_name, output_data = self.run(input_data)
-
-        if error := self.output_schema.validate_field(output_name, output_data):
-            raise ValueError(
-                f"Unable to execute block with invalid output data: {error}"
-            )
-
-        return output_name, output_data
+        for output_name, output_data in self.run(input_data):
+            if error := self.output_schema.validate_field(output_name, output_data):
+                raise ValueError(
+                    f"Unable to execute block with invalid output data: {error}"
+                )
+            yield output_name, output_data
 
 
 # ===================== Inline-Block Implementations ===================== #
@@ -181,16 +189,19 @@ class ParrotBlock(Block):
         }
     )
 
-    def run(self, input_data: BlockData) -> tuple[str, Any]:
-        return "output", input_data["input"]
+    def run(self, input_data: BlockData) -> BlockOutput:
+        yield "output", input_data["input"]
 
 
-class TextCombinerBlock(Block):
+class TextFormatterBlock(Block):
     id: ClassVar[str] = "db7d8f02-2f44-4c55-ab7a-eae0941f0c30"  # type: ignore
     input_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
         {
-            "text1": "string",
-            "text2": "string",
+            "texts": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+            },
             "format": "string",
         }
     )
@@ -200,11 +211,8 @@ class TextCombinerBlock(Block):
         }
     )
 
-    def run(self, input_data: BlockData) -> tuple[str, Any]:
-        return "combined_text", input_data["format"].format(
-            text1=input_data["text1"],
-            text2=input_data["text2"],
-        )
+    def run(self, input_data: BlockData) -> BlockOutput:
+        yield "combined_text", input_data["format"].format(texts=input_data["texts"])
 
 
 class PrintingBlock(Block):
@@ -220,8 +228,8 @@ class PrintingBlock(Block):
         }
     )
 
-    def run(self, input_data: BlockData) -> tuple[str, Any]:
-        return "status", "printed"
+    def run(self, input_data: BlockData) -> BlockOutput:
+        yield "status", "printed"
 
 
 # ======================= Block Helper Functions ======================= #

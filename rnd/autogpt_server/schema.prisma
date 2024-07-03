@@ -11,23 +11,24 @@ generator client {
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
 model AgentGraph {
-  id          String  @id
+  id          String  @id @default(uuid())
   name        String?
   description String?
 
-  AgentNodes             AgentNode[]              @relation("AgentGraphNodes")
-  AgentExecutionSchedule AgentExecutionSchedule[]
+  AgentNodes                  AgentNode[]
+  AgentGraphExecution         AgentGraphExecution[]
+  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
 }
 
 // This model describes a single node in the Agent Graph/Flow (Multi Agent System).
 model AgentNode {
-  id String @id
+  id String @id @default(uuid())
 
   agentBlockId String
   AgentBlock   AgentBlock @relation(fields: [agentBlockId], references: [id])
 
   agentGraphId String
-  AgentGraph   AgentGraph @relation("AgentGraphNodes", fields: [agentGraphId], references: [id])
+  AgentGraph   AgentGraph @relation(fields: [agentGraphId], references: [id])
 
   // List of consumed input, that the parent node should provide.
   Input AgentNodeLink[] @relation("AgentNodeSink")
@@ -46,7 +47,7 @@ model AgentNode {
 
 // This model describes the link between two AgentNodes.
 model AgentNodeLink {
-  id String @id
+  id String @id @default(uuid())
 
   // Output of a node is connected to the source of the link.
   agentNodeSourceId String
@@ -61,7 +62,7 @@ model AgentNodeLink {
 
 // This model describes a component that will be executed by the AgentNode.
 model AgentBlock {
-  id   String @id
+  id   String @id @default(uuid())
   name String @unique
 
   // We allow a block to have multiple types of input & output.
@@ -73,45 +74,55 @@ model AgentBlock {
   ReferencedByAgentNode AgentNode[]
 }
 
+// This model describes the execution of an AgentGraph.
+model AgentGraphExecution {
+  id String @id @default(uuid())
+
+  agentGraphId String
+  AgentGraph   AgentGraph @relation(fields: [agentGraphId], references: [id])
+
+  AgentNodeExecutions AgentNodeExecution[]
+}
+
 // This model describes the execution of an AgentNode.
 model AgentNodeExecution {
-  id          String @id
-  executionId String
+  id String @id @default(uuid())
+
+  agentGraphExecutionId String
+  AgentGraphExecution   AgentGraphExecution @relation(fields: [agentGraphExecutionId], references: [id])
 
   agentNodeId String
   AgentNode   AgentNode @relation(fields: [agentNodeId], references: [id])
 
-  inputData   String?
-  inputFiles  FileDefinition[] @relation("InputFiles")
-  outputName  String?
-  outputData  String?
-  outputFiles FileDefinition[] @relation("OutputFiles")
+  Input  AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionInput")
+  Output AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionOutput")
 
   // sqlite does not support enum
-  // enum Status { QUEUED, RUNNING, SUCCESS, FAILED }
+  // enum Status { INCOMPLETE, QUEUED, RUNNING, SUCCESS, FAILED }
   executionStatus String
-  creationTime    DateTime
-  startTime       DateTime?
-  endTime         DateTime?
+  addedTime       DateTime  @default(now())
+  queuedTime      DateTime?
+  startedTime     DateTime?
+  endedTime       DateTime?
 }
 
-// This model describes a file that can be used as input/output of an AgentNodeExecution.
-model FileDefinition {
-  id       String  @id
-  path     String
-  metadata String? // JSON serialized object
-  mimeType String?
-  size     Int?
-  hash     String?
-  encoding String?
+// This model describes the output of an AgentNodeExecution.
+model AgentNodeExecutionInputOutput {
+  id String @id @default(uuid())
+
+  name String
+  data String
+  time DateTime @default(now())
 
   // Prisma requires explicit back-references.
-  ReferencedByInputFiles  AgentNodeExecution[] @relation("InputFiles")
-  ReferencedByOutputFiles AgentNodeExecution[] @relation("OutputFiles")
+  referencedByInputExecId  String?
+  ReferencedByInputExec    AgentNodeExecution? @relation("AgentNodeExecutionInput", fields: [referencedByInputExecId], references: [id])
+  referencedByOutputExecId String?
+  ReferencedByOutputExec   AgentNodeExecution? @relation("AgentNodeExecutionOutput", fields: [referencedByOutputExecId], references: [id])
 }
 
 // This model describes the recurring execution schedule of an Agent.
-model AgentExecutionSchedule {
+model AgentGraphExecutionSchedule {
   id String @id
 
   agentGraphId String

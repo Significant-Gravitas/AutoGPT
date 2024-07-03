@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 class Metrics(BaseModel):
     difficulty: str
     success: bool
-    success_percent: float = Field(..., alias="success_%")
+    success_percent: float = Field(alias="success_%")
     run_time: Optional[str] = None
     fail_reason: Optional[str] = None
     attempted: Optional[bool] = None
@@ -100,7 +100,7 @@ def get_reports():
                         # Load the JSON data from the file
                         json_data = json.load(f)
                         print(f"Processing {report_file}")
-                        report = Report.parse_obj(json_data)
+                        report = Report.model_validate(json_data)
 
                         for test_name, test_data in report.tests.items():
                             test_json = {
