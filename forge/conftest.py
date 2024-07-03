@@ -11,6 +11,13 @@ pytest_plugins = [
 ]
 
 
+@pytest.fixture(scope="session", autouse=True)
+def load_env_vars():
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+
 @pytest.fixture()
 def tmp_project_root(tmp_path: Path) -> Path:
     return tmp_path
