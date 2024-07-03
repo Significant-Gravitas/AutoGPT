@@ -3,16 +3,21 @@ from typing import Any, cast, ClassVar, Generator, Generic, TypeVar, Type
 
 import jsonref
 import jsonschema
+import logging
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
 from autogpt_server.util import json
 
-BlockData = dict[str, Any]
+logger = logging.getLogger(__name__)
+log = print
+
+BlockInput = dict[str, Any]
+BlockData = tuple[str, Any]
+BlockOutput = Generator[BlockData, None, None]
 
 
 class BlockSchema(BaseModel):
-    
     cached_jsonschema: ClassVar[dict[str, Any]] = {}
 
     @classmethod
@@ -36,7 +41,7 @@ class BlockSchema(BaseModel):
         return cls.cached_jsonschema
 
     @classmethod
-    def validate_data(cls, data: BlockData) -> str | None:
+    def validate_data(cls, data: BlockInput) -> str | None:
         """
         Validate the data against the schema.
         Returns the validation error message if the data does not match the schema.
@@ -48,7 +53,7 @@ class BlockSchema(BaseModel):
             return str(e)
 
     @classmethod
-    def validate_field(cls, field_name: str, data: BlockData) -> str | None:
+    def validate_field(cls, field_name: str, data: BlockInput) -> str | None:
         """
         Validate the data against a specific property (one of the input/output name).
         Returns the validation error message if the data does not match the schema.
@@ -80,7 +85,6 @@ class BlockSchema(BaseModel):
         }
 
 
-BlockOutput = Generator[tuple[str, Any], None, None]
 BlockSchemaInputType = TypeVar('BlockSchemaInputType', bound=BlockSchema)
 BlockSchemaOutputType = TypeVar('BlockSchemaOutputType', bound=BlockSchema)
 
@@ -95,6 +99,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             id: str = "",
             input_schema: Type[BlockSchemaInputType] = EmptySchema,
             output_schema: Type[BlockSchemaOutputType] = EmptySchema,
+            test_input: BlockInput | list[BlockInput] | None = None,
+            test_output: BlockData | list[BlockData] | None = None,
     ):
         """
         The unique identifier for the block, this value will be persisted in the DB.
@@ -104,6 +110,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.id = id
         self.input_schema = input_schema
         self.output_schema = output_schema
+        self.test_input = test_input
+        self.test_output = test_output
 
     @abstractmethod
     def run(self, input_data: BlockSchemaInputType) -> BlockOutput:
@@ -122,6 +130,40 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     def name(self):
         return self.__class__.__name__
 
+    def execute_block_test(self):
+        prefix = f"[Test-{self.name}]"
+
+        if not self.test_input or not self.test_output:
+            log(f"{prefix} No test data provided")
+            return
+        if not isinstance(self.test_input, list):
+            self.test_input = [self.test_input]
+        if not isinstance(self.test_output, list):
+            self.test_output = [self.test_output]
+
+        output_index = 0
+        log(f"{prefix } Executing {len(self.test_input)} tests...")
+        prefix = " "*4 + prefix
+
+        for input_data in self.test_input:
+            log(f"{prefix} in: {input_data}")
+
+            for output_name, output_data in self.execute(input_data):
+                if output_index >= len(self.test_output):
+                    raise ValueError(f"{prefix} produced output more than expected")
+                ex_output_name, ex_output_data = self.test_output[output_index]
+                
+                def compare(data1, data2):
+                    identical = data1 == data2
+                    mark = "✅" if identical else "❌"
+                    log(f"{prefix} {mark} comparing `{data1}` vs `{data2}`")
+                    if not identical:
+                        raise ValueError(f"{prefix}: wrong output {data1} vs {data2}")
+                
+                compare(output_name, ex_output_name)
+                compare(output_data, ex_output_data)
+                output_index += 1
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -130,7 +172,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             "outputSchema": self.output_schema.jsonschema(),
         }
 
-    def execute(self, input_data: BlockData) -> BlockOutput:
+    def execute(self, input_data: BlockInput) -> BlockOutput:
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
                 f"Unable to execute block with invalid input data: {error}"
@@ -146,11 +188,13 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
 
 # ======================= Block Helper Functions ======================= #
 
-from autogpt_server.blocks import AVAILABLE_BLOCKS  # noqa: E402
+def get_blocks() -> dict[str, Block]:
+    from autogpt_server.blocks import AVAILABLE_BLOCKS  # noqa: E402
+    return AVAILABLE_BLOCKS
 
 
 async def initialize_blocks() -> None:
-    for block in AVAILABLE_BLOCKS.values():
+    for block in get_blocks().values():
         if await AgentBlock.prisma().find_unique(where={"id": block.id}):
             continue
 
@@ -164,9 +208,5 @@ async def initialize_blocks() -> None:
         )
 
 
-def get_blocks() -> list[Block]:
-    return list(AVAILABLE_BLOCKS.values())
-
-
 def get_block(block_id: str) -> Block | None:
-    return AVAILABLE_BLOCKS.get(block_id)
+    return get_blocks().get(block_id)

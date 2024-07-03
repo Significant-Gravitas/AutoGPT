@@ -123,7 +123,7 @@ class AgentServer(AppProcess):
         return get_service_client(ExecutionScheduler)
 
     def get_graph_blocks(self) -> list[dict]:
-        return [v.to_dict() for v in block.get_blocks()]
+        return [v.to_dict() for v in block.get_blocks().values()]
 
     async def get_graphs(self) -> list[str]:
         return await get_graph_ids()
