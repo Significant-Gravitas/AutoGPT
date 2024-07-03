@@ -68,6 +68,8 @@ class WebSeleniumConfiguration(BaseModel):
     """User agent used by the browser"""
     browse_spacy_language_model: str = "en_core_web_sm"
     """Spacy language model used for chunking text"""
+    selenium_proxy: Optional[str] = None
+    """Http proxy to use with Selenium"""
 
 
 class WebSeleniumComponent(
@@ -300,6 +302,9 @@ class WebSeleniumComponent(
             if self.config.headless:
                 options.add_argument("--headless=new")
                 options.add_argument("--disable-gpu")
+
+            if self.config.selenium_proxy:
+                options.add_argument(f"--proxy-server={self.config.selenium_proxy}")
 
             self._sideload_chrome_extensions(options, self.data_dir / "assets" / "crx")
 

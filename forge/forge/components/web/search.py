@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from typing import Iterator, Optional
+from typing import Iterator, Literal, Optional
 
 from duckduckgo_search import DDGS
 from pydantic import BaseModel, SecretStr
@@ -24,6 +24,7 @@ class WebSearchConfiguration(BaseModel):
         None, from_env="GOOGLE_CUSTOM_SEARCH_ENGINE_ID", exclude=True
     )
     duckduckgo_max_attempts: int = 3
+    duckduckgo_backend: Literal["api", "html", "lite"] = "api"
 
 
 class WebSearchComponent(
@@ -89,7 +90,9 @@ class WebSearchComponent(
             if not query:
                 return json.dumps(search_results)
 
-            search_results = DDGS().text(query, max_results=num_results)
+            search_results = DDGS().text(
+                query, max_results=num_results, backend=self.config.duckduckgo_backend
+            )
 
             if search_results:
                 break
