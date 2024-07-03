@@ -32,7 +32,9 @@ T = TypeVar("T")
 ExecutionStream = Generator[Execution, None, None]
 
 
-def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> ExecutionStream:
+def execute_node(
+    loop: asyncio.AbstractEventLoop, data: Execution, agent_server_client: AgentServer
+) -> ExecutionStream:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
     persist the execution result, and return the subsequent node to be executed.
@@ -48,8 +50,6 @@ def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> ExecutionS
     node_exec_id = data.node_exec_id
     exec_data = data.data
     node_id = data.node_id
-
-    agent_server: AgentServer = get_service_client(AgentServer)  # type: ignore
 
     asyncio.set_event_loop(loop)
 
@@ -74,7 +74,7 @@ def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> ExecutionS
 
     # TODO: Remove need for multiple database lookups
     execution_result = get_execution_result(graph_exec_id, node_exec_id)
-    agent_server.send_execution_update(execution_result)  # type: ignore
+    agent_server_client.send_execution_update(execution_result)  # type: ignore
 
     try:
         for output_name, output_data in node_block.execute(exec_data):
@@ -84,7 +84,7 @@ def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> ExecutionS
 
             # TODO: Remove need for multiple database lookups
             execution_result = get_execution_result(graph_exec_id, node_exec_id)
-            agent_server.send_execution_update(execution_result)  # type: ignore
+            agent_server_client.send_execution_update(execution_result)  # type: ignore
 
             for execution in enqueue_next_nodes(
                 loop, node, output_name, output_data, graph_exec_id
@@ -98,7 +98,7 @@ def execute_node(loop: asyncio.AbstractEventLoop, data: Execution) -> ExecutionS
 
         # TODO: Remove need for multiple database lookups
         execution_result = get_execution_result(graph_exec_id, node_exec_id)
-        agent_server.send_execution_update(execution_result)  # type: ignore
+        agent_server_client.send_execution_update(execution_result)  # type: ignore
 
         raise e
 
@@ -195,6 +195,10 @@ async def validate_exec(node: Node, data: dict[str, Any]) -> tuple[bool, str]:
 class Executor:
     loop: asyncio.AbstractEventLoop
 
+    @property
+    def agent_server_client(self) -> AgentServer:
+        return get_service_client(AgentServer)  # type: ignore
+
     @classmethod
     def on_executor_start(cls):
         cls.loop = asyncio.new_event_loop()
@@ -205,7 +209,7 @@ class Executor:
         prefix = get_log_prefix(data.graph_exec_id, data.node_exec_id)
         try:
             logger.warning(f"{prefix} Start execution")
-            for execution in execute_node(cls.loop, data):
+            for execution in execute_node(cls.loop, data, cls.agent_server_client):  # type: ignore
                 q.add(execution)
             return True
         except Exception as e:
@@ -231,6 +235,10 @@ class ExecutionManager(AppService):
                     self.queue.get(),
                 )
 
+    @property
+    def agent_server_client(self) -> AgentServer:
+        return get_service_client(AgentServer)  # type: ignore
+
     @expose
     def add_execution(self, graph_id: str, data: dict[str, Any]) -> dict[Any, Any]:
         graph = self.run_and_wait(get_graph(graph_id))
@@ -251,9 +259,6 @@ class ExecutionManager(AppService):
                 data=data,
             )
         )
-
-        agent_server: AgentServer = get_service_client(AgentServer)  # type: ignore
-
         executions: list[dict[str, Any]] = []
         for node_exec in node_execs:
             input_data = self.run_and_wait(
@@ -271,7 +276,7 @@ class ExecutionManager(AppService):
             execution_result = get_execution_result(
                 node_exec.graph_exec_id, node_exec.node_exec_id
             )
-            agent_server.send_execution_update(execution_result)  # type: ignore
+            self.agent_server_client.send_execution_update(execution_result)  # type: ignore
 
             executions.append(
                 {
