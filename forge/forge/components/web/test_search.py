@@ -2,6 +2,7 @@ import json
 
 import pytest
 from googleapiclient.errors import HttpError
+from httplib2 import Response
 from pydantic import SecretStr
 
 from forge.utils.exceptions import ConfigurationError
@@ -137,16 +138,11 @@ def test_google_official_search_errors(
     error_msg,
     web_search_component: WebSearchComponent,
 ):
-    class resp:
-        def __init__(self, _status, _reason):
-            self.status = _status
-            self.reason = _reason
-
     response_content = {
         "error": {"code": http_code, "message": error_msg, "reason": "backendError"}
     }
     error = HttpError(
-        resp=resp(http_code, error_msg),
+        resp=Response({"status": http_code, "reason": error_msg}),
         content=str.encode(json.dumps(response_content)),
         uri="https://www.googleapis.com/customsearch/v1?q=invalid+query&cx",
     )
