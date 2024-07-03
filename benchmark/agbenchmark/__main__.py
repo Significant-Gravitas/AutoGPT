@@ -97,7 +97,9 @@ def start():
     help="Write log output to a file instead of the terminal.",
 )
 # @click.argument(
-#     "agent_path", type=click.Path(exists=True, file_okay=False), required=False
+#     "agent_path",
+#     type=click.Path(exists=True, file_okay=False, path_type=Path),
+#     required=False,
 # )
 def run(
     maintain: bool,
