@@ -24,7 +24,7 @@ LLAMAFILE_EXE_URL = "https://github.com/Mozilla-Ocho/llamafile/releases/download
 @click.command()
 @click.option(
     "--llamafile",
-    type=click.Path(dir_okay=False),
+    type=click.Path(dir_okay=False, path_type=Path),
     help=f"Name of the llamafile to serve. Default: {LLAMAFILE.name}",
 )
 @click.option("--llamafile_url", help="Download URL for the llamafile you want to use")
@@ -44,6 +44,7 @@ def main(
     port: Optional[int] = None,
     use_gpu: bool = False,
 ):
+    print(f"type(llamafile) = {type(llamafile)}")
     if not llamafile:
         if not llamafile_url:
             llamafile = LLAMAFILE
