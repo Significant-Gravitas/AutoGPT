@@ -1,0 +1,387 @@
+"use client";
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import ReactFlow, {
+  addEdge,
+  applyNodeChanges,
+  applyEdgeChanges,
+  Node,
+  Edge,
+  OnNodesChange,
+  OnEdgesChange,
+  OnConnect,
+  NodeTypes,
+  Connection,
+} from 'reactflow';
+import 'reactflow/dist/style.css';
+import CustomNode from './CustomNode';
+import './flow.css';
+
+type Schema = {
+  type: string;
+  properties: { [key: string]: any };
+  required?: string[];
+};
+
+type CustomNodeData = {
+  blockType: string;
+  title: string;
+  inputSchema: Schema;
+  outputSchema: Schema;
+  hardcodedValues: { [key: string]: any };
+  setHardcodedValues: (values: { [key: string]: any }) => void;
+  connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
+  isPropertiesOpen: boolean;
+  status?: string;
+  output_data?: any;
+  block_id: string;
+};
+
+type AvailableNode = {
+  id: string;
+  name: string;
+  description: string;
+  inputSchema: Schema;
+  outputSchema: Schema;
+};
+
+interface ExecData {
+  node_id: string;
+  status: string;
+  output_data: any;
+}
+
+const Sidebar: React.FC<{isOpen: boolean, availableNodes: AvailableNode[], addNode: (id: string, name: string) => void}> =
+  ({isOpen, availableNodes, addNode}) => {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  if (!isOpen) return null;
+
+  const filteredNodes = availableNodes.filter(node =>
+    node.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <div style={{
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      bottom: 0,
+      width: '250px',
+      backgroundColor: '#333',
+      padding: '20px',
+      zIndex: 4,
+      overflowY: 'auto'
+    }}>
+      <h3 style={{color: '#fff'}}>Nodes</h3>
+      <input
+        type="text"
+        placeholder="Search nodes..."
+        style={{width: '100%', marginBottom: '10px', padding: '5px'}}
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+      />
+      {filteredNodes.map((node) => (
+        <div key={node.id} style={{marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+          <span style={{color: '#fff'}}>{node.name}</span>
+          <button onClick={() => addNode(node.id, node.name)}>Add</button>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const Flow: React.FC = () => {
+  const [nodes, setNodes] = useState<Node<CustomNodeData>[]>([]);
+  const [edges, setEdges] = useState<Edge[]>([]);
+  const [nodeId, setNodeId] = useState<number>(1);
+  const [availableNodes, setAvailableNodes] = useState<AvailableNode[]>([]);
+  const [agentId, setAgentId] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  const apiUrl = 'http://localhost:8000';
+
+  useEffect(() => {
+    fetch(`${apiUrl}/blocks`)
+      .then(response => response.json())
+      .then(data => setAvailableNodes(data))
+      .catch(error => console.error('Error fetching available blocks:', error));
+  }, []);
+
+  const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
+
+  const onNodesChange: OnNodesChange = useCallback(
+    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
+    []
+  );
+
+  const onEdgesChange: OnEdgesChange = useCallback(
+    (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+    []
+  );
+
+  const onConnect: OnConnect = useCallback(
+    (connection: Connection) => {
+      setEdges((eds) => addEdge(connection, eds));
+      setNodes((nds) =>
+        nds.map((node) => {
+          if (node.id === connection.target) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                connections: [
+                  ...node.data.connections,
+                  {
+                    source: connection.source,
+                    sourceHandle: connection.sourceHandle,
+                    target: connection.target,
+                    targetHandle: connection.targetHandle,
+                  } as { source: string; sourceHandle: string; target: string; targetHandle: string },
+                ],
+              },
+            };
+          }
+          return node;
+        })
+      );
+    },
+    [setEdges, setNodes]
+  );
+
+  const addNode = (blockId: string, nodeType: string) => {
+    const nodeSchema = availableNodes.find(node => node.id === blockId);
+    if (!nodeSchema) {
+      console.error(`Schema not found for block ID: ${blockId}`);
+      return;
+    }
+
+    const newNode: Node<CustomNodeData> = {
+      id: nodeId.toString(),
+      type: 'custom',
+      position: { x: Math.random() * 400, y: Math.random() * 400 },
+      data: {
+        blockType: nodeType,
+        title: `${nodeType} ${nodeId}`,
+        inputSchema: nodeSchema.inputSchema,
+        outputSchema: nodeSchema.outputSchema,
+        hardcodedValues: {},
+        setHardcodedValues: (values: { [key: string]: any }) => {
+          setNodes((nds) => nds.map((node) =>
+            node.id === newNode.id
+              ? { ...node, data: { ...node.data, hardcodedValues: values } }
+              : node
+          ));
+        },
+        connections: [],
+        isPropertiesOpen: false,
+        block_id: blockId,
+      },
+    };
+
+    setNodes((nds) => [...nds, newNode]);
+    setNodeId((prevId) => prevId + 1);
+  };
+
+  const prepareNodeInputData = (node: Node<CustomNodeData>, allNodes: Node<CustomNodeData>[], allEdges: Edge[]) => {
+    console.log("Preparing input data for node:", node.id, node.data.blockType);
+
+    const blockSchema = availableNodes.find(n => n.id === node.data.block_id)?.inputSchema;
+
+    if (!blockSchema) {
+      console.error(`Schema not found for block ID: ${node.data.block_id}`);
+      return {};
+    }
+
+    let inputData: { [key: string]: any } = { ...node.data.hardcodedValues };
+
+    // Get data from connected nodes
+    const incomingEdges = allEdges.filter(edge => edge.target === node.id);
+    incomingEdges.forEach(edge => {
+      const sourceNode = allNodes.find(n => n.id === edge.source);
+      if (sourceNode && sourceNode.data.output_data) {
+        const outputKey = Object.keys(sourceNode.data.output_data)[0]; // Assuming single output
+        inputData[edge.targetHandle as string] = sourceNode.data.output_data[outputKey];
+      }
+    });
+
+    // Filter out any inputs that are not in the block's schema
+    Object.keys(inputData).forEach(key => {
+      if (!blockSchema.properties[key]) {
+        delete inputData[key];
+      }
+    });
+
+    console.log(`Final prepared input for ${node.data.blockType} (${node.id}):`, inputData);
+    return inputData;
+  };
+
+  const runAgent = async () => {
+    try {
+      console.log("All nodes before formatting:", nodes);
+
+      const formattedNodes = nodes.map(node => {
+        console.log("Formatting node:", node.id, node.data.blockType);
+        const inputDefault = prepareNodeInputData(node, nodes, edges);
+        const inputNodes = edges
+          .filter(edge => edge.target === node.id)
+          .map(edge => ({
+            name: edge.targetHandle || '',
+            node_id: edge.source,
+          }));
+
+        const outputNodes = edges
+          .filter(edge => edge.source === node.id)
+          .map(edge => ({
+            name: edge.sourceHandle || '',
+            node_id: edge.target,
+          }));
+
+        return {
+          id: node.id,
+          block_id: node.data.block_id,
+          input_default: inputDefault,
+          input_nodes: inputNodes,
+          output_nodes: outputNodes,
+          metadata: { position: node.position }
+        };
+      });
+
+      const payload = {
+        id: agentId || '',
+        name: 'Agent Name',
+        description: 'Agent Description',
+        nodes: formattedNodes,
+      };
+
+      console.log("Payload being sent to the API:", JSON.stringify(payload, null, 2));
+
+      const createResponse = await fetch(`${apiUrl}/graphs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!createResponse.ok) {
+        throw new Error(`HTTP error! Status: ${createResponse.status}`);
+      }
+
+      const createData = await createResponse.json();
+
+      const newAgentId = createData.id;
+      setAgentId(newAgentId);
+
+      console.log('Response from the API:', JSON.stringify(createData, null, 2));
+
+      const executeResponse = await fetch(`${apiUrl}/graphs/${newAgentId}/execute`, {
+
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
+
+      if (!executeResponse.ok) {
+        throw new Error(`HTTP error! Status: ${executeResponse.status}`);
+      }
+
+      const executeData = await executeResponse.json();
+      const runId = executeData.id;
+
+
+      const pollExecution = async () => {
+        const response = await fetch(`${apiUrl}/graphs/${newAgentId}/executions/${runId}`);
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        const data = await response.json();
+        data.forEach(updateNodeData);
+        if (data.every((node: any) => node.status === 'COMPLETED')) {
+          console.log('All nodes completed execution');
+        } else {
+          setTimeout(pollExecution, 1000);
+        }
+      };
+
+      pollExecution();
+
+    } catch (error) {
+      console.error('Error running agent:', error);
+    }
+  };
+
+  const updateNodesWithExecutionData = (executionData: any[]) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        const nodeExecution = executionData.find((exec) => exec.node_id === node.id);
+        if (nodeExecution) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              status: nodeExecution.status,
+              output_data: nodeExecution.output_data,
+              isPropertiesOpen: true,
+            },
+          };
+        }
+        return node;
+      })
+    );
+  };
+
+  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+
+    const updateNodeData = (execData: ExecData) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === execData.node_id) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              status: execData.status,
+              output_data: execData.output_data,
+              isPropertiesOpen: true, // Open the properties
+            },
+          };
+        }
+        return node;
+      })
+    );
+  };
+
+  return (
+    <div style={{ height: '100vh', width: '100%' }}>
+      <button
+        onClick={toggleSidebar}
+        style={{
+          position: 'absolute',
+          left: isSidebarOpen ? '260px' : '10px',
+          top: '10px',
+          zIndex: 5,
+          transition: 'left 0.3s'
+        }}
+      >
+        {isSidebarOpen ? 'Hide Sidebar' : 'Show Sidebar'}
+      </button>
+      <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        nodeTypes={nodeTypes}
+      >
+        <div style={{ position: 'absolute', right: 10, top: 10, zIndex: 4 }}>
+          <button onClick={runAgent}>Run Agent</button>
+        </div>
+      </ReactFlow>
+    </div>
+  );
+};
+
+export default Flow;

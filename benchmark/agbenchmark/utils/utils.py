@@ -135,7 +135,7 @@ def pretty_print_model(model: BaseModel, include_header: bool = True) -> None:
     if include_header:
         # Try to find the ID and/or name attribute of the model
         id, name = None, None
-        for attr, value in model.dict().items():
+        for attr, value in model.model_dump().items():
             if attr == "id" or attr.endswith("_id"):
                 id = value
             if attr.endswith("name"):
@@ -148,8 +148,8 @@ def pretty_print_model(model: BaseModel, include_header: bool = True) -> None:
         )
         indent = " " * 2
 
-    k_col_width = max(len(k) for k in model.dict().keys())
-    for k, v in model.dict().items():
+    k_col_width = max(len(k) for k in model.model_dump().keys())
+    for k, v in model.model_dump().items():
         v_fmt = repr(v)
         if v is None or v == "":
             v_fmt = click.style(v_fmt, fg="black")

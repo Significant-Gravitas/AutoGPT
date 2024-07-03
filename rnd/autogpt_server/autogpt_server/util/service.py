@@ -15,7 +15,19 @@ from autogpt_server.util.process import AppProcess
 
 logger = logging.getLogger(__name__)
 conn_retry = retry(stop=stop_after_delay(5), wait=wait_exponential(multiplier=0.1))
-expose = pyro.expose
+T = TypeVar("T")
+
+
+def expose(func: Callable) -> Callable:
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            msg = f"Error in {func.__name__}: {e.__str__()}"
+            logger.exception(msg)
+            raise Exception(msg, e)
+
+    return pyro.expose(wrapper)
 
 
 class PyroNameServer(AppProcess):
@@ -28,7 +40,6 @@ class PyroNameServer(AppProcess):
 
 
 class AppService(AppProcess):
-
     shared_event_loop: asyncio.AbstractEventLoop
 
     @classmethod
@@ -41,10 +52,10 @@ class AppService(AppProcess):
         while True:
             time.sleep(10)
 
-    def run_async(self, coro: Coroutine):
+    def run_async(self, coro: Coroutine[T, Any, T]):
         return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop)
 
-    def run_and_wait(self, coro: Coroutine):
+    def run_and_wait(self, coro: Coroutine[T, Any, T]) -> T:
         future = self.run_async(coro)
         return future.result()
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Iterator, Optional, Sequence, TypeVar
+from typing import Any, Callable, Iterator, Optional, Sequence, TypeVar, get_args
 
 from pydantic import ValidationError
 
@@ -137,14 +137,16 @@ class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
                 f"{Provider.__name__} not yet in cache, trying to init..."
             )
 
-            settings = Provider.default_settings.copy(deep=True)
+            settings = Provider.default_settings.model_copy(deep=True)
             settings.budget = self._budget
             settings.configuration.extra_request_headers.update(
                 self._settings.configuration.extra_request_headers
             )
             if settings.credentials is None:
-                credentials_field = settings.__fields__["credentials"]
-                Credentials = credentials_field.type_
+                credentials_field = settings.model_fields["credentials"]
+                Credentials = get_args(  # Union[Credentials, None] -> Credentials
+                    credentials_field.annotation
+                )[0]
                 self._logger.debug(f"Loading {Credentials.__name__}...")
                 try:
                     settings.credentials = Credentials.from_env()
