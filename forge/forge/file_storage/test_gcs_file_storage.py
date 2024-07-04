@@ -4,10 +4,11 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from forge.file_storage.gcs import GCSFileStorage, GCSFileStorageConfiguration
 from google.auth.exceptions import GoogleAuthError
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
+
+from .gcs import GCSFileStorage, GCSFileStorageConfiguration
 
 try:
     storage.Client()

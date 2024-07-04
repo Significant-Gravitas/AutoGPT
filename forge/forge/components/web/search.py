@@ -18,10 +18,10 @@ logger = logging.getLogger(__name__)
 
 class WebSearchConfiguration(BaseModel):
     google_api_key: Optional[SecretStr] = UserConfigurable(
-        from_env="GOOGLE_API_KEY", exclude=True
+        None, from_env="GOOGLE_API_KEY", exclude=True
     )
     google_custom_search_engine_id: Optional[SecretStr] = UserConfigurable(
-        from_env="GOOGLE_CUSTOM_SEARCH_ENGINE_ID", exclude=True
+        None, from_env="GOOGLE_CUSTOM_SEARCH_ENGINE_ID", exclude=True
     )
     duckduckgo_max_attempts: int = 3
 
@@ -173,7 +173,7 @@ class WebSearchComponent(
             search_results = result.get("items", [])
 
             # Create a list of only the URLs from the search results
-            search_results_links = [item["link"] for item in search_results]
+            search_results_links = [item["link"] for item in search_results]  # type: ignore # noqa
 
         except HttpError as e:
             # Handle errors in the API call

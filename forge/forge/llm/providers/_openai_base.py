@@ -10,6 +10,7 @@ from typing import (
     Sequence,
     TypeVar,
     cast,
+    get_args,
 )
 
 import sentry_sdk
@@ -67,11 +68,11 @@ class _BaseOpenAIProvider(BaseModelProvider[_ModelName, _ModelProviderSettings])
             raise ValueError(f"{self.__class__.__name__}.MODELS is not set")
 
         if not settings:
-            settings = self.default_settings.copy(deep=True)
+            settings = self.default_settings.model_copy(deep=True)
         if not settings.credentials:
-            settings.credentials = self.default_settings.__fields__[
-                "credentials"
-            ].type_.from_env()
+            settings.credentials = get_args(  # Union[Credentials, None] -> Credentials
+                self.default_settings.model_fields["credentials"].annotation
+            )[0].from_env()
 
         super(_BaseOpenAIProvider, self).__init__(settings=settings, logger=logger)
 
@@ -248,7 +249,7 @@ class BaseOpenAIChatProvider(
                     openai_messages.append(
                         cast(
                             ChatCompletionAssistantMessageParam,
-                            _assistant_msg.dict(exclude_none=True),
+                            _assistant_msg.model_dump(exclude_none=True),
                         )
                     )
                     openai_messages.append(
@@ -309,7 +310,7 @@ class BaseOpenAIChatProvider(
             kwargs["extra_headers"].update(extra_headers.copy())  # type: ignore
 
         prepped_messages: list[ChatCompletionMessageParam] = [
-            message.dict(  # type: ignore
+            message.model_dump(  # type: ignore
                 include={"role", "content", "tool_calls", "tool_call_id", "name"},
                 exclude_none=True,
             )
