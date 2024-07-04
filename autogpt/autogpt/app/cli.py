@@ -113,7 +113,7 @@ def cli(ctx: click.Context):
 @click.option(
     "--component-config-file",
     help="Path to a json configuration file",
-    type=click.Path(exists=True, dir_okay=False, resolve_path=True),
+    type=click.Path(exists=True, dir_okay=False, resolve_path=True, path_type=Path),
 )
 def run(
     continuous: bool,
