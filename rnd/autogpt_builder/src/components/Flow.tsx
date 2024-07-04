@@ -101,7 +101,7 @@ const Flow: React.FC = () => {
   const [agentId, setAgentId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  const apiUrl = 'http://192.168.0.215:8000';
+  const apiUrl = 'http://localhost:8000';
 
   useEffect(() => {
     fetch(`${apiUrl}/blocks`)
@@ -369,7 +369,7 @@ const Flow: React.FC = () => {
         }}
       >
         {isSidebarOpen ? 'Hide Sidebar' : 'Show Sidebar'}
-        </button>
+      </button>
       <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
       <ReactFlow
         nodes={nodes}
@@ -380,7 +380,7 @@ const Flow: React.FC = () => {
         nodeTypes={nodeTypes}
       >
         <div style={{ position: 'absolute', right: 10, top: 10, zIndex: 4 }}>
-        <button onClick={runAgent}>Run Agent</button>
+          <button onClick={runAgent}>Run Agent</button>
         </div>
       </ReactFlow>
     </div>
