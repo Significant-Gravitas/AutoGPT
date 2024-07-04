@@ -9,6 +9,7 @@ from forge.sdk import Agent, LocalWorkspace
 import re
 import subprocess
 import json
+import test_code
 
 LOG = ForgeLogger(__name__)
 CodeType = Dict[str, str]
@@ -77,6 +78,7 @@ async def test_code(agent: Agent, task_id: str, project_path: str) -> str:
 )
 async def generate_solana_code(agent: Agent, task_id: str, specification: str) -> str:
     global ERROR_INFO
+    test_code.cargo_test_agbenchmark_config()  
 
    
     prompt_engine = PromptEngine("gpt-4o")
@@ -126,11 +128,11 @@ async def generate_solana_code(agent: Agent, task_id: str, specification: str) -
     LOG.info(f"Parts: {response_content}")
 
     file_actions = [
-        ('src/lib.rs', parts['anchor-lib.rs']),
-        ('src/instructions.rs', parts['anchor-instructions.rs']),
-        ('src/errors.rs', parts['errors.rs']),
         ('Cargo.toml', ARGO_TOML_CONTENT),
         ('Anchor.toml', parts['Anchor.toml']),
+        ('src/errors.rs', parts['errors.rs']),
+        ('src/instructions.rs', parts['anchor-instructions.rs']),
+        ('src/lib.rs', parts['anchor-lib.rs']),
     ]
 
     for file_path, file_content in file_actions:
