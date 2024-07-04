@@ -1,36 +1,8 @@
-import enum
-import typing
 
-import pydantic
 from fastapi import WebSocket, WebSocketDisconnect
 
 from autogpt_server.server.conn_manager import ConnectionManager
-
-
-class Methods(enum.Enum):
-    SUBSCRIBE = "subscribe"
-    UNSUBSCRIBE = "unsubscribe"
-    UPDATE = "update"
-    ERROR = "error"
-
-
-class WsMessage(pydantic.BaseModel):
-    method: Methods
-    data: typing.Dict[str, typing.Any] | None = None
-    success: bool | None = None
-    channel: str | None = None
-    error: str | None = None
-
-
-class ExecutionSubscription(pydantic.BaseModel):
-    graph_id: str
-
-
-class SubscriptionDetails(pydantic.BaseModel):
-    event_type: str
-    channel: str
-    graph_id: str
-
+from autogpt_server.server.model import ExecutionSubscription, WsMessage, Methods
 
 async def websocket_router(websocket: WebSocket, manager: ConnectionManager):
     await manager.connect(websocket)

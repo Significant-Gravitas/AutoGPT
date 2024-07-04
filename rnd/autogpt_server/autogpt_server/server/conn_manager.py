@@ -3,7 +3,7 @@ from typing import Dict, Set
 from fastapi import WebSocket
 
 from autogpt_server.data import execution
-
+from autogpt_server.server.model import WsMessage, Methods
 
 class ConnectionManager:
     def __init__(self):
@@ -33,6 +33,10 @@ class ConnectionManager:
     async def send_execution_result(self, result: execution.ExecutionResult):
         graph_id = result.graph_id
         if graph_id in self.subscriptions:
-            message = result.model_dump_json()
+            message = WsMessage(
+                method=Methods.UPDATE,
+                channel=graph_id,
+                data=result.model_dump()
+            ).model_dump_json()
             for connection in self.subscriptions[graph_id]:
                 await connection.send_text(message)
