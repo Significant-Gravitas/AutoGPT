@@ -151,7 +151,7 @@ class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
                 try:
                     settings.credentials = Credentials.from_env()
                 except ValidationError as e:
-                    if credentials_field.required:
+                    if credentials_field.is_required():
                         self._logger.debug(
                             f"Could not load (required) {Credentials.__name__}"
                         )

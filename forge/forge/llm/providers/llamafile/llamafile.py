@@ -57,7 +57,7 @@ class LlamafileConfiguration(ModelProviderConfiguration):
 
 
 class LlamafileCredentials(ModelProviderCredentials):
-    api_key: SecretStr = SecretStr("sk-no-key-required")
+    api_key: Optional[SecretStr] = SecretStr("sk-no-key-required")
     api_base: SecretStr = UserConfigurable(  # type: ignore
         default=SecretStr("http://localhost:8080/v1"), from_env="LLAMAFILE_API_BASE"
     )
