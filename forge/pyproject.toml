@@ -76,7 +76,10 @@ types-requests = "^2.31.0.2"
 pytest = "^7.4.0"
 pytest-asyncio = "^0.23.3"
 pytest-cov = "^5.0.0"
+pytest-mock = "*"
+pytest-recording = "*"
 mock = "^5.1.0"
+vcrpy = { git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master" }
 
 
 [build-system]
@@ -101,3 +104,4 @@ pythonVersion = "3.10"
 [tool.pytest.ini_options]
 pythonpath = ["forge"]
 testpaths = ["forge", "tests"]
+markers = ["slow"]
