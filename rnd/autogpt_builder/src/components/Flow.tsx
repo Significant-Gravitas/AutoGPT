@@ -19,6 +19,7 @@ import './flow.css';
 type Schema = {
   type: string;
   properties: { [key: string]: any };
+  additionalProperties?: { type: string };
   required?: string[];
 };
 
@@ -44,12 +45,6 @@ type AvailableNode = {
   outputSchema: Schema;
 };
 
-interface ExecData {
-  node_id: string;
-  status: string;
-  output_data: any;
-}
-
 const Sidebar: React.FC<{isOpen: boolean, availableNodes: AvailableNode[], addNode: (id: string, name: string) => void}> =
   ({isOpen, availableNodes, addNode}) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -61,28 +56,17 @@ const Sidebar: React.FC<{isOpen: boolean, availableNodes: AvailableNode[], addNo
   );
 
   return (
-    <div style={{
-      position: 'absolute',
-      left: 0,
-      top: 0,
-      bottom: 0,
-      width: '250px',
-      backgroundColor: '#333',
-      padding: '20px',
-      zIndex: 4,
-      overflowY: 'auto'
-    }}>
-      <h3 style={{color: '#fff'}}>Nodes</h3>
+    <div className={`sidebar ${isOpen ? 'open' : ''}`}>
+      <h3>Nodes</h3>
       <input
         type="text"
         placeholder="Search nodes..."
-        style={{width: '100%', marginBottom: '10px', padding: '5px'}}
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
       />
       {filteredNodes.map((node) => (
-        <div key={node.id} style={{marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-          <span style={{color: '#fff'}}>{node.name}</span>
+        <div key={node.id} className="sidebarNodeRowStyle">
+          <span>{node.name}</span>
           <button onClick={() => addNode(node.id, node.name)}>Add</button>
         </div>
       ))}
@@ -183,37 +167,60 @@ const Flow: React.FC = () => {
   };
 
   const prepareNodeInputData = (node: Node<CustomNodeData>, allNodes: Node<CustomNodeData>[], allEdges: Edge[]) => {
-    console.log("Preparing input data for node:", node.id, node.data.blockType);
+  console.log("Preparing input data for node:", node.id, node.data.blockType);
 
-    const blockSchema = availableNodes.find(n => n.id === node.data.block_id)?.inputSchema;
+  const blockSchema = availableNodes.find(n => n.id === node.data.block_id)?.inputSchema;
 
-    if (!blockSchema) {
-      console.error(`Schema not found for block ID: ${node.data.block_id}`);
-      return {};
+  if (!blockSchema) {
+    console.error(`Schema not found for block ID: ${node.data.block_id}`);
+    return {};
+  }
+
+  const getNestedData = (schema: Schema, values: { [key: string]: any }): { [key: string]: any } => {
+    let inputData: { [key: string]: any } = {};
+
+    if (schema.properties) {
+      Object.keys(schema.properties).forEach((key) => {
+        if (values[key] !== undefined) {
+          if (schema.properties[key].type === 'object') {
+            inputData[key] = getNestedData(schema.properties[key], values[key]);
+          } else {
+            inputData[key] = values[key];
+          }
+        }
+      });
     }
 
-    let inputData: { [key: string]: any } = { ...node.data.hardcodedValues };
+    if (schema.additionalProperties) {
+      inputData = { ...inputData, ...values };
+    }
 
-    // Get data from connected nodes
-    const incomingEdges = allEdges.filter(edge => edge.target === node.id);
-    incomingEdges.forEach(edge => {
-      const sourceNode = allNodes.find(n => n.id === edge.source);
-      if (sourceNode && sourceNode.data.output_data) {
-        const outputKey = Object.keys(sourceNode.data.output_data)[0]; // Assuming single output
-        inputData[edge.targetHandle as string] = sourceNode.data.output_data[outputKey];
-      }
-    });
-
-    // Filter out any inputs that are not in the block's schema
-    Object.keys(inputData).forEach(key => {
-      if (!blockSchema.properties[key]) {
-        delete inputData[key];
-      }
-    });
-
-    console.log(`Final prepared input for ${node.data.blockType} (${node.id}):`, inputData);
     return inputData;
   };
+
+  let inputData = getNestedData(blockSchema, node.data.hardcodedValues);
+
+  // Get data from connected nodes
+  const incomingEdges = allEdges.filter(edge => edge.target === node.id);
+  incomingEdges.forEach(edge => {
+    const sourceNode = allNodes.find(n => n.id === edge.source);
+    if (sourceNode && sourceNode.data.output_data) {
+      const outputKey = Object.keys(sourceNode.data.output_data)[0]; // Assuming single output
+      inputData[edge.targetHandle as string] = sourceNode.data.output_data[outputKey];
+    }
+  });
+
+  // Filter out any inputs that are not in the block's schema
+  Object.keys(inputData).forEach(key => {
+    if (!blockSchema.properties[key]) {
+      delete inputData[key];
+    }
+  });
+
+  console.log(`Final prepared input for ${node.data.blockType} (${node.id}):`, inputData);
+  return inputData;
+};
+
 
   const runAgent = async () => {
     try {
@@ -246,11 +253,19 @@ const Flow: React.FC = () => {
         };
       });
 
+      const links = edges.map(edge => ({
+        source_id: edge.source,
+        sink_id: edge.target,
+        source_name: edge.sourceHandle || '',
+        sink_name: edge.targetHandle || ''
+      }));
+
       const payload = {
         id: agentId || '',
         name: 'Agent Name',
         description: 'Agent Description',
         nodes: formattedNodes,
+        links: links  // Ensure this field is included
       };
 
       console.log("Payload being sent to the API:", JSON.stringify(payload, null, 2));
@@ -268,14 +283,12 @@ const Flow: React.FC = () => {
       }
 
       const createData = await createResponse.json();
-
       const newAgentId = createData.id;
       setAgentId(newAgentId);
 
       console.log('Response from the API:', JSON.stringify(createData, null, 2));
 
       const executeResponse = await fetch(`${apiUrl}/graphs/${newAgentId}/execute`, {
-
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -290,14 +303,15 @@ const Flow: React.FC = () => {
       const executeData = await executeResponse.json();
       const runId = executeData.id;
 
-
       const pollExecution = async () => {
         const response = await fetch(`${apiUrl}/graphs/${newAgentId}/executions/${runId}`);
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
+
         const data = await response.json();
-        data.forEach(updateNodeData);
+        updateNodesWithExecutionData(data);
+
         if (data.every((node: any) => node.status === 'COMPLETED')) {
           console.log('All nodes completed execution');
         } else {
@@ -312,46 +326,28 @@ const Flow: React.FC = () => {
     }
   };
 
-  const updateNodesWithExecutionData = (executionData: any[]) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        const nodeExecution = executionData.find((exec) => exec.node_id === node.id);
-        if (nodeExecution) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              status: nodeExecution.status,
-              output_data: nodeExecution.output_data,
-              isPropertiesOpen: true,
-            },
-          };
-        }
-        return node;
-      })
-    );
-  };
+
+const updateNodesWithExecutionData = (executionData: any[]) => {
+  setNodes((nds) =>
+    nds.map((node) => {
+      const nodeExecution = executionData.find((exec) => exec.node_id === node.id);
+      if (nodeExecution) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            status: nodeExecution.status,
+            output_data: nodeExecution.output_data,
+            isPropertiesOpen: true,
+          },
+        };
+      }
+      return node;
+    })
+  );
+};
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
-
-    const updateNodeData = (execData: ExecData) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === execData.node_id) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              status: execData.status,
-              output_data: execData.output_data,
-              isPropertiesOpen: true, // Open the properties
-            },
-          };
-        }
-        return node;
-      })
-    );
-  };
 
   return (
     <div style={{ height: '100vh', width: '100%' }}>

@@ -6,6 +6,7 @@ import uvicorn
 
 from contextlib import asynccontextmanager
 from fastapi import APIRouter, Body, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from autogpt_server.data import db, execution, block
 from autogpt_server.data.graph import (
@@ -41,6 +42,14 @@ class AgentServer(AppProcess):
             summary="AutoGPT Agent Server",
             version="0.1",
             lifespan=self.lifespan,
+        )
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],  # Allows all origins
+            allow_credentials=True,
+            allow_methods=["*"],  # Allows all methods
+            allow_headers=["*"],  # Allows all headers
         )
 
         # Define the API routes
