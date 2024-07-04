@@ -6,13 +6,11 @@ on:
     paths:
       - '.github/workflows/autogpt-docker-ci.yml'
       - 'autogpt/**'
-      - '!autogpt/tests/vcr_cassettes'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
       - '.github/workflows/autogpt-docker-ci.yml'
       - 'autogpt/**'
-      - '!autogpt/tests/vcr_cassettes'
 
 concurrency:
   group: ${{ format('autogpt-docker-ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
