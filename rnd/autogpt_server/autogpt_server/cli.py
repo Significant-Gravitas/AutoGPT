@@ -139,7 +139,6 @@ def graph(server_address: str):
     response = requests.post(url, headers=headers, data=data)
 
     if response.status_code == 200:
-        print("Graph sent successfully")
         print(response.json()["id"])
         execute_url = f"{server_address}/graphs/{response.json()['id']}/execute"
         text = "Hello, World!"
@@ -152,6 +151,21 @@ def graph(server_address: str):
 
 
 @test.command()
+@click.argument("graph_id")
+def execute(graph_id: str):
+    """
+    Create an event graph
+    """
+    import requests
+    headers = {"Content-Type": "application/json"}
+
+    execute_url = f"http://0.0.0.0:8000/graphs/{graph_id}/execute"
+    text = "Hello, World!"
+    input_data = {"input": text}
+    requests.post(execute_url, headers=headers, json=input_data)
+
+
+@test.command()
 def event():
     """
     Send an event to the running server
@@ -161,7 +175,8 @@ def event():
 
 @test.command()
 @click.argument("server_address")
-def websocket(server_address: str):
+@click.argument("graph_id")
+def websocket(server_address: str, graph_id: str):
     """
     Tests the websocket connection.
     """
@@ -176,13 +191,12 @@ def websocket(server_address: str):
                 await websocket.send(
                     WsMessage(
                         method=Methods.SUBSCRIBE,
-                        data=ExecutionSubscription(graph_id="asdasd").model_dump(),
+                        data=ExecutionSubscription(graph_id=graph_id).model_dump(),
                     ).model_dump_json()
                 )
                 while True:
                     response = await websocket.recv()
                     print(f"Response from server: {response}")
-                    await websocket.close()
             except InterruptedError:
                 exit(0)
 
