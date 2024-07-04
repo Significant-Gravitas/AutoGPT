@@ -57,7 +57,7 @@ Make sure to only comment on a relevant post.
         "expected_format": {
             "post_id": "str, the reddit post id",
             "is_relevant": "bool, whether the post is relevant for marketing",
-            "marketing_text": "str, marketing text, this is empty on irrelevant posts",
+            "comment": "str, marketing text, this is empty on irrelevant posts",
         },
     }
     text_matcher_input = {"match": "true", "case_sensitive": False}

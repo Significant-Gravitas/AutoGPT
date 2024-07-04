@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, {useState, useCallback, useEffect, useMemo, useRef} from 'react';
 import ReactFlow, {
   addEdge,
   applyNodeChanges,
@@ -83,6 +83,7 @@ const Flow: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const apiUrl = 'http://localhost:8000';
+  const nodeIdMapping = useRef<{ [uuid: string]: string }>({});
 
   useEffect(() => {
     fetch(`${apiUrl}/blocks`)
@@ -221,6 +222,44 @@ const Flow: React.FC = () => {
   return inputData;
 };
 
+const simulateNodeExecution = (nodes: Node<CustomNodeData>[]) => {
+  let currentStep = 0;
+  const totalSteps = 3; // Number of steps for the simulation
+
+  const interval = setInterval(() => {
+    if (currentStep >= totalSteps) {
+      clearInterval(interval);
+      setNodes((nds) =>
+        nds.map((node) => ({
+          ...node,
+          data: {
+            ...node.data,
+            status: 'COMPLETED',
+          },
+        }))
+      );
+      console.log('All nodes completed execution');
+      alert('Agent ran successfully!');
+      return;
+    }
+
+    setNodes((nds) =>
+      nds.map((node) => {
+        let status = 'QUEUED';
+        if (currentStep === 1) status = 'RUNNING';
+        if (currentStep === 2) status = 'COMPLETED';
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            status: status,
+          },
+        };
+      })
+    );
+    currentStep += 1;
+  }, 1000); // Interval between steps (1 second)
+};
 
   const runAgent = async () => {
     try {
@@ -310,9 +349,10 @@ const Flow: React.FC = () => {
         }
 
         const data = await response.json();
-        updateNodesWithExecutionData(data);
+        // updateNodesWithExecutionData(data);
 
         if (data.every((node: any) => node.status === 'COMPLETED')) {
+          simulateNodeExecution(nodes);
           console.log('All nodes completed execution');
         } else {
           setTimeout(pollExecution, 1000);
@@ -327,10 +367,19 @@ const Flow: React.FC = () => {
   };
 
 
-const updateNodesWithExecutionData = (executionData: any[]) => {
+const updateNodesWithExecutionData = useCallback((executionData: any[]) => {
+  console.log("Updating nodes with execution data:", executionData);
+
   setNodes((nds) =>
     nds.map((node) => {
-      const nodeExecution = executionData.find((exec) => exec.node_id === node.id);
+      // Find the corresponding execution data for the current node
+      const nodeExecution = executionData.find((exec) => {
+        console.log("Checking exec.node_id:", exec.block_id, "against node.id:", node.data.block_id);
+        return nodeIdMapping.current[exec.block_id] === node.data.block_id;
+      });
+
+      console.log("Node:", node, "Node Execution:", nodeExecution);
+
       if (nodeExecution) {
         return {
           ...node,
@@ -345,7 +394,7 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
       return node;
     })
   );
-};
+}, [setNodes]);
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
