@@ -22,21 +22,16 @@ serve = "autogpt.app.cli:serve"
 python = "^3.10"
 autogpt-forge = { path = "../forge", develop = true }
 # autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "forge"}
-beautifulsoup4 = "^4.12.2"
 click = "*"
 colorama = "^0.4.6"
 distro = "^1.8.0"
 fastapi = "^0.109.1"
 gitpython = "^3.1.32"
-google-api-python-client = "*"
 hypercorn = "^0.14.4"
 openai = "^1.7.2"
 orjson = "^3.8.10"
-Pillow = "*"
 pydantic = "^2.7.2"
-python-docx = "*"
 python-dotenv = "^1.0.0"
-pyyaml = "^6.0"
 requests = "*"
 sentry-sdk = "^1.40.4"
 
@@ -55,9 +50,7 @@ pre-commit = "*"
 pyright = "^1.1.364"
 
 # Type stubs
-types-beautifulsoup4 = "*"
 types-colorama = "*"
-types-Pillow = "*"
 
 # Testing
 pytest = "*"
@@ -66,7 +59,6 @@ pytest-cov = "*"
 pytest-mock = "*"
 pytest-recording = "*"
 pytest-xdist = "*"
-vcrpy = { git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master" }
 
 [tool.poetry.group.build]
 optional = true
@@ -97,7 +89,3 @@ skip_glob = ["data"]
 pythonVersion = "3.10"
 exclude = ["data/**", "**/node_modules", "**/__pycache__", "**/.*"]
 ignore = ["../forge/**"]
-
-
-[tool.pytest.ini_options]
-markers = ["slow", "requires_openai_api_key", "requires_huggingface_api_key"]

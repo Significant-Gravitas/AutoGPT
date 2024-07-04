@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
+
 import click
 
 from agbenchmark.reports.processing.report_types import Report
 
 
 @click.command()
-@click.argument("report_json_file", type=click.Path(exists=True, dir_okay=False))
+@click.argument(
+    "report_json_file", type=click.Path(exists=True, dir_okay=False, path_type=Path)
+)
 def print_markdown_report(report_json_file: Path):
     """
     Generates a Markdown report from a given report.json file.

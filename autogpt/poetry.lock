@@ -319,7 +319,7 @@ duckduckgo-search = "^6.1.7"
 en-core-web-sm = {url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl"}
 fastapi = "^0.109.1"
 gitpython = "^3.1.32"
-google-api-python-client = "*"
+google-api-python-client = "^2.116"
 google-cloud-logging = "^3.8.0"
 google-cloud-storage = "^2.13.0"
 groq = "^0.8.0"
@@ -350,7 +350,7 @@ watchdog = "4.0.0"
 webdriver-manager = "^4.0.1"
 
 [package.extras]
-benchmark = ["agbenchmark @ file:///Users/czerwinski/Projects/AutoGPT/benchmark"]
+benchmark = ["agbenchmark @ file:///home/reinier/code/agpt/AutoGPT/benchmark"]
 
 [package.source]
 type = "directory"
@@ -1713,20 +1713,20 @@ grpcio-gcp = ["grpcio-gcp (>=0.2.2,<1.0.dev0)"]
 
 [[package]]
 name = "google-api-python-client"
-version = "2.114.0"
+version = "2.136.0"
 description = "Google API Client Library for Python"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "google-api-python-client-2.114.0.tar.gz", hash = "sha256:e041bbbf60e682261281e9d64b4660035f04db1cccba19d1d68eebc24d1465ed"},
-    {file = "google_api_python_client-2.114.0-py2.py3-none-any.whl", hash = "sha256:690e0bb67d70ff6dea4e8a5d3738639c105a478ac35da153d3b2a384064e9e1a"},
+    {file = "google-api-python-client-2.136.0.tar.gz", hash = "sha256:161c722c8864e7ed39393e2b7eea76ef4e1c933a6a59f9d7c70409b6635f225d"},
+    {file = "google_api_python_client-2.136.0-py2.py3-none-any.whl", hash = "sha256:5a554c8b5edf0a609b905d89d7ced82e8f6ac31da1e4d8d5684ef63dbc0e49f5"},
 ]
 
 [package.dependencies]
 google-api-core = ">=1.31.5,<2.0.dev0 || >2.3.0,<3.0.0.dev0"
-google-auth = ">=1.19.0,<3.0.0.dev0"
-google-auth-httplib2 = ">=0.1.0"
-httplib2 = ">=0.15.0,<1.dev0"
+google-auth = ">=1.32.0,<2.24.0 || >2.24.0,<2.25.0 || >2.25.0,<3.0.0.dev0"
+google-auth-httplib2 = ">=0.2.0,<1.0.0"
+httplib2 = ">=0.19.0,<1.dev0"
 uritemplate = ">=3.0.1,<5"
 
 [[package]]
@@ -6066,20 +6066,6 @@ doc = ["cairosvg (>=2.5.2,<3.0.0)", "mdx-include (>=1.4.1,<2.0.0)", "mkdocs (>=1
 test = ["black (>=22.3.0,<23.0.0)", "coverage (>=6.2,<7.0)", "isort (>=5.0.6,<6.0.0)", "mypy (==0.910)", "pytest (>=4.4.0,<8.0.0)", "pytest-cov (>=2.10.0,<5.0.0)", "pytest-sugar (>=0.9.4,<0.10.0)", "pytest-xdist (>=1.32.0,<4.0.0)", "rich (>=10.11.0,<14.0.0)", "shellingham (>=1.3.0,<2.0.0)"]
 
 [[package]]
-name = "types-beautifulsoup4"
-version = "4.12.0.20240106"
-description = "Typing stubs for beautifulsoup4"
-optional = false
-python-versions = ">=3.8"
-files = [
-    {file = "types-beautifulsoup4-4.12.0.20240106.tar.gz", hash = "sha256:98d628985b71b140bd3bc22a8cb0ab603c2f2d08f20d37925965eb4a21739be8"},
-    {file = "types_beautifulsoup4-4.12.0.20240106-py3-none-any.whl", hash = "sha256:cbdd60ab8aeac737ac014431b6e921b43e84279c0405fdd25a6900bb0e71da5b"},
-]
-
-[package.dependencies]
-types-html5lib = "*"
-
-[[package]]
 name = "types-colorama"
 version = "0.4.15.20240106"
 description = "Typing stubs for colorama"
@@ -6088,28 +6074,6 @@ python-versions = ">=3.8"
 files = [
     {file = "types-colorama-0.4.15.20240106.tar.gz", hash = "sha256:49096b4c4cbfcaa11699a0470c36e4f5631f193fb980188e013ea64445d35656"},
     {file = "types_colorama-0.4.15.20240106-py3-none-any.whl", hash = "sha256:18294bc18f60dc0b4895de8119964a5d895f5e180c2d1308fdd33009c0fa0f38"},
-]
-
-[[package]]
-name = "types-html5lib"
-version = "1.1.11.20240106"
-description = "Typing stubs for html5lib"
-optional = false
-python-versions = ">=3.8"
-files = [
-    {file = "types-html5lib-1.1.11.20240106.tar.gz", hash = "sha256:fc3a1b18eb601b3eeaf92c900bd67675c0a4fa1dd1d2a2893ebdb46923547ee9"},
-    {file = "types_html5lib-1.1.11.20240106-py3-none-any.whl", hash = "sha256:61993cb89220107481e0f1da65c388ff8cf3d8c5f6e8483c97559639a596b697"},
-]
-
-[[package]]
-name = "types-pillow"
-version = "10.2.0.20240111"
-description = "Typing stubs for Pillow"
-optional = false
-python-versions = ">=3.8"
-files = [
-    {file = "types-Pillow-10.2.0.20240111.tar.gz", hash = "sha256:e8d359bfdc5a149a3c90a7e153cb2d0750ddf7fc3508a20dfadabd8a9435e354"},
-    {file = "types_Pillow-10.2.0.20240111-py3-none-any.whl", hash = "sha256:1f4243b30c143b56b0646626f052e4269123e550f9096cdfb5fbd999daee7dbb"},
 ]
 
 [[package]]
@@ -6793,4 +6757,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "38a549db0d7726a14e3f990206928b6187e009aee31755b7286ede1c568d359b"
+content-hash = "b3d4efee5861b32152024dada1ec61f4241122419cb538012c00a6ed55ac8a4b"
