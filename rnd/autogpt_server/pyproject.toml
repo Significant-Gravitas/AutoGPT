@@ -26,6 +26,9 @@ apscheduler = "^3.10.4"
 croniter = "^2.0.5"
 pytest-asyncio = "^0.23.7"
 pydantic-settings = "^2.3.4"
+praw = "^7.7.1"
+openai = "^1.35.7"
+jsonref = "^1.1.0"
 
 
 [tool.poetry.group.dev.dependencies]
