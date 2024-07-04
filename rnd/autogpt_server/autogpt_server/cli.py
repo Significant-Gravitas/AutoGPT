@@ -157,6 +157,7 @@ def execute(graph_id: str):
     Create an event graph
     """
     import requests
+
     headers = {"Content-Type": "application/json"}
 
     execute_url = f"http://0.0.0.0:8000/graphs/{graph_id}/execute"
@@ -188,12 +189,12 @@ def websocket(server_address: str, graph_id: str):
         uri = f"ws://{server_address}"
         async with websockets.connect(uri) as websocket:
             try:
-                await websocket.send(
-                    WsMessage(
-                        method=Methods.SUBSCRIBE,
-                        data=ExecutionSubscription(graph_id=graph_id).model_dump(),
-                    ).model_dump_json()
-                )
+                msg = WsMessage(
+                    method=Methods.SUBSCRIBE,
+                    data=ExecutionSubscription(graph_id=graph_id).model_dump(),
+                ).model_dump_json()
+                await websocket.send(msg)
+                print(f"Sending: {msg}")
                 while True:
                     response = await websocket.recv()
                     print(f"Response from server: {response}")
