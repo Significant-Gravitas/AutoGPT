@@ -13,9 +13,6 @@ import ReactFlow, {
   Connection,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { ChevronLeftIcon, ChevronRightIcon, PlayIcon } from '@radix-ui/react-icons';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
 import CustomNode from './CustomNode';
 import './flow.css';
 
