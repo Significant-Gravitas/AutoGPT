@@ -96,7 +96,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
     ):
         self.config = configuration
         self.response_schema = JSONSchema.from_dict(
-            CodeFlowAgentActionProposal.schema()
+            CodeFlowAgentActionProposal.model_json_schema()
         )
         self.logger = logger
         self.commands: Sequence[Command] = []  # Sequence -> disallow list modification
@@ -175,7 +175,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
         )
 
     def response_format_instruction(self) -> tuple[str, str]:
-        response_schema = self.response_schema.copy(deep=True)
+        response_schema = self.response_schema.model_copy(deep=True)
         assert response_schema.properties
 
         # Unindent for performance
@@ -260,7 +260,9 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
         )
         assistant_reply_dict = extract_dict_from_json(response.content)
 
-        parsed_response = CodeFlowAgentActionProposal.parse_obj(assistant_reply_dict)
+        parsed_response = CodeFlowAgentActionProposal.model_validate(
+            assistant_reply_dict
+        )
         if not parsed_response.python_code:
             raise ValueError("python_code is empty")
 
@@ -299,8 +301,8 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
             available_functions=available_functions,
         ).validate_code(parsed_response.python_code)
 
-        clean_response = response.copy()
-        clean_response.content = parsed_response.json(indent=4)
+        clean_response = response.model_copy()
+        clean_response.content = parsed_response.model_dump_json(indent=4)
 
         # TODO: prevent combining finish with other functions
         if _finish_call := re.search(
