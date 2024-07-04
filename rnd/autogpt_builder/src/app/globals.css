@@ -25,3 +25,9 @@ body {
     )
     rgb(var(--background-start-rgb));
 }
+
+@layer components {
+  .surface {
+    @apply border rounded-md border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-950;
+  }
+}

@@ -1,10 +1,11 @@
 .custom-node {
-  padding: 20px;
+  padding: 15px;
   border: 2px solid #fff;
-  border-radius: 20px;
-  background: #333;
+  border-radius: 12px;
+  background: #2c2c2c;
   color: #e0e0e0;
-  width: 250px;
+  width: 300px; /* Adjust width for better layout */
+  box-sizing: border-box; /* Ensure padding doesn't affect overall width */
 }
 
 .node-header {
@@ -28,9 +29,8 @@
 
 .node-content {
   display: flex;
-  flex-direction: row;
-  justify-content: space-between;
-  gap: 20px;
+  flex-direction: column; /* Use column to stack elements */
+  gap: 10px;
 }
 
 .input-section {
@@ -136,4 +136,50 @@
   color: #d9534f;
   font-size: 12px;
   margin-top: 5px;
+}
+
+.object-input {
+  margin-left: 10px;
+  border-left: 1px solid #555;
+  padding-left: 10px;
+}
+
+.nested-input {
+  margin-top: 5px;
+}
+
+.key-value-input {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.key-value-input input {
+  flex-grow: 1;
+}
+
+@keyframes runningAnimation {
+  0% { background-color: #f39c12; }
+  50% { background-color: #e67e22; }
+  100% { background-color: #f39c12; }
+}
+
+.running {
+  animation: runningAnimation 1s infinite;
+}
+
+/* Animation for completed status */
+@keyframes completedAnimation {
+  0% { background-color: #27ae60; }
+  100% { background-color: #2ecc71; }
+}
+
+.completed {
+  animation: completedAnimation 1s infinite;
+}
+
+/* Add more styles for better look */
+.custom-node {
+  transition: all 0.3s ease-in-out;
 }

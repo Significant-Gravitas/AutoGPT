@@ -62,6 +62,8 @@ input::placeholder, textarea::placeholder {
 }
 
 .sidebar {
+  /* @apply surface p-3; */
+
   position: fixed;
   top: 0;
   left: -600px;
@@ -77,10 +79,6 @@ input::placeholder, textarea::placeholder {
 
 .sidebar.open {
   left: 0;
-}
-
-.sidebar h3 {
-  margin: 0 0 20px;
 }
 
 .sidebarNodeRowStyle {

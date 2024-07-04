@@ -6,6 +6,7 @@ import uvicorn
 
 from contextlib import asynccontextmanager
 from fastapi import APIRouter, Body, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from autogpt_server.data import db, execution, block
 from autogpt_server.data.graph import (
@@ -27,6 +28,7 @@ class AgentServer(AppProcess):
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
         await db.connect()
+        await block.initialize_blocks()
         yield
         await db.disconnect()
 
@@ -40,6 +42,14 @@ class AgentServer(AppProcess):
             summary="AutoGPT Agent Server",
             version="0.1",
             lifespan=self.lifespan,
+        )
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],  # Allows all origins
+            allow_credentials=True,
+            allow_methods=["*"],  # Allows all methods
+            allow_headers=["*"],  # Allows all headers
         )
 
         # Define the API routes
@@ -112,8 +122,8 @@ class AgentServer(AppProcess):
     def execution_scheduler_client(self) -> ExecutionScheduler:
         return get_service_client(ExecutionScheduler)
 
-    async def get_graph_blocks(self) -> list[dict]:
-        return [v.to_dict() for v in await block.get_blocks()]
+    def get_graph_blocks(self) -> list[dict]:
+        return [v.to_dict() for v in block.get_blocks()]
 
     async def get_graphs(self) -> list[str]:
         return await get_graph_ids()
@@ -128,10 +138,13 @@ class AgentServer(AppProcess):
         # TODO: replace uuid generation here to DB generated uuids.
         graph.id = str(uuid.uuid4())
         id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
+
         for node in graph.nodes:
             node.id = id_map[node.id]
-            node.input_nodes = [Link(k, id_map[v]) for k, v in node.input_nodes]
-            node.output_nodes = [Link(k, id_map[v]) for k, v in node.output_nodes]
+
+        for link in graph.links:
+            link.source_id = id_map[link.source_id]
+            link.sink_id = id_map[link.sink_id]
 
         return await create_graph(graph)
 
