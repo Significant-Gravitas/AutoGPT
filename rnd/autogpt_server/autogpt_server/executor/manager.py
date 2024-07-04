@@ -77,7 +77,7 @@ def execute_node(
     execution_result = wait(get_execution_result(
                 graph_exec_id, node_exec_id
             ))
-    agent_server_client.send_execution_update(execution_result.model_dump_json())  # type: ignore
+    agent_server_client.send_execution_update(execution_result.model_dump())  # type: ignore
 
     try:
         for output_name, output_data in node_block.execute(exec_data):
@@ -89,7 +89,7 @@ def execute_node(
             execution_result = wait(get_execution_result(
                 graph_exec_id, node_exec_id
             ))
-            agent_server_client.send_execution_update(execution_result.model_dump_json())  # type: ignore
+            agent_server_client.send_execution_update(execution_result.model_dump())  # type: ignore
 
             for execution in enqueue_next_nodes(
                 loop, node, output_name, output_data, graph_exec_id
@@ -105,7 +105,7 @@ def execute_node(
         execution_result = wait(get_execution_result(
                 graph_exec_id, node_exec_id
             ))
-        agent_server_client.send_execution_update(execution_result.model_dump_json())  # type: ignore
+        agent_server_client.send_execution_update(execution_result.model_dump())  # type: ignore
 
         raise e
 
@@ -286,7 +286,7 @@ class ExecutionManager(AppService):
                 node_exec.graph_exec_id, node_exec.node_exec_id
             ))
             try:
-                self.agent_server_client.send_execution_update(execution_result)  # type: ignore
+                self.agent_server_client.send_execution_update(execution_result.model_dump())  # type: ignore
             except Exception as e:
                 raise(Exception(f"Error sending execution of type: {type(execution_result)} update: {e} "))
 
