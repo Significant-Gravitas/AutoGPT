@@ -105,5 +105,5 @@ class RedditPostCommentBlock(Block):
     def run(self, input_data: Input) -> BlockOutput:
         client = get_praw(input_data.creds)
         submission = client.submission(id=input_data.data["post_id"])
-        comment = submission.reply(input_data.data["marketing_text"])
+        comment = submission.reply(input_data.data["comment"])
         yield "comment_id", comment.id
