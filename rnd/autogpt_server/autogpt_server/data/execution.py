@@ -7,6 +7,7 @@ from typing import Any
 
 from prisma.models import (
     AgentGraphExecution,
+    AgentNode,
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
 )
@@ -49,6 +50,7 @@ class ExecutionQueue:
 
 
 class ExecutionResult(BaseModel):
+    graph_id: str
     graph_exec_id: str
     node_exec_id: str
     node_id: str
@@ -70,7 +72,10 @@ class ExecutionResult(BaseModel):
         for data in execution.Output or []:
             output_data[data.name].append(json.loads(data.data))
 
+        node: AgentNode | None = execution.AgentNode
+        assert node, "Agent Node is None"
         return ExecutionResult(
+            graph_id=node.agentGraphId,
             graph_exec_id=execution.agentGraphExecutionId,
             node_exec_id=execution.id,
             node_id=execution.agentNodeId,
@@ -220,7 +225,7 @@ async def get_execution_result(
 ) -> ExecutionResult:
     execution = await AgentNodeExecution.prisma().find_first_or_raise(
         where={"agentGraphExecutionId": graph_exec_id, "id": node_exec_id},
-        include={"Input": True, "Output": True},
+        include={"Input": True, "Output": True, "AgentNode": True},
         order={"addedTime": "asc"},
     )
     res = ExecutionResult.from_db(execution)

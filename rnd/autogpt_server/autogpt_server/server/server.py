@@ -1,32 +1,38 @@
-from typing import Annotated, Any, Dict
+import asyncio
 import uuid
+from contextlib import asynccontextmanager
+from typing import Annotated, Any, Dict
+
+import uvicorn
+from fastapi import APIRouter, Body, FastAPI, HTTPException, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-import uvicorn
 
-from contextlib import asynccontextmanager
-from fastapi import APIRouter, Body, FastAPI, HTTPException, WebSocket
-
-from autogpt_server.data import db, execution, block
-from autogpt_server.data.graph import (
-    create_graph,
-    get_graph,
-    get_graph_ids,
-    Graph,
-    Link,
-)
+from autogpt_server.data import block, db, execution
+from autogpt_server.data.graph import (Graph, Link, create_graph, get_graph,
+                                       get_graph_ids)
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
+from autogpt_server.server.conn_manager import ConnectionManager
+from autogpt_server.server.ws_api import websocket_router as ws_impl
 from autogpt_server.util.data import get_frontend_path
-from autogpt_server.util.process import AppProcess
-from autogpt_server.util.service import get_service_client, expose  # type: ignore
-from autogpt_server.server.routes import websocket_endpoint as ws_impl
+from autogpt_server.util.service import expose  # type: ignore
+from autogpt_server.util.service import AppService, get_service_client
 from autogpt_server.util.settings import Settings
 
 
-class AgentServer(AppProcess):
+class AgentServer(AppService):
+    event_queue: asyncio.Queue[execution.ExecutionResult] = asyncio.Queue()
+    manager = ConnectionManager()
+
+    async def event_broadcaster(self):
+        while True:
+            event: execution.ExecutionResult = await self.event_queue.get()
+            await self.manager.send_execution_result(event)
+
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
         await db.connect()
+        asyncio.create_task(self.event_broadcaster())
         yield
         await db.disconnect()
 
@@ -106,7 +112,7 @@ class AgentServer(AppProcess):
 
         @app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):  # type: ignore
-            await ws_impl(websocket)
+            await ws_impl(websocket, self.manager)
 
         uvicorn.run(app, host="0.0.0.0", port=8000)
 
@@ -183,8 +189,11 @@ class AgentServer(AppProcess):
         return execution_scheduler.get_execution_schedules(graph_id)  # type: ignore
 
     @expose
-    def send_execution_update(self, execution_results: execution.ExecutionResult):
-        print(f"Recieved execution update: {execution_results}")
+    async def send_execution_update(self, execution_result_dict: dict[Any, Any]):
+        execution_result = execution.ExecutionResult(**execution_result_dict)
+        self.shared_event_loop.run_until_complete(
+            self.event_queue.put(execution_result)
+        )
 
     def update_configuration(
         self,

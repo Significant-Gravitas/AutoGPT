@@ -117,7 +117,7 @@ def websocket(server_address: str):
     """
     import asyncio
     import websockets
-    from autogpt_server.server.routes import Methods, WsMessage, ExecutionSubscription
+    from autogpt_server.server.ws_api import Methods, WsMessage, ExecutionSubscription
 
     async def send_message(server_address: str):
         uri = f"ws://{server_address}"
