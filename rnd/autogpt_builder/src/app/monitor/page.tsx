@@ -147,7 +147,20 @@ const FlowRunsStats = (
     flowRuns: FlowRun[],
   }
 ) => {
+  /* "dateMin": since the first flow in the dataset
+   * number > 0: custom date (unix timestamp)
+   * number < 0: offset relative to Date.now() (in seconds) */
   const [statsSince, setStatsSince] = useState<number | "dataMin">(-24*3600)
+  const statsSinceTimestamp = (  // unix timestamp or null
+    typeof(statsSince) == "string"
+      ? null
+      : statsSince < 0
+        ? Date.now() + (statsSince*1000)
+        : statsSince
+  )
+  const filteredFlowRuns = statsSinceTimestamp != null
+    ? flowRuns.filter(fr => fr.startTime > statsSinceTimestamp)
+    : flowRuns;
 
   return (
     <Card>
@@ -175,6 +188,15 @@ const FlowRunsStats = (
       </CardHeader>
       <CardContent>
         <FlowRunsTimeline flows={flows} flowRuns={flowRuns} dataMin={statsSince} />
+        <Card className="p-3">
+          <p><strong>Total runs:</strong> {filteredFlowRuns.length}</p>
+          <p>
+            <strong>Total duration:</strong> {
+              filteredFlowRuns.reduce((total, run) => total + run.duration, 0)
+            } seconds
+          </p>
+          <p><strong>Total cost:</strong> €1,23</p>{/* TODO: implement */}
+        </Card>
       </CardContent>
     </Card>
   )
