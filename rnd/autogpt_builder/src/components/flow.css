@@ -16,6 +16,31 @@ code {
     monospace;
 }
 
+button {
+  background-color: #444;
+  color: #e0e0e0;
+  padding: 10px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+button:hover {
+  background-color: #666;
+}
+
+input, textarea {
+  background-color: #333;
+  color: #e0e0e0;
+  border: 1px solid #555;
+  padding: 8px;
+  border-radius: 4px;
+  width: calc(100% - 18px);
+  box-sizing: border-box;
+  margin-top: 5px;
+}
+
 input::placeholder, textarea::placeholder {
   color: #aaa;
 }
