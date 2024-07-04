@@ -36,7 +36,7 @@ class AgentServer(AppService):
         yield
         await db.disconnect()
 
-    def run(self):
+    def run_service(self):
         app = FastAPI(
             title="AutoGPT Agent Server",
             description=(
@@ -189,9 +189,9 @@ class AgentServer(AppService):
         return execution_scheduler.get_execution_schedules(graph_id)  # type: ignore
 
     @expose
-    async def send_execution_update(self, execution_result_dict: dict[Any, Any]):
+    def send_execution_update(self, execution_result_dict: dict[Any, Any]):
         execution_result = execution.ExecutionResult(**execution_result_dict)
-        self.shared_event_loop.run_until_complete(
+        self.run_and_wait(
             self.event_queue.put(execution_result)
         )
 

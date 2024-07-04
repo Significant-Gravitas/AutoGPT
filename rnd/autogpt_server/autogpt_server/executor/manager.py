@@ -19,7 +19,6 @@ from autogpt_server.data.execution import (
 )
 from autogpt_server.data.graph import Node, get_node, get_graph
 from autogpt_server.util.service import AppService, expose, get_service_client  # type: ignore
-from autogpt_server.server import AgentServer
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +32,7 @@ ExecutionStream = Generator[Execution, None, None]
 
 
 def execute_node(
-    loop: asyncio.AbstractEventLoop, data: Execution, agent_server_client: AgentServer
+    loop: asyncio.AbstractEventLoop, data: Execution
 ) -> ExecutionStream:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
@@ -46,6 +45,8 @@ def execute_node(
     Returns:
         The subsequent node to be enqueued, or None if there is no subsequent node.
     """
+    from autogpt_server.server.server import AgentServer
+    agent_server_client = get_service_client(AgentServer) 
     graph_exec_id = data.graph_exec_id
     node_exec_id = data.node_exec_id
     exec_data = data.data
@@ -73,8 +74,10 @@ def execute_node(
     wait(execution_update(node_exec_id, ExecutionStatus.RUNNING))
 
     # TODO: Remove need for multiple database lookups
-    execution_result = get_execution_result(graph_exec_id, node_exec_id)
-    agent_server_client.send_execution_update(execution_result)  # type: ignore
+    execution_result = wait(get_execution_result(
+                graph_exec_id, node_exec_id
+            ))
+    agent_server_client.send_execution_update(execution_result.model_dump_json())  # type: ignore
 
     try:
         for output_name, output_data in node_block.execute(exec_data):
@@ -83,8 +86,10 @@ def execute_node(
             wait(upsert_execution_output(node_exec_id, output_name, output_data))
 
             # TODO: Remove need for multiple database lookups
-            execution_result = get_execution_result(graph_exec_id, node_exec_id)
-            agent_server_client.send_execution_update(execution_result)  # type: ignore
+            execution_result = wait(get_execution_result(
+                graph_exec_id, node_exec_id
+            ))
+            agent_server_client.send_execution_update(execution_result.model_dump_json())  # type: ignore
 
             for execution in enqueue_next_nodes(
                 loop, node, output_name, output_data, graph_exec_id
@@ -97,8 +102,10 @@ def execute_node(
         wait(upsert_execution_output(node_exec_id, "error", error_msg))
 
         # TODO: Remove need for multiple database lookups
-        execution_result = get_execution_result(graph_exec_id, node_exec_id)
-        agent_server_client.send_execution_update(execution_result)  # type: ignore
+        execution_result = wait(get_execution_result(
+                graph_exec_id, node_exec_id
+            ))
+        agent_server_client.send_execution_update(execution_result.model_dump_json())  # type: ignore
 
         raise e
 
@@ -196,7 +203,8 @@ class Executor:
     loop: asyncio.AbstractEventLoop
 
     @property
-    def agent_server_client(self) -> AgentServer:
+    def agent_server_client(self) -> Any:
+        from autogpt_server.server.server import AgentServer
         return get_service_client(AgentServer)  # type: ignore
 
     @classmethod
@@ -209,7 +217,7 @@ class Executor:
         prefix = get_log_prefix(data.graph_exec_id, data.node_exec_id)
         try:
             logger.warning(f"{prefix} Start execution")
-            for execution in execute_node(cls.loop, data, cls.agent_server_client):  # type: ignore
+            for execution in execute_node(cls.loop, data):  # type: ignore
                 q.add(execution)
             return True
         except Exception as e:
@@ -236,7 +244,8 @@ class ExecutionManager(AppService):
                 )
 
     @property
-    def agent_server_client(self) -> AgentServer:
+    def agent_server_client(self) -> Any:
+        from autogpt_server.server.server import AgentServer
         return get_service_client(AgentServer)  # type: ignore
 
     @expose
@@ -273,10 +282,13 @@ class ExecutionManager(AppService):
                 )
             )
             # TODO: Remove need for multiple database lookups
-            execution_result = get_execution_result(
+            execution_result = self.run_and_wait(get_execution_result(
                 node_exec.graph_exec_id, node_exec.node_exec_id
-            )
-            self.agent_server_client.send_execution_update(execution_result)  # type: ignore
+            ))
+            try:
+                self.agent_server_client.send_execution_update(execution_result)  # type: ignore
+            except Exception as e:
+                raise(Exception(f"Error sending execution of type: {type(execution_result)} update: {e} "))
 
             executions.append(
                 {

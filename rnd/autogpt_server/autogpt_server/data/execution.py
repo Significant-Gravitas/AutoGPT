@@ -73,9 +73,9 @@ class ExecutionResult(BaseModel):
             output_data[data.name].append(json.loads(data.data))
 
         node: AgentNode | None = execution.AgentNode
-        assert node, "Agent Node is None"
+        
         return ExecutionResult(
-            graph_id=node.agentGraphId,
+            graph_id=node.agentGraphId if node else "",
             graph_exec_id=execution.agentGraphExecutionId,
             node_exec_id=execution.id,
             node_id=execution.agentNodeId,
