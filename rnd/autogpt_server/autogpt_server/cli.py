@@ -42,7 +42,7 @@ def write_pid(pid: int):
 
 class MainApp(AppProcess):
     def run(self):
-        app.main(silent=True) # type: ignore
+        app.main(silent=True)  # type: ignore
 
 
 @click.group()
@@ -66,12 +66,12 @@ def start():
         os.remove(get_pid_path())
 
     print("Starting server")
-    pid = MainApp().start(background=True, silent=True) # type: ignore
+    pid = MainApp().start(background=True, silent=True)  # type: ignore
     print(f"Server running in process: {pid}")
 
     write_pid(pid)
     print("done")
-    os._exit(status=0) # type: ignore
+    os._exit(status=0)  # type: ignore
 
 
 @main.command()
@@ -102,6 +102,56 @@ def test():
 
 
 @test.command()
+@click.argument("server_address")
+def graph(server_address: str):
+    """
+    Create an event graph
+    """
+    from autogpt_server.data import block, graph
+    import requests
+
+    nodes = [
+        graph.Node(block_id=block.ParrotBlock.id),
+        graph.Node(block_id=block.ParrotBlock.id),
+        graph.Node(
+            block_id=block.TextFormatterBlock.id,
+            input_default={
+                "format": "{texts[0]},{texts[1]},{texts[2]}",
+                "texts_$_3": "!!!",
+            },
+        ),
+        graph.Node(block_id=block.PrintingBlock.id),
+    ]
+    nodes[0].connect(nodes[2], "output", "texts_$_1")
+    nodes[1].connect(nodes[2], "output", "texts_$_2")
+    nodes[2].connect(nodes[3], "combined_text", "text")
+
+    test_graph = graph.Graph(
+        name="TestGraph",
+        description="Test graph",
+        nodes=nodes,
+    )
+
+    url = f"{server_address}/graphs"
+    headers = {"Content-Type": "application/json"}
+    data = test_graph.model_dump_json()
+
+    response = requests.post(url, headers=headers, data=data)
+
+    if response.status_code == 200:
+        print("Graph sent successfully")
+        print(response.json()["id"])
+        execute_url = f"{server_address}/graphs/{response.json()['id']}/execute"
+        text = "Hello, World!"
+        input_data = {"input": text}
+        response = requests.post(execute_url, headers=headers, json=input_data)
+
+    else:
+        print("Failed to send graph")
+        print(f"Response: {response.text}")
+
+
+@test.command()
 def event():
     """
     Send an event to the running server
@@ -126,9 +176,7 @@ def websocket(server_address: str):
                 await websocket.send(
                     WsMessage(
                         method=Methods.SUBSCRIBE,
-                        data=ExecutionSubscription(
-                            channel="test", graph_id="asdasd", run_id="asdsa"
-                        ).model_dump(),
+                        data=ExecutionSubscription(graph_id="asdasd").model_dump(),
                     ).model_dump_json()
                 )
                 while True:
