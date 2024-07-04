@@ -1,19 +1,23 @@
 import json
 
 import pytest
-from forge.components.web.search import WebSearchComponent
-from forge.utils.exceptions import ConfigurationError
 from googleapiclient.errors import HttpError
+from httplib2 import Response
 from pydantic import SecretStr
 
-from autogpt.agents.agent import Agent
+from forge.utils.exceptions import ConfigurationError
+
+from . import WebSearchComponent
 
 
 @pytest.fixture
-def web_search_component(agent: Agent):
-    agent.web_search.config.google_api_key = SecretStr("test")
-    agent.web_search.config.google_custom_search_engine_id = SecretStr("test")
-    return agent.web_search
+def web_search_component():
+    component = WebSearchComponent()
+    if component.config.google_api_key is None:
+        component.config.google_api_key = SecretStr("test")
+    if component.config.google_custom_search_engine_id is None:
+        component.config.google_custom_search_engine_id = SecretStr("test")
+    return component
 
 
 @pytest.mark.parametrize(
@@ -134,16 +138,11 @@ def test_google_official_search_errors(
     error_msg,
     web_search_component: WebSearchComponent,
 ):
-    class resp:
-        def __init__(self, _status, _reason):
-            self.status = _status
-            self.reason = _reason
-
     response_content = {
         "error": {"code": http_code, "message": error_msg, "reason": "backendError"}
     }
     error = HttpError(
-        resp=resp(http_code, error_msg),
+        resp=Response({"status": http_code, "reason": error_msg}),
         content=str.encode(json.dumps(response_content)),
         uri="https://www.googleapis.com/customsearch/v1?q=invalid+query&cx",
     )

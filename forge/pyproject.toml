@@ -25,7 +25,7 @@ duckduckgo-search = "^6.1.7"
 en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl" }
 fastapi = "^0.109.1"
 gitpython = "^3.1.32"
-google-api-python-client = "*"
+google-api-python-client = "^2.116"
 google-cloud-logging = "^3.8.0"
 google-cloud-storage = "^2.13.0"
 groq = "^0.8.0"
@@ -67,6 +67,7 @@ pre-commit = "^3.3.3"
 
 # Type stubs
 boto3-stubs = { extras = ["s3"], version = "^1.33.6" }
+google-api-python-client-stubs = "^1.24"
 types-beautifulsoup4 = "*"
 types-Pillow = "*"
 types-requests = "^2.31.0.2"
@@ -75,7 +76,10 @@ types-requests = "^2.31.0.2"
 pytest = "^7.4.0"
 pytest-asyncio = "^0.23.3"
 pytest-cov = "^5.0.0"
+pytest-mock = "*"
+pytest-recording = "*"
 mock = "^5.1.0"
+vcrpy = { git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master" }
 
 
 [build-system]
@@ -100,3 +104,4 @@ pythonVersion = "3.10"
 [tool.pytest.ini_options]
 pythonpath = ["forge"]
 testpaths = ["forge", "tests"]
+markers = ["slow"]

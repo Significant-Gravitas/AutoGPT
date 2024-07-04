@@ -19,7 +19,7 @@ from autogpt.app.utils import coroutine
     help="Path to the git repository",
 )
 @coroutine
-async def generate_release_notes(repo_path: Optional[Path] = None):
+async def generate_release_notes(repo_path: Optional[str | Path] = None):
     logger = logging.getLogger(generate_release_notes.name)  # pyright: ignore
 
     repo = Repo(repo_path, search_parent_directories=True)

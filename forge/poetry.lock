@@ -1979,6 +1979,22 @@ httplib2 = ">=0.19.0,<1.dev0"
 uritemplate = ">=3.0.1,<5"
 
 [[package]]
+name = "google-api-python-client-stubs"
+version = "1.25.0"
+description = "Type stubs for google-api-python-client"
+optional = false
+python-versions = ">=3.7,<4.0"
+files = [
+    {file = "google_api_python_client_stubs-1.25.0-py3-none-any.whl", hash = "sha256:2eff1e27b0b2980843f0ed242e430e29a2f7a2808d7b90e971f23e4ea73827a7"},
+    {file = "google_api_python_client_stubs-1.25.0.tar.gz", hash = "sha256:f4d219012afb35e3dfbdcfffcb0b347179045f9f48a8d59ef9d45cc743f300d4"},
+]
+
+[package.dependencies]
+google-api-python-client = ">=2.122.0"
+types-httplib2 = ">=0.22.0.2"
+typing-extensions = ">=3.10.0"
+
+[[package]]
 name = "google-auth"
 version = "2.26.2"
 description = "Google Authentication Library"
@@ -4971,6 +4987,42 @@ pytest = ">=4.6"
 testing = ["fields", "hunter", "process-tests", "pytest-xdist", "virtualenv"]
 
 [[package]]
+name = "pytest-mock"
+version = "3.14.0"
+description = "Thin-wrapper around the mock package for easier use with pytest"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "pytest-mock-3.14.0.tar.gz", hash = "sha256:2719255a1efeceadbc056d6bf3df3d1c5015530fb40cf347c0f9afac88410bd0"},
+    {file = "pytest_mock-3.14.0-py3-none-any.whl", hash = "sha256:0b72c38033392a5f4621342fe11e9219ac11ec9d375f8e2a0c164539e0d70f6f"},
+]
+
+[package.dependencies]
+pytest = ">=6.2.5"
+
+[package.extras]
+dev = ["pre-commit", "pytest-asyncio", "tox"]
+
+[[package]]
+name = "pytest-recording"
+version = "0.13.1"
+description = "A pytest plugin that allows you recording of network interactions via VCR.py"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "pytest_recording-0.13.1-py3-none-any.whl", hash = "sha256:e5c75feb2593eb4ed9362182c6640bfe19004204bf9a6082d62c91b5fdb50a3e"},
+    {file = "pytest_recording-0.13.1.tar.gz", hash = "sha256:1265d679f39263f115968ec01c2a3bfed250170fd1b0d9e288970b2e4a13737a"},
+]
+
+[package.dependencies]
+pytest = ">=3.5.0"
+vcrpy = ">=2.0.1"
+
+[package.extras]
+dev = ["pytest-recording[tests]"]
+tests = ["pytest-httpbin", "pytest-mock", "requests", "werkzeug (==3.0.1)"]
+
+[[package]]
 name = "python-dateutil"
 version = "2.8.2"
 description = "Extensions to the standard Python datetime module"
@@ -6309,6 +6361,17 @@ files = [
 ]
 
 [[package]]
+name = "types-httplib2"
+version = "0.22.0.20240310"
+description = "Typing stubs for httplib2"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "types-httplib2-0.22.0.20240310.tar.gz", hash = "sha256:1eda99fea18ec8a1dc1a725ead35b889d0836fec1b11ae6f1fe05440724c1d15"},
+    {file = "types_httplib2-0.22.0.20240310-py3-none-any.whl", hash = "sha256:8cd706fc81f0da32789a4373a28df6f39e9d5657d1281db4d2fd22ee29e83661"},
+]
+
+[[package]]
 name = "types-pillow"
 version = "10.2.0.20240520"
 description = "Typing stubs for Pillow"
@@ -6476,6 +6539,26 @@ files = [
 [package.extras]
 docs = ["Sphinx (>=4.1.2,<4.2.0)", "sphinx-rtd-theme (>=0.5.2,<0.6.0)", "sphinxcontrib-asyncio (>=0.3.0,<0.4.0)"]
 test = ["Cython (>=0.29.36,<0.30.0)", "aiohttp (==3.9.0b0)", "aiohttp (>=3.8.1)", "flake8 (>=5.0,<6.0)", "mypy (>=0.800)", "psutil", "pyOpenSSL (>=23.0.0,<23.1.0)", "pycodestyle (>=2.9.0,<2.10.0)"]
+
+[[package]]
+name = "vcrpy"
+version = "5.1.0"
+description = "Automatically mock your HTTP interactions to simplify and speed up testing"
+optional = false
+python-versions = ">=3.8"
+files = []
+develop = false
+
+[package.dependencies]
+PyYAML = "*"
+wrapt = "*"
+yarl = "*"
+
+[package.source]
+type = "git"
+url = "https://github.com/Significant-Gravitas/vcrpy.git"
+reference = "master"
+resolved_reference = "bfd15f9d06a516138b673cb481547f3352d9cc43"
 
 [[package]]
 name = "virtualenv"
@@ -7002,4 +7085,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "ae056efba5ba4bf69ae1fe9aa84169e20b89368fbd982c7812c3b0f41d46c666"
+content-hash = "7523abd672967cbe924f045a00bf519ee08c8537fdf2f2191d2928201497d7b7"
