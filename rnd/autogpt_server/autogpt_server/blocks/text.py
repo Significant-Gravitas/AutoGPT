@@ -26,7 +26,7 @@ class TextMatcherBlock(Block):
                 {"text": "ABC", "match": "ab", "data": "X", "case_sensitive": False},
                 {"text": "ABC", "match": "ab", "data": "Y", "case_sensitive": True},
                 {"text": "Hello World!", "match": ".orld.+", "data": "Z"},
-                {"text": "Hello World!", "match": "World!.+", "data": "Z"},
+                {"text": "Hello World!", "match": "World![a-z]+", "data": "Z"},
             ],
             test_output=[
                 ("positive", "X"),

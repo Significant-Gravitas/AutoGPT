@@ -117,3 +117,5 @@ To add a new agent block, you need to create a new class that inherits from `Blo
 * `run` method: the main logic of the block
 * `test_input` & `test_output`: the sample input and output data for the block, this will be used to auto-test the block.
 * You can mock the functions declared in the block using the `test_mock` field for your unit test.
+* If you introduced a new module under the `blocks` package, you need to import the module in `blocks/__init__.py` to make it available to the server.
+* Once you finished creating the block, you can test it by running the test using `pytest test/block/test_block.py`.
