@@ -173,7 +173,7 @@ class WebSearchComponent(
             search_results = result.get("items", [])
 
             # Create a list of only the URLs from the search results
-            search_results_links = [item["link"] for item in search_results]
+            search_results_links = [item["link"] for item in search_results]  # type: ignore # noqa
 
         except HttpError as e:
             # Handle errors in the API call

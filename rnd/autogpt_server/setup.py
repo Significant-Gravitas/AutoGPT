@@ -3,7 +3,7 @@ from pathlib import Path
 from pkgutil import iter_modules
 from typing import Union
 
-from cx_Freeze import Executable, setup # type: ignore
+from cx_Freeze import Executable, setup  # type: ignore
 
 packages = [
     m.name
@@ -57,7 +57,6 @@ def txt_to_rtf(input_file: Union[str, Path], output_file: Union[str, Path]) -> N
 license_file = "LICENSE.rtf"
 txt_to_rtf("../../LICENSE", license_file)
 
-
 setup(
     name="AutoGPT Server",
     url="https://agpt.co",
@@ -102,7 +101,7 @@ setup(
             "applications_shortcut": True,
             "volume_label": "AutoGPTServer",
             "background": "builtin-arrow",
-            
+
             "license": {
                 "default-language": "en_US",
                 "licenses": {"en_US": license_file},
