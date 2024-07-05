@@ -14,7 +14,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import CustomNode from './CustomNode';
-import './flow.css';
+import '../styles/flow.css';
 import AutoGPTServerAPI, { Block } from '@/api/autogpt_server_api';
 import { ObjectSchema } from '@/lib/types';
 

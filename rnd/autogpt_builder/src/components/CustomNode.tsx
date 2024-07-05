@@ -1,7 +1,7 @@
 import React, { useState, useEffect, FC, memo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import 'reactflow/dist/style.css';
-import './customnode.css';
+import '../styles/customnode.css';
 import ModalComponent from './ModalComponent';
 
 type Schema = {
