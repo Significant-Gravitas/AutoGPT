@@ -43,6 +43,7 @@ _P = ParamSpec("_P")
 class AnthropicModelName(str, enum.Enum):
     CLAUDE3_OPUS_v1 = "claude-3-opus-20240229"
     CLAUDE3_SONNET_v1 = "claude-3-sonnet-20240229"
+    CLAUDE3_5_SONNET_v1 = "claude-3-5-sonnet-20240620"
     CLAUDE3_HAIKU_v1 = "claude-3-haiku-20240307"
 
 
@@ -59,6 +60,14 @@ ANTHROPIC_CHAT_MODELS = {
         ),
         ChatModelInfo(
             name=AnthropicModelName.CLAUDE3_SONNET_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=3 / 1e6,
+            completion_token_cost=15 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE3_5_SONNET_v1,
             provider_name=ModelProviderName.ANTHROPIC,
             prompt_token_cost=3 / 1e6,
             completion_token_cost=15 / 1e6,
@@ -120,7 +129,7 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
         logger: Optional[logging.Logger] = None,
     ):
         if not settings:
-            settings = self.default_settings.copy(deep=True)
+            settings = self.default_settings.model_copy(deep=True)
         if not settings.credentials:
             settings.credentials = AnthropicCredentials.from_env()
 
@@ -241,7 +250,7 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
                 )
                 if attempts < self._configuration.fix_failed_parse_tries:
                     anthropic_messages.append(
-                        _assistant_msg.dict(include={"role", "content"})  # type: ignore
+                        _assistant_msg.model_dump(include={"role", "content"})  # type: ignore # noqa
                     )
                     anthropic_messages.append(
                         {
