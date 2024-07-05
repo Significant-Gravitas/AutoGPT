@@ -3,6 +3,8 @@ import { Handle, Position, NodeProps } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './customnode.css';
 import ModalComponent from './ModalComponent';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
 
 type Schema = {
   type: string;
@@ -203,7 +205,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         return (
           <div key={key} className="input-container">
             <label className="radio-label">
-              <input
+              <Input
                 type="radio"
                 value="true"
                 checked={data.hardcodedValues[key] === true}
@@ -248,14 +250,14 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                     onChange={(e) => handleArrayItemChange(key, index, e.target.value)}
                     className="array-item-input"
                   />
-                  <button onClick={() => removeArrayItem(key, index)} className="array-item-remove">
+                  <Button onClick={() => removeArrayItem(key, index)} className="array-item-remove">
                     &times;
-                  </button>
+                  </Button>
                 </div>
               ))}
-              <button onClick={() => addArrayItem(key)} className="array-item-add">
+              <Button onClick={() => addArrayItem(key)} className="array-item-add">
                 Add Item
-              </button>
+              </Button>
               {error && <span className="error-message">{error}</span>}
             </div>
           );
@@ -288,9 +290,9 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                 onChange={(e) => handleDynamicTextInputChange(key, e.target.value)}
                 className="dynamic-text-input"
               />
-              <button onClick={() => removeDynamicTextInput(key)} className="array-item-remove">
+              <Button onClick={() => removeDynamicTextInput(key)} className="array-item-remove">
                 &times;
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -322,12 +324,12 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
 
   return (
-    <div className="custom-node">
+    <div className="custom-node dark:border-gray-800 dark:bg-gray-950">
       <div className="node-header">
         <div className="node-title">{data.blockType || data.title}</div>
-        <button onClick={toggleProperties} className="toggle-button">
+        <Button onClick={toggleProperties} className="toggle-button">
           &#9776;
-        </button>
+        </Button>
       </div>
       <div className="node-content">
         <div className="input-section">
@@ -359,9 +361,9 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                       <span className="handle-label">{key}</span>
                     </div>
                     {renderDynamicTextFields()}
-                    <button onClick={addDynamicTextInput} className="array-item-add">
+                    <Button onClick={addDynamicTextInput} className="array-item-add">
                       Add Text Input
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
@@ -386,7 +388,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </p>
         </div>
       )}
-      <button onClick={handleSubmit}>Submit</button>
+      <Button onClick={handleSubmit}>Submit</Button>
       <ModalComponent
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

@@ -4,7 +4,7 @@
   border-radius: 20px;
   background: #333;
   color: #e0e0e0;
-  width: 250px;
+  width: 350px;
 }
 
 .node-header {
@@ -43,14 +43,14 @@
 
 .handle-container {
   display: flex;
-  align-items: center;
   position: relative;
-  margin-bottom: 5px;
+  margin-bottom: 5px
 }
 
 .handle-label {
   color: #e0e0e0;
   margin-left: 10px;
+  margin-right: 10px;
 }
 
 .input-container {
@@ -126,7 +126,8 @@
 }
 
 .node-properties {
-  margin-top: 20px;
+  margin-top: 5px;
+  margin-bottom: 5px;
   background: #444;
   padding: 10px;
   border-radius: 10px;

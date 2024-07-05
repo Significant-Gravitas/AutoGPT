@@ -64,29 +64,31 @@ const Sidebar: React.FC<{isOpen: boolean, availableNodes: AvailableNode[], addNo
   );
 
   return (
-    <div style={{
-      position: 'absolute',
-      left: 0,
-      top: 0,
-      bottom: 0,
-      width: '250px',
-      backgroundColor: '#333',
-      padding: '20px',
-      zIndex: 4,
-      overflowY: 'auto'
-    }}>
-      <h3 style={{color: '#fff'}}>Nodes</h3>
-      <input
+    <div
+      className="border rounded-md border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-950"
+      style={{
+        position: 'absolute', // r
+        left: 0, // r
+        top: 0, // r
+        bottom: 0, // r
+        width: '300px',
+        padding: '20px',  // r
+        zIndex: 4,
+        overflowY: 'auto' // r
+      }}
+    >
+      <h3>Nodes</h3>
+      <Input
         type="text"
         placeholder="Search nodes..."
-        style={{width: '100%', marginBottom: '10px', padding: '5px'}}
+        style={{marginBottom: '10px'}}
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
       />
       {filteredNodes.map((node) => (
         <div key={node.id} style={{marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
           <span style={{color: '#fff'}}>{node.name}</span>
-          <button onClick={() => addNode(node.id, node.name)}>Add</button>
+          <Button onClick={() => addNode(node.id, node.name)}>Add</Button>
         </div>
       ))}
     </div>
@@ -101,7 +103,7 @@ const Flow: React.FC = () => {
   const [agentId, setAgentId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  const apiUrl = 'http://localhost:8000';
+  const apiUrl = 'http://192.168.0.215:8000';
 
   useEffect(() => {
     fetch(`${apiUrl}/blocks`)
@@ -358,8 +360,9 @@ const Flow: React.FC = () => {
 
   return (
     <div style={{ height: '100vh', width: '100%' }}>
-      <button
+      <Button
         onClick={toggleSidebar}
+        variant="outline"
         style={{
           position: 'absolute',
           left: isSidebarOpen ? '260px' : '10px',
@@ -367,9 +370,14 @@ const Flow: React.FC = () => {
           zIndex: 5,
           transition: 'left 0.3s'
         }}
+        size="icon"
       >
-        {isSidebarOpen ? 'Hide Sidebar' : 'Show Sidebar'}
-      </button>
+        {
+          isSidebarOpen
+            ? <ChevronLeftIcon className='h-4 w-4'></ChevronLeftIcon>
+            : <ChevronRightIcon className='h-4 w-4'></ChevronRightIcon>
+        }
+      </Button>
       <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
       <ReactFlow
         nodes={nodes}
@@ -380,7 +388,9 @@ const Flow: React.FC = () => {
         nodeTypes={nodeTypes}
       >
         <div style={{ position: 'absolute', right: 10, top: 10, zIndex: 4 }}>
-          <button onClick={runAgent}>Run Agent</button>
+          <Button variant="outline" onClick={runAgent}>
+            <PlayIcon className="mr-2 h-4 w-4" /> Run Agent
+          </Button>
         </div>
       </ReactFlow>
     </div>
