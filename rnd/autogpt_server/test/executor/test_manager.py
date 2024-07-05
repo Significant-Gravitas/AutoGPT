@@ -62,7 +62,9 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
     assert len(executions) == 2
 
     async def is_execution_completed():
-        execs = await agent_server.get_executions(test_graph.id, graph_exec_id)
+        execs = await agent_server.get_run_execution_results(
+            test_graph.id, graph_exec_id
+        )
         return test_manager.queue.empty() and len(execs) == 4
 
     # Wait for the executions to complete
@@ -79,7 +81,9 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
 async def assert_executions(test_graph: graph.Graph, graph_exec_id: str):
     text = "Hello, World!"
     agent_server = AgentServer()
-    executions = await agent_server.get_executions(test_graph.id, graph_exec_id)
+    executions = await agent_server.get_run_execution_results(
+        test_graph.id, graph_exec_id
+    )
 
     # Executing ParrotBlock1
     exec = executions[0]

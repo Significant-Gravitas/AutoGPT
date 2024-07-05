@@ -209,7 +209,14 @@ async def update_execution_status(node_exec_id: str, status: ExecutionStatus) ->
         raise ValueError(f"Execution {node_exec_id} not found.")
 
 
-async def get_executions(graph_exec_id: str) -> list[ExecutionResult]:
+async def list_executions(graph_id: str) -> list[str]:
+    executions = await AgentGraphExecution.prisma().find_many(
+        where={"agentGraphId": graph_id},
+    )
+    return [execution.id for execution in executions]
+
+
+async def get_execution_results(graph_exec_id: str) -> list[ExecutionResult]:
     executions = await AgentNodeExecution.prisma().find_many(
         where={"agentGraphExecutionId": graph_exec_id},
         include={"Input": True, "Output": True},
