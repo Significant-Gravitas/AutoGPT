@@ -15,13 +15,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import CustomNode from './CustomNode';
 import './flow.css';
-
-type Schema = {
-  type: string;
-  properties: { [key: string]: any };
-  additionalProperties?: { type: string };
-  required?: string[];
-};
+import AutoGPTServerAPI, { Block, Schema } from '@/lib/autogpt_server_api';
 
 type CustomNodeData = {
   blockType: string;
@@ -37,15 +31,7 @@ type CustomNodeData = {
   block_id: string;
 };
 
-type AvailableNode = {
-  id: string;
-  name: string;
-  description: string;
-  inputSchema: Schema;
-  outputSchema: Schema;
-};
-
-const Sidebar: React.FC<{isOpen: boolean, availableNodes: AvailableNode[], addNode: (id: string, name: string) => void}> =
+const Sidebar: React.FC<{isOpen: boolean, availableNodes: Block[], addNode: (id: string, name: string) => void}> =
   ({isOpen, availableNodes, addNode}) => {
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -78,17 +64,17 @@ const Flow: React.FC = () => {
   const [nodes, setNodes] = useState<Node<CustomNodeData>[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [nodeId, setNodeId] = useState<number>(1);
-  const [availableNodes, setAvailableNodes] = useState<AvailableNode[]>([]);
+  const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
   const [agentId, setAgentId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const apiUrl = 'http://localhost:8000';
+  const api = new AutoGPTServerAPI(apiUrl);
 
   useEffect(() => {
-    fetch(`${apiUrl}/blocks`)
-      .then(response => response.json())
-      .then(data => setAvailableNodes(data))
-      .catch(error => console.error('Error fetching available blocks:', error));
+    api.getBlocks()
+      .then(blocks => setAvailableNodes(blocks))
+      .catch();
   }, []);
 
   const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
@@ -268,51 +254,19 @@ const Flow: React.FC = () => {
         links: links  // Ensure this field is included
       };
 
-      console.log("Payload being sent to the API:", JSON.stringify(payload, null, 2));
-
-      const createResponse = await fetch(`${apiUrl}/graphs`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!createResponse.ok) {
-        throw new Error(`HTTP error! Status: ${createResponse.status}`);
-      }
-
-      const createData = await createResponse.json();
+      const createData = await api.createFlow(payload);
       const newAgentId = createData.id;
       setAgentId(newAgentId);
-
       console.log('Response from the API:', JSON.stringify(createData, null, 2));
 
-      const executeResponse = await fetch(`${apiUrl}/graphs/${newAgentId}/execute`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      });
-
-      if (!executeResponse.ok) {
-        throw new Error(`HTTP error! Status: ${executeResponse.status}`);
-      }
-
-      const executeData = await executeResponse.json();
+      const executeData = await api.executeFlow(newAgentId);
       const runId = executeData.id;
 
       const pollExecution = async () => {
-        const response = await fetch(`${apiUrl}/graphs/${newAgentId}/executions/${runId}`);
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-
-        const data = await response.json();
+        const data = await api.getFlowExecutionInfo(newAgentId, runId);
         updateNodesWithExecutionData(data);
 
-        if (data.every((node: any) => node.status === 'COMPLETED')) {
+        if (data.every((node) => node.status === 'COMPLETED')) {
           console.log('All nodes completed execution');
         } else {
           setTimeout(pollExecution, 1000);
