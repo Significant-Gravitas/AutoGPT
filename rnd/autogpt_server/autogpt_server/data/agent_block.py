@@ -61,8 +61,6 @@ from forge.utils.exceptions import (
 )
 from pydantic import Field
 
-from rnd.autogpt_server.autogpt_server.data.block import Block, BlockData
-
 if TYPE_CHECKING:
     from autogpt.app.config import AppConfig
 
@@ -92,7 +90,7 @@ class SimpleAgent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSetti
         super().__init__(settings)
 
         self.llm_provider = llm_provider
-        prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
+        prompt_config = OneShotAgentPromptStrategy.default_configuration.model_copy(deep=True)
         prompt_config.use_functions_api = (
             settings.config.use_functions_api
             # Anthropic currently doesn't support tools + prefilling :(
@@ -103,20 +101,20 @@ class SimpleAgent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSetti
 
         # Components
         self.system = SystemComponent()
-        self.history = ActionHistoryComponent(
-            settings.history,
-            lambda x: self.llm_provider.count_tokens(x, self.llm.name),
-            llm_provider,
-            ActionHistoryConfiguration(
-                model_name=app_config.fast_llm, max_tokens=self.send_token_limit
-            ),
-        ).run_after(WatchdogComponent)
-        self.file_manager = FileManagerComponent(file_storage, settings)
-        self.web_search = WebSearchComponent()
-        self.web_selenium = WebSeleniumComponent(
-            llm_provider,
-            app_config.app_data_dir,
-        )
+        # self.history = ActionHistoryComponent(
+        #     settings.history,
+        #     lambda x: self.llm_provider.count_tokens(x, self.llm.name),
+        #     llm_provider,
+        #     ActionHistoryConfiguration(
+        #         model_name=app_config.fast_llm, max_tokens=self.send_token_limit
+        #     ),
+        # ).run_after(WatchdogComponent)
+        # self.file_manager = FileManagerComponent(file_storage, settings)
+        # self.web_search = WebSearchComponent()
+        # self.web_selenium = WebSeleniumComponent(
+        #     llm_provider,
+        #     app_config.app_data_dir,
+        # )
         self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(
             ContextComponent
         )
@@ -137,7 +135,7 @@ class SimpleAgent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSetti
         constraints = await self.run_pipeline(DirectiveProvider.get_constraints)
         best_practices = await self.run_pipeline(DirectiveProvider.get_best_practices)
 
-        directives = self.state.directives.copy(deep=True)
+        directives = self.state.directives.model_copy(deep=True)
         directives.resources += resources
         directives.constraints += constraints
         directives.best_practices += best_practices
@@ -161,6 +159,8 @@ class SimpleAgent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSetti
         logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
         output = await self.complete_and_parse(prompt)
         self.config.cycle_count += 1
+
+        print(f"#########---------> output: {output}")
 
         return output
 
@@ -219,6 +219,17 @@ class SimpleAgent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSetti
         logger.debug("\n".join(self.trace))
 
         return result
+    
+    async def do_not_execute(
+        self, denied_proposal: OneShotAgentActionProposal, user_feedback: str
+    ) -> ActionResult:
+        result = ActionInterruptedByHuman(feedback=user_feedback)
+
+        await self.run_pipeline(AfterExecute.after_execute, result)
+
+        logger.debug("\n".join(self.trace))
+
+        return result
 
     async def _execute_tool(self, tool_call: AssistantFunctionCall) -> Any:
         """Execute the command and return the result
@@ -260,53 +271,3 @@ class SimpleAgent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSetti
         ]
 
 
-class AgentBlock(Block):
-    id: ClassVar[str] = "d2e2ecd2-9ae6-422d-8dfe-ceca500ce6a6"
-    input_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
-        {
-            "task": "string",
-            "input": "string",
-        }
-    )
-    output_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
-        {
-            "output": "string",
-        }
-    )
-
-    def run(self, input_data: BlockData) -> tuple[str, Any]:
-        # Set up configuration
-        config = ConfigBuilder.build_config_from_env()
-
-        # Storage
-        local = config.file_storage_backend == FileStorageBackendName.LOCAL
-        restrict_to_root = not local or config.restrict_to_workspace
-        file_storage = get_storage(
-            config.file_storage_backend,
-            root_path=Path("data"),
-            restrict_to_root=restrict_to_root,
-        )
-        file_storage.initialize()
-
-        # LLM provider
-        multi_provider = MultiProvider()
-        for model in [config.smart_llm, config.fast_llm]:
-            # Ensure model providers for configured LLMs are available
-            multi_provider.get_model_provider(model)
-
-        # State
-        state = AgentSettings(
-            agent_id="TemporaryAgentID",
-            name="WrappedAgent",
-            description="Wrapped agent for the Agent Server.",
-            task=f"Your task: {input_data['task']}\n"
-                 f"Input data: {input_data['input']}",
-        )
-
-        agent = SimpleAgent(state, multi_provider, file_storage, config)
-
-        # Execute agent
-        proposal = asyncio.run(agent.propose_action())
-        result = asyncio.run(agent.execute(proposal))
-
-        return "output", str(result)

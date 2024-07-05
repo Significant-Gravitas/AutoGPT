@@ -1,8 +1,14 @@
+import asyncio
 import json
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any, Generator, ClassVar
 
 import jsonschema
+from autogpt.app.config import ConfigBuilder
+from autogpt_server.data.agent_block import AgentSettings, SimpleAgent
+from forge.file_storage import FileStorageBackendName, get_storage
+from forge.llm.providers.multi import MultiProvider
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
@@ -230,6 +236,58 @@ class PrintingBlock(Block):
 
     def run(self, input_data: BlockData) -> BlockOutput:
         yield "status", "printed"
+
+
+class AutoGPTAgentBlock(Block):
+    id: ClassVar[str] = "d2e2ecd2-9ae6-422d-8dfe-ceca500ce6a6"
+    input_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
+        {
+            "task": "string",
+            "input": "string",
+        }
+    )
+    output_schema: ClassVar[BlockSchema] = BlockSchema(  # type: ignore
+        {
+            "output": "string",
+        }
+    )
+
+    def run(self, input_data: BlockData) -> BlockOutput:
+        # Set up configuration
+        config = ConfigBuilder.build_config_from_env()
+
+        # Storage
+        local = config.file_storage_backend == FileStorageBackendName.LOCAL
+        restrict_to_root = not local or config.restrict_to_workspace
+        file_storage = get_storage(
+            config.file_storage_backend,
+            root_path=Path("data"),
+            restrict_to_root=restrict_to_root,
+        )
+        file_storage.initialize()
+
+        # LLM provider
+        multi_provider = MultiProvider()
+        for model in [config.smart_llm, config.fast_llm]:
+            # Ensure model providers for configured LLMs are available
+            multi_provider.get_model_provider(model)
+
+        # State
+        state = AgentSettings(
+            agent_id="TemporaryAgentID",
+            name="WrappedAgent",
+            description="Wrapped agent for the Agent Server.",
+            task=f"Your task: {input_data['task']}\n"
+                 f"Input data: {input_data['input']}",
+        )
+
+        agent = SimpleAgent(state, multi_provider, file_storage, config)
+
+        # Execute agent
+        proposal = asyncio.run(agent.propose_action())
+        result = asyncio.run(agent.execute(proposal))
+
+        yield "output", str(result)
 
 
 # ======================= Block Helper Functions ======================= #
