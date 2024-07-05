@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, cast, ClassVar, Generator, Generic, TypeVar, Type
+from typing import Any, ClassVar, Generator, Generic, Type, TypeVar, cast
 
 import jsonref
 import jsonschema
@@ -12,7 +12,6 @@ BlockData = dict[str, Any]
 
 
 class BlockSchema(BaseModel):
-    
     cached_jsonschema: ClassVar[dict[str, Any]] = {}
 
     @classmethod
@@ -26,7 +25,8 @@ class BlockSchema(BaseModel):
             if isinstance(obj, dict):
                 return {
                     key: ref_to_dict(value)
-                    for key, value in obj.items() if not key.startswith("$")
+                    for key, value in obj.items()
+                    if not key.startswith("$")
                 }
             elif isinstance(obj, list):
                 return [ref_to_dict(item) for item in obj]
@@ -81,8 +81,8 @@ class BlockSchema(BaseModel):
 
 
 BlockOutput = Generator[tuple[str, Any], None, None]
-BlockSchemaInputType = TypeVar('BlockSchemaInputType', bound=BlockSchema)
-BlockSchemaOutputType = TypeVar('BlockSchemaOutputType', bound=BlockSchema)
+BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)
+BlockSchemaOutputType = TypeVar("BlockSchemaOutputType", bound=BlockSchema)
 
 
 class EmptySchema(BlockSchema):
@@ -91,10 +91,10 @@ class EmptySchema(BlockSchema):
 
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     def __init__(
-            self,
-            id: str = "",
-            input_schema: Type[BlockSchemaInputType] = EmptySchema,
-            output_schema: Type[BlockSchemaOutputType] = EmptySchema,
+        self,
+        id: str = "",
+        input_schema: Type[BlockSchemaInputType] = EmptySchema,
+        output_schema: Type[BlockSchemaOutputType] = EmptySchema,
     ):
         """
         The unique identifier for the block, this value will be persisted in the DB.
@@ -138,19 +138,17 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
 
         for output_name, output_data in self.run(self.input_schema(**input_data)):
             if error := self.output_schema.validate_field(output_name, output_data):
-                raise ValueError(
-                    f"Block produced an invalid output data: {error}"
-                )
+                raise ValueError(f"Block produced an invalid output data: {error}")
             yield output_name, output_data
 
 
 # ======================= Block Helper Functions ======================= #
 
-from autogpt_server.blocks import AVAILABLE_BLOCKS  # noqa: E402
+import autogpt_server.blocks
 
 
 async def initialize_blocks() -> None:
-    for block in AVAILABLE_BLOCKS.values():
+    for block in autogpt_server.blocks.AVAILABLE_BLOCKS.values():
         if await AgentBlock.prisma().find_unique(where={"id": block.id}):
             continue
 
@@ -165,8 +163,8 @@ async def initialize_blocks() -> None:
 
 
 def get_blocks() -> list[Block]:
-    return list(AVAILABLE_BLOCKS.values())
+    return list(autogpt_server.blocks.AVAILABLE_BLOCKS.values())
 
 
 def get_block(block_id: str) -> Block | None:
-    return AVAILABLE_BLOCKS.get(block_id)
+    return autogpt_server.blocks.AVAILABLE_BLOCKS.get(block_id)
