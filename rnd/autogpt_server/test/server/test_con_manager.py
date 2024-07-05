@@ -6,6 +6,7 @@ from fastapi import WebSocket
 
 from autogpt_server.data.execution import ExecutionResult, ExecutionStatus
 from autogpt_server.server.conn_manager import ConnectionManager
+from autogpt_server.server.model import WsMessage, Methods
 
 
 @pytest.fixture
@@ -81,7 +82,11 @@ async def test_send_execution_result(
 
     await connection_manager.send_execution_result(result)
 
-    mock_websocket.send_text.assert_called_once_with(result.model_dump_json())
+    mock_websocket.send_text.assert_called_once_with(WsMessage(
+        method=Methods.UPDATE,
+        channel="test_graph",
+        data=result.model_dump(),
+        ).model_dump_json())
 
 
 @pytest.mark.asyncio

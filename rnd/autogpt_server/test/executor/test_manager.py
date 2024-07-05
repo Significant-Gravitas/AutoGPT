@@ -119,9 +119,10 @@ async def assert_executions(test_graph: graph.Graph, graph_exec_id: str):
 @pytest.mark.asyncio(scope="session")
 async def test_agent_execution():
     with PyroNameServer():
-        with ExecutionManager(1) as test_manager:
-            await db.connect()
-            await block.initialize_blocks()
-            test_graph = await create_test_graph()
-            graph_exec_id = await execute_graph(test_manager, test_graph)
-            await assert_executions(test_graph, graph_exec_id)
+        with AgentServer() as server:
+            with ExecutionManager(1) as test_manager:
+                await db.connect()
+                await block.initialize_blocks()
+                test_graph = await create_test_graph()
+                graph_exec_id = await execute_graph(test_manager, test_graph)
+                await assert_executions(test_graph, graph_exec_id)
