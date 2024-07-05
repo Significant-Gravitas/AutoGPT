@@ -3,14 +3,10 @@ from typing import Any, cast, ClassVar, Generator, Generic, TypeVar, Type
 
 import jsonref
 import jsonschema
-import logging
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
 from autogpt_server.util import json
-
-logger = logging.getLogger(__name__)
-log = print
 
 BlockInput = dict[str, Any]
 BlockData = tuple[str, Any]
@@ -101,17 +97,27 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             output_schema: Type[BlockSchemaOutputType] = EmptySchema,
             test_input: BlockInput | list[BlockInput] | None = None,
             test_output: BlockData | list[BlockData] | None = None,
+            test_mock: dict[str, Any] | None = None,
     ):
         """
-        The unique identifier for the block, this value will be persisted in the DB.
-        So it should be a unique and constant across the application run.
-        Use the UUID format for the ID.
+        Initialize the block with the given schema.
+        
+        Args:
+            id: The unique identifier for the block, this value will be persisted in the
+                DB. So it should be a unique and constant across the application run.
+                Use the UUID format for the ID.
+            input_schema: The schema, defined as a Pydantic model, for the input data.
+            output_schema: The schema, defined as a Pydantic model, for the output data.
+            test_input: The list or single sample input data for the block, for testing.
+            test_output: The list or single expected output if the test_input is run.
+            test_mock: function names on the block implementation to mock on test run.
         """
         self.id = id
         self.input_schema = input_schema
         self.output_schema = output_schema
         self.test_input = test_input
         self.test_output = test_output
+        self.test_mock = test_mock
 
     @abstractmethod
     def run(self, input_data: BlockSchemaInputType) -> BlockOutput:
@@ -129,40 +135,6 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     @property
     def name(self):
         return self.__class__.__name__
-
-    def execute_block_test(self):
-        prefix = f"[Test-{self.name}]"
-
-        if not self.test_input or not self.test_output:
-            log(f"{prefix} No test data provided")
-            return
-        if not isinstance(self.test_input, list):
-            self.test_input = [self.test_input]
-        if not isinstance(self.test_output, list):
-            self.test_output = [self.test_output]
-
-        output_index = 0
-        log(f"{prefix } Executing {len(self.test_input)} tests...")
-        prefix = " "*4 + prefix
-
-        for input_data in self.test_input:
-            log(f"{prefix} in: {input_data}")
-
-            for output_name, output_data in self.execute(input_data):
-                if output_index >= len(self.test_output):
-                    raise ValueError(f"{prefix} produced output more than expected")
-                ex_output_name, ex_output_data = self.test_output[output_index]
-                
-                def compare(data1, data2):
-                    identical = data1 == data2
-                    mark = "✅" if identical else "❌"
-                    log(f"{prefix} {mark} comparing `{data1}` vs `{data2}`")
-                    if not identical:
-                        raise ValueError(f"{prefix}: wrong output {data1} vs {data2}")
-                
-                compare(output_name, ex_output_name)
-                compare(output_data, ex_output_data)
-                output_index += 1
 
     def to_dict(self):
         return {
