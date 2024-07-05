@@ -1,0 +1,5 @@
+export const STATUS_INCOMPLETE = 'INCOMPLETE';
+export const STATUS_QUEUED = 'QUEUED';
+export const STATUS_RUNNING = 'RUNNING';
+export const STATUS_COMPLETED = 'COMPLETED';
+export const STATUS_FAILED = 'FAILED';
