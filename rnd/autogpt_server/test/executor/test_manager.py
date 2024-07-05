@@ -1,12 +1,13 @@
 import time
+
 import pytest
 
+from autogpt_server.blocks.sample import ParrotBlock, PrintingBlock
+from autogpt_server.blocks.text import TextFormatterBlock
 from autogpt_server.data import block, db, execution, graph
 from autogpt_server.executor import ExecutionManager
 from autogpt_server.server import AgentServer
 from autogpt_server.util.service import PyroNameServer
-from autogpt_server.blocks.sample import ParrotBlock, PrintingBlock
-from autogpt_server.blocks.text import TextFormatterBlock
 
 
 async def create_test_graph() -> graph.Graph:
@@ -119,7 +120,7 @@ async def assert_executions(test_graph: graph.Graph, graph_exec_id: str):
 @pytest.mark.asyncio(scope="session")
 async def test_agent_execution():
     with PyroNameServer():
-        with AgentServer() as server:
+        with AgentServer():
             with ExecutionManager(1) as test_manager:
                 await db.connect()
                 await block.initialize_blocks()
