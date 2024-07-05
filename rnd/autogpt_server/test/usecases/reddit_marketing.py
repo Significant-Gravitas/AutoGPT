@@ -117,7 +117,7 @@ Make sure to only comment on a relevant post.
 
 async def wait_execution(test_manager, graph_id, graph_exec_id) -> list:
     async def is_execution_completed():
-        execs = await AgentServer().get_executions(graph_id, graph_exec_id)
+        execs = await AgentServer().get_run_execution_results(graph_id, graph_exec_id)
         """
         List of execution:
             reddit_get_post_node 1 (produced 3 posts)
@@ -136,7 +136,9 @@ async def wait_execution(test_manager, graph_id, graph_exec_id) -> list:
     # Wait for the executions to complete
     for i in range(120):
         if await is_execution_completed():
-            return await AgentServer().get_executions(graph_id, graph_exec_id)
+            return await AgentServer().get_run_execution_results(
+                graph_id, graph_exec_id
+            )
         time.sleep(1)
 
     assert False, "Execution did not complete in time."

@@ -29,12 +29,12 @@ To setup the project follow these steps inside the project directory:
    poetry shell
    ```
 
-1. Install dependencies
+2. Install dependencies
    ```
    poetry install
    ```
 
-1. Generate prisma client
+3. Generate prisma client
    ```
    poetry run prisma generate
    ```
@@ -48,14 +48,26 @@ To setup the project follow these steps inside the project directory:
    The path *should* look something like this:  
    `<some path>/pypoetry/virtualenvs/autogpt-server-TQIRSwR6-py3.12/bin/prisma`
 
-1. Migrate the database, be careful because this deletes current data in the database
+4. Migrate the database, be careful because this deletes current data in the database
    ```
    poetry run prisma migrate dev
    ```
-   
+
+# Running The Server
+
+## Starting the server directly
+
+Run the following command:
+
+```
+poetry run cli app
+```
+
+## Running the App in the Background
+
 1. Start the server, this starts the server in the background
    ```
-   poetry run python ./autogpt_server/cli.py start
+   poetry run cli start
    ```
     
    You may need to change the permissions of the file to make it executable
@@ -63,12 +75,14 @@ To setup the project follow these steps inside the project directory:
    chmod +x autogpt_server/cli.py
    ```
 
-1. Stop the server
+2. Stop the server
    ```
-   poetry run python ./autogpt_server/cli.py stop
+   poetry run cli stop
    ```
 
-1. To run the tests
-   ```
-   poetry run pytest
-   ```
+# Testing
+
+To run the tests
+```
+poetry run pytest
+```
