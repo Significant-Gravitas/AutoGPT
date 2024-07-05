@@ -42,7 +42,7 @@ def write_pid(pid: int):
 
 class MainApp(AppProcess):
     def run(self):
-        app.main(silent=True)
+        app.main(silent=True)  # type: ignore
 
 
 @click.group()
@@ -66,12 +66,12 @@ def start():
         os.remove(get_pid_path())
 
     print("Starting server")
-    pid = MainApp().start(background=True, silent=True)
+    pid = MainApp().start(background=True, silent=True)  # type: ignore
     print(f"Server running in process: {pid}")
 
     write_pid(pid)
     print("done")
-    os._exit(status=0)
+    os._exit(status=0)  # type: ignore
 
 
 @main.command()
@@ -102,12 +102,120 @@ def test():
 
 
 @test.command()
+@click.argument("server_address")
+def graph(server_address: str):
+    """
+    Create an event graph
+    """
+    import requests
+
+    from autogpt_server.blocks.sample import ParrotBlock, PrintingBlock
+    from autogpt_server.blocks.text import TextFormatterBlock
+    from autogpt_server.data import graph
+
+    nodes = [
+        graph.Node(block_id=ParrotBlock().id),
+        graph.Node(block_id=ParrotBlock().id),
+        graph.Node(
+            block_id=TextFormatterBlock().id,
+            input_default={
+                "format": "{texts[0]},{texts[1]},{texts[2]}",
+                "texts_$_3": "!!!",
+            },
+        ),
+        graph.Node(block_id=PrintingBlock().id),
+    ]
+    links = [
+        graph.Link(nodes[0].id, nodes[2].id, "output", "texts_$_1"),
+        graph.Link(nodes[1].id, nodes[2].id, "output", "texts_$_2"),
+        graph.Link(nodes[2].id, nodes[3].id, "output", "text"),
+    ]
+    test_graph = graph.Graph(
+        name="TestGraph",
+        description="Test graph",
+        nodes=nodes,
+        links=links,
+    )
+
+    url = f"{server_address}/graphs"
+    headers = {"Content-Type": "application/json"}
+    data = test_graph.model_dump_json()
+
+    response = requests.post(url, headers=headers, data=data)
+
+    if response.status_code == 200:
+        print(response.json()["id"])
+        execute_url = f"{server_address}/graphs/{response.json()['id']}/execute"
+        text = "Hello, World!"
+        input_data = {"input": text}
+        response = requests.post(execute_url, headers=headers, json=input_data)
+
+    else:
+        print("Failed to send graph")
+        print(f"Response: {response.text}")
+
+
+@test.command()
+@click.argument("graph_id")
+def execute(graph_id: str):
+    """
+    Create an event graph
+    """
+    import requests
+
+    headers = {"Content-Type": "application/json"}
+
+    execute_url = f"http://0.0.0.0:8000/graphs/{graph_id}/execute"
+    text = "Hello, World!"
+    input_data = {"input": text}
+    requests.post(execute_url, headers=headers, json=input_data)
+
+
+@test.command()
 def event():
     """
     Send an event to the running server
     """
     print("Event sent")
 
+
+@test.command()
+@click.argument("server_address")
+@click.argument("graph_id")
+def websocket(server_address: str, graph_id: str):
+    """
+    Tests the websocket connection.
+    """
+    import asyncio
+
+    import websockets
+
+    from autogpt_server.server.ws_api import ExecutionSubscription, Methods, WsMessage
+    import websockets
+
+    from autogpt_server.server.ws_api import ExecutionSubscription, Methods, WsMessage
+
+    async def send_message(server_address: str):
+        uri = f"ws://{server_address}"
+        async with websockets.connect(uri) as websocket:
+            try:
+                msg = WsMessage(
+                    method=Methods.SUBSCRIBE,
+                    data=ExecutionSubscription(graph_id=graph_id).model_dump(),
+                ).model_dump_json()
+                await websocket.send(msg)
+                print(f"Sending: {msg}")
+                while True:
+                    response = await websocket.recv()
+                    print(f"Response from server: {response}")
+            except InterruptedError:
+                exit(0)
+
+    asyncio.run(send_message(server_address))
+    print("Testing WS")
+
+
+main.add_command(test)
 
 if __name__ == "__main__":
     main()
