@@ -41,8 +41,8 @@ class AgentServer(AppService):
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
         await db.connect()
+        self.run_and_wait(block.initialize_blocks())
         asyncio.create_task(self.event_broadcaster())
-        await block.initialize_blocks()
         yield
         await db.disconnect()
 
@@ -143,7 +143,7 @@ class AgentServer(AppService):
         return get_service_client(ExecutionScheduler)
 
     def get_graph_blocks(self) -> list[dict[Any, Any]]:
-        return [v.to_dict() for v in await block.get_blocks()]
+        return [v.to_dict() for v in block.get_blocks()]
 
     async def get_graphs(self) -> list[str]:
         return await get_graph_ids()

@@ -62,8 +62,8 @@ def execute_node(
     if not node:
         logger.error(f"Node {node_id} not found.")
         return
-
-    node_block = get_block(node.block_id)
+ 
+    node_block = get_block(node.block_id)  # type: ignore
     if not node_block:
         logger.error(f"Block {node.block_id} not found.")
         return
@@ -178,21 +178,21 @@ def validate_exec(node: Node, data: dict[str, Any]) -> tuple[bool, str]:
         A tuple of a boolean indicating if the data is valid, and a message if not.
         Return the executed block name if the data is valid.
     """
-    node_block: Block | None = get_block(node.block_id)
+    node_block: Block | None = get_block(node.block_id) # type: ignore
     if not node_block:
         return False, f"Block for {node.block_id} not found."
 
     error_message = f"Input data missing for {node_block.name}:"
 
-    input_fields_from_schema = node_block.input_schema.get_required_fields()
-    if not input_fields_from_schema.issubset(data):
+    input_fields_from_schema = node_block.input_schema.get_required_fields() # type: ignore
+    if not input_fields_from_schema.issubset(data): # type: ignore
         return False, f"{error_message} {input_fields_from_schema - set(data)}"
 
     input_fields_from_nodes = {link.sink_name for link in node.input_links}
     if not input_fields_from_nodes.issubset(data):
         return False, f"{error_message} {input_fields_from_nodes - set(data)}"
 
-    if error := node_block.input_schema.validate_data(data):
+    if error := node_block.input_schema.validate_data(data):  # type: ignore
         error_message = f"Input data doesn't match {node_block.name}: {error}"
         logger.error(error_message)
         return False, error_message

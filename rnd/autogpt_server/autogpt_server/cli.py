@@ -107,29 +107,34 @@ def graph(server_address: str):
     """
     Create an event graph
     """
-    from autogpt_server.data import block, graph
     import requests
 
+    from autogpt_server.blocks.sample import ParrotBlock, PrintingBlock
+    from autogpt_server.blocks.text import TextFormatterBlock
+    from autogpt_server.data import graph
+
     nodes = [
-        graph.Node(block_id=block.ParrotBlock.id),
-        graph.Node(block_id=block.ParrotBlock.id),
+        graph.Node(block_id=ParrotBlock().id),
+        graph.Node(block_id=ParrotBlock().id),
         graph.Node(
-            block_id=block.TextFormatterBlock.id,
+            block_id=TextFormatterBlock().id,
             input_default={
                 "format": "{texts[0]},{texts[1]},{texts[2]}",
                 "texts_$_3": "!!!",
             },
         ),
-        graph.Node(block_id=block.PrintingBlock.id),
+        graph.Node(block_id=PrintingBlock().id),
     ]
-    nodes[0].connect(nodes[2], "output", "texts_$_1")
-    nodes[1].connect(nodes[2], "output", "texts_$_2")
-    nodes[2].connect(nodes[3], "combined_text", "text")
-
+    links = [
+        graph.Link(nodes[0].id, nodes[2].id, "output", "texts_$_1"),
+        graph.Link(nodes[1].id, nodes[2].id, "output", "texts_$_2"),
+        graph.Link(nodes[2].id, nodes[3].id, "output", "text"),
+    ]
     test_graph = graph.Graph(
         name="TestGraph",
         description="Test graph",
         nodes=nodes,
+        links=links,
     )
 
     url = f"{server_address}/graphs"
@@ -182,8 +187,13 @@ def websocket(server_address: str, graph_id: str):
     Tests the websocket connection.
     """
     import asyncio
+
     import websockets
-    from autogpt_server.server.ws_api import Methods, WsMessage, ExecutionSubscription
+
+    from autogpt_server.server.ws_api import ExecutionSubscription, Methods, WsMessage
+    import websockets
+
+    from autogpt_server.server.ws_api import ExecutionSubscription, Methods, WsMessage
 
     async def send_message(server_address: str):
         uri = f"ws://{server_address}"
