@@ -1,4 +1,5 @@
 import { XYPosition } from "reactflow";
+import { ObjectSchema } from "./types";
 
 export default class AutoGPTServerAPI {
   private baseUrl: string;
@@ -126,20 +127,13 @@ export default class AutoGPTServerAPI {
   }
 }
 
-export type Schema = {
-  type: string;
-  properties: { [key: string]: any };
-  additionalProperties?: { type: string };
-  required?: string[];
-};
-
 /* Mirror of autogpt_server/data/block.py:Block */
 export type Block = {
   id: string;
   name: string;
   description: string;
-  inputSchema: Schema;
-  outputSchema: Schema;
+  inputSchema: ObjectSchema;
+  outputSchema: ObjectSchema;
 };
 
 /* Mirror of autogpt_server/data/graph.py:Node */

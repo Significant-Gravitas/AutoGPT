@@ -15,13 +15,14 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import CustomNode from './CustomNode';
 import './flow.css';
-import AutoGPTServerAPI, { Block, Schema } from '@/lib/autogpt_server_api';
+import AutoGPTServerAPI, { Block } from '@/lib/autogpt_server_api';
+import { ObjectSchema } from '@/lib/types';
 
 type CustomNodeData = {
   blockType: string;
   title: string;
-  inputSchema: Schema;
-  outputSchema: Schema;
+  inputSchema: ObjectSchema;
+  outputSchema: ObjectSchema;
   hardcodedValues: { [key: string]: any };
   setHardcodedValues: (values: { [key: string]: any }) => void;
   connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
@@ -162,7 +163,7 @@ const Flow: React.FC = () => {
     return {};
   }
 
-  const getNestedData = (schema: Schema, values: { [key: string]: any }): { [key: string]: any } => {
+  const getNestedData = (schema: ObjectSchema, values: { [key: string]: any }): { [key: string]: any } => {
     let inputData: { [key: string]: any } = {};
 
     if (schema.properties) {
