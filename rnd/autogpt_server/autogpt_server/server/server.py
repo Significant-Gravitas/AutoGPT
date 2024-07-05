@@ -80,8 +80,13 @@ class AgentServer(AppProcess):
             methods=["POST"],
         )
         router.add_api_route(
+            path="/graphs/{graph_id}/executions",
+            endpoint=self.list_graph_runs,
+            methods=["GET"],
+        )
+        router.add_api_route(
             path="/graphs/{graph_id}/executions/{run_id}",
-            endpoint=self.get_executions,
+            endpoint=self.get_run_execution_results,
             methods=["GET"],
         )
         router.add_api_route(
@@ -155,14 +160,21 @@ class AgentServer(AppProcess):
             msg = e.__str__().encode().decode("unicode_escape")
             raise HTTPException(status_code=400, detail=msg)
 
-    async def get_executions(
+    async def list_graph_runs(self, graph_id: str) -> list[str]:
+        graph = await get_graph(graph_id)
+        if not graph:
+            raise HTTPException(status_code=404, detail=f"Agent #{graph_id} not found.")
+
+        return await execution.list_executions(graph_id)
+
+    async def get_run_execution_results(
         self, graph_id: str, run_id: str
     ) -> list[execution.ExecutionResult]:
         graph = await get_graph(graph_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Agent #{graph_id} not found.")
 
-        return await execution.get_executions(run_id)
+        return await execution.get_execution_results(run_id)
 
     async def create_schedule(self, graph_id: str, cron: str, input_data: dict) -> dict:
         graph = await get_graph(graph_id)

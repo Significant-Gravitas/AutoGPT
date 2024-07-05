@@ -96,6 +96,21 @@ export default class AutoGPTServerAPI {
     }
   }
 
+  async listFlowRunIDs(flowId: string): Promise<string[]> {
+    const path = `/graphs/${flowId}/executions`
+    try {
+      const response = await fetch(this.baseUrl + path);
+      if (!response.ok) {
+        console.warn(`GET ${path} returned non-OK response:`, response);
+        throw new Error(`HTTP error ${response.status}!`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching flow runs:', error);
+      throw error;
+    }
+  }
+
   async getFlowExecutionInfo(flowId: string, runId: string): Promise<NodeExecutionResult[]> {
     const path = `/graphs/${flowId}/executions/${runId}`;
     try {
