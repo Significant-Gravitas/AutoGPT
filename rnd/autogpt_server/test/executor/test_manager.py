@@ -1,12 +1,13 @@
 import time
+
 import pytest
 
+from autogpt_server.blocks.sample import ParrotBlock, PrintingBlock
+from autogpt_server.blocks.text import TextFormatterBlock
 from autogpt_server.data import block, db, execution, graph
 from autogpt_server.executor import ExecutionManager
 from autogpt_server.server import AgentServer
 from autogpt_server.util.service import PyroNameServer
-from autogpt_server.blocks.sample import ParrotBlock, PrintingBlock
-from autogpt_server.blocks.text import TextFormatterBlock
 
 
 async def create_test_graph() -> graph.Graph:
@@ -61,7 +62,9 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
     assert len(executions) == 2
 
     async def is_execution_completed():
-        execs = await agent_server.get_executions(test_graph.id, graph_exec_id)
+        execs = await agent_server.get_run_execution_results(
+            test_graph.id, graph_exec_id
+        )
         return test_manager.queue.empty() and len(execs) == 4
 
     # Wait for the executions to complete
@@ -78,7 +81,9 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
 async def assert_executions(test_graph: graph.Graph, graph_exec_id: str):
     text = "Hello, World!"
     agent_server = AgentServer()
-    executions = await agent_server.get_executions(test_graph.id, graph_exec_id)
+    executions = await agent_server.get_run_execution_results(
+        test_graph.id, graph_exec_id
+    )
 
     # Executing ParrotBlock1
     exec = executions[0]
@@ -119,9 +124,10 @@ async def assert_executions(test_graph: graph.Graph, graph_exec_id: str):
 @pytest.mark.asyncio(scope="session")
 async def test_agent_execution():
     with PyroNameServer():
-        with ExecutionManager(1) as test_manager:
-            await db.connect()
-            await block.initialize_blocks()
-            test_graph = await create_test_graph()
-            graph_exec_id = await execute_graph(test_manager, test_graph)
-            await assert_executions(test_graph, graph_exec_id)
+        with AgentServer():
+            with ExecutionManager(1) as test_manager:
+                await db.connect()
+                await block.initialize_blocks()
+                test_graph = await create_test_graph()
+                graph_exec_id = await execute_graph(test_manager, test_graph)
+                await assert_executions(test_graph, graph_exec_id)
