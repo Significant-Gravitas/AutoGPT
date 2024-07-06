@@ -1,18 +1,18 @@
-name: AutoGPT Python CI
+name: AutoGPT CI
 
 on:
   push:
     branches: [ master, development, ci-test* ]
     paths:
       - '.github/workflows/autogpt-ci.yml'
-      - 'autogpts/autogpt/**'
-      - '!autogpts/autogpt/tests/vcr_cassettes'
+      - 'autogpt/**'
+      - '!autogpt/tests/vcr_cassettes'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
       - '.github/workflows/autogpt-ci.yml'
-      - 'autogpts/autogpt/**'
-      - '!autogpts/autogpt/tests/vcr_cassettes'
+      - 'autogpt/**'
+      - '!autogpt/tests/vcr_cassettes'
 
 concurrency:
   group: ${{ format('autogpt-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -21,60 +21,9 @@ concurrency:
 defaults:
   run:
     shell: bash
-    working-directory: autogpts/autogpt
+    working-directory: autogpt
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    env:
-      min-python-version: "3.10"
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Python ${{ env.min-python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.min-python-version }}
-
-      - id: get_date
-        name: Get date
-        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-      - name: Set up Python dependency cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pypoetry
-          key: ${{ runner.os }}-poetry-${{ hashFiles('autogpts/autogpt/pyproject.toml') }}-${{ steps.get_date.outputs.date }}
-
-      - name: Install Python dependencies
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          poetry install
-
-      - name: Lint with flake8
-        run: poetry run flake8
-
-      - name: Check black formatting
-        run: poetry run black . --check
-        if: success() || failure()
-
-      - name: Check isort formatting
-        run: poetry run isort . --check
-        if: success() || failure()
-
-      # - name: Check mypy formatting
-      #   run: poetry run mypy
-      #   if: success() || failure()
-
-      # - name: Check for unused imports and pass statements
-      #   run: |
-      #     cmd="autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring autogpt tests"
-      #     poetry run $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
-
   test:
     permissions:
       contents: read
@@ -170,7 +119,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
-          key: poetry-${{ runner.os }}-${{ hashFiles('autogpts/autogpt/poetry.lock') }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt/poetry.lock') }}
 
       - name: Install Poetry (Unix)
         if: runner.os != 'Windows'
@@ -293,4 +242,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-logs
-          path: autogpts/autogpt/logs/
+          path: autogpt/logs/

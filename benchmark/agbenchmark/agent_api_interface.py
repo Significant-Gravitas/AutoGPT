@@ -28,7 +28,7 @@ async def run_api_agent(
     configuration = Configuration(host=config.host)
     async with ApiClient(configuration) as api_client:
         api_instance = AgentApi(api_client)
-        task_request_body = TaskRequestBody(input=task)
+        task_request_body = TaskRequestBody(input=task, additional_input=None)
 
         start_time = time.time()
         response = await api_instance.create_agent_task(

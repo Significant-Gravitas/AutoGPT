@@ -1,2 +1,0 @@
-The id to remember is 2314
-Read the file instructions_2.txt

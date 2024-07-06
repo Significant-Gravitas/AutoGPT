@@ -1,4 +1,3 @@
-from collections import deque
 import glob
 import json
 import logging
@@ -6,19 +5,23 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections import deque
 from pathlib import Path
-from typing import Any, ClassVar, Iterator, Literal, Optional
+from typing import Annotated, Any, ClassVar, Iterator, Literal, Optional
 
 import pytest
-from agent_protocol_client import (
-    AgentApi,
-    ApiClient,
-    Configuration as ClientConfig,
-    Step,
-)
+from agent_protocol_client import AgentApi, ApiClient
+from agent_protocol_client import Configuration as ClientConfig
+from agent_protocol_client import Step
 from colorama import Fore, Style
 from openai import _load_client as get_openai_client
-from pydantic import BaseModel, constr, Field, validator
+from pydantic import (
+    BaseModel,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    field_validator,
+)
 
 from agbenchmark.agent_api_interface import download_agent_artifacts_into_folder
 from agbenchmark.agent_interface import copy_challenge_artifacts_into_workspace
@@ -49,7 +52,9 @@ class BuiltinChallengeSpec(BaseModel):
 
     class Info(BaseModel):
         difficulty: DifficultyLevel
-        description: constr(regex=r"^Tests if the agent can.*")
+        description: Annotated[
+            str, StringConstraints(pattern=r"^Tests if the agent can.*")
+        ]
         side_effects: list[str] = Field(default_factory=list)
 
     info: Info
@@ -63,23 +68,26 @@ class BuiltinChallengeSpec(BaseModel):
 
         class Eval(BaseModel):
             type: str
-            scoring: Optional[Literal["percentage", "scale", "binary"]]
-            template: Optional[Literal["rubric", "reference", "question", "custom"]]
-            examples: Optional[str]
+            scoring: Optional[Literal["percentage", "scale", "binary"]] = None
+            template: Optional[
+                Literal["rubric", "reference", "question", "custom"]
+            ] = None
+            examples: Optional[str] = None
 
-            @validator("scoring", "template", always=True)
-            def validate_eval_fields(cls, v, values, field):
-                if "type" in values and values["type"] == "llm":
-                    if v is None:
+            @field_validator("scoring", "template")
+            def validate_eval_fields(cls, value, info: ValidationInfo):
+                field_name = info.field_name
+                if "type" in info.data and info.data["type"] == "llm":
+                    if value is None:
                         raise ValueError(
-                            f"{field.name} must be provided when eval type is 'llm'"
+                            f"{field_name} must be provided when eval type is 'llm'"
                         )
                 else:
-                    if v is not None:
+                    if value is not None:
                         raise ValueError(
-                            f"{field.name} should only exist when eval type is 'llm'"
+                            f"{field_name} should only exist when eval type is 'llm'"
                         )
-                return v
+                return value
 
         eval: Eval
 
@@ -145,7 +153,7 @@ class BuiltinChallenge(BaseChallenge):
 
     @classmethod
     def from_challenge_spec_file(cls, spec_file: Path) -> type["BuiltinChallenge"]:
-        challenge_spec = BuiltinChallengeSpec.parse_file(spec_file)
+        challenge_spec = BuiltinChallengeSpec.model_validate_json(spec_file.read_text())
         challenge_spec.spec_file = spec_file
         return cls.from_challenge_spec(challenge_spec)
 
@@ -184,13 +192,13 @@ class BuiltinChallenge(BaseChallenge):
         steps: list[Step] = []
         try:
             async for step in self.run_challenge(
-                config, timeout, mock=request.config.getoption("--mock")
+                config, timeout, mock=bool(request.config.getoption("--mock"))
             ):
                 if not task_id:
                     task_id = step.task_id
 
                 n_steps += 1
-                steps.append(step.copy())
+                steps.append(step.model_copy())
                 if step.additional_output:
                     agent_task_cost = step.additional_output.get(
                         "task_total_cost",
@@ -199,6 +207,8 @@ class BuiltinChallenge(BaseChallenge):
             timed_out = False
         except TimeoutError:
             timed_out = True
+
+        assert isinstance(request.node, pytest.Item)
         request.node.user_properties.append(("steps", steps))
         request.node.user_properties.append(("n_steps", n_steps))
         request.node.user_properties.append(("timed_out", timed_out))
@@ -340,8 +350,11 @@ class BuiltinChallenge(BaseChallenge):
                     capture_output=True,
                     text=True,
                 )
+                logger.debug(f"EXIT CODE: {result.returncode}")
+                logger.debug(f"STDOUT: {result.stdout}")
+                logger.debug(f"STDERR: {result.stderr}")
                 if "error" in result.stderr or result.returncode != 0:
-                    yield "pytest", f"Error: {result.stderr}\n"
+                    yield "pytest", f"Error: {result.stderr.strip() or result.stdout}\n"
                 else:
                     yield "pytest", f"Output: {result.stdout}\n"
 
@@ -411,15 +424,10 @@ class BuiltinChallenge(BaseChallenge):
 def load_builtin_challenges() -> Iterator[type[BuiltinChallenge]]:
     logger.info("Loading built-in challenges...")
 
-    challenges_path = os.path.dirname(__file__)
+    challenges_path = Path(__file__).parent
     logger.debug(f"Looking for challenge spec files in {challenges_path}...")
 
-    json_files = deque(
-        glob.glob(
-            f"{challenges_path}/**/data.json",
-            recursive=True,
-        )
-    )
+    json_files = deque(challenges_path.rglob("data.json"))
 
     logger.debug(f"Found {len(json_files)} built-in challenges.")
 
@@ -431,7 +439,7 @@ def load_builtin_challenges() -> Iterator[type[BuiltinChallenge]]:
             ignored += 1
             continue
 
-        challenge = BuiltinChallenge.from_challenge_spec_file(Path(json_file))
+        challenge = BuiltinChallenge.from_challenge_spec_file(json_file)
         logger.debug(f"Generated test for {challenge.info.name}")
         yield challenge
 
@@ -442,8 +450,8 @@ def load_builtin_challenges() -> Iterator[type[BuiltinChallenge]]:
     )
 
 
-def _challenge_should_be_ignored(json_file_path: str):
+def _challenge_should_be_ignored(json_file_path: Path):
     return (
-        "challenges/deprecated" in json_file_path
-        or "challenges/library" in json_file_path
+        "challenges/deprecated" in json_file_path.as_posix()
+        or "challenges/library" in json_file_path.as_posix()
     )

@@ -6,7 +6,7 @@ from typing import ClassVar, Iterator, Literal
 import pytest
 import requests
 from agent_protocol_client import AgentApi, Step
-from pydantic import BaseModel, validator, ValidationError
+from pydantic import BaseModel, ValidationError, ValidationInfo, field_validator
 
 from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.utils.data_types import Category, EvalResult
@@ -93,11 +93,12 @@ class Eval(ABC):
         ...
 
 
-class StringEval(BaseModel, Eval):
-    type: ReferenceAnswerType
+class BaseStringEval(BaseModel, Eval):
+    # type: ReferenceAnswerType
+    pass
 
 
-class ExactStringMatchEval(StringEval):
+class ExactStringMatchEval(BaseStringEval):
     type: Literal["exact_match"] = "exact_match"
     reference_answer: str
 
@@ -109,7 +110,7 @@ class ExactStringMatchEval(StringEval):
         return string == self.reference_answer
 
 
-class FuzzyStringMatchEval(StringEval):
+class FuzzyStringMatchEval(BaseStringEval):
     type: Literal["fuzzy_match"] = "fuzzy_match"
     reference_answer: str
 
@@ -122,7 +123,7 @@ class FuzzyStringMatchEval(StringEval):
         return self.reference_answer.lower() in string.lower()
 
 
-class MustIncludeStringEval(StringEval):
+class MustIncludeStringEval(BaseStringEval):
     type: Literal["must_include"] = "must_include"
     reference_answer: str
 
@@ -134,6 +135,9 @@ class MustIncludeStringEval(StringEval):
         return self.reference_answer.lower() in string.lower()
 
 
+StringEval = ExactStringMatchEval | FuzzyStringMatchEval | MustIncludeStringEval
+
+
 class UrlMatchEval(BaseModel, Eval):
     url: str
     """Example: `"__WIKI__/wiki/Octopus"`"""
@@ -142,8 +146,8 @@ class UrlMatchEval(BaseModel, Eval):
     def description(self) -> str:
         return f"Agent must navigate to '{self.url}'"
 
-    def evaluate(self, url: str) -> bool:
-        return url == resolve_uri(self.url)
+    def evaluate(self, string: str) -> bool:
+        return string == resolve_uri(self.url)
 
 
 class ProgramHtmlEval(BaseModel):
@@ -179,7 +183,7 @@ class WebArenaChallengeSpec(BaseModel):
     """The JungleGym site (base URL) at which to start"""
     require_login: bool
     require_reset: bool
-    storage_state: str | None
+    storage_state: str | None = None
 
     intent: str
     intent_template: str
@@ -191,36 +195,36 @@ class WebArenaChallengeSpec(BaseModel):
 
     class EvalSet(BaseModel):
         class StringMatchEvalSet(BaseModel):
-            exact_match: str | None
-            fuzzy_match: list[str] | None
-            must_include: list[str] | None
+            exact_match: str | None = None
+            fuzzy_match: list[str] | None = None
+            must_include: list[str] | None = None
 
-        reference_answers: StringMatchEvalSet | None
+        reference_answers: StringMatchEvalSet | None = None
         """For string_match eval, a set of criteria to judge the final answer"""
-        reference_answer_raw_annotation: str | None
-        string_note: str | None
-        annotation_note: str | None
+        reference_answer_raw_annotation: str | None = None
+        string_note: str | None = None
+        annotation_note: str | None = None
 
-        reference_url: str | None
+        reference_url: str | None = None
         """For url_match eval, the last URL that should be visited"""
-        url_note: str | None
+        url_note: str | None = None
 
         program_html: list[ProgramHtmlEval]
         """For program_html eval, a list of criteria to judge the site state by"""
 
         eval_types: list[EvalType]
 
-        @validator("eval_types")
-        def check_eval_parameters(cls, v: list[EvalType], values):
-            if "string_match" in v and not values.get("reference_answers"):
+        @field_validator("eval_types")
+        def check_eval_parameters(cls, value: list[EvalType], info: ValidationInfo):
+            if "string_match" in value and not info.data["reference_answers"]:
                 raise ValueError("'string_match' eval_type requires reference_answers")
-            if "url_match" in v and not values.get("reference_url"):
+            if "url_match" in value and not info.data["reference_url"]:
                 raise ValueError("'url_match' eval_type requires reference_url")
-            if "program_html" in v and not values.get("program_html"):
+            if "program_html" in value and not info.data["program_html"]:
                 raise ValueError(
                     "'program_html' eval_type requires at least one program_html eval"
                 )
-            return v
+            return value
 
         @property
         def evaluators(self) -> list[_Eval]:
@@ -258,7 +262,8 @@ class WebArenaChallengeSpec(BaseModel):
             f"{' and '.join(s.base_url for s in sites)}.\n\n"
             + "\n".join(
                 s.additional_info.format(url=s.base_url)
-                for s in sites if s.additional_info
+                for s in sites
+                if s.additional_info
             )
         ).strip()
 
@@ -287,7 +292,7 @@ class WebArenaChallenge(BaseChallenge):
         results = requests.get(source_url).json()["data"]
         if not results:
             raise ValueError(f"Could not fetch challenge {source_uri}")
-        return cls.from_challenge_spec(WebArenaChallengeSpec.parse_obj(results[0]))
+        return cls.from_challenge_spec(WebArenaChallengeSpec.model_validate(results[0]))
 
     @classmethod
     def from_challenge_spec(
@@ -391,7 +396,9 @@ class WebArenaChallenge(BaseChallenge):
         if request.config.getoption("--nc"):
             timeout = 100000
         elif cutoff := request.config.getoption("--cutoff"):
-            timeout = int(cutoff)
+            timeout = int(cutoff)  # type: ignore
+
+        assert isinstance(request.node, pytest.Item)
 
         n_steps = 0
         timed_out = None
@@ -400,7 +407,7 @@ class WebArenaChallenge(BaseChallenge):
         eval_results_per_step: list[list[tuple[_Eval, EvalResult]]] = []
         try:
             async for step in self.run_challenge(
-                config, timeout, mock=request.config.getoption("--mock")
+                config, timeout, mock=bool(request.config.getoption("--mock"))
             ):
                 if not step.output:
                     logger.warn(f"Step has no output: {step}")
@@ -415,7 +422,7 @@ class WebArenaChallenge(BaseChallenge):
                     )
 
                 step_eval_results = self.evaluate_step_result(
-                    step, mock=request.config.getoption("--mock")
+                    step, mock=bool(request.config.getoption("--mock"))
                 )
                 logger.debug(f"Intermediary results: {step_eval_results}")
                 eval_results_per_step.append(step_eval_results)
@@ -462,7 +469,7 @@ class WebArenaChallenge(BaseChallenge):
 
 
 def load_webarena_challenges(
-    skip_unavailable: bool = True
+    skip_unavailable: bool = True,
 ) -> Iterator[type[WebArenaChallenge]]:
     logger.info("Loading WebArena challenges...")
 
@@ -493,7 +500,7 @@ def load_webarena_challenges(
     skipped = 0
     for entry in challenge_dicts:
         try:
-            challenge_spec = WebArenaChallengeSpec.parse_obj(entry)
+            challenge_spec = WebArenaChallengeSpec.model_validate(entry)
         except ValidationError as e:
             failed += 1
             logger.warning(f"Error validating WebArena challenge entry: {entry}")
