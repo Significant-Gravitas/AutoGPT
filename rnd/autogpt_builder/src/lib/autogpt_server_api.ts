@@ -119,7 +119,13 @@ export default class AutoGPTServerAPI {
         console.warn(`GET ${path} returned non-OK response:`, response);
         throw new Error(`HTTP error ${response.status}!`);
       }
-      return await response.json();
+      return (await response.json()).map((result: any) => ({
+        ...result,
+        add_time: new Date(result.add_time),
+        queue_time: result.queue_time ? new Date(result.queue_time) : undefined,
+        start_time: result.start_time ? new Date(result.start_time) : undefined,
+        end_time: result.end_time ? new Date(result.end_time) : undefined,
+      }));
     } catch (error) {
       console.error('Error fetching execution status:', error);
       throw error;
