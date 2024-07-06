@@ -61,18 +61,23 @@ export default class AutoGPTServerAPI {
         },
         body: JSON.stringify(flowCreateBody),
       });
+      const response_data = await response.json();
       if (!response.ok) {
-        console.warn("POST /graphs returned non-OK response:", response);
-        throw new Error(`HTTP error ${response.status}!`)
+        console.warn(
+          `POST /graphs returned non-OK response:`, response_data.detail, response
+        );
+        throw new Error(`HTTP error ${response.status}! ${response_data.detail}`)
       }
-      return await response.json();
+      return response_data;
     } catch (error) {
       console.error("Error storing flow:", error);
       throw error;
     }
   }
 
-  async executeFlow(flowId: string): Promise<FlowExecuteResponse> {
+  async executeFlow(
+    flowId: string, inputData: { [key: string]: any } = {}
+  ): Promise<FlowExecuteResponse> {
     const path = `/graphs/${flowId}/execute`;
     console.debug(`POST ${path}`);
     try {
@@ -81,15 +86,16 @@ export default class AutoGPTServerAPI {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify(inputData),
       });
+      const response_data = await response.json();
       if (!response.ok) {
         console.warn(
-          `POST /graphs/${flowId}/execute returned non-OK response:`, response
+          `POST ${path} returned non-OK response:`, response_data.detail, response
         );
-        throw new Error(`HTTP error ${response.status}!`)
+        throw new Error(`HTTP error ${response.status}! ${response_data.detail}`)
       }
-      return await response.json();
+      return response_data;
     } catch (error) {
       console.error("Error executing flow:", error);
       throw error;
