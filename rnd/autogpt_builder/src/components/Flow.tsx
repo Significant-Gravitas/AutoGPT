@@ -61,7 +61,7 @@ const Sidebar: React.FC<{isOpen: boolean, availableNodes: Block[], addNode: (id:
   );
 };
 
-const Flow: React.FC = () => {
+const Flow: React.FC<{ className?: string }> = ({ className }) => {
   const [nodes, setNodes] = useState<Node<CustomNodeData>[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [nodeId, setNodeId] = useState<number>(1);
@@ -305,7 +305,7 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   return (
-    <div style={{ height: '100vh', width: '100%' }}>
+    <div className={className}>
       <button
         onClick={toggleSidebar}
         style={{
