@@ -13,9 +13,6 @@ import ReactFlow, {
   Connection,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { ChevronLeftIcon, ChevronRightIcon, PlayIcon } from '@radix-ui/react-icons';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
 import CustomNode from './CustomNode';
 import './flow.css';
 import AutoGPTServerAPI, { Block } from '@/lib/autogpt_server_api';
@@ -47,10 +44,10 @@ const Sidebar: React.FC<{isOpen: boolean, availableNodes: Block[], addNode: (id:
 
   return (
     <div className={`sidebar ${isOpen ? 'open' : ''}`}>
-      <h3 className="mb-4">Nodes</h3>
-      <Input
+      <h3>Nodes</h3>
+      <input
+        type="text"
         placeholder="Search nodes..."
-        className="mb-4"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
       />
@@ -309,9 +306,8 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
 
   return (
     <div style={{ height: '100vh', width: '100%' }}>
-      <Button
+      <button
         onClick={toggleSidebar}
-        variant="outline"
         style={{
           position: 'absolute',
           left: isSidebarOpen ? '260px' : '10px',
@@ -319,14 +315,9 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
           zIndex: 5,
           transition: 'left 0.3s'
         }}
-        size="icon"
       >
-        {
-          isSidebarOpen
-            ? <ChevronLeftIcon className='h-4 w-4'></ChevronLeftIcon>
-            : <ChevronRightIcon className='h-4 w-4'></ChevronRightIcon>
-        }
-      </Button>
+        {isSidebarOpen ? 'Hide Sidebar' : 'Show Sidebar'}
+      </button>
       <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
       <ReactFlow
         nodes={nodes}
@@ -337,9 +328,7 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
         nodeTypes={nodeTypes}
       >
         <div style={{ position: 'absolute', right: 10, top: 10, zIndex: 4 }}>
-          <Button variant="outline" onClick={runAgent}>
-            <PlayIcon className="mr-2 h-4 w-4" /> Run Agent
-          </Button>
+          <button onClick={runAgent}>Run Agent</button>
         </div>
       </ReactFlow>
     </div>
