@@ -78,15 +78,13 @@ const FlowEditor: React.FC<{ flowID?: string }> = ({ flowID }) => {
       .catch();
   }, []);
 
-  if (flowID) {
-    // Load existing flow
-    useEffect(() => {
-      if (availableNodes.length == 0) return;
+  // Load existing flow
+  useEffect(() => {
+    if (!flowID || availableNodes.length == 0) return;
 
-      api.getFlow(flowID)
-        .then(flow => loadFlow(flow));
-    }, [availableNodes, flowID]);
-  }
+    api.getFlow(flowID)
+      .then(flow => loadFlow(flow));
+  }, [flowID, availableNodes]);
 
   const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
 
