@@ -15,7 +15,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import CustomNode from './CustomNode';
 import './flow.css';
-import AutoGPTServerAPI, { Block } from '@/lib/autogpt_server_api';
+import AutoGPTServerAPI, { Block, Flow } from '@/lib/autogpt_server_api';
 import { ObjectSchema } from '@/lib/types';
 
 type CustomNodeData = {
@@ -61,7 +61,7 @@ const Sidebar: React.FC<{isOpen: boolean, availableNodes: Block[], addNode: (id:
   );
 };
 
-const Flow: React.FC = () => {
+const FlowEditor: React.FC<{ flowID?: string }> = ({ flowID }) => {
   const [nodes, setNodes] = useState<Node<CustomNodeData>[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [nodeId, setNodeId] = useState<number>(1);
@@ -77,6 +77,14 @@ const Flow: React.FC = () => {
       .then(blocks => setAvailableNodes(blocks))
       .catch();
   }, []);
+
+  // Load existing flow
+  useEffect(() => {
+    if (!flowID || availableNodes.length == 0) return;
+
+    api.getFlow(flowID)
+      .then(flow => loadFlow(flow));
+  }, [flowID, availableNodes]);
 
   const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
 
@@ -153,60 +161,98 @@ const Flow: React.FC = () => {
     setNodeId((prevId) => prevId + 1);
   };
 
-  const prepareNodeInputData = (node: Node<CustomNodeData>, allNodes: Node<CustomNodeData>[], allEdges: Edge[]) => {
-  console.log("Preparing input data for node:", node.id, node.data.blockType);
+  function loadFlow(flow: Flow) {
+    setAgentId(flow.id);
 
-  const blockSchema = availableNodes.find(n => n.id === node.data.block_id)?.inputSchema;
+    setNodes(flow.nodes.map(node => {
+      const block = availableNodes.find(block => block.id === node.block_id)!;
+      const newNode = {
+        id: node.id,
+        type: 'custom',
+        position: { x: node.metadata.position.x, y: node.metadata.position.y },
+        data: {
+          block_id: block.id,
+          blockType: block.name,
+          title: `${block.name} ${node.id}`,
+          inputSchema: block.inputSchema,
+          outputSchema: block.outputSchema,
+          hardcodedValues: {},
+          setHardcodedValues: (values: { [key: string]: any; }) => {
+            setNodes((nds) => nds.map((node) => node.id === newNode.id
+              ? { ...node, data: { ...node.data, hardcodedValues: values } }
+              : node
+            ));
+          },
+          connections: [],
+          isPropertiesOpen: false,
+        },
+      };
+      return newNode;
+    }));
 
-  if (!blockSchema) {
-    console.error(`Schema not found for block ID: ${node.data.block_id}`);
-    return {};
+    setEdges(flow.links.map(link => ({
+      id: `${link.source_id}_${link.source_name}_${link.sink_id}_${link.sink_name}`,
+      source: link.source_id,
+      target: link.sink_id,
+      sourceHandle: link.source_name || undefined,
+      targetHandle: link.sink_name || undefined
+    })));
   }
 
-  const getNestedData = (schema: ObjectSchema, values: { [key: string]: any }): { [key: string]: any } => {
-    let inputData: { [key: string]: any } = {};
+  const prepareNodeInputData = (node: Node<CustomNodeData>, allNodes: Node<CustomNodeData>[], allEdges: Edge[]) => {
+    console.log("Preparing input data for node:", node.id, node.data.blockType);
 
-    if (schema.properties) {
-      Object.keys(schema.properties).forEach((key) => {
-        if (values[key] !== undefined) {
-          if (schema.properties[key].type === 'object') {
-            inputData[key] = getNestedData(schema.properties[key], values[key]);
-          } else {
-            inputData[key] = values[key];
+    const blockSchema = availableNodes.find(n => n.id === node.data.block_id)?.inputSchema;
+
+    if (!blockSchema) {
+      console.error(`Schema not found for block ID: ${node.data.block_id}`);
+      return {};
+    }
+
+    const getNestedData = (schema: ObjectSchema, values: { [key: string]: any }): { [key: string]: any } => {
+      let inputData: { [key: string]: any } = {};
+
+      if (schema.properties) {
+        Object.keys(schema.properties).forEach((key) => {
+          if (values[key] !== undefined) {
+            if (schema.properties[key].type === 'object') {
+              inputData[key] = getNestedData(schema.properties[key], values[key]);
+            } else {
+              inputData[key] = values[key];
+            }
           }
-        }
-      });
-    }
+        });
+      }
 
-    if (schema.additionalProperties) {
-      inputData = { ...inputData, ...values };
-    }
+      if (schema.additionalProperties) {
+        inputData = { ...inputData, ...values };
+      }
 
+      return inputData;
+    };
+
+    let inputData = getNestedData(blockSchema, node.data.hardcodedValues);
+
+    // Get data from connected nodes
+    const incomingEdges = allEdges.filter(edge => edge.target === node.id);
+    incomingEdges.forEach(edge => {
+      const sourceNode = allNodes.find(n => n.id === edge.source);
+      if (sourceNode && sourceNode.data.output_data) {
+        const outputKey = Object.keys(sourceNode.data.output_data)[0]; // Assuming single output
+        inputData[edge.targetHandle as string] = sourceNode.data.output_data[outputKey];
+      }
+    });
+
+    // Filter out any inputs that are not in the block's schema
+    Object.keys(inputData).forEach(key => {
+      if (!blockSchema.properties[key]) {
+        delete inputData[key];
+      }
+    });
+
+    console.log(`Final prepared input for ${node.data.blockType} (${node.id}):`, inputData);
     return inputData;
   };
-
-  let inputData = getNestedData(blockSchema, node.data.hardcodedValues);
-
-  // Get data from connected nodes
-  const incomingEdges = allEdges.filter(edge => edge.target === node.id);
-  incomingEdges.forEach(edge => {
-    const sourceNode = allNodes.find(n => n.id === edge.source);
-    if (sourceNode && sourceNode.data.output_data) {
-      const outputKey = Object.keys(sourceNode.data.output_data)[0]; // Assuming single output
-      inputData[edge.targetHandle as string] = sourceNode.data.output_data[outputKey];
-    }
-  });
-
-  // Filter out any inputs that are not in the block's schema
-  Object.keys(inputData).forEach(key => {
-    if (!blockSchema.properties[key]) {
-      delete inputData[key];
-    }
-  });
-
-  console.log(`Final prepared input for ${node.data.blockType} (${node.id}):`, inputData);
-  return inputData;
-};
 
 
   const runAgent = async () => {
@@ -335,4 +381,4 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
   );
 };
 
-export default Flow;
+export default FlowEditor;
