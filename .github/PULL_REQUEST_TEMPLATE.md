@@ -10,7 +10,7 @@
 
 <!--
 Check out our contribution guide:
-https://github.com/Significant-Gravitas/AutoGPT/wiki/Contributing
+https://github.com/Significant-Gravitas/Nexus/wiki/Contributing
 
 1. Avoid duplicate work, issues, PRs etc.
 2. Also consider contributing something other than code; see the [contribution guide]

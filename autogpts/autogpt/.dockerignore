@@ -1,0 +1,14 @@
+.*
+**/.venv*
+**/__pycache__
+*.template
+*.yaml
+*.yml
+!prompt_settings.yaml
+
+data/*
+logs/*
+agbenchmark_config/logs/*
+agbenchmark_config/reports/*
+
+*.png

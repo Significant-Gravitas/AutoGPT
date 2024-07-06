@@ -5,12 +5,14 @@ on:
     branches: [ master, development ]
     paths:
       - '.github/workflows/autogpt-docker-ci.yml'
-      - 'autogpt/**'
+      - 'autogpts/autogpt/**'
+      - '!autogpts/autogpt/tests/vcr_cassettes'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
       - '.github/workflows/autogpt-docker-ci.yml'
-      - 'autogpt/**'
+      - 'autogpts/autogpt/**'
+      - '!autogpts/autogpt/tests/vcr_cassettes'
 
 concurrency:
   group: ${{ format('autogpt-docker-ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
@@ -18,7 +20,7 @@ concurrency:
 
 defaults:
   run:
-    working-directory: autogpt
+    working-directory: autogpts/autogpt
 
 env:
   IMAGE_NAME: auto-gpt
@@ -47,7 +49,7 @@ jobs:
       name: Build image
       uses: docker/build-push-action@v5
       with:
-        file: Dockerfile.autogpt
+        context: autogpts/autogpt
         build-args: BUILD_TYPE=${{ matrix.build-type }}
         tags: ${{ env.IMAGE_NAME }}
         labels: GIT_REVISION=${{ github.sha }}
@@ -82,6 +84,7 @@ jobs:
         vars_json: ${{ toJSON(vars) }}
 
       run: .github/workflows/scripts/docker-ci-summary.sh >> $GITHUB_STEP_SUMMARY
+      working-directory: ./
       continue-on-error: true
 
   test:
@@ -116,7 +119,7 @@ jobs:
         name: Build image
         uses: docker/build-push-action@v5
         with:
-          file: Dockerfile.autogpt
+          context: autogpts/autogpt
           build-args: BUILD_TYPE=dev  # include pytest
           tags: >
             ${{ env.IMAGE_NAME }},

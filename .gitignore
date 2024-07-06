@@ -6,6 +6,8 @@ auto_gpt_workspace/*
 *.mpeg
 .env
 azure.yaml
+ai_settings.yaml
+last_run_ai_settings.yaml
 .vscode
 .idea/*
 auto-gpt.json
@@ -32,6 +34,7 @@ dist/
 downloads/
 eggs/
 .eggs/
+lib/
 lib64/
 parts/
 sdist/
@@ -161,7 +164,7 @@ agbenchmark/reports/
 
 # Nodejs
 package-lock.json
-
+package.json
 
 # Allow for locally private items
 # private
@@ -169,5 +172,8 @@ pri*
 # ignore
 ig*
 .github_access_token
-LICENSE.rtf
-rnd/autogpt_server/settings.py
+arena/TestAgent.json
+
+# evo.ninja
+autogpts/evo.ninja/*
+!autogpts/evo.ninja/setup
