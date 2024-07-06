@@ -1,5 +1,7 @@
+"use client";
 import Image from "next/image";
-import Flow from '@/components/Flow';
+import { useSearchParams } from "next/navigation";
+import FlowEditor from '@/components/Flow';
 
 export default function Home() {
   return (
@@ -32,7 +34,10 @@ export default function Home() {
           </div>
 
           <div className="w-full flex justify-center mt-10">
-              <Flow className="flow-container w-full min-h-[75vh] border border-gray-300 dark:border-gray-700 rounded-lg" />
+              <FlowEditor
+                className="flow-container w-full min-h-[75vh] border border-gray-300 dark:border-gray-700 rounded-lg"
+                flowID={useSearchParams().get("flowID") ?? undefined}
+              />
           </div>
       </div>
   );
