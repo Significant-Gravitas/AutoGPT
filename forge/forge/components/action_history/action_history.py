@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Callable, Iterator, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
@@ -24,6 +24,8 @@ class ActionHistoryConfiguration(BaseModel):
     """Language model used for summary chunking using spacy"""
     full_message_count: int = 4
     """Number of latest non-summarized messages to include in the history"""
+
+    model_config = ConfigDict(protected_namespaces=())
 
 
 class ActionHistoryComponent(

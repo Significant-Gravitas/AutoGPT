@@ -12,6 +12,7 @@ from forge.llm.providers.schema import (
 )
 from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.models.json_schema import JSONSchema
+from pydantic import ConfigDict
 
 from autogpt.app.config import AppConfig
 
@@ -139,6 +140,8 @@ class AgentProfileGeneratorConfiguration(SystemConfiguration):
             },
         ).model_dump()
     )
+
+    model_config = ConfigDict(protected_namespaces=())
 
 
 class AgentProfileGenerator(PromptStrategy):

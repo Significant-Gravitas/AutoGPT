@@ -188,6 +188,8 @@ class ModelResponse(BaseModel):
     completion_tokens_used: int
     model_info: ModelInfo
 
+    model_config = ConfigDict(protected_namespaces=())
+
 
 class ModelProviderConfiguration(SystemConfiguration):
     retries_per_request: int = UserConfigurable(7)

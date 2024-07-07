@@ -7,7 +7,7 @@ from typing import Iterator, Literal, Optional, Type
 from urllib.request import urlretrieve
 
 from bs4 import BeautifulSoup
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeDriverService
@@ -68,6 +68,8 @@ class WebSeleniumConfiguration(BaseModel):
     """User agent used by the browser"""
     browse_spacy_language_model: str = "en_core_web_sm"
     """Spacy language model used for chunking text"""
+
+    model_config = ConfigDict(protected_namespaces=())
 
 
 class WebSeleniumComponent(
