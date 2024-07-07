@@ -387,8 +387,9 @@ const FlowRunsTimeline = (
           return null;
         }}
       />
-      {flows.map((flow, index) => (
+      {flows.map((flow) => (
         <Scatter
+          key={flow.id}
           data={flowRuns.filter(fr => fr.flowID == flow.id).map(fr => ({
             ...fr,
             time: fr.startTime + (fr.duration * 1000),
@@ -398,8 +399,9 @@ const FlowRunsTimeline = (
           fill={`hsl(${hashString(flow.id) * 137.5 % 360}, 70%, 50%)`}
         />
       ))}
-      {flowRuns.map((run, index) => (
+      {flowRuns.map((run) => (
         <Line
+          key={run.id}
           type="linear"
           dataKey="_duration"
           data={[
