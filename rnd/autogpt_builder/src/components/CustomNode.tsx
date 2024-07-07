@@ -5,6 +5,7 @@ import './customnode.css';
 import ModalComponent from './ModalComponent';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { Textarea } from './ui/textarea';
 
 type Schema = {
   type: string;
@@ -176,6 +177,9 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   const renderInputField = (key: string, schema: any) => {
     const error = errors[key];
+    const value = data.hardcodedValues[key] || '';
+    const truncatedValue = value.length > 100 ? `${value.slice(0, 100)}...` : value;
+
     switch (schema.type) {
       case 'string':
         return schema.enum ? (
@@ -195,10 +199,21 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </div>
         ) : (
           <div key={key} className="input-container">
-            <div className="clickable-input" onClick={() => handleInputClick(key)}>
-              {data.hardcodedValues[key] || `Enter ${key}`}
+            <div className="handle-container">
+              <Handle
+                type="target"
+                position={Position.Left}
+                id={key}
+                style={{ background: '#555', borderRadius: '50%' }}
+              />
+              <span className="handle-label">{key}</span>
+              {!isHandleConnected(key) && (
+                <div className="clickable-input" onClick={() => handleInputClick(key)}>
+                  <span>{truncatedValue}</span>
+                </div>
+              )}
+              {error && <span className="error-message">{error}</span>}
             </div>
-            {error && <span className="error-message">{error}</span>}
           </div>
         );
       case 'boolean':
@@ -228,13 +243,24 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       case 'number':
         return (
           <div key={key} className="input-container">
-            <input
-              type="number"
-              value={data.hardcodedValues[key] || ''}
-              onChange={(e) => handleInputChange(key, parseFloat(e.target.value))}
-              className="number-input"
-            />
-            {error && <span className="error-message">{error}</span>}
+            <div className="handle-container">
+              <Handle
+                type="target"
+                position={Position.Left}
+                id={key}
+                style={{ background: '#555', borderRadius: '50%' }}
+              />
+              <span className="handle-label">{key}</span>
+              {!isHandleConnected(key) && (
+                <input
+                  type="number"
+                  value={data.hardcodedValues[key] || ''}
+                  onChange={(e) => handleInputChange(key, parseFloat(e.target.value))}
+                  className="number-input"
+                />
+              )}
+              {error && <span className="error-message">{error}</span>}
+            </div>
           </div>
         );
       case 'array':
@@ -242,23 +268,32 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           const arrayValues = data.hardcodedValues[key] || [];
           return (
             <div key={key} className="input-container">
-              {arrayValues.map((item: string, index: number) => (
-                <div key={`${key}-${index}`} className="array-item-container">
-                  <input
-                    type="text"
-                    value={item}
-                    onChange={(e) => handleArrayItemChange(key, index, e.target.value)}
-                    className="array-item-input"
-                  />
-                  <Button onClick={() => removeArrayItem(key, index)} className="array-item-remove">
-                    &times;
-                  </Button>
-                </div>
-              ))}
-              <Button onClick={() => addArrayItem(key)} className="array-item-add">
-                Add Item
-              </Button>
-              {error && <span className="error-message">{error}</span>}
+              <div className="handle-container">
+                <Handle
+                  type="target"
+                  position={Position.Left}
+                  id={key}
+                  style={{ background: '#555', borderRadius: '50%' }}
+                />
+                <span className="handle-label">{key}</span>
+                {arrayValues.map((item: string, index: number) => (
+                  <div key={`${key}-${index}`} className="array-item-container">
+                    <input
+                      type="text"
+                      value={item}
+                      onChange={(e) => handleArrayItemChange(key, index, e.target.value)}
+                      className="array-item-input"
+                    />
+                    <Button onClick={() => removeArrayItem(key, index)} className="array-item-remove">
+                      &times;
+                    </Button>
+                  </div>
+                ))}
+                <Button onClick={() => addArrayItem(key)} className="array-item-add">
+                  Add Item
+                </Button>
+                {error && <span className="error-message">{error}</span>}
+              </div>
             </div>
           );
         }
@@ -267,6 +302,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         return null;
     }
   };
+  
 
   const renderDynamicTextFields = () => {
     const dynamicKeyPrefix = 'texts_$_';
@@ -322,7 +358,6 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     }
   };
 
-
   return (
     <div className="custom-node dark:border-gray-800 dark:bg-gray-950">
       <div className="node-header">
@@ -337,18 +372,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
             Object.keys(data.inputSchema.properties).map((key) => (
               <div key={key}>
                 {key !== 'texts' ? (
-                  <div>
-                    <div className="handle-container">
-                      <Handle
-                        type="target"
-                        position={Position.Left}
-                        id={key}
-                        style={{ background: '#555', borderRadius: '50%' }}
-                      />
-                      <span className="handle-label">{key}</span>
-                    </div>
-                    {!isHandleConnected(key) && renderInputField(key, data.inputSchema.properties[key])}
-                  </div>
+                  renderInputField(key, data.inputSchema.properties[key])
                 ) : (
                   <div key={key} className="input-container">
                     <div className="handle-container">

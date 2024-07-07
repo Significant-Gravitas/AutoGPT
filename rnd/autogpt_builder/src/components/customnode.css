@@ -4,7 +4,7 @@
   border-radius: 20px;
   background: #333;
   color: #e0e0e0;
-  width: 350px;
+  width: 500px;
 }
 
 .node-header {
@@ -59,11 +59,33 @@
 
 .clickable-input {
   padding: 5px;
+  width: 240px;
   border-radius: 4px;
   border: 1px solid #555;
   background: #444;
   color: #e0e0e0;
   cursor: pointer;
+  word-break: break-all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+}
+
+.clickable-input span {
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 100px);
+  vertical-align: middle;
+}
+
+.clickable-input::after {
+  content: '📄 Press to edit';
+  margin-left: 5px;
+  vertical-align: middle;
+  font-size: 12px;
 }
 
 .select-input {
