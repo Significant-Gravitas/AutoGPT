@@ -15,13 +15,13 @@
     "@fortawesome/react-fontawesome": "^0.2.0",
     "@prisma/client": "^5.1.1",
     "@t3-oss/env-nextjs": "^0.3.1",
-    "next": "^13.4.2",
+    "next": "^14.1.1",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "tailwind-styled-components": "^2.2.0",
     "vis-data": "^7.1.6",
     "vis-network": "^9.1.6",
-    "zod": "^3.21.4"
+    "zod": "^3.22.3"
   },
   "devDependencies": {
     "@types/eslint": "^8.37.0",
