@@ -2,7 +2,7 @@
 ARG BUILD_TYPE=dev
 
 # Use an official Python base image from the Docker Hub
-FROM python:3.10-slim AS autogpt-base
+FROM python:3.13.0b2-slim AS autogpt-base
 
 # Install browsers
 RUN apt-get update && apt-get install -y \
