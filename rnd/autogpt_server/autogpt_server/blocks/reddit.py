@@ -1,6 +1,6 @@
 # type: ignore
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import praw
 from typing import Any
@@ -70,7 +70,7 @@ class RedditGetPostsBlock(Block):
         client = get_praw(input_data.creds)
         subreddit = client.subreddit(input_data.subreddit)
         for post in subreddit.new(limit=input_data.post_limit):
-            if input_data.last_post and post.created_utc < datetime.now() - \
+            if input_data.last_post and post.created_utc < datetime.now(tz=timezone.utc) - \
                     timedelta(minutes=input_data.last_minutes):
                 break
 
