@@ -32,3 +32,7 @@
   gap: 10px;
   margin-top: 10px;
 }
+
+.dark-theme {
+  @apply dark:border-gray-800 dark:bg-gray-950;
+}
