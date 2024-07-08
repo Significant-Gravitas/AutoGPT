@@ -116,7 +116,7 @@ You can set sensitive variables in the `.json` file as well but it's recommended
         "github_username": null
     },
     "ActionHistoryConfiguration": {
-        "model_name": "gpt-3.5-turbo",
+        "llm_name": "gpt-3.5-turbo",
         "max_tokens": 1024,
         "spacy_language_model": "en_core_web_sm"
     },
@@ -129,7 +129,7 @@ You can set sensitive variables in the `.json` file as well but it's recommended
         "duckduckgo_max_attempts": 3
     },
     "WebSeleniumConfiguration": {
-        "model_name": "gpt-3.5-turbo",
+        "llm_name": "gpt-3.5-turbo",
         "web_browser": "chrome",
         "headless": true,
         "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Callable, Iterator, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
@@ -16,7 +16,7 @@ from .model import ActionResult, AnyProposal, Episode, EpisodicActionHistory
 
 
 class ActionHistoryConfiguration(BaseModel):
-    model_name: ModelName = OpenAIModelName.GPT3
+    llm_name: ModelName = OpenAIModelName.GPT3
     """Name of the llm model used to compress the history"""
     max_tokens: int = 1024
     """Maximum number of tokens to use up with generated history messages"""
@@ -24,8 +24,6 @@ class ActionHistoryConfiguration(BaseModel):
     """Language model used for summary chunking using spacy"""
     full_message_count: int = 4
     """Number of latest non-summarized messages to include in the history"""
-
-    model_config = ConfigDict(protected_namespaces=())
 
 
 class ActionHistoryComponent(
@@ -99,7 +97,7 @@ class ActionHistoryComponent(
     async def after_execute(self, result: ActionResult) -> None:
         self.event_history.register_result(result)
         await self.event_history.handle_compression(
-            self.llm_provider, self.config.model_name, self.config.spacy_language_model
+            self.llm_provider, self.config.llm_name, self.config.spacy_language_model
         )
 
     @staticmethod

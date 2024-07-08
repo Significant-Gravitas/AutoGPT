@@ -186,9 +186,7 @@ class ModelResponse(BaseModel):
 
     prompt_tokens_used: int
     completion_tokens_used: int
-    model_info: ModelInfo
-
-    model_config = ConfigDict(protected_namespaces=())
+    llm_info: ModelInfo
 
 
 class ModelProviderConfiguration(SystemConfiguration):
