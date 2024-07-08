@@ -344,7 +344,6 @@ const FlowEditor: React.FC<{ flowID?: string }> = ({ flowID }) => {
 
 
 const updateNodesWithExecutionData = (executionData: any[]) => {
-  console.log("Execution Data:", executionData);
   setNodes((nds) =>
     nds.map((node) => {
       const nodeExecution = executionData.find((exec) => exec.node_id === node.id);
