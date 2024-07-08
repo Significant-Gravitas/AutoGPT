@@ -80,6 +80,32 @@ poetry run cli app
    poetry run cli stop
    ```
 
+## Adding Test Data
+
+1. Start the server using 1 of the above methods
+
+2. Run the populate db command
+
+```
+poetry run cli test populate-db http://0.0.0.0:8000
+```
+
+This will add a graph, a graph execution and a cron schedule to run the graph every 5 mins
+
+### Reddit Graph
+
+There is a command to add the test reddit graph
+
+```
+poetry run cli test reddit http://0.0.0.0:8000
+```
+
+For help run:
+```
+poetry run cli test reddit --help
+
+```
+
 # Testing
 
 To run the tests
