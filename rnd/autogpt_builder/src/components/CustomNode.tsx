@@ -3,6 +3,9 @@ import { Handle, Position, NodeProps } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './customnode.css';
 import ModalComponent from './ModalComponent';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Textarea } from './ui/textarea';
 
 type Schema = {
   type: string;
@@ -184,16 +187,16 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               <div className="clickable-input" onClick={() => handleInputClick(`${fullKey}.${propKey}`)}>
                 {propKey}: {typeof propValue === 'object' ? JSON.stringify(propValue, null, 2) : propValue}
               </div>
-              <button onClick={() => handleInputChange(`${fullKey}.${propKey}`, undefined)} className="array-item-remove">
+              <Button onClick={() => handleInputChange(`${fullKey}.${propKey}`, undefined)} className="array-item-remove">
                 &times;
-              </button>
+              </Button>
             </div>
           ))}
           {key === 'expected_format' && (
             <div className="nested-input">
               {keyValuePairs.map((pair, index) => (
                 <div key={index} className="key-value-input">
-                  <input
+                  <Input
                     type="text"
                     placeholder="Key"
                     value={pair.key}
@@ -205,7 +208,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                       handleInputChange('expected_format', expectedFormat);
                     }}
                   />
-                  <input
+                  <Input
                     type="text"
                     placeholder="Value"
                     value={pair.value}
@@ -220,20 +223,20 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                 </div>
               ))}
               <div className="key-value-input">
-                <input
+                <Input
                   type="text"
                   placeholder="Key"
                   value={newKey}
                   onChange={(e) => setNewKey(e.target.value)}
                 />
-                <input
+                <Input
                   type="text"
                   placeholder="Value"
                   value={newValue}
                   onChange={(e) => setNewValue(e.target.value)}
                 />
               </div>
-              <button onClick={handleAddProperty}>Add Property</button>
+              <Button onClick={handleAddProperty}>Add Property</Button>
             </div>
           )}
           {error && <span className="error-message">{error}</span>}
@@ -344,14 +347,14 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                     onChange={(e) => handleInputChange(`${fullKey}.${index}`, e.target.value)}
                     className="array-item-input"
                   />
-                  <button onClick={() => handleInputChange(`${fullKey}.${index}`, '')} className="array-item-remove">
+                  <Button onClick={() => handleInputChange(`${fullKey}.${index}`, '')} className="array-item-remove">
                     &times;
-                  </button>
+                  </Button>
                 </div>
               ))}
-              <button onClick={() => handleInputChange(fullKey, [...arrayValues, ''])} className="array-item-add">
+              <Button onClick={() => handleInputChange(fullKey, [...arrayValues, ''])} className="array-item-add">
                 Add Item
-              </button>
+              </Button>
               {error && <span className="error-message">{error}</span>}
             </div>
           );
@@ -398,12 +401,12 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   };
 
   return (
-    <div className={`custom-node ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : ''}`}>
+    <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : ''}`}>
       <div className="node-header">
         <div className="node-title">{data.blockType || data.title}</div>
-        <button onClick={toggleProperties} className="toggle-button">
+        <Button onClick={toggleProperties} className="toggle-button">
           &#9776;
-        </button>
+        </Button>
       </div>
       <div className="node-content">
         <div className="input-section">
@@ -442,7 +445,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </p>
         </div>
       )}
-      <button onClick={handleSubmit}>Submit</button>
+      <Button onClick={handleSubmit}>Submit</Button>
       <ModalComponent
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
