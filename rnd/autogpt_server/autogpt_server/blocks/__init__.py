@@ -1,5 +1,6 @@
 from autogpt_server.blocks import sample, reddit, text, object, ai
 from autogpt_server.data.block import Block
+from autogpt_server.data.agent_block import AutoGPTAgentBlock
 
 AVAILABLE_BLOCKS = {
     block.id: block

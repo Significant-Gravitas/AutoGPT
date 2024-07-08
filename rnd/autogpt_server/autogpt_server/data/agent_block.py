@@ -4,11 +4,13 @@ import asyncio
 import inspect
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
+from colorama import Fore, Style
 import sentry_sdk
 from autogpt.agents.prompt_strategies.one_shot import OneShotAgentActionProposal, OneShotAgentPromptStrategy
 from autogpt.app.config import ConfigBuilder
+from autogpt_server.data.block import Block, BlockData, BlockOutput, BlockSchema
 from forge.agent.base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 from forge.agent.protocols import (
     AfterExecute,
@@ -17,6 +19,7 @@ from forge.agent.protocols import (
     DirectiveProvider,
     MessageProvider,
 )
+from forge.command import command
 from forge.command.command import Command
 from forge.components.action_history import (
     ActionHistoryComponent,
@@ -53,6 +56,7 @@ from forge.models.action import (
     ActionSuccessResult,
 )
 from forge.models.config import Configurable
+from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import (
     AgentException,
     AgentTerminated,
@@ -72,6 +76,24 @@ class AgentSettings(BaseAgentSettings):
         default_factory=EpisodicActionHistory[OneShotAgentActionProposal]
     )
     """(STATE) The action history of the agent."""
+
+
+class OutputComponent(CommandProvider):
+    def get_commands(self) -> Iterator[Command]:
+        yield self.output
+    
+    @command(
+        parameters={
+            "output": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="Output data to be returned.",
+                required=True,
+            ),
+        },
+    )
+    def output(self, output: str) -> str:
+        """Use this to output the result."""
+        return output
 
 
 class SimpleAgent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
@@ -101,6 +123,7 @@ class SimpleAgent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSetti
 
         # Components
         self.system = SystemComponent()
+        self.output = OutputComponent()
         # self.history = ActionHistoryComponent(
         #     settings.history,
         #     lambda x: self.llm_provider.count_tokens(x, self.llm.name),
@@ -121,6 +144,7 @@ class SimpleAgent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSetti
 
         self.event_history = settings.history
         self.app_config = app_config
+    
 
     async def propose_action(self) -> OneShotAgentActionProposal:
         """Proposes the next action to execute, based on the task and current state.
@@ -143,6 +167,8 @@ class SimpleAgent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSetti
         # Get commands
         self.commands = await self.run_pipeline(CommandProvider.get_commands)
         self._remove_disabled_commands()
+
+        print(f"#########---------> commands: {self.commands}")
 
         # Get messages
         messages = await self.run_pipeline(MessageProvider.get_messages)
@@ -271,3 +297,70 @@ class SimpleAgent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSetti
         ]
 
 
+class AutoGPTAgentBlock(Block):
+    class Input(BlockSchema):
+        task: str
+        input: str
+    
+    class Output(BlockSchema):
+        output: str
+
+    def __init__(self):
+        super().__init__(
+            id="d2e2ecd2-9ae6-422d-8dfe-ceca500ce6a6",
+            input_schema=AutoGPTAgentBlock.Input,
+            output_schema=AutoGPTAgentBlock.Output,
+        )
+
+    def run(self, input_data: Input) -> BlockOutput:
+        # Set up configuration
+        config = ConfigBuilder.build_config_from_env()
+
+        # Storage
+        local = config.file_storage_backend == FileStorageBackendName.LOCAL
+        restrict_to_root = not local or config.restrict_to_workspace
+        file_storage = get_storage(
+            config.file_storage_backend,
+            root_path=Path("data"),
+            restrict_to_root=restrict_to_root,
+        )
+        file_storage.initialize()
+
+        # LLM provider
+        multi_provider = MultiProvider()
+        for model in [config.smart_llm, config.fast_llm]:
+            # Ensure model providers for configured LLMs are available
+            multi_provider.get_model_provider(model)
+
+        # State
+        state = AgentSettings(
+            agent_id="TemporaryAgentID",
+            name="WrappedAgent",
+            description="Wrapped agent for the Agent Server.",
+            task=f"Your task: {input_data.task}\n"
+                 f"Input data: {input_data.input}",
+        )
+        # Disable slow models
+        state.config.big_brain = False
+
+        agent = SimpleAgent(state, multi_provider, file_storage, config)
+        print(f"{Fore.GREEN}Agent created{Style.RESET_ALL}")
+
+        # Execute agent
+        for tries in range(3):
+            try:
+                print(f"{Fore.CYAN}Proposing action...{Style.RESET_ALL}")
+                proposal = asyncio.run(agent.propose_action())
+                print(f"{Fore.GREEN}Proposal created{Style.RESET_ALL}")
+                break
+            except Exception as e:
+                print(f"{Fore.YELLOW}Proposal failed: {e}{Style.RESET_ALL}")
+                if tries == 2:
+                    print(f"{Fore.RED}Failed to create proposal{Style.RESET_ALL}")
+                    raise e
+                
+        print(f"{Fore.GREEN}Proposal executed{Style.RESET_ALL}")
+        result = asyncio.run(agent.execute(proposal))
+        print(f"{Fore.GREEN}Command executed{Style.RESET_ALL}")
+
+        yield "output", str(result)
