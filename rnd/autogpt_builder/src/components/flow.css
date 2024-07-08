@@ -105,7 +105,11 @@ input::placeholder, textarea::placeholder {
 }
 
 .sidebar h3 {
-  margin: 0 0 20px;
+  margin: 0 0 10px;
+}
+
+.sidebar input {
+  margin: 0 0 10px;
 }
 
 .sidebarNodeRowStyle {
@@ -147,4 +151,8 @@ input::placeholder, textarea::placeholder {
 
 .flow-controls.open {
   transform: translateX(350px);
+}
+
+.dark-theme {
+  @apply dark:border-gray-800 dark:bg-gray-950;
 }
