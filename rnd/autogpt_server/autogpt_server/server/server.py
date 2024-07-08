@@ -1,8 +1,11 @@
-from typing import Annotated, Any, Dict
+import asyncio
 import uuid
+from typing import Annotated, Any, Dict
+
+import uvicorn
+from fastapi import WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-import uvicorn
 
 from contextlib import asynccontextmanager
 from fastapi import APIRouter, Body, FastAPI, HTTPException
@@ -16,22 +19,32 @@ from autogpt_server.data.graph import (
     Graph,
 )
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
+from autogpt_server.server.conn_manager import ConnectionManager
+from autogpt_server.server.ws_api import websocket_router as ws_impl
 from autogpt_server.util.data import get_frontend_path
-from autogpt_server.util.process import AppProcess
-from autogpt_server.util.service import get_service_client
+from autogpt_server.util.service import expose  # type: ignore
+from autogpt_server.util.service import AppService, get_service_client
 from autogpt_server.util.settings import Settings
 
 
-class AgentServer(AppProcess):
+class AgentServer(AppService):
+    event_queue: asyncio.Queue[execution.ExecutionResult] = asyncio.Queue()
+    manager = ConnectionManager()
+
+    async def event_broadcaster(self):
+        while True:
+            event: execution.ExecutionResult = await self.event_queue.get()
+            await self.manager.send_execution_result(event)
 
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
         await db.connect()
-        await block.initialize_blocks()
+        self.run_and_wait(block.initialize_blocks())
+        asyncio.create_task(self.event_broadcaster())
         yield
         await db.disconnect()
 
-    def run(self):
+    def run_service(self):
         app = FastAPI(
             title="AutoGPT Agent Server",
             description=(
@@ -55,7 +68,7 @@ class AgentServer(AppProcess):
         router = APIRouter()
         router.add_api_route(
             path="/blocks",
-            endpoint=self.get_graph_blocks,
+            endpoint=self.get_graph_blocks,  # type: ignore
             methods=["GET"],
         )
         router.add_api_route(
@@ -80,17 +93,22 @@ class AgentServer(AppProcess):
         )
         router.add_api_route(
             path="/graphs/{graph_id}/execute",
-            endpoint=self.execute_graph,
+            endpoint=self.execute_graph,  # type: ignore
             methods=["POST"],
         )
         router.add_api_route(
+            path="/graphs/{graph_id}/executions",
+            endpoint=self.list_graph_runs,
+            methods=["GET"],
+        )
+        router.add_api_route(
             path="/graphs/{graph_id}/executions/{run_id}",
-            endpoint=self.get_executions,
+            endpoint=self.get_run_execution_results,
             methods=["GET"],
         )
         router.add_api_route(
             path="/graphs/{graph_id}/schedules",
-            endpoint=self.create_schedule,
+            endpoint=self.create_schedule,  # type: ignore
             methods=["POST"],
         )
         router.add_api_route(
@@ -100,9 +118,10 @@ class AgentServer(AppProcess):
         )
         router.add_api_route(
             path="/graphs/schedules/{schedule_id}",
-            endpoint=self.update_schedule,
+            endpoint=self.update_schedule,  # type: ignore
             methods=["PUT"],
         )
+
         router.add_api_route(
             path="/settings",
             endpoint=self.update_configuration,
@@ -118,6 +137,11 @@ class AgentServer(AppProcess):
         )
 
         app.include_router(router)
+
+        @app.websocket("/ws")
+        async def websocket_endpoint(websocket: WebSocket):  # type: ignore
+            await ws_impl(websocket, self.manager)
+
         uvicorn.run(app, host="0.0.0.0", port=8000)
 
     @property
@@ -139,7 +163,7 @@ class AgentServer(AppProcess):
         )
 
     @classmethod
-    def get_graph_blocks(cls) -> list[dict]:
+    def get_graph_blocks(cls) -> list[dict[Any, Any]]:
         return [v.to_dict() for v in block.get_blocks().values()]
 
     @classmethod
@@ -175,41 +199,62 @@ class AgentServer(AppProcess):
 
         return await create_graph(graph)
 
-    async def execute_graph(self, graph_id: str, node_input: dict) -> dict:
+    async def execute_graph(
+        self, graph_id: str, node_input: dict[Any, Any]
+    ) -> dict[Any, Any]:
         try:
-            return self.execution_manager_client.add_execution(graph_id, node_input)
+            return self.execution_manager_client.add_execution(graph_id, node_input)  # type: ignore
         except Exception as e:
             msg = e.__str__().encode().decode("unicode_escape")
             raise HTTPException(status_code=400, detail=msg)
 
     @classmethod
-    async def get_executions(
+    async def list_graph_runs(cls, graph_id: str) -> list[str]:
+        graph = await get_graph(graph_id)
+        if not graph:
+            raise HTTPException(status_code=404, detail=f"Agent #{graph_id} not found.")
+
+        return await execution.list_executions(graph_id)
+
+    @classmethod
+    async def get_run_execution_results(
         cls, graph_id: str, run_id: str
     ) -> list[execution.ExecutionResult]:
         graph = await get_graph(graph_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Agent #{graph_id} not found.")
 
-        return await execution.get_executions(run_id)
+        return await execution.get_execution_results(run_id)
 
-    async def create_schedule(self, graph_id: str, cron: str, input_data: dict) -> dict:
+    async def create_schedule(
+        self, graph_id: str, cron: str, input_data: dict[Any, Any]
+    ) -> dict[Any, Any]:
         graph = await get_graph(graph_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         execution_scheduler = self.execution_scheduler_client
         return {
-            "id": execution_scheduler.add_execution_schedule(graph_id, cron, input_data)
+            "id": execution_scheduler.add_execution_schedule(graph_id, cron, input_data)  # type: ignore
         }
 
-    def update_schedule(self, schedule_id: str, input_data: dict) -> dict:
+    def update_schedule(
+        self, schedule_id: str, input_data: dict[Any, Any]
+    ) -> dict[Any, Any]:
         execution_scheduler = self.execution_scheduler_client
         is_enabled = input_data.get("is_enabled", False)
-        execution_scheduler.update_schedule(schedule_id, is_enabled)
+        execution_scheduler.update_schedule(schedule_id, is_enabled)  # type: ignore
         return {"id": schedule_id}
 
     def get_execution_schedules(self, graph_id: str) -> dict[str, str]:
         execution_scheduler = self.execution_scheduler_client
-        return execution_scheduler.get_execution_schedules(graph_id)
+        return execution_scheduler.get_execution_schedules(graph_id)  # type: ignore
+
+    @expose
+    def send_execution_update(self, execution_result_dict: dict[Any, Any]):
+        execution_result = execution.ExecutionResult(**execution_result_dict)
+        self.run_and_wait(
+            self.event_queue.put(execution_result)
+        )
 
     @classmethod
     def update_configuration(
@@ -220,14 +265,14 @@ class AgentServer(AppProcess):
     ):
         settings = Settings()
         try:
-            updated_fields = {"config": [], "secrets": []}
+            updated_fields: dict[Any, Any] = {"config": [], "secrets": []}
             for key, value in updated_settings.get("config", {}).items():
-                if hasattr(settings.config, key):
-                    setattr(settings.config, key, value)
+                if hasattr(settings.config, key):  # type: ignore
+                    setattr(settings.config, key, value)  # type: ignore
                     updated_fields["config"].append(key)
             for key, value in updated_settings.get("secrets", {}).items():
-                if hasattr(settings.secrets, key):
-                    setattr(settings.secrets, key, value)
+                if hasattr(settings.secrets, key):  # type: ignore
+                    setattr(settings.secrets, key, value)  # type: ignore
                     updated_fields["secrets"].append(key)
             settings.save()
             return JSONResponse(

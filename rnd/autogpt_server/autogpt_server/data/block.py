@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, cast, ClassVar, Generator, Generic, TypeVar, Type
+from typing import Any, ClassVar, Generator, Generic, Type, TypeVar, cast
 
 import jsonref
 import jsonschema
@@ -27,7 +27,8 @@ class BlockSchema(BaseModel):
             if isinstance(obj, dict):
                 return {
                     key: ref_to_dict(value)
-                    for key, value in obj.items() if not key.startswith("$")
+                    for key, value in obj.items()
+                    if not key.startswith("$")
                 }
             elif isinstance(obj, list):
                 return [ref_to_dict(item) for item in obj]
@@ -81,8 +82,8 @@ class BlockSchema(BaseModel):
         }
 
 
-BlockSchemaInputType = TypeVar('BlockSchemaInputType', bound=BlockSchema)
-BlockSchemaOutputType = TypeVar('BlockSchemaOutputType', bound=BlockSchema)
+BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)
+BlockSchemaOutputType = TypeVar("BlockSchemaOutputType", bound=BlockSchema)
 
 
 class EmptySchema(BlockSchema):
@@ -91,10 +92,10 @@ class EmptySchema(BlockSchema):
 
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     def __init__(
-            self,
-            id: str = "",
-            input_schema: Type[BlockSchemaInputType] = EmptySchema,
-            output_schema: Type[BlockSchemaOutputType] = EmptySchema,
+        self,
+        id: str = "",
+        input_schema: Type[BlockSchemaInputType] = EmptySchema,
+        output_schema: Type[BlockSchemaOutputType] = EmptySchema,
             test_input: BlockInput | list[BlockInput] | None = None,
             test_output: BlockData | list[BlockData] | None = None,
             test_mock: dict[str, Any] | None = None,
@@ -152,9 +153,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
 
         for output_name, output_data in self.run(self.input_schema(**input_data)):
             if error := self.output_schema.validate_field(output_name, output_data):
-                raise ValueError(
-                    f"Block produced an invalid output data: {error}"
-                )
+                raise ValueError(f"Block produced an invalid output data: {error}")
             yield output_name, output_data
 
 
