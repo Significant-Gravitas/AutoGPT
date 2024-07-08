@@ -22,7 +22,6 @@ class UpdateTrackingModel(BaseModel, Generic[T]):
             self._updated_fields.add(name)
         super().__setattr__(name, value)
 
-
     def mark_updated(self, field_name: str) -> None:
         if field_name in self.model_fields:
             self._updated_fields.add(field_name)
@@ -32,6 +31,10 @@ class UpdateTrackingModel(BaseModel, Generic[T]):
 
     def get_updates(self) -> Dict[str, Any]:
         return {field: getattr(self, field) for field in self._updated_fields}
+
+    @property
+    def updated_fields(self):
+        return self._updated_fields
 
 
 class Config(UpdateTrackingModel["Config"], BaseSettings):
@@ -54,12 +57,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     @classmethod
     def settings_customise_sources(
-        cls,
-        settings_cls: Type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
+            cls,
+            settings_cls: Type[BaseSettings],
+            init_settings: PydanticBaseSettingsSource,
+            env_settings: PydanticBaseSettingsSource,
+            dotenv_settings: PydanticBaseSettingsSource,
+            file_secret_settings: PydanticBaseSettingsSource,
     ) -> Tuple[PydanticBaseSettingsSource, ...]:
         return (JsonConfigSettingsSource(settings_cls),)
 
@@ -101,7 +104,7 @@ class Settings(BaseModel):
 
         # Save updated secrets to individual files
         secrets_dir = get_secrets_path()
-        for key in self.secrets._updated_fields:
+        for key in self.secrets.updated_fields:
             secret_file = os.path.join(secrets_dir, key)
             with open(secret_file, "w") as f:
                 f.write(str(getattr(self.secrets, key)))
