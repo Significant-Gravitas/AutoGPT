@@ -71,7 +71,7 @@ const FlowEditor: React.FC<{ flowID?: string }> = ({ flowID }) => {
   const [agentId, setAgentId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  const apiUrl = 'http://192.168.0.215:8000';
+  const apiUrl = 'http://localhost:8000';
   const api = new AutoGPTServerAPI(apiUrl);
 
   useEffect(() => {
