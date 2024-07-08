@@ -103,6 +103,67 @@ def test():
 
 @test.command()
 @click.argument("server_address")
+def populate_db(server_address: str):
+    """
+    Create an event graph
+    """
+    import requests
+
+    from autogpt_server.blocks.sample import ParrotBlock, PrintingBlock
+    from autogpt_server.blocks.text import TextFormatterBlock
+    from autogpt_server.data import graph
+
+    nodes = [
+        graph.Node(block_id=ParrotBlock().id),
+        graph.Node(block_id=ParrotBlock().id),
+        graph.Node(
+            block_id=TextFormatterBlock().id,
+            input_default={
+                "format": "{texts[0]},{texts[1]},{texts[2]}",
+                "texts_$_3": "!!!",
+            },
+        ),
+        graph.Node(block_id=PrintingBlock().id),
+    ]
+    links = [
+        graph.Link(nodes[0].id, nodes[2].id, "output", "texts_$_1"),
+        graph.Link(nodes[1].id, nodes[2].id, "output", "texts_$_2"),
+        graph.Link(nodes[2].id, nodes[3].id, "output", "text"),
+    ]
+    test_graph = graph.Graph(
+        name="TestGraph",
+        description="Test graph",
+        nodes=nodes,
+        links=links,
+    )
+
+    url = f"{server_address}/graphs"
+    headers = {"Content-Type": "application/json"}
+    data = test_graph.model_dump_json()
+
+    response = requests.post(url, headers=headers, data=data)
+
+    graph_id = response.json()["id"]
+
+    if response.status_code == 200:
+        execute_url = f"{server_address}/graphs/{response.json()['id']}/execute"
+        text = "Hello, World!"
+        input_data = {"input": text}
+        response = requests.post(execute_url, headers=headers, json=input_data)
+
+        schedule_url = f"{server_address}/graphs/{graph_id}/schedules"
+        data = {
+            "graph_id": graph_id,
+            "cron": "*/5 * * * *",
+            "input_data": {"input": "Hello, World!"},
+        }
+        response = requests.post(schedule_url, headers=headers, json=data)
+
+    print("Database populated with: \n- graph\n- execution\n- schedule")
+
+
+@test.command()
+@click.argument("server_address")
 def graph(server_address: str):
     """
     Create an event graph
