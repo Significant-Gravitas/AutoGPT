@@ -1,5 +1,7 @@
 import React, { FC } from 'react';
 import './modal.css';
+import { Button } from './ui/button';
+import { Textarea } from './ui/textarea';
 
 interface ModalProps {
   isOpen: boolean;
@@ -22,15 +24,16 @@ const ModalComponent: FC<ModalProps> = ({ isOpen, onClose, onSave, value }) => {
 
   return (
     <div className="modal-overlay">
-      <div className="modal">
-        <textarea
+      <div className="modal dark-theme">
+        <center><h1>Enter input text</h1></center>
+        <Textarea
           className="modal-textarea"
           value={tempValue}
           onChange={(e) => setTempValue(e.target.value)}
         />
         <div className="modal-actions">
-          <button onClick={onClose}>Cancel</button>
-          <button onClick={handleSave}>Save</button>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSave}>Save</Button>
         </div>
       </div>
     </div>
