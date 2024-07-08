@@ -260,9 +260,10 @@ const FlowEditor: React.FC<{ flowID?: string }> = ({ flowID }) => {
   const runAgent = async () => {
     try {
       console.log("All nodes before formatting:", nodes);
+      const blockIdToNodeIdMap = {};
 
       const formattedNodes = nodes.map(node => {
-        console.log("Formatting node:", node.id, node.data.blockType);
+        blockIdToNodeIdMap[node.data.block_id] = node.id;
         const inputDefault = prepareNodeInputData(node, nodes, edges);
         const inputNodes = edges
           .filter(edge => edge.target === node.id)
@@ -308,6 +309,18 @@ const FlowEditor: React.FC<{ flowID?: string }> = ({ flowID }) => {
       setAgentId(newAgentId);
       console.log('Response from the API:', JSON.stringify(createData, null, 2));
 
+      // Update the node IDs in the frontend
+      const updatedNodes = createData.nodes.map(backendNode => {
+        const frontendNodeId = blockIdToNodeIdMap[backendNode.block_id];
+        return {
+          ...nodes.find(node => node.id === frontendNodeId),
+          id: backendNode.id,
+          position: backendNode.metadata.position,
+        };
+      });
+
+      setNodes(updatedNodes);
+
       const executeData = await api.executeFlow(newAgentId);
       const runId = executeData.id;
 
@@ -331,6 +344,7 @@ const FlowEditor: React.FC<{ flowID?: string }> = ({ flowID }) => {
 
 
 const updateNodesWithExecutionData = (executionData: any[]) => {
+  console.log("Execution Data:", executionData);
   setNodes((nds) =>
     nds.map((node) => {
       const nodeExecution = executionData.find((exec) => exec.node_id === node.id);
