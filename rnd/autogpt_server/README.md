@@ -4,21 +4,6 @@ This is a research project into creating the next generation of autogpt, which i
 
 The agent server will enable the creation of composite multi-agent system that utilize AutoGPT Agent as its default agent.
 
-
-## Project Outline
-
-Currently the project mainly consist of these components:
-
-*agent_api*
-A component that will expose API endpoints for the creation & execution of agents.
-This component will make connections to the database to persist and read the agents.
-It will also trigger the agent execution by pushing its execution request to the ExecutionQueue.
-
-*agent_executor*
-A component that will execute the agents.
-This component will be a pool of processes/threads that will consume the ExecutionQueue and execute the agent accordingly. 
-The result and progress of its execution will be persisted in the database.
-
 ## Setup
 
 This setup is for MacOS/Linux.
@@ -112,3 +97,65 @@ To run the tests
 ```
 poetry run pytest
 ```
+
+## Project Outline
+
+The current project has the following main modules:
+
+### **blocks**
+
+This module stores all the Agent Block, a reusable component to build a graph that represents the agent's behavior.
+
+### **data**
+
+This module stores the logical model that is persisted in the database.
+This module abstracts the database operation into a function that can be called by the service layer.
+Any code that interacts with Prisma objects or databases should live in this module.
+The main models are:
+* `block`: anything related to the block used in the graph
+* `execution`: anything related to the execution graph execution
+* `graph`: anything related to the graph, node, and its relation
+
+### **execution**
+
+This module stores the business logic of executing the graph.
+It currently has the following main modules:
+* `manager`: A service that consumes the queue of the graph execution and executes the graph. It contains both of the logic.
+* `scheduler`: A service that triggers scheduled graph execution based on cron expression. It will push an execution request to the manager.
+
+### **server**
+
+This module stores the logic for the server API.
+It stores all the logic used for the API that allows the client to create/execute/monitor the graph and its execution.
+This API service will interact with other services like the ones defined in `manager` and `scheduler`.
+
+### **utils**
+
+This module stores the utility functions that are used across the project.
+Currently, it only has two main modules:
+* `process`: A module that contains the logic to spawn a new process.
+* `service`: A module that becomes a parent class for all the services in the project.
+
+## Service Communication
+
+Currently, there are only 3 active services:
+
+- AgentServer (the API, defined in `server.py`)
+- ExecutionManager (the executor, defined in `manager.py`)
+- ExecutionScheduler (the scheduler, defined in `scheduler.py`)
+
+The service is running in an independent python process and communicates through an IPC.
+A communication layer (`service.py`) is created to decouple the communication library from the implementation.
+
+Currently, the IPC is done using Pyro5 and abstracted in a way that it allows a function that is decorated with an `@expose` function can be called from the different process.
+
+## Adding a new Agent Block
+
+To add a new agent block, you need to create a new class that inherits from `Block` that provide these information:
+* `input_schema`: the schema of the input data, represented by a pydantic object.
+* `output_schema`: the schema of the output data, represented by a pydantic object.
+* `run` method: the main logic of the block
+* `test_input` & `test_output`: the sample input and output data for the block, this will be used to auto-test the block.
+* You can mock the functions declared in the block using the `test_mock` field for your unit test.
+* If you introduced a new module under the `blocks` package, you need to import the module in `blocks/__init__.py` to make it available to the server.
+* Once you finished creating the block, you can test it by running the test using `pytest test/block/test_block.py`.
