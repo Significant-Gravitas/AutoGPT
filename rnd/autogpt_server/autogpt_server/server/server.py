@@ -73,7 +73,7 @@ class AgentServer(AppService):
         )
         router.add_api_route(
             path="/blocks/{block_id}/execute",
-            endpoint=self.execute_graph_block,
+            endpoint=self.execute_graph_block, # type: ignore
             methods=["POST"],
         )
         router.add_api_route(
@@ -128,7 +128,7 @@ class AgentServer(AppService):
             methods=["POST"],
         )
 
-        app.add_exception_handler(500, self.handle_internal_error)
+        app.add_exception_handler(500, self.handle_internal_error) # type: ignore
 
         app.mount(
             path="/frontend",
@@ -153,22 +153,22 @@ class AgentServer(AppService):
         return get_service_client(ExecutionScheduler)
 
     @classmethod
-    def handle_internal_error(cls, request, exc):
+    def handle_internal_error(cls, request, exc): # type: ignore
         return JSONResponse(
             content={
-                "message": f"{request.url.path} call failure",
-                "error": str(exc),
+                "message": f"{request.url.path} call failure", # type: ignore
+                "error": str(exc), # type: ignore
             },
             status_code=500,
         )
 
     @classmethod
     def get_graph_blocks(cls) -> list[dict[Any, Any]]:
-        return [v.to_dict() for v in block.get_blocks().values()]
+        return [v.to_dict() for v in block.get_blocks().values()] # type: ignore
 
     @classmethod
-    def execute_graph_block(cls, block_id: str, data: dict[str, Any]) -> list:
-        obj = block.get_block(block_id)
+    def execute_graph_block(cls, block_id: str, data: dict[str, Any]) -> list[dict[str, Any]]:
+        obj = block.get_block(block_id) # type: ignore
         if not obj:
             raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
         return [{name: data} for name, data in obj.execute(data)]
