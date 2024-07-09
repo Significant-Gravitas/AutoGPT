@@ -23,7 +23,7 @@ class Methods(enum.Enum):
 
 class WsMessage(pydantic.BaseModel):
     method: Methods
-    data: typing.Dict[str, typing.Any] | None = None
+    data: typing.Dict[str, typing.Any] | list[typing.Any] | None = None
     success: bool | None = None
     channel: str | None = None
     error: str | None = None

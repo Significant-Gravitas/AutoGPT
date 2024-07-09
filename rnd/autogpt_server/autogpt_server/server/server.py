@@ -196,6 +196,7 @@ class AgentServer(AppService):
                         ).model_dump_json()
                     )
                 elif message.method == Methods.EXECUTE_BLOCK:
+                    assert isinstance(message.data, dict), "Data must be a dictionary"
                     data = self.execute_graph_block(
                         message.data["block_id"], message.data["data"]
                     )
@@ -217,27 +218,31 @@ class AgentServer(AppService):
                     )
                     print("Get graphs request received")
                 elif message.method == Methods.GET_GRAPH:
+                    assert isinstance(message.data, dict), "Data must be a dictionary"
                     data = await self.get_graph(message.data["graph_id"])
                     await websocket.send_text(
                         WsMessage(
                             method=Methods.GET_GRAPH,
                             success=True,
-                            data=data,
+                            data=data.model_dump(),
                         ).model_dump_json()
                     )
                     print("Get graph request received")
                 elif message.method == Methods.CREATE_GRAPH:
-                    data = await self.create_new_graph(message.data)
+                    assert isinstance(message.data, dict), "Data must be a dictionary"
+                    graph = Graph.model_validate(message.data)
+                    data = await self.create_new_graph(graph)
                     await websocket.send_text(
                         WsMessage(
                             method=Methods.CREATE_GRAPH,
                             success=True,
-                            data=data,
+                            data=data.model_dump(),
                         ).model_dump_json()
                     )
 
                     print("Create graph request received")
                 elif message.method == Methods.RUN_GRAPH:
+                    assert isinstance(message.data, dict), "Data must be a dictionary"
                     data = await self.execute_graph(
                         message.data["graph_id"], message.data["data"]
                     )
@@ -251,6 +256,7 @@ class AgentServer(AppService):
 
                     print("Run graph request received")
                 elif message.method == Methods.GET_GRAPH_RUNS:
+                    assert isinstance(message.data, dict), "Data must be a dictionary"
                     data = await self.list_graph_runs(message.data["graph_id"])
                     await websocket.send_text(
                         WsMessage(
@@ -262,6 +268,7 @@ class AgentServer(AppService):
 
                     print("Get graph runs request received")
                 elif message.method == Methods.CREATE_SCHEDULED_RUN:
+                    assert isinstance(message.data, dict), "Data must be a dictionary"
                     data = await self.create_schedule(
                         message.data["graph_id"],
                         message.data["cron"],
@@ -277,6 +284,7 @@ class AgentServer(AppService):
 
                     print("Create scheduled run request received")
                 elif message.method == Methods.GET_SCHEDULED_RUNS:
+                    assert isinstance(message.data, dict), "Data must be a dictionary"
                     data = self.get_execution_schedules(message.data["graph_id"])
                     await websocket.send_text(
                         WsMessage(
@@ -287,6 +295,7 @@ class AgentServer(AppService):
                     )
                     print("Get scheduled runs request received")
                 elif message.method == Methods.UPDATE_SCHEDULED_RUN:
+                    assert isinstance(message.data, dict), "Data must be a dictionary"
                     data = self.update_schedule(
                         message.data["schedule_id"], message.data
                     )
@@ -300,6 +309,7 @@ class AgentServer(AppService):
 
                     print("Update scheduled run request received")
                 elif message.method == Methods.UPDATE_CONFIG:
+                    assert isinstance(message.data, dict), "Data must be a dictionary"
                     data = self.update_configuration(message.data)
                     await websocket.send_text(
                         WsMessage(
@@ -439,12 +449,9 @@ class AgentServer(AppService):
                     setattr(settings.secrets, key, value)  # type: ignore
                     updated_fields["secrets"].append(key)
             settings.save()
-            return JSONResponse(
-                content={
-                    "message": "Settings updated successfully",
-                    "updated_fields": updated_fields,
-                },
-                status_code=200,
-            )
+            return {
+                "message": "Settings updated successfully",
+                "updated_fields": updated_fields,
+            }
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
