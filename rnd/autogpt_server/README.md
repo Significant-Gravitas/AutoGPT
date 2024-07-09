@@ -45,7 +45,7 @@ To setup the project follow these steps inside the project directory:
 Run the following command:
 
 ```
-poetry run cli app
+poetry run app
 ```
 
 ## Running the App in the Background
