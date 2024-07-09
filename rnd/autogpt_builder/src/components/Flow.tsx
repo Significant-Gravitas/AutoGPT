@@ -74,6 +74,8 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
   const [agentId, setAgentId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [agentDescription, setAgentDescription] = useState<string>('');
+  const [agentName, setAgentName] = useState<string>('');
 
   const apiUrl = process.env.AGPT_SERVER_URL!;
   const api = new AutoGPTServerAPI(apiUrl);
@@ -302,8 +304,8 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
 
       const payload = {
         id: agentId || '',
-        name: 'Agent Name',
-        description: 'Agent Description',
+        name: agentName || 'Agent Name',
+        description: agentDescription || 'Agent Description',
         nodes: formattedNodes,
         links: links  // Ensure this field is included
       };
@@ -358,8 +360,6 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
     nds.map((node) => {
       const nodeExecution = executionData.find((exec) => exec.node_id === node.data.backend_id);
       if (nodeExecution) {
-        console.log("node block id", node.data.backend_id)
-        console.log("node backend id", nodeExecution.node_id)
         return {
           ...node,
           data: {
@@ -379,33 +379,45 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   return (
-    <div className={className}>
-      <Button
-        onClick={toggleSidebar}
-        style={{
-          position: 'absolute',
-          left: isSidebarOpen ? '260px' : '10px',
-          top: '10px',
-          zIndex: 10000,
-          transition: 'left 0.3s'
-        }}
-      >
-        {isSidebarOpen ? 'Hide Sidebar' : 'Show Sidebar'}
-      </Button>
-      <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        nodeTypes={nodeTypes}
-      >
-        <div style={{ position: 'absolute', right: 10, top: 10, zIndex: 4 }}>
-          <Button onClick={runAgent}>Run Agent</Button>
-        </div>
-      </ReactFlow>
-    </div>
+      <div className={className}>
+        <Button
+            onClick={toggleSidebar}
+            style={{
+              position: 'absolute',
+              left: isSidebarOpen ? '260px' : '10px',
+              top: '10px',
+              zIndex: 10000,
+              transition: 'left 0.3s'
+            }}
+        >
+          {isSidebarOpen ? 'Hide Sidebar' : 'Show Sidebar'}
+        </Button>
+        <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode}/>
+        <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            nodeTypes={nodeTypes}
+        >
+          <div style={{position: 'absolute', right: 10, zIndex: 4}}>
+            <Input
+                type="text"
+                placeholder="Agent Name"
+                value={agentName}
+                onChange={(e) => setAgentName(e.target.value)}
+            />
+            <Input
+                type="text"
+                placeholder="Agent Description"
+                value={agentDescription}
+                onChange={(e) => setAgentDescription(e.target.value)}
+            />
+            <Button onClick={runAgent}>Run Agent</Button>
+          </div>
+        </ReactFlow>
+      </div>
   );
 };
 
