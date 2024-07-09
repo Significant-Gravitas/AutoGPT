@@ -76,7 +76,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
   const [agentName, setAgentName] = useState<string>('');
   const [agentDescription, setAgentDescription] = useState<string>('');
 
-  const apiUrl = 'http://localhost:8000';
+  const apiUrl = process.env.AGPT_SERVER_URL!;
   const api = new AutoGPTServerAPI(apiUrl);
 
   useEffect(() => {
