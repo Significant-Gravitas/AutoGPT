@@ -21,9 +21,8 @@ export default function Home() {
                   >
                       By{" "}
                       <Image
-                          src="/autogpt.svg"
+                          src="/autogpt_logo_light.png"
                           alt="AutoGPT Logo"
-                          className="dark:invert"
                           width={100}
                           height={24}
                           priority
