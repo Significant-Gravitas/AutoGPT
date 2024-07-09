@@ -65,7 +65,13 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
         execs = await agent_server.get_run_execution_results(
             test_graph.id, graph_exec_id
         )
-        return test_manager.queue.empty() and len(execs) == 4
+        return (
+            test_manager.queue.empty()
+            and len(execs) == 4
+            and all(
+                exec.status == execution.ExecutionStatus.COMPLETED for exec in execs
+            )
+        )
 
     # Wait for the executions to complete
     for i in range(10):

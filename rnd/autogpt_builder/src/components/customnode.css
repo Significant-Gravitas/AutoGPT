@@ -4,8 +4,8 @@
   border-radius: 12px;
   background: #2c2c2c;
   color: #e0e0e0;
-  width: 300px; /* Adjust width for better layout */
-  box-sizing: border-box; /* Ensure padding doesn't affect overall width */
+  width: 500px;
+  box-sizing: border-box;
 }
 
 .node-header {
@@ -29,28 +29,38 @@
 
 .node-content {
   display: flex;
-  flex-direction: column; /* Use column to stack elements */
-  gap: 10px;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1px;
 }
 
 .input-section {
-  flex: 1;
-}
-
-.output-section {
-  flex: 1;
-}
-
-.handle-container {
   display: flex;
-  align-items: center;
-  position: relative;
-  margin-bottom: 5px;
+  flex-direction: column;
+  flex: 1;
 }
 
 .handle-label {
   color: #e0e0e0;
   margin-left: 10px;
+  margin-right: 10px;
+}
+
+.output-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  align-items: flex-end;
+}
+
+.handle-label {
+  margin-left: 10px;
+}
+
+.handle-container {
+  display: flex;
+  position: relative;
+  margin-bottom: 5px;
 }
 
 .input-container {
@@ -59,11 +69,26 @@
 
 .clickable-input {
   padding: 5px;
+  width: 325px;
   border-radius: 4px;
   border: 1px solid #555;
   background: #444;
   color: #e0e0e0;
   cursor: pointer;
+  word-break: break-all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+}
+
+.clickable-input span {
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 100px);
+  vertical-align: middle;
 }
 
 .select-input {
@@ -126,10 +151,12 @@
 }
 
 .node-properties {
-  margin-top: 20px;
+  margin-top: 5px;
+  margin-bottom: 5px;
   background: #444;
   padding: 10px;
   border-radius: 10px;
+  width: 325px;
 }
 
 .error-message {
@@ -182,4 +209,8 @@
 /* Add more styles for better look */
 .custom-node {
   transition: all 0.3s ease-in-out;
+}
+
+.dark-theme {
+  @apply dark:border-gray-800 dark:bg-gray-950;
 }

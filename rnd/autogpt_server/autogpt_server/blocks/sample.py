@@ -15,6 +15,8 @@ class ParrotBlock(Block):
             id="1ff065e9-88e8-4358-9d82-8dc91f622ba9",
             input_schema=ParrotBlock.Input,
             output_schema=ParrotBlock.Output,
+            test_input={"input": "Hello, World!"},
+            test_output=("output", "Hello, World!"),
         )
 
     def run(self, input_data: Input) -> BlockOutput:
@@ -33,6 +35,8 @@ class PrintingBlock(Block):
             id="f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c",
             input_schema=PrintingBlock.Input,
             output_schema=PrintingBlock.Output,
+            test_input={"text": "Hello, World!"},
+            test_output=("status", "printed"),
         )
 
     def run(self, input_data: Input) -> BlockOutput:
