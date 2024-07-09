@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -74,19 +74,21 @@ async def test_send_execution_result(
         status=ExecutionStatus.COMPLETED,
         input_data={"input1": "value1"},
         output_data={"output1": ["result1"]},
-        add_time=datetime.now(),
+        add_time=datetime.now(tz=timezone.utc),
         queue_time=None,
-        start_time=datetime.now(),
-        end_time=datetime.now(),
+        start_time=datetime.now(tz=timezone.utc),
+        end_time=datetime.now(tz=timezone.utc),
     )
 
     await connection_manager.send_execution_result(result)
 
-    mock_websocket.send_text.assert_called_once_with(WsMessage(
-        method=Methods.UPDATE,
-        channel="test_graph",
-        data=result.model_dump(),
-        ).model_dump_json())
+    mock_websocket.send_text.assert_called_once_with(
+        WsMessage(
+            method=Methods.UPDATE,
+            channel="test_graph",
+            data=result.model_dump(),
+        ).model_dump_json()
+    )
 
 
 @pytest.mark.asyncio

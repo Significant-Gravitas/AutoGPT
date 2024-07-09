@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from multiprocessing import Manager
 from typing import Any
@@ -192,7 +192,7 @@ async def upsert_execution_output(
 
 
 async def update_execution_status(node_exec_id: str, status: ExecutionStatus) -> None:
-    now = datetime.now()
+    now = datetime.now(tz=timezone.utc)
     data = {
         **({"executionStatus": status}),
         **({"queuedTime": now} if status == ExecutionStatus.QUEUED else {}),

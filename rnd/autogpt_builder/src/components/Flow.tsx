@@ -17,6 +17,8 @@ import CustomNode from './CustomNode';
 import './flow.css';
 import AutoGPTServerAPI, { Block, Flow } from '@/lib/autogpt_server_api';
 import { ObjectSchema } from '@/lib/types';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
 
 type CustomNodeData = {
   blockType: string;
@@ -43,18 +45,18 @@ const Sidebar: React.FC<{isOpen: boolean, availableNodes: Block[], addNode: (id:
   );
 
   return (
-    <div className={`sidebar ${isOpen ? 'open' : ''}`}>
+    <div className={`sidebar dark-theme ${isOpen ? 'open' : ''}`}>
       <h3>Nodes</h3>
-      <input
+      <Input
         type="text"
         placeholder="Search nodes..."
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
       />
       {filteredNodes.map((node) => (
-        <div key={node.id} className="sidebarNodeRowStyle">
+        <div key={node.id} className="sidebarNodeRowStyle dark-theme">
           <span>{node.name}</span>
-          <button onClick={() => addNode(node.id, node.name)}>Add</button>
+          <Button onClick={() => addNode(node.id, node.name)}>Add</Button>
         </div>
       ))}
     </div>
@@ -258,9 +260,10 @@ const FlowEditor: React.FC<{ flowID?: string }> = ({ flowID }) => {
   const runAgent = async () => {
     try {
       console.log("All nodes before formatting:", nodes);
+      const blockIdToNodeIdMap = {};
 
       const formattedNodes = nodes.map(node => {
-        console.log("Formatting node:", node.id, node.data.blockType);
+        blockIdToNodeIdMap[node.data.block_id] = node.id;
         const inputDefault = prepareNodeInputData(node, nodes, edges);
         const inputNodes = edges
           .filter(edge => edge.target === node.id)
@@ -305,6 +308,18 @@ const FlowEditor: React.FC<{ flowID?: string }> = ({ flowID }) => {
       const newAgentId = createData.id;
       setAgentId(newAgentId);
       console.log('Response from the API:', JSON.stringify(createData, null, 2));
+
+      // Update the node IDs in the frontend
+      const updatedNodes = createData.nodes.map(backendNode => {
+        const frontendNodeId = blockIdToNodeIdMap[backendNode.block_id];
+        return {
+          ...nodes.find(node => node.id === frontendNodeId),
+          id: backendNode.id,
+          position: backendNode.metadata.position,
+        };
+      });
+
+      setNodes(updatedNodes);
 
       const executeData = await api.executeFlow(newAgentId);
       const runId = executeData.id;
@@ -352,18 +367,18 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
 
   return (
     <div style={{ height: '100vh', width: '100%' }}>
-      <button
+      <Button
         onClick={toggleSidebar}
         style={{
           position: 'absolute',
           left: isSidebarOpen ? '260px' : '10px',
           top: '10px',
-          zIndex: 5,
+          zIndex: 10000,
           transition: 'left 0.3s'
         }}
       >
         {isSidebarOpen ? 'Hide Sidebar' : 'Show Sidebar'}
-      </button>
+      </Button>
       <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
       <ReactFlow
         nodes={nodes}
@@ -374,7 +389,7 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
         nodeTypes={nodeTypes}
       >
         <div style={{ position: 'absolute', right: 10, top: 10, zIndex: 4 }}>
-          <button onClick={runAgent}>Run Agent</button>
+          <Button onClick={runAgent}>Run Agent</Button>
         </div>
       </ReactFlow>
     </div>
