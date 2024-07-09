@@ -5,8 +5,10 @@ from datetime import datetime, timedelta, timezone
 import praw
 from typing import Any
 from pydantic import BaseModel, Field
+from typing import Iterator
 
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.util.mock import MockObject
 
 
 class RedditCredentials(BaseModel):
@@ -64,13 +66,42 @@ class RedditGetPostsBlock(Block):
             id="c6731acb-4285-4ee1-bc9b-03d0766c370f",
             input_schema=RedditGetPostsBlock.Input,
             output_schema=RedditGetPostsBlock.Output,
+            test_input={
+                "creds": {
+                    "client_id": "client_id",
+                    "client_secret": "client_secret",
+                    "username": "username",
+                    "password": "password",
+                    "user_agent": "user_agent",
+                },
+                "subreddit": "subreddit",
+                "last_post": "id3",
+                "post_limit": 2,
+            },
+            test_output=[
+                ("post", RedditPost(
+                    id="id1", subreddit="subreddit", title="title1", body="body1")),
+                 ("post", RedditPost(
+                     id="id2", subreddit="subreddit", title="title2", body="body2")),
+            ],
+            test_mock={
+                "get_posts": lambda _: [
+                    MockObject(id="id1", title="title1", selftext="body1"),
+                    MockObject(id="id2", title="title2", selftext="body2"),
+                    MockObject(id="id3", title="title2", selftext="body2"),
+                ]
+            }
         )
-
-    def run(self, input_data: Input) -> BlockOutput:
+        
+    @staticmethod
+    def get_posts(input_data: Input) -> Iterator[praw.reddit.Submission]:
         client = get_praw(input_data.creds)
         subreddit = client.subreddit(input_data.subreddit)
-        for post in subreddit.new(limit=input_data.post_limit):
-            if input_data.last_post and post.created_utc < datetime.now(tz=timezone.utc) - \
+        return subreddit.new(limit=input_data.post_limit)
+
+    def run(self, input_data: Input) -> BlockOutput:
+        for post in self.get_posts(input_data):
+            if input_data.last_minutes and post.created_utc < datetime.now(tz=timezone.utc) - \
                     timedelta(minutes=input_data.last_minutes):
                 break
 
@@ -79,7 +110,7 @@ class RedditGetPostsBlock(Block):
 
             yield "post", RedditPost(
                 id=post.id,
-                subreddit=subreddit.display_name,
+                subreddit=input_data.subreddit,
                 title=post.title,
                 body=post.selftext
             )

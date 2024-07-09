@@ -8,7 +8,9 @@ from pydantic import BaseModel
 
 from autogpt_server.util import json
 
-BlockData = dict[str, Any]
+BlockInput = dict[str, Any]
+BlockData = tuple[str, Any]
+BlockOutput = Generator[BlockData, None, None]
 
 
 class BlockSchema(BaseModel):
@@ -36,7 +38,7 @@ class BlockSchema(BaseModel):
         return cls.cached_jsonschema
 
     @classmethod
-    def validate_data(cls, data: BlockData) -> str | None:
+    def validate_data(cls, data: BlockInput) -> str | None:
         """
         Validate the data against the schema.
         Returns the validation error message if the data does not match the schema.
@@ -48,7 +50,7 @@ class BlockSchema(BaseModel):
             return str(e)
 
     @classmethod
-    def validate_field(cls, field_name: str, data: BlockData) -> str | None:
+    def validate_field(cls, field_name: str, data: BlockInput) -> str | None:
         """
         Validate the data against a specific property (one of the input/output name).
         Returns the validation error message if the data does not match the schema.
@@ -80,7 +82,6 @@ class BlockSchema(BaseModel):
         }
 
 
-BlockOutput = Generator[tuple[str, Any], None, None]
 BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)
 BlockSchemaOutputType = TypeVar("BlockSchemaOutputType", bound=BlockSchema)
 
@@ -95,15 +96,29 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         id: str = "",
         input_schema: Type[BlockSchemaInputType] = EmptySchema,
         output_schema: Type[BlockSchemaOutputType] = EmptySchema,
+            test_input: BlockInput | list[BlockInput] | None = None,
+            test_output: BlockData | list[BlockData] | None = None,
+            test_mock: dict[str, Any] | None = None,
     ):
         """
-        The unique identifier for the block, this value will be persisted in the DB.
-        So it should be a unique and constant across the application run.
-        Use the UUID format for the ID.
+        Initialize the block with the given schema.
+        
+        Args:
+            id: The unique identifier for the block, this value will be persisted in the
+                DB. So it should be a unique and constant across the application run.
+                Use the UUID format for the ID.
+            input_schema: The schema, defined as a Pydantic model, for the input data.
+            output_schema: The schema, defined as a Pydantic model, for the output data.
+            test_input: The list or single sample input data for the block, for testing.
+            test_output: The list or single expected output if the test_input is run.
+            test_mock: function names on the block implementation to mock on test run.
         """
         self.id = id
         self.input_schema = input_schema
         self.output_schema = output_schema
+        self.test_input = test_input
+        self.test_output = test_output
+        self.test_mock = test_mock
 
     @abstractmethod
     def run(self, input_data: BlockSchemaInputType) -> BlockOutput:
@@ -130,7 +145,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             "outputSchema": self.output_schema.jsonschema(),
         }
 
-    def execute(self, input_data: BlockData) -> BlockOutput:
+    def execute(self, input_data: BlockInput) -> BlockOutput:
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
                 f"Unable to execute block with invalid input data: {error}"
@@ -144,11 +159,13 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
 
 # ======================= Block Helper Functions ======================= #
 
-import autogpt_server.blocks
+def get_blocks() -> dict[str, Block]:
+    from autogpt_server.blocks import AVAILABLE_BLOCKS  # noqa: E402
+    return AVAILABLE_BLOCKS
 
 
 async def initialize_blocks() -> None:
-    for block in autogpt_server.blocks.AVAILABLE_BLOCKS.values():
+    for block in get_blocks().values():
         if await AgentBlock.prisma().find_unique(where={"id": block.id}):
             continue
 
@@ -162,9 +179,5 @@ async def initialize_blocks() -> None:
         )
 
 
-def get_blocks() -> list[Block]:
-    return list(autogpt_server.blocks.AVAILABLE_BLOCKS.values())
-
-
 def get_block(block_id: str) -> Block | None:
-    return autogpt_server.blocks.AVAILABLE_BLOCKS.get(block_id)
+    return get_blocks().get(block_id)

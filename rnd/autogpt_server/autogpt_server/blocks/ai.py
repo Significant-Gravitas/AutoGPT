@@ -36,10 +36,36 @@ class LlmCallBlock(Block):
             id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
             input_schema=LlmCallBlock.Input,
             output_schema=LlmCallBlock.Output,
+            test_input={
+                "config": {
+                    "model": "gpt-4-turbo",
+                    "api_key": "fake-api",
+                },
+                "expected_format": {
+                    "key1": "value1",
+                    "key2": "value2",
+                },
+                "sys_prompt": "System prompt",
+                "usr_prompt": "User prompt",
+            },
+            test_output=("response", {"key1": "key1Value","key2": "key2Value"}),
+            test_mock={"llm_call": lambda *args, **kwargs: json.dumps({
+                "key1": "key1Value",
+                "key2": "key2Value",
+            })},
         )
 
+    @staticmethod
+    def llm_call(api_key: str, model: LlmModel, prompt: list[dict]) -> str:
+        openai.api_key = api_key
+        response = openai.chat.completions.create(
+            model=model,
+            messages=prompt,  # type: ignore
+            response_format={"type": "json_object"},
+        )
+        return response.choices[0].message.content or ""
+
     def run(self, input_data: Input) -> BlockOutput:
-        openai.api_key = input_data.config.api_key
         expected_format = [f'"{k}": "{v}"' for k, v in
                            input_data.expected_format.items()]
 
@@ -78,12 +104,11 @@ class LlmCallBlock(Block):
         logger.warning(f"LLM request: {prompt}")
         retry_prompt = ""
         for retry_count in range(input_data.retry):
-            response = openai.chat.completions.create(
-                model=input_data.config.model,
-                messages=prompt,  # type: ignore
-                response_format={"type": "json_object"},
+            response_text = self.llm_call(
+                input_data.config.api_key,
+                input_data.config.model,
+                prompt
             )
-            response_text = response.choices[0].message.content or ""
             logger.warning(f"LLM attempt-{retry_count} response: {response_text}")
 
             parsed_dict, parsed_error = parse_response(response_text)
