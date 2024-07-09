@@ -210,7 +210,3 @@
 .custom-node {
   transition: all 0.3s ease-in-out;
 }
-
-.dark-theme {
-  @apply dark:border-gray-800 dark:bg-gray-950;
-}

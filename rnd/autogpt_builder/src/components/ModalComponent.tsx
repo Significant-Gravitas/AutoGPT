@@ -30,7 +30,7 @@ const ModalComponent: FC<ModalProps> = ({ isOpen, onClose, onSave, value }) => {
 
   return (
     <div className="modal-overlay">
-      <div className="modal dark-theme">
+      <div className="modal">
         <center><h1>Enter input text</h1></center>
         <Textarea
           className="modal-textarea"

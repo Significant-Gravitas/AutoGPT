@@ -45,7 +45,7 @@ const Sidebar: React.FC<{isOpen: boolean, availableNodes: Block[], addNode: (id:
   );
 
   return (
-    <div className={`sidebar dark-theme ${isOpen ? 'open' : ''}`}>
+    <div className={`sidebar ${isOpen ? 'open' : ''}`}>
       <h3>Nodes</h3>
       <Input
         type="text"
@@ -54,7 +54,7 @@ const Sidebar: React.FC<{isOpen: boolean, availableNodes: Block[], addNode: (id:
         onChange={(e) => setSearchQuery(e.target.value)}
       />
       {filteredNodes.map((node) => (
-        <div key={node.id} className="sidebarNodeRowStyle dark-theme">
+        <div key={node.id} className="sidebarNodeRowStyle">
           <span>{node.name}</span>
           <Button onClick={() => addNode(node.id, node.name)}>Add</Button>
         </div>
