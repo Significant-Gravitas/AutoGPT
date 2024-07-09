@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import React, { FC, useEffect } from 'react';
 import './modal.css';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
@@ -12,6 +12,12 @@ interface ModalProps {
 
 const ModalComponent: FC<ModalProps> = ({ isOpen, onClose, onSave, value }) => {
   const [tempValue, setTempValue] = React.useState(value);
+
+  useEffect(() => {
+    if (isOpen) {
+      setTempValue(value);
+    }
+  }, [isOpen, value]);
 
   const handleSave = () => {
     onSave(tempValue);
