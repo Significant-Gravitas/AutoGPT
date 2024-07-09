@@ -70,6 +70,8 @@ const FlowEditor: React.FC<{ flowID?: string }> = ({ flowID }) => {
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
   const [agentId, setAgentId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [agentName, setAgentName] = useState<string>('');
+  const [agentDescription, setAgentDescription] = useState<string>('');
 
   const apiUrl = 'http://localhost:8000';
   const api = new AutoGPTServerAPI(apiUrl);
@@ -298,8 +300,8 @@ const FlowEditor: React.FC<{ flowID?: string }> = ({ flowID }) => {
 
       const payload = {
         id: agentId || '',
-        name: 'Agent Name',
-        description: 'Agent Description',
+        name: agentName || 'Agent Name',
+        description: agentDescription || 'Agent Description',
         nodes: formattedNodes,
         links: links  // Ensure this field is included
       };
@@ -388,7 +390,19 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
         onConnect={onConnect}
         nodeTypes={nodeTypes}
       >
-        <div style={{ position: 'absolute', right: 10, top: 10, zIndex: 4 }}>
+        <div style={{ position: 'absolute', right: 10, zIndex: 4 }}>
+          <Input 
+            type="text" 
+            placeholder="Agent Name" 
+            value={agentName} 
+            onChange={(e) => setAgentName(e.target.value)} 
+          />
+          <Input 
+            type="text" 
+            placeholder="Agent Description" 
+            value={agentDescription} 
+            onChange={(e) => setAgentDescription(e.target.value)} 
+          />
           <Button onClick={runAgent}>Run Agent</Button>
         </div>
       </ReactFlow>
