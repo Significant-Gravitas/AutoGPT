@@ -32,6 +32,7 @@ type CustomNodeData = {
   status?: string;
   output_data?: any;
   block_id: string;
+  backend_id?: string;
 };
 
 const Sidebar: React.FC<{isOpen: boolean, availableNodes: Block[], addNode: (id: string, name: string) => void}> =
@@ -73,8 +74,6 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
   const [agentId, setAgentId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [agentName, setAgentName] = useState<string>('');
-  const [agentDescription, setAgentDescription] = useState<string>('');
 
   const apiUrl = process.env.AGPT_SERVER_URL!;
   const api = new AutoGPTServerAPI(apiUrl);
@@ -303,8 +302,8 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
 
       const payload = {
         id: agentId || '',
-        name: agentName || 'Agent Name',
-        description: agentDescription || 'Agent Description',
+        name: 'Agent Name',
+        description: 'Agent Description',
         nodes: formattedNodes,
         links: links  // Ensure this field is included
       };
@@ -315,14 +314,20 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
       console.log('Response from the API:', JSON.stringify(createData, null, 2));
 
       // Update the node IDs in the frontend
-      const updatedNodes = createData.nodes.map(backendNode => {
-        const frontendNodeId = blockIdToNodeIdMap[backendNode.block_id];
-        return {
-          ...nodes.find(node => node.id === frontendNodeId),
-          id: backendNode.id,
-          position: backendNode.metadata.position,
-        };
-      });
+     const updatedNodes = createData.nodes.map(backendNode => {
+      const frontendNodeId = blockIdToNodeIdMap[backendNode.block_id];
+      const frontendNode = nodes.find(node => node.id === frontendNodeId);
+      return frontendNode
+        ? {
+            ...frontendNode,
+            position: backendNode.metadata.position,
+            data: {
+              ...frontendNode.data,
+              backend_id: backendNode.id,
+            },
+          }
+        : frontendNode;
+    });
 
       setNodes(updatedNodes);
 
@@ -351,8 +356,10 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
 const updateNodesWithExecutionData = (executionData: any[]) => {
   setNodes((nds) =>
     nds.map((node) => {
-      const nodeExecution = executionData.find((exec) => exec.node_id === node.id);
+      const nodeExecution = executionData.find((exec) => exec.node_id === node.data.backend_id);
       if (nodeExecution) {
+        console.log("node block id", node.data.backend_id)
+        console.log("node backend id", nodeExecution.node_id)
         return {
           ...node,
           data: {
@@ -367,6 +374,7 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
     })
   );
 };
+
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
@@ -393,19 +401,7 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
         onConnect={onConnect}
         nodeTypes={nodeTypes}
       >
-        <div style={{ position: 'absolute', right: 10, zIndex: 4 }}>
-          <Input 
-            type="text" 
-            placeholder="Agent Name" 
-            value={agentName} 
-            onChange={(e) => setAgentName(e.target.value)} 
-          />
-          <Input 
-            type="text" 
-            placeholder="Agent Description" 
-            value={agentDescription} 
-            onChange={(e) => setAgentDescription(e.target.value)} 
-          />
+        <div style={{ position: 'absolute', right: 10, top: 10, zIndex: 4 }}>
           <Button onClick={runAgent}>Run Agent</Button>
         </div>
       </ReactFlow>
