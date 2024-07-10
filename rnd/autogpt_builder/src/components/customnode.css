@@ -6,6 +6,7 @@
   color: #000000;
   width: 500px;
   box-sizing: border-box;
+  transition: background-color 0.3s ease-in-out;
 }
 
 .node-header {
@@ -203,6 +204,16 @@
 
 .completed {
   animation: completedAnimation 1s infinite;
+}
+
+/* Animation for failed status */
+@keyframes failedAnimation {
+  0% { background-color: #c0392b; }
+  100% { background-color: #e74c3c; }
+}
+
+.failed {
+  animation: failedAnimation 1s infinite;
 }
 
 /* Add more styles for better look */
