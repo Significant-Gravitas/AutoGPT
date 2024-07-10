@@ -32,6 +32,7 @@ type CustomNodeData = {
   status?: string;
   output_data?: any;
   block_id: string;
+  backend_id?: string;
 };
 
 const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id: string, name: string) => void }> =
@@ -73,8 +74,8 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
   const [agentId, setAgentId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [agentName, setAgentName] = useState<string>('');
   const [agentDescription, setAgentDescription] = useState<string>('');
+  const [agentName, setAgentName] = useState<string>('');
 
   const apiUrl = process.env.AGPT_SERVER_URL!;
   const api = new AutoGPTServerAPI(apiUrl);
@@ -263,11 +264,25 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
 
   const saveAgent = async () => {
     try {
+
+      setNodes((nds) =>
+        nds.map((node) => ({
+          ...node,
+          data: {
+            ...node.data,
+            status: null,
+          },
+        }))
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
       console.log("All nodes before formatting:", nodes);
       const blockIdToNodeIdMap = {};
 
       const formattedNodes = nodes.map(node => {
-        blockIdToNodeIdMap[node.data.block_id] = node.id;
+        nodes.forEach(node => {
+          const key = `${node.data.block_id}_${node.position.x}_${node.position.y}`;
+          blockIdToNodeIdMap[key] = node.id;
+        });
         const inputDefault = prepareNodeInputData(node, nodes, edges);
         const inputNodes = edges
           .filter(edge => edge.target === node.id)
@@ -315,13 +330,21 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
 
       // Update the node IDs in the frontend
       const updatedNodes = createData.nodes.map(backendNode => {
-        const frontendNodeId = blockIdToNodeIdMap[backendNode.block_id];
-        return {
-          ...nodes.find(node => node.id === frontendNodeId),
-          id: backendNode.id,
-          position: backendNode.metadata.position,
-        };
-      });
+        const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
+        const frontendNodeId = blockIdToNodeIdMap[key];
+        const frontendNode = nodes.find(node => node.id === frontendNodeId);
+
+        return frontendNode
+          ? {
+              ...frontendNode,
+              position: backendNode.metadata.position,
+              data: {
+                ...frontendNode.data,
+                backend_id: backendNode.id,
+              },
+            }
+          : null;
+      }).filter(node => node !== null);
 
       setNodes(updatedNodes);
 
@@ -361,10 +384,11 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
   };
 
 
+
   const updateNodesWithExecutionData = (executionData: any[]) => {
     setNodes((nds) =>
       nds.map((node) => {
-        const nodeExecution = executionData.find((exec) => exec.node_id === node.id);
+        const nodeExecution = executionData.find((exec) => exec.node_id === node.data.backend_id);
         if (nodeExecution) {
           return {
             ...node,
