@@ -50,14 +50,12 @@ poetry run app
 
 ## Running the App in the Background
 
+**Note: this is a Unix feature and can fail on Windows.
+If it fails, you can run the previous command and manually move the process to the background.*  
+
 1. Start the server, this starts the server in the background
    ```
    poetry run cli start
-   ```
-    
-   You may need to change the permissions of the file to make it executable
-   ```
-   chmod +x autogpt_server/cli.py
    ```
 
 2. Stop the server
