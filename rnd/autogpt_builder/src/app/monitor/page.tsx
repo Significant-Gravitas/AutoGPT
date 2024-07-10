@@ -295,6 +295,7 @@ const ScrollableLegend = ({ payload }) => {
   );
 };
 
+
 const FlowRunsStats = (
   { flows, flowRuns }: {
     flows: Flow[],

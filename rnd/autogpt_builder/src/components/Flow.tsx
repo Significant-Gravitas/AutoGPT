@@ -19,6 +19,8 @@ import AutoGPTServerAPI, { Block, Flow } from '@/lib/autogpt_server_api';
 import { ObjectSchema } from '@/lib/types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { ChevronRight, ChevronLeft } from "lucide-react";
+
 
 type CustomNodeData = {
   blockType: string;
@@ -409,18 +411,20 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
 
   return (
     <div className={className}>
-      <Button
-        onClick={toggleSidebar}
-        style={{
-          position: 'absolute',
-          left: isSidebarOpen ? '260px' : '10px',
-          top: '10px',
-          zIndex: 10000,
-          transition: 'left 0.3s'
-        }}
-      >
-        {isSidebarOpen ? 'Hide Sidebar' : 'Show Sidebar'}
-      </Button>
+    <Button
+      variant="outline"
+      size="icon"
+      onClick={toggleSidebar}
+      style={{
+        position: 'fixed',
+        left: isSidebarOpen ? '350px' : '10px',
+        zIndex: 10000,
+        backgroundColor: 'black',
+        color: 'white',
+      }}
+    >
+      {isSidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+    </Button>
       <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
       <ReactFlow
         nodes={nodes}

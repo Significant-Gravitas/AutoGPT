@@ -1,5 +1,4 @@
 import React, { FC, useEffect } from 'react';
-import './modal.css';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 
@@ -29,15 +28,15 @@ const ModalComponent: FC<ModalProps> = ({ isOpen, onClose, onSave, value }) => {
   }
 
   return (
-    <div className="modal-overlay">
-      <div className="modal dark-theme">
+    <div className="fixed inset-0 bg-white bg-opacity-60 flex justify-center items-center">
+      <div className="bg-white p-5 rounded-lg w-[500px] max-w-[90%]">
         <center><h1>Enter input text</h1></center>
         <Textarea
-          className="modal-textarea"
+          className="w-full h-[200px] p-2.5 rounded border border-[#dfdfdf] text-black bg-[#dfdfdf]"
           value={tempValue}
           onChange={(e) => setTempValue(e.target.value)}
         />
-        <div className="modal-actions">
+        <div className="flex justify-end gap-2.5 mt-2.5">
           <Button onClick={onClose}>Cancel</Button>
           <Button onClick={handleSave}>Save</Button>
         </div>

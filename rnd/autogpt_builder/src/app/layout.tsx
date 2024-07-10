@@ -25,7 +25,7 @@ function ThemeProvider({ children, ...props }: ThemeProviderProps) {
 }
 
 const NavBar = () => (
-  <nav className="bg-background p-4 flex justify-between items-center">
+  <nav className="bg-white dark:bg-slate-800 p-4 flex justify-between items-center shadow">
     <div className="flex space-x-4">
       <Link href="/monitor" className={buttonVariants({ variant: "ghost" })}>Monitor</Link>
       <Link href="/build" className={buttonVariants({ variant: "ghost" })}>Build</Link>
@@ -61,11 +61,10 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
-          enableSystem
+          defaultTheme="light"
           disableTransitionOnChange
         >
-          <div className="min-h-screen bg-background text-foreground">
+          <div className="min-h-screen bg-gray-200 text-gray-900">
             <NavBar />
             <main className="container mx-auto p-4">
               {children}
