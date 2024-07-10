@@ -52,7 +52,7 @@ class LlmCallBlock(Block):
         response = openai.chat.completions.create(
             model=model,
             messages=prompt,  # type: ignore
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"} if json else {},
         )
         return response.choices[0].message.content or ""
 
