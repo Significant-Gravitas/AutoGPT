@@ -25,7 +25,7 @@ function ThemeProvider({ children, ...props }: ThemeProviderProps) {
 }
 
 const NavBar = () => (
-  <nav className="bg-gray-200 p-4 flex justify-between items-center shadow">
+  <nav className="bg-white dark:bg-slate-800 p-4 flex justify-between items-center shadow">
     <div className="flex space-x-4">
       <Link href="/monitor" className={buttonVariants({ variant: "ghost" })}>Monitor</Link>
       <Link href="/build" className={buttonVariants({ variant: "ghost" })}>Build</Link>
