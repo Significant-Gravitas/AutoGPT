@@ -174,13 +174,19 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         # Get messages
         messages = await self.run_pipeline(MessageProvider.get_messages)
 
+        include_os_info = (
+            self.code_executor.config.execute_local_commands
+            if hasattr(self, "code_executor")
+            else False
+        )
+
         prompt: ChatPrompt = self.prompt_strategy.build_prompt(
             messages=messages,
             task=self.state.task,
             ai_profile=self.state.ai_profile,
             ai_directives=directives,
             commands=function_specs_from_commands(self.commands),
-            include_os_info=self.code_executor.config.execute_local_commands,
+            include_os_info=include_os_info,
         )
 
         logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
