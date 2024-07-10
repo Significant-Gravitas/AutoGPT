@@ -34,7 +34,7 @@ class ConnectionManager:
         graph_id = result.graph_id
         if graph_id in self.subscriptions:
             message = WsMessage(
-                method=Methods.UPDATE,
+                method=Methods.EXECUTION_EVENT,
                 channel=graph_id,
                 data=result.model_dump()
             ).model_dump_json()
