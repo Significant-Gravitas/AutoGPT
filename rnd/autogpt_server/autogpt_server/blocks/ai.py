@@ -102,9 +102,13 @@ class LlmCallBlock(Block):
             )
             logger.warning(f"LLM attempt-{retry_count} response: {response_text}")
 
-            parsed_dict, parsed_error = parse_response(response_text)
-            if not parsed_error:
-                yield "response", {k: str(v) for k, v in parsed_dict.items()}
+            if input_data.expected_format:
+                parsed_dict, parsed_error = parse_response(response_text)
+                if not parsed_error:
+                    yield "response", {k: str(v) for k, v in parsed_dict.items()}
+                    return
+            else:
+                yield "response", {"response": response_text}
                 return
 
             retry_prompt = f"""
