@@ -5,7 +5,6 @@ The agent server will enable the creation of composite multi-agent systems that 
 
 ## Setup
 
-This setup is for MacOS/Linux.
 To setup the project follow these steps inside the project directory:
 
 1. Enter poetry shell
