@@ -395,8 +395,8 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
         position: 'fixed',
         left: isSidebarOpen ? '350px' : '10px',
         zIndex: 10000,
-        backgroundColor: 'white',
-        color: 'black',
+        backgroundColor: 'black',
+        color: 'white',
       }}
     >
       {isSidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
