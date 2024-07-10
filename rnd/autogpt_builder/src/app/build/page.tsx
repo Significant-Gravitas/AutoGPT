@@ -22,7 +22,7 @@ export default function Home() {
                   >
                       By{" "}
                       <Image
-                          src="/autogpt_logo_light.png"
+                          src="/autogpt_logo_dark.svg"
                           alt="AutoGPT Logo"
                           width={100}
                           height={24}
