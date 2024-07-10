@@ -17,8 +17,8 @@ code {
 }
 
 button {
-  background-color: #444;
-  color: #e0e0e0;
+  background-color: #ffffff;
+  color: #000000;
   padding: 10px;
   border: none;
   border-radius: 4px;
@@ -31,8 +31,8 @@ button:hover {
 }
 
 input, textarea {
-  background-color: #333;
-  color: #e0e0e0;
+  background-color: #ffffff;
+  color: #000000;
   border: 1px solid #555;
   padding: 8px;
   border-radius: 4px;
@@ -53,11 +53,11 @@ input::placeholder, textarea::placeholder {
   bottom: auto;
   margin-right: -50%;
   transform: translate(-50%, -50%);
-  background: #333;
+  background: #ffffff;
   padding: 20px;
   border: 1px solid #ccc;
   border-radius: 4px;
-  color: #e0e0e0;
+  color: #000000;
 }
 
 .overlay {
@@ -92,8 +92,8 @@ input::placeholder, textarea::placeholder {
   left: -600px;
   width: 350px;
   height: 100%;
-  background-color: #333;
-  color: #fff;
+  background-color: #ffffff;
+  color: #000000;
   padding: 20px;
   transition: left 0.3s ease;
   z-index: 1000;
@@ -116,9 +116,10 @@ input::placeholder, textarea::placeholder {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #444;
+  background-color: #e2e2e2;
   padding: 10px;
-  border-radius: 4px;
+  margin-bottom: 10px;
+  border-radius: 10px;
   cursor: grab;
 }
 
@@ -151,8 +152,4 @@ input::placeholder, textarea::placeholder {
 
 .flow-controls.open {
   transform: translateX(350px);
-}
-
-.dark-theme {
-  @apply dark:border-gray-800 dark:bg-gray-950;
 }
