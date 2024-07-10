@@ -268,6 +268,32 @@ const FlowRunStatusBadge = ({ status }: { status: FlowRun['status'] }) => (
   </Badge>
 );
 
+const ScrollableLegend = ({ payload }) => {
+  return (
+    <div style={{
+      overflowX: 'auto',
+      overflowY: 'hidden',
+      whiteSpace: 'nowrap',
+      padding: '10px 0',
+      fontSize: '0.75em'
+    }}>
+      {payload.map((entry, index) => (
+        <span key={`item-${index}`} style={{ display: 'inline-block', marginRight: '10px' }}>
+          <span
+            style={{
+              display: 'inline-block',
+              marginRight: '5px',
+              width: '8px',
+              height: '8px',
+              backgroundColor: entry.color,
+            }}
+          />
+          <span>{entry.value}</span>
+        </span>
+      ))}
+    </div>
+  );
+};
 
 const FlowRunsStats = (
   { flows, flowRuns }: {
@@ -414,7 +440,10 @@ const FlowRunsTimeline = (
           legendType="none"
         />
       ))}
-      <Legend wrapperStyle={{ fontSize: '0.75em' }} iconSize={8} />
+     <Legend
+        content={<ScrollableLegend />}
+        wrapperStyle={{ bottom: 0, left: 0, right: 0 }}
+      />
     </ComposedChart>
   </ResponsiveContainer>
 );
