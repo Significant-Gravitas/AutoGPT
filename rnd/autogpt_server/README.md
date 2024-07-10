@@ -1,8 +1,7 @@
-# Next Gen AutoGPT 
+# AutoGPT Agent Server 
 
-This is a research project into creating the next generation of autogpt, which is an autogpt agent server.
-
-The agent server will enable the creation of composite multi-agent system that utilize AutoGPT Agent as its default agent.
+This is an initial project for creating the next generation of agent execution, which is an AutoGPT agent server.
+The agent server will enable the creation of composite multi-agent systems that utilize AutoGPT agents and other non-agent components as its primitives.
 
 ## Setup
 
