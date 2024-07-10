@@ -97,7 +97,9 @@ def start():
     help="Write log output to a file instead of the terminal.",
 )
 # @click.argument(
-#     "agent_path", type=click.Path(exists=True, file_okay=False), required=False
+#     "agent_path",
+#     type=click.Path(exists=True, file_okay=False, path_type=Path),
+#     required=False,
 # )
 def run(
     maintain: bool,
@@ -276,7 +278,9 @@ def list_challenges(include_unavailable: bool, only_names: bool, output_json: bo
         return
 
     if output_json:
-        click.echo(json.dumps([json.loads(c.info.json()) for c in challenges]))
+        click.echo(
+            json.dumps([json.loads(c.info.model_dump_json()) for c in challenges])
+        )
         return
 
     headers = tuple(
@@ -324,7 +328,7 @@ def info(name: str, json: bool):
             continue
 
         if json:
-            click.echo(challenge.info.json())
+            click.echo(challenge.info.model_dump_json())
             break
 
         pretty_print_model(challenge.info)

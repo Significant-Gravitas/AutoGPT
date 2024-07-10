@@ -20,7 +20,6 @@ from autogpt.app.main import _configure_llm_provider
 
 pytest_plugins = [
     "tests.integration.agent_factory",
-    "tests.vcr",
 ]
 
 
@@ -96,7 +95,7 @@ def agent(
             allow_fs_access=not config.restrict_to_workspace,
             use_functions_api=config.openai_functions,
         ),
-        history=Agent.default_settings.history.copy(deep=True),
+        history=Agent.default_settings.history.model_copy(deep=True),
     )
 
     agent = Agent(

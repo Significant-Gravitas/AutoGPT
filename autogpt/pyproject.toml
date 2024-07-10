@@ -20,44 +20,24 @@ serve = "autogpt.app.cli:serve"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-anthropic = "^0.25.1"
 autogpt-forge = { path = "../forge", develop = true }
 # autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "forge"}
-beautifulsoup4 = "^4.12.2"
-charset-normalizer = "^3.1.0"
 click = "*"
 colorama = "^0.4.6"
 distro = "^1.8.0"
-en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl" }
 fastapi = "^0.109.1"
-ftfy = "^6.1.1"
-google-api-python-client = "*"
+gitpython = "^3.1.32"
 hypercorn = "^0.14.4"
-inflection = "*"
-jsonschema = "*"
-numpy = "*"
 openai = "^1.7.2"
 orjson = "^3.8.10"
-Pillow = "*"
-pydantic = "*"
-python-docx = "*"
+pydantic = "^2.7.2"
 python-dotenv = "^1.0.0"
-pyyaml = "^6.0"
-readability-lxml = "^0.8.1"
 requests = "*"
 sentry-sdk = "^1.40.4"
-spacy = "^3.7.4"
-tenacity = "^8.2.2"
-
-# OpenAI and Generic plugins import
-openapi-python-client = "^0.14.0"
 
 # Benchmarking
 agbenchmark = { path = "../benchmark", optional = true }
 # agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
-psycopg2-binary = "^2.9.9"
-multidict = "6.0.5"
-cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main", develop = true }
 
 [tool.poetry.extras]
 benchmark = ["agbenchmark"]
@@ -65,27 +45,28 @@ benchmark = ["agbenchmark"]
 [tool.poetry.group.dev.dependencies]
 black = "^23.12.1"
 flake8 = "^7.0.0"
-gitpython = "^3.1.32"
 isort = "^5.13.1"
 pre-commit = "*"
 pyright = "^1.1.364"
-types-beautifulsoup4 = "*"
+
+# Type stubs
 types-colorama = "*"
-types-Markdown = "*"
-types-Pillow = "*"
 
 # Testing
-asynctest = "*"
-coverage = "*"
 pytest = "*"
 pytest-asyncio = "*"
-pytest-benchmark = "*"
 pytest-cov = "*"
-pytest-integration = "*"
 pytest-mock = "*"
 pytest-recording = "*"
 pytest-xdist = "*"
-vcrpy = { git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master" }
+
+[tool.poetry.group.build]
+optional = true
+
+[tool.poetry.group.build.dependencies]
+cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main" }
+# HACK: switch to cx-freeze release package after #2442 and #2472 are merged: https://github.com/marcelotduarte/cx_Freeze/pulls?q=is:pr+%232442+OR+%232472+
+# cx-freeze = { version = "^7.2.0", optional = true }
 
 
 [build-system]
@@ -108,7 +89,3 @@ skip_glob = ["data"]
 pythonVersion = "3.10"
 exclude = ["data/**", "**/node_modules", "**/__pycache__", "**/.*"]
 ignore = ["../forge/**"]
-
-
-[tool.pytest.ini_options]
-markers = ["slow", "requires_openai_api_key", "requires_huggingface_api_key"]
