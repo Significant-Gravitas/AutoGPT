@@ -1,18 +1,6 @@
 {
   "folders": [
     {
-      "name": ".github",
-      "path": "../.github"
-    },
-    {
-      "name": ".vscode",
-      "path": "../.vscode"
-    },
-    {
-      "name": "assets",
-      "path": "../assets"
-    },
-    {
       "name": "autogpt",
       "path": "../autogpt"
     },
@@ -37,21 +25,15 @@
       "path": "../rnd/autogpt_server"
     },
     {
+      "name": "autogpt_builder",
+      "path": "../rnd/autogpt_builder"
+    },
+    {
       "name": "[root]",
       "path": ".."
     }
   ],
-  "settings": {
-    "python.analysis.useLibraryCodeForTypes": true,
-    "python.analysis.autoImportCompletions": true,
-    "python.analysis.typeCheckingMode": "basic",
-    "python.analysis.inlayHints.functionReturnTypes": true,
-    "python.analysis.autoFormatStrings": true,
-    "python.analysis.fixAll": [
-      "source.convertImportFormat",
-      "source.unusedImports"
-    ]
-  },
+  "settings": {},
   "extensions": {
     "recommendations": [
       "charliermarsh.ruff",
@@ -59,8 +41,7 @@
       "ms-python.black-formatter",
       "ms-python.vscode-pylance",
       "prisma.prisma",
-      "qwtel.sqlite-viewer",
-      "joshx.workspace-terminals"
+      "qwtel.sqlite-viewer"
     ]
   }
 }
