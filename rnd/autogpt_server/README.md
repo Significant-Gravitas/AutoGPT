@@ -5,7 +5,7 @@ The agent server will enable the creation of composite multi-agent systems that 
 
 ## Setup
 
-To setup the project follow these steps inside the project directory:
+To set up the project follow these steps inside the project directory:
 
 1. Enter poetry shell
    ```
@@ -22,7 +22,7 @@ To setup the project follow these steps inside the project directory:
    poetry run prisma generate
    ```
 
-   In case prisma generates client for the global python installation instead of the virtual environment the current mitigation is to just uninstall the global prisma package:
+   In case prisma generates client for the global Python installation instead of the virtual environment the current mitigation is to just uninstall the global prisma package:
    ```
    pip uninstall prisma
    ```
@@ -140,7 +140,7 @@ Currently, there are only 3 active services:
 - ExecutionManager (the executor, defined in `manager.py`)
 - ExecutionScheduler (the scheduler, defined in `scheduler.py`)
 
-The service is running in an independent python process and communicates through an IPC.
+The service is running in an independent Python process and communicates through an IPC.
 A communication layer (`service.py`) is created to decouple the communication library from the implementation.
 
 Currently, the IPC is done using Pyro5 and abstracted in a way that it allows a function that is decorated with an `@expose` function can be called from the different process.
