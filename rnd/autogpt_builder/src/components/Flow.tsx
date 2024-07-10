@@ -269,7 +269,10 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
       const blockIdToNodeIdMap = {};
 
       const formattedNodes = nodes.map(node => {
-        blockIdToNodeIdMap[node.data.block_id] = node.id;
+        nodes.forEach(node => {
+          const key = `${node.data.block_id}_${node.position.x}_${node.position.y}`;
+          blockIdToNodeIdMap[key] = node.id;
+        });
         const inputDefault = prepareNodeInputData(node, nodes, edges);
         const inputNodes = edges
           .filter(edge => edge.target === node.id)
@@ -316,20 +319,22 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
       console.log('Response from the API:', JSON.stringify(createData, null, 2));
 
       // Update the node IDs in the frontend
-     const updatedNodes = createData.nodes.map(backendNode => {
-      const frontendNodeId = blockIdToNodeIdMap[backendNode.block_id];
-      const frontendNode = nodes.find(node => node.id === frontendNodeId);
-      return frontendNode
-        ? {
-            ...frontendNode,
-            position: backendNode.metadata.position,
-            data: {
-              ...frontendNode.data,
-              backend_id: backendNode.id,
-            },
-          }
-        : frontendNode;
-    });
+      const updatedNodes = createData.nodes.map(backendNode => {
+        const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
+        const frontendNodeId = blockIdToNodeIdMap[key];
+        const frontendNode = nodes.find(node => node.id === frontendNodeId);
+
+        return frontendNode
+          ? {
+              ...frontendNode,
+              position: backendNode.metadata.position,
+              data: {
+                ...frontendNode.data,
+                backend_id: backendNode.id,
+              },
+            }
+          : null;
+      }).filter(node => node !== null);
 
       setNodes(updatedNodes);
 
