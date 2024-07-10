@@ -63,7 +63,10 @@ const Sidebar: React.FC<{isOpen: boolean, availableNodes: Block[], addNode: (id:
   );
 };
 
-const FlowEditor: React.FC<{ flowID?: string }> = ({ flowID }) => {
+const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
+  flowID,
+  className,
+}) => {
   const [nodes, setNodes] = useState<Node<CustomNodeData>[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [nodeId, setNodeId] = useState<number>(1);
@@ -73,7 +76,7 @@ const FlowEditor: React.FC<{ flowID?: string }> = ({ flowID }) => {
   const [agentName, setAgentName] = useState<string>('');
   const [agentDescription, setAgentDescription] = useState<string>('');
 
-  const apiUrl = 'http://localhost:8000';
+  const apiUrl = process.env.AGPT_SERVER_URL!;
   const api = new AutoGPTServerAPI(apiUrl);
 
   useEffect(() => {
@@ -368,7 +371,7 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   return (
-    <div style={{ height: '100vh', width: '100%' }}>
+    <div className={className}>
       <Button
         onClick={toggleSidebar}
         style={{
