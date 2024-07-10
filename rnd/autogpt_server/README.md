@@ -96,15 +96,15 @@ To run the tests
 poetry run pytest
 ```
 
-## Project Outline
+# Project Outline
 
 The current project has the following main modules:
 
-### **blocks**
+## **blocks**
 
 This module stores all the Agent Block, a reusable component to build a graph that represents the agent's behavior.
 
-### **data**
+## **data**
 
 This module stores the logical model that is persisted in the database.
 This module abstracts the database operation into a function that can be called by the service layer.
@@ -114,27 +114,27 @@ The main models are:
 * `execution`: anything related to the execution graph execution
 * `graph`: anything related to the graph, node, and its relation
 
-### **execution**
+## **execution**
 
 This module stores the business logic of executing the graph.
 It currently has the following main modules:
 * `manager`: A service that consumes the queue of the graph execution and executes the graph. It contains both of the logic.
 * `scheduler`: A service that triggers scheduled graph execution based on cron expression. It will push an execution request to the manager.
 
-### **server**
+## **server**
 
 This module stores the logic for the server API.
 It stores all the logic used for the API that allows the client to create/execute/monitor the graph and its execution.
 This API service will interact with other services like the ones defined in `manager` and `scheduler`.
 
-### **utils**
+## **utils**
 
 This module stores the utility functions that are used across the project.
 Currently, it only has two main modules:
 * `process`: A module that contains the logic to spawn a new process.
 * `service`: A module that becomes a parent class for all the services in the project.
 
-## Service Communication
+# Service Communication
 
 Currently, there are only 3 active services:
 
@@ -147,7 +147,7 @@ A communication layer (`service.py`) is created to decouple the communication li
 
 Currently, the IPC is done using Pyro5 and abstracted in a way that it allows a function that is decorated with an `@expose` function can be called from the different process.
 
-## Adding a new Agent Block
+# Adding a new Agent Block
 
 To add a new agent block, you need to create a new class that inherits from `Block` that provide these information:
 * `input_schema`: the schema of the input data, represented by a pydantic object.
