@@ -265,6 +265,17 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
 
   const runAgent = async () => {
     try {
+
+      setNodes((nds) =>
+        nds.map((node) => ({
+          ...node,
+          data: {
+            ...node.data,
+            status: null,
+          },
+        }))
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
       console.log("All nodes before formatting:", nodes);
       const blockIdToNodeIdMap = {};
 
