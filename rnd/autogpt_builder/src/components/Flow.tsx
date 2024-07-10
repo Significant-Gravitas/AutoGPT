@@ -36,34 +36,34 @@ type CustomNodeData = {
   block_id: string;
 };
 
-const Sidebar: React.FC<{isOpen: boolean, availableNodes: Block[], addNode: (id: string, name: string) => void}> =
-  ({isOpen, availableNodes, addNode}) => {
-  const [searchQuery, setSearchQuery] = useState('');
+const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id: string, name: string) => void }> =
+  ({ isOpen, availableNodes, addNode }) => {
+    const [searchQuery, setSearchQuery] = useState('');
 
-  if (!isOpen) return null;
+    if (!isOpen) return null;
 
-  const filteredNodes = availableNodes.filter(node =>
-    node.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+    const filteredNodes = availableNodes.filter(node =>
+      node.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
-  return (
-    <div className={`sidebar ${isOpen ? 'open' : ''}`}>
-      <h3>Nodes</h3>
-      <Input
-        type="text"
-        placeholder="Search nodes..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-      />
-      {filteredNodes.map((node) => (
-        <div key={node.id} className="sidebarNodeRowStyle">
-          <span>{node.name}</span>
-          <Button onClick={() => addNode(node.id, node.name)}>Add</Button>
-        </div>
-      ))}
-    </div>
-  );
-};
+    return (
+      <div className={`sidebar dark-theme ${isOpen ? 'open' : ''}`}>
+        <h3>Nodes</h3>
+        <Input
+          type="text"
+          placeholder="Search nodes..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        {filteredNodes.map((node) => (
+          <div key={node.id} className="sidebarNodeRowStyle dark-theme">
+            <span>{node.name}</span>
+            <Button onClick={() => addNode(node.id, node.name)}>Add</Button>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
 const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
   flowID,
@@ -263,8 +263,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     return inputData;
   };
 
-
-  const runAgent = async () => {
+  const saveAgent = async () => {
     try {
       console.log("All nodes before formatting:", nodes);
       const blockIdToNodeIdMap = {};
@@ -328,6 +327,20 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
 
       setNodes(updatedNodes);
 
+      return newAgentId;
+    } catch (error) {
+      console.error('Error running agent:', error);
+    }
+  };
+
+  const runAgent = async () => {
+    try {
+      const newAgentId = await saveAgent();
+      if (!newAgentId) {
+        console.error('Error saving agent');
+        return;
+      }
+
       const executeData = await api.executeFlow(newAgentId);
       const runId = executeData.id;
 
@@ -350,25 +363,25 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
   };
 
 
-const updateNodesWithExecutionData = (executionData: any[]) => {
-  setNodes((nds) =>
-    nds.map((node) => {
-      const nodeExecution = executionData.find((exec) => exec.node_id === node.id);
-      if (nodeExecution) {
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            status: nodeExecution.status,
-            output_data: nodeExecution.output_data,
-            isPropertiesOpen: true,
-          },
-        };
-      }
-      return node;
-    })
-  );
-};
+  const updateNodesWithExecutionData = (executionData: any[]) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        const nodeExecution = executionData.find((exec) => exec.node_id === node.id);
+        if (nodeExecution) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              status: nodeExecution.status,
+              output_data: nodeExecution.output_data,
+              isPropertiesOpen: true,
+            },
+          };
+        }
+        return node;
+      })
+    );
+  };
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
@@ -398,19 +411,22 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
         nodeTypes={nodeTypes}
       >
         <div style={{ position: 'absolute', right: 10, zIndex: 4 }}>
-          <Input 
-            type="text" 
-            placeholder="Agent Name" 
-            value={agentName} 
-            onChange={(e) => setAgentName(e.target.value)} 
+          <Input
+            type="text"
+            placeholder="Agent Name"
+            value={agentName}
+            onChange={(e) => setAgentName(e.target.value)}
           />
-          <Input 
-            type="text" 
-            placeholder="Agent Description" 
-            value={agentDescription} 
-            onChange={(e) => setAgentDescription(e.target.value)} 
+          <Input
+            type="text"
+            placeholder="Agent Description"
+            value={agentDescription}
+            onChange={(e) => setAgentDescription(e.target.value)}
           />
-          <Button onClick={runAgent}>Run Agent</Button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>  {/* Added gap for spacing */}
+            <Button onClick={saveAgent}>Save Agent</Button>
+            <Button onClick={runAgent}>Save & Run Agent</Button>
+          </div>
         </div>
       </ReactFlow>
     </div>
