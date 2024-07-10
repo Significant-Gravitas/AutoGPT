@@ -63,15 +63,20 @@ const Sidebar: React.FC<{isOpen: boolean, availableNodes: Block[], addNode: (id:
   );
 };
 
-const FlowEditor: React.FC<{ flowID?: string }> = ({ flowID }) => {
+const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
+  flowID,
+  className,
+}) => {
   const [nodes, setNodes] = useState<Node<CustomNodeData>[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [nodeId, setNodeId] = useState<number>(1);
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
   const [agentId, setAgentId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [agentName, setAgentName] = useState<string>('');
+  const [agentDescription, setAgentDescription] = useState<string>('');
 
-  const apiUrl = 'http://localhost:8000';
+  const apiUrl = process.env.AGPT_SERVER_URL!;
   const api = new AutoGPTServerAPI(apiUrl);
 
   useEffect(() => {
@@ -298,8 +303,8 @@ const FlowEditor: React.FC<{ flowID?: string }> = ({ flowID }) => {
 
       const payload = {
         id: agentId || '',
-        name: 'Agent Name',
-        description: 'Agent Description',
+        name: agentName || 'Agent Name',
+        description: agentDescription || 'Agent Description',
         nodes: formattedNodes,
         links: links  // Ensure this field is included
       };
@@ -366,7 +371,7 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   return (
-    <div style={{ height: '100vh', width: '100%' }}>
+    <div className={className}>
       <Button
         onClick={toggleSidebar}
         style={{
@@ -388,7 +393,19 @@ const updateNodesWithExecutionData = (executionData: any[]) => {
         onConnect={onConnect}
         nodeTypes={nodeTypes}
       >
-        <div style={{ position: 'absolute', right: 10, top: 10, zIndex: 4 }}>
+        <div style={{ position: 'absolute', right: 10, zIndex: 4 }}>
+          <Input 
+            type="text" 
+            placeholder="Agent Name" 
+            value={agentName} 
+            onChange={(e) => setAgentName(e.target.value)} 
+          />
+          <Input 
+            type="text" 
+            placeholder="Agent Description" 
+            value={agentDescription} 
+            onChange={(e) => setAgentDescription(e.target.value)} 
+          />
           <Button onClick={runAgent}>Run Agent</Button>
         </div>
       </ReactFlow>
