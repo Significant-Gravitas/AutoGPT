@@ -5,7 +5,6 @@ import './customnode.css';
 import ModalComponent from './ModalComponent';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Textarea } from './ui/textarea';
 
 type Schema = {
   type: string;
@@ -442,6 +441,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         onClose={() => setIsModalOpen(false)}
         onSave={handleModalSave}
         value={modalValue}
+        key={activeKey}
       />
     </div>
   );
