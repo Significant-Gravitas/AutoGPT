@@ -392,7 +392,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   };
 
   return (
-    <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : ''}`}>
+    <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' :''}`}>
       <div className="node-header">
         <div className="node-title">{data.blockType || data.title}</div>
         <Button onClick={toggleProperties} className="toggle-button">
