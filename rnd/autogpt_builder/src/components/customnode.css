@@ -2,10 +2,11 @@
   padding: 15px;
   border: 2px solid #fff;
   border-radius: 12px;
-  background: #2c2c2c;
-  color: #e0e0e0;
+  background: #ffffff;
+  color: #000000;
   width: 500px;
   box-sizing: border-box;
+  transition: background-color 0.3s ease-in-out;
 }
 
 .node-header {
@@ -24,7 +25,7 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  color: #e0e0e0;
+  color: #000000;
 }
 
 .node-content {
@@ -41,7 +42,7 @@
 }
 
 .handle-label {
-  color: #e0e0e0;
+  color: #000000;
   margin-left: 10px;
   margin-right: 10px;
 }
@@ -71,9 +72,8 @@
   padding: 5px;
   width: 325px;
   border-radius: 4px;
-  border: 1px solid #555;
-  background: #444;
-  color: #e0e0e0;
+  background: #d1d1d1;
+  color: #000000;
   cursor: pointer;
   word-break: break-all;
   white-space: nowrap;
@@ -153,7 +153,7 @@
 .node-properties {
   margin-top: 5px;
   margin-bottom: 5px;
-  background: #444;
+  background: #d1d1d1;
   padding: 10px;
   border-radius: 10px;
   width: 325px;
@@ -167,7 +167,7 @@
 
 .object-input {
   margin-left: 10px;
-  border-left: 1px solid #555;
+  border-left: 1px solid #d1d1d1;
   padding-left: 10px;
 }
 
@@ -206,11 +206,17 @@
   animation: completedAnimation 1s infinite;
 }
 
+/* Animation for failed status */
+@keyframes failedAnimation {
+  0% { background-color: #c0392b; }
+  100% { background-color: #e74c3c; }
+}
+
+.failed {
+  animation: failedAnimation 1s infinite;
+}
+
 /* Add more styles for better look */
 .custom-node {
   transition: all 0.3s ease-in-out;
-}
-
-.dark-theme {
-  @apply dark:border-gray-800 dark:bg-gray-950;
 }
