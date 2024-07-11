@@ -60,7 +60,7 @@ class Node(BaseDbModel):
             id=node.id,
             block_id=node.AgentBlock.id,
             input_default=json.loads(node.constantInput),
-            metadata=json.loads(node.metadata)
+            metadata=json.loads(node.metadata),
         )
         obj._input_links = [Link.from_db(link) for link in node.Input or []]
         obj._output_links = [Link.from_db(link) for link in node.Output or []]
@@ -85,11 +85,27 @@ class Graph(BaseDbModel):
             name=graph.name or "",
             description=graph.description or "",
             nodes=[Node.from_db(node) for node in graph.AgentNodes or []],
-            links=list({
-                Link.from_db(link)
-                for node in graph.AgentNodes or []
-                for link in (node.Input or []) + (node.Output or [])
-            })
+            links=list(
+                {
+                    Link.from_db(link)
+                    for node in graph.AgentNodes or []
+                    for link in (node.Input or []) + (node.Output or [])
+                }
+            ),
+        )
+
+
+class GraphMeta(BaseModel):
+    name: str
+    description: str
+    is_template: bool
+
+    @staticmethod
+    def from_db(graph: AgentGraph):
+        return GraphMeta(
+            name=graph.name or "",
+            description=graph.description or "",
+            is_template=graph.is_template,
         )
 
 
@@ -112,7 +128,20 @@ async def get_node(node_id: str) -> Node | None:
 
 
 async def get_graph_ids() -> list[str]:
-    return [graph.id for graph in await AgentGraph.prisma().find_many()]  # type: ignore
+    return [
+        graph.id
+        for graph in await AgentGraph.prisma().find_many(where={"is_template": False})
+    ]  # type: ignore
+
+
+async def get_template_meta() -> list[GraphMeta]:
+    templates = await AgentGraph.prisma().find_many(
+        where={"is_template": True},
+    )
+    if not templates:
+        return []
+
+    return [GraphMeta.from_db(template) for template in templates]  # type: ignore
 
 
 async def get_graph(graph_id: str) -> Graph | None:
@@ -123,36 +152,46 @@ async def get_graph(graph_id: str) -> Graph | None:
     return Graph.from_db(graph) if graph else None
 
 
-async def create_graph(graph: Graph) -> Graph:
+async def create_graph(graph: Graph, is_template: bool = False) -> Graph:
     await AgentGraph.prisma().create(
         data={
             "id": graph.id,
             "name": graph.name,
             "description": graph.description,
+            "is_template": is_template,
         }
     )
 
     # TODO: replace bulk creation using create_many
-    await asyncio.gather(*[
-        AgentNode.prisma().create({
-            "id": node.id,
-            "agentBlockId": node.block_id,
-            "agentGraphId": graph.id,
-            "constantInput": json.dumps(node.input_default),
-            "metadata": json.dumps(node.metadata),
-        }) for node in graph.nodes
-    ])
+    await asyncio.gather(
+        *[
+            AgentNode.prisma().create(
+                {
+                    "id": node.id,
+                    "agentBlockId": node.block_id,
+                    "agentGraphId": graph.id,
+                    "constantInput": json.dumps(node.input_default),
+                    "metadata": json.dumps(node.metadata),
+                }
+            )
+            for node in graph.nodes
+        ]
+    )
 
-    await asyncio.gather(*[
-        AgentNodeLink.prisma().create({
-            "id": str(uuid.uuid4()),
-            "sourceName": link.source_name,
-            "sinkName": link.sink_name,
-            "agentNodeSourceId": link.source_id,
-            "agentNodeSinkId": link.sink_id,
-        })
-        for link in graph.links
-    ])
+    await asyncio.gather(
+        *[
+            AgentNodeLink.prisma().create(
+                {
+                    "id": str(uuid.uuid4()),
+                    "sourceName": link.source_name,
+                    "sinkName": link.sink_name,
+                    "agentNodeSourceId": link.source_id,
+                    "agentNodeSinkId": link.sink_id,
+                }
+            )
+            for link in graph.links
+        ]
+    )
 
     if created_graph := await get_graph(graph.id):
         return created_graph

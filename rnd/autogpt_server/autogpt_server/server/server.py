@@ -18,12 +18,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 
 from autogpt_server.data import db, execution, block
-from autogpt_server.data.graph import (
-    create_graph,
-    get_graph,
-    get_graph_ids,
-    Graph,
-)
+import autogpt_server.data.graph
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
 import autogpt_server.server.ws_api
@@ -81,6 +76,16 @@ class AgentServer(AppService):
         router.add_api_route(
             path="/blocks/{block_id}/execute",
             endpoint=self.execute_graph_block,  # type: ignore
+            methods=["POST"],
+        )
+        router.add_api_route(
+            path="/templates",
+            endpoint=self.get_templates,
+            methods=["GET"],
+        )
+        router.add_api_route(
+            path="/templates",
+            endpoint=self.create_new_template,
             methods=["POST"],
         )
         router.add_api_route(
@@ -230,7 +235,7 @@ class AgentServer(AppService):
                     print("Get graph request received")
                 elif message.method == Methods.CREATE_GRAPH:
                     assert isinstance(message.data, dict), "Data must be a dictionary"
-                    graph = Graph.model_validate(message.data)
+                    graph = autogpt_server.data.graph.Graph.model_validate(message.data)
                     data = await self.create_new_graph(graph)
                     await websocket.send_text(
                         WsMessage(
@@ -351,17 +356,23 @@ class AgentServer(AppService):
 
     @classmethod
     async def get_graphs(cls) -> list[str]:
-        return await get_graph_ids()
+        return await autogpt_server.data.graph.get_graph_ids()
 
     @classmethod
-    async def get_graph(cls, graph_id: str) -> Graph:
-        graph = await get_graph(graph_id)
+    async def get_templates(cls) -> list[autogpt_server.data.graph.GraphMeta]:
+        return await autogpt_server.data.graph.get_template_meta()
+
+    @classmethod
+    async def get_graph(cls, graph_id: str) -> autogpt_server.data.graph.Graph:
+        graph = await autogpt_server.data.graph.get_graph(graph_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         return graph
 
     @classmethod
-    async def create_new_graph(cls, graph: Graph) -> Graph:
+    async def create_new_template(
+        cls, graph: autogpt_server.data.graph.Graph
+    ) -> autogpt_server.data.graph.Graph:
         # TODO: replace uuid generation here to DB generated uuids.
         graph.id = str(uuid.uuid4())
         id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
@@ -373,7 +384,24 @@ class AgentServer(AppService):
             link.source_id = id_map[link.source_id]
             link.sink_id = id_map[link.sink_id]
 
-        return await create_graph(graph)
+        return await autogpt_server.data.graph.create_graph(graph, is_template=True)
+
+    @classmethod
+    async def create_new_graph(
+        cls, graph: autogpt_server.data.graph.Graph
+    ) -> autogpt_server.data.graph.Graph:
+        # TODO: replace uuid generation here to DB generated uuids.
+        graph.id = str(uuid.uuid4())
+        id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
+
+        for node in graph.nodes:
+            node.id = id_map[node.id]
+
+        for link in graph.links:
+            link.source_id = id_map[link.source_id]
+            link.sink_id = id_map[link.sink_id]
+
+        return await autogpt_server.data.graph.create_graph(graph)
 
     async def execute_graph(
         self, graph_id: str, node_input: dict[Any, Any]
@@ -386,7 +414,7 @@ class AgentServer(AppService):
 
     @classmethod
     async def list_graph_runs(cls, graph_id: str) -> list[str]:
-        graph = await get_graph(graph_id)
+        graph = await autogpt_server.data.graph.get_graph(graph_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Agent #{graph_id} not found.")
 
@@ -396,7 +424,7 @@ class AgentServer(AppService):
     async def get_run_execution_results(
         cls, graph_id: str, run_id: str
     ) -> list[execution.ExecutionResult]:
-        graph = await get_graph(graph_id)
+        graph = await autogpt_server.data.graph.get_graph(graph_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Agent #{graph_id} not found.")
 
@@ -405,7 +433,7 @@ class AgentServer(AppService):
     async def create_schedule(
         self, graph_id: str, cron: str, input_data: dict[Any, Any]
     ) -> dict[Any, Any]:
-        graph = await get_graph(graph_id)
+        graph = await autogpt_server.data.graph.get_graph(graph_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         execution_scheduler = self.execution_scheduler_client
