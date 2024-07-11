@@ -186,7 +186,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
           title: `${block.name} ${node.id}`,
           inputSchema: block.inputSchema,
           outputSchema: block.outputSchema,
-          hardcodedValues: {},
+          hardcodedValues: node.input_default,
           setHardcodedValues: (values: { [key: string]: any; }) => {
             setNodes((nds) => nds.map((node) => node.id === newNode.id
               ? { ...node, data: { ...node.data, hardcodedValues: values } }
