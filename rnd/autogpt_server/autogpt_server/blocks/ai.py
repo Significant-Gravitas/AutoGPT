@@ -1,7 +1,8 @@
 import logging
+from enum import Enum
+
 import openai
 
-from enum import Enum
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema, BlockFieldSecret
 from autogpt_server.util import json
 
@@ -98,7 +99,7 @@ class LlmCallBlock(Block):
                 api_key=input_data.api_key.get(),
                 model=input_data.model,
                 prompt=prompt,
-                json=bool(input_data.expected_format)
+                json=bool(input_data.expected_format),
             )
             logger.warning(f"LLM attempt-{retry_count} response: {response_text}")
 
