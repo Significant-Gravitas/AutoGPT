@@ -69,8 +69,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
 class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     """Secrets for the server."""
-
-    database_password: str = ""
+    openai_api_key: str = Field(default="no_key", description="OpenAI API key")
+    
+    reddit_client_id: str = Field(default="", description="Reddit client ID")
+    reddit_client_secret: str = Field(default="", description="Reddit client secret")
+    reddit_username: str = Field(default="", description="Reddit username")
+    reddit_password: str = Field(default="", description="Reddit password")
+    
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(
@@ -87,7 +92,7 @@ class Settings(BaseModel):
 
     def save(self) -> None:
         # Save updated config to JSON file
-        if self.config._updated_fields:
+        if self.config.updated_fields:
             config_to_save = self.config.get_updates()
             config_path = os.path.join(get_data_path(), "config.json")
             if os.path.exists(config_path):

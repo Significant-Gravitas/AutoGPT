@@ -2,7 +2,7 @@ import logging
 import openai
 
 from enum import Enum
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema, BlockFieldSecret
 from autogpt_server.util import json
 
 logger = logging.getLogger(__name__)
@@ -14,15 +14,15 @@ class LlmModel(str, Enum):
 
 class LlmCallBlock(Block):
     class Input(BlockSchema):
-        api_key: str
         prompt: str
+        api_key: BlockFieldSecret = BlockFieldSecret(key="openai_api_key")
         sys_prompt: str = ""
         expected_format: dict[str, str] = {}
         model: LlmModel = LlmModel.openai_gpt4
         retry: int = 3
 
     class Output(BlockSchema):
-        response: dict[str, str]
+        response: dict[str, str] | str
         error: str
 
     def __init__(self):
@@ -95,7 +95,7 @@ class LlmCallBlock(Block):
         retry_prompt = ""
         for retry_count in range(input_data.retry):
             response_text = self.llm_call(
-                api_key=input_data.api_key,
+                api_key=input_data.api_key.get(),
                 model=input_data.model,
                 prompt=prompt,
                 json=bool(input_data.expected_format)
