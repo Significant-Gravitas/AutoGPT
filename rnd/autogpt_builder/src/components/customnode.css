@@ -193,7 +193,7 @@
 }
 
 .running {
-  animation: runningAnimation 1s infinite;
+  animation: runningAnimation 0.5s infinite alternate;
 }
 
 /* Animation for completed status */
@@ -203,7 +203,7 @@
 }
 
 .completed {
-  animation: completedAnimation 1s infinite;
+  animation: completedAnimation 0.5s infinite alternate;
 }
 
 /* Animation for failed status */
@@ -213,7 +213,7 @@
 }
 
 .failed {
-  animation: failedAnimation 1s infinite;
+  animation: failedAnimation 0.5s infinite alternate;
 }
 
 /* Add more styles for better look */
