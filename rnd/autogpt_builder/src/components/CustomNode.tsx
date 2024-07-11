@@ -347,7 +347,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         );
       case 'array':
         if (schema.items && schema.items.type === 'string') {
-          const arrayValues = value || [];
+          const arrayValues = Array.isArray(value) ? value : [];
           return (
             <div key={fullKey} className="input-container">
               {arrayValues.map((item: string, index: number) => (
@@ -358,7 +358,11 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                     onChange={(e) => handleInputChange(`${fullKey}.${index}`, e.target.value)}
                     className="array-item-input"
                   />
-                  <Button onClick={() => handleInputChange(`${fullKey}.${index}`, '')} className="array-item-remove">
+                  <Button onClick={() => {
+                    const newArray = [...arrayValues];
+                    newArray.splice(index, 1);
+                    handleInputChange(fullKey, newArray);
+                  }} className="array-item-remove">
                     &times;
                   </Button>
                 </div>
@@ -370,7 +374,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
             </div>
           );
         }
-        return null;
+        return <div key={fullKey}></div>;
       default:
         return (
           <div key={fullKey} className="input-container">

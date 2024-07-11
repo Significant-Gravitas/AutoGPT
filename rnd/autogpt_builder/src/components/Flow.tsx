@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client";
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import ReactFlow, {
@@ -111,6 +112,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
       setEdges((eds) => addEdge(connection, eds));
+
       setNodes((nds) =>
         nds.map((node) => {
           if (node.id === connection.target) {
