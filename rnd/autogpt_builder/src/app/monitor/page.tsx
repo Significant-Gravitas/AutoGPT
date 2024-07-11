@@ -177,7 +177,8 @@ const AgentFlowList = (
         </TableHeader>
         <TableBody>
           {flows.map((flow) => {
-            let runCount, lastRun: FlowRun | null;
+            let runCount = 0;
+            let lastRun: FlowRun | null = null;
             if (flowRuns) {
               const _flowRuns = flowRuns.filter(r => r.flowID == flow.id);
               runCount = _flowRuns.length;
