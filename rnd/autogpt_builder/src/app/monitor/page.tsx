@@ -17,6 +17,7 @@ const Monitor = () => {
   const [flows, setFlows] = useState<Flow[]>([]);
   const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
   const [selectedFlow, setSelectedFlow] = useState<Flow | null>(null);
+  const [selectedRun, setSelectedRun] = useState<FlowRun | null>(null);
 
   const api = new AutoGPTServerAPI();
 
@@ -61,7 +62,10 @@ const Monitor = () => {
         flows={flows}
         flowRuns={flowRuns}
         selectedFlow={selectedFlow}
-        onSelectFlow={f => setSelectedFlow(f.id == selectedFlow?.id ? null : f)}
+        onSelectFlow={f => {
+          setSelectedRun(null);
+          setSelectedFlow(f.id == selectedFlow?.id ? null : f);
+        }}
       />
       <FlowRunsList
         className="md:col-span-3 lg:col-span-2 xl:col-span-3 space-y-4"
@@ -74,28 +78,24 @@ const Monitor = () => {
           )
           .toSorted((a, b) => Number(a.startTime) - Number(b.startTime))
         }
+        selectedRun={selectedRun}
+        onSelectRun={r => setSelectedRun(r.id == selectedRun?.id ? null : r)}
       />
       <div className="col-span-full xl:col-span-5">
-        {selectedFlow && (
-          <Card>
-            <CardHeader className="flex-row items-center justify-between space-y-0 space-x-3">
-              <div>
-                <CardTitle>{selectedFlow.name}</CardTitle>
-                <p className="mt-2"><code>{selectedFlow.id}</code></p>
-              </div>
-              <Link className={buttonVariants({ variant: "outline" })} href={`/build?flowID=${selectedFlow.id}`}>
-                <Pencil2Icon className="mr-2" /> Edit Flow
-              </Link>
-            </CardHeader>
-            <CardContent>
-              <FlowRunsStats
-                flows={flows}
-                flowRuns={flowRuns.filter(v => v.flowID == selectedFlow.id)}
-              />
-            </CardContent>
-          </Card>
+        {selectedRun && (
+          <FlowRunInfo
+            flow={selectedFlow || flows.find(f => f.id == selectedRun.flowID)!}
+            flowRun={selectedRun}
+          />
+        ) || selectedFlow && (
+          <FlowInfo
+            flow={selectedFlow}
+            flowRuns={flowRuns.filter(r => r.flowID == selectedFlow.id)}
+          />
         ) || (
-          <FlowRunsStats flows={flows} flowRuns={flowRuns} />
+          <Card className="p-6">
+            <FlowRunsStats flows={flows} flowRuns={flowRuns} />
+          </Card>
         )}
       </div>
     </div>
@@ -223,9 +223,13 @@ const FlowStatusBadge = ({ status }: { status: "active" | "disabled" | "failing"
   </Badge>
 );
 
-const FlowRunsList = (
-  { flows, runs, className }: { flows: Flow[], runs: FlowRun[], className?: string }
-) => (
+const FlowRunsList: React.FC<{
+  flows: Flow[];
+  runs: FlowRun[];
+  className?: string;
+  selectedRun?: FlowRun | null;
+  onSelectRun: (r: FlowRun) => void;
+}> = ({ flows, runs, selectedRun, onSelectRun, className }) => (
   <Card className={className}>
     <CardHeader>
       <CardTitle>Flow Runs</CardTitle>
@@ -242,7 +246,12 @@ const FlowRunsList = (
         </TableHeader>
         <TableBody>
           {runs.map((run) => (
-            <TableRow key={run.id}>
+            <TableRow
+              key={run.id}
+              className="cursor-pointer"
+              onClick={() => onSelectRun(run)}
+              data-state={selectedRun?.id == run.id ? "selected" : null}
+            >
               <TableCell>{flows.find(f => f.id == run.flowID)!.name}</TableCell>
               <TableCell>{moment(run.startTime).format("HH:mm")}</TableCell>
               <TableCell><FlowRunStatusBadge status={run.status} /></TableCell>
@@ -296,13 +305,64 @@ const ScrollableLegend = ({ payload }) => {
   );
 };
 
+const FlowInfo: React.FC<{
+  flow: Flow;
+  flowRuns: FlowRun[];
+}> = ({ flow, flowRuns }) => {
+  return <Card>
+    <CardHeader className="flex-row items-center justify-between space-y-0 space-x-3">
+      <div>
+        <CardTitle>{flow.name}</CardTitle>
+        <p className="mt-2">Flow ID: <code>{flow.id}</code></p>
+      </div>
+      <Link className={buttonVariants({ variant: "outline" })} href={`/build?flowID=${flow.id}`}>
+        <Pencil2Icon className="mr-2" /> Edit Flow
+      </Link>
+    </CardHeader>
+    <CardContent>
+      <FlowRunsStats
+        flows={[flow]}
+        flowRuns={flowRuns.filter(r => r.flowID == flow.id)}
+      />
+    </CardContent>
+  </Card>;
+};
 
-const FlowRunsStats = (
-  { flows, flowRuns }: {
-    flows: Flow[],
-    flowRuns: FlowRun[],
+const FlowRunInfo: React.FC<{
+  flow: Flow;
+  flowRun: FlowRun;
+}> = ({ flow, flowRun }) => {
+  if (flowRun.flowID != flow.id) {
+    throw new Error(`FlowRunInfo can't be used with non-matching flowRun.flowID and flow.id`)
   }
-) => {
+
+  return <Card>
+    <CardHeader className="flex-row items-center justify-between space-y-0 space-x-3">
+      <div>
+        <CardTitle>{flow.name}</CardTitle>
+        <p className="mt-2">Flow ID: <code>{flow.id}</code></p>
+        <p className="mt-1">Run ID: <code>{flowRun.id}</code></p>
+      </div>
+      <Link className={buttonVariants({ variant: "outline" })} href={`/build?flowID=${flow.id}`}>
+        <Pencil2Icon className="mr-2" /> Edit Flow
+      </Link>
+    </CardHeader>
+    <CardContent>
+      <p><strong>Status:</strong> <FlowRunStatusBadge status={flowRun.status} /></p>
+      <p><strong>Started:</strong> {moment(flowRun.startTime).format()}</p>
+      <p><strong>Finished:</strong> {moment(flowRun.endTime).format()}</p>
+      <p><strong>Duration (run time):</strong> {flowRun.duration} ({flowRun.totalRunTime}) seconds</p>
+      {/* <p><strong>Total cost:</strong> €1,23</p> */}
+    </CardContent>
+  </Card>;
+};
+
+const FlowRunsStats: React.FC<{
+  flows: Flow[],
+  flowRuns: FlowRun[],
+  title?: string,
+  className?: string,
+}> = ({ flows, flowRuns, title, className }) => {
   /* "dateMin": since the first flow in the dataset
    * number > 0: custom date (unix timestamp)
    * number < 0: offset relative to Date.now() (in seconds) */
@@ -319,9 +379,9 @@ const FlowRunsStats = (
     : flowRuns;
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Flow Run Stats</CardTitle>
+    <div className={className}>
+      <div className="flex flex-row items-center justify-between">
+        <CardTitle>{ title || "Stats" }</CardTitle>
         <div className="flex space-x-2">
           <Button variant="outline" size="sm" onClick={() => setStatsSince(-2*3600)}>2h</Button>
           <Button variant="outline" size="sm" onClick={() => setStatsSince(-8*3600)}>8h</Button>
@@ -341,20 +401,19 @@ const FlowRunsStats = (
           </Popover>
           <Button variant="outline" size="sm" onClick={() => setStatsSince("dataMin")}>All</Button>
         </div>
-      </CardHeader>
-      <CardContent>
-        <FlowRunsTimeline flows={flows} flowRuns={flowRuns} dataMin={statsSince} className={"mb-6"} />
-        <Card className="p-3">
-          <p><strong>Total runs:</strong> {filteredFlowRuns.length}</p>
-          <p>
-            <strong>Total duration:</strong> {
-              filteredFlowRuns.reduce((total, run) => total + run.duration, 0)
-            } seconds
-          </p>
-          {/* <p><strong>Total cost:</strong> €1,23</p> */}
-        </Card>
-      </CardContent>
-    </Card>
+      </div>
+      <FlowRunsTimeline flows={flows} flowRuns={flowRuns} dataMin={statsSince} className="mt-3" />
+      <hr className="my-4" />
+      <div>
+        <p><strong>Total runs:</strong> {filteredFlowRuns.length}</p>
+        <p>
+          <strong>Total duration:</strong> {
+            filteredFlowRuns.reduce((total, run) => total + run.duration, 0)
+          } seconds
+        </p>
+        {/* <p><strong>Total cost:</strong> €1,23</p> */}
+      </div>
+    </div>
   )
 }
 
