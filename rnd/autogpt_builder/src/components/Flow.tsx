@@ -243,13 +243,6 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
 
     let inputData = getNestedData(blockSchema, node.data.hardcodedValues);
 
-    // Filter out any inputs that are not in the block's schema
-    Object.keys(inputData).forEach(key => {
-      if (!blockSchema.properties[key]) {
-        delete inputData[key];
-      }
-    });
-
     console.log(`Final prepared input for ${node.data.blockType} (${node.id}):`, inputData);
     return inputData;
   };
