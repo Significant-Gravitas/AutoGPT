@@ -1,0 +1,47 @@
+{
+  "folders": [
+    {
+      "name": "autogpt",
+      "path": "../autogpt"
+    },
+    {
+      "name": "benchmark",
+      "path": "../benchmark"
+    },
+    {
+      "name": "docs",
+      "path": "../docs"
+    },
+    {
+      "name": "forge",
+      "path": "../forge"
+    },
+    {
+      "name": "frontend",
+      "path": "../frontend"
+    },
+    {
+      "name": "autogpt_server",
+      "path": "../rnd/autogpt_server"
+    },
+    {
+      "name": "autogpt_builder",
+      "path": "../rnd/autogpt_builder"
+    },
+    {
+      "name": "[root]",
+      "path": ".."
+    }
+  ],
+  "settings": {},
+  "extensions": {
+    "recommendations": [
+      "charliermarsh.ruff",
+      "dart-code.flutter",
+      "ms-python.black-formatter",
+      "ms-python.vscode-pylance",
+      "prisma.prisma",
+      "qwtel.sqlite-viewer"
+    ]
+  }
+}
