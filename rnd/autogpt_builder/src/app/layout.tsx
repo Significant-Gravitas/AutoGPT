@@ -66,7 +66,7 @@ export default function RootLayout({
         >
           <div className="min-h-screen bg-gray-200 text-gray-900">
             <NavBar />
-            <main className="container mx-auto p-4">
+            <main className="mx-auto p-4">
               {children}
             </main>
           </div>

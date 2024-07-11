@@ -55,29 +55,27 @@ const Monitor = () => {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 xl:grid-cols-10 gap-4">
-      <div className="lg:col-span-2 xl:col-span-2">
-        <AgentFlowList
-          flows={flows}
-          flowRuns={flowRuns}
-          selectedFlow={selectedFlow}
-          onSelectFlow={f => setSelectedFlow(f.id == selectedFlow?.id ? null : f)}
-        />
-      </div>
-      <div className="lg:col-span-2 xl:col-span-2 space-y-4">
-        <FlowRunsList
-          flows={flows}
-          runs={
-            (
-              selectedFlow
-                ? flowRuns.filter(v => v.flowID == selectedFlow.id)
-                : flowRuns
-            )
-            .toSorted((a, b) => Number(a.startTime) - Number(b.startTime))
-          }
-        />
-      </div>
-      <div className="col-span-1 lg:col-span-4 xl:col-span-6">
+    <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10 gap-4">
+      <AgentFlowList
+        className="md:col-span-2"
+        flows={flows}
+        flowRuns={flowRuns}
+        selectedFlow={selectedFlow}
+        onSelectFlow={f => setSelectedFlow(f.id == selectedFlow?.id ? null : f)}
+      />
+      <FlowRunsList
+        className="md:col-span-3 lg:col-span-2 xl:col-span-3 space-y-4"
+        flows={flows}
+        runs={
+          (
+            selectedFlow
+              ? flowRuns.filter(v => v.flowID == selectedFlow.id)
+              : flowRuns
+          )
+          .toSorted((a, b) => Number(a.startTime) - Number(b.startTime))
+        }
+      />
+      <div className="col-span-full xl:col-span-5">
         {selectedFlow && (
           <Card>
             <CardHeader className="flex-row items-center justify-between space-y-0 space-x-3">
@@ -153,14 +151,15 @@ function flowRunFromNodeExecutionResults(
 }
 
 const AgentFlowList = (
-  { flows, flowRuns, selectedFlow, onSelectFlow }: {
+  { flows, flowRuns, selectedFlow, onSelectFlow, className }: {
     flows: Flow[],
     flowRuns?: FlowRun[],
     selectedFlow: Flow | null,
     onSelectFlow: (f: Flow) => void,
+    className?: string,
   }
 ) => (
-  <Card>
+  <Card className={className}>
     <CardHeader>
       <CardTitle>Agent Flows</CardTitle>
     </CardHeader>
@@ -171,7 +170,7 @@ const AgentFlowList = (
             <TableHead>Name</TableHead>
             {/* <TableHead>Status</TableHead> */}
             {/* <TableHead>Last updated</TableHead> */}
-            {flowRuns && <TableHead># of runs</TableHead>}
+            {flowRuns && <TableHead className="md:hidden lg:table-cell"># of runs</TableHead>}
             {flowRuns && <TableHead>Last run</TableHead>}
           </TableRow>
         </TableHeader>
@@ -197,7 +196,7 @@ const AgentFlowList = (
                 {/* <TableCell>
                   {flow.updatedAt ?? "???"}
                 </TableCell> */}
-                {flowRuns && <TableCell>{runCount}</TableCell>}
+                {flowRuns && <TableCell className="md:hidden lg:table-cell">{runCount}</TableCell>}
                 {flowRuns && (!lastRun ? <TableCell /> :
                 <TableCell title={moment(lastRun.startTime).toString()}>
                   {moment(lastRun.startTime).fromNow()}
@@ -224,8 +223,10 @@ const FlowStatusBadge = ({ status }: { status: "active" | "disabled" | "failing"
   </Badge>
 );
 
-const FlowRunsList = ({ flows, runs }: { flows: Flow[], runs: FlowRun[] }) => (
-  <Card>
+const FlowRunsList = (
+  { flows, runs, className }: { flows: Flow[], runs: FlowRun[], className?: string }
+) => (
+  <Card className={className}>
     <CardHeader>
       <CardTitle>Flow Runs</CardTitle>
     </CardHeader>
