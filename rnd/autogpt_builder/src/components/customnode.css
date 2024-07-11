@@ -2,10 +2,11 @@
   padding: 15px;
   border: 2px solid #fff;
   border-radius: 12px;
-  background: #2c2c2c;
-  color: #e0e0e0;
-  width: 300px; /* Adjust width for better layout */
-  box-sizing: border-box; /* Ensure padding doesn't affect overall width */
+  background: #ffffff;
+  color: #000000;
+  width: 500px;
+  box-sizing: border-box;
+  transition: background-color 0.3s ease-in-out;
 }
 
 .node-header {
@@ -24,33 +25,43 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  color: #e0e0e0;
+  color: #000000;
 }
 
 .node-content {
   display: flex;
-  flex-direction: column; /* Use column to stack elements */
-  gap: 10px;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1px;
 }
 
 .input-section {
+  display: flex;
+  flex-direction: column;
   flex: 1;
 }
 
+.handle-label {
+  color: #000000;
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
 .output-section {
+  display: flex;
+  flex-direction: column;
   flex: 1;
+  align-items: flex-end;
+}
+
+.handle-label {
+  margin-left: 10px;
 }
 
 .handle-container {
   display: flex;
-  align-items: center;
   position: relative;
   margin-bottom: 5px;
-}
-
-.handle-label {
-  color: #e0e0e0;
-  margin-left: 10px;
 }
 
 .input-container {
@@ -59,11 +70,25 @@
 
 .clickable-input {
   padding: 5px;
+  width: 325px;
   border-radius: 4px;
-  border: 1px solid #555;
-  background: #444;
-  color: #e0e0e0;
+  background: #d1d1d1;
+  color: #000000;
   cursor: pointer;
+  word-break: break-all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+}
+
+.clickable-input span {
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 100px);
+  vertical-align: middle;
 }
 
 .select-input {
@@ -126,10 +151,12 @@
 }
 
 .node-properties {
-  margin-top: 20px;
-  background: #444;
+  margin-top: 5px;
+  margin-bottom: 5px;
+  background: #d1d1d1;
   padding: 10px;
   border-radius: 10px;
+  width: 325px;
 }
 
 .error-message {
@@ -140,7 +167,7 @@
 
 .object-input {
   margin-left: 10px;
-  border-left: 1px solid #555;
+  border-left: 1px solid #d1d1d1;
   padding-left: 10px;
 }
 
@@ -177,6 +204,16 @@
 
 .completed {
   animation: completedAnimation 1s infinite;
+}
+
+/* Animation for failed status */
+@keyframes failedAnimation {
+  0% { background-color: #c0392b; }
+  100% { background-color: #e74c3c; }
+}
+
+.failed {
+  animation: failedAnimation 1s infinite;
 }
 
 /* Add more styles for better look */

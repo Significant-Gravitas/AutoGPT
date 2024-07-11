@@ -4,7 +4,7 @@ import { ObjectSchema } from "./types";
 export default class AutoGPTServerAPI {
   private baseUrl: string;
 
-  constructor(baseUrl: string = "http://localhost:8000") {
+  constructor(baseUrl: string = process.env.AGPT_SERVER_URL || "http://localhost:8000") {
     this.baseUrl = baseUrl;
   }
 

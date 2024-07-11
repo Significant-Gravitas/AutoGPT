@@ -22,6 +22,18 @@ class TextMatcherBlock(Block):
             id="3060088f-6ed9-4928-9ba7-9c92823a7ccd",
             input_schema=TextMatcherBlock.Input,
             output_schema=TextMatcherBlock.Output,
+            test_input=[
+                {"text": "ABC", "match": "ab", "data": "X", "case_sensitive": False},
+                {"text": "ABC", "match": "ab", "data": "Y", "case_sensitive": True},
+                {"text": "Hello World!", "match": ".orld.+", "data": "Z"},
+                {"text": "Hello World!", "match": "World![a-z]+", "data": "Z"},
+            ],
+            test_output=[
+                ("positive", "X"),
+                ("negative", "Y"),
+                ("positive", "Z"),
+                ("negative", "Z"),
+            ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
@@ -55,6 +67,20 @@ class TextFormatterBlock(Block):
             id="db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
             input_schema=TextFormatterBlock.Input,
             output_schema=TextFormatterBlock.Output,
+            test_input=[
+                {"texts": ["Hello"], "format": "{texts[0]}"},
+                {
+                    "texts": ["Hello", "World!"],
+                    "named_texts": {"name": "Alice"},
+                    "format": "{texts[0]} {texts[1]} {name}",
+                },
+                {"format": "Hello, World!"},
+            ],
+            test_output=[
+                ("output", "Hello"),
+                ("output", "Hello World! Alice"),
+                ("output", "Hello, World!"),
+            ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
