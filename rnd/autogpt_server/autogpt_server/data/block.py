@@ -135,6 +135,7 @@ class BlockSchema(BaseModel):
             if field_info.is_required()
         }
 
+
 BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)
 BlockSchemaOutputType = TypeVar("BlockSchemaOutputType", bound=BlockSchema)
 
