@@ -12,6 +12,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import type { Payload } from "recharts/types/component/DefaultLegendContent";
 
 const Monitor = () => {
   const [flows, setFlows] = useState<Flow[]>([]);
@@ -211,20 +212,6 @@ const AgentFlowList = (
     </CardContent>
   </Card>
 );
-
-const FlowStatusBadge = ({ status }: { status: "active" | "disabled" | "failing" }) => (
-  <Badge
-    variant="default"
-    className={
-      status === 'active' ? 'bg-green-500 dark:bg-green-600' :
-      status === 'failing' ? 'bg-red-500 dark:bg-red-700' :
-      'bg-gray-500 dark:bg-gray-600'
-    }
-  >
-    {status}
-  </Badge>
-);
-
 const FlowRunsList = ({ flows, runs }: { flows: Flow[], runs: FlowRun[] }) => (
   <Card>
     <CardHeader>
@@ -269,7 +256,7 @@ const FlowRunStatusBadge = ({ status }: { status: FlowRun['status'] }) => (
   </Badge>
 );
 
-const ScrollableLegend = ({ payload }) => {
+const ScrollableLegend = ({ payload }: { payload: Payload[] }) => {
   return (
     <div style={{
       overflowX: 'auto',
@@ -397,7 +384,7 @@ const FlowRunsTimeline = (
         tickFormatter={s => s > 90 ? `${Math.round(s / 60)}m` : `${s}s`}
       />
       <Tooltip
-        content={({ payload, label }) => {
+        content={({ payload}) => {
           if (payload && payload.length) {
             const data: FlowRun & { time: number, _duration: number } = payload[0].payload;
             const flow = flows.find(f => f.id === data.flowID);
@@ -443,7 +430,7 @@ const FlowRunsTimeline = (
         />
       ))}
      <Legend
-        content={<ScrollableLegend />}
+        content={(props) => <ScrollableLegend payload={props.payload || []} />}
         wrapperStyle={{ bottom: 0, left: 0, right: 0 }}
       />
     </ComposedChart>

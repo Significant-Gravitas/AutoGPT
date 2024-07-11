@@ -110,7 +110,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const isHandleConnected = (key: string) => {
     return data.connections && data.connections.some((conn: any) => {
       if (typeof conn === 'string') {
-        const [source, target] = conn.split(' -> ');
+        const [ target] = conn.split(' -> ');
         return target.includes(key) && target.includes(data.title);
       }
       return conn.target === id && conn.targetHandle === key;
@@ -367,28 +367,6 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </div>
         );
     }
-  };
-
-  const validateInputs = () => {
-    const newErrors: { [key: string]: string | null } = {};
-    const validateRecursive = (schema: any, parentKey: string = '') => {
-      Object.entries(schema.properties).forEach(([key, propSchema]: [string, any]) => {
-        const fullKey = parentKey ? `${parentKey}.${key}` : key;
-        const value = getValue(fullKey);
-
-        if (propSchema.type === 'object' && propSchema.properties) {
-          validateRecursive(propSchema, fullKey);
-        } else {
-          if (propSchema.required && !value) {
-            newErrors[fullKey] = `${fullKey} is required`;
-          }
-        }
-      });
-    };
-
-    validateRecursive(data.inputSchema);
-    setErrors(newErrors);
-    return Object.values(newErrors).every((error) => error === null);
   };
 
   return (

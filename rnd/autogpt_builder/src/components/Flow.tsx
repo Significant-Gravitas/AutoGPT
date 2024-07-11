@@ -241,7 +241,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
       return inputData;
     };
 
-    let inputData = getNestedData(blockSchema, node.data.hardcodedValues);
+    const inputData = getNestedData(blockSchema, node.data.hardcodedValues);
 
     // Get data from connected nodes
     const incomingEdges = allEdges.filter(edge => edge.target === node.id);
