@@ -135,12 +135,6 @@ class BlockSchema(BaseModel):
             if field_info.is_required()
         }
 
-    # class Config:
-    #     json_encoders = {
-    #         BlockFieldSecret: lambda secret: BlockFieldSecret.STR
-    #     }
-
-
 BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)
 BlockSchemaOutputType = TypeVar("BlockSchemaOutputType", bound=BlockSchema)
 
