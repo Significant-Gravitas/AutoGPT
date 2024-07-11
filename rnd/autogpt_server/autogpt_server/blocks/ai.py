@@ -22,7 +22,7 @@ class LlmCallBlock(Block):
         retry: int = 3
 
     class Output(BlockSchema):
-        response: dict[str, str] | str
+        response: dict[str, str]
         error: str
 
     def __init__(self):
