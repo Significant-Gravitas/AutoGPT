@@ -243,16 +243,6 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
 
     let inputData = getNestedData(blockSchema, node.data.hardcodedValues);
 
-    // Get data from connected nodes
-    const incomingEdges = allEdges.filter(edge => edge.target === node.id);
-    incomingEdges.forEach(edge => {
-      const sourceNode = allNodes.find(n => n.id === edge.source);
-      if (sourceNode && sourceNode.data.output_data) {
-        const outputKey = Object.keys(sourceNode.data.output_data)[0]; // Assuming single output
-        inputData[edge.targetHandle as string] = sourceNode.data.output_data[outputKey];
-      }
-    });
-
     // Filter out any inputs that are not in the block's schema
     Object.keys(inputData).forEach(key => {
       if (!blockSchema.properties[key]) {
