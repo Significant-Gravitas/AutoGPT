@@ -102,6 +102,16 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     setErrors((prevErrors) => ({ ...prevErrors, [key]: null }));
   };
 
+  const getSelectValue = (value: any): string => {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return value.toString();
+    if (Array.isArray(value)) return value.join(',');
+    if (typeof value === 'object' && value !== null) {
+      return JSON.stringify(value);
+    }
+    return '';
+  };
+
   const getValue = (key: string) => {
     const keys = key.split('.');
     return keys.reduce((acc, k) => (acc && acc[k] !== undefined) ? acc[k] : '', data.hardcodedValues);
@@ -288,7 +298,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         return schema.enum ? (
           <div key={fullKey} className="input-container">
             <select
-              value={value || ''}
+              value={getSelectValue(value)}
               onChange={(e) => handleInputChange(fullKey, e.target.value)}
               className="select-input"
             >
