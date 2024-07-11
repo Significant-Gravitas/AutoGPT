@@ -1,7 +1,7 @@
 import requests
 from autogpt_server.data.block import Block, BlockSchema, BlockOutput
 
-class wikipediasummaryblock(Block):
+class wikipediasummary(Block):
     class Input(BlockSchema):
         topic: str
 
@@ -11,8 +11,8 @@ class wikipediasummaryblock(Block):
     def __init__(self):
         super().__init__(
             id="h5e7f8g9-1b2c-3d4e-5f6g-7h8i9j0k1l2m",
-            input_schema=wikipediasummaryblock.Input,
-            output_schema=wikipediasummaryblock.Output,
+            input_schema=wikipediasummary.Input,
+            output_schema=wikipediasummary.Output,
             test_input={"topic": "Artificial Intelligence"},
             test_output={"summary": "Artificial intelligence (AI) is intelligence demonstrated by machines, in contrast to the natural intelligence displayed by humans and animals."},
         )
