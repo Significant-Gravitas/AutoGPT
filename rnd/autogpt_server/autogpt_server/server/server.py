@@ -89,6 +89,11 @@ class AgentServer(AppService):
             methods=["POST"],
         )
         router.add_api_route(
+            path="/templates/{graph_id}",
+            endpoint=self.get_template,
+            methods=["GET"],
+        )
+        router.add_api_route(
             path="/graphs",
             endpoint=self.get_graphs,
             methods=["GET"],
@@ -365,6 +370,13 @@ class AgentServer(AppService):
     @classmethod
     async def get_graph(cls, graph_id: str) -> autogpt_server.data.graph.Graph:
         graph = await autogpt_server.data.graph.get_graph(graph_id)
+        if not graph:
+            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        return graph
+
+    @classmethod
+    async def get_template(cls, graph_id: str) -> autogpt_server.data.graph.Graph:
+        graph = await autogpt_server.data.graph.get_graph(graph_id, is_template=True)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         return graph
