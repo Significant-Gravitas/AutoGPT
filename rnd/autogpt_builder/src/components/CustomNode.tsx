@@ -157,11 +157,13 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       return <div className="connected-input">Connected</div>;
     }
 
-    const renderClickableInput = (displayValue: string) => (
-      <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
-        {displayValue}
-      </div>
-    );
+  const renderClickableInput = (displayValue: unknown): JSX.Element => (
+    <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
+      {typeof displayValue === 'string' || typeof displayValue === 'number' || typeof displayValue === 'boolean'
+        ? String(displayValue)
+        : JSON.stringify(displayValue)}
+    </div>
+  );
 
     if (schema.type === 'object' && schema.properties) {
       return (
