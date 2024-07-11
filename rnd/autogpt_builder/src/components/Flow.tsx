@@ -137,6 +137,30 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     [setEdges, setNodes]
   );
 
+  const onEdgesDelete = useCallback(
+  (edgesToDelete: Edge[]) => {
+    setNodes((nds) =>
+      nds.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          connections: node.data.connections.filter(
+            (conn: any) =>
+              !edgesToDelete.some(
+                (edge) =>
+                  edge.source === conn.source &&
+                  edge.target === conn.target &&
+                  edge.sourceHandle === conn.sourceHandle &&
+                  edge.targetHandle === conn.targetHandle
+              )
+          ),
+        },
+      }))
+    );
+  },
+  [setNodes]
+);
+
   const addNode = (blockId: string, nodeType: string) => {
     const nodeSchema = availableNodes.find(node => node.id === blockId);
     if (!nodeSchema) {
@@ -416,6 +440,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         nodeTypes={nodeTypes}
+        onEdgesDelete={onEdgesDelete}
       >
         <div style={{ position: 'absolute', right: 10, zIndex: 4 }}>
           <Input
