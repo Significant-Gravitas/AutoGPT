@@ -1,7 +1,7 @@
 import asyncio
 import uuid
-
 from typing import Any
+
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink
 from pydantic import BaseModel, PrivateAttr
 
@@ -144,12 +144,12 @@ async def get_template_meta() -> list[GraphMeta]:
     return [GraphMeta.from_db(template) for template in templates]  # type: ignore
 
 
-async def get_graph(graph_id: str, is_template: bool = False) -> Graph | None:
-    graph = await AgentGraph.prisma().find_first(
+async def get_graph(graph_id: str, is_template: bool = False) -> Graph:
+    graph = await AgentGraph.prisma().find_first_or_raise(
         where={"id": graph_id, "is_template": is_template},
         include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
     )
-    return Graph.from_db(graph) if graph else None
+    return Graph.from_db(graph)
 
 
 async def create_graph(graph: Graph, is_template: bool = False) -> Graph:
