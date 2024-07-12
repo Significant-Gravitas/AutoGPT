@@ -4,7 +4,7 @@ import pytest
 
 from autogpt_server.blocks.sample import PrintingBlock
 from autogpt_server.data import block, db, execution, graph
-from autogpt_server.data.agent_block import AutoGPTAgentBlock
+from autogpt_server.blocks.agent import AutoGPTAgentBlock
 from autogpt_server.executor import ExecutionManager
 from autogpt_server.server import AgentServer
 from autogpt_server.util.service import PyroNameServer
@@ -42,17 +42,11 @@ async def execute_agent(test_manager: ExecutionManager, test_graph: graph.Graph)
     input_data = {
         "task": "Make calculations and use output command to output the result.",
         "input": "5 + 3",
-        "disabled_components": [
-            "ActionHistoryComponent",
-            "UserInteractionComponent",
-            "FileManagerComponent",
-            "CodeExecutorComponent",
-            "GitOperationsComponent",
-            "ImageGeneratorComponent",
-            "ContextComponent",
+        "enabled_components": [
+            "OutputComponent",
         ],
         "disabled_commands": ["finish"],
-        "fast_mode": True,
+        "fast_mode": False,
     }
     agent_server = AgentServer()
     response = await agent_server.execute_graph(test_graph.id, input_data)

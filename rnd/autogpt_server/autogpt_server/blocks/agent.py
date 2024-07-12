@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, Iterator
 
 from autogpt.agents.agent import Agent, AgentSettings
 from autogpt.app.config import ConfigBuilder
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockFieldSecret, BlockOutput, BlockSchema
+from forge.agent.components import AgentComponent
 from forge.agent.protocols import (
     CommandProvider,
 )
@@ -18,8 +19,10 @@ from forge.file_storage.base import FileStorage
 from forge.llm.providers import (
     MultiProvider,
 )
+from forge.llm.providers.openai import OpenAICredentials, OpenAIProvider
+from forge.llm.providers.schema import ModelProviderName
 from forge.models.json_schema import JSONSchema
-from pydantic import Field
+from pydantic import Field, SecretStr
 
 if TYPE_CHECKING:
     from autogpt.app.config import AppConfig
@@ -28,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 class BlockAgentSettings(AgentSettings):
-    disabled_components: list[str] = Field(default_factory=list)
+    enabled_components: list[str] = Field(default_factory=list)
 
 
 class OutputComponent(CommandProvider):
@@ -64,7 +67,10 @@ class BlockAgent(Agent):
         # Disable components
         for attr_name in list(self.__dict__.keys()):
             attr_value = getattr(self, attr_name)
-            if type(attr_value).__name__ in settings.disabled_components:
+            if not isinstance(attr_value, AgentComponent):
+                continue
+            component_name = type(attr_value).__name__
+            if component_name != "SystemComponent" and component_name not in settings.enabled_components:
                 delattr(self, attr_name)
 
 
@@ -72,7 +78,8 @@ class AutoGPTAgentBlock(Block):
     class Input(BlockSchema):
         task: str
         input: str
-        disabled_components: list[str] = Field(default_factory=list)
+        openai_api_key: BlockFieldSecret = BlockFieldSecret(key="openai_api_key")
+        enabled_components: list[str] = Field(default_factory=lambda: [OutputComponent.__name__])
         disabled_commands: list[str] = Field(default_factory=list)
         fast_mode: bool = False
     
@@ -103,10 +110,13 @@ class AutoGPTAgentBlock(Block):
         file_storage.initialize()
 
         # LLM provider
+        settings = OpenAIProvider.default_settings.model_copy()
+        settings.credentials = OpenAICredentials(api_key=SecretStr(input_data.openai_api_key.get()))
+        openai_provider = OpenAIProvider(settings=settings)
+        
         multi_provider = MultiProvider()
-        for model in [config.smart_llm, config.fast_llm]:
-            # Ensure model providers for configured LLMs are available
-            multi_provider.get_model_provider(model)
+        # HACK: Add OpenAI provider to the multi provider with api key
+        multi_provider._provider_instances[ModelProviderName.OPENAI] = openai_provider
 
         # State
         state = BlockAgentSettings(
@@ -115,7 +125,7 @@ class AutoGPTAgentBlock(Block):
             description="Wrapped agent for the Agent Server.",
             task=f"Your task: {input_data.task}\n"
                  f"Input data: {input_data.input}",
-            disabled_components=input_data.disabled_components,
+            enabled_components=input_data.enabled_components,
         )
         # Switch big brain mode
         state.config.big_brain = not input_data.fast_mode
