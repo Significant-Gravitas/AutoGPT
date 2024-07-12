@@ -215,7 +215,7 @@ jobs:
         if: runner.os == 'macOS'
         working-directory: ${{ runner.temp }}
         run: |
-          zip -r AutoGPTServer.app.zip /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.app
+          zip -r autogptserver-app-${{ matrix.platform-os }}.app.zip /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.app
           ls -lah
           pwd
 
@@ -224,7 +224,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: autogptserver-app-${{ matrix.platform-os }}
-          path: AutoGPTServer.app.zip
+          path: /Users/runner/work/_temp/autogptserver-app-${{ matrix.platform-os }}.app.zip
 
       - name: Upload dmg artifact
         uses: actions/upload-artifact@v4
