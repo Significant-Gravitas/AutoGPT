@@ -52,6 +52,7 @@ class ExecutionQueue:
 
 class ExecutionResult(BaseModel):
     graph_id: str
+    version: int
     graph_exec_id: str
     node_exec_id: str
     node_id: str
@@ -77,6 +78,7 @@ class ExecutionResult(BaseModel):
         
         return ExecutionResult(
             graph_id=node.agentGraphId if node else "",
+            version=node.agentGraphVersion if node else 0,
             graph_exec_id=execution.agentGraphExecutionId,
             node_exec_id=execution.id,
             node_id=execution.agentNodeId,
@@ -94,7 +96,7 @@ class ExecutionResult(BaseModel):
 
 
 async def create_graph_execution(
-    graph_id: str, node_ids: list[str], data: dict[str, Any]
+    graph_id: str, version: int, node_ids: list[str], data: dict[str, Any]
 ) -> tuple[str, list[ExecutionResult]]:
     """
     Create a new AgentGraphExecution record.
@@ -104,6 +106,7 @@ async def create_graph_execution(
     result = await AgentGraphExecution.prisma().create(
         data={
             "agentGraphId": graph_id,
+            "agentGraphVersion": version,
             "AgentNodeExecutions": {
                 "create": [  # type: ignore
                     {
@@ -208,7 +211,7 @@ async def update_execution_status(node_exec_id: str, status: ExecutionStatus) ->
     if not res:
         raise ValueError(f"Execution {node_exec_id} not found.")
 
-
+# TODO: Should this be scoped to graph version too?
 async def list_executions(graph_id: str) -> list[str]:
     executions = await AgentGraphExecution.prisma().find_many(
         where={"agentGraphId": graph_id},

@@ -79,7 +79,7 @@ class Graph(BaseModel):
     links: list[Link]
 
     def __init__(self, graph_id: str = "", **data: Any):
-        data["graph_id"] = id or str(uuid.uuid4())
+        data["graph_id"] = graph_id or str(uuid.uuid4())
         super().__init__(**data)
 
     @property
@@ -174,7 +174,7 @@ async def get_graphs_meta(
         where_clause["is_active"] = is_active
 
     where_clause = prisma.types.AgentGraphWhereInput(**where_clause)  # type: ignore
-    order_by = prisma.types.AgentGraphOrderByInput(version="desc")  # type: ignore
+    order_by = {"version": "desc"}  # type: ignore
 
     graphs = await AgentGraph.prisma().find_many(
         where=where_clause,
@@ -188,18 +188,22 @@ async def get_graphs_meta(
     return [GraphMeta.from_db(graph) for graph in graphs]  # type: ignore
 
 
-async def get_graph(graph_id: str, version: int | None = None) -> Graph:
+async def get_graph(
+    graph_id: str, version: int | None = None, is_active: bool | None = None
+) -> Graph:
     where_clause = {"graph_id": graph_id}
     if version is not None:
         where_clause["version"] = version  # type: ignore
+    if is_active:
+        where_clause["is_active"] = is_active # type: ignore
 
     where_clause = prisma.types.AgentGraphWhereInput(**where_clause)  # type: ignore
-    order_by = prisma.types.AgentGraphOrderByInput(version="desc")  # type: ignore
+    order_by =  {"version": "desc"}  # type: ignore
 
     graph = await AgentGraph.prisma().find_first_or_raise(
         where=where_clause,
         include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
-        distinct=["graph_id"] if version else None,
+        distinct=["graph_id"] if not version else None,
         order=order_by,  # type: ignore
     )
     return Graph.from_db(graph)
