@@ -40,6 +40,9 @@ nav:
       - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/frontend/README.md
 
   - Docs: docs/index.md
+    
+  - Server: 
+      - Build your own Node: server/new_nodes.md
 
   # - Challenges:
   #     - Introduction: challenges/introduction.md
