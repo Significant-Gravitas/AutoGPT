@@ -298,15 +298,19 @@ const FlowRunsList: React.FC<{
   </Card>
 );
 
-const FlowRunStatusBadge = ({ status }: { status: FlowRun['status'] }) => (
+const FlowRunStatusBadge: React.FC<{
+  status: FlowRun['status'];
+  className?: string;
+}> = ({ status, className }) => (
   <Badge
     variant="default"
-    className={
+    className={cn(
       status === 'running' ? 'bg-blue-500 dark:bg-blue-700' :
       status === 'waiting' ? 'bg-yellow-500 dark:bg-yellow-600' :
       status === 'success' ? 'bg-green-500 dark:bg-green-600' :
-      'bg-red-500 dark:bg-red-700'
-    }
+      'bg-red-500 dark:bg-red-700',
+      className,
+    )}
   >
     {status}
   </Badge>
@@ -468,13 +472,16 @@ const FlowRunsTimeline = (
             const data: FlowRun & { time: number, _duration: number } = payload[0].payload;
             const flow = flows.find(f => f.id === data.flowID);
             return (
-              <Card className="p-3">
+              <Card className="p-2 text-xs leading-normal">
                 <p><strong>Flow:</strong> {flow ? flow.name : 'Unknown'}</p>
+                <p>
+                  <strong>Status:</strong>&nbsp;
+                  <FlowRunStatusBadge status={data.status} className="px-1.5 py-0" />
+                </p>
                 <p><strong>Started:</strong> {moment(data.startTime).format('YYYY-MM-DD HH:mm:ss')}</p>
-                <p><strong>Duration / Run time:</strong> {
+                <p><strong>Duration / run time:</strong> {
                   formatDuration(data.duration)} / {formatDuration(data.totalRunTime)
                 }</p>
-                <p><strong>Status:</strong> <FlowRunStatusBadge status={data.status} /></p>
               </Card>
             );
           }
