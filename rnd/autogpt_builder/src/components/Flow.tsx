@@ -137,6 +137,30 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     [setEdges, setNodes]
   );
 
+  const onEdgesDelete = useCallback(
+  (edgesToDelete: Edge[]) => {
+    setNodes((nds) =>
+      nds.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          connections: node.data.connections.filter(
+            (conn: any) =>
+              !edgesToDelete.some(
+                (edge) =>
+                  edge.source === conn.source &&
+                  edge.target === conn.target &&
+                  edge.sourceHandle === conn.sourceHandle &&
+                  edge.targetHandle === conn.targetHandle
+              )
+          ),
+        },
+      }))
+    );
+  },
+  [setNodes]
+);
+
   const addNode = (blockId: string, nodeType: string) => {
     const nodeSchema = availableNodes.find(node => node.id === blockId);
     if (!nodeSchema) {
@@ -242,23 +266,6 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     };
 
     let inputData = getNestedData(blockSchema, node.data.hardcodedValues);
-
-    // Get data from connected nodes
-    const incomingEdges = allEdges.filter(edge => edge.target === node.id);
-    incomingEdges.forEach(edge => {
-      const sourceNode = allNodes.find(n => n.id === edge.source);
-      if (sourceNode && sourceNode.data.output_data) {
-        const outputKey = Object.keys(sourceNode.data.output_data)[0]; // Assuming single output
-        inputData[edge.targetHandle as string] = sourceNode.data.output_data[outputKey];
-      }
-    });
-
-    // Filter out any inputs that are not in the block's schema
-    Object.keys(inputData).forEach(key => {
-      if (!blockSchema.properties[key]) {
-        delete inputData[key];
-      }
-    });
 
     console.log(`Final prepared input for ${node.data.blockType} (${node.id}):`, inputData);
     return inputData;
@@ -433,6 +440,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         nodeTypes={nodeTypes}
+        onEdgesDelete={onEdgesDelete}
       >
         <div style={{ position: 'absolute', right: 10, zIndex: 4 }}>
           <Input
