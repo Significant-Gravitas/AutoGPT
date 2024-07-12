@@ -118,6 +118,7 @@ jobs:
         env:
           CI: true
           PLAIN_OUTPUT: True
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       # - name: Upload coverage reports to Codecov
       #   uses: codecov/codecov-action@v4
