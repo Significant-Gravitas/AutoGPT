@@ -205,6 +205,17 @@ async def get_graph(graph_id: str, version: int | None = None) -> Graph:
     return Graph.from_db(graph)
 
 
+async def deactivate_graph(graph_id: str, version: int) -> bool:
+    success = await AgentGraph.prisma().update(
+        data={
+            "is_active": False,
+        },
+        where={"id": {"graph_id": graph_id, "version": version}},
+    )
+
+    return success is not None
+
+
 async def get_graph_history(graph_id: str) -> list[Graph]:
     graph_history = await AgentGraph.prisma().find_many(
         where={"graph_id": graph_id},

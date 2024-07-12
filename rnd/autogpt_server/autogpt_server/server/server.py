@@ -88,6 +88,11 @@ class AgentServer(AppService):
             methods=["POST"],
         )
         router.add_api_route(
+            path="/templates",
+            endpoint=self.update_graph,
+            methods=["PATCH"],
+        )
+        router.add_api_route(
             path="/templates/{graph_id}",
             endpoint=self.get_template,
             methods=["GET"],
@@ -116,6 +121,11 @@ class AgentServer(AppService):
             path="/graphs",
             endpoint=self.create_new_graph,
             methods=["POST"],
+        )
+        router.add_api_route(
+            path="/graphs",
+            endpoint=self.update_graph,
+            methods=["PATCH"],
         )
         router.add_api_route(
             path="/graphs/{graph_id}/execute",
@@ -280,6 +290,33 @@ class AgentServer(AppService):
         cls, create_graph: CreateGraph
     ) -> autogpt_server.data.graph.Graph:
         return await cls.create_graph(create_graph, is_template=False)
+
+    @classmethod
+    async def update_graph(
+        cls, graph: autogpt_server.data.graph.Graph
+    ) -> autogpt_server.data.graph.Graph:
+        # TODO: replace uuid generation here to DB generated uuids.
+        graph.graph_id = str(uuid.uuid4())
+        graph.version += 1
+
+        if not graph.is_template:
+            graph.is_active = True
+        else:
+            graph.is_active = False
+
+        id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
+
+        for node in graph.nodes:
+            node.id = id_map[node.id]
+
+        for link in graph.links:
+            link.source_id = id_map[link.source_id]
+            link.sink_id = id_map[link.sink_id]
+        updated_graph = await autogpt_server.data.graph.create_graph(graph)
+        await autogpt_server.data.graph.deactivate_graph(
+            graph_id=graph.graph_id, version=graph.version
+        )
+        return updated_graph
 
     @classmethod
     async def create_graph(
