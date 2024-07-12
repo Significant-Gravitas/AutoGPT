@@ -5,7 +5,7 @@ from typing import Annotated, Any, Dict, MutableMapping
 from starlette.responses import Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import uvicorn
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from contextlib import asynccontextmanager
@@ -137,28 +137,36 @@ class AgentServer(AppService):
             methods=["POST"],
         )
 
-        app.add_exception_handler(500, self.handle_internal_error)  # type: ignore
+        app.add_exception_handler(500, self.handle_internal_error)
 
         class SPAStaticFiles(StaticFiles):
-            async def get_response(self, path: str, scope: MutableMapping[str, Any]) -> Response:
+            async def get_response(
+                self, path: str, scope: MutableMapping[str, Any]
+            ) -> Response:
                 try:
                     return await super().get_response(path, scope)
                 except (HTTPException, StarletteHTTPException) as ex:
                     if ex.status_code == 404:
-                        return await super().get_response("index.html", scope)
+                        return await super().get_response("build.html", scope)
                     else:
                         raise ex
-        app.mount(
-            path="/",
-            app=SPAStaticFiles(directory=get_frontend_path(), html=True),
-            name="example_files",
-        )
 
         app.include_router(router)
+
+        app.mount(
+            path="/_next",
+            app=SPAStaticFiles(directory=get_frontend_path() / "_next", html=True),
+            name="example_files",
+        )
 
         @app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):  # type: ignore
             await self.websocket_router(websocket)
+
+        @app.get("/", response_class=HTMLResponse)
+        async def catch_all():
+            with open(get_frontend_path() / "build.html") as file:
+                return str(file.read())
 
         uvicorn.run(app, host="0.0.0.0", port=8000)
 
