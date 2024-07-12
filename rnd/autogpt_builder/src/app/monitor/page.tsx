@@ -131,7 +131,9 @@ type FlowRun = {
   flowID: string
   status: 'running' | 'waiting' | 'success' | 'failed'
   startTime: number // unix timestamp (ms)
+  endTime: number // unix timestamp (ms)
   duration: number // seconds
+  totalRunTime: number // seconds
 
   nodeExecutionResults: NodeExecutionResult[]
 };
@@ -153,23 +155,31 @@ function flowRunFromNodeExecutionResults(
     }
   }
 
-  // Determine aggregate startTime and duration
+  // Determine aggregate startTime, endTime, and totalRunTime
+  const now = Date.now();
   const startTime = Math.min(
-    ...nodeExecutionResults.map(ner => ner.start_time?.getTime() || Date.now())
+    ...nodeExecutionResults.map(ner => ner.add_time.getTime()), now
   );
   const endTime = (
     ['success', 'failed'].includes(status)
-      ? Math.max(...nodeExecutionResults.map(ner => ner.end_time?.getTime() || 0))
-      : Date.now()
+      ? Math.max(
+        ...nodeExecutionResults.map(ner => ner.end_time?.getTime() || 0), startTime
+      )
+      : now
   );
-  const duration = (endTime - startTime) / 1000; // Convert to seconds
+  const duration = (endTime - startTime) / 1000;  // Convert to seconds
+  const totalRunTime = nodeExecutionResults.reduce((cum, node) => (
+    cum + ((node.end_time?.getTime() ?? now) - (node.start_time?.getTime() ?? now))
+  ), 0) / 1000;
 
   return {
     id: runID,
     flowID: flowID,
     status,
     startTime,
+    endTime,
     duration,
+    totalRunTime,
     nodeExecutionResults: nodeExecutionResults
   };
 }
@@ -346,8 +356,8 @@ const FlowRunInfo: React.FC<{
     </CardHeader>
     <CardContent>
       <p><strong>Status:</strong> <FlowRunStatusBadge status={flowRun.status} /></p>
-      <p><strong>Started:</strong> {moment(flowRun.startTime).format()}</p>
-      <p><strong>Finished:</strong> {moment(flowRun.endTime).format()}</p>
+      <p><strong>Started:</strong> {moment(flowRun.startTime).format('YYYY-MM-DD HH:mm:ss')}</p>
+      <p><strong>Finished:</strong> {moment(flowRun.endTime).format('YYYY-MM-DD HH:mm:ss')}</p>
       <p><strong>Duration (run time):</strong> {flowRun.duration} ({flowRun.totalRunTime}) seconds</p>
       {/* <p><strong>Total cost:</strong> €1,23</p> */}
     </CardContent>
@@ -404,8 +414,8 @@ const FlowRunsStats: React.FC<{
       <div>
         <p><strong>Total runs:</strong> {filteredFlowRuns.length}</p>
         <p>
-          <strong>Total duration:</strong> {
-            filteredFlowRuns.reduce((total, run) => total + run.duration, 0)
+          <strong>Total run time:</strong> {
+            filteredFlowRuns.reduce((total, run) => total + run.totalRunTime, 0)
           } seconds
         </p>
         {/* <p><strong>Total cost:</strong> €1,23</p> */}
@@ -460,10 +470,10 @@ const FlowRunsTimeline = (
             return (
               <Card className="p-3">
                 <p><strong>Flow:</strong> {flow ? flow.name : 'Unknown'}</p>
-                <p><strong>Start Time:</strong> {moment(data.startTime).format('YYYY-MM-DD HH:mm:ss')}</p>
-                <p>
-                  <strong>Duration:</strong> {formatDuration(data.duration)}
-                </p>
+                <p><strong>Started:</strong> {moment(data.startTime).format('YYYY-MM-DD HH:mm:ss')}</p>
+                <p><strong>Duration / Run time:</strong> {
+                  formatDuration(data.duration)} / {formatDuration(data.totalRunTime)
+                }</p>
                 <p><strong>Status:</strong> <FlowRunStatusBadge status={data.status} /></p>
               </Card>
             );
@@ -476,8 +486,8 @@ const FlowRunsTimeline = (
           key={flow.id}
           data={flowRuns.filter(fr => fr.flowID == flow.id).map(fr => ({
             ...fr,
-            time: fr.startTime + (fr.duration * 1000),
-            _duration: fr.duration,
+            time: fr.startTime + (fr.totalRunTime * 1000),
+            _duration: fr.totalRunTime,
           }))}
           name={flow.name}
           fill={`hsl(${hashString(flow.id) * 137.5 % 360}, 70%, 50%)`}
@@ -490,7 +500,7 @@ const FlowRunsTimeline = (
           dataKey="_duration"
           data={[
             { ...run, time: run.startTime, _duration: 0 },
-            { ...run, time: run.startTime + (run.duration * 1000), _duration: run.duration }
+            { ...run, time: run.endTime, _duration: run.totalRunTime }
           ]}
           stroke={`hsl(${hashString(run.flowID) * 137.5 % 360}, 70%, 50%)`}
           strokeWidth={2}
