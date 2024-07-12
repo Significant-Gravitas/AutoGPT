@@ -333,10 +333,10 @@ const FlowInfo: React.FC<{
     <CardHeader className="flex-row items-center justify-between space-y-0 space-x-3">
       <div>
         <CardTitle>{flow.name}</CardTitle>
-        <p className="mt-2">Flow ID: <code>{flow.id}</code></p>
+        <p className="mt-2">Agent ID: <code>{flow.id}</code></p>
       </div>
       <Link className={buttonVariants({ variant: "outline" })} href={`/build?flowID=${flow.id}`}>
-        <Pencil2Icon className="mr-2" /> Edit Flow
+        <Pencil2Icon className="mr-2" /> Edit Agent
       </Link>
     </CardHeader>
     <CardContent>
@@ -360,11 +360,11 @@ const FlowRunInfo: React.FC<{
     <CardHeader className="flex-row items-center justify-between space-y-0 space-x-3">
       <div>
         <CardTitle>{flow.name}</CardTitle>
-        <p className="mt-2">Flow ID: <code>{flow.id}</code></p>
+        <p className="mt-2">Agent ID: <code>{flow.id}</code></p>
         <p className="mt-1">Run ID: <code>{flowRun.id}</code></p>
       </div>
       <Link className={buttonVariants({ variant: "outline" })} href={`/build?flowID=${flow.id}`}>
-        <Pencil2Icon className="mr-2" /> Edit Flow
+        <Pencil2Icon className="mr-2" /> Edit Agent
       </Link>
     </CardHeader>
     <CardContent>
@@ -482,7 +482,7 @@ const FlowRunsTimeline = (
             const flow = flows.find(f => f.id === data.flowID);
             return (
               <Card className="p-2 text-xs leading-normal">
-                <p><strong>Flow:</strong> {flow ? flow.name : 'Unknown'}</p>
+                <p><strong>Agent:</strong> {flow ? flow.name : 'Unknown'}</p>
                 <p>
                   <strong>Status:</strong>&nbsp;
                   <FlowRunStatusBadge status={data.status} className="px-1.5 py-0" />
