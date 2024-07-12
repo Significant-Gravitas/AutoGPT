@@ -209,16 +209,25 @@ const AgentFlowList = (
           </TableRow>
         </TableHeader>
         <TableBody>
-          {flows.map((flow) => {
-            let runCount, lastRun: FlowRun | null;
-            if (flowRuns) {
-              const _flowRuns = flowRuns.filter(r => r.flowID == flow.id);
-              runCount = _flowRuns.length;
-              lastRun = runCount == 0 ? null : _flowRuns.reduce(
-                (a, c) => a.startTime < c.startTime ? a : c
-              );
-            }
-            return (
+          {flows
+            .map((flow) => {
+              let runCount = 0, lastRun: FlowRun | null = null;
+              if (flowRuns) {
+                const _flowRuns = flowRuns.filter(r => r.flowID == flow.id);
+                runCount = _flowRuns.length;
+                lastRun = runCount == 0 ? null : _flowRuns.reduce(
+                  (a, c) => a.startTime > c.startTime ? a : c
+                );
+              }
+              return { flow, runCount, lastRun };
+            })
+            .sort((a, b) => {
+              if (!a.lastRun && !b.lastRun) return 0;
+              if (!a.lastRun) return 1;
+              if (!b.lastRun) return -1;
+              return b.lastRun.startTime - a.lastRun.startTime;
+            })
+            .map(({ flow, runCount, lastRun }) => (
               <TableRow
                 key={flow.id}
                 className="cursor-pointer"
@@ -236,8 +245,8 @@ const AgentFlowList = (
                   {moment(lastRun.startTime).fromNow()}
                 </TableCell>)}
               </TableRow>
-            )
-          })}
+            ))
+          }
         </TableBody>
       </Table>
     </CardContent>
