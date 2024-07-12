@@ -60,6 +60,13 @@ jobs:
       #   killed after the step returns.
       #   See: https://github.com/actions/runner/issues/598#issuecomment-2011890429
 
+      - name: Set max open files limit
+        if: runner.os == 'macOS'
+        working-directory: ${{ runner.temp }}
+        run: |
+          ulimit -a
+          ulimit -n unlimited
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
