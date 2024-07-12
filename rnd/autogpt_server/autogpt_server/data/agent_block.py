@@ -69,20 +69,16 @@ class BlockAgent(Agent):
                 delattr(self, attr_name)
 
 
-class AutoGPTOutput(BaseModel):
-    result: str
-    tool: str
-
 class AutoGPTAgentBlock(Block):
     class Input(BlockSchema):
         task: str
         input: str
         disabled_components: list[str] = Field(default_factory=list)
         disabled_commands: list[str] = Field(default_factory=list)
+        fast_mode: bool = False
     
     class Output(BlockSchema):
-        output: AutoGPTOutput
-        # error: str
+        result: str
 
     def __init__(self):
         super().__init__(
@@ -122,8 +118,8 @@ class AutoGPTAgentBlock(Block):
                  f"Input data: {input_data.input}",
             disabled_components=input_data.disabled_components,
         )
-        # Disable slow models
-        state.config.big_brain = False
+        # Switch big brain mode
+        state.config.big_brain = not input_data.fast_mode
 
         agent = BlockAgent(state, multi_provider, file_storage, config)
 
@@ -138,7 +134,4 @@ class AutoGPTAgentBlock(Block):
 
         result = asyncio.run(agent.execute(proposal))
 
-        # if isinstance(result, ActionErrorResult):
-        #     yield "error", str(result)
-        # else:
-        yield "output", AutoGPTOutput(result=str(result), tool=proposal.use_tool.name)
+        yield "result", str(result)
