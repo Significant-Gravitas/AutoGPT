@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class AgentProfileGeneratorConfiguration(SystemConfiguration):
-    model_classification: LanguageModelClassification = UserConfigurable(
+    llm_classification: LanguageModelClassification = UserConfigurable(
         default=LanguageModelClassification.SMART_MODEL
     )
     _example_call: object = {
@@ -148,12 +148,12 @@ class AgentProfileGenerator(PromptStrategy):
 
     def __init__(
         self,
-        model_classification: LanguageModelClassification,
+        llm_classification: LanguageModelClassification,
         system_prompt: str,
         user_prompt_template: str,
         create_agent_function: dict,
     ):
-        self._model_classification = model_classification
+        self._llm_classification = llm_classification
         self._system_prompt_message = system_prompt
         self._user_prompt_template = user_prompt_template
         self._create_agent_function = CompletionModelFunction.model_validate(
@@ -161,8 +161,8 @@ class AgentProfileGenerator(PromptStrategy):
         )
 
     @property
-    def model_classification(self) -> LanguageModelClassification:
-        return self._model_classification
+    def llm_classification(self) -> LanguageModelClassification:
+        return self._llm_classification
 
     def build_prompt(self, user_objective: str = "", **kwargs) -> ChatPrompt:
         system_message = ChatMessage.system(self._system_prompt_message)
