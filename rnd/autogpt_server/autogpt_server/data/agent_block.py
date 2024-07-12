@@ -18,9 +18,8 @@ from forge.file_storage.base import FileStorage
 from forge.llm.providers import (
     MultiProvider,
 )
-from forge.models.action import ActionErrorResult
 from forge.models.json_schema import JSONSchema
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 if TYPE_CHECKING:
     from autogpt.app.config import AppConfig
