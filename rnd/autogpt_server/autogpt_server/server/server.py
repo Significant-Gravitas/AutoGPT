@@ -123,9 +123,9 @@ class AgentServer(AppService):
             methods=["POST"],
         )
         router.add_api_route(
-            path="/graphs",
+            path="/graphs/{graph_id}",
             endpoint=self.update_graph,
-            methods=["PATCH"],
+            methods=["PUT"],
         )
         router.add_api_route(
             path="/graphs/{graph_id}/execute",
@@ -293,30 +293,40 @@ class AgentServer(AppService):
 
     @classmethod
     async def update_graph(
-        cls, graph: autogpt_server.data.graph.Graph
+        cls, graph_id: str, graph: autogpt_server.data.graph.Graph
     ) -> autogpt_server.data.graph.Graph:
-        # TODO: replace uuid generation here to DB generated uuids.
-        graph.graph_id = str(uuid.uuid4())
-        graph.version += 1
+        # Sanity check
+        if graph.graph_id and graph.graph_id != graph_id:
+            raise HTTPException(400, detail="Graph ID does not match ID in URI")
+
+        # Determine new version
+        existing_versions = await autogpt_server.data.graph.get_graph_history(graph_id)
+        if not existing_versions:
+            raise HTTPException(400, detail=f"Unknown graph ID '{graph_id}'")
+        graph.version = max(g.version for g in existing_versions) + 1
 
         if not graph.is_template:
             graph.is_active = True
         else:
             graph.is_active = False
 
+        # Assign new UUIDs to all nodes and links
         id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
-
         for node in graph.nodes:
             node.id = id_map[node.id]
-
         for link in graph.links:
             link.source_id = id_map[link.source_id]
             link.sink_id = id_map[link.sink_id]
-        updated_graph = await autogpt_server.data.graph.create_graph(graph)
-        await autogpt_server.data.graph.deactivate_graph(
-            graph_id=graph.graph_id, version=graph.version
-        )
-        return updated_graph
+
+        new_graph_version = await autogpt_server.data.graph.create_graph(graph)
+
+        if new_graph_version.is_active:
+            # Ensure new version is the only active version
+            await autogpt_server.data.graph.deactivate_other_graph_versions(
+                graph_id=graph_id, except_version=new_graph_version.version
+            )
+
+        return new_graph_version
 
     @classmethod
     async def create_graph(

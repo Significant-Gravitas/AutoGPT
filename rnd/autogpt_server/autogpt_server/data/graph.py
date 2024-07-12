@@ -209,14 +209,11 @@ async def get_graph(
     return Graph.from_db(graph)
 
 
-async def deactivate_graph(graph_id: str, version: int) -> bool:
-    success = await AgentGraph.prisma().update(
-        data={
-            "is_active": False,
-        },
-        where={"id": {"graph_id": graph_id, "version": version}},
+async def deactivate_other_graph_versions(graph_id: str, except_version: int) -> bool:
+    success = await AgentGraph.prisma().update_many(
+        data={"is_active": False},
+        where={"graph_id": graph_id, "version": {"not": except_version}},
     )
-
     return success is not None
 
 
