@@ -16,7 +16,7 @@ from .model import ActionResult, AnyProposal, Episode, EpisodicActionHistory
 
 
 class ActionHistoryConfiguration(BaseModel):
-    model_name: ModelName = OpenAIModelName.GPT3
+    llm_name: ModelName = OpenAIModelName.GPT3
     """Name of the llm model used to compress the history"""
     max_tokens: int = 1024
     """Maximum number of tokens to use up with generated history messages"""
@@ -97,7 +97,7 @@ class ActionHistoryComponent(
     async def after_execute(self, result: ActionResult) -> None:
         self.event_history.register_result(result)
         await self.event_history.handle_compression(
-            self.llm_provider, self.config.model_name, self.config.spacy_language_model
+            self.llm_provider, self.config.llm_name, self.config.spacy_language_model
         )
 
     @staticmethod
