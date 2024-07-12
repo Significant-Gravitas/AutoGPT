@@ -55,7 +55,7 @@ class BrowsingError(CommandExecutionError):
 
 
 class WebSeleniumConfiguration(BaseModel):
-    model_name: ModelName = OpenAIModelName.GPT3
+    llm_name: ModelName = OpenAIModelName.GPT3
     """Name of the llm model used to read websites"""
     web_browser: Literal["chrome", "firefox", "safari", "edge"] = "chrome"
     """Web browser used by Selenium"""
@@ -164,7 +164,7 @@ class WebSeleniumComponent(
             elif get_raw_content:
                 if (
                     output_tokens := self.llm_provider.count_tokens(
-                        text, self.config.model_name
+                        text, self.config.llm_name
                     )
                 ) > MAX_RAW_CONTENT_LENGTH:
                     oversize_factor = round(output_tokens / MAX_RAW_CONTENT_LENGTH, 1)
@@ -382,7 +382,7 @@ class WebSeleniumComponent(
                 text,
                 topics_of_interest=topics_of_interest,
                 llm_provider=self.llm_provider,
-                model_name=self.config.model_name,
+                model_name=self.config.llm_name,
                 spacy_model=self.config.browse_spacy_language_model,
             )
             return "\n".join(f"* {i}" for i in information)
@@ -391,7 +391,7 @@ class WebSeleniumComponent(
                 text,
                 question=question,
                 llm_provider=self.llm_provider,
-                model_name=self.config.model_name,
+                model_name=self.config.llm_name,
                 spacy_model=self.config.browse_spacy_language_model,
             )
             return result
