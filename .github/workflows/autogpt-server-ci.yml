@@ -227,7 +227,7 @@ jobs:
 
       # break this into seperate steps each with their own name that matches the file
       - name: Upload App artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: autogptserver-app-${{ matrix.platform-os }}
           path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.app
