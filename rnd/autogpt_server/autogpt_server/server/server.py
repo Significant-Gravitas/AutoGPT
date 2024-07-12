@@ -159,7 +159,7 @@ class AgentServer(AppService):
         app.mount(
             path="/_next",
             app=SPAStaticFiles(directory=get_frontend_path() / "_next", html=True),
-            name="example_files",
+            name="frontend",
         )
 
         @app.websocket("/ws")

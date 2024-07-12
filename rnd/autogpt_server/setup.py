@@ -57,6 +57,17 @@ def txt_to_rtf(input_file: Union[str, Path], output_file: Union[str, Path]) -> N
 license_file = "LICENSE.rtf"
 txt_to_rtf("../../LICENSE", license_file)
 
+# call npm run build in ../autogpt_builder
+import os
+
+os.system("npm run build --prefix ../autogpt_builder")
+
+# copy the ../autogpt_builder/out to frontend
+import shutil
+
+shutil.rmtree("../frontend", ignore_errors=True)
+shutil.copytree("../autogpt_builder/out", "../frontend")
+
 setup(
     name="AutoGPT Server",
     url="https://agpt.co",
@@ -87,8 +98,8 @@ setup(
             "excludes": ["readability.compat.two"],
             "include_files": [
                 # source, destination in the bundle
-                # (../frontend, example_files) would also work but you'd need to load the frontend differently in the data.py to correctly get the path when frozen
-                ("../example_files", "example_files"),
+                # (../frontend, frontend) would also work but you'd need to load the frontend differently in the data.py to correctly get the path when frozen
+                ("../frontend", "frontend"),
             ],
         },
         # Mac .app specific options
@@ -101,7 +112,6 @@ setup(
             "applications_shortcut": True,
             "volume_label": "AutoGPTServer",
             "background": "builtin-arrow",
-
             "license": {
                 "default-language": "en_US",
                 "licenses": {"en_US": license_file},
