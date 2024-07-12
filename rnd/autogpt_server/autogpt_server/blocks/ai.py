@@ -2,9 +2,8 @@ import logging
 from enum import Enum
 
 import openai
-from pydantic import BaseModel
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema, BlockFieldSecret
 from autogpt_server.util import json
 
 logger = logging.getLogger(__name__)
@@ -14,17 +13,13 @@ class LlmModel(str, Enum):
     openai_gpt4 = "gpt-4-turbo"
 
 
-class LlmConfig(BaseModel):
-    model: LlmModel
-    api_key: str
-
-
 class LlmCallBlock(Block):
     class Input(BlockSchema):
-        config: LlmConfig
-        expected_format: dict[str, str]
+        prompt: str
+        api_key: BlockFieldSecret = BlockFieldSecret(key="openai_api_key")
         sys_prompt: str = ""
-        usr_prompt: str = ""
+        expected_format: dict[str, str] = {}
+        model: LlmModel = LlmModel.openai_gpt4
         retry: int = 3
 
     class Output(BlockSchema):
@@ -37,18 +32,15 @@ class LlmCallBlock(Block):
             input_schema=LlmCallBlock.Input,
             output_schema=LlmCallBlock.Output,
             test_input={
-                "config": {
-                    "model": "gpt-4-turbo",
-                    "api_key": "fake-api",
-                },
+                "model": "gpt-4-turbo",
+                "api_key": "fake-api",
                 "expected_format": {
                     "key1": "value1",
                     "key2": "value2",
                 },
-                "sys_prompt": "System prompt",
-                "usr_prompt": "User prompt",
+                "prompt": "User prompt",
             },
-            test_output=("response", {"key1": "key1Value","key2": "key2Value"}),
+            test_output=("response", {"key1": "key1Value", "key2": "key2Value"}),
             test_mock={"llm_call": lambda *args, **kwargs: json.dumps({
                 "key1": "key1Value",
                 "key2": "key2Value",
@@ -56,35 +48,39 @@ class LlmCallBlock(Block):
         )
 
     @staticmethod
-    def llm_call(api_key: str, model: LlmModel, prompt: list[dict]) -> str:
+    def llm_call(api_key: str, model: LlmModel, prompt: list[dict], json: bool) -> str:
         openai.api_key = api_key
         response = openai.chat.completions.create(
             model=model,
             messages=prompt,  # type: ignore
-            response_format={"type": "json_object"},
+            response_format={"type": "json_object"} if json else None,
         )
         return response.choices[0].message.content or ""
 
     def run(self, input_data: Input) -> BlockOutput:
-        expected_format = [f'"{k}": "{v}"' for k, v in
-                           input_data.expected_format.items()]
-
-        format_prompt = ",\n  ".join(expected_format)
-        sys_prompt = f"""
-          |{input_data.sys_prompt}
-          |
-          |Reply in json format:
-          |{{
-          |  {format_prompt}                
-          |}}
-        """
-        usr_prompt = f"""
-          |{input_data.usr_prompt}
-        """
+        prompt = []
 
         def trim_prompt(s: str) -> str:
             lines = s.strip().split("\n")
             return "\n".join([line.strip().lstrip("|") for line in lines])
+
+        if input_data.sys_prompt:
+            prompt.append({"role": "system", "content": input_data.sys_prompt})
+
+        if input_data.expected_format:
+            expected_format = [f'"{k}": "{v}"' for k, v in
+                               input_data.expected_format.items()]
+
+            format_prompt = ",\n  ".join(expected_format)
+            sys_prompt = f"""
+              |Reply in json format:
+              |{{
+              |  {format_prompt}                
+              |}}
+            """
+            prompt.append({"role": "system", "content": trim_prompt(sys_prompt)})
+
+        prompt.append({"role": "user", "content": input_data.prompt})
 
         def parse_response(resp: str) -> tuple[dict[str, str], str | None]:
             try:
@@ -96,24 +92,24 @@ class LlmCallBlock(Block):
             except Exception as e:
                 return {}, f"JSON decode error: {e}"
 
-        prompt = [
-            {"role": "system", "content": trim_prompt(sys_prompt)},
-            {"role": "user", "content": trim_prompt(usr_prompt)},
-        ]
-
         logger.warning(f"LLM request: {prompt}")
         retry_prompt = ""
         for retry_count in range(input_data.retry):
             response_text = self.llm_call(
-                input_data.config.api_key,
-                input_data.config.model,
-                prompt
+                api_key=input_data.api_key.get(),
+                model=input_data.model,
+                prompt=prompt,
+                json=bool(input_data.expected_format),
             )
             logger.warning(f"LLM attempt-{retry_count} response: {response_text}")
 
-            parsed_dict, parsed_error = parse_response(response_text)
-            if not parsed_error:
-                yield "response", {k: str(v) for k, v in parsed_dict.items()}
+            if input_data.expected_format:
+                parsed_dict, parsed_error = parse_response(response_text)
+                if not parsed_error:
+                    yield "response", {k: str(v) for k, v in parsed_dict.items()}
+                    return
+            else:
+                yield "response", {"response": response_text}
                 return
 
             retry_prompt = f"""

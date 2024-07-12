@@ -119,7 +119,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
                 lambda x: self.llm_provider.count_tokens(x, self.llm.name),
                 llm_provider,
                 ActionHistoryConfiguration(
-                    model_name=app_config.fast_llm, max_tokens=self.send_token_limit
+                    llm_name=app_config.fast_llm, max_tokens=self.send_token_limit
                 ),
             )
             .run_after(WatchdogComponent)

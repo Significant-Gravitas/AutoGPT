@@ -4,13 +4,67 @@ from typing import Any, ClassVar, Generator, Generic, Type, TypeVar, cast
 import jsonref
 import jsonschema
 from prisma.models import AgentBlock
-from pydantic import BaseModel
+from pydantic import BaseModel, GetCoreSchemaHandler
+from pydantic_core import CoreSchema, core_schema
 
 from autogpt_server.util import json
+from autogpt_server.util.settings import Secrets
 
 BlockInput = dict[str, Any]
 BlockData = tuple[str, Any]
 BlockOutput = Generator[BlockData, None, None]
+
+
+class BlockFieldSecret:
+    def __init__(self, value=None, key=None):
+        self._value = value or self.__get_secret(key)
+        if self._value is None:
+            raise ValueError(f"Secret {key} not found.")
+
+    STR: ClassVar[str] = "<secret>"
+    SECRETS: ClassVar[Secrets] = Secrets()
+
+    def __repr__(self):
+        return BlockFieldSecret.STR
+
+    def __str__(self):
+        return BlockFieldSecret.STR
+
+    @staticmethod
+    def __get_secret(key: str | None):
+        if not key or not hasattr(BlockFieldSecret.SECRETS, key):
+            return None
+        return getattr(BlockFieldSecret.SECRETS, key)
+
+    def get(self):
+        return str(self._value)
+
+    @classmethod
+    def parse_value(cls, value: Any) -> "BlockFieldSecret":
+        if isinstance(value, BlockFieldSecret):
+            return value
+        return BlockFieldSecret(value=value)
+    
+    @classmethod
+    def __get_pydantic_json_schema__(
+            cls, source_type: Any, handler: GetCoreSchemaHandler) -> dict[str, Any]:
+        return {
+            "type": "string",
+            "title": "BlockFieldSecret",
+            "description": "A secret field",
+        }
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+            cls, source_type: Any, handler: GetCoreSchemaHandler) -> CoreSchema:
+        validate_fun = core_schema.no_info_plain_validator_function(cls.parse_value)
+        return core_schema.json_or_python_schema(
+            json_schema=validate_fun,
+            python_schema=validate_fun,
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                lambda val: BlockFieldSecret.STR
+            ),
+        )
 
 
 class BlockSchema(BaseModel):
@@ -25,10 +79,17 @@ class BlockSchema(BaseModel):
 
         def ref_to_dict(obj):
             if isinstance(obj, dict):
+                # OpenAPI <3.1 does not support sibling fields that has a $ref key
+                # So sometimes, the schema has an "allOf"/"anyOf"/"oneOf" with 1 item.
+                keys = {"allOf", "anyOf", "oneOf"}
+                one_key = next((k for k in keys if k in obj and len(obj[k]) == 1), None)
+                if one_key:
+                    obj.update(obj[one_key][0])
+
                 return {
                     key: ref_to_dict(value)
                     for key, value in obj.items()
-                    if not key.startswith("$")
+                    if not key.startswith("$") and key != one_key
                 }
             elif isinstance(obj, list):
                 return [ref_to_dict(item) for item in obj]
@@ -92,10 +153,10 @@ class EmptySchema(BlockSchema):
 
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     def __init__(
-        self,
-        id: str = "",
-        input_schema: Type[BlockSchemaInputType] = EmptySchema,
-        output_schema: Type[BlockSchemaOutputType] = EmptySchema,
+            self,
+            id: str = "",
+            input_schema: Type[BlockSchemaInputType] = EmptySchema,
+            output_schema: Type[BlockSchemaOutputType] = EmptySchema,
             test_input: BlockInput | list[BlockInput] | None = None,
             test_output: BlockData | list[BlockData] | None = None,
             test_mock: dict[str, Any] | None = None,

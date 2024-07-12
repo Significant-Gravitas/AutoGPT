@@ -100,7 +100,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         self.logger = logger
 
     @property
-    def model_classification(self) -> LanguageModelClassification:
+    def llm_classification(self) -> LanguageModelClassification:
         return LanguageModelClassification.FAST_MODEL  # FIXME: dynamic switching
 
     def build_prompt(
