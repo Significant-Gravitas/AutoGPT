@@ -10,6 +10,7 @@ from prisma.models import (
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
 )
+from prisma.types import AgentGraphExecutionWhereInput
 from pydantic import BaseModel
 
 from autogpt_server.util import json
@@ -211,11 +212,12 @@ async def update_execution_status(node_exec_id: str, status: ExecutionStatus) ->
     if not res:
         raise ValueError(f"Execution {node_exec_id} not found.")
 
-# TODO: Should this be scoped to graph version too?
-async def list_executions(graph_id: str) -> list[str]:
-    executions = await AgentGraphExecution.prisma().find_many(
-        where={"agentGraphId": graph_id},
-    )
+
+async def list_executions(graph_id: str, graph_version: int | None = None) -> list[str]:
+    where: AgentGraphExecutionWhereInput = {"agentGraphId": graph_id}
+    if graph_version is not None:
+        where["agentGraphVersion"] = graph_version
+    executions = await AgentGraphExecution.prisma().find_many(where=where)
     return [execution.id for execution in executions]
 
 

@@ -374,12 +374,17 @@ class AgentServer(AppService):
             raise HTTPException(status_code=400, detail=msg)
 
     @classmethod
-    async def list_graph_runs(cls, graph_id: str) -> list[str]:
-        graph = await autogpt_server.data.graph.get_graph(graph_id)
+    async def list_graph_runs(
+        cls, graph_id: str, graph_version: int | None = None
+    ) -> list[str]:
+        graph = await autogpt_server.data.graph.get_graph(graph_id, graph_version)
         if not graph:
-            raise HTTPException(status_code=404, detail=f"Agent #{graph_id} not found.")
+            rev = "" if graph_version is None else f" v{graph_version}"
+            raise HTTPException(
+                status_code=404, detail=f"Agent #{graph_id}{rev} not found."
+            )
 
-        return await execution.list_executions(graph_id)
+        return await execution.list_executions(graph_id, graph_version)
 
     @classmethod
     async def get_run_execution_results(
