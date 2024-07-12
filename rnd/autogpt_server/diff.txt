@@ -1,0 +1,342 @@
+diff --git a/rnd/autogpt_server/autogpt_server/data/graph.py b/rnd/autogpt_server/autogpt_server/data/graph.py
+index 92c5bcda..01575581 100644
+--- a/rnd/autogpt_server/autogpt_server/data/graph.py
++++ b/rnd/autogpt_server/autogpt_server/data/graph.py
+@@ -1,7 +1,7 @@
+ import asyncio
+ import uuid
+-
+ from typing import Any
++
+ from prisma.models import AgentGraph, AgentNode, AgentNodeLink
+ from pydantic import BaseModel, PrivateAttr
+ 
+@@ -60,7 +60,7 @@ class Node(BaseDbModel):
+             id=node.id,
+             block_id=node.AgentBlock.id,
+             input_default=json.loads(node.constantInput),
+-            metadata=json.loads(node.metadata)
++            metadata=json.loads(node.metadata),
+         )
+         obj._input_links = [Link.from_db(link) for link in node.Input or []]
+         obj._output_links = [Link.from_db(link) for link in node.Output or []]
+@@ -85,11 +85,27 @@ class Graph(BaseDbModel):
+             name=graph.name or "",
+             description=graph.description or "",
+             nodes=[Node.from_db(node) for node in graph.AgentNodes or []],
+-            links=list({
+-                Link.from_db(link)
+-                for node in graph.AgentNodes or []
+-                for link in (node.Input or []) + (node.Output or [])
+-            })
++            links=list(
++                {
++                    Link.from_db(link)
++                    for node in graph.AgentNodes or []
++                    for link in (node.Input or []) + (node.Output or [])
++                }
++            ),
++        )
++
++
++class GraphMeta(BaseModel):
++    name: str
++    description: str
++    is_template: bool
++
++    @staticmethod
++    def from_db(graph: AgentGraph):
++        return GraphMeta(
++            name=graph.name or "",
++            description=graph.description or "",
++            is_template=graph.is_template,
+         )
+ 
+ 
+@@ -112,47 +128,70 @@ async def get_node(node_id: str) -> Node | None:
+ 
+ 
+ async def get_graph_ids() -> list[str]:
+-    return [graph.id for graph in await AgentGraph.prisma().find_many()]  # type: ignore
++    return [
++        graph.id
++        for graph in await AgentGraph.prisma().find_many(where={"is_template": False})
++    ]  # type: ignore
++
++
++async def get_template_meta() -> list[GraphMeta]:
++    templates = await AgentGraph.prisma().find_many(
++        where={"is_template": True},
++    )
++    if not templates:
++        return []
+ 
++    return [GraphMeta.from_db(template) for template in templates]  # type: ignore
+ 
+-async def get_graph(graph_id: str) -> Graph | None:
+-    graph = await AgentGraph.prisma().find_unique(
+-        where={"id": graph_id},
++
++async def get_graph(graph_id: str, is_template: bool = False) -> Graph:
++    graph = await AgentGraph.prisma().find_first_or_raise(
++        where={"id": graph_id, "is_template": is_template},
+         include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
+     )
+-    return Graph.from_db(graph) if graph else None
++    return Graph.from_db(graph)
+ 
+ 
+-async def create_graph(graph: Graph) -> Graph:
++async def create_graph(graph: Graph, is_template: bool = False) -> Graph:
+     await AgentGraph.prisma().create(
+         data={
+             "id": graph.id,
+             "name": graph.name,
+             "description": graph.description,
++            "is_template": is_template,
+         }
+     )
+ 
+     # TODO: replace bulk creation using create_many
+-    await asyncio.gather(*[
+-        AgentNode.prisma().create({
+-            "id": node.id,
+-            "agentBlockId": node.block_id,
+-            "agentGraphId": graph.id,
+-            "constantInput": json.dumps(node.input_default),
+-            "metadata": json.dumps(node.metadata),
+-        }) for node in graph.nodes
+-    ])
+-
+-    await asyncio.gather(*[
+-        AgentNodeLink.prisma().create({
+-            "id": str(uuid.uuid4()),
+-            "sourceName": link.source_name,
+-            "sinkName": link.sink_name,
+-            "agentNodeSourceId": link.source_id,
+-            "agentNodeSinkId": link.sink_id,
+-        })
+-        for link in graph.links
+-    ])
++    await asyncio.gather(
++        *[
++            AgentNode.prisma().create(
++                {
++                    "id": node.id,
++                    "agentBlockId": node.block_id,
++                    "agentGraphId": graph.id,
++                    "constantInput": json.dumps(node.input_default),
++                    "metadata": json.dumps(node.metadata),
++                }
++            )
++            for node in graph.nodes
++        ]
++    )
++
++    await asyncio.gather(
++        *[
++            AgentNodeLink.prisma().create(
++                {
++                    "id": str(uuid.uuid4()),
++                    "sourceName": link.source_name,
++                    "sinkName": link.sink_name,
++                    "agentNodeSourceId": link.source_id,
++                    "agentNodeSinkId": link.sink_id,
++                }
++            )
++            for link in graph.links
++        ]
++    )
+ 
+     if created_graph := await get_graph(graph.id):
+         return created_graph
+diff --git a/rnd/autogpt_server/autogpt_server/server/model.py b/rnd/autogpt_server/autogpt_server/server/model.py
+index 051bdc88..a008c162 100644
+--- a/rnd/autogpt_server/autogpt_server/server/model.py
++++ b/rnd/autogpt_server/autogpt_server/server/model.py
+@@ -2,6 +2,7 @@ import enum
+ import typing
+ 
+ import pydantic
++import autogpt_server.data.graph
+ 
+ class Methods(enum.Enum):
+     SUBSCRIBE = "subscribe"
+@@ -37,3 +38,7 @@ class SubscriptionDetails(pydantic.BaseModel):
+     event_type: str
+     channel: str
+     graph_id: str
++
++class CreateGraph(pydantic.BaseModel):
++    tempalte_id: str | None = None
++    graph: autogpt_server.data.graph.Graph | None = None
+\ No newline at end of file
+diff --git a/rnd/autogpt_server/autogpt_server/server/server.py b/rnd/autogpt_server/autogpt_server/server/server.py
+index af04474e..0dc0f1e5 100644
+--- a/rnd/autogpt_server/autogpt_server/server/server.py
++++ b/rnd/autogpt_server/autogpt_server/server/server.py
+@@ -18,12 +18,7 @@ from fastapi import (
+ from fastapi.middleware.cors import CORSMiddleware
+ 
+ from autogpt_server.data import db, execution, block
+-from autogpt_server.data.graph import (
+-    create_graph,
+-    get_graph,
+-    get_graph_ids,
+-    Graph,
+-)
++import autogpt_server.data.graph
+ from autogpt_server.executor import ExecutionManager, ExecutionScheduler
+ from autogpt_server.server.conn_manager import ConnectionManager
+ import autogpt_server.server.ws_api
+@@ -31,7 +26,7 @@ from autogpt_server.util.data import get_frontend_path
+ from autogpt_server.util.service import expose  # type: ignore
+ from autogpt_server.util.service import AppService, get_service_client
+ from autogpt_server.util.settings import Settings
+-from autogpt_server.server.model import WsMessage, Methods
++from autogpt_server.server.model import WsMessage, Methods, CreateGraph
+ 
+ 
+ class AgentServer(AppService):
+@@ -83,6 +78,21 @@ class AgentServer(AppService):
+             endpoint=self.execute_graph_block,  # type: ignore
+             methods=["POST"],
+         )
++        router.add_api_route(
++            path="/templates",
++            endpoint=self.get_templates,
++            methods=["GET"],
++        )
++        router.add_api_route(
++            path="/templates",
++            endpoint=self.create_new_template,
++            methods=["POST"],
++        )
++        router.add_api_route(
++            path="/templates/{graph_id}",
++            endpoint=self.get_template,
++            methods=["GET"],
++        )
+         router.add_api_route(
+             path="/graphs",
+             endpoint=self.get_graphs,
+@@ -230,7 +240,7 @@ class AgentServer(AppService):
+                     print("Get graph request received")
+                 elif message.method == Methods.CREATE_GRAPH:
+                     assert isinstance(message.data, dict), "Data must be a dictionary"
+-                    graph = Graph.model_validate(message.data)
++                    graph = autogpt_server.data.graph.Graph.model_validate(message.data)
+                     data = await self.create_new_graph(graph)
+                     await websocket.send_text(
+                         WsMessage(
+@@ -351,17 +361,58 @@ class AgentServer(AppService):
+ 
+     @classmethod
+     async def get_graphs(cls) -> list[str]:
+-        return await get_graph_ids()
++        return await autogpt_server.data.graph.get_graph_ids()
++
++    @classmethod
++    async def get_templates(cls) -> list[autogpt_server.data.graph.GraphMeta]:
++        return await autogpt_server.data.graph.get_template_meta()
+ 
+     @classmethod
+-    async def get_graph(cls, graph_id: str) -> Graph:
+-        graph = await get_graph(graph_id)
++    async def get_graph(cls, graph_id: str) -> autogpt_server.data.graph.Graph:
++        graph = await autogpt_server.data.graph.get_graph(graph_id)
+         if not graph:
+             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+         return graph
+ 
+     @classmethod
+-    async def create_new_graph(cls, graph: Graph) -> Graph:
++    async def get_template(cls, graph_id: str) -> autogpt_server.data.graph.Graph:
++        graph = await autogpt_server.data.graph.get_graph(graph_id, is_template=True)
++        if not graph:
++            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
++        return graph
++
++    @classmethod
++    async def create_new_template(
++        cls, graph: autogpt_server.data.graph.Graph
++    ) -> autogpt_server.data.graph.Graph:
++        # TODO: replace uuid generation here to DB generated uuids.
++        graph.id = str(uuid.uuid4())
++        id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
++
++        for node in graph.nodes:
++            node.id = id_map[node.id]
++
++        for link in graph.links:
++            link.source_id = id_map[link.source_id]
++            link.sink_id = id_map[link.sink_id]
++
++        return await autogpt_server.data.graph.create_graph(graph, is_template=True)
++
++    @classmethod
++    async def create_new_graph(
++        cls, create_graph: CreateGraph
++    ) -> autogpt_server.data.graph.Graph:
++        if create_graph.graph:
++            graph = create_graph.graph
++        elif create_graph.tempalte_id:
++            graph = await autogpt_server.data.graph.get_graph(
++                create_graph.tempalte_id, is_template=True
++            )
++        else:
++            raise HTTPException(
++                status_code=400, detail="Either graph or template_id must be provided."
++            )
++
+         # TODO: replace uuid generation here to DB generated uuids.
+         graph.id = str(uuid.uuid4())
+         id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
+@@ -373,7 +424,7 @@ class AgentServer(AppService):
+             link.source_id = id_map[link.source_id]
+             link.sink_id = id_map[link.sink_id]
+ 
+-        return await create_graph(graph)
++        return await autogpt_server.data.graph.create_graph(graph)
+ 
+     async def execute_graph(
+         self, graph_id: str, node_input: dict[Any, Any]
+@@ -386,7 +437,7 @@ class AgentServer(AppService):
+ 
+     @classmethod
+     async def list_graph_runs(cls, graph_id: str) -> list[str]:
+-        graph = await get_graph(graph_id)
++        graph = await autogpt_server.data.graph.get_graph(graph_id)
+         if not graph:
+             raise HTTPException(status_code=404, detail=f"Agent #{graph_id} not found.")
+ 
+@@ -396,7 +447,7 @@ class AgentServer(AppService):
+     async def get_run_execution_results(
+         cls, graph_id: str, run_id: str
+     ) -> list[execution.ExecutionResult]:
+-        graph = await get_graph(graph_id)
++        graph = await autogpt_server.data.graph.get_graph(graph_id)
+         if not graph:
+             raise HTTPException(status_code=404, detail=f"Agent #{graph_id} not found.")
+ 
+@@ -405,7 +456,7 @@ class AgentServer(AppService):
+     async def create_schedule(
+         self, graph_id: str, cron: str, input_data: dict[Any, Any]
+     ) -> dict[Any, Any]:
+-        graph = await get_graph(graph_id)
++        graph = await autogpt_server.data.graph.get_graph(graph_id)
+         if not graph:
+             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+         execution_scheduler = self.execution_scheduler_client
+diff --git a/rnd/autogpt_server/schema.prisma b/rnd/autogpt_server/schema.prisma
+index fa2db7cd..e8153e39 100644
+--- a/rnd/autogpt_server/schema.prisma
++++ b/rnd/autogpt_server/schema.prisma
+@@ -14,6 +14,7 @@ model AgentGraph {
+   id          String  @id @default(uuid())
+   name        String?
+   description String?
++  is_template Boolean @default(false)
+ 
+   AgentNodes                  AgentNode[]
+   AgentGraphExecution         AgentGraphExecution[]

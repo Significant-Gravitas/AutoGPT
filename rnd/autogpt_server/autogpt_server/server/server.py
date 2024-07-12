@@ -1,12 +1,9 @@
 import asyncio
 import uuid
+from contextlib import asynccontextmanager
 from typing import Annotated, Any, Dict
 
 import uvicorn
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-
-from contextlib import asynccontextmanager
 from fastapi import (
     APIRouter,
     Body,
@@ -16,17 +13,19 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-from autogpt_server.data import db, execution, block
 import autogpt_server.data.graph
+import autogpt_server.server.ws_api
+from autogpt_server.data import block, db, execution
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
-import autogpt_server.server.ws_api
+from autogpt_server.server.model import CreateGraph, Methods, WsMessage
 from autogpt_server.util.data import get_frontend_path
 from autogpt_server.util.service import expose  # type: ignore
 from autogpt_server.util.service import AppService, get_service_client
 from autogpt_server.util.settings import Settings
-from autogpt_server.server.model import WsMessage, Methods, CreateGraph
 
 
 class AgentServer(AppService):
@@ -94,6 +93,11 @@ class AgentServer(AppService):
             methods=["GET"],
         )
         router.add_api_route(
+            path="/templates/{graph_id}/history",
+            endpoint=self.get_graph_history,
+            methods=["GET"],
+        )
+        router.add_api_route(
             path="/graphs",
             endpoint=self.get_graphs,
             methods=["GET"],
@@ -101,6 +105,11 @@ class AgentServer(AppService):
         router.add_api_route(
             path="/graphs/{graph_id}",
             endpoint=self.get_graph,
+            methods=["GET"],
+        )
+        router.add_api_route(
+            path="/graphs/{graph_id}/history",
+            endpoint=self.get_graph_history,
             methods=["GET"],
         )
         router.add_api_route(
@@ -194,144 +203,6 @@ class AgentServer(AppService):
                     await autogpt_server.server.ws_api.handle_unsubscribe(
                         websocket, self.manager, message
                     )
-                elif message.method == Methods.EXECUTION_EVENT:
-                    print("Execution event received")
-                elif message.method == Methods.GET_BLOCKS:
-                    data = self.get_graph_blocks()
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.GET_BLOCKS,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-                elif message.method == Methods.EXECUTE_BLOCK:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = self.execute_graph_block(
-                        message.data["block_id"], message.data["data"]
-                    )
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.EXECUTE_BLOCK,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-                elif message.method == Methods.GET_GRAPHS:
-                    data = await self.get_graphs()
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.GET_GRAPHS,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-                    print("Get graphs request received")
-                elif message.method == Methods.GET_GRAPH:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = await self.get_graph(message.data["graph_id"])
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.GET_GRAPH,
-                            success=True,
-                            data=data.model_dump(),
-                        ).model_dump_json()
-                    )
-                    print("Get graph request received")
-                elif message.method == Methods.CREATE_GRAPH:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    graph = autogpt_server.data.graph.Graph.model_validate(message.data)
-                    data = await self.create_new_graph(graph)
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.CREATE_GRAPH,
-                            success=True,
-                            data=data.model_dump(),
-                        ).model_dump_json()
-                    )
-
-                    print("Create graph request received")
-                elif message.method == Methods.RUN_GRAPH:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = await self.execute_graph(
-                        message.data["graph_id"], message.data["data"]
-                    )
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.RUN_GRAPH,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-
-                    print("Run graph request received")
-                elif message.method == Methods.GET_GRAPH_RUNS:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = await self.list_graph_runs(message.data["graph_id"])
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.GET_GRAPH_RUNS,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-
-                    print("Get graph runs request received")
-                elif message.method == Methods.CREATE_SCHEDULED_RUN:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = await self.create_schedule(
-                        message.data["graph_id"],
-                        message.data["cron"],
-                        message.data["data"],
-                    )
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.CREATE_SCHEDULED_RUN,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-
-                    print("Create scheduled run request received")
-                elif message.method == Methods.GET_SCHEDULED_RUNS:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = self.get_execution_schedules(message.data["graph_id"])
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.GET_SCHEDULED_RUNS,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-                    print("Get scheduled runs request received")
-                elif message.method == Methods.UPDATE_SCHEDULED_RUN:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = self.update_schedule(
-                        message.data["schedule_id"], message.data
-                    )
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.UPDATE_SCHEDULED_RUN,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-
-                    print("Update scheduled run request received")
-                elif message.method == Methods.UPDATE_CONFIG:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = self.update_configuration(message.data)
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.UPDATE_CONFIG,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-
-                    print("Update config request received")
-                elif message.method == Methods.ERROR:
-                    print("Error message received")
                 else:
                     print("Message type is not processed by the server")
                     await websocket.send_text(
@@ -365,67 +236,76 @@ class AgentServer(AppService):
 
     @classmethod
     async def get_templates(cls) -> list[autogpt_server.data.graph.GraphMeta]:
-        return await autogpt_server.data.graph.get_template_meta()
+        return await autogpt_server.data.graph.get_graphs_meta(is_template=True)
 
     @classmethod
-    async def get_graph(cls, graph_id: str) -> autogpt_server.data.graph.Graph:
-        graph = await autogpt_server.data.graph.get_graph(graph_id)
+    async def get_graph(
+        cls, graph_id: str, version: int | None = None
+    ) -> autogpt_server.data.graph.Graph:
+        graph = await autogpt_server.data.graph.get_graph(graph_id, version)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         return graph
 
     @classmethod
-    async def get_template(cls, graph_id: str) -> autogpt_server.data.graph.Graph:
-        graph = await autogpt_server.data.graph.get_graph(graph_id, is_template=True)
+    async def get_graph_history(
+        cls, graph_id: str
+    ) -> list[autogpt_server.data.graph.Graph]:
+        graphs = await autogpt_server.data.graph.get_graph_history(graph_id)
+        if not graphs:
+            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        return graphs
+
+    @classmethod
+    async def get_template(
+        cls, graph_id: str, version: int | None = None
+    ) -> autogpt_server.data.graph.Graph:
+        graph = await autogpt_server.data.graph.get_graph(graph_id, version)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        if not graph.is_template:
+            raise HTTPException(
+                status_code=400, detail=f"Graph #{graph_id} is not a template."
+            )
         return graph
 
     @classmethod
     async def create_new_template(
         cls, create_graph: CreateGraph
     ) -> autogpt_server.data.graph.Graph:
-        if create_graph.graph:
-            graph = create_graph.graph
-        elif create_graph.tempalte_id:
-            graph = await autogpt_server.data.graph.get_graph(
-                create_graph.tempalte_id, is_template=True
-            )
-        else:
-            raise HTTPException(
-                status_code=400, detail="Either graph or template_id must be provided."
-            )
-
-        # TODO: replace uuid generation here to DB generated uuids.
-        graph.id = str(uuid.uuid4())
-        id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
-
-        for node in graph.nodes:
-            node.id = id_map[node.id]
-
-        for link in graph.links:
-            link.source_id = id_map[link.source_id]
-            link.sink_id = id_map[link.sink_id]
-
-        return await autogpt_server.data.graph.create_graph(graph, is_template=True)
+        return await cls.create_graph(create_graph, is_template=True)
 
     @classmethod
     async def create_new_graph(
         cls, create_graph: CreateGraph
     ) -> autogpt_server.data.graph.Graph:
+        return await cls.create_graph(create_graph, is_template=False)
+
+    @classmethod
+    async def create_graph(
+        cls, create_graph: CreateGraph, is_template: bool
+    ) -> autogpt_server.data.graph.Graph:
         if create_graph.graph:
             graph = create_graph.graph
-        elif create_graph.tempalte_id:
+        elif create_graph.template_id:
             graph = await autogpt_server.data.graph.get_graph(
-                create_graph.tempalte_id, is_template=True
+                create_graph.template_id, create_graph.version
             )
+            graph.version = 1
         else:
             raise HTTPException(
                 status_code=400, detail="Either graph or template_id must be provided."
             )
 
         # TODO: replace uuid generation here to DB generated uuids.
-        graph.id = str(uuid.uuid4())
+        graph.graph_id = str(uuid.uuid4())
+
+        graph.is_template = is_template
+        if not graph.is_template:
+            graph.is_active = True
+        else:
+            graph.is_active = False
+
         id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
 
         for node in graph.nodes:

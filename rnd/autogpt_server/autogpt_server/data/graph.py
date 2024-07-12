@@ -145,6 +145,7 @@ async def get_node(node_id: str) -> Node | None:
     return Node.from_db(node) if node else None
 
 
+# TODO: Delete this
 async def get_graph_ids() -> list[str]:
     return [
         graph.graph_id
@@ -152,7 +153,7 @@ async def get_graph_ids() -> list[str]:
     ]  # type: ignore
 
 
-async def get_graph_meta(
+async def get_graphs_meta(
     is_template: bool = False, is_active: bool = True, latest_version: bool = True
 ) -> list[GraphMeta]:
     """
@@ -187,29 +188,44 @@ async def get_graph_meta(
     return [GraphMeta.from_db(graph) for graph in graphs]  # type: ignore
 
 
-async def get_graph(
-    graph_id: str, version: int, is_active: bool = True, is_template: bool = False
-) -> Graph:
+async def get_graph(graph_id: str, version: int | None = None) -> Graph:
+    where_clause = {"graph_id": graph_id}
+    if version is not None:
+        where_clause["version"] = version  # type: ignore
+
+    where_clause = prisma.types.AgentGraphWhereInput(**where_clause)  # type: ignore
+    order_by = prisma.types.AgentGraphOrderByInput(version="desc")  # type: ignore
+
     graph = await AgentGraph.prisma().find_first_or_raise(
-        where={
-            "graph_id": graph_id,
-            "version": version,
-            "is_template": is_template,
-            "is_active": is_active,
-        },
+        where=where_clause,
         include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
+        distinct=["graph_id"] if version else None,
+        order=order_by,  # type: ignore
     )
     return Graph.from_db(graph)
 
 
-async def create_graph(graph: Graph, is_template: bool = False) -> Graph:
+async def get_graph_history(graph_id: str) -> list[Graph]:
+    graph_history = await AgentGraph.prisma().find_many(
+        where={"graph_id": graph_id},
+        order={"version": "desc"},
+        include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
+    )
+
+    if not graph_history:
+        return []
+
+    return [GraphMeta.from_db(graph) for graph in graph_history]  # type: ignore
+
+
+async def create_graph(graph: Graph) -> Graph:
     await AgentGraph.prisma().create(
         data={
             "graph_id": graph.graph_id,
             "version": graph.version,
             "name": graph.name,
             "description": graph.description,
-            "is_template": is_template,
+            "is_template": graph.is_template,
             "is_active": graph.is_active,
         }
     )
