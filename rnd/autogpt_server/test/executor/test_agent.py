@@ -46,7 +46,7 @@ async def execute_agent(test_manager: ExecutionManager, test_graph: graph.Graph)
             "OutputComponent",
         ],
         "disabled_commands": ["finish"],
-        "fast_mode": False,
+        "fast_mode": True,
     }
     agent_server = AgentServer()
     response = await agent_server.execute_graph(test_graph.id, input_data)
