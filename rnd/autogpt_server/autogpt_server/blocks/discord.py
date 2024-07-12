@@ -2,7 +2,7 @@ import requests
 from autogpt_server.data.block import Block, BlockSchema, BlockOutput
 
 
-class discordsendmessage(Block):
+class DiscordSendMessage(Block):
     class Input(BlockSchema):
         webhook_url: str
         message: str
@@ -13,8 +13,8 @@ class discordsendmessage(Block):
     def __init__(self):
         super().__init__(
             id="b3a9c1f2-5d4e-47b3-9c4e-2b6e4d2c4f3e",
-            input_schema=discordsendmessage.Input,
-            output_schema=discordsendmessage.Output,
+            input_schema=DiscordSendMessage.Input,
+            output_schema=DiscordSendMessage.Output,
             test_input={
                 "webhook_url": "https://discord.com/api/webhooks/your_webhook_url",
                 "message": "Hello, Webhook!"
