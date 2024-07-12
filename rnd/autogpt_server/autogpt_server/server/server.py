@@ -1,7 +1,9 @@
 import asyncio
 import uuid
-from typing import Annotated, Any, Dict
+from typing import Annotated, Any, Dict, MutableMapping
 
+from starlette.responses import Response
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import uvicorn
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -137,9 +139,18 @@ class AgentServer(AppService):
 
         app.add_exception_handler(500, self.handle_internal_error)  # type: ignore
 
+        class SPAStaticFiles(StaticFiles):
+            async def get_response(self, path: str, scope: MutableMapping[str, Any]) -> Response:
+                try:
+                    return await super().get_response(path, scope)
+                except (HTTPException, StarletteHTTPException) as ex:
+                    if ex.status_code == 404:
+                        return await super().get_response("index.html", scope)
+                    else:
+                        raise ex
         app.mount(
-            path="/frontend",
-            app=StaticFiles(directory=get_frontend_path(), html=True),
+            path="/",
+            app=SPAStaticFiles(directory=get_frontend_path(), html=True),
             name="example_files",
         )
 
