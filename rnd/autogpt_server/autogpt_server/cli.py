@@ -138,7 +138,7 @@ def reddit(
     import requests
 
     from autogpt_server.data.graph import Graph, Link, Node
-    from autogpt_server.blocks.ai import LlmConfig, LlmCallBlock, LlmModel
+    from autogpt_server.blocks.ai import LlmCallBlock, LlmModel
     from autogpt_server.blocks.reddit import (
         RedditCredentials,
         RedditGetPostsBlock,
@@ -153,10 +153,7 @@ def reddit(
         password=password,
         user_agent=user_agent,
     )
-    openai_creds = LlmConfig(
-        model=LlmModel.openai_gpt4,
-        api_key="TODO_FILL_OUT_THIS",
-    )
+    openai_api_key = "TODO_FILL_OUT_THIS"
 
     # Hardcoded inputs
     reddit_get_post_input = {
@@ -179,7 +176,7 @@ The product you are marketing is: Auto-GPT an autonomous AI agent utilizing GPT 
 You reply the post that you find it relevant to be replied with marketing text.
 Make sure to only comment on a relevant post.
 """,
-        "config": openai_creds,
+        "api_key": openai_api_key,
         "expected_format": {
             "post_id": "str, the reddit post id",
             "is_relevant": "bool, whether the post is relevant for marketing",
@@ -219,7 +216,7 @@ Make sure to only comment on a relevant post.
     # Links
     links = [
         Link(reddit_get_post_node.id, text_formatter_node.id, "post", "named_texts"),
-        Link(text_formatter_node.id, llm_call_node.id, "output", "usr_prompt"),
+        Link(text_formatter_node.id, llm_call_node.id, "output", "prompt"),
         Link(llm_call_node.id, text_matcher_node.id, "response", "data"),
         Link(llm_call_node.id, text_matcher_node.id, "response_#_is_relevant", "text"),
         Link(
