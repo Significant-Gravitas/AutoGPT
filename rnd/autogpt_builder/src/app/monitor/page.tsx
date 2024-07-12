@@ -32,37 +32,51 @@ const Monitor = () => {
   const api = new AutoGPTServerAPI();
 
   useEffect(() => fetchFlowsAndRuns(), []);
+  useEffect(() => {
+    const intervalId = setInterval(() => flows.map(f => refreshFlowRuns(f.id)), 5000);
+    return () => clearInterval(intervalId);
+  }, []);
 
   function fetchFlowsAndRuns() {
     // Fetch flow IDs
     api.listFlowIDs()
     .then(flowIDs => {
       Promise.all(flowIDs.map(flowID => {
-        // Fetch flow run IDs
-        api.listFlowRunIDs(flowID)
-        .then(runIDs => {
-          runIDs.map(runID => {
-            // Fetch flow run
-            api.getFlowExecutionInfo(flowID, runID)
-            .then(execInfo => setFlowRuns(flowRuns => {
-              const flowRunIndex = flowRuns.findIndex(fr => fr.id == runID);
-              const flowRun = flowRunFromNodeExecutionResults(flowID, runID, execInfo)
-              if (flowRunIndex > -1) {
-                flowRuns.splice(flowRunIndex, 1, flowRun)
-              }
-              else {
-                flowRuns.push(flowRun)
-              }
-              return flowRuns
-            }));
-          });
-        });
+        refreshFlowRuns(flowID);
 
         // Fetch flow
         return api.getFlow(flowID);
       }))
       .then(flows => setFlows(flows));
     });
+  }
+
+  function refreshFlowRuns(flowID: string) {
+    // Fetch flow run IDs
+    api.listFlowRunIDs(flowID)
+    .then(runIDs => runIDs.map(runID => {
+      let run;
+      if (
+        (run = flowRuns.find(fr => fr.id == runID))
+        && !["waiting", "running"].includes(run.status)
+      ) {
+        return
+      }
+
+      // Fetch flow run
+      api.getFlowExecutionInfo(flowID, runID)
+      .then(execInfo => setFlowRuns(flowRuns => {
+        const flowRunIndex = flowRuns.findIndex(fr => fr.id == runID);
+        const flowRun = flowRunFromNodeExecutionResults(flowID, runID, execInfo)
+        if (flowRunIndex > -1) {
+          flowRuns.splice(flowRunIndex, 1, flowRun)
+        }
+        else {
+          flowRuns.push(flowRun)
+        }
+        return flowRuns
+      }));
+    }));
   }
 
   return (
