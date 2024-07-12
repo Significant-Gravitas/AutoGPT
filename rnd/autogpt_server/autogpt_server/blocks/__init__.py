@@ -1,4 +1,4 @@
-from autogpt_server.blocks import sample, reddit, text, ai
+from autogpt_server.blocks import sample, reddit, text, ai, wikipedia, discord
 from autogpt_server.data.block import Block
 
 AVAILABLE_BLOCKS = {
@@ -6,4 +6,4 @@ AVAILABLE_BLOCKS = {
     for block in [v() for v in Block.__subclasses__()]
 }
 
-__all__ = ["ai", "sample", "reddit", "text", "AVAILABLE_BLOCKS"]
+__all__ = ["ai", "sample", "reddit", "text", "AVAILABLE_BLOCKS", "wikipedia", "discord"]
