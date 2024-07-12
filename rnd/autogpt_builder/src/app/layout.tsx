@@ -34,12 +34,6 @@ const NavBar = () => (
       <Link href="/build" className={buttonVariants({ variant: "ghost" })}>
         <Pencil1Icon className="mr-1" /> Build
       </Link>
-      {/* <Link href="/backtrack" className={buttonVariants({ variant: "ghost" })}>
-        <ReaderIcon className="mr-1" /> Backtrack
-      </Link> */}
-      {/* <Link href="/explore" className={buttonVariants({ variant: "ghost" })}>
-        <CubeIcon className="mr-1" /> Explore
-      </Link> */}
     </div>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
