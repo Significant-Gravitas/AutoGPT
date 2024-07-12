@@ -2,6 +2,8 @@ import platform
 from pathlib import Path
 from pkgutil import iter_modules
 from typing import Union
+import shutil
+import os
 
 from cx_Freeze import Executable, setup  # type: ignore
 
@@ -58,12 +60,12 @@ license_file = "LICENSE.rtf"
 txt_to_rtf("../../LICENSE", license_file)
 
 # call npm run build in ../autogpt_builder
-import os
+
 
 os.system("npm run build --prefix ../autogpt_builder")
 
 # copy the ../autogpt_builder/out to frontend
-import shutil
+
 
 shutil.rmtree("../frontend", ignore_errors=True)
 shutil.copytree("../autogpt_builder/out", "../frontend")
@@ -100,6 +102,7 @@ setup(
                 # source, destination in the bundle
                 # (../frontend, frontend) would also work but you'd need to load the frontend differently in the data.py to correctly get the path when frozen
                 ("../frontend", "frontend"),
+                ("./secrets", "secrets"),
             ],
         },
         # Mac .app specific options
