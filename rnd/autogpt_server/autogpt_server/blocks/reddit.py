@@ -7,15 +7,15 @@ from typing import Any
 from pydantic import BaseModel, Field
 from typing import Iterator
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema, BlockFieldSecret
 from autogpt_server.util.mock import MockObject
 
 
 class RedditCredentials(BaseModel):
-    client_id: str
-    client_secret: str
-    username: str
-    password: str
+    client_id: BlockFieldSecret = BlockFieldSecret(key="reddit_client_id")
+    client_secret: BlockFieldSecret = BlockFieldSecret(key="reddit_client_secret")
+    username: BlockFieldSecret = BlockFieldSecret(key="reddit_username")
+    password: BlockFieldSecret = BlockFieldSecret(key="reddit_password")
     user_agent: str | None = None
 
 
@@ -28,11 +28,11 @@ class RedditPost(BaseModel):
 
 def get_praw(creds: RedditCredentials) -> praw.Reddit:
     client = praw.Reddit(
-        client_id=creds.client_id,
-        client_secret=creds.client_secret,
+        client_id=creds.client_id.get(),
+        client_secret=creds.client_secret.get(),
+        username=creds.username.get(),
+        password=creds.password.get(),
         user_agent=creds.user_agent,
-        username=creds.username,
-        password=creds.password,
     )
     me = client.user.me()
     if not me:
@@ -43,8 +43,11 @@ def get_praw(creds: RedditCredentials) -> praw.Reddit:
 
 class RedditGetPostsBlock(Block):
     class Input(BlockSchema):
-        creds: RedditCredentials = Field(description="Reddit credentials")
         subreddit: str = Field(description="Subreddit name")
+        creds: RedditCredentials = Field(
+            description="Reddit credentials",
+            default=RedditCredentials(),
+        )
         last_minutes: int | None = Field(
             description="Post time to stop minutes ago while fetching posts",
             default=None
@@ -81,8 +84,8 @@ class RedditGetPostsBlock(Block):
             test_output=[
                 ("post", RedditPost(
                     id="id1", subreddit="subreddit", title="title1", body="body1")),
-                 ("post", RedditPost(
-                     id="id2", subreddit="subreddit", title="title2", body="body2")),
+                ("post", RedditPost(
+                    id="id2", subreddit="subreddit", title="title2", body="body2")),
             ],
             test_mock={
                 "get_posts": lambda _: [
@@ -92,7 +95,7 @@ class RedditGetPostsBlock(Block):
                 ]
             }
         )
-        
+
     @staticmethod
     def get_posts(input_data: Input) -> Iterator[praw.reddit.Submission]:
         client = get_praw(input_data.creds)
@@ -101,7 +104,8 @@ class RedditGetPostsBlock(Block):
 
     def run(self, input_data: Input) -> BlockOutput:
         for post in self.get_posts(input_data):
-            if input_data.last_minutes and post.created_utc < datetime.now(tz=timezone.utc) - \
+            if input_data.last_minutes and post.created_utc < datetime.now(
+                    tz=timezone.utc) - \
                     timedelta(minutes=input_data.last_minutes):
                 break
 
