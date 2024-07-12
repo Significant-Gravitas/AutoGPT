@@ -2,10 +2,20 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import moment from 'moment';
-import { ComposedChart, Legend, Line, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  ComposedChart,
+  DefaultLegendContentProps,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Scatter,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { Pencil2Icon } from '@radix-ui/react-icons';
 import AutoGPTServerAPI, { Flow, NodeExecutionResult } from '@/lib/autogpt_server_api';
-import { hashString } from '@/lib/utils';
+import { cn, hashString } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -278,33 +288,6 @@ const FlowRunStatusBadge = ({ status }: { status: FlowRun['status'] }) => (
   </Badge>
 );
 
-const ScrollableLegend = ({ payload }) => {
-  return (
-    <div style={{
-      overflowX: 'auto',
-      overflowY: 'hidden',
-      whiteSpace: 'nowrap',
-      padding: '10px 0',
-      fontSize: '0.75em'
-    }}>
-      {payload.map((entry, index) => (
-        <span key={`item-${index}`} style={{ display: 'inline-block', marginRight: '10px' }}>
-          <span
-            style={{
-              display: 'inline-block',
-              marginRight: '5px',
-              width: '8px',
-              height: '8px',
-              backgroundColor: entry.color,
-            }}
-          />
-          <span>{entry.value}</span>
-        </span>
-      ))}
-    </div>
-  );
-};
-
 const FlowInfo: React.FC<{
   flow: Flow;
   flowRuns: FlowRun[];
@@ -501,13 +484,47 @@ const FlowRunsTimeline = (
           legendType="none"
         />
       ))}
-     <Legend
+      <Legend
         content={<ScrollableLegend />}
-        wrapperStyle={{ bottom: 0, left: 0, right: 0 }}
+        wrapperStyle={{
+          bottom: 0,
+          left: 0,
+          right: 0,
+          width: "100%",
+          display: "flex",
+          justifyContent: "center",
+        }}
       />
     </ComposedChart>
   </ResponsiveContainer>
 );
+
+const ScrollableLegend: React.FC<DefaultLegendContentProps & { className?: string }> = (
+  { payload, className }
+) => {
+  return (
+    <div
+      className={cn(
+        "whitespace-nowrap px-4 text-sm overflow-x-auto space-x-3",
+        className,
+      )}
+      style={{ scrollbarWidth: "none" }}
+    >
+      {payload.map((entry, index) => {
+        if (entry.type == "none") return;
+        return (
+          <span key={`item-${index}`} className="inline-flex items-center">
+            <span
+              className="size-2.5 inline-block mr-1 rounded-full"
+              style={{backgroundColor: entry.color}}
+            />
+            <span>{entry.value}</span>
+          </span>
+        )
+      })}
+    </div>
+  );
+};
 
 function formatDuration(seconds: number): string {
   return (
