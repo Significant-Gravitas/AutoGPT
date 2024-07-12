@@ -1,11 +1,14 @@
 import asyncio
+import mimetypes
+import os
+import pathlib
 import uuid
 from typing import Annotated, Any, Dict, MutableMapping
 
 from starlette.responses import Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import uvicorn
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from contextlib import asynccontextmanager
@@ -163,8 +166,21 @@ class AgentServer(AppService):
         async def websocket_endpoint(websocket: WebSocket):  # type: ignore
             await self.websocket_router(websocket)
 
+        @app.get("/{extras_file:str}", response_class=HTMLResponse)
+        async def catch_others(extras_file: str):
+            # check if the file is directly in the frontend path folder to prevent directory traversal
+            files = os.listdir(get_frontend_path())
+            # detect the file type and return the appropriate response
+            if extras_file in files:
+                mime = mimetypes.guess_type(extras_file)[0]
+                if mime is not None and mime.startswith("image"):
+                    return FileResponse(get_frontend_path() / extras_file)
+                else:
+                    with open(get_frontend_path() / extras_file) as file:
+                        return str(file.read())
+
         @app.get("/", response_class=HTMLResponse)
-        async def catch_all():
+        async def catch_root():
             with open(get_frontend_path() / "build.html") as file:
                 return str(file.read())
 
