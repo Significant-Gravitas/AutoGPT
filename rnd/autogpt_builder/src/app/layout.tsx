@@ -4,6 +4,7 @@ import { ThemeProvider as NextThemeProvider } from "next-themes";
 import { type ThemeProviderProps } from "next-themes/dist/types";
 import { Inter } from "next/font/google";
 import Link from "next/link";
+import { CubeIcon, Pencil1Icon, ReaderIcon, TimerIcon } from "@radix-ui/react-icons";
 
 import "./globals.css";
 
@@ -27,10 +28,12 @@ function ThemeProvider({ children, ...props }: ThemeProviderProps) {
 const NavBar = () => (
   <nav className="bg-white dark:bg-slate-800 p-4 flex justify-between items-center shadow">
     <div className="flex space-x-4">
-      <Link href="/monitor" className={buttonVariants({ variant: "ghost" })}>Monitor</Link>
-      <Link href="/build" className={buttonVariants({ variant: "ghost" })}>Build</Link>
-      <Link href="/backtrack" className={buttonVariants({ variant: "ghost" })}>Backtrack</Link>
-      <Link href="/explore" className={buttonVariants({ variant: "ghost" })}>Explore</Link>
+      <Link href="/monitor" className={buttonVariants({ variant: "ghost" })}>
+        <TimerIcon className="mr-1" /> Monitor
+      </Link>
+      <Link href="/build" className={buttonVariants({ variant: "ghost" })}>
+        <Pencil1Icon className="mr-1" /> Build
+      </Link>
     </div>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -66,7 +69,7 @@ export default function RootLayout({
         >
           <div className="min-h-screen bg-gray-200 text-gray-900">
             <NavBar />
-            <main className="container mx-auto p-4">
+            <main className="mx-auto p-4">
               {children}
             </main>
           </div>
