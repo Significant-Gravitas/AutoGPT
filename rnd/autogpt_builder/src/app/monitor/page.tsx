@@ -195,7 +195,7 @@ const AgentFlowList = (
 ) => (
   <Card className={className}>
     <CardHeader>
-      <CardTitle>Agent Flows</CardTitle>
+      <CardTitle>Agents</CardTitle>
     </CardHeader>
     <CardContent>
       <Table>
@@ -275,13 +275,13 @@ const FlowRunsList: React.FC<{
 }> = ({ flows, runs, selectedRun, onSelectRun, className }) => (
   <Card className={className}>
     <CardHeader>
-      <CardTitle>Flow Runs</CardTitle>
+      <CardTitle>Runs</CardTitle>
     </CardHeader>
     <CardContent>
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Flow</TableHead>
+            <TableHead>Agent</TableHead>
             <TableHead>Started</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Duration</TableHead>
