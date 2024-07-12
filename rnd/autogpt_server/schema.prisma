@@ -11,14 +11,19 @@ generator client {
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
 model AgentGraph {
-  id          String  @id @default(uuid())
+  graph_id String @default(uuid())
+  version  Int    @default(1)
+
   name        String?
   description String?
   is_template Boolean @default(false)
+  is_active   Boolean @default(true)
 
   AgentNodes                  AgentNode[]
   AgentGraphExecution         AgentGraphExecution[]
   AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
+
+  @@id(name: "id", [graph_id, version])
 }
 
 // This model describes a single node in the Agent Graph/Flow (Multi Agent System).
@@ -28,8 +33,9 @@ model AgentNode {
   agentBlockId String
   AgentBlock   AgentBlock @relation(fields: [agentBlockId], references: [id])
 
-  agentGraphId String
-  AgentGraph   AgentGraph @relation(fields: [agentGraphId], references: [id])
+  agentGraphId      String
+  agentGraphVersion Int
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [graph_id, version])
 
   // List of consumed input, that the parent node should provide.
   Input AgentNodeLink[] @relation("AgentNodeSink")
@@ -79,8 +85,9 @@ model AgentBlock {
 model AgentGraphExecution {
   id String @id @default(uuid())
 
-  agentGraphId String
-  AgentGraph   AgentGraph @relation(fields: [agentGraphId], references: [id])
+  agentGraphId      String
+  agentGraphVersion Int
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [graph_id, version])
 
   AgentNodeExecutions AgentNodeExecution[]
 }
@@ -126,8 +133,9 @@ model AgentNodeExecutionInputOutput {
 model AgentGraphExecutionSchedule {
   id String @id
 
-  agentGraphId String
-  AgentGraph   AgentGraph @relation(fields: [agentGraphId], references: [id])
+  agentGraphId      String
+  agentGraphVersion Int
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [graph_id, version])
 
   schedule  String // cron expression
   isEnabled Boolean @default(true)
