@@ -222,7 +222,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: autogptserver-app-${{ matrix.platform-os }}
-          path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/AutoGPTServer.app.zip
+          path: AutoGPTServer.app.zip
 
       - name: Upload dmg artifact
         uses: actions/upload-artifact@v4
