@@ -92,6 +92,8 @@ class ExecutionResult(BaseModel):
 
 # --------------------- Model functions --------------------- #
 
+EXECUTION_RESULT_INCLUDE = {"Input": True, "Output": True, "AgentNode": True}
+
 
 async def create_graph_execution(
     graph_id: str, node_ids: list[str], data: dict[str, Any]
@@ -127,6 +129,54 @@ async def create_graph_execution(
         ExecutionResult.from_db(execution)
         for execution in result.AgentNodeExecutions or []
     ]
+
+
+async def create_node_execution(
+        node_id: str,
+        graph_exec_id: str,
+        data: dict[str, Any],
+) -> ExecutionResult:
+    """
+    Create new AgentNodeExecution with full input data.
+    """
+    result = await AgentNodeExecution.prisma().create(
+        data={
+            "agentNodeId": node_id,
+            "agentGraphExecutionId": graph_exec_id,
+            "executionStatus": ExecutionStatus.INCOMPLETE,
+            "Input": {
+                "create": [
+                    {"name": name, "data": json.dumps(data)}
+                    for name, data in data.items()
+                ]
+            },
+        }
+    )
+    return ExecutionResult.from_db(result)
+
+
+async def update_node_execution(
+        node_exec_id: str,
+        data: dict[str, Any],
+) -> ExecutionResult:
+    """
+    Update AgentNodeExecution with full input data.
+    """
+    result = await AgentNodeExecution.prisma().update(
+        where={"id": node_exec_id},
+        data={
+            "Input": {
+                "create": [
+                    {"name": name, "data": json.dumps(data)}
+                    for name, data in data.items()
+                ]
+            }
+        },
+        include=EXECUTION_RESULT_INCLUDE,  # type: ignore
+    )
+    if not result:
+        raise ValueError(f"Execution {node_exec_id} not found.")
+    return ExecutionResult.from_db(result)
 
 
 async def upsert_execution_input(
@@ -191,7 +241,11 @@ async def upsert_execution_output(
     )
 
 
-async def update_execution_status(node_exec_id: str, status: ExecutionStatus) -> None:
+async def update_execution_status(
+    node_exec_id: str,
+    status: ExecutionStatus
+) -> ExecutionResult:
+
     now = datetime.now(tz=timezone.utc)
     data = {
         **({"executionStatus": status}),
@@ -204,9 +258,12 @@ async def update_execution_status(node_exec_id: str, status: ExecutionStatus) ->
     res = await AgentNodeExecution.prisma().update(
         where={"id": node_exec_id},
         data=data,  # type: ignore
+        include=EXECUTION_RESULT_INCLUDE,  # type: ignore
     )
     if not res:
         raise ValueError(f"Execution {node_exec_id} not found.")
+    
+    return ExecutionResult.from_db(res)
 
 
 async def list_executions(graph_id: str) -> list[str]:
@@ -216,25 +273,43 @@ async def list_executions(graph_id: str) -> list[str]:
     return [execution.id for execution in executions]
 
 
+async def get_latest_execution(
+        graph_exec_id: str, node_id: str) -> ExecutionResult | None:
+    execution = await AgentNodeExecution.prisma().find_first(
+        where={
+            "agentNodeId": node_id,
+            "agentGraphExecutionId": graph_exec_id,
+            "executionStatus": {"not": ExecutionStatus.INCOMPLETE},
+        },
+        include=EXECUTION_RESULT_INCLUDE,  # type: ignore
+        order={"addedTime": "desc"},
+    )
+    if not execution:
+        return None
+    return ExecutionResult.from_db(execution)
+
+
+async def get_incomplete_executions(
+        graph_exec_id: str, node_id: str) -> list[ExecutionResult]:
+    executions = await AgentNodeExecution.prisma().find_many(
+        where={
+            "agentNodeId": node_id,
+            "agentGraphExecutionId": graph_exec_id,
+            "executionStatus": ExecutionStatus.INCOMPLETE,
+        },
+        include=EXECUTION_RESULT_INCLUDE,  # type: ignore
+        order={"addedTime": "asc"},
+    )
+    return [ExecutionResult.from_db(execution) for execution in executions]
+
+
 async def get_execution_results(graph_exec_id: str) -> list[ExecutionResult]:
     executions = await AgentNodeExecution.prisma().find_many(
         where={"agentGraphExecutionId": graph_exec_id},
-        include={"Input": True, "Output": True},
+        include=EXECUTION_RESULT_INCLUDE,  # type: ignore
         order={"addedTime": "asc"},
     )
     res = [ExecutionResult.from_db(execution) for execution in executions]
-    return res
-
-
-async def get_execution_result(
-    graph_exec_id: str, node_exec_id: str
-) -> ExecutionResult:
-    execution = await AgentNodeExecution.prisma().find_first_or_raise(
-        where={"agentGraphExecutionId": graph_exec_id, "id": node_exec_id},
-        include={"Input": True, "Output": True, "AgentNode": True},
-        order={"addedTime": "asc"},
-    )
-    res = ExecutionResult.from_db(execution)
     return res
 
 
@@ -247,10 +322,7 @@ async def get_node_execution_input(node_exec_id: str) -> dict[str, Any]:
     """
     execution = await AgentNodeExecution.prisma().find_unique_or_raise(
         where={"id": node_exec_id},
-        include={
-            "Input": True,
-            "AgentNode": True,
-        },
+        include=EXECUTION_RESULT_INCLUDE,  # type: ignore
     )
     if not execution.AgentNode:
         raise ValueError(f"Node {execution.agentNodeId} not found.")
