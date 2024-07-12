@@ -51,15 +51,29 @@ export default class AutoGPTServerAPI {
     }
   }
 
-  async createFlow(flowCreateBody: FlowCreateBody): Promise<Flow> {
+  async createFlow(flowCreateBody: FlowCreateBody, template_id?: string): Promise<Flow> {
     console.debug("POST /graphs payload:", flowCreateBody);
+    
     try {
+      let request: CreateGraphRequest = {};
+  
+      if ('id' in flowCreateBody) {
+        // If flowCreateBody has an 'id' property, it's likely the Flow type
+        request.graph = flowCreateBody as Flow;
+      } else if (template_id) {
+        // If template_id is provided, use it
+        request.template_id = template_id;
+      } else {
+        // If neither condition is met, throw an error
+        throw new Error("Either a valid Flow object or a template_id must be provided");
+      }
+
       const response = await fetch(`${this.baseUrl}/graphs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(flowCreateBody),
+        body: JSON.stringify(request),
       });
       const response_data = await response.json();
       if (!response.ok) {
@@ -177,6 +191,11 @@ export type Flow = {
   nodes: Array<Node>;
   links: Array<Link>;
 };
+
+export type CreateGraphRequest = {
+  template_id?: string;
+  graph?: Flow;
+}
 
 export type FlowCreateBody = Flow | {
   id?: string;
