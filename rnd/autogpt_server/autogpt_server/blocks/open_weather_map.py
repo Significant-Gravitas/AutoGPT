@@ -1,7 +1,7 @@
 import requests
 from autogpt_server.data.block import Block, BlockSchema, BlockOutput
 
-class getopenweathermapweather(Block):
+class GetOpenWeatherMapWeather(Block):
     class Input(BlockSchema):
         location: str
         api_key: str
@@ -15,8 +15,8 @@ class getopenweathermapweather(Block):
     def __init__(self):
         super().__init__(
             id="f7a8b2c3-6d4e-5f8b-9e7f-6d4e5f8b9e7f",
-            input_schema=getopenweathermapweather.Input,
-            output_schema=getopenweathermapweather.Output,
+            input_schema=GetOpenWeatherMapWeather.Input,
+            output_schema=GetOpenWeatherMapWeather.Output,
             test_input={"location": "New York", "api_key": "YOUR_API_KEY", "use_celsius": True},
             test_output={"temperature": "23.5", "humidity": "60", "condition": "Sunny"},
         )
