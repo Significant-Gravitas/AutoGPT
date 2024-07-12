@@ -67,7 +67,6 @@ jobs:
           ulimit -a
           ulimit -n unlimited
 
-          
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -160,6 +159,13 @@ jobs:
       - id: get_date
         name: Get date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Set max open files limit
+        if: runner.os == 'macOS'
+        working-directory: ${{ runner.temp }}
+        run: |
+          ulimit -a
+          ulimit -n unlimited
 
       - name: Set up Python dependency cache
         # On Windows, unpacking cached dependencies takes longer than just installing them
