@@ -82,7 +82,7 @@ const Monitor = () => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10 gap-4">
       <AgentFlowList
-        className="md:col-span-2"
+        className="md:col-span-2 xl:col-span-3 xxl:col-span-2"
         flows={flows}
         flowRuns={flowRuns}
         selectedFlow={selectedFlow}
@@ -105,7 +105,7 @@ const Monitor = () => {
         selectedRun={selectedRun}
         onSelectRun={r => setSelectedRun(r.id == selectedRun?.id ? null : r)}
       />
-      <div className="col-span-full xl:col-span-5">
+      <div className="col-span-full xl:col-span-4 xxl:col-span-5">
         {selectedRun && (
           <FlowRunInfo
             flow={selectedFlow || flows.find(f => f.id == selectedRun.flowID)!}
