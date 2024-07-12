@@ -383,8 +383,19 @@ class AgentServer(AppService):
 
     @classmethod
     async def create_new_template(
-        cls, graph: autogpt_server.data.graph.Graph
+        cls, create_graph: CreateGraph
     ) -> autogpt_server.data.graph.Graph:
+        if create_graph.graph:
+            graph = create_graph.graph
+        elif create_graph.tempalte_id:
+            graph = await autogpt_server.data.graph.get_graph(
+                create_graph.tempalte_id, is_template=True
+            )
+        else:
+            raise HTTPException(
+                status_code=400, detail="Either graph or template_id must be provided."
+            )
+
         # TODO: replace uuid generation here to DB generated uuids.
         graph.id = str(uuid.uuid4())
         id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
