@@ -60,13 +60,6 @@ jobs:
       #   killed after the step returns.
       #   See: https://github.com/actions/runner/issues/598#issuecomment-2011890429
 
-      - name: Set max open files limit
-        if: runner.os == 'macOS'
-        working-directory: ${{ runner.temp }}
-        run: |
-          ulimit -a
-          ulimit -n unlimited
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -160,13 +153,6 @@ jobs:
         name: Get date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
-      - name: Set max open files limit
-        if: runner.os == 'macOS'
-        working-directory: ${{ runner.temp }}
-        run: |
-          ulimit -a
-          ulimit -n unlimited
-
       - name: Set up Python dependency cache
         # On Windows, unpacking cached dependencies takes longer than just installing them
         if: runner.os != 'Windows'
@@ -225,12 +211,18 @@ jobs:
           WINDOWS_COMMAND: "poetry run poe dist_msi"
           LINUX_COMMAND: "poetry run poe dist_appimage"
 
+      - name: Zip the .app directory
+        if: runner.os == 'macOS'
+        working-directory: ${{ runner.temp }}
+        run: |
+          zip -r AutoGPTServer.app.zip /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.app
+
       # break this into seperate steps each with their own name that matches the file
       - name: Upload App artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: autogptserver-app-${{ matrix.platform-os }}
-          path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.app
+          path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/AutoGPTServer.app.zip
 
       - name: Upload dmg artifact
         uses: actions/upload-artifact@v4
