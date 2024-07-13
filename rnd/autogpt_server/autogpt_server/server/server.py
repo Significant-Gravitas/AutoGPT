@@ -437,7 +437,7 @@ class AgentServer(AppService):
             graph = create_graph.graph
         elif create_graph.template_id:
             graph = await autogpt_server.data.graph.get_graph(
-                create_graph.template_id, create_graph.version
+                create_graph.template_id, create_graph.template_version
             )
             graph.version = 1
         else:

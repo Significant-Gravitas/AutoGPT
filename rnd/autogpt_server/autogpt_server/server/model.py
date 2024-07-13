@@ -44,5 +44,5 @@ class SubscriptionDetails(pydantic.BaseModel):
 
 class CreateGraph(pydantic.BaseModel):
     template_id: str | None = None
-    version: int | None = None
+    template_version: int | None = None
     graph: autogpt_server.data.graph.Graph | None = None
