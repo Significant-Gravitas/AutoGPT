@@ -98,8 +98,8 @@ class AgentServer(AppService):
             methods=["GET"],
         )
         router.add_api_route(
-            path="/templates/{graph_id}/history",
-            endpoint=self.get_graph_history,
+            path="/templates/{graph_id}/versions",
+            endpoint=self.get_graph_all_versions,
             methods=["GET"],
         )
         router.add_api_route(
@@ -113,8 +113,8 @@ class AgentServer(AppService):
             methods=["GET"],
         )
         router.add_api_route(
-            path="/graphs/{graph_id}/history",
-            endpoint=self.get_graph_history,
+            path="/graphs/{graph_id}/versions",
+            endpoint=self.get_graph_all_versions,
             methods=["GET"],
         )
         router.add_api_route(
@@ -258,10 +258,10 @@ class AgentServer(AppService):
         return graph
 
     @classmethod
-    async def get_graph_history(
+    async def get_graph_all_versions(
         cls, graph_id: str
     ) -> list[autogpt_server.data.graph.Graph]:
-        graphs = await autogpt_server.data.graph.get_graph_history(graph_id)
+        graphs = await autogpt_server.data.graph.get_graph_all_versions(graph_id)
         if not graphs:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         return graphs
@@ -300,7 +300,9 @@ class AgentServer(AppService):
             raise HTTPException(400, detail="Graph ID does not match ID in URI")
 
         # Determine new version
-        existing_versions = await autogpt_server.data.graph.get_graph_history(graph_id)
+        existing_versions = await autogpt_server.data.graph.get_graph_all_versions(
+            graph_id
+        )
         if not existing_versions:
             raise HTTPException(400, detail=f"Unknown graph ID '{graph_id}'")
         graph.version = max(g.version for g in existing_versions) + 1

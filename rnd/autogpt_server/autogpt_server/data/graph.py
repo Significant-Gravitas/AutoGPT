@@ -2,8 +2,8 @@ import asyncio
 import uuid
 from typing import Any
 
-from prisma.models import AgentGraph, AgentNode, AgentNodeLink
 import prisma.types
+from prisma.models import AgentGraph, AgentNode, AgentNodeLink
 from pydantic import BaseModel, PrivateAttr
 
 from autogpt_server.data.db import BaseDbModel
@@ -216,7 +216,7 @@ async def deactivate_other_graph_versions(graph_id: str, except_version: int) ->
     return success is not None
 
 
-async def get_graph_history(graph_id: str) -> list[Graph]:
+async def get_graph_all_versions(graph_id: str) -> list[Graph]:
     graph_history = await AgentGraph.prisma().find_many(
         where={"graph_id": graph_id},
         order={"version": "desc"},
