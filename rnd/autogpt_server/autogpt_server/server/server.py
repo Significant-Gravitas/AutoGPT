@@ -544,7 +544,9 @@ class AgentServer(AppService):
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         execution_scheduler = self.execution_scheduler_client
         return {
-            "id": execution_scheduler.add_execution_schedule(graph_id, cron, input_data)  # type: ignore
+            "id": execution_scheduler.add_execution_schedule(
+                graph_id, graph.version, cron, input_data
+            )
         }
 
     def update_schedule(
