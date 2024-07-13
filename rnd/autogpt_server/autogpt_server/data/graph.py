@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 import prisma.types
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, PrivateAttr, field_validator
 
 from autogpt_server.data.db import BaseDbModel
 from autogpt_server.util import json
@@ -78,9 +78,9 @@ class Graph(BaseModel):
     nodes: list[Node]
     links: list[Link]
 
-    def __init__(self, graph_id: str = "", **data: Any):
-        data["graph_id"] = graph_id or str(uuid.uuid4())
-        super().__init__(**data)
+    @field_validator("graph_id", mode="before")
+    def set_graph_id(cls, graph_id: str) -> str:
+        return graph_id or str(uuid.uuid4())
 
     @property
     def starting_nodes(self) -> list[Node]:
@@ -90,7 +90,7 @@ class Graph(BaseModel):
     @staticmethod
     def from_db(graph: AgentGraph):
         return Graph(
-            id=graph.graph_id,
+            graph_id=graph.graph_id,
             version=graph.version,
             is_active=graph.is_active,
             is_template=graph.is_template,
