@@ -123,6 +123,11 @@ class AgentServer(AppService):
             methods=["GET"],
         )
         router.add_api_route(
+            path="/graphs/{graph_id}/versions/{version}",
+            endpoint=self.get_graph,
+            methods=["GET"],
+        )
+        router.add_api_route(
             path="/graphs",
             endpoint=self.create_new_graph,
             methods=["POST"],
