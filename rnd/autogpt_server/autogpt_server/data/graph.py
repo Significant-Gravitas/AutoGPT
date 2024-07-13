@@ -188,23 +188,22 @@ async def get_graphs_meta(
     return [GraphMeta.from_db(graph) for graph in graphs]  # type: ignore
 
 
-async def get_graph(
-    graph_id: str, version: int | None = None, is_active: bool | None = None
-) -> Graph:
-    where_clause = {"graph_id": graph_id}
+async def get_graph(graph_id: str, version: int | None = None) -> Graph:
+    """
+    Retrieves a graph from the DB.
+    Defaults to the current active version if `version` is not passed.
+    """
+    where_clause: prisma.types.AgentGraphWhereInput = {"graph_id": graph_id}
     if version is not None:
-        where_clause["version"] = version  # type: ignore
-    if is_active:
-        where_clause["is_active"] = is_active # type: ignore
-
-    where_clause = prisma.types.AgentGraphWhereInput(**where_clause)  # type: ignore
-    order_by =  {"version": "desc"}  # type: ignore
+        where_clause["version"] = version
+    else:
+        where_clause["is_active"] = True
 
     graph = await AgentGraph.prisma().find_first_or_raise(
         where=where_clause,
         include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
         distinct=["graph_id"] if not version else None,
-        order=order_by,  # type: ignore
+        order={"version": "desc"},
     )
     return Graph.from_db(graph)
 

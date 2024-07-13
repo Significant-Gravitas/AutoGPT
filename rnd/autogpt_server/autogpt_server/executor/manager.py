@@ -254,7 +254,7 @@ class ExecutionManager(AppService):
 
     @expose
     def add_execution(self, graph_id: str, data: dict[str, Any]) -> dict[Any, Any]:
-        graph: Graph | None = self.run_and_wait(get_graph(graph_id, is_active=True))
+        graph: Graph | None = self.run_and_wait(get_graph(graph_id))
         if not graph:
             raise Exception(f"Graph #{graph_id} not found.")
 
