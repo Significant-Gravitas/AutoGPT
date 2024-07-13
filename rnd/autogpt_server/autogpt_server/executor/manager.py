@@ -268,7 +268,7 @@ class ExecutionManager(AppService):
         graph_exec_id, node_execs = self.run_and_wait(
             create_graph_execution(
                 graph_id=graph_id,
-                version=graph.version,
+                graph_version=graph.version,
                 node_ids=[node.id for node in graph.starting_nodes],
                 data=data,
             )

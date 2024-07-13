@@ -68,7 +68,7 @@ async def test_send_execution_result(
     connection_manager.subscriptions["test_graph"] = {mock_websocket}
     result: ExecutionResult = ExecutionResult(
         graph_id="test_graph",
-        version=1,
+        graph_version=1,
         graph_exec_id="test_exec_id",
         node_exec_id="test_node_exec_id",
         node_id="test_node_id",
@@ -98,7 +98,7 @@ async def test_send_execution_result_no_subscribers(
 ) -> None:
     result: ExecutionResult = ExecutionResult(
         graph_id="test_graph",
-        version=1,
+        graph_version=1,
         graph_exec_id="test_exec_id",
         node_exec_id="test_node_exec_id",
         node_id="test_node_id",

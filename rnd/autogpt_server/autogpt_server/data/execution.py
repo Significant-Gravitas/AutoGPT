@@ -53,7 +53,7 @@ class ExecutionQueue:
 
 class ExecutionResult(BaseModel):
     graph_id: str
-    version: int
+    graph_version: int
     graph_exec_id: str
     node_exec_id: str
     node_id: str
@@ -76,10 +76,10 @@ class ExecutionResult(BaseModel):
             output_data[data.name].append(json.loads(data.data))
 
         node: AgentNode | None = execution.AgentNode
-        
+
         return ExecutionResult(
             graph_id=node.agentGraphId if node else "",
-            version=node.agentGraphVersion if node else 0,
+            graph_version=node.agentGraphVersion if node else 0,
             graph_exec_id=execution.agentGraphExecutionId,
             node_exec_id=execution.id,
             node_id=execution.agentNodeId,
@@ -97,7 +97,7 @@ class ExecutionResult(BaseModel):
 
 
 async def create_graph_execution(
-    graph_id: str, version: int, node_ids: list[str], data: dict[str, Any]
+    graph_id: str, graph_version: int, node_ids: list[str], data: dict[str, Any]
 ) -> tuple[str, list[ExecutionResult]]:
     """
     Create a new AgentGraphExecution record.
@@ -107,7 +107,7 @@ async def create_graph_execution(
     result = await AgentGraphExecution.prisma().create(
         data={
             "agentGraphId": graph_id,
-            "agentGraphVersion": version,
+            "agentGraphVersion": graph_version,
             "AgentNodeExecutions": {
                 "create": [  # type: ignore
                     {

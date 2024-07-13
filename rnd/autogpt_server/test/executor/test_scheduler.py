@@ -21,7 +21,7 @@ async def test_agent_schedule():
 
                 schedule_id = scheduler.add_execution_schedule(
                     graph_id=test_graph.graph_id,
-                    version=1,
+                    graph_version=1,
                     cron="0 0 * * *",
                     input_data={"input": "data"},
                 )
