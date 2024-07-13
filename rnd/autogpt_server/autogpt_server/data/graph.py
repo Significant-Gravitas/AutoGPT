@@ -60,8 +60,8 @@ class Node(BaseDbModel):
         obj = Node(
             id=node.id,
             block_id=node.AgentBlock.id,
-            input_default=json.loads(node.constantInput),  # type: ignore
-            metadata=json.loads(node.metadata),  # type: ignore
+            input_default=json.loads(node.constantInput),
+            metadata=json.loads(node.metadata),
         )
         obj._input_links = [Link.from_db(link) for link in node.Input or []]
         obj._output_links = [Link.from_db(link) for link in node.Output or []]
