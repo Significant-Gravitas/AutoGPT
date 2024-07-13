@@ -258,15 +258,6 @@ class AgentServer(AppService):
         return graph
 
     @classmethod
-    async def get_graph_all_versions(
-        cls, graph_id: str
-    ) -> list[autogpt_server.data.graph.Graph]:
-        graphs = await autogpt_server.data.graph.get_graph_all_versions(graph_id)
-        if not graphs:
-            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-        return graphs
-
-    @classmethod
     async def get_template(
         cls, graph_id: str, version: int | None = None
     ) -> autogpt_server.data.graph.Graph:
@@ -280,16 +271,61 @@ class AgentServer(AppService):
         return graph
 
     @classmethod
-    async def create_new_template(
-        cls, create_graph: CreateGraph
-    ) -> autogpt_server.data.graph.Graph:
-        return await cls.create_graph(create_graph, is_template=True)
+    async def get_graph_all_versions(
+        cls, graph_id: str
+    ) -> list[autogpt_server.data.graph.Graph]:
+        graphs = await autogpt_server.data.graph.get_graph_all_versions(graph_id)
+        if not graphs:
+            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        return graphs
 
     @classmethod
     async def create_new_graph(
         cls, create_graph: CreateGraph
     ) -> autogpt_server.data.graph.Graph:
         return await cls.create_graph(create_graph, is_template=False)
+
+    @classmethod
+    async def create_new_template(
+        cls, create_graph: CreateGraph
+    ) -> autogpt_server.data.graph.Graph:
+        return await cls.create_graph(create_graph, is_template=True)
+
+    @classmethod
+    async def create_graph(
+        cls, create_graph: CreateGraph, is_template: bool
+    ) -> autogpt_server.data.graph.Graph:
+        if create_graph.graph:
+            graph = create_graph.graph
+        elif create_graph.template_id:
+            graph = await autogpt_server.data.graph.get_graph(
+                create_graph.template_id, create_graph.version
+            )
+            graph.version = 1
+        else:
+            raise HTTPException(
+                status_code=400, detail="Either graph or template_id must be provided."
+            )
+
+        # TODO: replace uuid generation here to DB generated uuids.
+        graph.graph_id = str(uuid.uuid4())
+
+        graph.is_template = is_template
+        if not graph.is_template:
+            graph.is_active = True
+        else:
+            graph.is_active = False
+
+        id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
+
+        for node in graph.nodes:
+            node.id = id_map[node.id]
+
+        for link in graph.links:
+            link.source_id = id_map[link.source_id]
+            link.sink_id = id_map[link.sink_id]
+
+        return await autogpt_server.data.graph.create_graph(graph)
 
     @classmethod
     async def update_graph(
@@ -329,42 +365,6 @@ class AgentServer(AppService):
             )
 
         return new_graph_version
-
-    @classmethod
-    async def create_graph(
-        cls, create_graph: CreateGraph, is_template: bool
-    ) -> autogpt_server.data.graph.Graph:
-        if create_graph.graph:
-            graph = create_graph.graph
-        elif create_graph.template_id:
-            graph = await autogpt_server.data.graph.get_graph(
-                create_graph.template_id, create_graph.version
-            )
-            graph.version = 1
-        else:
-            raise HTTPException(
-                status_code=400, detail="Either graph or template_id must be provided."
-            )
-
-        # TODO: replace uuid generation here to DB generated uuids.
-        graph.graph_id = str(uuid.uuid4())
-
-        graph.is_template = is_template
-        if not graph.is_template:
-            graph.is_active = True
-        else:
-            graph.is_active = False
-
-        id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
-
-        for node in graph.nodes:
-            node.id = id_map[node.id]
-
-        for link in graph.links:
-            link.source_id = id_map[link.source_id]
-            link.sink_id = id_map[link.sink_id]
-
-        return await autogpt_server.data.graph.create_graph(graph)
 
     async def execute_graph(
         self, graph_id: str, node_input: dict[Any, Any]
