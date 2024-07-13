@@ -6,7 +6,7 @@ nav:
   - Home: index.md
 
   - The AutoGPT Server 🆕: 
-    - Build your own Node: server/new_nodes.md
+    - Build your own Blocks: server/new_blocks.md
 
   - AutoGPT Agent:
       - Introduction: AutoGPT/index.md
