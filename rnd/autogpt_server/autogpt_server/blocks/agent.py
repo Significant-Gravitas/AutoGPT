@@ -91,7 +91,50 @@ class AutoGPTAgentBlock(Block):
             id="d2e2ecd2-9ae6-422d-8dfe-ceca500ce6a6",
             input_schema=AutoGPTAgentBlock.Input,
             output_schema=AutoGPTAgentBlock.Output,
+            test_input={
+                "task": "Make calculations and use output command to output the result.",
+                "input": "5 + 3",
+                "openai_api_key": "openai_api_key",
+                "enabled_components": [OutputComponent.__name__],
+                "disabled_commands": ["finish"],
+                "fast_mode": True,
+            },
+            test_output=[
+                ("result", "8"),
+            ],
+            test_mock={
+                "get_provider": lambda _: MultiProvider(),
+                "get_result": lambda _: "8",
+            }
         )
+
+    @staticmethod
+    def get_provider(openai_api_key: str) -> MultiProvider:
+        # LLM provider
+        settings = OpenAIProvider.default_settings.model_copy()
+        settings.credentials = OpenAICredentials(api_key=SecretStr(openai_api_key))
+        openai_provider = OpenAIProvider(settings=settings)
+        
+        multi_provider = MultiProvider()
+        # HACK: Add OpenAI provider to the multi provider with api key
+        multi_provider._provider_instances[ModelProviderName.OPENAI] = openai_provider
+
+        return multi_provider
+
+    @staticmethod
+    def get_result(agent: BlockAgent) -> str:
+        # Execute agent
+        for tries in range(3):
+            try:
+                proposal = asyncio.run(agent.propose_action())
+                break
+            except Exception as e:
+                if tries == 2:
+                    raise e
+
+        result = asyncio.run(agent.execute(proposal))
+
+        return str(result)
 
     def run(self, input_data: Input) -> BlockOutput:
         # Set up configuration
@@ -109,15 +152,6 @@ class AutoGPTAgentBlock(Block):
         )
         file_storage.initialize()
 
-        # LLM provider
-        settings = OpenAIProvider.default_settings.model_copy()
-        settings.credentials = OpenAICredentials(api_key=SecretStr(input_data.openai_api_key.get()))
-        openai_provider = OpenAIProvider(settings=settings)
-        
-        multi_provider = MultiProvider()
-        # HACK: Add OpenAI provider to the multi provider with api key
-        multi_provider._provider_instances[ModelProviderName.OPENAI] = openai_provider
-
         # State
         state = BlockAgentSettings(
             agent_id="TemporaryAgentID",
@@ -129,18 +163,10 @@ class AutoGPTAgentBlock(Block):
         )
         # Switch big brain mode
         state.config.big_brain = not input_data.fast_mode
+        provider = self.get_provider(input_data.openai_api_key.get())
 
-        agent = BlockAgent(state, multi_provider, file_storage, config)
+        agent = BlockAgent(state, provider, file_storage, config)
 
-        # Execute agent
-        for tries in range(3):
-            try:
-                proposal = asyncio.run(agent.propose_action())
-                break
-            except Exception as e:
-                if tries == 2:
-                    raise e
+        result = self.get_result(agent)
 
-        result = asyncio.run(agent.execute(proposal))
-
-        yield "result", str(result)
+        yield "result", result
