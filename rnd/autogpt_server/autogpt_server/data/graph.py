@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 import prisma.types
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink
@@ -154,38 +154,33 @@ async def get_graph_ids() -> list[str]:
 
 
 async def get_graphs_meta(
-    is_template: bool = False, is_active: bool = True, latest_version: bool = True
+    filter_by: Literal["is_active", "is_template"] | None = "is_active"
 ) -> list[GraphMeta]:
     """
-    Retrieves graph metadata based on the provided parameters.
-    Defauly behaviour is to get the latest active graph for each graph_id.
+    Retrieves graph metadata objects.
+    Default behaviour is to get all currently active graphs.
 
     Args:
-        is_template (bool): Indicates whether the graph is a template.
-        is_active (bool): Indicates whether the graph is active.
-        latest_version (bool): Indicates whether to retrieve only the latest version of each graph.
+        filter: An optional filter to either select templates or active graphs.
 
     Returns:
         list[GraphMeta]: A list of GraphMeta objects representing the retrieved graph metadata.
     """
-    where_clause = {"is_template": is_template}
+    where_clause: prisma.types.AgentGraphWhereInput = {}
 
-    if not is_template:
-        where_clause["is_active"] = is_active
-
-    where_clause = prisma.types.AgentGraphWhereInput(**where_clause)  # type: ignore
-    order_by = {"version": "desc"}  # type: ignore
+    if filter_by:
+        where_clause[filter_by] = True
 
     graphs = await AgentGraph.prisma().find_many(
         where=where_clause,
-        distinct=["graph_id"] if latest_version else None,
-        order=order_by,  # type: ignore
+        distinct=["graph_id"] if filter_by else None,
+        order={"version": "desc"},
     )
 
     if not graphs:
         return []
 
-    return [GraphMeta.from_db(graph) for graph in graphs]  # type: ignore
+    return [GraphMeta.from_db(graph) for graph in graphs]
 
 
 async def get_graph(graph_id: str, version: int | None = None) -> Graph:

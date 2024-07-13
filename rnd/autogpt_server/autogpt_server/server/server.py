@@ -246,7 +246,7 @@ class AgentServer(AppService):
 
     @classmethod
     async def get_templates(cls) -> list[autogpt_server.data.graph.GraphMeta]:
-        return await autogpt_server.data.graph.get_graphs_meta(is_template=True)
+        return await autogpt_server.data.graph.get_graphs_meta(filter_by="is_template")
 
     @classmethod
     async def get_graph(
