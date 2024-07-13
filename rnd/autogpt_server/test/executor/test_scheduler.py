@@ -1,6 +1,6 @@
 import pytest
 
-import test_manager # type: ignore
+import test_manager  # type: ignore
 from autogpt_server.executor.scheduler import ExecutionScheduler
 from autogpt_server.util.service import PyroNameServer, get_service_client
 from autogpt_server.server import AgentServer
@@ -20,10 +20,10 @@ async def test_agent_schedule():
                 assert len(schedules) == 0
 
                 schedule_id = scheduler.add_execution_schedule(
-                    test_graph.graph_id,
-                    1,
-                    "0 0 * * *",
-                    {"input": "data"}
+                    graph_id=test_graph.graph_id,
+                    version=1,
+                    cron="0 0 * * *",
+                    input_data={"input": "data"},
                 )
                 assert schedule_id
 
