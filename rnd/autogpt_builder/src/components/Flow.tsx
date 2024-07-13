@@ -196,7 +196,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
   };
 
   function loadFlow(flow: Flow) {
-    setAgentId(flow.id);
+    setAgentId(flow.graph_id);
 
     setNodes(flow.nodes.map(node => {
       const block = availableNodes.find(block => block.id === node.block_id)!;
@@ -333,7 +333,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
       };
 
       const createData = await api.createFlow(payload);
-      const newAgentId = createData.id;
+      const newAgentId = createData.graph_id;
       setAgentId(newAgentId);
       console.log('Response from the API:', JSON.stringify(createData, null, 2));
 
