@@ -46,3 +46,7 @@ class CreateGraph(pydantic.BaseModel):
     template_id: str | None = None
     template_version: int | None = None
     graph: autogpt_server.data.graph.Graph | None = None
+
+
+class SetGraphActiveVersion(pydantic.BaseModel):
+    active_graph_version: int

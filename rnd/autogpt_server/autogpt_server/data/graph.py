@@ -203,12 +203,19 @@ async def get_graph(graph_id: str, version: int | None = None) -> Graph:
     return Graph.from_db(graph)
 
 
-async def deactivate_other_graph_versions(graph_id: str, except_version: int) -> bool:
-    success = await AgentGraph.prisma().update_many(
-        data={"is_active": False},
-        where={"graph_id": graph_id, "version": {"not": except_version}},
+async def set_graph_active_version(graph_id: str, version: int) -> None:
+    updated_graph = await AgentGraph.prisma().update(
+        data={"is_active": True},
+        where={"id": {"graph_id": graph_id, "version": version}},
     )
-    return success is not None
+    if not updated_graph:
+        raise Exception(f"Graph #{graph_id} v{version} not found")
+
+    # Deactivate all other versions
+    await AgentGraph.prisma().update_many(
+        data={"is_active": False},
+        where={"graph_id": graph_id, "version": {"not": version}},
+    )
 
 
 async def get_graph_all_versions(graph_id: str) -> list[Graph]:

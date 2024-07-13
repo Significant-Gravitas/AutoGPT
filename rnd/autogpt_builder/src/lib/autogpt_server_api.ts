@@ -136,6 +136,33 @@ export default class AutoGPTServerAPI {
     }
   }
 
+  async setFlowActiveVersion(flowID: string, version: number): Promise<Flow> {
+    const path = `/graphs/${flowID}/versions/active`;
+    const payload: { active_graph_version: number } = { active_graph_version: version };
+    console.debug(`PUT ${path} payload:`, payload);
+
+    try {
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      const response_data = await response.json();
+      if (!response.ok) {
+        console.warn(
+          `PUT ${path} returned non-OK response:`, response_data.detail, response
+        );
+        throw new Error(`HTTP error ${response.status}! ${response_data.detail}`)
+      }
+      return response_data;
+    } catch (error) {
+      console.error("Error updating flow:", error);
+      throw error;
+    }
+  }
+
   async executeFlow(
     flowId: string, inputData: { [key: string]: any } = {}
   ): Promise<FlowExecuteResponse> {

@@ -21,7 +21,12 @@ import autogpt_server.server.ws_api
 from autogpt_server.data import block, db, execution
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
-from autogpt_server.server.model import CreateGraph, Methods, WsMessage
+from autogpt_server.server.model import (
+    CreateGraph,
+    Methods,
+    SetGraphActiveVersion,
+    WsMessage,
+)
 from autogpt_server.util.data import get_frontend_path
 from autogpt_server.util.service import expose  # type: ignore
 from autogpt_server.util.service import AppService, get_service_client
@@ -125,6 +130,11 @@ class AgentServer(AppService):
         router.add_api_route(
             path="/graphs/{graph_id}",
             endpoint=self.update_graph,
+            methods=["PUT"],
+        )
+        router.add_api_route(
+            path="/graphs/{graph_id}/versions/active",
+            endpoint=self.set_graph_active_version,
             methods=["PUT"],
         )
         router.add_api_route(
@@ -498,11 +508,24 @@ class AgentServer(AppService):
 
         if new_graph_version.is_active:
             # Ensure new version is the only active version
-            await autogpt_server.data.graph.deactivate_other_graph_versions(
-                graph_id=graph_id, except_version=new_graph_version.version
+            await autogpt_server.data.graph.set_graph_active_version(
+                graph_id=graph_id, version=new_graph_version.version
             )
 
         return new_graph_version
+
+    @classmethod
+    async def set_graph_active_version(
+        cls, graph_id: str, request_body: SetGraphActiveVersion
+    ):
+        new_active_version = request_body.active_graph_version
+        if not await autogpt_server.data.graph.get_graph(graph_id, new_active_version):
+            raise HTTPException(
+                404, f"Graph #{graph_id} v{new_active_version} not found"
+            )
+        await autogpt_server.data.graph.set_graph_active_version(
+            graph_id=graph_id, version=request_body.active_graph_version
+        )
 
     async def execute_graph(
         self, graph_id: str, node_input: dict[Any, Any]
