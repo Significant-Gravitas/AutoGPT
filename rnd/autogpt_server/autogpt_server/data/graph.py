@@ -226,7 +226,7 @@ async def get_graph_all_versions(graph_id: str) -> list[Graph]:
     if not graph_history:
         return []
 
-    return [GraphMeta.from_db(graph) for graph in graph_history]  # type: ignore
+    return [Graph.from_db(graph) for graph in graph_history]
 
 
 async def create_graph(graph: Graph) -> Graph:
