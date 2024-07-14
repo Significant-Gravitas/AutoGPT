@@ -95,7 +95,7 @@ class AgentServer(AppService):
         router.add_api_route(
             path="/templates",
             endpoint=self.update_graph,
-            methods=["PATCH"],
+            methods=["PUT"],
         )
         router.add_api_route(
             path="/templates/{graph_id}",
@@ -464,10 +464,7 @@ class AgentServer(AppService):
         graph.graph_id = str(uuid.uuid4())
 
         graph.is_template = is_template
-        if not graph.is_template:
-            graph.is_active = True
-        else:
-            graph.is_active = False
+        graph.is_active = not is_template
 
         id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
 
