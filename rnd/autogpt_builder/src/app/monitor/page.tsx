@@ -34,7 +34,7 @@ const Monitor = () => {
   useEffect(() => fetchFlowsAndRuns(), []);
   useEffect(() => {
     const intervalId = setInterval(
-      () => flows.map(f => refreshFlowRuns(f.graph_id)), 5000
+      () => flows.map(f => refreshFlowRuns(f.id)), 5000
     );
     return () => clearInterval(intervalId);
   }, []);
@@ -90,7 +90,7 @@ const Monitor = () => {
         selectedFlow={selectedFlow}
         onSelectFlow={f => {
           setSelectedRun(null);
-          setSelectedFlow(f.graph_id == selectedFlow?.graph_id ? null : f);
+          setSelectedFlow(f.id == selectedFlow?.id ? null : f);
         }}
       />
       <FlowRunsList
@@ -99,7 +99,7 @@ const Monitor = () => {
         runs={
           (
             selectedFlow
-              ? flowRuns.filter(v => v.flowID == selectedFlow.graph_id)
+              ? flowRuns.filter(v => v.flowID == selectedFlow.id)
               : flowRuns
           )
           .toSorted((a, b) => Number(a.startTime) - Number(b.startTime))
@@ -110,13 +110,13 @@ const Monitor = () => {
       <div className="col-span-full xl:col-span-4 xxl:col-span-5">
         {selectedRun && (
           <FlowRunInfo
-            flow={selectedFlow || flows.find(f => f.graph_id == selectedRun.flowID)!}
+            flow={selectedFlow || flows.find(f => f.id == selectedRun.flowID)!}
             flowRun={selectedRun}
           />
         ) || selectedFlow && (
           <FlowInfo
             flow={selectedFlow}
-            flowRuns={flowRuns.filter(r => r.flowID == selectedFlow.graph_id)}
+            flowRuns={flowRuns.filter(r => r.flowID == selectedFlow.id)}
           />
         ) || (
           <Card className="p-6">
@@ -215,7 +215,7 @@ const AgentFlowList = (
             .map((flow) => {
               let runCount = 0, lastRun: FlowRun | null = null;
               if (flowRuns) {
-                const _flowRuns = flowRuns.filter(r => r.flowID == flow.graph_id);
+                const _flowRuns = flowRuns.filter(r => r.flowID == flow.id);
                 runCount = _flowRuns.length;
                 lastRun = runCount == 0 ? null : _flowRuns.reduce(
                   (a, c) => a.startTime > c.startTime ? a : c
@@ -231,10 +231,10 @@ const AgentFlowList = (
             })
             .map(({ flow, runCount, lastRun }) => (
               <TableRow
-                key={flow.graph_id}
+                key={flow.id}
                 className="cursor-pointer"
                 onClick={() => onSelectFlow(flow)}
-                data-state={selectedFlow?.graph_id == flow.graph_id ? "selected" : null}
+                data-state={selectedFlow?.id == flow.id ? "selected" : null}
               >
                 <TableCell>{flow.name}</TableCell>
                 {/* <TableCell><FlowStatusBadge status={flow.status ?? "active"} /></TableCell> */}
@@ -297,7 +297,7 @@ const FlowRunsList: React.FC<{
               onClick={() => onSelectRun(run)}
               data-state={selectedRun?.id == run.id ? "selected" : null}
             >
-              <TableCell>{flows.find(f => f.graph_id == run.flowID)!.name}</TableCell>
+              <TableCell>{flows.find(f => f.id == run.flowID)!.name}</TableCell>
               <TableCell>{moment(run.startTime).format("HH:mm")}</TableCell>
               <TableCell><FlowRunStatusBadge status={run.status} /></TableCell>
               <TableCell>{formatDuration(run.duration)}</TableCell>
@@ -335,16 +335,16 @@ const FlowInfo: React.FC<{
     <CardHeader className="flex-row items-center justify-between space-y-0 space-x-3">
       <div>
         <CardTitle>{flow.name}</CardTitle>
-        <p className="mt-2">Agent ID: <code>{flow.graph_id}</code></p>
+        <p className="mt-2">Agent ID: <code>{flow.id}</code></p>
       </div>
-      <Link className={buttonVariants({ variant: "outline" })} href={`/build?flowID=${flow.graph_id}`}>
+      <Link className={buttonVariants({ variant: "outline" })} href={`/build?flowID=${flow.id}`}>
         <Pencil2Icon className="mr-2" /> Edit Agent
       </Link>
     </CardHeader>
     <CardContent>
       <FlowRunsStats
         flows={[flow]}
-        flowRuns={flowRuns.filter(r => r.flowID == flow.graph_id)}
+        flowRuns={flowRuns.filter(r => r.flowID == flow.id)}
       />
     </CardContent>
   </Card>;
@@ -354,7 +354,7 @@ const FlowRunInfo: React.FC<{
   flow: Flow;
   flowRun: FlowRun;
 }> = ({ flow, flowRun }) => {
-  if (flowRun.flowID != flow.graph_id) {
+  if (flowRun.flowID != flow.id) {
     throw new Error(`FlowRunInfo can't be used with non-matching flowRun.flowID and flow.id`)
   }
 
@@ -362,10 +362,10 @@ const FlowRunInfo: React.FC<{
     <CardHeader className="flex-row items-center justify-between space-y-0 space-x-3">
       <div>
         <CardTitle>{flow.name}</CardTitle>
-        <p className="mt-2">Agent ID: <code>{flow.graph_id}</code></p>
+        <p className="mt-2">Agent ID: <code>{flow.id}</code></p>
         <p className="mt-1">Run ID: <code>{flowRun.id}</code></p>
       </div>
-      <Link className={buttonVariants({ variant: "outline" })} href={`/build?flowID=${flow.graph_id}`}>
+      <Link className={buttonVariants({ variant: "outline" })} href={`/build?flowID=${flow.id}`}>
         <Pencil2Icon className="mr-2" /> Edit Agent
       </Link>
     </CardHeader>
@@ -481,7 +481,7 @@ const FlowRunsTimeline = (
         content={({ payload, label }) => {
           if (payload && payload.length) {
             const data: FlowRun & { time: number, _duration: number } = payload[0].payload;
-            const flow = flows.find(f => f.graph_id === data.flowID);
+            const flow = flows.find(f => f.id === data.flowID);
             return (
               <Card className="p-2 text-xs leading-normal">
                 <p><strong>Agent:</strong> {flow ? flow.name : 'Unknown'}</p>
@@ -501,14 +501,14 @@ const FlowRunsTimeline = (
       />
       {flows.map((flow) => (
         <Scatter
-          key={flow.graph_id}
-          data={flowRuns.filter(fr => fr.flowID == flow.graph_id).map(fr => ({
+          key={flow.id}
+          data={flowRuns.filter(fr => fr.flowID == flow.id).map(fr => ({
             ...fr,
             time: fr.startTime + (fr.totalRunTime * 1000),
             _duration: fr.totalRunTime,
           }))}
           name={flow.name}
-          fill={`hsl(${hashString(flow.graph_id) * 137.5 % 360}, 70%, 50%)`}
+          fill={`hsl(${hashString(flow.id) * 137.5 % 360}, 70%, 50%)`}
         />
       ))}
       {flowRuns.map((run) => (

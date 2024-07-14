@@ -399,7 +399,7 @@ class AgentServer(AppService):
 
     @classmethod
     async def get_templates(cls) -> list[autogpt_server.data.graph.GraphMeta]:
-        return await autogpt_server.data.graph.get_graphs_meta(filter_by="is_template")
+        return await autogpt_server.data.graph.get_graphs_meta(filter_by="template")
 
     @classmethod
     async def get_graph(
@@ -461,7 +461,7 @@ class AgentServer(AppService):
             )
 
         # TODO: replace uuid generation here to DB generated uuids.
-        graph.graph_id = str(uuid.uuid4())
+        graph.id = str(uuid.uuid4())
 
         graph.is_template = is_template
         graph.is_active = not is_template
@@ -482,7 +482,7 @@ class AgentServer(AppService):
         cls, graph_id: str, graph: autogpt_server.data.graph.Graph
     ) -> autogpt_server.data.graph.Graph:
         # Sanity check
-        if graph.graph_id and graph.graph_id != graph_id:
+        if graph.id and graph.id != graph_id:
             raise HTTPException(400, detail="Graph ID does not match ID in URI")
 
         # Determine new version
