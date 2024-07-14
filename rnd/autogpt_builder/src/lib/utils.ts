@@ -31,7 +31,6 @@ export function beautifyString(name: string): string {
 const exceptionMap = new Map<string, string>([
   ['Auto Gpt', 'AutoGPT'],
   ['Gpt', 'GPT'],
-  ['Auto GPT', 'AutoGPT'],
   ['Creds', 'Credentials'],
   ['Id', 'ID'],
   ['Openai', 'OpenAI'],
