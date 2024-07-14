@@ -366,7 +366,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
 
     setNodes(updatedNodes);
 
-    return newSavedAgent.graph_id;
+    return newSavedAgent.id;
   };
 
   const runAgent = async () => {
