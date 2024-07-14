@@ -149,7 +149,9 @@ async def get_node(node_id: str) -> Node | None:
 async def get_graph_ids() -> list[str]:
     return [
         graph.graph_id
-        for graph in await AgentGraph.prisma().find_many(where={"is_template": False})
+        for graph in await AgentGraph.prisma().find_many(
+            distinct=["graph_id"], where={"is_template": False}
+        )
     ]  # type: ignore
 
 
