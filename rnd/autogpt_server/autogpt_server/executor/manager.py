@@ -22,8 +22,7 @@ from autogpt_server.data.execution import (
     ExecutionQueue,
 )
 from autogpt_server.data.graph import Link, Node, get_node, get_graph
-from autogpt_server.util.service import AppService, expose, \
-    get_service_client  # type: ignore
+from autogpt_server.util.service import AppService, expose, get_service_client
 
 logger = logging.getLogger(__name__)
 
