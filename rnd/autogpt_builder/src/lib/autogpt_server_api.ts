@@ -254,10 +254,15 @@ export type Node = {
 
 /* Mirror of autogpt_server/data/graph.py:Link */
 export type Link = {
+  id: string;
   source_id: string;
   sink_id: string;
   source_name: string;
   sink_name: string;
+}
+
+export type LinkCreatable = Omit<Link, "id"> & {
+  id?: string;
 }
 
 /* Mirror of autogpt_server/data/graph.py:GraphMeta */
@@ -278,11 +283,12 @@ export type Flow = FlowMeta & {
 
 export type FlowUpdateable = Omit<
   Flow,
-  "version" | "is_active" | "is_template"
+  "version" | "is_active" | "is_template" | "links"
 > & {
   version?: number;
   is_active?: boolean;
   is_template?: boolean;
+  links: Array<LinkCreatable>;
 }
 
 export type FlowCreatable = Omit<FlowUpdateable, "id"> & { id?: string }

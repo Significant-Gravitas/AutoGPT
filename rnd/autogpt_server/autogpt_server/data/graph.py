@@ -4,29 +4,22 @@ from typing import Any, Literal
 
 import prisma.types
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink
-from pydantic import BaseModel, PrivateAttr, field_validator
+from pydantic import PrivateAttr
 
 from autogpt_server.data.db import BaseDbModel
 from autogpt_server.util import json
 
 
-class Link(BaseModel):
+class Link(BaseDbModel):
     source_id: str
     sink_id: str
     source_name: str
     sink_name: str
 
-    def __init__(self, source_id: str, sink_id: str, source_name: str, sink_name: str):
-        super().__init__(
-            source_id=source_id,
-            sink_id=sink_id,
-            source_name=source_name,
-            sink_name=sink_name,
-        )
-
     @staticmethod
     def from_db(link: AgentNodeLink):
         return Link(
+            id=link.id,
             source_name=link.sourceName,
             source_id=link.agentNodeSourceId,
             sink_name=link.sinkName,
@@ -68,19 +61,29 @@ class Node(BaseDbModel):
         return obj
 
 
-class Graph(BaseModel):
-    id: str = ""
+class GraphMeta(BaseDbModel):
     version: int = 1
     is_active: bool = True
     is_template: bool = False
+
     name: str
     description: str
+
+    @staticmethod
+    def from_db(graph: AgentGraph):
+        return GraphMeta(
+            id=graph.id,
+            version=graph.version,
+            is_active=graph.isActive,
+            is_template=graph.isTemplate,
+            name=graph.name or "",
+            description=graph.description or "",
+        )
+
+
+class Graph(GraphMeta):
     nodes: list[Node]
     links: list[Link]
-
-    @field_validator("id", mode="before")
-    def set_graph_id(cls, id: str) -> str:
-        return id or str(uuid.uuid4())
 
     @property
     def starting_nodes(self) -> list[Node]:
@@ -90,12 +93,7 @@ class Graph(BaseModel):
     @staticmethod
     def from_db(graph: AgentGraph):
         return Graph(
-            id=graph.id,
-            version=graph.version,
-            is_active=graph.isActive,
-            is_template=graph.isTemplate,
-            name=graph.name or "",
-            description=graph.description or "",
+            **GraphMeta.from_db(graph).model_dump(),
             nodes=[Node.from_db(node) for node in graph.AgentNodes or []],
             links=list(
                 {
@@ -104,26 +102,6 @@ class Graph(BaseModel):
                     for link in (node.Input or []) + (node.Output or [])
                 }
             ),
-        )
-
-
-class GraphMeta(BaseModel):
-    id: str
-    version: int
-    name: str
-    description: str
-    is_active: bool
-    is_template: bool
-
-    @staticmethod
-    def from_db(graph: AgentGraph):
-        return GraphMeta(
-            id=graph.id,
-            version=graph.version,
-            name=graph.name or "",
-            description=graph.description or "",
-            is_active=graph.isActive,
-            is_template=graph.isTemplate,
         )
 
 
