@@ -199,7 +199,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           {Object.entries(objectValue).map(([propKey, propValue]: [string, any]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
               <div className="clickable-input" onClick={() => handleInputClick(`${fullKey}.${propKey}`)}>
-                {propKey}: {typeof propValue === 'object' ? JSON.stringify(propValue, null, 2) : propValue}
+                {beautifyString(propKey)}: {typeof propValue === 'object' ? JSON.stringify(propValue, null, 2) : propValue}
               </div>
               <Button onClick={() => handleInputChange(`${fullKey}.${propKey}`, undefined)} className="array-item-remove">
                 &times;

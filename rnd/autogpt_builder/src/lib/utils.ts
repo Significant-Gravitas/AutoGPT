@@ -29,7 +29,7 @@ export function beautifyString(name: string): string {
 };
 
 const exceptionMap = new Map<string, string>([
-  ['Auto Gpt', 'AutoGPT'],
+  ['Auto GPT', 'AutoGPT'],
   ['Gpt', 'GPT'],
   ['Creds', 'Credentials'],
   ['Id', 'ID'],
@@ -40,10 +40,10 @@ const exceptionMap = new Map<string, string>([
   ['Json', 'JSON']
 ]);
 
-const applyExceptions = (str: string) => {
-  Object.keys(exceptionMap).forEach(key => {
+const applyExceptions = (str: string): string => {
+  exceptionMap.forEach((value, key) => {
     const regex = new RegExp(`\\b${key}\\b`, 'g');
-    str = str.replace(regex, exceptionMap.get(key)!);
+    str = str.replace(regex, value);
   });
   return str;
 };
