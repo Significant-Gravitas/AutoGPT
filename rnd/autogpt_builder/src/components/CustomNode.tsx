@@ -33,6 +33,7 @@ type CustomNodeData = {
 
 const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(data.isPropertiesOpen || false);
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [keyValuePairs, setKeyValuePairs] = useState<{ key: string, value: string }[]>([]);
   const [newKey, setNewKey] = useState<string>('');
   const [newValue, setNewValue] = useState<string>('');
@@ -55,6 +56,16 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     setIsPropertiesOpen(!isPropertiesOpen);
   };
 
+  const toggleAdvancedSettings = () => {
+    setIsAdvancedOpen(!isAdvancedOpen);
+  };
+
+  const hasOptionalFields = () => {
+    return data.inputSchema && Object.keys(data.inputSchema.properties).some((key) => {
+      return !(data.inputSchema.required?.includes(key));
+    });
+  };
+
   const generateHandles = (schema: Schema, type: 'source' | 'target') => {
     if (!schema?.properties) return null;
     const keys = Object.keys(schema.properties);
@@ -66,7 +77,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               type={type}
               position={Position.Left}
               id={key}
-              style={{ background: '#555', borderRadius: '50%' }}
+              style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
             />
             <span className="handle-label">{key}</span>
           </>
@@ -78,7 +89,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               type={type}
               position={Position.Right}
               id={key}
-              style={{ background: '#555', borderRadius: '50%' }}
+              style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
             />
           </>
         )}
@@ -389,27 +400,27 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' :''}`}>
       <div className="node-header">
         <div className="node-title">{data.blockType || data.title}</div>
-        <Button onClick={toggleProperties} className="toggle-button">
-          &#9776;
-        </Button>
       </div>
       <div className="node-content">
         <div className="input-section">
           {data.inputSchema &&
-            Object.entries(data.inputSchema.properties).map(([key, schema]) => (
-              <div key={key}>
-                <div className="handle-container">
-                  <Handle
-                    type="target"
-                    position={Position.Left}
-                    id={key}
-                    style={{ background: '#555', borderRadius: '50%' }}
-                  />
-                  <span className="handle-label">{key}</span>
+            Object.entries(data.inputSchema.properties).map(([key, schema]) => {
+              const isRequired = data.inputSchema.required?.includes(key);
+              return (isRequired || isAdvancedOpen) && (
+                <div key={key}>
+                  <div className="handle-container">
+                    <Handle
+                      type="target"
+                      position={Position.Left}
+                      id={key}
+                      style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
+                    />
+                    <span className="handle-label">{key}</span>
+                  </div>
+                  {renderInputField(key, schema)}
                 </div>
-                {renderInputField(key, schema)}
-              </div>
-            ))}
+              );
+            })}
         </div>
         <div className="output-section">
           {data.outputSchema && generateHandles(data.outputSchema, 'source')}
@@ -430,6 +441,16 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </p>
         </div>
       )}
+      <div className="node-footer">
+        <Button onClick={toggleProperties} className="toggle-button">
+          Toggle Properties
+        </Button>
+        {hasOptionalFields() && (
+          <Button onClick={toggleAdvancedSettings} className="toggle-button">
+            Toggle Advanced
+          </Button>
+        )}
+      </div>
       <ModalComponent
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

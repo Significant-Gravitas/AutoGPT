@@ -309,7 +309,7 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
         return ChatModelResponse(
             response=assistant_msg,
             parsed_result=parsed_result,
-            model_info=ANTHROPIC_CHAT_MODELS[model_name],
+            llm_info=ANTHROPIC_CHAT_MODELS[model_name],
             prompt_tokens_used=t_input,
             completion_tokens_used=t_output,
         )
