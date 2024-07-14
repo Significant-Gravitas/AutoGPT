@@ -47,6 +47,9 @@ def execute_block_test(block: Block):
             compare(output_name, ex_output_name)
             compare(output_data, ex_output_data)
             output_index += 1
+            
+    if output_index < len(block.test_output):
+        raise ValueError(f"{prefix} produced output less than expected")
 
 
 def test_available_blocks():

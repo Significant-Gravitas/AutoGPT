@@ -45,6 +45,45 @@ class TextMatcherBlock(Block):
             yield "negative", output
 
 
+class TextParserBlock(Block):
+    class Input(BlockSchema):
+        text: str = Field(description="Text to parse")
+        pattern: str = Field(description="Pattern (Regex) to parse")
+        group: int = Field(description="Group number to extract", default=0)
+        case_sensitive: bool = Field(description="Case sensitive match", default=True)
+
+    class Output(BlockSchema):
+        positive: str = Field(description="Extracted text")
+        negative: str = Field(description="Original text")
+
+    def __init__(self):
+        super().__init__(
+            id="3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+            input_schema=TextParserBlock.Input,
+            output_schema=TextParserBlock.Output,
+            test_input=[
+                {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 1},
+                {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 0},
+                {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 2},
+                {"text": "Hello, World!", "pattern": "hello,", "case_sensitive": False},
+            ],
+            test_output=[
+                ("positive", "World!"),
+                ("positive", "Hello, World!"),
+                ("negative", "Hello, World!"),
+                ("positive", "Hello,"),
+            ],
+        )
+
+    def run(self, input_data: Input) -> BlockOutput:
+        case_flag = 0 if input_data.case_sensitive else re.IGNORECASE
+        match = re.search(input_data.pattern, input_data.text, case_flag)
+        if match and input_data.group <= len(match.groups()):
+            yield "positive", match.group(input_data.group)
+        else:
+            yield "negative", input_data.text
+
+
 class TextFormatterBlock(Block):
     class Input(BlockSchema):
         texts: list[str] = Field(
