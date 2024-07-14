@@ -16,9 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-import autogpt_server.data.graph
 import autogpt_server.server.ws_api
-from autogpt_server.data import block, db, execution
+from autogpt_server.data import block, db, execution, graph as graph_db
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import (
@@ -395,17 +394,17 @@ class AgentServer(AppService):
 
     @classmethod
     async def get_graphs(cls) -> list[str]:
-        return await autogpt_server.data.graph.get_graph_ids()
+        return await graph_db.get_graph_ids()
 
     @classmethod
-    async def get_templates(cls) -> list[autogpt_server.data.graph.GraphMeta]:
-        return await autogpt_server.data.graph.get_graphs_meta(filter_by="template")
+    async def get_templates(cls) -> list[graph_db.GraphMeta]:
+        return await graph_db.get_graphs_meta(filter_by="template")
 
     @classmethod
     async def get_graph(
         cls, graph_id: str, version: int | None = None
-    ) -> autogpt_server.data.graph.Graph:
-        graph = await autogpt_server.data.graph.get_graph(graph_id, version)
+    ) -> graph_db.Graph:
+        graph = await graph_db.get_graph(graph_id, version)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         return graph
@@ -413,8 +412,8 @@ class AgentServer(AppService):
     @classmethod
     async def get_template(
         cls, graph_id: str, version: int | None = None
-    ) -> autogpt_server.data.graph.Graph:
-        graph = await autogpt_server.data.graph.get_graph(graph_id, version)
+    ) -> graph_db.Graph:
+        graph = await graph_db.get_graph(graph_id, version)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         if not graph.is_template:
@@ -424,34 +423,28 @@ class AgentServer(AppService):
         return graph
 
     @classmethod
-    async def get_graph_all_versions(
-        cls, graph_id: str
-    ) -> list[autogpt_server.data.graph.Graph]:
-        graphs = await autogpt_server.data.graph.get_graph_all_versions(graph_id)
+    async def get_graph_all_versions(cls, graph_id: str) -> list[graph_db.Graph]:
+        graphs = await graph_db.get_graph_all_versions(graph_id)
         if not graphs:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         return graphs
 
     @classmethod
-    async def create_new_graph(
-        cls, create_graph: CreateGraph
-    ) -> autogpt_server.data.graph.Graph:
+    async def create_new_graph(cls, create_graph: CreateGraph) -> graph_db.Graph:
         return await cls.create_graph(create_graph, is_template=False)
 
     @classmethod
-    async def create_new_template(
-        cls, create_graph: CreateGraph
-    ) -> autogpt_server.data.graph.Graph:
+    async def create_new_template(cls, create_graph: CreateGraph) -> graph_db.Graph:
         return await cls.create_graph(create_graph, is_template=True)
 
     @classmethod
     async def create_graph(
         cls, create_graph: CreateGraph, is_template: bool
-    ) -> autogpt_server.data.graph.Graph:
+    ) -> graph_db.Graph:
         if create_graph.graph:
             graph = create_graph.graph
         elif create_graph.template_id:
-            graph = await autogpt_server.data.graph.get_graph(
+            graph = await graph_db.get_graph(
                 create_graph.template_id, create_graph.template_version
             )
             graph.version = 1
@@ -475,20 +468,16 @@ class AgentServer(AppService):
             link.source_id = id_map[link.source_id]
             link.sink_id = id_map[link.sink_id]
 
-        return await autogpt_server.data.graph.create_graph(graph)
+        return await graph_db.create_graph(graph)
 
     @classmethod
-    async def update_graph(
-        cls, graph_id: str, graph: autogpt_server.data.graph.Graph
-    ) -> autogpt_server.data.graph.Graph:
+    async def update_graph(cls, graph_id: str, graph: graph_db.Graph) -> graph_db.Graph:
         # Sanity check
         if graph.id and graph.id != graph_id:
             raise HTTPException(400, detail="Graph ID does not match ID in URI")
 
         # Determine new version
-        existing_versions = await autogpt_server.data.graph.get_graph_all_versions(
-            graph_id
-        )
+        existing_versions = await graph_db.get_graph_all_versions(graph_id)
         if not existing_versions:
             raise HTTPException(400, detail=f"Unknown graph ID '{graph_id}'")
         graph.version = max(g.version for g in existing_versions) + 1
@@ -506,11 +495,11 @@ class AgentServer(AppService):
             link.source_id = id_map[link.source_id]
             link.sink_id = id_map[link.sink_id]
 
-        new_graph_version = await autogpt_server.data.graph.create_graph(graph)
+        new_graph_version = await graph_db.create_graph(graph)
 
         if new_graph_version.is_active:
             # Ensure new version is the only active version
-            await autogpt_server.data.graph.set_graph_active_version(
+            await graph_db.set_graph_active_version(
                 graph_id=graph_id, version=new_graph_version.version
             )
 
@@ -521,11 +510,11 @@ class AgentServer(AppService):
         cls, graph_id: str, request_body: SetGraphActiveVersion
     ):
         new_active_version = request_body.active_graph_version
-        if not await autogpt_server.data.graph.get_graph(graph_id, new_active_version):
+        if not await graph_db.get_graph(graph_id, new_active_version):
             raise HTTPException(
                 404, f"Graph #{graph_id} v{new_active_version} not found"
             )
-        await autogpt_server.data.graph.set_graph_active_version(
+        await graph_db.set_graph_active_version(
             graph_id=graph_id, version=request_body.active_graph_version
         )
 
@@ -542,7 +531,7 @@ class AgentServer(AppService):
     async def list_graph_runs(
         cls, graph_id: str, graph_version: int | None = None
     ) -> list[str]:
-        graph = await autogpt_server.data.graph.get_graph(graph_id, graph_version)
+        graph = await graph_db.get_graph(graph_id, graph_version)
         if not graph:
             rev = "" if graph_version is None else f" v{graph_version}"
             raise HTTPException(
@@ -555,7 +544,7 @@ class AgentServer(AppService):
     async def get_run_execution_results(
         cls, graph_id: str, run_id: str
     ) -> list[execution.ExecutionResult]:
-        graph = await autogpt_server.data.graph.get_graph(graph_id)
+        graph = await graph_db.get_graph(graph_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Agent #{graph_id} not found.")
 
@@ -564,7 +553,7 @@ class AgentServer(AppService):
     async def create_schedule(
         self, graph_id: str, cron: str, input_data: dict[Any, Any]
     ) -> dict[Any, Any]:
-        graph = await autogpt_server.data.graph.get_graph(graph_id)
+        graph = await graph_db.get_graph(graph_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         execution_scheduler = self.execution_scheduler_client
