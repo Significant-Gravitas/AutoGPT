@@ -42,9 +42,7 @@ const Monitor = () => {
 
   useEffect(() => fetchFlowsAndRuns(), []);
   useEffect(() => {
-    const intervalId = setInterval(
-      () => flows.map(f => refreshFlowRuns(f.id)), 5000
-    );
+    const intervalId = setInterval(() => flows.map(f => refreshFlowRuns(f.id)), 5000);
     return () => clearInterval(intervalId);
   }, []);
 
