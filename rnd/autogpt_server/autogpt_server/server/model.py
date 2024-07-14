@@ -2,7 +2,9 @@ import enum
 import typing
 
 import pydantic
+
 import autogpt_server.data.graph
+
 
 class Methods(enum.Enum):
     SUBSCRIBE = "subscribe"
@@ -39,6 +41,12 @@ class SubscriptionDetails(pydantic.BaseModel):
     channel: str
     graph_id: str
 
+
 class CreateGraph(pydantic.BaseModel):
-    tempalte_id: str | None = None
+    template_id: str | None = None
+    template_version: int | None = None
     graph: autogpt_server.data.graph.Graph | None = None
+
+
+class SetGraphActiveVersion(pydantic.BaseModel):
+    active_graph_version: int

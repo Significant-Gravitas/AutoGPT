@@ -1,9 +1,10 @@
 import asyncio
 import uuid
-from typing import Any
+from typing import Any, Literal
 
+import prisma.types
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, PrivateAttr, field_validator
 
 from autogpt_server.data.db import BaseDbModel
 from autogpt_server.util import json
@@ -67,11 +68,19 @@ class Node(BaseDbModel):
         return obj
 
 
-class Graph(BaseDbModel):
+class Graph(BaseModel):
+    id: str = ""
+    version: int = 1
+    is_active: bool = True
+    is_template: bool = False
     name: str
     description: str
     nodes: list[Node]
     links: list[Link]
+
+    @field_validator("id", mode="before")
+    def set_graph_id(cls, id: str) -> str:
+        return id or str(uuid.uuid4())
 
     @property
     def starting_nodes(self) -> list[Node]:
@@ -82,6 +91,9 @@ class Graph(BaseDbModel):
     def from_db(graph: AgentGraph):
         return Graph(
             id=graph.id,
+            version=graph.version,
+            is_active=graph.isActive,
+            is_template=graph.isTemplate,
             name=graph.name or "",
             description=graph.description or "",
             nodes=[Node.from_db(node) for node in graph.AgentNodes or []],
@@ -96,16 +108,22 @@ class Graph(BaseDbModel):
 
 
 class GraphMeta(BaseModel):
+    id: str
+    version: int
     name: str
     description: str
+    is_active: bool
     is_template: bool
 
     @staticmethod
     def from_db(graph: AgentGraph):
         return GraphMeta(
+            id=graph.id,
+            version=graph.version,
             name=graph.name or "",
             description=graph.description or "",
-            is_template=graph.is_template,
+            is_active=graph.isActive,
+            is_template=graph.isTemplate,
         )
 
 
@@ -127,38 +145,105 @@ async def get_node(node_id: str) -> Node | None:
     return Node.from_db(node) if node else None
 
 
+# TODO: Delete this
 async def get_graph_ids() -> list[str]:
     return [
         graph.id
-        for graph in await AgentGraph.prisma().find_many(where={"is_template": False})
+        for graph in await AgentGraph.prisma().find_many(
+            distinct=["id"], where={"isTemplate": False}
+        )
     ]  # type: ignore
 
 
-async def get_template_meta() -> list[GraphMeta]:
-    templates = await AgentGraph.prisma().find_many(
-        where={"is_template": True},
+async def get_graphs_meta(
+    filter_by: Literal["active", "template"] | None = "active"
+) -> list[GraphMeta]:
+    """
+    Retrieves graph metadata objects.
+    Default behaviour is to get all currently active graphs.
+
+    Args:
+        filter: An optional filter to either select templates or active graphs.
+
+    Returns:
+        list[GraphMeta]: A list of GraphMeta objects representing the retrieved graph metadata.
+    """
+    where_clause: prisma.types.AgentGraphWhereInput = {}
+
+    if filter_by == "active":
+        where_clause["isActive"] = True
+    elif filter_by == "template":
+        where_clause["isTemplate"] = True
+
+    graphs = await AgentGraph.prisma().find_many(
+        where=where_clause,
+        distinct=["id"] if filter_by else None,
+        order={"version": "desc"},
     )
-    if not templates:
+
+    if not graphs:
         return []
 
-    return [GraphMeta.from_db(template) for template in templates]  # type: ignore
+    return [GraphMeta.from_db(graph) for graph in graphs]
 
 
-async def get_graph(graph_id: str, is_template: bool = False) -> Graph:
+async def get_graph(graph_id: str, version: int | None = None) -> Graph:
+    """
+    Retrieves a graph from the DB.
+    Defaults to the current active version if `version` is not passed.
+    """
+    where_clause: prisma.types.AgentGraphWhereInput = {"id": graph_id}
+    if version is not None:
+        where_clause["version"] = version
+    else:
+        where_clause["isActive"] = True
+
     graph = await AgentGraph.prisma().find_first_or_raise(
-        where={"id": graph_id, "is_template": is_template},
+        where=where_clause,
         include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
+        distinct=["id"] if not version else None,
+        order={"version": "desc"},
     )
     return Graph.from_db(graph)
 
 
-async def create_graph(graph: Graph, is_template: bool = False) -> Graph:
+async def set_graph_active_version(graph_id: str, version: int) -> None:
+    updated_graph = await AgentGraph.prisma().update(
+        data={"isActive": True},
+        where={"graphVersionId": {"id": graph_id, "version": version}},
+    )
+    if not updated_graph:
+        raise Exception(f"Graph #{graph_id} v{version} not found")
+
+    # Deactivate all other versions
+    await AgentGraph.prisma().update_many(
+        data={"isActive": False},
+        where={"id": graph_id, "version": {"not": version}},
+    )
+
+
+async def get_graph_all_versions(graph_id: str) -> list[Graph]:
+    graph_history = await AgentGraph.prisma().find_many(
+        where={"id": graph_id},
+        order={"version": "desc"},
+        include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
+    )
+
+    if not graph_history:
+        return []
+
+    return [Graph.from_db(graph) for graph in graph_history]
+
+
+async def create_graph(graph: Graph) -> Graph:
     await AgentGraph.prisma().create(
         data={
             "id": graph.id,
+            "version": graph.version,
             "name": graph.name,
             "description": graph.description,
-            "is_template": is_template,
+            "isTemplate": graph.is_template,
+            "isActive": graph.is_active,
         }
     )
 
@@ -170,6 +255,7 @@ async def create_graph(graph: Graph, is_template: bool = False) -> Graph:
                     "id": node.id,
                     "agentBlockId": node.block_id,
                     "agentGraphId": graph.id,
+                    "agentGraphVersion": graph.version,
                     "constantInput": json.dumps(node.input_default),
                     "metadata": json.dumps(node.metadata),
                 }
@@ -193,7 +279,7 @@ async def create_graph(graph: Graph, is_template: bool = False) -> Graph:
         ]
     )
 
-    if created_graph := await get_graph(graph.id):
+    if created_graph := await get_graph(graph.id, graph.version):
         return created_graph
 
-    raise ValueError(f"Failed to create graph {graph.id}.")
+    raise ValueError(f"Failed to create graph {graph.id}:{graph.version}.")

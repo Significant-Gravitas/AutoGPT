@@ -36,8 +36,11 @@ export default class AutoGPTServerAPI {
     }
   }
 
-  async getFlow(id: string): Promise<Flow> {
-    const path = `/graphs/${id}`;
+  async getFlow(id: string, version?: number): Promise<Flow> {
+    let path = `/graphs/${id}`;
+    if (version !== undefined) {
+      path += `?version=${version}`;
+    }
     try {
       const response = await fetch(this.baseUrl + path);
       if (!response.ok) {
@@ -51,29 +54,47 @@ export default class AutoGPTServerAPI {
     }
   }
 
-  async createFlow(flowCreateBody: FlowCreateBody, template_id?: string): Promise<Flow> {
-    console.debug("POST /graphs payload:", flowCreateBody);
-    
+  async getFlowAllVersions(id: string): Promise<Flow[]> {
+    let path = `/graphs/${id}/versions`;
     try {
-      let request: CreateGraphRequest = {};
-  
-      if ('id' in flowCreateBody) {
-        // If flowCreateBody has an 'id' property, it's likely the Flow type
-        request.graph = flowCreateBody as Flow;
-      } else if (template_id) {
-        // If template_id is provided, use it
-        request.template_id = template_id;
-      } else {
-        // If neither condition is met, throw an error
-        throw new Error("Either a valid Flow object or a template_id must be provided");
+      const response = await fetch(this.baseUrl + path);
+      if (!response.ok) {
+        console.warn(`GET ${path} returned non-OK response:`, response);
+        throw new Error(`HTTP error ${response.status}!`);
       }
+      return await response.json();
+    } catch (error) {
+      console.error(`Error fetching flow ${id} versions:`, error);
+      throw error;
+    }
+  }
 
+  async createFlow(flowCreateBody: FlowCreatable): Promise<Flow>;
+  async createFlow(fromTemplateID: string, templateVersion: number): Promise<Flow>;
+  async createFlow(
+    flowOrTemplateID: FlowCreatable | string, templateVersion?: number
+  ): Promise<Flow> {
+    let requestBody: FlowCreateRequestBody;
+    if (typeof(flowOrTemplateID) == "string") {
+      if (templateVersion == undefined) {
+        throw new Error("templateVersion not specified")
+      }
+      requestBody = {
+        template_id: flowOrTemplateID,
+        template_version: templateVersion,
+      }
+    } else {
+      requestBody = { graph: flowOrTemplateID }
+    }
+    console.debug("POST /graphs payload:", requestBody);
+
+    try {
       const response = await fetch(`${this.baseUrl}/graphs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(request),
+        body: JSON.stringify(requestBody),
       });
       const response_data = await response.json();
       if (!response.ok) {
@@ -85,6 +106,59 @@ export default class AutoGPTServerAPI {
       return response_data;
     } catch (error) {
       console.error("Error storing flow:", error);
+      throw error;
+    }
+  }
+
+  async updateFlow(flowID: string, flow: FlowUpdateable): Promise<Flow> {
+    const path = `/graphs/${flowID}`;
+    console.debug(`PUT ${path} payload:`, flow);
+
+    try {
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(flow),
+      });
+      const response_data = await response.json();
+      if (!response.ok) {
+        console.warn(
+          `PUT ${path} returned non-OK response:`, response_data.detail, response
+        );
+        throw new Error(`HTTP error ${response.status}! ${response_data.detail}`)
+      }
+      return response_data;
+    } catch (error) {
+      console.error("Error updating flow:", error);
+      throw error;
+    }
+  }
+
+  async setFlowActiveVersion(flowID: string, version: number): Promise<Flow> {
+    const path = `/graphs/${flowID}/versions/active`;
+    const payload: { active_graph_version: number } = { active_graph_version: version };
+    console.debug(`PUT ${path} payload:`, payload);
+
+    try {
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      const response_data = await response.json();
+      if (!response.ok) {
+        console.warn(
+          `PUT ${path} returned non-OK response:`, response_data.detail, response
+        );
+        throw new Error(`HTTP error ${response.status}! ${response_data.detail}`)
+      }
+      return response_data;
+    } catch (error) {
+      console.error("Error updating flow:", error);
       throw error;
     }
   }
@@ -116,8 +190,11 @@ export default class AutoGPTServerAPI {
     }
   }
 
-  async listFlowRunIDs(flowId: string): Promise<string[]> {
-    const path = `/graphs/${flowId}/executions`
+  async listFlowRunIDs(flowId: string, flowVersion?: number): Promise<string[]> {
+    let path = `/graphs/${flowId}/executions`;
+    if (flowVersion !== undefined) {
+      path += `?graph_version=${flowVersion}`;
+    }
     try {
       const response = await fetch(this.baseUrl + path);
       if (!response.ok) {
@@ -166,7 +243,7 @@ export type Block = {
 export type Node = {
   id: string;
   block_id: string;
-  input_default: Map<string, any>;
+  input_default: { [key: string]: any };
   input_nodes: Array<{ name: string, node_id: string }>;
   output_nodes: Array<{ name: string, node_id: string }>;
   metadata: {
@@ -183,22 +260,38 @@ export type Link = {
   sink_name: string;
 }
 
-/* Mirror of autogpt_server/data/graph.py:Graph */
-export type Flow = {
+/* Mirror of autogpt_server/data/graph.py:GraphMeta */
+export type FlowMeta = {
   id: string;
+  version: number;
+  is_active: boolean;
+  is_template: boolean;
   name: string;
   description: string;
+}
+
+/* Mirror of autogpt_server/data/graph.py:Graph */
+export type Flow = FlowMeta & {
   nodes: Array<Node>;
   links: Array<Link>;
 };
 
-export type CreateGraphRequest = {
-  template_id?: string;
-  graph?: Flow;
+export type FlowUpdateable = Omit<
+  Flow,
+  "version" | "is_active" | "is_template"
+> & {
+  version?: number;
+  is_active?: boolean;
+  is_template?: boolean;
 }
 
-export type FlowCreateBody = Flow | {
-  id?: string;
+export type FlowCreatable = Omit<FlowUpdateable, "id"> & { id?: string }
+
+export type FlowCreateRequestBody = {
+  template_id: string;
+  template_version: number;
+} | {
+  graph: FlowCreatable;
 }
 
 /* Derived from autogpt_server/executor/manager.py:ExecutionManager.add_execution */
@@ -213,10 +306,12 @@ export type FlowExecuteResponse = {
 export type NodeExecutionResult = {
   graph_exec_id: string;
   node_exec_id: string;
+  graph_id: string;
+  graph_version: number;
   node_id: string;
   status: 'INCOMPLETE' | 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
-  input_data: Map<string, any>;
-  output_data: Map<string, any[]>;
+  input_data: { [key: string]: any };
+  output_data: { [key: string]: Array<any> };
   add_time: Date;
   queue_time?: Date;
   start_time?: Date;

@@ -37,6 +37,7 @@ async def create_test_graph() -> graph.Graph:
     ]
     test_graph = graph.Graph(
         name="TestGraph",
+        version=1,
         description="Test graph",
         nodes=nodes,
         links=links,
