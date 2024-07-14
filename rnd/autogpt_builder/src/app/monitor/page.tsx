@@ -13,7 +13,16 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Pencil2Icon } from '@radix-ui/react-icons';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { ClockIcon, Pencil2Icon } from '@radix-ui/react-icons';
 import AutoGPTServerAPI, { Flow, NodeExecutionResult } from '@/lib/autogpt_server_api';
 import { cn, hashString } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
@@ -68,8 +77,10 @@ const Monitor = () => {
       // Fetch flow run
       api.getFlowExecutionInfo(flowID, runID)
       .then(execInfo => setFlowRuns(flowRuns => {
+        if (execInfo.length == 0) return flowRuns;
+
         const flowRunIndex = flowRuns.findIndex(fr => fr.id == runID);
-        const flowRun = flowRunFromNodeExecutionResults(flowID, runID, execInfo)
+        const flowRun = flowRunFromNodeExecutionResults(execInfo);
         if (flowRunIndex > -1) {
           flowRuns.splice(flowRunIndex, 1, flowRun)
         }
@@ -131,6 +142,7 @@ const Monitor = () => {
 type FlowRun = {
   id: string
   flowID: string
+  flowVersion: number
   status: 'running' | 'waiting' | 'success' | 'failed'
   startTime: number // unix timestamp (ms)
   endTime: number // unix timestamp (ms)
@@ -141,7 +153,7 @@ type FlowRun = {
 };
 
 function flowRunFromNodeExecutionResults(
-  flowID: string, runID: string, nodeExecutionResults: NodeExecutionResult[]
+  nodeExecutionResults: NodeExecutionResult[]
 ): FlowRun {
   // Determine overall status
   let status: 'running' | 'waiting' | 'success' | 'failed' = 'success';
@@ -175,14 +187,15 @@ function flowRunFromNodeExecutionResults(
   ), 0) / 1000;
 
   return {
-    id: runID,
-    flowID: flowID,
+    id: nodeExecutionResults[0].graph_exec_id,
+    flowID: nodeExecutionResults[0].graph_id,
+    flowVersion: nodeExecutionResults[0].graph_version,
     status,
     startTime,
     endTime,
     duration,
     totalRunTime,
-    nodeExecutionResults: nodeExecutionResults
+    nodeExecutionResults: nodeExecutionResults,
   };
 }
 
@@ -330,21 +343,66 @@ const FlowRunStatusBadge: React.FC<{
 const FlowInfo: React.FC<{
   flow: Flow;
   flowRuns: FlowRun[];
-}> = ({ flow, flowRuns }) => {
+  flowVersion?: number | "all";
+}> = ({ flow, flowRuns, flowVersion }) => {
+  const api = new AutoGPTServerAPI();
+
+  const [flowVersions, setFlowVersions] = useState<Flow[] | null>(null);
+  const [selectedVersion, setSelectedFlowVersion] = useState(flowVersion ?? "all");
+
+  useEffect(() => {
+    api.getFlowAllVersions(flow.id).then(result => setFlowVersions(result));
+  }, [flow.id]);
+
   return <Card>
-    <CardHeader className="flex-row items-center justify-between space-y-0 space-x-3">
+    <CardHeader className="flex-row justify-between space-y-0 space-x-3">
       <div>
         <CardTitle>{flow.name}</CardTitle>
         <p className="mt-2">Agent ID: <code>{flow.id}</code></p>
       </div>
-      <Link className={buttonVariants({ variant: "outline" })} href={`/build?flowID=${flow.id}`}>
-        <Pencil2Icon className="mr-2" /> Edit Agent
-      </Link>
+      <div className="flex items-start space-x-2">
+        {(flowVersions?.length ?? 0) > 1 &&
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline">
+              <ClockIcon className="mr-2" />
+              {selectedVersion == "all" ? "All versions" : `Version ${selectedVersion}`}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-56">
+            <DropdownMenuLabel>Choose a version</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuRadioGroup
+              value={String(selectedVersion)}
+              onValueChange={choice => setSelectedFlowVersion(
+                choice == "all" ? choice : Number(choice)
+              )}
+            >
+              <DropdownMenuRadioItem value="all">All versions</DropdownMenuRadioItem>
+              {flowVersions?.map(v =>
+                <DropdownMenuRadioItem key={v.version} value={v.version.toString()}>
+                  Version {v.version}{v.is_active ? " (active)" : ""}
+                </DropdownMenuRadioItem>
+              )}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>}
+        <Link className={buttonVariants({ variant: "outline" })} href={`/build?flowID=${flow.id}`}>
+          <Pencil2Icon className="mr-2" /> Edit
+        </Link>
+      </div>
     </CardHeader>
     <CardContent>
       <FlowRunsStats
-        flows={[flow]}
-        flowRuns={flowRuns.filter(r => r.flowID == flow.id)}
+        flows={[
+          selectedVersion != "all"
+            ? flowVersions?.find(v => v.version == selectedVersion)!
+            : flow
+        ]}
+        flowRuns={flowRuns.filter(r =>
+          r.flowID == flow.id
+          && (selectedVersion == "all" || r.flowVersion == selectedVersion)
+        )}
       />
     </CardContent>
   </Card>;

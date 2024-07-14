@@ -110,7 +110,7 @@ export default class AutoGPTServerAPI {
     }
   }
 
-  async updateFlow(flowID: string, flow: Flow): Promise<Flow> {
+  async updateFlow(flowID: string, flow: FlowUpdateable): Promise<Flow> {
     const path = `/graphs/${flowID}`;
     console.debug(`PUT ${path} payload:`, flow);
 
@@ -243,7 +243,7 @@ export type Block = {
 export type Node = {
   id: string;
   block_id: string;
-  input_default: Map<string, any>;
+  input_default: { [key: string]: any };
   input_nodes: Array<{ name: string, node_id: string }>;
   output_nodes: Array<{ name: string, node_id: string }>;
   metadata: {
@@ -276,9 +276,16 @@ export type Flow = FlowMeta & {
   links: Array<Link>;
 };
 
-export type FlowCreatable = Flow | {
-  id?: string;
+export type FlowUpdateable = Omit<
+  Flow,
+  "version" | "is_active" | "is_template"
+> & {
+  version?: number;
+  is_active?: boolean;
+  is_template?: boolean;
 }
+
+export type FlowCreatable = Omit<FlowUpdateable, "id"> & { id?: string }
 
 export type FlowCreateRequestBody = {
   template_id: string;
@@ -303,8 +310,8 @@ export type NodeExecutionResult = {
   graph_version: number;
   node_id: string;
   status: 'INCOMPLETE' | 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
-  input_data: Map<string, any>;
-  output_data: Map<string, any[]>;
+  input_data: { [key: string]: any };
+  output_data: { [key: string]: Array<any> };
   add_time: Date;
   queue_time?: Date;
   start_time?: Date;
