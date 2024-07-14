@@ -37,7 +37,7 @@ class BlockAgentSettings(AgentSettings):
 class OutputComponent(CommandProvider):
     def get_commands(self) -> Iterator[Command]:
         yield self.output
-    
+
     @command(
         parameters={
             "output": JSONSchema(
@@ -70,7 +70,10 @@ class BlockAgent(Agent):
             if not isinstance(attr_value, AgentComponent):
                 continue
             component_name = type(attr_value).__name__
-            if component_name != "SystemComponent" and component_name not in settings.enabled_components:
+            if (
+                component_name != "SystemComponent"
+                and component_name not in settings.enabled_components
+            ):
                 delattr(self, attr_name)
 
 
@@ -79,10 +82,13 @@ class AutoGPTAgentBlock(Block):
         task: str
         input: str
         openai_api_key: BlockFieldSecret = BlockFieldSecret(key="openai_api_key")
-        enabled_components: list[str] = Field(default_factory=lambda: [OutputComponent.__name__])
+        enabled_components: list[str] = Field(
+            default_factory=lambda: [OutputComponent.__name__],
+            description="What components to enable [docs](https://docs.agpt.co/forge/components/built-in-components/)",
+        )
         disabled_commands: list[str] = Field(default_factory=list)
         fast_mode: bool = False
-    
+
     class Output(BlockSchema):
         result: str
 
@@ -105,7 +111,7 @@ class AutoGPTAgentBlock(Block):
             test_mock={
                 "get_provider": lambda _: MultiProvider(),
                 "get_result": lambda _: "8",
-            }
+            },
         )
 
     @staticmethod
@@ -114,7 +120,7 @@ class AutoGPTAgentBlock(Block):
         settings = OpenAIProvider.default_settings.model_copy()
         settings.credentials = OpenAICredentials(api_key=SecretStr(openai_api_key))
         openai_provider = OpenAIProvider(settings=settings)
-        
+
         multi_provider = MultiProvider()
         # HACK: Add OpenAI provider to the multi provider with api key
         multi_provider._provider_instances[ModelProviderName.OPENAI] = openai_provider
@@ -157,8 +163,7 @@ class AutoGPTAgentBlock(Block):
             agent_id="TemporaryAgentID",
             name="WrappedAgent",
             description="Wrapped agent for the Agent Server.",
-            task=f"Your task: {input_data.task}\n"
-                 f"Input data: {input_data.input}",
+            task=f"Your task: {input_data.task}\n" f"Input data: {input_data.input}",
             enabled_components=input_data.enabled_components,
         )
         # Switch big brain mode

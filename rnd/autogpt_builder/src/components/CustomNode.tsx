@@ -5,6 +5,14 @@ import './customnode.css';
 import ModalComponent from './ModalComponent';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { Info } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 type Schema = {
   type: string;
@@ -402,8 +410,26 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     return Object.values(newErrors).every((error) => error === null);
   };
 
+  const renderTooltip = (schema: any) => {
+    if (!schema.description) return null;
+
+    return (
+      <TooltipProvider delayDuration={400}>
+        <Tooltip>
+          <TooltipTrigger className="flex items-center justify-center" asChild>
+            <Info className="p-1 rounded-full hover:bg-gray-300" size={24} />
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs tooltip-content">
+            {/* <p>{schema.description}</p> */}
+            <ReactMarkdown>{schema.description}</ReactMarkdown>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+
   return (
-    <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' :''}`}>
+    <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}>
       <div className="node-header">
         <div className="node-title">{data.blockType || data.title}</div>
         <div className="node-buttons">
@@ -432,6 +458,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                       style={{ background: '#555', borderRadius: '50%' }}
                     />
                     <span className="handle-label">{key}</span>
+                    {renderTooltip(schema)}
                   </div>
                   {renderInputField(key, schema)}
                 </div>
