@@ -263,7 +263,7 @@ export type Link = {
 /* Mirror of autogpt_server/data/graph.py:GraphMeta */
 export type FlowMeta = {
   graph_id: string;
-  graph_version: number;
+  version: number;
   is_active: boolean;
   is_template: boolean;
   name: string;
