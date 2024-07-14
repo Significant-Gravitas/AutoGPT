@@ -9,14 +9,12 @@ from autogpt_server.data import db
 from autogpt_server.data.block import Block, get_block
 from autogpt_server.data.execution import (
     create_graph_execution,
-    create_node_execution,
     get_incomplete_executions,
     get_node_execution_input,
-    get_latest_execution,
+    get_latest_executions,
     merge_execution_input,
     parse_execution_output,
     update_execution_status,
-    update_node_execution,
     upsert_execution_output,
     upsert_execution_input,
     NodeExecution as Execution,
@@ -125,7 +123,7 @@ def enqueue_next_nodes(
             wait(update_execution_status(node_exec_id, status)).model_dump()
         )
 
-    def get_next_node_execution(node_link: Link) -> Execution | None:
+    def update_execution_result(node_link: Link) -> Execution | None:
         next_output_name = node_link.source_name
         next_input_name = node_link.sink_name
         next_node_id = node_link.sink_id
@@ -139,35 +137,34 @@ def enqueue_next_nodes(
             logger.error(f"{prefix} Error, next node {next_node_id} not found.")
             return
 
-        latest_execution = wait(get_latest_execution(
-            graph_exec_id=graph_exec_id,
+        next_node_exec_id = wait(upsert_execution_input(
             node_id=next_node_id,
+            graph_exec_id=graph_exec_id,
+            input_name=next_input_name,
+            data=next_data
         ))
+        
+        return get_eligible_exec(next_node, next_node_exec_id)
+    
+    def get_eligible_exec(next_node: Node, next_node_exec_id: str) -> Execution | None:
+        last_nodes = {
+            v.source_id: v.source_name
+            for v in next_node.input_links if link.output_reuse
+        }
+        reused_output = {
+            last_nodes[e.node_id]: e.output_data
+            for e in wait(get_latest_executions(graph_exec_id, list(last_nodes.keys())))
+        }
 
-        if latest_execution:
-            # If complete input data is available, set other pins using last input.
-            next_node_input = {
-                **latest_execution.input_data,
-                next_input_name: next_data
-            }
-            next_node_exec = wait(create_node_execution(
-                graph_exec_id=graph_exec_id,
-                node_id=next_node_id,
-                data=next_node_input,
-            ))
-            next_node_exec_id = next_node_exec.node_exec_id
-        else:
-            # If no last execution is available, add a new incomplete execution.
-            next_node_exec_id = wait(upsert_execution_input(
-                node_id=next_node_id,
-                graph_exec_id=graph_exec_id,
-                input_name=next_input_name,
-                data=next_data
-            ))
-            next_node_input = wait(get_node_execution_input(next_node_exec_id))
+        # Input = default_input + reused_output + execution_output 
+        next_node_input = merge_execution_input({
+            **next_node.input_default,
+            **reused_output,
+            **wait(get_node_execution_input(next_node_exec_id)),
+        })
 
         is_valid, validation_msg = validate_exec(next_node, next_node_input)
-        suffix = f"{next_output_name}~{next_input_name}#{next_node_id}:{validation_msg}"
+        suffix = f"NextNode#{next_node.id}:{validation_msg}"
 
         if not is_valid:
             logger.warning(f"{prefix} Skipped queueing {suffix}")
@@ -179,35 +176,36 @@ def enqueue_next_nodes(
         return Execution(
             graph_exec_id=graph_exec_id,
             node_exec_id=next_node_exec_id,
-            node_id=next_node_id,
+            node_id=next_node.id,
             data=next_node_input,
         )
 
     executions = []
     for link in node.output_links:
-        execution = get_next_node_execution(link)
+        execution = update_execution_result(link)
         if not execution:
             continue
         executions.append(execution)
+        
+        if not link.output_reuse:
+            continue
 
+        # If the node output can be reused, check if there are incomplete executions.
         # There may be some executions queueing with incomplete data.
-        # Use this complete data to fill the missing pins, and enqueue them.
+        # Check if the data is now complete and enqueue them.
         incomplete_execs = wait(get_incomplete_executions(
             graph_exec_id=graph_exec_id,
             node_id=execution.node_id,
         ))
         for incomplete_exec in incomplete_execs:
-            old_data = incomplete_exec.input_data
-            new_data = {k: v for k, v in execution.data.items() if k not in old_data}
-            ex = wait(update_node_execution(incomplete_exec.node_exec_id, new_data))
-            execution_update(ex.node_exec_id, ExecutionStatus.QUEUED)
-            executions.append(Execution(
-                graph_exec_id=ex.graph_exec_id,
-                node_exec_id=ex.node_exec_id,
-                node_id=ex.node_id,
-                data=ex.input_data,
-            ))
-
+            incomplete_node = wait(get_node(incomplete_exec.node_id))
+            if not incomplete_node:
+                continue
+                
+            next_exec = get_eligible_exec(incomplete_node, incomplete_exec.node_exec_id)
+            if next_exec:
+                executions.append(next_exec)
+            
     return executions
 
 

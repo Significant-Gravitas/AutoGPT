@@ -1,7 +1,6 @@
 from autogpt_server.data.graph import Graph, Link, Node, create_graph
-from autogpt_server.blocks.ai import LlmCallBlock, LlmModel
+from autogpt_server.blocks.ai import LlmCallBlock
 from autogpt_server.blocks.reddit import (
-    RedditCredentials,
     RedditGetPostsBlock,
     RedditPostCommentBlock,
 )
@@ -13,21 +12,8 @@ async def create_test_graph() -> Graph:
     #                                  /--- post_id -----------\                                                     /--- post_id        ---\
     # subreddit --> RedditGetPostsBlock ---- post_body -------- TextFormatterBlock ----- LlmCallBlock / TextRelevancy --- relevant/not   -- TextMatcherBlock -- Yes  {postid, text} --- RedditPostCommentBlock
     #                                  \--- post_title -------/                                                      \--- marketing_text ---/                -- No
-
-    # Creds
-    reddit_creds = RedditCredentials(
-        client_id="TODO_FILL_OUT_THIS",
-        client_secret="TODO_FILL_OUT_THIS",
-        username="TODO_FILL_OUT_THIS",
-        password="TODO_FILL_OUT_THIS",
-        user_agent="TODO_FILL_OUT_THIS",
-    )
-    openai_api_key = "TODO_FILL_OUT_THIS"
-    
     # Hardcoded inputs
     reddit_get_post_input = {
-        "creds": reddit_creds,
-        "last_minutes": 60,
         "post_limit": 3,
     }
     text_formatter_input = {
@@ -45,7 +31,6 @@ The product you are marketing is: Auto-GPT an autonomous AI agent utilizing GPT 
 You reply the post that you find it relevant to be replied with marketing text.
 Make sure to only comment on a relevant post.
 """,
-        "api_key": openai_api_key,
         "expected_format": {
             "post_id": "str, the reddit post id",
             "is_relevant": "bool, whether the post is relevant for marketing",
@@ -53,7 +38,7 @@ Make sure to only comment on a relevant post.
         },
     }
     text_matcher_input = {"match": "true", "case_sensitive": False}
-    reddit_comment_input = {"creds": reddit_creds}
+    reddit_comment_input = {}
 
     # Nodes
     reddit_get_post_node = Node(
