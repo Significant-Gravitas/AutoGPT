@@ -482,10 +482,7 @@ class AgentServer(AppService):
             raise HTTPException(400, detail=f"Unknown graph ID '{graph_id}'")
         graph.version = max(g.version for g in existing_versions) + 1
 
-        if not graph.is_template:
-            graph.is_active = True
-        else:
-            graph.is_active = False
+        graph.is_active = not graph.is_template
 
         # Assign new UUIDs to all nodes and links
         id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
