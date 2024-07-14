@@ -130,7 +130,6 @@ async def create_graph_execution(
         for execution in result.AgentNodeExecutions or []
     ]
 
-
 async def upsert_execution_input(
     node_id: str,
     graph_exec_id: str,
@@ -224,36 +223,6 @@ async def list_executions(graph_id: str) -> list[str]:
     )
     return [execution.id for execution in executions]
 
-
-async def get_latest_executions(
-        graph_exec_id: str, node_ids: list[str]) -> list[ExecutionResult]:
-    executions = await AgentNodeExecution.prisma().find_many(
-        where={
-            "agentNodeId": {"in": node_ids},
-            "agentGraphExecutionId": graph_exec_id,
-            "executionStatus": {"not": ExecutionStatus.INCOMPLETE},
-        },
-        distinct=["agentNodeId"],
-        order={"addedTime": "desc"},
-        include=EXECUTION_RESULT_INCLUDE,  # type: ignore
-    )
-    return [ExecutionResult.from_db(execution) for execution in executions]
-
-
-async def get_incomplete_executions(
-        graph_exec_id: str, node_id: str) -> list[ExecutionResult]:
-    executions = await AgentNodeExecution.prisma().find_many(
-        where={
-            "agentNodeId": node_id,
-            "agentGraphExecutionId": graph_exec_id,
-            "executionStatus": ExecutionStatus.INCOMPLETE,
-        },
-        include=EXECUTION_RESULT_INCLUDE,  # type: ignore
-        order={"addedTime": "asc"},
-    )
-    return [ExecutionResult.from_db(execution) for execution in executions]
-
-
 async def get_execution_results(graph_exec_id: str) -> list[ExecutionResult]:
     executions = await AgentNodeExecution.prisma().find_many(
         where={"agentGraphExecutionId": graph_exec_id},
@@ -278,10 +247,11 @@ async def get_node_execution_input(node_exec_id: str) -> dict[str, Any]:
     if not execution.AgentNode:
         raise ValueError(f"Node {execution.agentNodeId} not found.")
 
-    return {
-        input_data.name: json.loads(input_data.data)
-        for input_data in execution.Input or []
-    }
+    exec_input = json.loads(execution.AgentNode.constantInput)
+    for input_data in execution.Input or []:
+        exec_input[input_data.name] = json.loads(input_data.data)
+
+    return merge_execution_input(exec_input)
 
 
 LIST_SPLIT = "_$_"

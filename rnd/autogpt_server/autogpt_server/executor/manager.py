@@ -9,9 +9,7 @@ from autogpt_server.data import db
 from autogpt_server.data.block import Block, get_block
 from autogpt_server.data.execution import (
     create_graph_execution,
-    get_incomplete_executions,
     get_node_execution_input,
-    get_latest_executions,
     merge_execution_input,
     parse_execution_output,
     update_execution_status,
@@ -142,28 +140,10 @@ def enqueue_next_nodes(
             input_name=next_input_name,
             data=next_data
         ))
-        
-        return get_eligible_exec(next_node, next_node_exec_id)
-    
-    def get_eligible_exec(next_node: Node, next_node_exec_id: str) -> Execution | None:
-        last_nodes = {
-            v.source_id: v.source_name
-            for v in next_node.input_links if link.output_reuse
-        }
-        reused_output = {
-            last_nodes[e.node_id]: e.output_data
-            for e in wait(get_latest_executions(graph_exec_id, list(last_nodes.keys())))
-        }
 
-        # Input = default_input + reused_output + execution_output 
-        next_node_input = merge_execution_input({
-            **next_node.input_default,
-            **reused_output,
-            **wait(get_node_execution_input(next_node_exec_id)),
-        })
-
+        next_node_input = wait(get_node_execution_input(next_node_exec_id))
         is_valid, validation_msg = validate_exec(next_node, next_node_input)
-        suffix = f"NextNode#{next_node.id}:{validation_msg}"
+        suffix = f"{next_output_name}~{next_input_name}#{next_node_id}:{validation_msg}"
 
         if not is_valid:
             logger.warning(f"{prefix} Skipped queueing {suffix}")
@@ -179,33 +159,10 @@ def enqueue_next_nodes(
             data=next_node_input,
         )
 
-    executions = []
-    for link in node.output_links:
-        execution = update_execution_result(link)
-        if not execution:
-            continue
-        executions.append(execution)
-        
-        if not link.output_reuse:
-            continue
-
-        # If the node output can be reused, check if there are incomplete executions.
-        # There may be some executions queueing with incomplete data.
-        # Check if the data is now complete and enqueue them.
-        incomplete_execs = wait(get_incomplete_executions(
-            graph_exec_id=graph_exec_id,
-            node_id=execution.node_id,
-        ))
-        for incomplete_exec in incomplete_execs:
-            incomplete_node = wait(get_node(incomplete_exec.node_id))
-            if not incomplete_node:
-                continue
-                
-            next_exec = get_eligible_exec(incomplete_node, incomplete_exec.node_exec_id)
-            if next_exec:
-                executions.append(next_exec)
-            
-    return executions
+    return [
+        execution for link in node.output_links
+        if (execution := update_execution_result(link))
+    ]
 
 
 def validate_exec(node: Node, data: dict[str, Any]) -> tuple[bool, str]:

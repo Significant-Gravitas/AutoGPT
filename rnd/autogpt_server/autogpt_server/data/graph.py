@@ -14,22 +14,13 @@ class Link(BaseModel):
     sink_id: str
     source_name: str
     sink_name: str
-    output_reuse: bool
 
-    def __init__(
-        self,
-        source_id: str,
-        sink_id: str,
-        source_name: str,
-        sink_name: str,
-        output_reuse: bool = False,
-    ):
+    def __init__(self, source_id: str, sink_id: str, source_name: str, sink_name: str):
         super().__init__(
             source_id=source_id,
             sink_id=sink_id,
             source_name=source_name,
             sink_name=sink_name,
-            output_reuse=output_reuse,
         )
 
     @staticmethod
