@@ -93,7 +93,7 @@ class AgentServer(AppService):
             methods=["POST"],
         )
         router.add_api_route(
-            path="/templates",
+            path="/templates/{graph_id}",
             endpoint=self.update_graph,
             methods=["PUT"],
         )
