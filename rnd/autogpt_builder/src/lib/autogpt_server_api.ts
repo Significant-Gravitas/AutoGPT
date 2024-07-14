@@ -243,7 +243,7 @@ export type Block = {
 export type Node = {
   id: string;
   block_id: string;
-  input_default: Map<string, any>;
+  input_default: { [key: string]: any };
   input_nodes: Array<{ name: string, node_id: string }>;
   output_nodes: Array<{ name: string, node_id: string }>;
   metadata: {
@@ -276,8 +276,14 @@ export type Flow = FlowMeta & {
   links: Array<Link>;
 };
 
-export type FlowCreatable = Flow | {
+export type FlowCreatable = Omit<
+  Flow,
+  "graph_id" | "graph_version" | "is_active" | "is_template"
+> & {
   graph_id?: string;
+  graph_version?: number;
+  is_active?: boolean;
+  is_template?: boolean;
 }
 
 export type FlowCreateRequestBody = {
@@ -303,8 +309,8 @@ export type NodeExecutionResult = {
   graph_version: number;
   node_id: string;
   status: 'INCOMPLETE' | 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
-  input_data: Map<string, any>;
-  output_data: Map<string, any[]>;
+  input_data: { [key: string]: any };
+  output_data: { [key: string]: Array<any> };
   add_time: Date;
   queue_time?: Date;
   start_time?: Date;
