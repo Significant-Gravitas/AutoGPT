@@ -10,9 +10,11 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
+agpt = { path = "../../autogpt", develop = true }
 click = "^8.1.7"
-pydantic = "^2.7.2"
+autogpt-forge = { path = "../../forge", develop = true }
 prisma = "^0.13.1"
+pydantic = "^2.7.2"
 pytest = "^8.2.1"
 uvicorn = { extras = ["standard"], version = "^0.30.1" }
 fastapi = "^0.109.0"
