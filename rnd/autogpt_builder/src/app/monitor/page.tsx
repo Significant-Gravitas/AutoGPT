@@ -357,7 +357,9 @@ const FlowInfo: React.FC<{
   return <Card>
     <CardHeader className="flex-row justify-between space-y-0 space-x-3">
       <div>
-        <CardTitle>{flow.name}</CardTitle>
+        <CardTitle>
+          {flow.name} <span className="font-light">v{flow.version}</span>
+        </CardTitle>
         <p className="mt-2">Agent ID: <code>{flow.id}</code></p>
       </div>
       <div className="flex items-start space-x-2">
@@ -419,7 +421,9 @@ const FlowRunInfo: React.FC<{
   return <Card>
     <CardHeader className="flex-row items-center justify-between space-y-0 space-x-3">
       <div>
-        <CardTitle>{flow.name}</CardTitle>
+        <CardTitle>
+          {flow.name} <span className="font-light">v{flow.version}</span>
+        </CardTitle>
         <p className="mt-2">Agent ID: <code>{flow.id}</code></p>
         <p className="mt-1">Run ID: <code>{flowRun.id}</code></p>
       </div>
