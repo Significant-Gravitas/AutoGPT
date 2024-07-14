@@ -57,14 +57,14 @@ async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph)
     text = "Hello, World!"
     input_data = {"input": text}
     agent_server = AgentServer()
-    response = await agent_server.execute_graph(test_graph.graph_id, input_data)
+    response = await agent_server.execute_graph(test_graph.id, input_data)
     executions = response["executions"]
     graph_exec_id = response["id"]
     assert len(executions) == 2
 
     async def is_execution_completed():
         execs = await agent_server.get_run_execution_results(
-            test_graph.graph_id, graph_exec_id
+            test_graph.id, graph_exec_id
         )
         return (
             test_manager.queue.empty()
@@ -89,7 +89,7 @@ async def assert_executions(test_graph: graph.Graph, graph_exec_id: str):
     text = "Hello, World!"
     agent_server = AgentServer()
     executions = await agent_server.get_run_execution_results(
-        test_graph.graph_id, graph_exec_id
+        test_graph.id, graph_exec_id
     )
 
     # Executing ParrotBlock1

@@ -110,7 +110,7 @@ export default class AutoGPTServerAPI {
     }
   }
 
-  async updateFlow(flowID: string, flow: Flow): Promise<Flow> {
+  async updateFlow(flowID: string, flow: FlowUpdateable): Promise<Flow> {
     const path = `/graphs/${flowID}`;
     console.debug(`PUT ${path} payload:`, flow);
 
@@ -262,7 +262,7 @@ export type Link = {
 
 /* Mirror of autogpt_server/data/graph.py:GraphMeta */
 export type FlowMeta = {
-  graph_id: string;
+  id: string;
   version: number;
   is_active: boolean;
   is_template: boolean;
@@ -276,15 +276,16 @@ export type Flow = FlowMeta & {
   links: Array<Link>;
 };
 
-export type FlowCreatable = Omit<
+export type FlowUpdateable = Omit<
   Flow,
-  "graph_id" | "version" | "is_active" | "is_template"
+  "version" | "is_active" | "is_template"
 > & {
-  graph_id?: string;
   version?: number;
   is_active?: boolean;
   is_template?: boolean;
 }
+
+export type FlowCreatable = Omit<FlowUpdateable, "id"> & { id?: string }
 
 export type FlowCreateRequestBody = {
   template_id: string;

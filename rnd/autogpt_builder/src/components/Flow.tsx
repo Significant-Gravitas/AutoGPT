@@ -326,7 +326,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     }));
 
     const payload = {
-      graph_id: savedAgent?.graph_id,
+      id: savedAgent?.id!,
       name: agentName || 'Agent Name',
       description: agentDescription || 'Agent Description',
       nodes: formattedNodes,
@@ -341,7 +341,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     }
 
     const newSavedAgent = savedAgent
-      ? await api.updateFlow(savedAgent.graph_id, payload)
+      ? await api.updateFlow(savedAgent.id, payload)
       : await api.createFlow(payload);
     console.debug('Response from the API:', newSavedAgent);
     setSavedAgent(newSavedAgent);
