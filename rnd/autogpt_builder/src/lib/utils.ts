@@ -28,22 +28,22 @@ export function beautifyString(name: string): string {
   return applyExceptions(result);
 };
 
-const exceptionMap = new Map<string, string>([
-  ['Auto GPT', 'AutoGPT'],
-  ['Gpt', 'GPT'],
-  ['Creds', 'Credentials'],
-  ['Id', 'ID'],
-  ['Openai', 'OpenAI'],
-  ['Api', 'API'],
-  ['Url', 'URL'],
-  ['Http', 'HTTP'],
-  ['Json', 'JSON']
-]);
+const exceptionMap: Record<string, string> = {
+  'Auto GPT': 'AutoGPT',
+  'Gpt': 'GPT',
+  'Creds': 'Credentials',
+  'Id': 'ID',
+  'Openai': 'OpenAI',
+  'Api': 'API',
+  'Url': 'URL',
+  'Http': 'HTTP',
+  'Json': 'JSON',
+};
 
 const applyExceptions = (str: string): string => {
-  exceptionMap.forEach((value, key) => {
+  Object.keys(exceptionMap).forEach(key => {
     const regex = new RegExp(`\\b${key}\\b`, 'g');
-    str = str.replace(regex, value);
+    str = str.replace(regex, exceptionMap[key]);
   });
   return str;
 };
