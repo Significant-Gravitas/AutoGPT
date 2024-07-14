@@ -82,48 +82,13 @@ class AgentServer(AppService):
             methods=["POST"],
         )
         router.add_api_route(
-            path="/templates",
-            endpoint=self.get_templates,
-            methods=["GET"],
-        )
-        router.add_api_route(
-            path="/templates",
-            endpoint=self.create_new_template,
-            methods=["POST"],
-        )
-        router.add_api_route(
-            path="/templates/{graph_id}",
-            endpoint=self.update_graph,
-            methods=["PUT"],
-        )
-        router.add_api_route(
-            path="/templates/{graph_id}",
-            endpoint=self.get_template,
-            methods=["GET"],
-        )
-        router.add_api_route(
-            path="/templates/{graph_id}/versions",
-            endpoint=self.get_graph_all_versions,
-            methods=["GET"],
-        )
-        router.add_api_route(
             path="/graphs",
             endpoint=self.get_graphs,
             methods=["GET"],
         )
         router.add_api_route(
-            path="/graphs/{graph_id}",
-            endpoint=self.get_graph,
-            methods=["GET"],
-        )
-        router.add_api_route(
-            path="/graphs/{graph_id}/versions",
-            endpoint=self.get_graph_all_versions,
-            methods=["GET"],
-        )
-        router.add_api_route(
-            path="/graphs/{graph_id}/versions/{version}",
-            endpoint=self.get_graph,
+            path="/templates",
+            endpoint=self.get_templates,
             methods=["GET"],
         )
         router.add_api_route(
@@ -132,9 +97,44 @@ class AgentServer(AppService):
             methods=["POST"],
         )
         router.add_api_route(
+            path="/templates",
+            endpoint=self.create_new_template,
+            methods=["POST"],
+        )
+        router.add_api_route(
+            path="/graphs/{graph_id}",
+            endpoint=self.get_graph,
+            methods=["GET"],
+        )
+        router.add_api_route(
+            path="/templates/{graph_id}",
+            endpoint=self.get_template,
+            methods=["GET"],
+        )
+        router.add_api_route(
             path="/graphs/{graph_id}",
             endpoint=self.update_graph,
             methods=["PUT"],
+        )
+        router.add_api_route(
+            path="/templates/{graph_id}",
+            endpoint=self.update_graph,
+            methods=["PUT"],
+        )
+        router.add_api_route(
+            path="/graphs/{graph_id}/versions",
+            endpoint=self.get_graph_all_versions,
+            methods=["GET"],
+        )
+        router.add_api_route(
+            path="/templates/{graph_id}/versions",
+            endpoint=self.get_graph_all_versions,
+            methods=["GET"],
+        )
+        router.add_api_route(
+            path="/graphs/{graph_id}/versions/{version}",
+            endpoint=self.get_graph,
+            methods=["GET"],
         )
         router.add_api_route(
             path="/graphs/{graph_id}/versions/active",
