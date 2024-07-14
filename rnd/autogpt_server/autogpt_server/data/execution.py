@@ -75,11 +75,11 @@ class ExecutionResult(BaseModel):
         for data in execution.Output or []:
             output_data[data.name].append(json.loads(data.data))
 
-        node: AgentNode | None = execution.AgentNode
+        graph_execution: AgentGraphExecution | None = execution.AgentGraphExecution
 
         return ExecutionResult(
-            graph_id=node.agentGraphId if node else "",
-            graph_version=node.agentGraphVersion if node else 0,
+            graph_id=graph_execution.agentGraphId if graph_execution else "",
+            graph_version=graph_execution.agentGraphVersion if graph_execution else 0,
             graph_exec_id=execution.agentGraphExecutionId,
             node_exec_id=execution.id,
             node_id=execution.agentNodeId,
@@ -224,7 +224,7 @@ async def list_executions(graph_id: str, graph_version: int | None = None) -> li
 async def get_execution_results(graph_exec_id: str) -> list[ExecutionResult]:
     executions = await AgentNodeExecution.prisma().find_many(
         where={"agentGraphExecutionId": graph_exec_id},
-        include={"Input": True, "Output": True},
+        include={"Input": True, "Output": True, "AgentGraphExecution": True},
         order={"addedTime": "asc"},
     )
     res = [ExecutionResult.from_db(execution) for execution in executions]
@@ -236,7 +236,7 @@ async def get_execution_result(
 ) -> ExecutionResult:
     execution = await AgentNodeExecution.prisma().find_first_or_raise(
         where={"agentGraphExecutionId": graph_exec_id, "id": node_exec_id},
-        include={"Input": True, "Output": True, "AgentNode": True},
+        include={"Input": True, "Output": True, "AgentGraphExecution": True},
         order={"addedTime": "asc"},
     )
     res = ExecutionResult.from_db(execution)
