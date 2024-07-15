@@ -5,32 +5,14 @@ import './customnode.css';
 import ModalComponent from './ModalComponent';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { Info } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-
-type Schema = {
-  type: string;
-  properties: { [key: string]: any };
-  required?: string[];
-  enum?: string[];
-  items?: Schema;
-  additionalProperties?: { type: string };
-  allOf?: any[];
-  anyOf?: any[];
-  oneOf?: any[];
-};
+import { BlockSchema } from '@/lib/types';
+import SchemaTooltip from './SchemaTooltip';
 
 type CustomNodeData = {
   blockType: string;
   title: string;
-  inputSchema: Schema;
-  outputSchema: Schema;
+  inputSchema: BlockSchema;
+  outputSchema: BlockSchema;
   hardcodedValues: { [key: string]: any };
   setHardcodedValues: (values: { [key: string]: any }) => void;
   connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
@@ -74,7 +56,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     });
   };
 
-  const generateHandles = (schema: Schema, type: 'source' | 'target') => {
+  const generateHandles = (schema: BlockSchema, type: 'source' | 'target') => {
     if (!schema?.properties) return null;
     const keys = Object.keys(schema.properties);
     return keys.map((key) => (
@@ -410,24 +392,6 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     return Object.values(newErrors).every((error) => error === null);
   };
 
-  const renderTooltip = (schema: any) => {
-    if (!schema.description) return null;
-
-    return (
-      <TooltipProvider delayDuration={400}>
-        <Tooltip>
-          <TooltipTrigger className="flex items-center justify-center" asChild>
-            <Info className="p-1 rounded-full hover:bg-gray-300" size={24} />
-          </TooltipTrigger>
-          <TooltipContent className="max-w-xs tooltip-content">
-            {/* <p>{schema.description}</p> */}
-            <ReactMarkdown>{schema.description}</ReactMarkdown>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    )
-  }
-
   return (
     <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}>
       <div className="node-header">
@@ -458,7 +422,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                       style={{ background: '#555', borderRadius: '50%' }}
                     />
                     <span className="handle-label">{key}</span>
-                    {renderTooltip(schema)}
+                    <SchemaTooltip schema={schema} />
                   </div>
                   {renderInputField(key, schema)}
                 </div>

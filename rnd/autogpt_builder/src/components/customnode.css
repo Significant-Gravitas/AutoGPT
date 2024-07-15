@@ -220,8 +220,3 @@
 .custom-node {
   transition: all 0.3s ease-in-out;
 }
-
-.tooltip-content a {
-  color: #5bc0de;
-  text-decoration: underline;
-}
