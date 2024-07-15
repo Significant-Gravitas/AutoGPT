@@ -1,6 +1,6 @@
 import pytest
 
-import test_manager  # type: ignore
+import test_manager
 from autogpt_server.executor.scheduler import ExecutionScheduler
 from autogpt_server.util.service import PyroNameServer, get_service_client
 from autogpt_server.server import AgentServer
