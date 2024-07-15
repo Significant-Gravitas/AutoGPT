@@ -1,6 +1,7 @@
 from autogpt_server.data.block import Block, BlockSchema, BlockOutput
 
 from typing import Any
+from pydantic import Field
 
 
 class ConstantBlock(Block):
@@ -22,9 +23,12 @@ class ConstantBlock(Block):
       ||           ||
        ======  `output`
     """
+
     class Input(BlockSchema):
-        input: Any
-        data: Any = None
+        input: Any = Field(description="Trigger the block to produce the output. "
+                                       "The value is only used when `data` is None.")
+        data: Any = Field(description="The constant data to be retained in the block. "
+                                      "This value is passed as `output`.", default=None)
 
     class Output(BlockSchema):
         output: Any
