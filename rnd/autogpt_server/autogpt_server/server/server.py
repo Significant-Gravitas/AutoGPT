@@ -394,6 +394,7 @@ class AgentServer(AppService):
 
     @classmethod
     async def get_graphs(cls) -> list[str]:
+        # TODO: get_graph_ids() -> get_graphs_meta()
         return await graph_db.get_graph_ids()
 
     @classmethod
