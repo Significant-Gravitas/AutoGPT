@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Iterator
 from autogpt.agents.agent import Agent, AgentSettings
 from autogpt.app.config import ConfigBuilder
 from autogpt_server.data.block import Block, BlockFieldSecret, BlockOutput, BlockSchema
+from autogpt_server.data.config import SchemaField
 from forge.agent.components import AgentComponent
 from forge.agent.protocols import (
     CommandProvider,
@@ -76,8 +77,8 @@ class BlockAgent(Agent):
 
 class AutoGPTAgentBlock(Block):
     class Input(BlockSchema):
-        task: str
-        input: str
+        task: str = SchemaField(display_name="Agent Task", placeholder="e.g. Make calculation and use Output command")
+        input: str = SchemaField(display_name="Input data", placeholder="8 + 5")
         openai_api_key: BlockFieldSecret = BlockFieldSecret(key="openai_api_key")
         enabled_components: list[str] = Field(default_factory=lambda: [OutputComponent.__name__])
         disabled_commands: list[str] = Field(default_factory=list)
