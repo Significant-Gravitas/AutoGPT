@@ -1,14 +1,14 @@
 import pytest
-import test_manager
-from autogpt_server.data import db
+from autogpt_server.data import db, graph
 from autogpt_server.executor.scheduler import ExecutionScheduler
 from autogpt_server.util.service import PyroNameServer, get_service_client
+from autogpt_server.usecases.sample import create_test_graph
 
 
 @pytest.mark.asyncio(scope="session")
 async def test_agent_schedule():
     await db.connect()
-    test_graph = await test_manager.create_test_graph()
+    test_graph = await graph.create_graph(create_test_graph())
 
     with PyroNameServer():
         with ExecutionScheduler():

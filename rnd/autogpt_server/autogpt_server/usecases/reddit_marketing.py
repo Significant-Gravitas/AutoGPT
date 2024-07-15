@@ -8,7 +8,7 @@ from autogpt_server.blocks.text import TextFormatterBlock, TextMatcherBlock
 from autogpt_server.util.test import SpinTestServer, wait_execution
 
 
-async def create_test_graph() -> Graph:
+def create_test_graph() -> Graph:
     #                                  /--- post_id -----------\                                                     /--- post_id        ---\
     # subreddit --> RedditGetPostsBlock ---- post_body -------- TextFormatterBlock ----- LlmCallBlock / TextRelevancy --- relevant/not   -- TextMatcherBlock -- Yes  {postid, text} --- RedditPostCommentBlock
     #                                  \--- post_title -------/                                                      \--- marketing_text ---/                -- No
@@ -89,13 +89,13 @@ Make sure to only comment on a relevant post.
         nodes=nodes,
         links=links,
     )
-    return await create_graph(test_graph)
+    return test_graph
 
 
 async def reddit_marketing_agent():
     async with SpinTestServer() as server:
         exec_man = server.exec_manager
-        test_graph = await create_test_graph()
+        test_graph = await create_graph(create_test_graph())
         input_data = {"subreddit": "AutoGPT"}
         response = await server.agent_server.execute_graph(test_graph.id, input_data)
         print(response)

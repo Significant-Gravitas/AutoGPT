@@ -1,52 +1,10 @@
 import pytest
 
-from autogpt_server.blocks.sample import ParrotBlock, PrintingBlock
-from autogpt_server.blocks.text import TextFormatterBlock
 from autogpt_server.data import execution, graph
 from autogpt_server.executor import ExecutionManager
 from autogpt_server.server import AgentServer
 from autogpt_server.util.test import SpinTestServer, wait_execution
-
-
-async def create_test_graph() -> graph.Graph:
-    """
-    ParrotBlock
-                \
-                 ---- TextFormatterBlock ---- PrintingBlock
-                /
-    ParrotBlock
-    """
-    nodes = [
-        graph.Node(block_id=ParrotBlock().id),
-        graph.Node(block_id=ParrotBlock().id),
-        graph.Node(
-            block_id=TextFormatterBlock().id,
-            input_default={
-                "format": "{texts[0]},{texts[1]},{texts[2]}",
-                "texts_$_3": "!!!",
-            },
-        ),
-        graph.Node(block_id=PrintingBlock().id),
-    ]
-    links = [
-        graph.Link(nodes[0].id, nodes[2].id, "output", "texts_$_1"),
-        graph.Link(nodes[1].id, nodes[2].id, "output", "texts_$_2"),
-        graph.Link(nodes[2].id, nodes[3].id, "output", "text"),
-    ]
-    test_graph = graph.Graph(
-        name="TestGraph",
-        description="Test graph",
-        nodes=nodes,
-        links=links,
-    )
-    result = await graph.create_graph(test_graph)
-
-    # Assertions
-    assert result.name == test_graph.name
-    assert result.description == test_graph.description
-    assert len(result.nodes) == len(test_graph.nodes)
-
-    return test_graph
+from autogpt_server.usecases.sample import create_test_graph
 
 
 async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph) -> str:
@@ -110,6 +68,7 @@ async def assert_executions(test_graph: graph.Graph, graph_exec_id: str):
 @pytest.mark.asyncio(scope="session")
 async def test_agent_execution():
     async with SpinTestServer() as server:
-        test_graph = await create_test_graph()
+        test_graph = create_test_graph()
+        await graph.create_graph(test_graph)
         graph_exec_id = await execute_graph(server.exec_manager, test_graph)
         await assert_executions(test_graph, graph_exec_id)
