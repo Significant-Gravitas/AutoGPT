@@ -29,7 +29,7 @@ async def assert_executions(test_graph: graph.Graph, graph_exec_id: str):
         test_graph.id, graph_exec_id
     )
 
-    # Executing ParrotBlock1
+    # Executing ConstantBlock1
     exec = executions[0]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
@@ -37,7 +37,7 @@ async def assert_executions(test_graph: graph.Graph, graph_exec_id: str):
     assert exec.input_data == {"input": text}
     assert exec.node_id == test_graph.nodes[0].id
 
-    # Executing ParrotBlock2
+    # Executing ConstantBlock2
     exec = executions[1]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id

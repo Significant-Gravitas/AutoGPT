@@ -1,26 +1,33 @@
-# type: ignore
-
 from autogpt_server.data.block import Block, BlockSchema, BlockOutput
 
+from typing import Any
 
-class ParrotBlock(Block):
+
+class ConstantBlock(Block):
     class Input(BlockSchema):
-        input: str
+        input: Any
+        data: Any = None
 
     class Output(BlockSchema):
-        output: str
+        output: Any
 
     def __init__(self):
         super().__init__(
             id="1ff065e9-88e8-4358-9d82-8dc91f622ba9",
-            input_schema=ParrotBlock.Input,
-            output_schema=ParrotBlock.Output,
-            test_input={"input": "Hello, World!"},
-            test_output=("output", "Hello, World!"),
+            input_schema=ConstantBlock.Input,
+            output_schema=ConstantBlock.Output,
+            test_input=[
+                {"input": "Hello, World!"},
+                {"input": "Hello, World!", "data": "Existing Data"},
+            ],
+            test_output=[
+                ("output", "Hello, World!"),
+                ("output", "Existing Data"),
+            ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
-        yield "output", input_data.input
+        yield "output", input_data.data or input_data.input
 
 
 class PrintingBlock(Block):
