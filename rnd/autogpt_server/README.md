@@ -154,6 +154,7 @@ Currently, the IPC is done using Pyro5 and abstracted in a way that allows a fun
 ## Adding a New Agent Block
 
 To add a new agent block, you need to create a new class that inherits from `Block` and provides the following information:
+* All the block code should live in the `blocks` (`autogpt_server.blocks`) module.
 * `input_schema`: the schema of the input data, represented by a Pydantic object.
 * `output_schema`: the schema of the output data, represented by a Pydantic object.
 * `run` method: the main logic of the block.
