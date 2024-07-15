@@ -6,17 +6,20 @@ async def create_test_graph() -> graph.Graph:
     """
               SearchBlock    
                  ||
-                 ||
-            TextFormatterBlock =============||
-                 ||                         ||
-                 ||                         V
-             LlmCallBlock <======== TextFormatterBlock (RETRY)
-                 ||                         ||      ||
-                 ||                         ||      ||
-            TextParserBlock   ===============       ||
-                 ||                                 ||
-                 ||                                 ||
-          BlockInstallationBlock  ===================
+                 v
+     ------> ConstantBlock========================||
+    |           |  |                              ||
+    |            --                               ||
+    |                                             ||
+    |                                             ||
+    |                                             v
+    |        LlmCallBlock  <=========== TextFormatterBlock
+    |            ||                          ^       ^
+    |            v                          ||      ||
+    |       TextParserBlock   ===============       ||
+    |            ||                                 ||
+    |            v                                  ||
+    ------ BlockInstallationBlock  ===================
     """
     pass
 
