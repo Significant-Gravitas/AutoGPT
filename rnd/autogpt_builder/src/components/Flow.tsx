@@ -81,7 +81,24 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
   const [agentName, setAgentName] = useState<string>('');
 
   const apiUrl = process.env.AGPT_SERVER_URL!;
-  const api = new AutoGPTServerAPI(apiUrl);
+  const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
+
+  useEffect(() => {
+    api.connectWebSocket()
+      .then(() => {
+        console.log('WebSocket connected');
+        api.onWebSocketMessage('execution_event', (data) => {
+          updateNodesWithExecutionData([data]);
+        });
+      })
+      .catch((error) => {
+        console.error('Failed to connect WebSocket:', error);
+      });
+
+    return () => {
+      api.disconnectWebSocket();
+    };
+  }, [api]);
 
   useEffect(() => {
     api.getBlocks()
@@ -377,21 +394,8 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
         return;
       }
 
-      const executeData = await api.executeFlow(newAgentId);
-      const runId = executeData.id;
-
-      const pollExecution = async () => {
-        const data = await api.getFlowExecutionInfo(newAgentId, runId);
-        updateNodesWithExecutionData(data);
-
-        if (data.every((node) => node.status === 'COMPLETED')) {
-          console.log('All nodes completed execution');
-        } else {
-          setTimeout(pollExecution, 1000);
-        }
-      };
-
-      pollExecution();
+      api.subscribeToExecution(newAgentId);
+      api.runGraph(newAgentId);
 
     } catch (error) {
       console.error('Error running agent:', error);
