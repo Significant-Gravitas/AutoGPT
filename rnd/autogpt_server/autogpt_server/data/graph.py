@@ -128,9 +128,9 @@ async def get_graph_ids() -> list[str]:
     return [
         graph.id
         for graph in await AgentGraph.prisma().find_many(
-            distinct=["id"], where={"isTemplate": False}
+            distinct=["id"], where={"isActive": True}
         )
-    ]  # type: ignore
+    ]
 
 
 async def get_graphs_meta(
@@ -155,7 +155,7 @@ async def get_graphs_meta(
 
     graphs = await AgentGraph.prisma().find_many(
         where=where_clause,
-        distinct=["id"] if filter_by else None,
+        distinct=["id"],
         order={"version": "desc"},
     )
 
@@ -165,24 +165,31 @@ async def get_graphs_meta(
     return [GraphMeta.from_db(graph) for graph in graphs]
 
 
-async def get_graph(graph_id: str, version: int | None = None) -> Graph:
+async def get_graph(
+    graph_id: str, version: int | None = None, template: bool = False
+) -> Graph | None:
     """
     Retrieves a graph from the DB.
-    Defaults to the current active version if `version` is not passed.
+    Defaults to the version with `is_active` if `version` is not passed,
+    or the latest version with `is_template` if `template=True`.
+
+    Returns `None` if the record is not found.
     """
-    where_clause: prisma.types.AgentGraphWhereInput = {"id": graph_id}
+    where_clause: prisma.types.AgentGraphWhereInput = {
+        "id": graph_id,
+        "isTemplate": template,
+    }
     if version is not None:
         where_clause["version"] = version
-    else:
+    elif not template:
         where_clause["isActive"] = True
 
-    graph = await AgentGraph.prisma().find_first_or_raise(
+    graph = await AgentGraph.prisma().find_first(
         where=where_clause,
         include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
-        distinct=["id"] if not version else None,
         order={"version": "desc"},
     )
-    return Graph.from_db(graph)
+    return Graph.from_db(graph) if graph else None
 
 
 async def set_graph_active_version(graph_id: str, version: int) -> None:
@@ -201,16 +208,16 @@ async def set_graph_active_version(graph_id: str, version: int) -> None:
 
 
 async def get_graph_all_versions(graph_id: str) -> list[Graph]:
-    graph_history = await AgentGraph.prisma().find_many(
+    graph_versions = await AgentGraph.prisma().find_many(
         where={"id": graph_id},
         order={"version": "desc"},
         include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
     )
 
-    if not graph_history:
+    if not graph_versions:
         return []
 
-    return [Graph.from_db(graph) for graph in graph_history]
+    return [Graph.from_db(graph) for graph in graph_versions]
 
 
 async def create_graph(graph: Graph) -> Graph:

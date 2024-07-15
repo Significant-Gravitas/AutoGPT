@@ -413,12 +413,10 @@ class AgentServer(AppService):
     async def get_template(
         cls, graph_id: str, version: int | None = None
     ) -> graph_db.Graph:
-        graph = await graph_db.get_graph(graph_id, version)
+        graph = await graph_db.get_graph(graph_id, version, template=True)
         if not graph:
-            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-        if not graph.is_template:
             raise HTTPException(
-                status_code=400, detail=f"Graph #{graph_id} is not a template."
+                status_code=404, detail=f"Template #{graph_id} not found."
             )
         return graph
 
@@ -445,8 +443,12 @@ class AgentServer(AppService):
             graph = create_graph.graph
         elif create_graph.template_id:
             graph = await graph_db.get_graph(
-                create_graph.template_id, create_graph.template_version
+                create_graph.template_id, create_graph.template_version, template=True
             )
+            if not graph:
+                raise HTTPException(
+                    400, detail=f"Template #{create_graph.template_id} not found"
+                )
             graph.version = 1
         else:
             raise HTTPException(
@@ -479,9 +481,17 @@ class AgentServer(AppService):
         # Determine new version
         existing_versions = await graph_db.get_graph_all_versions(graph_id)
         if not existing_versions:
-            raise HTTPException(400, detail=f"Unknown graph ID '{graph_id}'")
-        graph.version = max(g.version for g in existing_versions) + 1
+            raise HTTPException(404, detail=f"Graph #{graph_id} not found")
+        latest_version_number = max(g.version for g in existing_versions)
+        graph.version = latest_version_number + 1
 
+        latest_version_graph = next(
+            v for v in existing_versions if v.version == latest_version_number
+        )
+        if latest_version_graph.is_template != graph.is_template:
+            raise HTTPException(
+                400, detail="Changing is_template on an existing graph is forbidden"
+            )
         graph.is_active = not graph.is_template
 
         # Assign new UUIDs to all nodes and links
@@ -543,7 +553,7 @@ class AgentServer(AppService):
     ) -> list[execution.ExecutionResult]:
         graph = await graph_db.get_graph(graph_id)
         if not graph:
-            raise HTTPException(status_code=404, detail=f"Agent #{graph_id} not found.")
+            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
         return await execution.get_execution_results(run_id)
 
