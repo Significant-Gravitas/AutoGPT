@@ -77,7 +77,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               type={type}
               position={Position.Left}
               id={key}
-              style={{ background: '#555', borderRadius: '50%' }}
+              style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
             />
             <span className="handle-label">{key}</span>
           </>
@@ -89,7 +89,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               type={type}
               position={Position.Right}
               id={key}
-              style={{ background: '#555', borderRadius: '50%' }}
+              style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
             />
           </>
         )}
@@ -406,16 +406,6 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' :''}`}>
       <div className="node-header">
         <div className="node-title">{data.blockType || data.title}</div>
-        <div className="node-buttons">
-          <Button onClick={toggleProperties} className="toggle-button">
-            &#9776;
-          </Button>
-          {hasOptionalFields() && (
-            <Button onClick={toggleAdvancedSettings} className="toggle-button">
-              &#9881;
-            </Button>
-          )}
-        </div>
       </div>
       <div className="node-content">
         <div className="input-section">
@@ -429,7 +419,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                       type="target"
                       position={Position.Left}
                       id={key}
-                      style={{ background: '#555', borderRadius: '50%' }}
+                      style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
                     />
                     <span className="handle-label">{key}</span>
                   </div>
@@ -457,6 +447,16 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </p>
         </div>
       )}
+      <div className="node-footer">
+        <Button onClick={toggleProperties} className="toggle-button">
+          Toggle Properties
+        </Button>
+        {hasOptionalFields() && (
+          <Button onClick={toggleAdvancedSettings} className="toggle-button">
+            Toggle Advanced
+          </Button>
+        )}
+      </div>
       <ModalComponent
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

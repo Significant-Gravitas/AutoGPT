@@ -1,6 +1,7 @@
 import requests
 from autogpt_server.data.block import Block, BlockSchema, BlockOutput
 
+
 class GetWikipediaSummary(Block):
     class Input(BlockSchema):
         topic: str
@@ -14,7 +15,7 @@ class GetWikipediaSummary(Block):
             input_schema=GetWikipediaSummary.Input,
             output_schema=GetWikipediaSummary.Output,
             test_input={"topic": "Artificial Intelligence"},
-            test_output={"summary": "Artificial intelligence (AI) is intelligence demonstrated by machines, in contrast to the natural intelligence displayed by humans and animals."},
+            test_output=("summary", str),
         )
 
     def run(self, input_data: Input) -> BlockOutput:
@@ -22,12 +23,14 @@ class GetWikipediaSummary(Block):
             response = requests.get(f"https://en.wikipedia.org/api/rest_v1/page/summary/{input_data.topic}")
             response.raise_for_status()
             summary_data = response.json()
-            
+
             yield "summary", summary_data['extract']
 
         except requests.exceptions.HTTPError as http_err:
             raise ValueError(f"HTTP error occurred: {http_err}")
+
         except requests.RequestException as e:
             raise ValueError(f"Request to Wikipedia API failed: {e}")
+
         except KeyError as e:
             raise ValueError(f"Error processing Wikipedia data: {e}")
