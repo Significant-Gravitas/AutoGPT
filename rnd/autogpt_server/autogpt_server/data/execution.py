@@ -289,8 +289,9 @@ def parse_execution_output(output: tuple[str, Any], name: str) -> Any | None:
 
 def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
     # Merge all input with <input_name>_$_<index> into a single list.
+    items = list(data.items())
     list_input: list[Any] = []
-    for key, value in data.items():
+    for key, value in items:
         if LIST_SPLIT not in key:
             continue
         name, index = key.split(LIST_SPLIT)
@@ -304,7 +305,7 @@ def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
         data[name].append(value)
 
     # Merge all input with <input_name>_#_<index> into a single dict.
-    for key, value in data.items():
+    for key, value in items:
         if DICT_SPLIT not in key:
             continue
         name, index = key.split(DICT_SPLIT)
@@ -312,7 +313,7 @@ def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
         data[name][index] = value
 
     # Merge all input with <input_name>_@_<index> into a single object.
-    for key, value in data.items():
+    for key, value in items:
         if OBJC_SPLIT not in key:
             continue
         name, index = key.split(OBJC_SPLIT)

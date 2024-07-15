@@ -1,4 +1,4 @@
-from autogpt_server.blocks.sample import ConstantBlock, PrintingBlock
+from autogpt_server.blocks.basic import ConstantBlock, PrintingBlock
 from autogpt_server.blocks.text import TextFormatterBlock
 from autogpt_server.data import graph
 from autogpt_server.data.graph import create_graph
@@ -46,7 +46,7 @@ async def sample_agent():
         input_data = {"input": "test!!"}
         response = await server.agent_server.execute_graph(test_graph.id, input_data)
         print(response)
-        result = await wait_execution(exec_man, test_graph.id, response["id"], 13, 120)
+        result = await wait_execution(exec_man, test_graph.id, response["id"], 4, 10)
         print(result)
 
 

@@ -12,6 +12,7 @@ class TextMatcherBlock(Block):
         match: str = Field(description="Pattern (Regex) to match")
         data: Any = Field(description="Data to be forwarded to output")
         case_sensitive: bool = Field(description="Case sensitive match", default=True)
+        dot_all: bool = Field(description="Dot matches all", default=True)
 
     class Output(BlockSchema):
         positive: Any = Field(description="Output data if match is found")
@@ -38,8 +39,12 @@ class TextMatcherBlock(Block):
 
     def run(self, input_data: Input) -> BlockOutput:
         output = input_data.data or input_data.text
-        case = 0 if input_data.case_sensitive else re.IGNORECASE
-        if re.search(input_data.match, json.dumps(input_data.text), case):
+        flags = 0
+        if not input_data.case_sensitive:
+            flags = flags | re.IGNORECASE
+        if input_data.dot_all:
+            flags = flags | re.DOTALL
+        if re.search(input_data.match, json.dumps(input_data.text), flags=flags):
             yield "positive", output
         else:
             yield "negative", output
