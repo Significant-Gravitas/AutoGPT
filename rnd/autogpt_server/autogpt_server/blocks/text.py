@@ -100,8 +100,6 @@ class TextParserBlock(Block):
             text = json.dumps(input_data.text)
 
         match = re.search(input_data.pattern, text, flags)
-        print(">>>>> Match: ", match)
-        print(">>>>> Group: ", match.groups() if match else None)
         if match and input_data.group <= len(match.groups()):
             yield "positive", match.group(input_data.group)
         else:

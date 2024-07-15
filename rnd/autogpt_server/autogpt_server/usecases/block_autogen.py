@@ -95,6 +95,8 @@ The class that you are implementing is extending a class called `Block`.
 This class will be used as a node in a graph of other blocks to build a complex system.
 This class has a method called `run` that takes an input and returns an output.
 It also has an `id` attribute that is a UUID, input_schema, and output_schema.
+For UUID, you have to hardcode it, like `d2e2ecd2-9ae6-422d-8dfe-ceca500ce6a6`,
+don't use any automatic UUID generation, because it needs to be consistent.
 To validate the correctness of your implementation, you can also define a test.
 There is `test_input` and `test_output` you can use to validate your implementation.
 There is also `test_mock` to mock a helper function on your block class for testing.
