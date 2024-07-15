@@ -1,10 +1,9 @@
 import asyncio
 import mimetypes
 import os
-import pathlib
 import uuid
 from contextlib import asynccontextmanager
-from typing import Annotated, Any, Dict
+from typing import Annotated, Any, Dict, MutableMapping
 
 from starlette.responses import Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -199,6 +198,11 @@ class AgentServer(AppService):
 
         app.include_router(router)
 
+        #! WARNING: THE ORDER OF THE REST OF THESE FUNCTIONS IS IMPORTANT
+        #! DO NOT CHANGE THE ORDER OF THESE FUNCTIONS
+        #! DO NOT ADD ANY FUNCTIONS BETWEEN THESE FUNCTIONS
+        #! DO NOT REMOVE ANY OF THESE FUNCTIONS
+        #! YOU WILL BREAK THE FRONTEND PACKAGED WITH THE SERVER
         app.mount(
             path="/_next",
             app=SPAStaticFiles(directory=get_frontend_path() / "_next", html=True),
@@ -211,7 +215,12 @@ class AgentServer(AppService):
 
         @app.get("/{extras_file:str}", response_class=HTMLResponse)
         async def catch_others(extras_file: str):
-            # check if the file is directly in the frontend path folder to prevent directory traversal
+            # Do not allow directory traversal
+            if ".." in extras_file:
+                raise HTTPException(status_code=400, detail="Invalid file path")
+            if extras_file.count(".") > 1:
+                raise HTTPException(status_code=400, detail="Invalid file path")
+            # check if the file is directly in the frontend path folder to further prevent directory traversal against the allowed files
             files = os.listdir(get_frontend_path())
             # detect the file type and return the appropriate response
             if extras_file in files:
@@ -221,6 +230,7 @@ class AgentServer(AppService):
                 else:
                     with open(get_frontend_path() / extras_file) as file:
                         return str(file.read())
+            raise HTTPException(status_code=400, detail="Invalid file path")
 
         @app.get("/", response_class=HTMLResponse)
         async def catch_root():
