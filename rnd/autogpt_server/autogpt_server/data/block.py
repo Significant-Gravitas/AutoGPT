@@ -16,8 +16,12 @@ BlockOutput = Generator[BlockData, None, None]
 
 
 class BlockFieldSecret:
-    def __init__(self, value=None, key=None):
-        self._value = value or self.__get_secret(key)
+    def __init__(self, key=None, value=None):
+        if value is not None:
+            self._value = value
+            return
+
+        self._value = self.__get_secret(key)
         if self._value is None:
             raise ValueError(f"Secret {key} not found.")
 
