@@ -235,6 +235,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     })));
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const prepareNodeInputData = (node: Node<CustomNodeData>, allNodes: Node<CustomNodeData>[], allEdges: Edge[]) => {
     console.log("Preparing input data for node:", node.id, node.data.blockType);
 

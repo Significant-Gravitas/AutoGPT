@@ -4,7 +4,7 @@ import { ThemeProvider as NextThemeProvider } from "next-themes";
 import { type ThemeProviderProps } from "next-themes/dist/types";
 import { Inter } from "next/font/google";
 import Link from "next/link";
-import { CubeIcon, Pencil1Icon, ReaderIcon, TimerIcon } from "@radix-ui/react-icons";
+import { Pencil1Icon, TimerIcon } from "@radix-ui/react-icons";
 
 import "./globals.css";
 

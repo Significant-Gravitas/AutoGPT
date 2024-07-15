@@ -22,7 +22,6 @@ import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { Payload } from "recharts/types/component/DefaultLegendContent";
 
 const Monitor = () => {
   const [flows, setFlows] = useState<Flow[]>([]);
@@ -254,6 +253,7 @@ const AgentFlowList = (
   </Card>
 );
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const FlowStatusBadge = ({ status }: { status: "active" | "disabled" | "failing" }) => (
   <Badge
     variant="default"
