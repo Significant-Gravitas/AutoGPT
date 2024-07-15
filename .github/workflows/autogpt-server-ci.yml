@@ -118,6 +118,7 @@ jobs:
         env:
           CI: true
           PLAIN_OUTPUT: True
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       # - name: Upload coverage reports to Codecov
       #   uses: codecov/codecov-action@v4
@@ -210,12 +211,18 @@ jobs:
           WINDOWS_COMMAND: "poetry run poe dist_msi"
           LINUX_COMMAND: "poetry run poe dist_appimage"
 
+      - name: Zip the .app directory
+        if: runner.os == 'macOS'
+        working-directory: ${{ runner.temp }}
+        run: |
+          zip -r autogptserver-app-${{ matrix.platform-os }}.app.zip /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.app
+
       # break this into seperate steps each with their own name that matches the file
       - name: Upload App artifact
         uses: actions/upload-artifact@v4
         with:
           name: autogptserver-app-${{ matrix.platform-os }}
-          path: /Users/runner/work/AutoGPT/AutoGPT/rnd/autogpt_server/build/*.app
+          path: /Users/runner/work/_temp/autogptserver-app-${{ matrix.platform-os }}.app.zip
 
       - name: Upload dmg artifact
         uses: actions/upload-artifact@v4
