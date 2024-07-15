@@ -11,9 +11,17 @@ from autogpt_server.util import json
 
 logger = logging.getLogger(__name__)
 
+LlmApiKeys = {
+    "openai": BlockFieldSecret("openai_api_key"),
+    "anthropic": BlockFieldSecret("anthropic_api_key"),
+    "groq": BlockFieldSecret("groq_api_key"),
+}
+
+
 class ModelMetadata(NamedTuple):
     provider: str
     context_window: int
+
 
 class LlmModel(str, Enum):
     # OpenAI models
@@ -34,6 +42,7 @@ class LlmModel(str, Enum):
     def metadata(self) -> ModelMetadata:
         return MODEL_METADATA[self]
 
+
 MODEL_METADATA = {
     LlmModel.GPT4O: ModelMetadata("openai", 128000),
     LlmModel.GPT4_TURBO: ModelMetadata("openai", 128000),
@@ -47,13 +56,14 @@ MODEL_METADATA = {
     LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192),
 }
 
+
 class LlmCallBlock(Block):
     class Input(BlockSchema):
         prompt: str
-        api_key: BlockFieldSecret
+        model: LlmModel = LlmModel.GPT4_TURBO
+        api_key: BlockFieldSecret = BlockFieldSecret(value="")
         sys_prompt: str = ""
         expected_format: dict[str, str] = {}
-        model: LlmModel
         retry: int = 3
 
     class Output(BlockSchema):
@@ -89,26 +99,25 @@ class LlmCallBlock(Block):
             openai.api_key = api_key
             response = openai.chat.completions.create(
                 model=model.value,
-                messages=prompt,
-                response_format={"type": "json_object"} if json_format else None,
+                messages=prompt,  # type: ignore
+                response_format={"type": "json_object"} if json_format else None, # type: ignore
             )
             return response.choices[0].message.content or ""
         elif provider == "anthropic":
             client = anthropic.Anthropic(api_key=api_key)
-            messages = [{"role": msg["role"], "content": msg["content"]} for msg in prompt]
             response = client.messages.create(
                 model=model.value,
                 max_tokens=1024,
-                messages=messages
+                messages=prompt,  # type: ignore
             )
             return response.content[0].text if response.content else ""
         elif provider == "groq":
             client = Groq(api_key=api_key)
             chat_completion = client.chat.completions.create(
-                messages=prompt,
+                messages=prompt,  # type: ignore
                 model=model.value,
             )
-            return chat_completion.choices[0].message.content
+            return chat_completion.choices[0].message.content or ""
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
@@ -125,13 +134,13 @@ class LlmCallBlock(Block):
         if input_data.expected_format:
             expected_format = [f'"{k}": "{v}"' for k, v in input_data.expected_format.items()]
             format_prompt = ",\n  ".join(expected_format)
-            sys_prompt = f"""
+            sys_prompt = trim_prompt(f"""
               |Reply in json format:
               |{{
               |  {format_prompt}                
               |}}
-            """
-            prompt.append({"role": "system", "content": trim_prompt(sys_prompt)})
+            """)
+            prompt.append({"role": "system", "content": sys_prompt})
 
         prompt.append({"role": "user", "content": input_data.prompt})
 
@@ -147,11 +156,14 @@ class LlmCallBlock(Block):
 
         logger.warning(f"LLM request: {prompt}")
         retry_prompt = ""
+        model = input_data.model
+        api_key = input_data.api_key.get() or LlmApiKeys[model.metadata.provider].get()
+
         for retry_count in range(input_data.retry):
             try:
                 response_text = self.llm_call(
-                    api_key=input_data.api_key.get(),
-                    model=input_data.model,
+                    api_key=api_key,
+                    model=model,
                     prompt=prompt,
                     json_format=bool(input_data.expected_format),
                 )
@@ -166,7 +178,7 @@ class LlmCallBlock(Block):
                     yield "response", {"response": response_text}
                     return
 
-                retry_prompt = f"""
+                retry_prompt = trim_prompt(f"""
                   |This is your previous error response:
                   |--
                   |{response_text}
@@ -176,8 +188,8 @@ class LlmCallBlock(Block):
                   |--
                   |{parsed_error}
                   |--
-                """
-                prompt.append({"role": "user", "content": trim_prompt(retry_prompt)})
+                """)
+                prompt.append({"role": "user", "content": retry_prompt})
             except Exception as e:
                 logger.error(f"Error calling LLM: {e}")
                 retry_prompt = f"Error calling LLM: {e}"
