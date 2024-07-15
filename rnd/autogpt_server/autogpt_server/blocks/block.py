@@ -43,15 +43,19 @@ class BlockInstallationBlock(Block):
         else:
             yield "error", "No UUID found in the code."
             return
-
-        with open(f"../blocks/{file_name}.py", "w") as f:
+        
+        block_dir = os.path.dirname(__file__)
+        file_path = f"{block_dir}/{file_name}.py"
+        module_name = f"autogpt_server.blocks.{file_name}"
+        with open(file_path, "w") as f:
             f.write(code)
-            try:
-                module = __import__(f"../blocks/{file_name}")
-                block_class: Type[Block] = getattr(module, class_name)
-                block = block_class()
-                execute_block_test(block)
-                yield "success", "Block installed successfully."
-            except Exception as e:
-                yield "error", f"[Code]\n{code}\n\n[Error]\n{str(e)}"
-                os.remove(f"../blocks/{file_name}.py")
+
+        try:
+            module = __import__(module_name, fromlist=[class_name])
+            block_class: Type[Block] = getattr(module, class_name)
+            block = block_class()
+            execute_block_test(block)
+            yield "success", "Block installed successfully."
+        except Exception as e:
+            os.remove(file_path)
+            yield "error", f"[Code]\n{code}\n\n[Error]\n{str(e)}"

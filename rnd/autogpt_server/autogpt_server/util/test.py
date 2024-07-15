@@ -97,8 +97,8 @@ def execute_block_test(block: Block):
                     raise ValueError(
                         f"{prefix}: wrong output {data} vs {expected_data}")
 
-            compare(output_name, ex_output_name)
             compare(output_data, ex_output_data)
+            compare(output_name, ex_output_name)
             output_index += 1
 
     if output_index < len(block.test_output):
