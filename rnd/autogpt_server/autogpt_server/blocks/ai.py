@@ -104,20 +104,24 @@ class LlmCallBlock(Block):
             )
             return response.choices[0].message.content or ""
         elif provider == "anthropic":
+            sysprompt = "".join([p["content"] for p in prompt if p["role"] == "system"])
+            usrprompt = [p for p in prompt if p["role"] == "user"]
             client = anthropic.Anthropic(api_key=api_key)
             response = client.messages.create(
                 model=model.value,
-                max_tokens=1024,
-                messages=prompt,  # type: ignore
+                max_tokens=4096,
+                system=sysprompt,
+                messages=usrprompt,  # type: ignore
             )
             return response.content[0].text if response.content else ""
         elif provider == "groq":
             client = Groq(api_key=api_key)
-            chat_completion = client.chat.completions.create(
-                messages=prompt,  # type: ignore
+            response = client.chat.completions.create(
                 model=model.value,
+                messages=prompt,  # type: ignore
+                response_format={"type": "json_object"} if json_format else None,
             )
-            return chat_completion.choices[0].message.content or ""
+            return response.choices[0].message.content or ""
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
