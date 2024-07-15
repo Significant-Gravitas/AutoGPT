@@ -1,6 +1,7 @@
 import os
 import glob
 import importlib
+from pathlib import Path
 from autogpt_server.data.block import Block
 
 # Dynamically load all modules under autogpt_server.blocks
@@ -8,7 +9,7 @@ AVAILABLE_MODULES = []
 current_dir = os.path.dirname(__file__)
 modules = glob.glob(os.path.join(current_dir, "*.py"))
 modules = [
-    os.path.basename(f)[:-3]
+    Path(f).stem
     for f in modules
     if os.path.isfile(f) and f.endswith(".py") and not f.endswith("__init__.py")
 ]

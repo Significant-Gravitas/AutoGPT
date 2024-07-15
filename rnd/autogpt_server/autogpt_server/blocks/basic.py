@@ -4,6 +4,24 @@ from typing import Any
 
 
 class ConstantBlock(Block):
+    """
+    This block allows you to provide a constant value as a block, in a stateless manner.
+    The common use-case is simply pass the `input` data, it will `output` the same data.
+    But this will not retain the state, once it is executed, the output is consumed. 
+
+    To retain the state, you can feed the `output` to the `data` input, so that the data
+    is retained in the block for the next execution. You can then trigger the block by
+    feeding the `input` pin with any data, and the block will produce value of `data`.
+    
+    Ex:
+         <constant_data>  <any_trigger>
+                ||           ||   
+       =====> `data`      `input`
+      ||        \\         //
+      ||       ConstantBlock
+      ||           ||
+       ======  `output`
+    """
     class Input(BlockSchema):
         input: Any
         data: Any = None
@@ -21,8 +39,8 @@ class ConstantBlock(Block):
                 {"input": "Hello, World!", "data": "Existing Data"},
             ],
             test_output=[
-                ("output", "Hello, World!"),
-                ("output", "Existing Data"),
+                ("output", "Hello, World!"),  # No data provided, so trigger is returned
+                ("output", "Existing Data"),  # Data is provided, so data is returned.
             ],
         )
 

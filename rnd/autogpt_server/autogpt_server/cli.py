@@ -181,7 +181,8 @@ def graph(server_address: str):
 
 @test.command()
 @click.argument("graph_id")
-def execute(graph_id: str):
+@click.argument("content")
+def execute(graph_id: str, content: dict):
     """
     Create an event graph
     """
@@ -190,9 +191,7 @@ def execute(graph_id: str):
     headers = {"Content-Type": "application/json"}
 
     execute_url = f"http://0.0.0.0:8000/graphs/{graph_id}/execute"
-    text = "Hello, World!"
-    input_data = {"input": text}
-    requests.post(execute_url, headers=headers, json=input_data)
+    requests.post(execute_url, headers=headers, json=content)
 
 
 @test.command()
