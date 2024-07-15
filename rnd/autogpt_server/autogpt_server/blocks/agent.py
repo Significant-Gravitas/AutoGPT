@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, Iterator
 
 from autogpt.agents.agent import Agent, AgentSettings
 from autogpt.app.config import ConfigBuilder
-from autogpt_server.data.block import Block, BlockFieldSecret, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.config import SecretField
 from forge.agent.components import AgentComponent
 from forge.agent.protocols import (
     CommandProvider,
@@ -79,15 +80,21 @@ class BlockAgent(Agent):
 
 class AutoGPTAgentBlock(Block):
     class Input(BlockSchema):
-        task: str
-        input: str
-        openai_api_key: BlockFieldSecret = BlockFieldSecret(key="openai_api_key")
+        task: str = Field(description="Task description for the agent.")
+        input: str = Field(description="Input data for the task")
+        openai_api_key: SecretStr = SecretField(key="openai_api_key")
         enabled_components: list[str] = Field(
             default_factory=lambda: [OutputComponent.__name__],
-            description="What components to enable [docs](https://docs.agpt.co/forge/components/built-in-components/)",
+            description="List of [AgentComponent](https://docs.agpt.co/forge/components/built-in-components/)s enabled for the agent.",
         )
-        disabled_commands: list[str] = Field(default_factory=list)
-        fast_mode: bool = False
+        disabled_commands: list[str] = Field(
+            default_factory=list,
+            description="List of commands from enabled components to disable.",
+        )
+        fast_mode: bool = Field(
+            False,
+            description="If true uses fast llm, otherwise uses smart and slow llm.",
+        )
 
     class Output(BlockSchema):
         result: str
@@ -168,7 +175,7 @@ class AutoGPTAgentBlock(Block):
         )
         # Switch big brain mode
         state.config.big_brain = not input_data.fast_mode
-        provider = self.get_provider(input_data.openai_api_key.get())
+        provider = self.get_provider(input_data.openai_api_key.get_secret_value())
 
         agent = BlockAgent(state, provider, file_storage, config)
 

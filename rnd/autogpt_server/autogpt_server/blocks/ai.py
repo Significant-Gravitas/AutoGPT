@@ -2,8 +2,10 @@ import logging
 from enum import Enum
 
 import openai
+from pydantic import SecretStr
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema, BlockFieldSecret
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.config import SecretField
 from autogpt_server.util import json
 
 logger = logging.getLogger(__name__)
@@ -16,7 +18,7 @@ class LlmModel(str, Enum):
 class LlmCallBlock(Block):
     class Input(BlockSchema):
         prompt: str
-        api_key: BlockFieldSecret = BlockFieldSecret(key="openai_api_key")
+        api_key: SecretStr = SecretField(key="openai_api_key")
         sys_prompt: str = ""
         expected_format: dict[str, str] = {}
         model: LlmModel = LlmModel.openai_gpt4
@@ -96,7 +98,7 @@ class LlmCallBlock(Block):
         retry_prompt = ""
         for retry_count in range(input_data.retry):
             response_text = self.llm_call(
-                api_key=input_data.api_key.get(),
+                api_key=input_data.api_key.get_secret_value(),
                 model=input_data.model,
                 prompt=prompt,
                 json=bool(input_data.expected_format),
