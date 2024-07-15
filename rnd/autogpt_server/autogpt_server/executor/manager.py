@@ -20,7 +20,7 @@ from autogpt_server.data.execution import (
     ExecutionStatus,
     ExecutionQueue,
 )
-from autogpt_server.data.graph import Link, Node, get_node, get_graph
+from autogpt_server.data.graph import Link, Node, get_node, get_graph, Graph
 from autogpt_server.util.service import AppService, expose, get_service_client  # type: ignore
 
 logger = logging.getLogger(__name__)
@@ -254,7 +254,7 @@ class ExecutionManager(AppService):
 
     @expose
     def add_execution(self, graph_id: str, data: dict[str, Any]) -> dict[Any, Any]:
-        graph = self.run_and_wait(get_graph(graph_id))
+        graph: Graph | None = self.run_and_wait(get_graph(graph_id))
         if not graph:
             raise Exception(f"Graph #{graph_id} not found.")
 
@@ -268,6 +268,7 @@ class ExecutionManager(AppService):
         graph_exec_id, node_execs = self.run_and_wait(
             create_graph_execution(
                 graph_id=graph_id,
+                graph_version=graph.version,
                 node_ids=[node.id for node in graph.starting_nodes],
                 data=data,
             )

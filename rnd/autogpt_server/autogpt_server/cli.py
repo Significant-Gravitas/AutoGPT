@@ -215,21 +215,41 @@ Make sure to only comment on a relevant post.
 
     # Links
     links = [
-        Link(reddit_get_post_node.id, text_formatter_node.id, "post", "named_texts"),
-        Link(text_formatter_node.id, llm_call_node.id, "output", "prompt"),
-        Link(llm_call_node.id, text_matcher_node.id, "response", "data"),
-        Link(llm_call_node.id, text_matcher_node.id, "response_#_is_relevant", "text"),
         Link(
-            text_matcher_node.id,
-            reddit_comment_node.id,
-            "positive_#_post_id",
-            "post_id",
+            source_id=reddit_get_post_node.id,
+            sink_id=text_formatter_node.id,
+            source_name="post",
+            sink_name="named_texts",
         ),
         Link(
-            text_matcher_node.id,
-            reddit_comment_node.id,
-            "positive_#_marketing_text",
-            "comment",
+            source_id=text_formatter_node.id,
+            sink_id=llm_call_node.id,
+            source_name="output",
+            sink_name="prompt",
+        ),
+        Link(
+            source_id=llm_call_node.id,
+            sink_id=text_matcher_node.id,
+            source_name="response",
+            sink_name="data",
+        ),
+        Link(
+            source_id=llm_call_node.id,
+            sink_id=text_matcher_node.id,
+            source_name="response_#_is_relevant",
+            sink_name="text",
+        ),
+        Link(
+            source_id=text_matcher_node.id,
+            sink_id=reddit_comment_node.id,
+            source_name="positive_#_post_id",
+            sink_name="post_id",
+        ),
+        Link(
+            source_id=text_matcher_node.id,
+            sink_id=reddit_comment_node.id,
+            source_name="positive_#_marketing_text",
+            sink_name="comment",
         ),
     ]
 
@@ -276,9 +296,24 @@ def populate_db(server_address: str):
         graph.Node(block_id=PrintingBlock().id),
     ]
     links = [
-        graph.Link(nodes[0].id, nodes[2].id, "output", "texts_$_1"),
-        graph.Link(nodes[1].id, nodes[2].id, "output", "texts_$_2"),
-        graph.Link(nodes[2].id, nodes[3].id, "output", "text"),
+        graph.Link(
+            source_id=nodes[0].id,
+            sink_id=nodes[2].id,
+            source_name="output",
+            sink_name="texts_$_1",
+        ),
+        graph.Link(
+            source_id=nodes[1].id,
+            sink_id=nodes[2].id,
+            source_name="output",
+            sink_name="texts_$_2",
+        ),
+        graph.Link(
+            source_id=nodes[2].id,
+            sink_id=nodes[3].id,
+            source_name="output",
+            sink_name="text",
+        ),
     ]
     test_graph = graph.Graph(
         name="TestGraph",
@@ -337,9 +372,24 @@ def graph(server_address: str):
         graph.Node(block_id=PrintingBlock().id),
     ]
     links = [
-        graph.Link(nodes[0].id, nodes[2].id, "output", "texts_$_1"),
-        graph.Link(nodes[1].id, nodes[2].id, "output", "texts_$_2"),
-        graph.Link(nodes[2].id, nodes[3].id, "output", "text"),
+        graph.Link(
+            source_id=nodes[0].id,
+            sink_id=nodes[2].id,
+            source_name="output",
+            sink_name="texts_$_1",
+        ),
+        graph.Link(
+            source_id=nodes[1].id,
+            sink_id=nodes[2].id,
+            source_name="output",
+            sink_name="texts_$_2",
+        ),
+        graph.Link(
+            source_id=nodes[2].id,
+            sink_id=nodes[3].id,
+            source_name="output",
+            sink_name="text",
+        ),
     ]
     test_graph = graph.Graph(
         name="TestGraph",

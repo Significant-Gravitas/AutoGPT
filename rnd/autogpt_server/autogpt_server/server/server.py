@@ -1,12 +1,9 @@
 import asyncio
 import uuid
+from contextlib import asynccontextmanager
 from typing import Annotated, Any, Dict
 
 import uvicorn
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-
-from contextlib import asynccontextmanager
 from fastapi import (
     APIRouter,
     Body,
@@ -16,22 +13,23 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-from autogpt_server.data import db, execution, block
-from autogpt_server.data.graph import (
-    create_graph,
-    get_graph,
-    get_graph_ids,
-    Graph,
-)
+import autogpt_server.server.ws_api
+from autogpt_server.data import block, db, execution, graph as graph_db
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
-import autogpt_server.server.ws_api
+from autogpt_server.server.model import (
+    CreateGraph,
+    Methods,
+    SetGraphActiveVersion,
+    WsMessage,
+)
 from autogpt_server.util.data import get_frontend_path
 from autogpt_server.util.service import expose  # type: ignore
 from autogpt_server.util.service import AppService, get_service_client
 from autogpt_server.util.settings import Settings
-from autogpt_server.server.model import WsMessage, Methods
 
 
 class AgentServer(AppService):
@@ -89,14 +87,59 @@ class AgentServer(AppService):
             methods=["GET"],
         )
         router.add_api_route(
-            path="/graphs/{graph_id}",
-            endpoint=self.get_graph,
+            path="/templates",
+            endpoint=self.get_templates,
             methods=["GET"],
         )
         router.add_api_route(
             path="/graphs",
             endpoint=self.create_new_graph,
             methods=["POST"],
+        )
+        router.add_api_route(
+            path="/templates",
+            endpoint=self.create_new_template,
+            methods=["POST"],
+        )
+        router.add_api_route(
+            path="/graphs/{graph_id}",
+            endpoint=self.get_graph,
+            methods=["GET"],
+        )
+        router.add_api_route(
+            path="/templates/{graph_id}",
+            endpoint=self.get_template,
+            methods=["GET"],
+        )
+        router.add_api_route(
+            path="/graphs/{graph_id}",
+            endpoint=self.update_graph,
+            methods=["PUT"],
+        )
+        router.add_api_route(
+            path="/templates/{graph_id}",
+            endpoint=self.update_graph,
+            methods=["PUT"],
+        )
+        router.add_api_route(
+            path="/graphs/{graph_id}/versions",
+            endpoint=self.get_graph_all_versions,
+            methods=["GET"],
+        )
+        router.add_api_route(
+            path="/templates/{graph_id}/versions",
+            endpoint=self.get_graph_all_versions,
+            methods=["GET"],
+        )
+        router.add_api_route(
+            path="/graphs/{graph_id}/versions/{version}",
+            endpoint=self.get_graph,
+            methods=["GET"],
+        )
+        router.add_api_route(
+            path="/graphs/{graph_id}/versions/active",
+            endpoint=self.set_graph_active_version,
+            methods=["PUT"],
         )
         router.add_api_route(
             path="/graphs/{graph_id}/execute",
@@ -230,8 +273,8 @@ class AgentServer(AppService):
                     print("Get graph request received")
                 elif message.method == Methods.CREATE_GRAPH:
                     assert isinstance(message.data, dict), "Data must be a dictionary"
-                    graph = Graph.model_validate(message.data)
-                    data = await self.create_new_graph(graph)
+                    create_graph = CreateGraph.model_validate(message.data)
+                    data = await self.create_new_graph(create_graph)
                     await websocket.send_text(
                         WsMessage(
                             method=Methods.CREATE_GRAPH,
@@ -351,19 +394,74 @@ class AgentServer(AppService):
 
     @classmethod
     async def get_graphs(cls) -> list[str]:
-        return await get_graph_ids()
+        # TODO: get_graph_ids() -> get_graphs_meta()
+        return await graph_db.get_graph_ids()
 
     @classmethod
-    async def get_graph(cls, graph_id: str) -> Graph:
-        graph = await get_graph(graph_id)
+    async def get_templates(cls) -> list[graph_db.GraphMeta]:
+        return await graph_db.get_graphs_meta(filter_by="template")
+
+    @classmethod
+    async def get_graph(
+        cls, graph_id: str, version: int | None = None
+    ) -> graph_db.Graph:
+        graph = await graph_db.get_graph(graph_id, version)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         return graph
 
     @classmethod
-    async def create_new_graph(cls, graph: Graph) -> Graph:
+    async def get_template(
+        cls, graph_id: str, version: int | None = None
+    ) -> graph_db.Graph:
+        graph = await graph_db.get_graph(graph_id, version, template=True)
+        if not graph:
+            raise HTTPException(
+                status_code=404, detail=f"Template #{graph_id} not found."
+            )
+        return graph
+
+    @classmethod
+    async def get_graph_all_versions(cls, graph_id: str) -> list[graph_db.Graph]:
+        graphs = await graph_db.get_graph_all_versions(graph_id)
+        if not graphs:
+            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        return graphs
+
+    @classmethod
+    async def create_new_graph(cls, create_graph: CreateGraph) -> graph_db.Graph:
+        return await cls.create_graph(create_graph, is_template=False)
+
+    @classmethod
+    async def create_new_template(cls, create_graph: CreateGraph) -> graph_db.Graph:
+        return await cls.create_graph(create_graph, is_template=True)
+
+    @classmethod
+    async def create_graph(
+        cls, create_graph: CreateGraph, is_template: bool
+    ) -> graph_db.Graph:
+        if create_graph.graph:
+            graph = create_graph.graph
+        elif create_graph.template_id:
+            graph = await graph_db.get_graph(
+                create_graph.template_id, create_graph.template_version, template=True
+            )
+            if not graph:
+                raise HTTPException(
+                    400, detail=f"Template #{create_graph.template_id} not found"
+                )
+            graph.version = 1
+        else:
+            raise HTTPException(
+                status_code=400, detail="Either graph or template_id must be provided."
+            )
+
         # TODO: replace uuid generation here to DB generated uuids.
         graph.id = str(uuid.uuid4())
+
+        graph.is_template = is_template
+        graph.is_active = not is_template
+
         id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
 
         for node in graph.nodes:
@@ -373,7 +471,60 @@ class AgentServer(AppService):
             link.source_id = id_map[link.source_id]
             link.sink_id = id_map[link.sink_id]
 
-        return await create_graph(graph)
+        return await graph_db.create_graph(graph)
+
+    @classmethod
+    async def update_graph(cls, graph_id: str, graph: graph_db.Graph) -> graph_db.Graph:
+        # Sanity check
+        if graph.id and graph.id != graph_id:
+            raise HTTPException(400, detail="Graph ID does not match ID in URI")
+
+        # Determine new version
+        existing_versions = await graph_db.get_graph_all_versions(graph_id)
+        if not existing_versions:
+            raise HTTPException(404, detail=f"Graph #{graph_id} not found")
+        latest_version_number = max(g.version for g in existing_versions)
+        graph.version = latest_version_number + 1
+
+        latest_version_graph = next(
+            v for v in existing_versions if v.version == latest_version_number
+        )
+        if latest_version_graph.is_template != graph.is_template:
+            raise HTTPException(
+                400, detail="Changing is_template on an existing graph is forbidden"
+            )
+        graph.is_active = not graph.is_template
+
+        # Assign new UUIDs to all nodes and links
+        id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
+        for node in graph.nodes:
+            node.id = id_map[node.id]
+        for link in graph.links:
+            link.source_id = id_map[link.source_id]
+            link.sink_id = id_map[link.sink_id]
+
+        new_graph_version = await graph_db.create_graph(graph)
+
+        if new_graph_version.is_active:
+            # Ensure new version is the only active version
+            await graph_db.set_graph_active_version(
+                graph_id=graph_id, version=new_graph_version.version
+            )
+
+        return new_graph_version
+
+    @classmethod
+    async def set_graph_active_version(
+        cls, graph_id: str, request_body: SetGraphActiveVersion
+    ):
+        new_active_version = request_body.active_graph_version
+        if not await graph_db.get_graph(graph_id, new_active_version):
+            raise HTTPException(
+                404, f"Graph #{graph_id} v{new_active_version} not found"
+            )
+        await graph_db.set_graph_active_version(
+            graph_id=graph_id, version=request_body.active_graph_version
+        )
 
     async def execute_graph(
         self, graph_id: str, node_input: dict[Any, Any]
@@ -385,32 +536,39 @@ class AgentServer(AppService):
             raise HTTPException(status_code=400, detail=msg)
 
     @classmethod
-    async def list_graph_runs(cls, graph_id: str) -> list[str]:
-        graph = await get_graph(graph_id)
+    async def list_graph_runs(
+        cls, graph_id: str, graph_version: int | None = None
+    ) -> list[str]:
+        graph = await graph_db.get_graph(graph_id, graph_version)
         if not graph:
-            raise HTTPException(status_code=404, detail=f"Agent #{graph_id} not found.")
+            rev = "" if graph_version is None else f" v{graph_version}"
+            raise HTTPException(
+                status_code=404, detail=f"Agent #{graph_id}{rev} not found."
+            )
 
-        return await execution.list_executions(graph_id)
+        return await execution.list_executions(graph_id, graph_version)
 
     @classmethod
     async def get_run_execution_results(
         cls, graph_id: str, run_id: str
     ) -> list[execution.ExecutionResult]:
-        graph = await get_graph(graph_id)
+        graph = await graph_db.get_graph(graph_id)
         if not graph:
-            raise HTTPException(status_code=404, detail=f"Agent #{graph_id} not found.")
+            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
         return await execution.get_execution_results(run_id)
 
     async def create_schedule(
         self, graph_id: str, cron: str, input_data: dict[Any, Any]
     ) -> dict[Any, Any]:
-        graph = await get_graph(graph_id)
+        graph = await graph_db.get_graph(graph_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         execution_scheduler = self.execution_scheduler_client
         return {
-            "id": execution_scheduler.add_execution_schedule(graph_id, cron, input_data)  # type: ignore
+            "id": execution_scheduler.add_execution_schedule(
+                graph_id, graph.version, cron, input_data
+            )
         }
 
     def update_schedule(
