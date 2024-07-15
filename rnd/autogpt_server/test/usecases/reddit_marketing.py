@@ -28,7 +28,7 @@ async def create_test_graph() -> Graph:
         user_agent="TODO_FILL_OUT_THIS",
     )
     openai_api_key = "TODO_FILL_OUT_THIS"
-    
+
     # Hardcoded inputs
     reddit_get_post_input = {
         "creds": reddit_creds,
@@ -69,10 +69,7 @@ Make sure to only comment on a relevant post.
         block_id=TextFormatterBlock().id,
         input_default=text_formatter_input,
     )
-    llm_call_node = Node(
-        block_id=LlmCallBlock().id,
-        input_default=llm_call_input
-    )
+    llm_call_node = Node(block_id=LlmCallBlock().id, input_default=llm_call_input)
     text_matcher_node = Node(
         block_id=TextMatcherBlock().id,
         input_default=text_matcher_input,
@@ -92,14 +89,42 @@ Make sure to only comment on a relevant post.
 
     # Links
     links = [
-        Link(reddit_get_post_node.id, text_formatter_node.id, "post", "named_texts"),
-        Link(text_formatter_node.id, llm_call_node.id, "output", "prompt"),
-        Link(llm_call_node.id, text_matcher_node.id, "response", "data"),
-        Link(llm_call_node.id, text_matcher_node.id, "response_#_is_relevant", "text"),
-        Link(text_matcher_node.id, reddit_comment_node.id, "positive_#_post_id",
-             "post_id"),
-        Link(text_matcher_node.id, reddit_comment_node.id, "positive_#_marketing_text",
-             "comment"),
+        Link(
+            source_id=reddit_get_post_node.id,
+            sink_id=text_formatter_node.id,
+            source_name="post",
+            sink_name="named_texts",
+        ),
+        Link(
+            source_id=text_formatter_node.id,
+            sink_id=llm_call_node.id,
+            source_name="output",
+            sink_name="prompt",
+        ),
+        Link(
+            source_id=llm_call_node.id,
+            sink_id=text_matcher_node.id,
+            source_name="response",
+            sink_name="data",
+        ),
+        Link(
+            source_id=llm_call_node.id,
+            sink_id=text_matcher_node.id,
+            source_name="response_#_is_relevant",
+            sink_name="text",
+        ),
+        Link(
+            source_id=text_matcher_node.id,
+            sink_id=reddit_comment_node.id,
+            source_name="positive_#_post_id",
+            sink_name="post_id",
+        ),
+        Link(
+            source_id=text_matcher_node.id,
+            sink_id=reddit_comment_node.id,
+            source_name="positive_#_marketing_text",
+            sink_name="comment",
+        ),
     ]
 
     # Create graph
@@ -125,9 +150,13 @@ async def wait_execution(test_manager, graph_id, graph_exec_id) -> list:
         Total: 13
         """
         print("--------> Execution count: ", len(execs), [str(v.status) for v in execs])
-        return test_manager.queue.empty() and len(execs) == 13 and all(
-            v.status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]
-            for v in execs
+        return (
+            test_manager.queue.empty()
+            and len(execs) == 13
+            and all(
+                v.status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]
+                for v in execs
+            )
         )
 
     # Wait for the executions to complete
