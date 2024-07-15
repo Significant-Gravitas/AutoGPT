@@ -153,8 +153,9 @@ jobs:
           node-version: '21'
 
       - name: Install dependencies for autogpt_builder
+        working-directory: rnd/autogpt_builder
         run: |
-          npm install --prefix ../autogpt_builder
+          npm install
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
