@@ -5,6 +5,9 @@ docs_dir: content
 nav:
   - Home: index.md
 
+  - The AutoGPT Server 🆕: 
+    - Build your own Blocks: server/new_blocks.md
+
   - AutoGPT Agent:
       - Introduction: AutoGPT/index.md
       - Setup:
@@ -41,9 +44,6 @@ nav:
 
   - Docs: docs/index.md
     
-  - Server: 
-      - Build your own Node: server/new_nodes.md
-
   # - Challenges:
   #     - Introduction: challenges/introduction.md
   #     - List of Challenges:
