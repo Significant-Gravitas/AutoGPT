@@ -115,7 +115,7 @@ Here are a couple of sample of the Block class implementation:
     code_text_parser = Node(
         block_id=TextParserBlock().id,
         input_default={
-            "pattern": "```python\n(.+?)```",
+            "pattern": "```python\n(.+?)\n```",
             "group": 1,
         },
     )
@@ -150,7 +150,6 @@ Here are a couple of sample of the Block class implementation:
         Link(code_gen_llm_call.id, code_text_parser.id, "response_#_response", "text"),
         
         Link(code_text_parser.id, block_installation.id, "positive", "code"),
-        Link(code_text_parser.id, block_installation.id, "negative", "code"),
         
         Link(block_installation.id, prompt_text_formatter.id, "error", "named_texts_#_previous_attempt"),
         Link(block_installation.id, search_result_constant.id, "error", "input"), # Re-trigger search result.

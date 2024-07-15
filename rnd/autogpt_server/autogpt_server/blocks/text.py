@@ -44,7 +44,13 @@ class TextMatcherBlock(Block):
             flags = flags | re.IGNORECASE
         if input_data.dot_all:
             flags = flags | re.DOTALL
-        if re.search(input_data.match, json.dumps(input_data.text), flags=flags):
+            
+        if isinstance(input_data.text, str):
+            text = input_data.text
+        else:
+            text = json.dumps(input_data.text)
+            
+        if re.search(input_data.match, text, flags=flags):
             yield "positive", output
         else:
             yield "negative", output
@@ -52,10 +58,11 @@ class TextMatcherBlock(Block):
 
 class TextParserBlock(Block):
     class Input(BlockSchema):
-        text: str = Field(description="Text to parse")
+        text: Any = Field(description="Text to parse")
         pattern: str = Field(description="Pattern (Regex) to parse")
         group: int = Field(description="Group number to extract", default=0)
         case_sensitive: bool = Field(description="Case sensitive match", default=True)
+        dot_all: bool = Field(description="Dot matches all", default=True)
 
     class Output(BlockSchema):
         positive: str = Field(description="Extracted text")
@@ -81,12 +88,24 @@ class TextParserBlock(Block):
         )
 
     def run(self, input_data: Input) -> BlockOutput:
-        case_flag = 0 if input_data.case_sensitive else re.IGNORECASE
-        match = re.search(input_data.pattern, input_data.text, case_flag)
+        flags = 0
+        if not input_data.case_sensitive:
+            flags = flags | re.IGNORECASE
+        if input_data.dot_all:
+            flags = flags | re.DOTALL
+            
+        if isinstance(input_data.text, str):
+            text = input_data.text
+        else:
+            text = json.dumps(input_data.text)
+
+        match = re.search(input_data.pattern, text, flags)
+        print(">>>>> Match: ", match)
+        print(">>>>> Group: ", match.groups() if match else None)
         if match and input_data.group <= len(match.groups()):
             yield "positive", match.group(input_data.group)
         else:
-            yield "negative", input_data.text
+            yield "negative", text
 
 
 class TextFormatterBlock(Block):
