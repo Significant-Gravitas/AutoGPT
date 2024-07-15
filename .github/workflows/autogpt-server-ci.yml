@@ -6,11 +6,13 @@ on:
     paths:
       - ".github/workflows/autogpt-server-ci.yml"
       - "rnd/autogpt_server/**"
+      - "rnd/autogpt_builder/**"
   pull_request:
     branches: [master, development, release-*]
     paths:
       - ".github/workflows/autogpt-server-ci.yml"
       - "rnd/autogpt_server/**"
+      - "rnd/autogpt_builder/**"
 
 concurrency:
   group: ${{ format('autogpt-server-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -143,6 +145,16 @@ jobs:
         with:
           fetch-depth: 0
           submodules: true
+
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '21'
+
+      - name: Install dependencies
+        run: |
+          npm install
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
