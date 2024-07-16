@@ -2,7 +2,7 @@ import requests
 from autogpt_server.data.block import Block, BlockSchema, BlockOutput
 
 
-class GetWikipediaSummary(Block):
+class WikipediaSummaryBlock(Block):
     class Input(BlockSchema):
         topic: str
 
@@ -12,8 +12,8 @@ class GetWikipediaSummary(Block):
     def __init__(self):
         super().__init__(
             id="h5e7f8g9-1b2c-3d4e-5f6g-7h8i9j0k1l2m",
-            input_schema=GetWikipediaSummary.Input,
-            output_schema=GetWikipediaSummary.Output,
+            input_schema=WikipediaSummaryBlock.Input,
+            output_schema=WikipediaSummaryBlock.Output,
             test_input={"topic": "Artificial Intelligence"},
             test_output=("summary", str),
         )
