@@ -107,13 +107,6 @@ jobs:
       - name: Install Python dependencies
         run: poetry install
 
-      - name: Install Prisma Dependencies
-        run: |
-          mkdir prisma
-          poetry run prisma py fetch --force
-        env: 
-          PRISMA_BINARY_CACHE_DIR: "./prisma"
-
       - name: Generate Prisma Client
         run: poetry run prisma generate
 
@@ -202,6 +195,13 @@ jobs:
 
       - name: Install Python dependencies
         run: poetry install
+
+      - name: Install Prisma Dependencies
+        run: |
+          mkdir prisma
+          poetry run prisma py fetch --force
+        env: 
+          PRISMA_BINARY_CACHE_DIR: "./prisma"
 
       - name: Generate Prisma Client
         run: poetry run prisma generate
