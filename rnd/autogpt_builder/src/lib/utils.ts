@@ -17,6 +17,19 @@ export function hashString(str: string): number {
   return hash;
 }
 
+/** Derived from https://stackoverflow.com/a/32922084 */
+export function deepEquals(x: any, y: any): boolean {
+  const ok = Object.keys, tx = typeof x, ty = typeof y;
+  return x && y && tx === ty && (
+    tx === 'object'
+      ? (
+        ok(x).length === ok(y).length &&
+          ok(x).every(key => deepEquals(x[key], y[key]))
+      )
+      : (x === y)
+  );
+}
+
 export function beautifyString(name: string): string {
   // Regular expression to identify places to split, considering acronyms
   const result = name

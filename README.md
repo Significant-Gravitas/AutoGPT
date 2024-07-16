@@ -1,17 +1,41 @@
-# AutoGPT: build & use AI agents
+# AutoGPT: Build & Use AI Agents
 
 [![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt) &ensp;
 [![Twitter Follow](https://img.shields.io/twitter/follow/Auto_GPT?style=social)](https://twitter.com/Auto_GPT) &ensp;
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**AutoGPT** is a generalist LLM based AI agent that can autonomously accomplish minor tasks. 
+**AutoGPT** is a powerful tool that lets you create and run intelligent agents. These agents can perform various tasks automatically, making your life easier.
 
-**Examples**:
+## How to Get Started
 
-- Look up and summarize this research paper
-- Write a marketing for food supplements
-- Write a blog post detailing the news in AI
+https://github.com/user-attachments/assets/8508f4dc-b362-4cab-900f-644964a96cdf
 
+### 🧱 AutoGPT Builder 
+
+The AutoGPT Builder is the frontend. It allows you to design agents using an easy flowchart style. You build your agent by connecting blocks, where each block performs a single action. It's simple and intuitive!
+
+### 💽 AutoGPT Server
+
+The AutoGPT Server is the backend. This is where your agents run. Once deployed, agents can be triggered by external sources and can operate continuously.
+
+### 🐙 Example Agents
+
+Here are two examples of what you can do with AutoGPT:
+
+1. **Reddit Marketing Agent**
+   - This agent reads comments on Reddit.
+   - It looks for people asking about your product.
+   - It then automatically responds to them.
+
+2. **YouTube Content Repurposing Agent**
+   - This agent subscribes to your YouTube channel.
+   - When you post a new video, it transcribes it.
+   - It uses AI to write a search engine optimized blog post.
+   - Then, it publishes this blog post to your Medium account.
+
+These examples show just a glimpse of what you can achieve with AutoGPT!
+
+---
 Our mission is to provide the tools, so that you can focus on what matters:
 
 - 🏗️ **Building** - Lay the foundation for something amazing.
@@ -23,11 +47,13 @@ Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI i
 **📖 [Documentation](https://docs.agpt.co)**
 &ensp;|&ensp;
 **🚀 [Contributing](CONTRIBUTING.md)**
-&ensp;|&ensp;
+
+
+---
+## 🤖 AutoGPT Classic
+> Below is information about the classic version of AutoGPT.
+
 **🛠️ [Build your own Agent - Quickstart](FORGE-QUICKSTART.md)**
-
-## 🧱 Building blocks
-
 ### 🏗️ Forge
 
 **Forge your own agent!** &ndash; Forge is a ready-to-go template for your agent application. All the boilerplate code is already handled, letting you channel all your creativity into the things that set *your* agent apart. All tutorials are located [here](https://medium.com/@aiedge/autogpt-forge-e3de53cc58ec). Components from the [`forge.sdk`](/forge/forge/sdk) can also be used individually to speed up development and reduce boilerplate in your agent project.
