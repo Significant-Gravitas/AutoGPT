@@ -16,7 +16,7 @@ class RedditCredentials(BaseModel):
     client_secret: BlockFieldSecret = BlockFieldSecret(key="reddit_client_secret")
     username: BlockFieldSecret = BlockFieldSecret(key="reddit_username")
     password: BlockFieldSecret = BlockFieldSecret(key="reddit_password")
-    user_agent: str | None = None
+    user_agent: str = "AutoGPT:1.0 (by /u/autogpt)"
 
 
 class RedditPost(BaseModel):

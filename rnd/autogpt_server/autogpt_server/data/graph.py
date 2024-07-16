@@ -1,31 +1,25 @@
 import asyncio
 import uuid
+from typing import Any, Literal
 
-from typing import Any
+import prisma.types
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink
-from pydantic import BaseModel, PrivateAttr
+from pydantic import PrivateAttr
 
 from autogpt_server.data.db import BaseDbModel
 from autogpt_server.util import json
 
 
-class Link(BaseModel):
+class Link(BaseDbModel):
     source_id: str
     sink_id: str
     source_name: str
     sink_name: str
 
-    def __init__(self, source_id: str, sink_id: str, source_name: str, sink_name: str):
-        super().__init__(
-            source_id=source_id,
-            sink_id=sink_id,
-            source_name=source_name,
-            sink_name=sink_name,
-        )
-
     @staticmethod
     def from_db(link: AgentNodeLink):
         return Link(
+            id=link.id,
             source_name=link.sourceName,
             source_id=link.agentNodeSourceId,
             sink_name=link.sinkName,
@@ -60,16 +54,34 @@ class Node(BaseDbModel):
             id=node.id,
             block_id=node.AgentBlock.id,
             input_default=json.loads(node.constantInput),
-            metadata=json.loads(node.metadata)
+            metadata=json.loads(node.metadata),
         )
         obj._input_links = [Link.from_db(link) for link in node.Input or []]
         obj._output_links = [Link.from_db(link) for link in node.Output or []]
         return obj
 
 
-class Graph(BaseDbModel):
+class GraphMeta(BaseDbModel):
+    version: int = 1
+    is_active: bool = True
+    is_template: bool = False
+
     name: str
     description: str
+
+    @staticmethod
+    def from_db(graph: AgentGraph):
+        return GraphMeta(
+            id=graph.id,
+            version=graph.version,
+            is_active=graph.isActive,
+            is_template=graph.isTemplate,
+            name=graph.name or "",
+            description=graph.description or "",
+        )
+
+
+class Graph(GraphMeta):
     nodes: list[Node]
     links: list[Link]
 
@@ -81,15 +93,15 @@ class Graph(BaseDbModel):
     @staticmethod
     def from_db(graph: AgentGraph):
         return Graph(
-            id=graph.id,
-            name=graph.name or "",
-            description=graph.description or "",
+            **GraphMeta.from_db(graph).model_dump(),
             nodes=[Node.from_db(node) for node in graph.AgentNodes or []],
-            links=list({
-                Link.from_db(link)
-                for node in graph.AgentNodes or []
-                for link in (node.Input or []) + (node.Output or [])
-            })
+            links=list(
+                {
+                    Link.from_db(link)
+                    for node in graph.AgentNodes or []
+                    for link in (node.Input or []) + (node.Output or [])
+                }
+            ),
         )
 
 
@@ -111,50 +123,148 @@ async def get_node(node_id: str) -> Node | None:
     return Node.from_db(node) if node else None
 
 
+# TODO: Delete this
 async def get_graph_ids() -> list[str]:
-    return [graph.id for graph in await AgentGraph.prisma().find_many()]  # type: ignore
+    return [
+        graph.id
+        for graph in await AgentGraph.prisma().find_many(
+            distinct=["id"], where={"isActive": True}
+        )
+    ]
 
 
-async def get_graph(graph_id: str) -> Graph | None:
-    graph = await AgentGraph.prisma().find_unique(
-        where={"id": graph_id},
+async def get_graphs_meta(
+    filter_by: Literal["active", "template"] | None = "active"
+) -> list[GraphMeta]:
+    """
+    Retrieves graph metadata objects.
+    Default behaviour is to get all currently active graphs.
+
+    Args:
+        filter_by: An optional filter to either select templates or active graphs.
+
+    Returns:
+        list[GraphMeta]: A list of objects representing the retrieved graph metadata.
+    """
+    where_clause: prisma.types.AgentGraphWhereInput = {}
+
+    if filter_by == "active":
+        where_clause["isActive"] = True
+    elif filter_by == "template":
+        where_clause["isTemplate"] = True
+
+    graphs = await AgentGraph.prisma().find_many(
+        where=where_clause,
+        distinct=["id"],
+        order={"version": "desc"},
+    )
+
+    if not graphs:
+        return []
+
+    return [GraphMeta.from_db(graph) for graph in graphs]
+
+
+async def get_graph(
+    graph_id: str, version: int | None = None, template: bool = False
+) -> Graph | None:
+    """
+    Retrieves a graph from the DB.
+    Defaults to the version with `is_active` if `version` is not passed,
+    or the latest version with `is_template` if `template=True`.
+
+    Returns `None` if the record is not found.
+    """
+    where_clause: prisma.types.AgentGraphWhereInput = {
+        "id": graph_id,
+        "isTemplate": template,
+    }
+    if version is not None:
+        where_clause["version"] = version
+    elif not template:
+        where_clause["isActive"] = True
+
+    graph = await AgentGraph.prisma().find_first(
+        where=where_clause,
         include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
+        order={"version": "desc"},
     )
     return Graph.from_db(graph) if graph else None
+
+
+async def set_graph_active_version(graph_id: str, version: int) -> None:
+    updated_graph = await AgentGraph.prisma().update(
+        data={"isActive": True},
+        where={"graphVersionId": {"id": graph_id, "version": version}},
+    )
+    if not updated_graph:
+        raise Exception(f"Graph #{graph_id} v{version} not found")
+
+    # Deactivate all other versions
+    await AgentGraph.prisma().update_many(
+        data={"isActive": False},
+        where={"id": graph_id, "version": {"not": version}},
+    )
+
+
+async def get_graph_all_versions(graph_id: str) -> list[Graph]:
+    graph_versions = await AgentGraph.prisma().find_many(
+        where={"id": graph_id},
+        order={"version": "desc"},
+        include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
+    )
+
+    if not graph_versions:
+        return []
+
+    return [Graph.from_db(graph) for graph in graph_versions]
 
 
 async def create_graph(graph: Graph) -> Graph:
     await AgentGraph.prisma().create(
         data={
             "id": graph.id,
+            "version": graph.version,
             "name": graph.name,
             "description": graph.description,
+            "isTemplate": graph.is_template,
+            "isActive": graph.is_active,
         }
     )
 
     # TODO: replace bulk creation using create_many
-    await asyncio.gather(*[
-        AgentNode.prisma().create({
-            "id": node.id,
-            "agentBlockId": node.block_id,
-            "agentGraphId": graph.id,
-            "constantInput": json.dumps(node.input_default),
-            "metadata": json.dumps(node.metadata),
-        }) for node in graph.nodes
-    ])
+    await asyncio.gather(
+        *[
+            AgentNode.prisma().create(
+                {
+                    "id": node.id,
+                    "agentBlockId": node.block_id,
+                    "agentGraphId": graph.id,
+                    "agentGraphVersion": graph.version,
+                    "constantInput": json.dumps(node.input_default),
+                    "metadata": json.dumps(node.metadata),
+                }
+            )
+            for node in graph.nodes
+        ]
+    )
 
-    await asyncio.gather(*[
-        AgentNodeLink.prisma().create({
-            "id": str(uuid.uuid4()),
-            "sourceName": link.source_name,
-            "sinkName": link.sink_name,
-            "agentNodeSourceId": link.source_id,
-            "agentNodeSinkId": link.sink_id,
-        })
-        for link in graph.links
-    ])
+    await asyncio.gather(
+        *[
+            AgentNodeLink.prisma().create(
+                {
+                    "id": str(uuid.uuid4()),
+                    "sourceName": link.source_name,
+                    "sinkName": link.sink_name,
+                    "agentNodeSourceId": link.source_id,
+                    "agentNodeSinkId": link.sink_id,
+                }
+            )
+            for link in graph.links
+        ]
+    )
 
-    if created_graph := await get_graph(graph.id):
+    if created_graph := await get_graph(graph.id, graph.version):
         return created_graph
 
-    raise ValueError(f"Failed to create graph {graph.id}.")
+    raise ValueError(f"Failed to create graph {graph.id}:{graph.version}.")
