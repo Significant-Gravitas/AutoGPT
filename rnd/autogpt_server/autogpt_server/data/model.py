@@ -1,7 +1,6 @@
 from typing import Any, Callable, Optional, TypeVar
 
 from pydantic import Field
-from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined, PydanticUndefinedType
 
 
@@ -21,7 +20,7 @@ def SchemaField(
     if placeholder:
         json_extra["placeholder"] = placeholder
 
-    field_info: FieldInfo = Field(
+    return Field(
         default,
         *args,
         default_factory=default_factory,
@@ -31,5 +30,3 @@ def SchemaField(
         json_schema_extra=json_extra,
         **kwargs,
     )
-
-    return field_info # type: ignore
