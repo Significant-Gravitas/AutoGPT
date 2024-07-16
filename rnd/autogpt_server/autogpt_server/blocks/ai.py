@@ -7,16 +7,16 @@ import anthropic
 from groq import Groq
 from pydantic import SecretStr
 
-from autogpt_server.data.block import Block, BlockFieldSecret, BlockOutput, BlockSchema
-from autogpt_server.data.config import SecretField
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.model import BlockSecret, SecretField
 from autogpt_server.util import json
 
 logger = logging.getLogger(__name__)
 
 LlmApiKeys = {
-    "openai": BlockFieldSecret("openai_api_key"),
-    "anthropic": BlockFieldSecret("anthropic_api_key"),
-    "groq": BlockFieldSecret("groq_api_key"),
+    "openai": BlockSecret("openai_api_key"),
+    "anthropic": BlockSecret("anthropic_api_key"),
+    "groq": BlockSecret("groq_api_key"),
 }
 
 
@@ -63,7 +63,7 @@ class LlmCallBlock(Block):
     class Input(BlockSchema):
         prompt: str
         model: LlmModel = LlmModel.GPT4_TURBO
-        api_key: SecretStr = SecretField(key="openai_api_key")
+        api_key: BlockSecret = SecretField(key="openai_api_key")
         sys_prompt: str = ""
         expected_format: dict[str, str] = {}
         retry: int = 3
@@ -163,7 +163,10 @@ class LlmCallBlock(Block):
         logger.warning(f"LLM request: {prompt}")
         retry_prompt = ""
         model = input_data.model
-        api_key = input_data.api_key.get_secret_value() or LlmApiKeys[model.metadata.provider].get()
+        api_key = (
+            input_data.api_key.get_secret_value() or 
+            LlmApiKeys[model.metadata.provider].get_secret_value()
+        )
 
         for retry_count in range(input_data.retry):
             try:

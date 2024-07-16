@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Iterator
 from autogpt.agents.agent import Agent, AgentSettings
 from autogpt.app.config import ConfigBuilder
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
-from autogpt_server.data.config import SecretField
+from autogpt_server.data.model import BlockSecret, SecretField
 from forge.agent.components import AgentComponent
 from forge.agent.protocols import (
     CommandProvider,
@@ -82,7 +82,7 @@ class AutoGPTAgentBlock(Block):
     class Input(BlockSchema):
         task: str = Field(description="Task description for the agent.")
         input: str = Field(description="Input data for the task")
-        openai_api_key: SecretStr = SecretField(key="openai_api_key")
+        openai_api_key: BlockSecret = SecretField(key="openai_api_key")
         enabled_components: list[str] = Field(
             default_factory=lambda: [OutputComponent.__name__],
             description="List of [AgentComponent](https://docs.agpt.co/forge/components/built-in-components/)s enabled for the agent.",
