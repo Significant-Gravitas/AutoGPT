@@ -6,7 +6,6 @@ from typing import Any
 
 from prisma.models import (
     AgentGraphExecution,
-    AgentNode,
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
 )
@@ -95,9 +94,16 @@ class ExecutionResult(BaseModel):
 
 # --------------------- Model functions --------------------- #
 
+EXECUTION_RESULT_INCLUDE = {
+    "Input": True,
+    "Output": True,
+    "AgentNode": True,
+    "AgentGraphExecution": True,
+}
+
 
 async def create_graph_execution(
-    graph_id: str, graph_version: int, node_ids: list[str], data: dict[str, Any]
+        graph_id: str, graph_version: int, node_ids: list[str], data: dict[str, Any]
 ) -> tuple[str, list[ExecutionResult]]:
     """
     Create a new AgentGraphExecution record.
@@ -179,9 +185,9 @@ async def upsert_execution_input(
 
 
 async def upsert_execution_output(
-    node_exec_id: str,
-    output_name: str,
-    output_data: Any,
+        node_exec_id: str,
+        output_name: str,
+        output_data: Any,
 ) -> None:
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
@@ -195,7 +201,10 @@ async def upsert_execution_output(
     )
 
 
-async def update_execution_status(node_exec_id: str, status: ExecutionStatus) -> None:
+async def update_execution_status(
+        node_exec_id: str,
+        status: ExecutionStatus
+) -> ExecutionResult:
     now = datetime.now(tz=timezone.utc)
     data = {
         **({"executionStatus": status}),
@@ -208,9 +217,12 @@ async def update_execution_status(node_exec_id: str, status: ExecutionStatus) ->
     res = await AgentNodeExecution.prisma().update(
         where={"id": node_exec_id},
         data=data,  # type: ignore
+        include=EXECUTION_RESULT_INCLUDE,  # type: ignore
     )
     if not res:
         raise ValueError(f"Execution {node_exec_id} not found.")
+
+    return ExecutionResult.from_db(res)
 
 
 async def list_executions(graph_id: str, graph_version: int | None = None) -> list[str]:
@@ -224,22 +236,10 @@ async def list_executions(graph_id: str, graph_version: int | None = None) -> li
 async def get_execution_results(graph_exec_id: str) -> list[ExecutionResult]:
     executions = await AgentNodeExecution.prisma().find_many(
         where={"agentGraphExecutionId": graph_exec_id},
-        include={"Input": True, "Output": True, "AgentGraphExecution": True},
+        include=EXECUTION_RESULT_INCLUDE,  # type: ignore
         order={"addedTime": "asc"},
     )
     res = [ExecutionResult.from_db(execution) for execution in executions]
-    return res
-
-
-async def get_execution_result(
-    graph_exec_id: str, node_exec_id: str
-) -> ExecutionResult:
-    execution = await AgentNodeExecution.prisma().find_first_or_raise(
-        where={"agentGraphExecutionId": graph_exec_id, "id": node_exec_id},
-        include={"Input": True, "Output": True, "AgentGraphExecution": True},
-        order={"addedTime": "asc"},
-    )
-    res = ExecutionResult.from_db(execution)
     return res
 
 
@@ -252,10 +252,7 @@ async def get_node_execution_input(node_exec_id: str) -> dict[str, Any]:
     """
     execution = await AgentNodeExecution.prisma().find_unique_or_raise(
         where={"id": node_exec_id},
-        include={
-            "Input": True,
-            "AgentNode": True,
-        },
+        include=EXECUTION_RESULT_INCLUDE,  # type: ignore
     )
     if not execution.AgentNode:
         raise ValueError(f"Node {execution.agentNodeId} not found.")
@@ -302,8 +299,9 @@ def parse_execution_output(output: tuple[str, Any], name: str) -> Any | None:
 
 def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
     # Merge all input with <input_name>_$_<index> into a single list.
+    items = list(data.items())
     list_input: list[Any] = []
-    for key, value in data.items():
+    for key, value in items:
         if LIST_SPLIT not in key:
             continue
         name, index = key.split(LIST_SPLIT)
@@ -317,7 +315,7 @@ def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
         data[name].append(value)
 
     # Merge all input with <input_name>_#_<index> into a single dict.
-    for key, value in data.items():
+    for key, value in items:
         if DICT_SPLIT not in key:
             continue
         name, index = key.split(DICT_SPLIT)
@@ -325,7 +323,7 @@ def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
         data[name][index] = value
 
     # Merge all input with <input_name>_@_<index> into a single object.
-    for key, value in data.items():
+    for key, value in items:
         if OBJC_SPLIT not in key:
             continue
         name, index = key.split(OBJC_SPLIT)
