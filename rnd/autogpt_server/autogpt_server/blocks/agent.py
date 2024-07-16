@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Iterator
 from autogpt.agents.agent import Agent, AgentSettings
 from autogpt.app.config import ConfigBuilder
 from autogpt_server.data.block import Block, BlockFieldSecret, BlockOutput, BlockSchema
-from autogpt_server.data.config import SchemaField
+from autogpt_server.data.model import SchemaField
 from forge.agent.components import AgentComponent
 from forge.agent.protocols import (
     CommandProvider,
