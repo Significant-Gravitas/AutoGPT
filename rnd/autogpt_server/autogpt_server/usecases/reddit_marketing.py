@@ -1,5 +1,5 @@
 from autogpt_server.data.graph import Graph, Link, Node, create_graph
-from autogpt_server.blocks.ai import LlmCallBlock
+from autogpt_server.blocks.llm import LlmCallBlock
 from autogpt_server.blocks.reddit import (
     RedditGetPostsBlock,
     RedditPostCommentBlock,
