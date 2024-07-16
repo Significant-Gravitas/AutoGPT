@@ -108,7 +108,9 @@ jobs:
         run: poetry install
 
       - name: Install Prisma Dependencies
-        run: poetry run prisma py fetch --force
+        run: |
+          mkdir prisma
+          poetry run prisma py fetch --force
         env: 
           PRISMA_BINARY_CACHE_DIR: "./prisma"
 
