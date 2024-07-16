@@ -12,6 +12,7 @@ class TextMatcherBlock(Block):
         match: str = Field(description="Pattern (Regex) to match")
         data: Any = Field(description="Data to be forwarded to output")
         case_sensitive: bool = Field(description="Case sensitive match", default=True)
+        dot_all: bool = Field(description="Dot matches all", default=True)
 
     class Output(BlockSchema):
         positive: Any = Field(description="Output data if match is found")
@@ -38,11 +39,71 @@ class TextMatcherBlock(Block):
 
     def run(self, input_data: Input) -> BlockOutput:
         output = input_data.data or input_data.text
-        case = 0 if input_data.case_sensitive else re.IGNORECASE
-        if re.search(input_data.match, json.dumps(input_data.text), case):
+        flags = 0
+        if not input_data.case_sensitive:
+            flags = flags | re.IGNORECASE
+        if input_data.dot_all:
+            flags = flags | re.DOTALL
+            
+        if isinstance(input_data.text, str):
+            text = input_data.text
+        else:
+            text = json.dumps(input_data.text)
+            
+        if re.search(input_data.match, text, flags=flags):
             yield "positive", output
         else:
             yield "negative", output
+
+
+class TextParserBlock(Block):
+    class Input(BlockSchema):
+        text: Any = Field(description="Text to parse")
+        pattern: str = Field(description="Pattern (Regex) to parse")
+        group: int = Field(description="Group number to extract", default=0)
+        case_sensitive: bool = Field(description="Case sensitive match", default=True)
+        dot_all: bool = Field(description="Dot matches all", default=True)
+
+    class Output(BlockSchema):
+        positive: str = Field(description="Extracted text")
+        negative: str = Field(description="Original text")
+
+    def __init__(self):
+        super().__init__(
+            id="3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+            input_schema=TextParserBlock.Input,
+            output_schema=TextParserBlock.Output,
+            test_input=[
+                {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 1},
+                {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 0},
+                {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 2},
+                {"text": "Hello, World!", "pattern": "hello,", "case_sensitive": False},
+            ],
+            test_output=[
+                ("positive", "World!"),
+                ("positive", "Hello, World!"),
+                ("negative", "Hello, World!"),
+                ("positive", "Hello,"),
+            ],
+        )
+
+    def run(self, input_data: Input) -> BlockOutput:
+        flags = 0
+        if not input_data.case_sensitive:
+            flags = flags | re.IGNORECASE
+        if input_data.dot_all:
+            flags = flags | re.DOTALL
+            
+        if isinstance(input_data.text, str):
+            text = input_data.text
+        else:
+            text = json.dumps(input_data.text)
+
+        match = re.search(input_data.pattern, text, flags)
+        if match and input_data.group <= len(match.groups()):
+            yield "positive", match.group(input_data.group)
+        else:
+            yield "negative", text
 
 
 class TextFormatterBlock(Block):
