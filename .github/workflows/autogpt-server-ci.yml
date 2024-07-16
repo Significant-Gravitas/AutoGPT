@@ -202,6 +202,7 @@ jobs:
           poetry run prisma py fetch --force
         env: 
           PRISMA_BINARY_CACHE_DIR: "./prisma"
+          PRISMA_HOME_DIR: "./prisma"
 
       - name: Generate Prisma Client
         run: poetry run prisma generate
