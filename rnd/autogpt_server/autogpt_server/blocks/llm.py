@@ -5,7 +5,6 @@ from typing import NamedTuple
 import anthropic
 import openai
 from groq import Groq
-from pydantic import SecretStr
 
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SecretField
@@ -220,7 +219,7 @@ class TextSummarizerBlock(Block):
     class Input(BlockSchema):
         text: str
         model: LlmModel = LlmModel.GPT4_TURBO
-        api_key: BlockFieldSecret = BlockFieldSecret(value="")
+        api_key: BlockSecret = SecretField(value="")
         # TODO: Make this dynamic
         max_tokens: int = 4000  # Adjust based on the model's context window
         chunk_overlap: int = 100  # Overlap between chunks to maintain context

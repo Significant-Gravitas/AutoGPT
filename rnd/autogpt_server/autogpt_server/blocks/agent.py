@@ -82,7 +82,7 @@ class AutoGPTAgentBlock(Block):
     class Input(BlockSchema):
         task: str = Field(description="Task description for the agent.")
         input: str = Field(description="Input data for the task")
-        openai_api_key: BlockSecret = SecretField(key="openai_api_key")
+        openai_api_key: BlockSecret = SecretField(key="openai_api_key", description="OpenAI API key")
         enabled_components: list[str] = Field(
             default_factory=lambda: [OutputComponent.__name__],
             description="List of [AgentComponent](https://docs.agpt.co/forge/components/built-in-components/)s enabled for the agent.",
