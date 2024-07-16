@@ -60,13 +60,9 @@ license_file = "LICENSE.rtf"
 txt_to_rtf("../../LICENSE", license_file)
 
 # call npm run build in ../autogpt_builder
-
-
 os.system("npm run build --prefix ../autogpt_builder")
 
 # copy the ../autogpt_builder/out to frontend
-
-
 shutil.rmtree("../frontend", ignore_errors=True)
 shutil.copytree("../autogpt_builder/out", "../frontend")
 
