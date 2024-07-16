@@ -71,3 +71,47 @@ class PrintingBlock(Block):
     def run(self, input_data: Input) -> BlockOutput:
         print(">>>>> Print: ", input_data.text)
         yield "status", "printed"
+
+
+class ObjectLookupBlock(Block):
+    class Input(BlockSchema):
+        input: Any = Field(description="Dictionary to lookup from")
+        key: str | int = Field(description="Key to lookup in the dictionary")
+
+    class Output(BlockSchema):
+        output: Any = Field(description="Value found for the given key")
+        missing: Any = Field(description="Value of the input that missing the key")
+
+    def __init__(self):
+        super().__init__(
+            id="a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+            input_schema=ObjectLookupBlock.Input,
+            output_schema=ObjectLookupBlock.Output,
+            test_input=[
+                {"input": {"apple": 1, "banana": 2, "cherry": 3}, "key": "banana"},
+                {"input": {"x": 10, "y": 20, "z": 30}, "key": "w"},
+                {"input": [1, 2, 3], "key": 1},
+                {"input": [1, 2, 3], "key": 3},
+                {"input": ObjectLookupBlock.Input(input="!!", key="key"), "key": "key"},
+            ],
+            test_output=[
+                ("output", 2),
+                ("missing", {"x": 10, "y": 20, "z": 30}),
+                ("output", 2),
+                ("missing", [1, 2, 3]),
+                ("output", "key"),
+            ],
+        )
+
+    def run(self, input_data: Input) -> BlockOutput:
+        obj = input_data.input
+        key = input_data.key
+
+        if isinstance(obj, dict) and key in obj:
+            yield "output", obj[key]
+        elif isinstance(obj, list) and isinstance(key, int) and 0 <= key < len(obj):
+            yield "output", obj[key]
+        elif isinstance(obj, object) and isinstance(key, str) and hasattr(obj, key):
+            yield "output", getattr(obj, key)
+        else:
+            yield "missing", input_data.input
