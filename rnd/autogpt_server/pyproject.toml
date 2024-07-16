@@ -32,6 +32,8 @@ pydantic-settings = "^2.3.4"
 praw = "^7.7.1"
 openai = "^1.35.7"
 jsonref = "^1.1.0"
+groq = "^0.8.0"
+anthropic = "^0.25.1"
 
 
 [tool.poetry.group.dev.dependencies]
