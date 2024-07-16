@@ -70,6 +70,16 @@ os.system("npm run build --prefix ../autogpt_builder")
 shutil.rmtree("../frontend", ignore_errors=True)
 shutil.copytree("../autogpt_builder/out", "../frontend")
 
+include_files = [  # source, destination in the bundle
+    # (../frontend, frontend) would also work but you'd need to load the frontend differently in the data.py to correctly get the path when frozen
+    ("../frontend", "frontend"),
+    ("./secrets", "secrets"),
+]
+
+# add the prisma directory if it exists
+if os.path.exists("./prisma"):
+    include_files.append(("./prisma", "prisma"))
+
 setup(
     name="AutoGPT Server",
     url="https://agpt.co",
@@ -98,12 +108,7 @@ setup(
             ],
             # Exclude the two module from readability.compat as it causes issues
             "excludes": ["readability.compat.two"],
-            "include_files": [
-                # source, destination in the bundle
-                # (../frontend, frontend) would also work but you'd need to load the frontend differently in the data.py to correctly get the path when frozen
-                ("../frontend", "frontend"),
-                ("./secrets", "secrets"),
-            ],
+            "include_files": include_files,
         },
         # Mac .app specific options
         "bdist_mac": {
