@@ -143,8 +143,10 @@ class LlmCallBlock(Block):
             prompt.append({"role": "system", "content": input_data.sys_prompt})
 
         if input_data.expected_format:
-            expected_format = [f'"{k}": "{v}"' for k, v in
-                               input_data.expected_format.items()]
+            expected_format = [
+                f'"{k}": "{v}"' for k, v in
+                input_data.expected_format.items()
+            ]
             format_prompt = ",\n  ".join(expected_format)
             sys_prompt = trim_prompt(f"""
               |Reply in json format:
@@ -231,9 +233,9 @@ class TextSummarizerBlock(Block):
             test_output=("summary", "Final summary of a long text"),
             test_mock={
                 "llm_call": lambda input_data:
-                    {"final_summary": "Final summary of a long text"}
-                    if "final_summary" in input_data.expected_format
-                    else {"summary": "Summary of a chunk of text"}
+                {"final_summary": "Final summary of a long text"}
+                if "final_summary" in input_data.expected_format
+                else {"summary": "Summary of a chunk of text"}
             }
         )
 
