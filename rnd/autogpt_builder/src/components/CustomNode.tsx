@@ -10,6 +10,7 @@ import { beautifyString } from '@/lib/utils';
 type Schema = {
   type: string;
   properties: { [key: string]: any };
+  title?: string;
   required?: string[];
   enum?: string[];
   items?: Schema;
@@ -80,12 +81,12 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               id={key}
               style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
             />
-            <span className="handle-label">{beautifyString(key)}</span>
+            <span className="handle-label">{schema.title || beautifyString(key)}</span>
           </>
         )}
         {type === 'source' && (
           <>
-            <span className="handle-label">{beautifyString(key)}</span>
+            <span className="handle-label">{schema.title || beautifyString(key)}</span>
             <Handle
               type={type}
               position={Position.Right}
@@ -184,7 +185,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           <strong>{displayKey}:</strong>
           {Object.entries(schema.properties).map(([propKey, propSchema]: [string, any]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
-              {renderInputField(propKey, propSchema, fullKey, beautifyString(propKey))}
+              {renderInputField(propKey, propSchema, fullKey, schema.title || beautifyString(propKey))}
             </div>
           ))}
         </div>
@@ -276,7 +277,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           <strong>{displayKey}:</strong>
           {schema.allOf[0].properties && Object.entries(schema.allOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
-              {renderInputField(propKey, propSchema, fullKey, beautifyString(propKey))}
+              {renderInputField(propKey, propSchema, fullKey, schema.title || beautifyString(propKey))}
             </div>
           ))}
         </div>
@@ -289,7 +290,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           <strong>{displayKey}:</strong>
           {schema.oneOf[0].properties && Object.entries(schema.oneOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
-              {renderInputField(propKey, propSchema, fullKey, beautifyString(propKey))}
+              {renderInputField(propKey, propSchema, fullKey, schema.title || beautifyString(propKey))}
             </div>
           ))}
         </div>
@@ -377,7 +378,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       default:
         return (
           <div key={fullKey} className="input-container">
-            {renderClickableInput(value ? `${beautifyString(key)} (Complex)` : `Enter ${beautifyString(key)} (Complex)`)}
+            {renderClickableInput(value ? `${schema.title || beautifyString(key)} (Complex)` : `Enter ${schema.title || beautifyString(key)} (Complex)`)}
             {error && <span className="error-message">{error}</span>}
           </div>
         );
@@ -425,9 +426,9 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                       id={key}
                       style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
                     />
-                    <span className="handle-label">{beautifyString(key)}</span>
+                    <span className="handle-label">{schema.title || beautifyString(key)}</span>
                   </div>
-                  {renderInputField(key, schema, '', beautifyString(key))}
+                  {renderInputField(key, schema, '', schema.title || beautifyString(key))}
                 </div>
               );
             })}
