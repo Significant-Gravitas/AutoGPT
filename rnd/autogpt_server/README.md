@@ -5,7 +5,12 @@ The agent server will enable the creation of composite multi-agent systems that 
 
 ## Setup
 
-To set up the project, follow these steps inside the project directory:
+To set up the project, follow these steps inside this directory:
+
+0. Configure Poetry to use .venv in your project directory
+    ```sh
+    poetry config virtualenvs.in-project true
+    ```
 
 1. Enter the poetry shell
 
@@ -13,7 +18,7 @@ To set up the project, follow these steps inside the project directory:
    poetry shell
    ```
    
-2. Install dependencies
+1. Install dependencies
 
    ```sh
    poetry install
@@ -25,14 +30,15 @@ To set up the project, follow these steps inside the project directory:
    poetry run prisma generate
    ```
    
-   In case Prisma generates the client for the global Python installation instead of the virtual environment, the current mitigation is to just uninstall the global Prisma package:
 
-   ```sh
-   pip uninstall prisma
-   ```
-   
-   Then run the generation again. The path *should* look something like this:  
-   `<some path>/pypoetry/virtualenvs/autogpt-server-TQIRSwR6-py3.12/bin/prisma`
+   > In case Prisma generates the client for the global Python installation instead of the virtual environment, the current mitigation is to just uninstall the global Prisma package:
+   >
+   > ```sh
+   > pip uninstall prisma
+   > ```
+   >
+   > Then run the generation again. The path *should* look something like this:  
+   > `<some path>/pypoetry/virtualenvs/autogpt-server-TQIRSwR6-py3.12/bin/prisma`
 
 4. Migrate the database. Be careful because this deletes current data in the database.
 

@@ -137,24 +137,76 @@ Here are a couple of sample of the Block class implementation:
     
     # ======= Links ========= #
     links = [
-        Link(input_data.id, input_text_formatter.id, "output", "named_texts_#_query"),
+        Link(
+            source_id=input_data.id,
+            sink_id=input_text_formatter.id,
+            source_name="output",
+            sink_name="named_texts_#_query"),
 
-        Link(input_text_formatter.id, search_http_request.id, "output", "body_#_query"),
+        Link(
+            source_id=input_text_formatter.id,
+            sink_id=search_http_request.id,
+            source_name="output",
+            sink_name="body_#_query"),
         
-        Link(search_http_request.id, search_result_constant.id, "response_#_reply", "input"),
-        Link(search_result_constant.id, search_result_constant.id, "output", "data"), # Loopback for constant block
+        Link(
+            source_id=search_http_request.id,
+            sink_id=search_result_constant.id,
+            source_name="response_#_reply",
+            sink_name="input"),
+        Link(  # Loopback for constant block
+            source_id=search_result_constant.id,
+            sink_id=search_result_constant.id,
+            source_name="output",
+            sink_name="data"
+        ),
         
-        Link(search_result_constant.id, prompt_text_formatter.id, "output", "named_texts_#_search_result"),
-        Link(input_data.id, prompt_text_formatter.id, "output", "named_texts_#_query"),
+        Link(
+            source_id=search_result_constant.id,
+            sink_id=prompt_text_formatter.id,
+            source_name="output",
+            sink_name="named_texts_#_search_result"
+        ),
+        Link(
+            source_id=input_data.id,
+            sink_id=prompt_text_formatter.id,
+            source_name="output",
+            sink_name="named_texts_#_query"
+        ),
         
-        Link(prompt_text_formatter.id, code_gen_llm_call.id, "output", "prompt"),
+        Link(
+            source_id=prompt_text_formatter.id,
+            sink_id=code_gen_llm_call.id,
+            source_name="output",
+            sink_name="prompt"
+        ),
 
-        Link(code_gen_llm_call.id, code_text_parser.id, "response_#_response", "text"),
+        Link(
+            source_id=code_gen_llm_call.id,
+            sink_id=code_text_parser.id,
+            source_name="response_#_response",
+            sink_name="text"
+        ),
         
-        Link(code_text_parser.id, block_installation.id, "positive", "code"),
+        Link(
+            source_id=code_text_parser.id,
+            sink_id=block_installation.id,
+            source_name="positive",
+            sink_name="code"
+        ),
         
-        Link(block_installation.id, prompt_text_formatter.id, "error", "named_texts_#_previous_attempt"),
-        Link(block_installation.id, search_result_constant.id, "error", "input"), # Re-trigger search result.
+        Link(
+            source_id=block_installation.id,
+            sink_id=prompt_text_formatter.id,
+            source_name="error",
+            sink_name="named_texts_#_previous_attempt"
+        ),
+        Link(  # Re-trigger search result.
+            source_id=block_installation.id,
+            sink_id=search_result_constant.id,
+            source_name="error",
+            sink_name="input"
+        ),
     ]
     
     # ======= Graph ========= #

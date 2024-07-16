@@ -26,9 +26,24 @@ def create_test_graph() -> graph.Graph:
         graph.Node(block_id=PrintingBlock().id),
     ]
     links = [
-        graph.Link(nodes[0].id, nodes[2].id, "output", "texts_$_1"),
-        graph.Link(nodes[1].id, nodes[2].id, "output", "texts_$_2"),
-        graph.Link(nodes[2].id, nodes[3].id, "output", "text"),
+        graph.Link(
+            source_id=nodes[0].id,
+            sink_id=nodes[2].id,
+            source_name="output",
+            sink_name="texts_$_1"
+        ),
+        graph.Link(
+            source_id=nodes[1].id,
+            sink_id=nodes[2].id,
+            source_name="output",
+            sink_name="texts_$_2"
+        ),
+        graph.Link(
+            source_id=nodes[2].id,
+            sink_id=nodes[3].id,
+            source_name="output",
+            sink_name="text"
+        ),
     ]
 
     return graph.Graph(

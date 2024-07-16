@@ -3,7 +3,7 @@ import time
 from autogpt_server.data.block import Block
 from autogpt_server.data import block, db
 from autogpt_server.data.execution import ExecutionStatus
-from autogpt_server.executor import ExecutionManager
+from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server import AgentServer
 from autogpt_server.util.service import PyroNameServer
 
@@ -15,11 +15,13 @@ class SpinTestServer:
         self.name_server = PyroNameServer()
         self.exec_manager = ExecutionManager(1)
         self.agent_server = AgentServer()
+        self.scheduler = ExecutionScheduler()
 
     async def __aenter__(self):
         self.name_server.__enter__()
         self.agent_server.__enter__()
         self.exec_manager.__enter__()
+        self.scheduler.__enter__()
 
         await db.connect()
         await block.initialize_blocks()
@@ -31,6 +33,7 @@ class SpinTestServer:
         self.name_server.__exit__(exc_type, exc_val, exc_tb)
         self.agent_server.__exit__(exc_type, exc_val, exc_tb)
         self.exec_manager.__exit__(exc_type, exc_val, exc_tb)
+        self.scheduler.__exit__(exc_type, exc_val, exc_tb)
 
 
 async def wait_execution(

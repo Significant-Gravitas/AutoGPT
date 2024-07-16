@@ -6,10 +6,10 @@ from typing import Any
 
 from prisma.models import (
     AgentGraphExecution,
-    AgentNode,
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
 )
+from prisma.types import AgentGraphExecutionWhereInput
 from pydantic import BaseModel
 
 from autogpt_server.util import json
@@ -52,6 +52,7 @@ class ExecutionQueue:
 
 class ExecutionResult(BaseModel):
     graph_id: str
+    graph_version: int
     graph_exec_id: str
     node_exec_id: str
     node_id: str
@@ -73,10 +74,11 @@ class ExecutionResult(BaseModel):
         for data in execution.Output or []:
             output_data[data.name].append(json.loads(data.data))
 
-        node: AgentNode | None = execution.AgentNode
-        
+        graph_execution: AgentGraphExecution | None = execution.AgentGraphExecution
+
         return ExecutionResult(
-            graph_id=node.agentGraphId if node else "",
+            graph_id=graph_execution.agentGraphId if graph_execution else "",
+            graph_version=graph_execution.agentGraphVersion if graph_execution else 0,
             graph_exec_id=execution.agentGraphExecutionId,
             node_exec_id=execution.id,
             node_id=execution.agentNodeId,
@@ -92,11 +94,16 @@ class ExecutionResult(BaseModel):
 
 # --------------------- Model functions --------------------- #
 
-EXECUTION_RESULT_INCLUDE = {"Input": True, "Output": True, "AgentNode": True}
+EXECUTION_RESULT_INCLUDE = {
+    "Input": True,
+    "Output": True,
+    "AgentNode": True,
+    "AgentGraphExecution": True,
+}
 
 
 async def create_graph_execution(
-    graph_id: str, node_ids: list[str], data: dict[str, Any]
+        graph_id: str, graph_version: int, node_ids: list[str], data: dict[str, Any]
 ) -> tuple[str, list[ExecutionResult]]:
     """
     Create a new AgentGraphExecution record.
@@ -106,6 +113,7 @@ async def create_graph_execution(
     result = await AgentGraphExecution.prisma().create(
         data={
             "agentGraphId": graph_id,
+            "agentGraphVersion": graph_version,
             "AgentNodeExecutions": {
                 "create": [  # type: ignore
                     {
@@ -129,6 +137,7 @@ async def create_graph_execution(
         ExecutionResult.from_db(execution)
         for execution in result.AgentNodeExecutions or []
     ]
+
 
 async def upsert_execution_input(
     node_id: str,
@@ -176,9 +185,9 @@ async def upsert_execution_input(
 
 
 async def upsert_execution_output(
-    node_exec_id: str,
-    output_name: str,
-    output_data: Any,
+        node_exec_id: str,
+        output_name: str,
+        output_data: Any,
 ) -> None:
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
@@ -193,10 +202,9 @@ async def upsert_execution_output(
 
 
 async def update_execution_status(
-    node_exec_id: str,
-    status: ExecutionStatus
+        node_exec_id: str,
+        status: ExecutionStatus
 ) -> ExecutionResult:
-
     now = datetime.now(tz=timezone.utc)
     data = {
         **({"executionStatus": status}),
@@ -213,15 +221,17 @@ async def update_execution_status(
     )
     if not res:
         raise ValueError(f"Execution {node_exec_id} not found.")
-    
+
     return ExecutionResult.from_db(res)
 
 
-async def list_executions(graph_id: str) -> list[str]:
-    executions = await AgentGraphExecution.prisma().find_many(
-        where={"agentGraphId": graph_id},
-    )
+async def list_executions(graph_id: str, graph_version: int | None = None) -> list[str]:
+    where: AgentGraphExecutionWhereInput = {"agentGraphId": graph_id}
+    if graph_version is not None:
+        where["agentGraphVersion"] = graph_version
+    executions = await AgentGraphExecution.prisma().find_many(where=where)
     return [execution.id for execution in executions]
+
 
 async def get_execution_results(graph_exec_id: str) -> list[ExecutionResult]:
     executions = await AgentNodeExecution.prisma().find_many(
