@@ -1,4 +1,4 @@
-from autogpt_server.blocks.basic import ConstantBlock, PrintingBlock
+from autogpt_server.blocks.basic import ValueBlock, PrintingBlock
 from autogpt_server.blocks.text import TextFormatterBlock
 from autogpt_server.data import graph
 from autogpt_server.data.graph import create_graph
@@ -7,15 +7,15 @@ from autogpt_server.util.test import SpinTestServer, wait_execution
 
 def create_test_graph() -> graph.Graph:
     """
-    ConstantBlock
-                \
+    ValueBlock
+               \
                  ---- TextFormatterBlock ---- PrintingBlock
-                /
-    ConstantBlock
+               /
+    ValueBlock
     """
     nodes = [
-        graph.Node(block_id=ConstantBlock().id),
-        graph.Node(block_id=ConstantBlock().id),
+        graph.Node(block_id=ValueBlock().id),
+        graph.Node(block_id=ValueBlock().id),
         graph.Node(
             block_id=TextFormatterBlock().id,
             input_default={

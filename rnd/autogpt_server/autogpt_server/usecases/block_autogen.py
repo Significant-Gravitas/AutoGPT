@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from autogpt_server.blocks.ai import LlmCallBlock
-from autogpt_server.blocks.basic import ConstantBlock
+from autogpt_server.blocks.basic import ValueBlock
 from autogpt_server.blocks.block import BlockInstallationBlock
 from autogpt_server.blocks.http import HttpRequestBlock
 from autogpt_server.blocks.text import TextParserBlock, TextFormatterBlock
@@ -26,7 +26,7 @@ for module, description in sample_block_modules.items():
 
 def create_test_graph() -> Graph:
     """
-            ConstantBlock (input)
+            ValueBlock (input)
                  ||
                  v
         TextFormatterBlock (input query)
@@ -35,7 +35,7 @@ def create_test_graph() -> Graph:
          HttpRequestBlock (browse)    
                  ||
                  v
-     ------> ConstantBlock===============
+     ------> ValueBlock===============
     |           |  |                    ||
     |            --                     ||
     |                                   ||
@@ -51,7 +51,7 @@ def create_test_graph() -> Graph:
     """
     # ======= Nodes ========= #
     input_data = Node(
-        block_id=ConstantBlock().id
+        block_id=ValueBlock().id
     )
     input_text_formatter = Node(
         block_id=TextFormatterBlock().id,
@@ -66,7 +66,7 @@ def create_test_graph() -> Graph:
         },
     )
     search_result_constant = Node(
-        block_id=ConstantBlock().id,
+        block_id=ValueBlock().id,
         input_default={
             "data": None,
         },

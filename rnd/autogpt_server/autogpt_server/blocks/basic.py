@@ -4,7 +4,7 @@ from typing import Any
 from pydantic import Field
 
 
-class ConstantBlock(Block):
+class ValueBlock(Block):
     """
     This block allows you to provide a constant value as a block, in a stateless manner.
     The common use-case is simply pass the `input` data, it will `output` the same data.
@@ -19,9 +19,9 @@ class ConstantBlock(Block):
                 ||           ||   
        =====> `data`      `input`
       ||        \\         //
-      ||       ConstantBlock
-      ||           ||
-       ======  `output`
+      ||          ValueBlock
+      ||             ||
+       ========= `output`
     """
 
     class Input(BlockSchema):
@@ -36,8 +36,8 @@ class ConstantBlock(Block):
     def __init__(self):
         super().__init__(
             id="1ff065e9-88e8-4358-9d82-8dc91f622ba9",
-            input_schema=ConstantBlock.Input,
-            output_schema=ConstantBlock.Output,
+            input_schema=ValueBlock.Input,
+            output_schema=ValueBlock.Output,
             test_input=[
                 {"input": "Hello, World!"},
                 {"input": "Hello, World!", "data": "Existing Data"},
