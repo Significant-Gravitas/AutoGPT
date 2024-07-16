@@ -71,7 +71,6 @@ shutil.rmtree("../frontend", ignore_errors=True)
 shutil.copytree("../autogpt_builder/out", "../frontend")
 
 include_files = [  # source, destination in the bundle
-    # (../frontend, frontend) would also work but you'd need to load the frontend differently in the data.py to correctly get the path when frozen
     ("../frontend", "frontend"),
     ("./secrets", "secrets"),
 ]
