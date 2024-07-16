@@ -3,9 +3,13 @@ import { ObjectSchema } from "./types";
 
 export default class AutoGPTServerAPI {
   private baseUrl: string;
+  private wsUrl: string;
+  private socket: WebSocket | null = null;
+  private messageHandlers: { [key: string]: (data: any) => void } = {};
 
   constructor(baseUrl: string = process.env.AGPT_SERVER_URL || "http://localhost:8000") {
     this.baseUrl = baseUrl;
+    this.wsUrl = `ws://${new URL(this.baseUrl).host}/ws`;
   }
 
   async getBlocks(): Promise<Block[]> {
@@ -227,6 +231,60 @@ export default class AutoGPTServerAPI {
       console.error('Error fetching execution status:', error);
       throw error;
     }
+  }
+
+  connectWebSocket(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.socket = new WebSocket(this.wsUrl);
+
+      this.socket.onopen = () => {
+        console.log('WebSocket connection established');
+        resolve();
+      };
+
+      this.socket.onclose = (event) => {
+        console.log('WebSocket connection closed', event);
+        this.socket = null;
+      };
+
+      this.socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        reject(error);
+      };
+
+      this.socket.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        if (this.messageHandlers[message.method]) {
+          this.messageHandlers[message.method](message.data);
+        }
+      };
+    });
+  }
+
+  disconnectWebSocket() {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.close();
+    }
+  }
+
+  sendWebSocketMessage(method: string, data: any) {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({ method, data }));
+    } else {
+      console.error('WebSocket is not connected');
+    }
+  }
+
+  onWebSocketMessage(method: string, handler: (data: any) => void) {
+    this.messageHandlers[method] = handler;
+  }
+
+  subscribeToExecution(graphId: string) {
+    this.sendWebSocketMessage('subscribe', { graph_id: graphId });
+  }
+
+  runGraph(graphId: string, data: any = {}) {
+    this.sendWebSocketMessage('run_graph', { graph_id: graphId, data });
   }
 }
 
