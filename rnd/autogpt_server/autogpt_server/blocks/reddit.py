@@ -106,7 +106,10 @@ class RedditGetPostsBlock(Block):
         current_time = datetime.now(tz=timezone.utc)
         for post in self.get_posts(input_data):
             if input_data.last_minutes:
-                post_datetime = datetime.fromtimestamp(post.created_utc, tz=timezone.utc)
+                post_datetime = datetime.fromtimestamp(
+                    post.created_utc,
+                    tz=timezone.utc
+                )
                 time_difference = current_time - post_datetime
                 if time_difference.total_seconds() / 60 > input_data.last_minutes:
                     continue
