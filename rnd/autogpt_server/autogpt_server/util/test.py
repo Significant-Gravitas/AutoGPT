@@ -1,7 +1,7 @@
 import time
 
-from autogpt_server.data.block import Block
-from autogpt_server.data import block, db
+from autogpt_server.data import db
+from autogpt_server.data.block import Block, initialize_blocks
 from autogpt_server.data.execution import ExecutionStatus
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server import AgentServer
@@ -24,7 +24,7 @@ class SpinTestServer:
         self.scheduler.__enter__()
 
         await db.connect()
-        await block.initialize_blocks()
+        await initialize_blocks()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
