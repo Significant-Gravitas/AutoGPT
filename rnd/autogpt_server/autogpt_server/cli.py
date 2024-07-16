@@ -103,164 +103,13 @@ def test():
 
 @test.command()
 @click.argument("server_address")
-@click.option(
-    "--client-id", required=True, help="Reddit client ID", default="TODO_FILL_OUT_THIS"
-)
-@click.option(
-    "--client-secret",
-    required=True,
-    help="Reddit client secret",
-    default="TODO_FILL_OUT_THIS",
-)
-@click.option(
-    "--username", required=True, help="Reddit username", default="TODO_FILL_OUT_THIS"
-)
-@click.option(
-    "--password", required=True, help="Reddit password", default="TODO_FILL_OUT_THIS"
-)
-@click.option(
-    "--user-agent",
-    required=True,
-    help="Reddit user agent",
-    default="TODO_FILL_OUT_THIS",
-)
-def reddit(
-    server_address: str,
-    client_id: str,
-    client_secret: str,
-    username: str,
-    password: str,
-    user_agent: str,
-):
+def reddit(server_address: str):
     """
     Create an event graph
     """
     import requests
-
-    from autogpt_server.data.graph import Graph, Link, Node
-    from autogpt_server.blocks.ai import LlmCallBlock, LlmModel
-    from autogpt_server.blocks.reddit import (
-        RedditCredentials,
-        RedditGetPostsBlock,
-        RedditPostCommentBlock,
-    )
-    from autogpt_server.blocks.text import TextFormatterBlock, TextMatcherBlock
-
-    reddit_creds = RedditCredentials(
-        client_id=client_id,
-        client_secret=client_secret,
-        username=username,
-        password=password,
-        user_agent=user_agent,
-    )
-    openai_api_key = "TODO_FILL_OUT_THIS"
-
-    # Hardcoded inputs
-    reddit_get_post_input = {
-        "creds": reddit_creds,
-        "last_minutes": 60,
-        "post_limit": 3,
-    }
-    text_formatter_input = {
-        "format": """
-Based on the following post, write your marketing comment:
-* Post ID: {id}
-* Post Subreddit: {subreddit}
-* Post Title: {title}
-* Post Body: {body}""".strip(),
-    }
-    llm_call_input = {
-        "sys_prompt": """
-You are an expert at marketing, and have been tasked with picking Reddit posts that are relevant to your product.
-The product you are marketing is: Auto-GPT an autonomous AI agent utilizing GPT model.
-You reply the post that you find it relevant to be replied with marketing text.
-Make sure to only comment on a relevant post.
-""",
-        "api_key": openai_api_key,
-        "expected_format": {
-            "post_id": "str, the reddit post id",
-            "is_relevant": "bool, whether the post is relevant for marketing",
-            "marketing_text": "str, marketing text, this is empty on irrelevant posts",
-        },
-    }
-    text_matcher_input = {"match": "true", "case_sensitive": False}
-    reddit_comment_input = {"creds": reddit_creds}
-
-    # Nodes
-    reddit_get_post_node = Node(
-        block_id=RedditGetPostsBlock().id,
-        input_default=reddit_get_post_input,
-    )
-    text_formatter_node = Node(
-        block_id=TextFormatterBlock().id,
-        input_default=text_formatter_input,
-    )
-    llm_call_node = Node(block_id=LlmCallBlock().id, input_default=llm_call_input)
-    text_matcher_node = Node(
-        block_id=TextMatcherBlock().id,
-        input_default=text_matcher_input,
-    )
-    reddit_comment_node = Node(
-        block_id=RedditPostCommentBlock().id,
-        input_default=reddit_comment_input,
-    )
-
-    nodes = [
-        reddit_get_post_node,
-        text_formatter_node,
-        llm_call_node,
-        text_matcher_node,
-        reddit_comment_node,
-    ]
-
-    # Links
-    links = [
-        Link(
-            source_id=reddit_get_post_node.id,
-            sink_id=text_formatter_node.id,
-            source_name="post",
-            sink_name="named_texts",
-        ),
-        Link(
-            source_id=text_formatter_node.id,
-            sink_id=llm_call_node.id,
-            source_name="output",
-            sink_name="prompt",
-        ),
-        Link(
-            source_id=llm_call_node.id,
-            sink_id=text_matcher_node.id,
-            source_name="response",
-            sink_name="data",
-        ),
-        Link(
-            source_id=llm_call_node.id,
-            sink_id=text_matcher_node.id,
-            source_name="response_#_is_relevant",
-            sink_name="text",
-        ),
-        Link(
-            source_id=text_matcher_node.id,
-            sink_id=reddit_comment_node.id,
-            source_name="positive_#_post_id",
-            sink_name="post_id",
-        ),
-        Link(
-            source_id=text_matcher_node.id,
-            sink_id=reddit_comment_node.id,
-            source_name="positive_#_marketing_text",
-            sink_name="comment",
-        ),
-    ]
-
-    # Create graph
-    test_graph = Graph(
-        name="RedditMarketingAgent",
-        description="Reddit marketing agent",
-        nodes=nodes,
-        links=links,
-    )
-
+    from autogpt_server.usecases.reddit_marketing import create_test_graph
+    test_graph = create_test_graph()
     url = f"{server_address}/graphs"
     headers = {"Content-Type": "application/json"}
     data = test_graph.model_dump_json()
@@ -278,50 +127,8 @@ def populate_db(server_address: str):
     Create an event graph
     """
     import requests
-
-    from autogpt_server.blocks.sample import ParrotBlock, PrintingBlock
-    from autogpt_server.blocks.text import TextFormatterBlock
-    from autogpt_server.data import graph
-
-    nodes = [
-        graph.Node(block_id=ParrotBlock().id),
-        graph.Node(block_id=ParrotBlock().id),
-        graph.Node(
-            block_id=TextFormatterBlock().id,
-            input_default={
-                "format": "{texts[0]},{texts[1]},{texts[2]}",
-                "texts_$_3": "!!!",
-            },
-        ),
-        graph.Node(block_id=PrintingBlock().id),
-    ]
-    links = [
-        graph.Link(
-            source_id=nodes[0].id,
-            sink_id=nodes[2].id,
-            source_name="output",
-            sink_name="texts_$_1",
-        ),
-        graph.Link(
-            source_id=nodes[1].id,
-            sink_id=nodes[2].id,
-            source_name="output",
-            sink_name="texts_$_2",
-        ),
-        graph.Link(
-            source_id=nodes[2].id,
-            sink_id=nodes[3].id,
-            source_name="output",
-            sink_name="text",
-        ),
-    ]
-    test_graph = graph.Graph(
-        name="TestGraph",
-        description="Test graph",
-        nodes=nodes,
-        links=links,
-    )
-
+    from autogpt_server.usecases.sample import create_test_graph
+    test_graph = create_test_graph()
     url = f"{server_address}/graphs"
     headers = {"Content-Type": "application/json"}
     data = test_graph.model_dump_json()
@@ -354,54 +161,10 @@ def graph(server_address: str):
     Create an event graph
     """
     import requests
-
-    from autogpt_server.blocks.sample import ParrotBlock, PrintingBlock
-    from autogpt_server.blocks.text import TextFormatterBlock
-    from autogpt_server.data import graph
-
-    nodes = [
-        graph.Node(block_id=ParrotBlock().id),
-        graph.Node(block_id=ParrotBlock().id),
-        graph.Node(
-            block_id=TextFormatterBlock().id,
-            input_default={
-                "format": "{texts[0]},{texts[1]},{texts[2]}",
-                "texts_$_3": "!!!",
-            },
-        ),
-        graph.Node(block_id=PrintingBlock().id),
-    ]
-    links = [
-        graph.Link(
-            source_id=nodes[0].id,
-            sink_id=nodes[2].id,
-            source_name="output",
-            sink_name="texts_$_1",
-        ),
-        graph.Link(
-            source_id=nodes[1].id,
-            sink_id=nodes[2].id,
-            source_name="output",
-            sink_name="texts_$_2",
-        ),
-        graph.Link(
-            source_id=nodes[2].id,
-            sink_id=nodes[3].id,
-            source_name="output",
-            sink_name="text",
-        ),
-    ]
-    test_graph = graph.Graph(
-        name="TestGraph",
-        description="Test graph",
-        nodes=nodes,
-        links=links,
-    )
-
+    from autogpt_server.usecases.sample import create_test_graph
     url = f"{server_address}/graphs"
     headers = {"Content-Type": "application/json"}
-    data = test_graph.model_dump_json()
-
+    data = create_test_graph().model_dump_json()
     response = requests.post(url, headers=headers, data=data)
 
     if response.status_code == 200:
@@ -418,7 +181,8 @@ def graph(server_address: str):
 
 @test.command()
 @click.argument("graph_id")
-def execute(graph_id: str):
+@click.argument("content")
+def execute(graph_id: str, content: dict):
     """
     Create an event graph
     """
@@ -427,9 +191,7 @@ def execute(graph_id: str):
     headers = {"Content-Type": "application/json"}
 
     execute_url = f"http://0.0.0.0:8000/graphs/{graph_id}/execute"
-    text = "Hello, World!"
-    input_data = {"input": text}
-    requests.post(execute_url, headers=headers, json=input_data)
+    requests.post(execute_url, headers=headers, json=content)
 
 
 @test.command()
