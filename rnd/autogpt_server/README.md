@@ -160,10 +160,10 @@ Currently, the IPC is done using Pyro5 and abstracted in a way that allows a fun
 ## Adding a New Agent Block
 
 To add a new agent block, you need to create a new class that inherits from `Block` and provides the following information:
+* All the block code should live in the `blocks` (`autogpt_server.blocks`) module.
 * `input_schema`: the schema of the input data, represented by a Pydantic object.
 * `output_schema`: the schema of the output data, represented by a Pydantic object.
 * `run` method: the main logic of the block.
 * `test_input` & `test_output`: the sample input and output data for the block, which will be used to auto-test the block.
 * You can mock the functions declared in the block using the `test_mock` field for your unit tests.
-* If you introduce a new module under the `blocks` package, you need to import the module in `blocks/__init__.py` to make it available to the server.
 * Once you finish creating the block, you can test it by running `pytest test/block/test_block.py`.

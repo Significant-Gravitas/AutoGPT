@@ -141,10 +141,10 @@ async def get_graphs_meta(
     Default behaviour is to get all currently active graphs.
 
     Args:
-        filter: An optional filter to either select templates or active graphs.
+        filter_by: An optional filter to either select templates or active graphs.
 
     Returns:
-        list[GraphMeta]: A list of GraphMeta objects representing the retrieved graph metadata.
+        list[GraphMeta]: A list of objects representing the retrieved graph metadata.
     """
     where_clause: prisma.types.AgentGraphWhereInput = {}
 
