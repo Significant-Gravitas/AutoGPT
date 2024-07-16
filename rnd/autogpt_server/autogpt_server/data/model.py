@@ -66,11 +66,13 @@ class BlockSecret:
 def SecretField(
     value: Optional[str] = None,
     key: Optional[str] = None,
-    description: str = "",
+    title: Optional[str] = None,
+    description: Optional[str] = None,
     **kwargs,
 ) -> BlockSecret:
     field_info: FieldInfo = Field(
         BlockSecret(key=key, value=value),
+        title=title,
         description=description,
         **kwargs,
     )
