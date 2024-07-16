@@ -1,7 +1,7 @@
 import math
 from typing import List
 from autogpt_server.data.block import Block, BlockSchema, BlockOutput, BlockFieldSecret
-from autogpt_server.blocks.ai import LlmModel, LlmCallBlock
+from autogpt_server.blocks.llm import LlmModel, LlmCallBlock
 
 class Summariser(Block):
     class Input(BlockSchema):

@@ -9,6 +9,7 @@ from autogpt_server.util import json
 
 class ExecutionSchedule(BaseDbModel):
     graph_id: str
+    graph_version: int
     schedule: str
     is_enabled: bool
     input_data: dict[str, Any]
@@ -28,6 +29,7 @@ class ExecutionSchedule(BaseDbModel):
         return ExecutionSchedule(
             id=schedule.id,
             graph_id=schedule.agentGraphId,
+            graph_version=schedule.agentGraphVersion,
             schedule=schedule.schedule,
             is_enabled=schedule.isEnabled,
             last_updated=schedule.lastUpdated.replace(tzinfo=None),
@@ -74,6 +76,7 @@ async def add_schedule(schedule: ExecutionSchedule) -> ExecutionSchedule:
         data={
             "id": schedule.id,
             "agentGraphId": schedule.graph_id,
+            "agentGraphVersion": schedule.graph_version,
             "schedule": schedule.schedule,
             "isEnabled": schedule.is_enabled,
             "inputData": json.dumps(schedule.input_data),

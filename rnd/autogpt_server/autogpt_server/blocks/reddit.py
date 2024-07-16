@@ -16,7 +16,7 @@ class RedditCredentials(BaseModel):
     client_secret: BlockFieldSecret = BlockFieldSecret(key="reddit_client_secret")
     username: BlockFieldSecret = BlockFieldSecret(key="reddit_username")
     password: BlockFieldSecret = BlockFieldSecret(key="reddit_password")
-    user_agent: str | None = None
+    user_agent: str = "AutoGPT:1.0 (by /u/autogpt)"
 
 
 class RedditPost(BaseModel):
@@ -103,11 +103,16 @@ class RedditGetPostsBlock(Block):
         return subreddit.new(limit=input_data.post_limit)
 
     def run(self, input_data: Input) -> BlockOutput:
+        current_time = datetime.now(tz=timezone.utc)
         for post in self.get_posts(input_data):
-            if input_data.last_minutes and post.created_utc < datetime.now(
-                    tz=timezone.utc) - \
-                    timedelta(minutes=input_data.last_minutes):
-                break
+            if input_data.last_minutes:
+                post_datetime = datetime.fromtimestamp(
+                    post.created_utc,
+                    tz=timezone.utc
+                )
+                time_difference = current_time - post_datetime
+                if time_difference.total_seconds() / 60 > input_data.last_minutes:
+                    continue
 
             if input_data.last_post and post.id == input_data.last_post:
                 break
