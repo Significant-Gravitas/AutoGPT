@@ -203,11 +203,13 @@ class AgentServer(AppService):
         #! DO NOT ADD ANY FUNCTIONS BETWEEN THESE FUNCTIONS
         #! DO NOT REMOVE ANY OF THESE FUNCTIONS
         #! YOU WILL BREAK THE FRONTEND PACKAGED WITH THE SERVER
-        app.mount(
-            path="/_next",
-            app=SPAStaticFiles(directory=get_frontend_path() / "_next", html=True),
-            name="frontend",
-        )
+
+        if os.path.exists(get_frontend_path() / "_next"):
+            app.mount(
+                path="/_next",
+                app=SPAStaticFiles(directory=get_frontend_path() / "_next", html=True),
+                name="frontend",
+            )
 
         @app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):  # type: ignore
