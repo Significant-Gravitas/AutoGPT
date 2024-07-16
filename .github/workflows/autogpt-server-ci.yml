@@ -200,6 +200,7 @@ jobs:
         run: |
           mkdir prisma
           poetry run prisma py fetch --force
+          ls ./prisma
         env: 
           PRISMA_BINARY_CACHE_DIR: "./prisma"
           PRISMA_HOME_DIR: "./prisma"
