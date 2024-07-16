@@ -291,7 +291,6 @@ class TextSummarizerBlock(Block):
             expected_format={"summary": "The summary of the given text."}
         ))
 
-        print("---> _summarize_chunk", llm_response)
         return llm_response["summary"]
 
     def _combine_summaries(self, summaries: list[str], input_data: Input) -> str:
@@ -310,7 +309,6 @@ class TextSummarizerBlock(Block):
                 }
             ))
 
-            print("----> _combine_summaries", llm_response)
             return llm_response["final_summary"]
         else:
             # If combined summaries are still too long, recursively summarize
