@@ -27,6 +27,7 @@ def run_processes(processes: list[AppProcess], **kwargs):
 
 
 def main(**kwargs):
+    breakpoint()
     settings = get_config_and_secrets()
     set_start_method("spawn", force=True)
     freeze_support()
