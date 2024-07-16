@@ -26,6 +26,11 @@ class RedditPost(BaseModel):
     body: str
 
 
+class RedditComment(BaseModel):
+    post_id: str
+    comment: str
+
+
 def get_praw(creds: RedditCredentials) -> praw.Reddit:
     client = praw.Reddit(
         client_id=creds.client_id.get(),
@@ -127,10 +132,11 @@ class RedditGetPostsBlock(Block):
 
 class RedditPostCommentBlock(Block):
     class Input(BlockSchema):
-        creds: RedditCredentials = Field(description="Reddit credentials")
-        data: Any = Field(description="Reddit post")
-        # post_id: str = Field(description="Reddit post ID")
-        # comment: str = Field(description="Comment text")
+        creds: RedditCredentials = Field(
+            description="Reddit credentials",
+            default=RedditCredentials()
+        )
+        data: RedditComment = Field(description="Reddit comment")
 
     class Output(BlockSchema):
         comment_id: str
@@ -140,10 +146,17 @@ class RedditPostCommentBlock(Block):
             id="4a92261b-701e-4ffb-8970-675fd28e261f",
             input_schema=RedditPostCommentBlock.Input,
             output_schema=RedditPostCommentBlock.Output,
+            test_input={"data": {"post_id": "id", "comment": "comment"}},
+            test_output=[("comment_id", "dummy_comment_id")],
+            test_mock={"reply_post": lambda creds, comment: "dummy_comment_id"}
         )
 
+    @staticmethod
+    def reply_post(creds: RedditCredentials, comment: RedditComment) -> str:
+        client = get_praw(creds)
+        submission = client.submission(id=comment.post_id)
+        comment = submission.reply(comment.comment)
+        return comment.id
+
     def run(self, input_data: Input) -> BlockOutput:
-        client = get_praw(input_data.creds)
-        submission = client.submission(id=input_data.data["post_id"])
-        comment = submission.reply(input_data.data["comment"])
-        yield "comment_id", comment.id
+        yield "comment_id", self.reply_post(input_data.creds, input_data.data)
