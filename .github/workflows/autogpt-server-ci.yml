@@ -201,15 +201,21 @@ jobs:
           mkdir prisma
           poetry run prisma py fetch --force
           ls ./prisma
-        env: 
+        env:
           PRISMA_BINARY_CACHE_DIR: "./prisma"
           PRISMA_HOME_DIR: "./prisma"
 
       - name: Generate Prisma Client
         run: poetry run prisma generate
+        env:
+          PRISMA_BINARY_CACHE_DIR: "./prisma"
+          PRISMA_HOME_DIR: "./prisma"
 
       - name: Run Database Migrations
         run: poetry run prisma migrate dev --name updates
+        env:
+          PRISMA_BINARY_CACHE_DIR: "./prisma"
+          PRISMA_HOME_DIR: "./prisma"
 
       - name: install rpm
         if: matrix.platform-os == 'ubuntu'
