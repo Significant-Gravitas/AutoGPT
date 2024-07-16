@@ -108,7 +108,7 @@ jobs:
         run: poetry install
 
       - name: Install Prisma Dependencies
-        run: poetry run prisma py fetch
+        run: poetry run prisma py fetch --force
 
       - name: Generate Prisma Client
         run: poetry run prisma generate
