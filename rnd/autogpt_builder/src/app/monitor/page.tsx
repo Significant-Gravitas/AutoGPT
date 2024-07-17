@@ -539,7 +539,7 @@ const FlowRunsTimeline = (
         tickFormatter={s => s > 90 ? `${Math.round(s / 60)}m` : `${s}s`}
       />
       <Tooltip
-        content={({ payload}) => {
+        content={({ payload }) => {
           if (payload && payload.length) {
             const data: FlowRun & { time: number, _duration: number } = payload[0].payload;
             const flow = flows.find(f => f.id === data.flowID);
