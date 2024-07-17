@@ -30,7 +30,7 @@ class BlockCategory(Enum):
     TEXT = Obj.get("text", "Block that processes text data.")
     FILE = Obj.get("file", "Block that reads or writes files.")
     WEB = Obj.get("web", "Block that interacts with web pages.")
-    BASIC = Obj.get("basic", "Basic blocks that perform basi operations.")
+    BASIC = Obj.get("basic", "Basic blocks that perform basic operations.")
 
 
 class BlockSchema(BaseModel):
