@@ -24,13 +24,13 @@ class BlockCategory(Enum):
             obj = cls(category=category, description=description)
             return member(obj)
 
-    llm = Obj.get("llm", "Block that uses the Large Language Model to perform a task.")
-    http = Obj.get("http", "Block that executes a network request through HTTP.")
-    social = Obj.get("social", "Block that interacts with social media platforms.")
-    text = Obj.get("text", "Block that processes text data.")
-    file = Obj.get("file", "Block that reads or writes files.")
-    web = Obj.get("web", "Block that interacts with web pages.")
-    basic = Obj.get("basic", "Basic blocks that perform basi operations.")
+    LLM = Obj.get("llm", "Block that uses the Large Language Model to perform a task.")
+    HTTP = Obj.get("http", "Block that executes a network request through HTTP.")
+    SOCIAL = Obj.get("social", "Block that interacts with social media platforms.")
+    TEXT = Obj.get("text", "Block that processes text data.")
+    FILE = Obj.get("file", "Block that reads or writes files.")
+    WEB = Obj.get("web", "Block that interacts with web pages.")
+    BASIC = Obj.get("basic", "Basic blocks that perform basi operations.")
 
 
 class BlockSchema(BaseModel):

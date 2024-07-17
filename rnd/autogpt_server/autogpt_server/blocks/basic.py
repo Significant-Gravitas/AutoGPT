@@ -43,10 +43,10 @@ class ValueBlock(Block):
         super().__init__(
             id="1ff065e9-88e8-4358-9d82-8dc91f622ba9",
             description="This block forward the `input` pin to `output` pin. "
-                        "If the `data` is provided, it will prioritize forwarding `data` "
-                        "over `input`. If you connect the `output` pin to `data` pin,"
-                        "you can retain a constant value for the next executions.",
-            categories={BlockCategory.basic},
+            "If the `data` is provided, it will prioritize forwarding `data` "
+            "over `input`. If you connect the `output` pin to `data` pin,"
+            "you can retain a constant value for the next executions.",
+            categories={BlockCategory.BASIC},
             input_schema=ValueBlock.Input,
             output_schema=ValueBlock.Output,
             test_input=[
@@ -74,7 +74,7 @@ class PrintingBlock(Block):
         super().__init__(
             id="f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c",
             description="Print the given text to the console, this is used for a debugging purpose.",
-            categories={BlockCategory.basic},
+            categories={BlockCategory.BASIC},
             input_schema=PrintingBlock.Input,
             output_schema=PrintingBlock.Output,
             test_input={"text": "Hello, World!"},
@@ -99,7 +99,7 @@ class ObjectLookupBlock(Block):
         super().__init__(
             id="a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
             description="Lookup the given key in the input dictionary/object/list and return the value.",
-            categories={BlockCategory.basic},
+            categories={BlockCategory.BASIC},
             input_schema=ObjectLookupBlock.Input,
             output_schema=ObjectLookupBlock.Output,
             test_input=[

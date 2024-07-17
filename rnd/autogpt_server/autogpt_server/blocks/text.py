@@ -25,7 +25,7 @@ class TextMatcherBlock(Block):
             description="This block matches the given text with the pattern (regex) and"
             " forwards the provided data to positive (if matching) or"
             " negative (if not matching) output.",
-            categories={BlockCategory.text},
+            categories={BlockCategory.TEXT},
             input_schema=TextMatcherBlock.Input,
             output_schema=TextMatcherBlock.Output,
             test_input=[
@@ -77,7 +77,7 @@ class TextParserBlock(Block):
         super().__init__(
             id="3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
             description="This block extracts the text from the given text using the pattern (regex).",
-            categories={BlockCategory.text},
+            categories={BlockCategory.TEXT},
             input_schema=TextParserBlock.Input,
             output_schema=TextParserBlock.Output,
             test_input=[
@@ -130,7 +130,7 @@ class TextFormatterBlock(Block):
         super().__init__(
             id="db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
             description="This block formats the given texts using the format template.",
-            categories={BlockCategory.text},
+            categories={BlockCategory.TEXT},
             input_schema=TextFormatterBlock.Input,
             output_schema=TextFormatterBlock.Output,
             test_input=[

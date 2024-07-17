@@ -26,7 +26,7 @@ class BlockInstallationBlock(Block):
         super().__init__(
             id="45e78db5-03e9-447f-9395-308d712f5f08",
             description="Given a code string, this block allows the verification and installation of a block code into the system.",
-            categories={BlockCategory.basic},
+            categories={BlockCategory.BASIC},
             input_schema=BlockInstallationBlock.Input,
             output_schema=BlockInstallationBlock.Output,
         )
