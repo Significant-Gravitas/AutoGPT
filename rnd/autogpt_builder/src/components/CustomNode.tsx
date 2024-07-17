@@ -70,12 +70,12 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               id={key}
               style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
             />
-            <span className="handle-label">{schema.title || beautifyString(key)}</span>
+            <span className="handle-label">{schema.properties[key].title || beautifyString(key)}</span>
           </>
         )}
         {type === 'source' && (
           <>
-            <span className="handle-label">{schema.title || beautifyString(key)}</span>
+            <span className="handle-label">{schema.properties[key].title || beautifyString(key)}</span>
             <Handle
               type={type}
               position={Position.Right}
