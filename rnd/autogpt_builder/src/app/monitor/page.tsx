@@ -23,7 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ClockIcon, Pencil2Icon } from '@radix-ui/react-icons';
-import AutoGPTServerAPI, { Flow, NodeExecutionResult } from '@/lib/autogpt_server_api';
+import AutoGPTServerAPI, { Graph, NodeExecutionResult } from '@/lib/autogpt_server_api';
 import { cn, hashString } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -33,9 +33,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const Monitor = () => {
-  const [flows, setFlows] = useState<Flow[]>([]);
+  const [flows, setFlows] = useState<Graph[]>([]);
   const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
-  const [selectedFlow, setSelectedFlow] = useState<Flow | null>(null);
+  const [selectedFlow, setSelectedFlow] = useState<Graph | null>(null);
   const [selectedRun, setSelectedRun] = useState<FlowRun | null>(null);
 
   const api = new AutoGPTServerAPI();
@@ -48,13 +48,13 @@ const Monitor = () => {
 
   function fetchFlowsAndRuns() {
     // Fetch flow IDs
-    api.listFlowIDs()
+    api.listGraphIDs()
     .then(flowIDs => {
       Promise.all(flowIDs.map(flowID => {
         refreshFlowRuns(flowID);
 
         // Fetch flow
-        return api.getFlow(flowID);
+        return api.getGraph(flowID);
       }))
       .then(flows => setFlows(flows));
     });
@@ -62,7 +62,7 @@ const Monitor = () => {
 
   function refreshFlowRuns(flowID: string) {
     // Fetch flow run IDs
-    api.listFlowRunIDs(flowID)
+    api.listGraphRunIDs(flowID)
     .then(runIDs => runIDs.map(runID => {
       let run;
       if (
@@ -73,7 +73,7 @@ const Monitor = () => {
       }
 
       // Fetch flow run
-      api.getFlowExecutionInfo(flowID, runID)
+      api.getGraphExecutionInfo(flowID, runID)
       .then(execInfo => setFlowRuns(flowRuns => {
         if (execInfo.length == 0) return flowRuns;
 
@@ -108,7 +108,7 @@ const Monitor = () => {
         runs={
           (
             selectedFlow
-              ? flowRuns.filter(v => v.flowID == selectedFlow.id)
+              ? flowRuns.filter(v => v.graphID == selectedFlow.id)
               : flowRuns
           )
           .toSorted((a, b) => Number(a.startTime) - Number(b.startTime))
@@ -119,13 +119,13 @@ const Monitor = () => {
       <div className="col-span-full xl:col-span-4 xxl:col-span-5">
         {selectedRun && (
           <FlowRunInfo
-            flow={selectedFlow || flows.find(f => f.id == selectedRun.flowID)!}
+            flow={selectedFlow || flows.find(f => f.id == selectedRun.graphID)!}
             flowRun={selectedRun}
           />
         ) || selectedFlow && (
           <FlowInfo
             flow={selectedFlow}
-            flowRuns={flowRuns.filter(r => r.flowID == selectedFlow.id)}
+            flowRuns={flowRuns.filter(r => r.graphID == selectedFlow.id)}
           />
         ) || (
           <Card className="p-6">
@@ -139,8 +139,8 @@ const Monitor = () => {
 
 type FlowRun = {
   id: string
-  flowID: string
-  flowVersion: number
+  graphID: string
+  graphVersion: number
   status: 'running' | 'waiting' | 'success' | 'failed'
   startTime: number // unix timestamp (ms)
   endTime: number // unix timestamp (ms)
@@ -186,8 +186,8 @@ function flowRunFromNodeExecutionResults(
 
   return {
     id: nodeExecutionResults[0].graph_exec_id,
-    flowID: nodeExecutionResults[0].graph_id,
-    flowVersion: nodeExecutionResults[0].graph_version,
+    graphID: nodeExecutionResults[0].graph_id,
+    graphVersion: nodeExecutionResults[0].graph_version,
     status,
     startTime,
     endTime,
@@ -199,10 +199,10 @@ function flowRunFromNodeExecutionResults(
 
 const AgentFlowList = (
   { flows, flowRuns, selectedFlow, onSelectFlow, className }: {
-    flows: Flow[],
+    flows: Graph[],
     flowRuns?: FlowRun[],
-    selectedFlow: Flow | null,
-    onSelectFlow: (f: Flow) => void,
+    selectedFlow: Graph | null,
+    onSelectFlow: (f: Graph) => void,
     className?: string,
   }
 ) => (
@@ -226,7 +226,7 @@ const AgentFlowList = (
             .map((flow) => {
               let runCount = 0, lastRun: FlowRun | null = null;
               if (flowRuns) {
-                const _flowRuns = flowRuns.filter(r => r.flowID == flow.id);
+                const _flowRuns = flowRuns.filter(r => r.graphID == flow.id);
                 runCount = _flowRuns.length;
                 lastRun = runCount == 0 ? null : _flowRuns.reduce(
                   (a, c) => a.startTime > c.startTime ? a : c
@@ -280,7 +280,7 @@ const FlowStatusBadge = ({ status }: { status: "active" | "disabled" | "failing"
 );
 
 const FlowRunsList: React.FC<{
-  flows: Flow[];
+  flows: Graph[];
   runs: FlowRun[];
   className?: string;
   selectedRun?: FlowRun | null;
@@ -308,7 +308,7 @@ const FlowRunsList: React.FC<{
               onClick={() => onSelectRun(run)}
               data-state={selectedRun?.id == run.id ? "selected" : null}
             >
-              <TableCell>{flows.find(f => f.id == run.flowID)!.name}</TableCell>
+              <TableCell>{flows.find(f => f.id == run.graphID)!.name}</TableCell>
               <TableCell>{moment(run.startTime).format("HH:mm")}</TableCell>
               <TableCell><FlowRunStatusBadge status={run.status} /></TableCell>
               <TableCell>{formatDuration(run.duration)}</TableCell>
@@ -339,17 +339,17 @@ const FlowRunStatusBadge: React.FC<{
 );
 
 const FlowInfo: React.FC<{
-  flow: Flow;
+  flow: Graph;
   flowRuns: FlowRun[];
   flowVersion?: number | "all";
 }> = ({ flow, flowRuns, flowVersion }) => {
   const api = new AutoGPTServerAPI();
 
-  const [flowVersions, setFlowVersions] = useState<Flow[] | null>(null);
+  const [flowVersions, setFlowVersions] = useState<Graph[] | null>(null);
   const [selectedVersion, setSelectedFlowVersion] = useState(flowVersion ?? "all");
 
   useEffect(() => {
-    api.getFlowAllVersions(flow.id).then(result => setFlowVersions(result));
+    api.getGraphAllVersions(flow.id).then(result => setFlowVersions(result));
   }, [flow.id]);
 
   return <Card>
@@ -400,8 +400,8 @@ const FlowInfo: React.FC<{
             : flow
         ]}
         flowRuns={flowRuns.filter(r =>
-          r.flowID == flow.id
-          && (selectedVersion == "all" || r.flowVersion == selectedVersion)
+          r.graphID == flow.id
+          && (selectedVersion == "all" || r.graphVersion == selectedVersion)
         )}
       />
     </CardContent>
@@ -409,10 +409,10 @@ const FlowInfo: React.FC<{
 };
 
 const FlowRunInfo: React.FC<{
-  flow: Flow;
+  flow: Graph;
   flowRun: FlowRun;
 }> = ({ flow, flowRun }) => {
-  if (flowRun.flowID != flow.id) {
+  if (flowRun.graphID != flow.id) {
     throw new Error(`FlowRunInfo can't be used with non-matching flowRun.flowID and flow.id`)
   }
 
@@ -440,7 +440,7 @@ const FlowRunInfo: React.FC<{
 };
 
 const FlowRunsStats: React.FC<{
-  flows: Flow[],
+  flows: Graph[],
   flowRuns: FlowRun[],
   title?: string,
   className?: string,
@@ -501,7 +501,7 @@ const FlowRunsStats: React.FC<{
 
 const FlowRunsTimeline = (
   { flows, flowRuns, dataMin, className }: {
-    flows: Flow[],
+    flows: Graph[],
     flowRuns: FlowRun[],
     dataMin: "dataMin" | number,
     className?: string,
@@ -541,7 +541,7 @@ const FlowRunsTimeline = (
         content={({ payload, label }) => {
           if (payload && payload.length) {
             const data: FlowRun & { time: number, _duration: number } = payload[0].payload;
-            const flow = flows.find(f => f.id === data.flowID);
+            const flow = flows.find(f => f.id === data.graphID);
             return (
               <Card className="p-2 text-xs leading-normal">
                 <p><strong>Agent:</strong> {flow ? flow.name : 'Unknown'}</p>
@@ -562,7 +562,7 @@ const FlowRunsTimeline = (
       {flows.map((flow) => (
         <Scatter
           key={flow.id}
-          data={flowRuns.filter(fr => fr.flowID == flow.id).map(fr => ({
+          data={flowRuns.filter(fr => fr.graphID == flow.id).map(fr => ({
             ...fr,
             time: fr.startTime + (fr.totalRunTime * 1000),
             _duration: fr.totalRunTime,
@@ -580,7 +580,7 @@ const FlowRunsTimeline = (
             { ...run, time: run.startTime, _duration: 0 },
             { ...run, time: run.endTime, _duration: run.totalRunTime }
           ]}
-          stroke={`hsl(${hashString(run.flowID) * 137.5 % 360}, 70%, 50%)`}
+          stroke={`hsl(${hashString(run.graphID) * 137.5 % 360}, 70%, 50%)`}
           strokeWidth={2}
           dot={false}
           legendType="none"
