@@ -5,26 +5,15 @@ import './customnode.css';
 import ModalComponent from './ModalComponent';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { BlockSchema } from '@/lib/types';
+import SchemaTooltip from './SchemaTooltip';
 import { beautifyString } from '@/lib/utils';
-
-type Schema = {
-  type: string;
-  properties: { [key: string]: any };
-  title?: string;
-  required?: string[];
-  enum?: string[];
-  items?: Schema;
-  additionalProperties?: { type: string };
-  allOf?: any[];
-  anyOf?: any[];
-  oneOf?: any[];
-};
 
 type CustomNodeData = {
   blockType: string;
   title: string;
-  inputSchema: Schema;
-  outputSchema: Schema;
+  inputSchema: BlockSchema;
+  outputSchema: BlockSchema;
   hardcodedValues: { [key: string]: any };
   setHardcodedValues: (values: { [key: string]: any }) => void;
   connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
@@ -68,7 +57,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     });
   };
 
-  const generateHandles = (schema: Schema, type: 'source' | 'target') => {
+  const generateHandles = (schema: BlockSchema, type: 'source' | 'target') => {
     if (!schema?.properties) return null;
     const keys = Object.keys(schema.properties);
     return keys.map((key) => (
@@ -173,9 +162,9 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       return <div className="connected-input">Connected</div>;
     }
 
-    const renderClickableInput = (displayValue: string) => (
+    const renderClickableInput = (value: string | null = null, placeholder: string = "") => (
       <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
-        {displayValue}
+        {value || <i className="text-gray-500">{placeholder}</i>}
       </div>
     );
 
@@ -264,6 +253,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       if (types.includes('string') && types.includes('null')) {
         return (
           <div key={fullKey} className="input-container">
+            {renderClickableInput(value, schema.placeholder || `Enter ${key} (optional)`)}
             {renderClickableInput(value || `Enter ${displayKey} (Optional)`)}
             {error && <span className="error-message">{error}</span>}
           </div>
@@ -317,6 +307,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </div>
         ) : (
           <div key={fullKey} className="input-container">
+            {renderClickableInput(value, schema.placeholder || `Enter ${key}`)}
             {renderClickableInput(value || `Enter ${displayKey}`)}
             {error && <span className="error-message">{error}</span>}
           </div>
@@ -378,6 +369,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       default:
         return (
           <div key={fullKey} className="input-container">
+            {renderClickableInput(value ? `${key} (Complex)` : null, `Enter ${key} (Complex)`)}
             {renderClickableInput(value ? `${schema.title || beautifyString(key)} (Complex)` : `Enter ${schema.title || beautifyString(key)} (Complex)`)}
             {error && <span className="error-message">{error}</span>}
           </div>
@@ -427,6 +419,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                       style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
                     />
                     <span className="handle-label">{schema.title || beautifyString(key)}</span>
+                    <SchemaTooltip schema={schema} />
                   </div>
                   {renderInputField(key, schema, '', schema.title || beautifyString(key))}
                 </div>
