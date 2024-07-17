@@ -16,20 +16,22 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ClockIcon, EnterIcon, ExitIcon, Pencil2Icon } from '@radix-ui/react-icons';
-import AutoGPTServerAPI, { Graph, NodeExecutionResult } from '@/lib/autogpt_server_api';
+import { ChevronDownIcon, ClockIcon, EnterIcon, ExitIcon, Pencil2Icon } from '@radix-ui/react-icons';
+import AutoGPTServerAPI, { Graph, GraphMeta, NodeExecutionResult } from '@/lib/autogpt_server_api';
 import { cn, exportAsJSONFile, hashString } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AgentImportForm } from '@/components/agent-import-form';
 
@@ -206,8 +208,14 @@ const AgentFlowList = (
     onSelectFlow: (f: Graph) => void,
     className?: string,
   }
-) => (
-  <Card className={className}>
+) => {
+  const [templates, setTemplates] = useState<GraphMeta[]>([]);
+  const api = new AutoGPTServerAPI();
+  useEffect(() => {
+    api.listTemplates().then(templates => setTemplates(templates))
+  }, []);
+
+  return <Card className={className}>
     <CardHeader className="flex-row justify-between items-center space-x-3 space-y-0">
       <CardTitle>Agents</CardTitle>
 
@@ -215,22 +223,47 @@ const AgentFlowList = (
         <Button variant="outline" className="rounded-r-none" asChild>
           <Link href="/build">Create</Link>
         </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              className={"rounded-l-none border-l-0 px-2"}
-              title="Import from file"
-            >
-              <EnterIcon />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuLabel>Import from a file</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <AgentImportForm className="px-2 py-1.5" />
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Dialog>{/* https://ui.shadcn.com/docs/components/dialog#notes */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className={"rounded-l-none border-l-0 px-2"}>
+                <ChevronDownIcon />
+              </Button>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent>
+              <DialogTrigger asChild>
+                <DropdownMenuItem>
+                  <EnterIcon className="mr-2" /> Import from file
+                </DropdownMenuItem>
+              </DialogTrigger>
+              {templates.length > 0 && <>{/* List of templates */}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Use a template</DropdownMenuLabel>
+                {templates.map(template => (
+                  <DropdownMenuItem
+                    key={template.id}
+                    onClick={() => {
+                      api.createGraph(template.id, template.version)
+                        .then(newGraph => {
+                          window.location.href = `/build?flowID=${newGraph.id}`;
+                        });
+                    }}
+                  >
+                    {template.name}
+                  </DropdownMenuItem>
+                ))}
+              </>}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DialogContent>
+            <DialogHeader className="text-lg">
+              Import an Agent (template) from a file
+            </DialogHeader>
+            <AgentImportForm />
+          </DialogContent>
+        </Dialog>
       </div>
     </CardHeader>
 
@@ -288,7 +321,7 @@ const AgentFlowList = (
       </Table>
     </CardContent>
   </Card>
-);
+};
 
 const FlowStatusBadge = ({ status }: { status: "active" | "disabled" | "failing" }) => (
   <Badge
