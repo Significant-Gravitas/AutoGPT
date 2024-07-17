@@ -224,7 +224,7 @@ class BaseOpenAIChatProvider(
                         tool_calls=tool_calls or None,
                     ),
                     parsed_result=parsed_result,
-                    model_info=self.CHAT_MODELS[model_name],
+                    llm_info=self.CHAT_MODELS[model_name],
                     prompt_tokens_used=t_input,
                     completion_tokens_used=t_output,
                 )
@@ -457,7 +457,7 @@ class BaseOpenAIEmbeddingProvider(
 
         return EmbeddingModelResponse(
             embedding=embedding_parser(response.data[0].embedding),
-            model_info=self.EMBEDDING_MODELS[model_name],
+            llm_info=self.EMBEDDING_MODELS[model_name],
             prompt_tokens_used=response.usage.prompt_tokens,
         )
 
