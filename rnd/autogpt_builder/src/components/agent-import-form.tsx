@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import AutoGPTServerAPI, { Flow, FlowCreatable } from "@/lib/autogpt_server_api"
+import AutoGPTServerAPI, { Graph, GraphCreatable } from "@/lib/autogpt_server_api"
 import { cn } from "@/lib/utils"
 import { EnterIcon } from "@radix-ui/react-icons"
 
@@ -29,7 +29,7 @@ const formSchema = z.object({
 export const AgentImportForm: React.FC<React.FormHTMLAttributes<HTMLFormElement>> = (
   { className, ...props }
 ) => {
-  const [agentObject, setAgentObject] = useState<FlowCreatable | null>(null)
+  const [agentObject, setAgentObject] = useState<GraphCreatable | null>(null)
   const api = new AutoGPTServerAPI()
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -46,14 +46,14 @@ export const AgentImportForm: React.FC<React.FormHTMLAttributes<HTMLFormElement>
       form.setError("root", { message: "No Agent object to save" })
       return
     }
-    const payload: FlowCreatable = {
+    const payload: GraphCreatable = {
       ...agentObject,
       name: values.agentName,
       description: values.agentDescription,
       is_active: !values.importAsTemplate,
       is_template: values.importAsTemplate,
     }
-    api.createFlow(payload)
+    api.createGraph(payload)
       .then((response) => {
         window.location.href = `/build?flowID=${response.id}`;
       })
@@ -99,7 +99,7 @@ export const AgentImportForm: React.FC<React.FormHTMLAttributes<HTMLFormElement>
                               + JSON.stringify(obj, null, 2)
                             );
                           }
-                          const agent = obj as Flow;
+                          const agent = obj as Graph;
                           setAgentObject(agent);
                           form.setValue("agentName", agent.name);
                           form.setValue("agentDescription", agent.description);
