@@ -35,14 +35,18 @@ LLAMAFILE_EXE_URL = "https://github.com/Mozilla-Ocho/llamafile/releases/download
     "--port", type=int, help="Specify the port for the llamafile server to listen on"
 )
 @click.option(
-    "--use-gpu", is_flag=True, help="Use an AMD or Nvidia GPU to speed up inference"
+    "--force-gpu",
+    is_flag=True,
+    hidden=platform.system() != "Darwin",
+    help="Run the model using only the GPU (AMD or Nvidia). "
+    "Otherwise, both CPU and GPU may be (partially) used.",
 )
 def main(
     llamafile: Optional[Path] = None,
     llamafile_url: Optional[str] = None,
     host: Optional[str] = None,
     port: Optional[int] = None,
-    use_gpu: bool = False,
+    force_gpu: bool = False,
 ):
     print(f"type(llamafile) = {type(llamafile)}")
     if not llamafile:
@@ -116,7 +120,7 @@ def main(
         base_command.extend(["--host", host])
     if port:
         base_command.extend(["--port", str(port)])
-    if use_gpu:
+    if force_gpu:
         base_command.extend(["-ngl", "9999"])
 
     subprocess.run(
