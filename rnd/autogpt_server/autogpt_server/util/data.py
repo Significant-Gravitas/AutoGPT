@@ -23,6 +23,21 @@ def get_frontend_path() -> pathlib.Path:
     return pathlib.Path(datadir)
 
 
+def get_prisma_path() -> pathlib.Path:
+    return get_data_path() / "prisma"
+
+
+def get_prisma_exe_path() -> pathlib.Path:
+    if sys.platform == "win32":
+        return (
+            get_prisma_path() / "node_modules" / "prisma" / "query-engine-windows.exe"
+        )
+    else:
+        raise NotImplementedError(
+            "Freezing AutoGPT Server is only supported on Windows at the moment."
+        )
+
+
 def get_data_path() -> pathlib.Path:
     if getattr(sys, "frozen", False):
         # The application is frozen
