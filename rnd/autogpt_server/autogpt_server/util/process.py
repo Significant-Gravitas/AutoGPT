@@ -1,7 +1,7 @@
 import os
 import sys
 from abc import ABC, abstractmethod
-from multiprocessing import Process, freeze_support, set_start_method
+from multiprocessing import Process, set_start_method
 from typing import Optional
 
 

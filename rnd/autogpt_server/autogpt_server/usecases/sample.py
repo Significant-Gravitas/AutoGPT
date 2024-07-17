@@ -1,4 +1,4 @@
-from autogpt_server.blocks.basic import ValueBlock, PrintingBlock
+from autogpt_server.blocks.basic import PrintingBlock, ValueBlock
 from autogpt_server.blocks.text import TextFormatterBlock
 from autogpt_server.data import graph
 from autogpt_server.data.graph import create_graph
@@ -30,19 +30,19 @@ def create_test_graph() -> graph.Graph:
             source_id=nodes[0].id,
             sink_id=nodes[2].id,
             source_name="output",
-            sink_name="texts_$_1"
+            sink_name="texts_$_1",
         ),
         graph.Link(
             source_id=nodes[1].id,
             sink_id=nodes[2].id,
             source_name="output",
-            sink_name="texts_$_2"
+            sink_name="texts_$_2",
         ),
         graph.Link(
             source_id=nodes[2].id,
             sink_id=nodes[3].id,
             source_name="output",
-            sink_name="text"
+            sink_name="text",
         ),
     ]
 
@@ -67,4 +67,5 @@ async def sample_agent():
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(sample_agent())

@@ -23,6 +23,7 @@ class TestService(AppService):
     def fun_with_async(self, a: int, b: int) -> int:
         async def add_async(a: int, b: int) -> int:
             return a + b
+
         return self.run_and_wait(add_async(a, b))
 
 

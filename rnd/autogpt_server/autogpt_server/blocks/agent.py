@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING, Iterator
 
 from autogpt.agents.agent import Agent, AgentSettings
 from autogpt.app.config import ConfigBuilder
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
-from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
 from forge.agent.components import AgentComponent
 from forge.agent.protocols import CommandProvider
 from forge.command import command
@@ -20,6 +18,9 @@ from forge.llm.providers.openai import OpenAICredentials, OpenAIProvider
 from forge.llm.providers.schema import ModelProviderName
 from forge.models.json_schema import JSONSchema
 from pydantic import Field, SecretStr
+
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
 
 if TYPE_CHECKING:
     from autogpt.app.config import AppConfig
@@ -76,7 +77,6 @@ class BlockAgent(Agent):
 
 class AutoGPTAgentBlock(Block):
     class Input(BlockSchema):
-        task: str = Field()
         task: str = SchemaField(
             description="Task description for the agent.",
             placeholder="Calculate and use Output command",
@@ -110,7 +110,7 @@ class AutoGPTAgentBlock(Block):
             input_schema=AutoGPTAgentBlock.Input,
             output_schema=AutoGPTAgentBlock.Output,
             test_input={
-                "task": "Make calculations and use output command to output the result.",
+                "task": "Make calculations and use output command to output the result",
                 "input": "5 + 3",
                 "openai_api_key": "openai_api_key",
                 "enabled_components": [OutputComponent.__name__],
@@ -141,18 +141,17 @@ class AutoGPTAgentBlock(Block):
 
     @staticmethod
     def get_result(agent: BlockAgent) -> str:
-        # Execute agent
+        error: Exception | None = None
+
         for tries in range(3):
             try:
                 proposal = asyncio.run(agent.propose_action())
-                break
+                result = asyncio.run(agent.execute(proposal))
+                return str(result)
             except Exception as e:
-                if tries == 2:
-                    raise e
+                error = e
 
-        result = asyncio.run(agent.execute(proposal))
-
-        return str(result)
+        raise error or Exception("Failed to get result")
 
     def run(self, input_data: Input) -> BlockOutput:
         # Set up configuration

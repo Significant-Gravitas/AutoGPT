@@ -5,9 +5,9 @@ from typing import Any, Callable, ClassVar, Optional, TypeVar
 from pydantic import Field, GetCoreSchemaHandler
 from pydantic_core import (
     CoreSchema,
-    core_schema,
     PydanticUndefined,
     PydanticUndefinedType,
+    core_schema,
 )
 
 from autogpt_server.util.settings import Secrets
