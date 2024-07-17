@@ -8,18 +8,14 @@ from typing import TYPE_CHECKING, Iterator
 from autogpt.agents.agent import Agent, AgentSettings
 from autogpt.app.config import ConfigBuilder
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
-from autogpt_server.data.model import BlockSecret, SecretField
+from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
 from forge.agent.components import AgentComponent
-from forge.agent.protocols import (
-    CommandProvider,
-)
+from forge.agent.protocols import CommandProvider
 from forge.command import command
 from forge.command.command import Command
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.file_storage.base import FileStorage
-from forge.llm.providers import (
-    MultiProvider,
-)
+from forge.llm.providers import MultiProvider
 from forge.llm.providers.openai import OpenAICredentials, OpenAIProvider
 from forge.llm.providers.schema import ModelProviderName
 from forge.models.json_schema import JSONSchema
@@ -80,12 +76,21 @@ class BlockAgent(Agent):
 
 class AutoGPTAgentBlock(Block):
     class Input(BlockSchema):
-        task: str = Field(description="Task description for the agent.")
-        input: str = Field(description="Input data for the task")
-        openai_api_key: BlockSecret = SecretField(key="openai_api_key", description="OpenAI API key")
+        task: str = Field()
+        task: str = SchemaField(
+            description="Task description for the agent.",
+            placeholder="Calculate and use Output command",
+        )
+        input: str = SchemaField(
+            description="Input data for the task",
+            placeholder="8 + 5",
+        )
+        openai_api_key: BlockSecret = SecretField(
+            key="openai_api_key", description="OpenAI API key"
+        )
         enabled_components: list[str] = Field(
             default_factory=lambda: [OutputComponent.__name__],
-            description="List of [AgentComponent](https://docs.agpt.co/forge/components/built-in-components/)s enabled for the agent.",
+            description="List of [AgentComponents](https://docs.agpt.co/forge/components/built-in-components/) enabled for the agent.",
         )
         disabled_commands: list[str] = Field(
             default_factory=list,

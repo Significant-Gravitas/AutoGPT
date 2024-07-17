@@ -158,9 +158,9 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       return <div className="connected-input">Connected</div>;
     }
 
-    const renderClickableInput = (displayValue: string) => (
+    const renderClickableInput = (value: string | null = null, placeholder: string = "") => (
       <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
-        {displayValue}
+        {value || <i className="text-gray-500">{placeholder}</i>}
       </div>
     );
 
@@ -249,7 +249,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       if (types.includes('string') && types.includes('null')) {
         return (
           <div key={fullKey} className="input-container">
-            {renderClickableInput(value || `Enter ${key} (optional)`)}
+            {renderClickableInput(value, schema.placeholder || `Enter ${key} (optional)`)}
             {error && <span className="error-message">{error}</span>}
           </div>
         );
@@ -302,7 +302,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </div>
         ) : (
           <div key={fullKey} className="input-container">
-            {renderClickableInput(value || `Enter ${key}`)}
+            {renderClickableInput(value, schema.placeholder || `Enter ${key}`)}
             {error && <span className="error-message">{error}</span>}
           </div>
         );
@@ -363,7 +363,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       default:
         return (
           <div key={fullKey} className="input-container">
-            {renderClickableInput(value ? `${key} (Complex)` : `Enter ${key} (Complex)`)}
+            {renderClickableInput(value ? `${key} (Complex)` : null, `Enter ${key} (Complex)`)}
             {error && <span className="error-message">{error}</span>}
           </div>
         );
