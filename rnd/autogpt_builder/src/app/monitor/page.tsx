@@ -22,7 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ClockIcon, DownloadIcon, Pencil2Icon } from '@radix-ui/react-icons';
+import { ClockIcon, EnterIcon, ExitIcon, Pencil2Icon } from '@radix-ui/react-icons';
 import AutoGPTServerAPI, { Flow, NodeExecutionResult } from '@/lib/autogpt_server_api';
 import { cn, exportAsJSONFile, hashString } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AgentImportForm } from '@/components/agent-import-form';
 
 const Monitor = () => {
   const [flows, setFlows] = useState<Flow[]>([]);
@@ -207,9 +208,32 @@ const AgentFlowList = (
   }
 ) => (
   <Card className={className}>
-    <CardHeader>
+    <CardHeader className="flex-row justify-between items-center space-x-3 space-y-0">
       <CardTitle>Agents</CardTitle>
+
+      <div className="flex items-center">{/* Split "Create" button */}
+        <Button variant="outline" className="rounded-r-none" asChild>
+          <Link href="/build">Create</Link>
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              className={"rounded-l-none border-l-0 px-2"}
+              title="Import from file"
+            >
+              <EnterIcon />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuLabel>Import from a file</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <AgentImportForm className="px-2 py-1.5" />
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </CardHeader>
+
     <CardContent>
       <Table>
         <TableHeader>
@@ -392,11 +416,11 @@ const FlowInfo: React.FC<{
         </Link>
         <Button
           variant="outline"
-          className="px-3"
-          title="Download as a JSON-file"
+          className="px-2.5"
+          title="Export to a JSON-file"
           onClick={() => exportAsJSONFile(flow, `${flow.name}_v${flow.version}.json`)}
         >
-          <DownloadIcon />
+          <ExitIcon />
         </Button>
       </div>
     </CardHeader>
