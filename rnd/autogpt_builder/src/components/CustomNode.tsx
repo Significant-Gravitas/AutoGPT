@@ -174,7 +174,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           <strong>{displayKey}:</strong>
           {Object.entries(schema.properties).map(([propKey, propSchema]: [string, any]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
-              {renderInputField(propKey, propSchema, fullKey, schema.title || beautifyString(propKey))}
+              {renderInputField(propKey, propSchema, fullKey, propSchema.title || beautifyString(propKey))}
             </div>
           ))}
         </div>
@@ -253,8 +253,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       if (types.includes('string') && types.includes('null')) {
         return (
           <div key={fullKey} className="input-container">
-            {renderClickableInput(value, schema.placeholder || `Enter ${key} (optional)`)}
-            {renderClickableInput(value || `Enter ${displayKey} (Optional)`)}
+            {renderClickableInput(value, schema.placeholder || `Enter ${displayKey} (optional)`)}
             {error && <span className="error-message">{error}</span>}
           </div>
         );
@@ -267,7 +266,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           <strong>{displayKey}:</strong>
           {schema.allOf[0].properties && Object.entries(schema.allOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
-              {renderInputField(propKey, propSchema, fullKey, schema.title || beautifyString(propKey))}
+              {renderInputField(propKey, propSchema, fullKey, propSchema.title || beautifyString(propKey))}
             </div>
           ))}
         </div>
@@ -280,7 +279,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           <strong>{displayKey}:</strong>
           {schema.oneOf[0].properties && Object.entries(schema.oneOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
-              {renderInputField(propKey, propSchema, fullKey, schema.title || beautifyString(propKey))}
+              {renderInputField(propKey, propSchema, fullKey, propSchema.title || beautifyString(propKey))}
             </div>
           ))}
         </div>
@@ -307,8 +306,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </div>
         ) : (
           <div key={fullKey} className="input-container">
-            {renderClickableInput(value, schema.placeholder || `Enter ${key}`)}
-            {renderClickableInput(value || `Enter ${displayKey}`)}
+            {renderClickableInput(value, schema.placeholder || `Enter ${displayKey}`)}
             {error && <span className="error-message">{error}</span>}
           </div>
         );
@@ -369,8 +367,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       default:
         return (
           <div key={fullKey} className="input-container">
-            {renderClickableInput(value ? `${key} (Complex)` : null, `Enter ${key} (Complex)`)}
-            {renderClickableInput(value ? `${schema.title || beautifyString(key)} (Complex)` : `Enter ${schema.title || beautifyString(key)} (Complex)`)}
+            {renderClickableInput(value, schema.placeholder || `Enter ${beautifyString(displayKey)} (Complex)`)}
             {error && <span className="error-message">{error}</span>}
           </div>
         );
@@ -402,7 +399,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   return (
     <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}>
       <div className="node-header">
-        <div className="node-title">{beautifyString(data.blockType || data.title)}</div>
+        <div className="node-title">{beautifyString(data.blockType?.replace(/Block$/, '') || data.title)}</div>
       </div>
       <div className="node-content">
         <div className="input-section">

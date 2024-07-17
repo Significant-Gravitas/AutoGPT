@@ -60,7 +60,7 @@ const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id
         />
         {filteredNodes.map((node) => (
           <div key={node.id} className="sidebarNodeRowStyle dark-theme">
-            <span>{beautifyString(node.name)}</span>
+            <span>{beautifyString(node.name).replace(/Block$/, '')}</span>
             <Button onClick={() => addNode(node.id, node.name)}>Add</Button>
           </div>
         ))}
