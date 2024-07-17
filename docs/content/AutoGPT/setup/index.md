@@ -198,3 +198,66 @@ If you don't know which to choose, you can safely go with OpenAI*.
 
 [groq/api-keys]: https://console.groq.com/keys
 [groq/models]: https://console.groq.com/docs/models
+
+
+### Llamafile
+
+With llamafile you can run models locally, which means no need to set up billing,
+and guaranteed data privacy.
+
+For more information and in-depth documentation, check out the [llamafile documentation].
+
+!!! warning
+    At the moment, llamafile only serves one model at a time. This means you can not
+    set `SMART_LLM` and `FAST_LLM` to two different llamafile models.
+
+!!! warning
+    Due to the issues linked below, llamafiles don't work on WSL. To use a llamafile
+    with AutoGPT in WSL, you will have to run the llamafile in Windows (outside WSL).
+
+    <details>
+    <summary>Instructions</summary>
+
+    1. Get the `llamafile/serve.py` script through one of these two ways:
+        1. Clone the AutoGPT repo somewhere in your Windows environment,
+           with the script located at `autogpt/scripts/llamafile/serve.py`
+        2. Download just the [serve.py] script somewhere in your Windows environment
+    2. Make sure you have `click` installed: `pip install click`
+    3. Run `ip route | grep default | awk '{print $3}'` *inside WSL* to get the address
+       of the WSL host machine
+    4. Run `python3 serve.py --host {WSL_HOST_ADDR}`, where `{WSL_HOST_ADDR}`
+       is the address you found at step 3.
+       If port 8080 is taken, also specify a different port using `--port {PORT}`.
+    5. In WSL, set `LLAMAFILE_API_BASE=http://{WSL_HOST_ADDR}:8080/v1` in your `.env`.
+    6. Follow the rest of the regular instructions below.
+
+    [serve.py]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt/scripts/llamafile/serve.py
+    </details>
+
+    * [Mozilla-Ocho/llamafile#356](https://github.com/Mozilla-Ocho/llamafile/issues/356)
+    * [Mozilla-Ocho/llamafile#100](https://github.com/Mozilla-Ocho/llamafile/issues/100)
+
+!!! note
+    These instructions will download and use `mistral-7b-instruct-v0.2.Q5_K_M.llamafile`.
+    `mistral-7b-instruct-v0.2` is currently the only tested and supported model.
+    If you want to try other models, you'll have to add them to `LlamafileModelName` in
+    [`llamafile.py`][forge/llamafile.py].
+    For optimal results, you may also have to add some logic to adapt the message format,
+    like `LlamafileProvider._adapt_chat_messages_for_mistral_instruct(..)` does.
+
+1. Run the llamafile serve script:
+   ```shell
+   python3 ./scripts/llamafile/serve.py
+   ```
+   The first time this is run, it will download a file containing the model + runtime,
+   which may take a while and a few gigabytes of disk space.
+
+   To force GPU acceleration, add `--use-gpu` to the command.
+
+3. In `.env`, set `SMART_LLM`/`FAST_LLM` or both to `mistral-7b-instruct-v0.2`
+
+4. If the server is running on different address than `http://localhost:8080/v1`,
+   set `LLAMAFILE_API_BASE` in `.env` to the right base URL
+
+[llamafile documentation]: https://github.com/Mozilla-Ocho/llamafile#readme
+[forge/llamafile.py]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/forge/forge/llm/providers/llamafile/llamafile.py
