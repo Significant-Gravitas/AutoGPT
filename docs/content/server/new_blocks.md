@@ -47,11 +47,11 @@ Follow these steps to create and test a new block:
        error: str  # Any error message if the request fails
    ```
 
-4. **Implement the `init` method, including test data and mocks:**
+4. **Implement the `__init__` method, including test data and mocks:**
 
    ```python
-   def init(self):
-       super().init(
+   def __init__(self):
+       super().__init__(
            id="h5e7f8g9-1b2c-3d4e-5f6g-7h8i9j0k1l2m", # Unique ID for the block
            input_schema=WikipediaSummaryBlock.Input,  # Assign input schema
            output_schema=WikipediaSummaryBlock.Output,  # Assign output schema
@@ -102,29 +102,9 @@ Follow these steps to create and test a new block:
    - **Error handling**: Handle various exceptions that might occur during the API request and data processing.
    - **Yield**: Use `yield` to output the results.
 
-6. **Register the new block** by adding it to the `__init__.py` file in the `autogpt_server/blocks` directory. This step makes your new block available to the rest of the server.
-
-   - Open the `__init__.py` file in the `autogpt_server/blocks` directory.
-   - Add an import statement for your new block at the top of the file.
-   - Add the new block to the `AVAILABLE_BLOCKS` and `__all__` lists.
-
-   Example:
-
-   ```python
-   from autogpt_server.blocks import sample, reddit, text, ai, wikipedia, discord, get_wikipedia_summary  # Import your new block
-   from autogpt_server.data.block import Block
-
-   AVAILABLE_BLOCKS = {
-       block.id: block
-       for block in [v() for v in Block.__subclasses__()]
-   }
-
-   __all__ = ["ai", "sample", "reddit", "text", "AVAILABLE_BLOCKS", "wikipedia", "discord", "get_wikipedia_summary"]
-   ```
-
 ## Key Points to Remember
 
-- **Unique ID**: Give your block a unique ID in the `__init__` method.
+- **Unique ID**: Give your block a unique ID in the **__init__** method.
 - **Input and Output Schemas**: Define clear input and output schemas.
 - **Error Handling**: Implement error handling in the `run` method.
 - **Output Results**: Use `yield` to output results in the `run` method.
@@ -164,4 +144,4 @@ This approach allows us to test the block's logic comprehensively without relyin
 
 6. **Update tests when changing block behavior**: If you modify your block, ensure the tests are updated accordingly.
 
-By following these guidelines, you can create robust, testable blocks that enhance the AutoGPT Agent Server's capabilities while ensuring reliability and consistency, even for blocks with non-deterministic outputs.
+By following these steps, you can create new blocks that extend the functionality of the AutoGPT Agent Server.
