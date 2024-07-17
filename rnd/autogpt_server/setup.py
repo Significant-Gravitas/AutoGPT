@@ -106,9 +106,13 @@ setup(
             # Exclude the two module from readability.compat as it causes issues
             "excludes": ["readability.compat.two"],
             "include_files": include_files,
-            "replace_paths": [
-                ("D:\a\\AutoGPT\\AutoGPT\rnd\autogpt_server\\", "%AppData%\\..\\Local\\Programs\\AutoGPTServer\\"),
-]        },
+            # "replace_paths": [
+            #     (
+            #         "D:\a\\AutoGPT\\AutoGPT\rnd\autogpt_server\\",
+            #         "%AppData%\\..\\Local\\Programs\\AutoGPTServer\\",
+            #     ),
+            # ],
+        },
         # Mac .app specific options
         "bdist_mac": {
             "bundle_name": "AutoGPT",
