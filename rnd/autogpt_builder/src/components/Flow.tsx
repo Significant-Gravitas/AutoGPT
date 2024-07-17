@@ -15,7 +15,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import CustomNode from './CustomNode';
 import './flow.css';
-import AutoGPTServerAPI, { Block, Flow } from '@/lib/autogpt_server_api';
+import AutoGPTServerAPI, { Block, Graph } from '@/lib/autogpt_server_api';
 import { ObjectSchema } from '@/lib/types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -77,7 +77,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
   const [nodeId, setNodeId] = useState<number>(1);
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [savedAgent, setSavedAgent] = useState<Flow | null>(null);
+  const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>('');
   const [agentName, setAgentName] = useState<string>('');
 
@@ -107,12 +107,12 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
       .catch();
   }, []);
 
-  // Load existing flow
+  // Load existing graph
   useEffect(() => {
     if (!flowID || availableNodes.length == 0) return;
 
-    api.getFlow(flowID)
-      .then(flow => loadFlow(flow));
+    api.getGraph(flowID)
+      .then(graph => loadGraph(graph));
   }, [flowID, availableNodes]);
 
   const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
@@ -214,12 +214,12 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     setNodeId((prevId) => prevId + 1);
   };
 
-  function loadFlow(flow: Flow) {
-    setSavedAgent(flow);
-    setAgentName(flow.name);
-    setAgentDescription(flow.description);
+  function loadGraph(graph: Graph) {
+    setSavedAgent(graph);
+    setAgentName(graph.name);
+    setAgentDescription(graph.description);
 
-    setNodes(flow.nodes.map(node => {
+    setNodes(graph.nodes.map(node => {
       const block = availableNodes.find(block => block.id === node.block_id)!;
       const newNode = {
         id: node.id,
@@ -245,7 +245,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
       return newNode;
     }));
 
-    setEdges(flow.links.map(link => ({
+    setEdges(graph.links.map(link => ({
       id: `${link.source_id}_${link.source_name}_${link.sink_id}_${link.sink_name}`,
       source: link.source_id,
       target: link.sink_id,
@@ -359,8 +359,8 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     }
 
     const newSavedAgent = savedAgent
-      ? await api.updateFlow(savedAgent.id, payload)
-      : await api.createFlow(payload);
+      ? await api.updateGraph(savedAgent.id, payload)
+      : await api.createGraph(payload);
     console.debug('Response from the API:', newSavedAgent);
     setSavedAgent(newSavedAgent);
 
