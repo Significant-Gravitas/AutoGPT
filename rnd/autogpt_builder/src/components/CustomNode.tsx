@@ -5,27 +5,14 @@ import './customnode.css';
 import ModalComponent from './ModalComponent';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-
-type Schema = {
-  type: string;
-  properties: { [key: string]: any };
-  required?: string[];
-  enum?: string[];
-  items?: Schema;
-  additionalProperties?: { type: string };
-  description?: string;
-  placeholder?: string;
-  title?: string;
-  allOf?: any[];
-  anyOf?: any[];
-  oneOf?: any[];
-};
+import { BlockSchema } from '@/lib/types';
+import SchemaTooltip from './SchemaTooltip';
 
 type CustomNodeData = {
   blockType: string;
   title: string;
-  inputSchema: Schema;
-  outputSchema: Schema;
+  inputSchema: BlockSchema;
+  outputSchema: BlockSchema;
   hardcodedValues: { [key: string]: any };
   setHardcodedValues: (values: { [key: string]: any }) => void;
   connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
@@ -69,7 +56,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     });
   };
 
-  const generateHandles = (schema: Schema, type: 'source' | 'target') => {
+  const generateHandles = (schema: BlockSchema, type: 'source' | 'target') => {
     if (!schema?.properties) return null;
     const keys = Object.keys(schema.properties);
     return keys.map((key) => (
@@ -406,7 +393,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   };
 
   return (
-    <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' :''}`}>
+    <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}>
       <div className="node-header">
         <div className="node-title">{data.blockType || data.title}</div>
       </div>
@@ -425,6 +412,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                       style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
                     />
                     <span className="handle-label">{key}</span>
+                    <SchemaTooltip schema={schema} />
                   </div>
                   {renderInputField(key, schema)}
                 </div>
