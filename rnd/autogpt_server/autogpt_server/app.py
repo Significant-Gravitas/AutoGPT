@@ -37,15 +37,15 @@ def main(**kwargs):
     freeze_support()
 
     # if frozen on windows
-    if getattr(sys, "frozen", False) and sys.platform == "win32":
-        # The application is frozen
-        # copy the prisma exe from get_prisma_exe to user directory
-        query_file_location = get_prisma_exe_path()
-        # copy the prisma exe to the windows user directory
-        query_file_location_user = (
-            pathlib.Path.home() / "prisma-query-engine-windows.exe"
-        )
-        shutil.copyfile(query_file_location, query_file_location_user)
+    # if getattr(sys, "frozen", False) and sys.platform == "win32":
+    #     # The application is frozen
+    #     # copy the prisma exe from get_prisma_exe to user directory
+    #     query_file_location = get_prisma_exe_path()
+    #     # copy the prisma exe to the windows user directory
+    #     query_file_location_user = (
+    #         pathlib.Path.home() / "prisma-query-engine-windows.exe"
+    #     )
+    #     shutil.copyfile(query_file_location, query_file_location_user)
 
     run_processes(
         [
