@@ -258,7 +258,7 @@ class TextLlmCallBlock(Block):
     def run(self, input_data: Input) -> BlockOutput:
         try:
             object_input_data = ObjectLlmCallBlock.Input(
-                **input_data.dict(),
+                **input_data.model_dump(),
                 expected_format={},
             )
             yield "response", self.llm_call(object_input_data)

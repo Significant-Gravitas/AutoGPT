@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from enum import Enum
-from typing import Any, ClassVar, Generator, Generic, NamedTuple, Type, TypeVar, cast
+from enum import Enum, member
+from typing import Any, ClassVar, Generator, Generic, Type, TypeVar, cast
 
 import jsonref
 import jsonschema
@@ -14,21 +14,23 @@ BlockData = tuple[str, Any]
 BlockOutput = Generator[BlockData, None, None]
 
 
-class Category(NamedTuple):
-    name: str
-    description: str
-
-
 class BlockCategory(Enum):
-    llm = Category(
-        "llm", "Block that utilizes the Large Language Model to perform a task."
-    )
-    http = Category("http", "Block that executes a network request through HTTP.")
-    social = Category("social", "Block that interacts with social media platforms.")
-    text = Category("text", "Block that processes text data.")
-    file = Category("file", "Block that reads or writes files.")
-    web = Category("web", "Block that interacts with web pages.")
-    basic = Category("basic", "Basic blocks that perform basi operations.")
+    class Obj(BaseModel):
+        category: str
+        description: str
+
+        @classmethod
+        def get(cls, category: str, description: str) -> member:
+            obj = cls(category=category, description=description)
+            return member(obj)
+
+    llm = Obj.get("llm", "Block that uses the Large Language Model to perform a task.")
+    http = Obj.get("http", "Block that executes a network request through HTTP.")
+    social = Obj.get("social", "Block that interacts with social media platforms.")
+    text = Obj.get("text", "Block that processes text data.")
+    file = Obj.get("file", "Block that reads or writes files.")
+    web = Obj.get("web", "Block that interacts with web pages.")
+    basic = Obj.get("basic", "Basic blocks that perform basi operations.")
 
 
 class BlockSchema(BaseModel):
