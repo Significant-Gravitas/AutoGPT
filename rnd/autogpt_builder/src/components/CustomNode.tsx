@@ -134,7 +134,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const isHandleConnected = (key: string) => {
     return data.connections && data.connections.some((conn: any) => {
       if (typeof conn === 'string') {
-        const [ target] = conn.split(' -> ');
+        const [ target ] = conn.split(' -> ');
         return target.includes(key) && target.includes(data.title);
       }
       return conn.target === id && conn.targetHandle === key;
