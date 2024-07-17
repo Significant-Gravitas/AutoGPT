@@ -1,27 +1,26 @@
 import asyncio
 import logging
 from concurrent.futures import ProcessPoolExecutor
-from typing import Any, Coroutine, Generator, TypeVar, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 
 if TYPE_CHECKING:
     from autogpt_server.server.server import AgentServer
+
 from autogpt_server.data import db
 from autogpt_server.data.block import Block, get_block
+from autogpt_server.data.execution import ExecutionQueue, ExecutionStatus
+from autogpt_server.data.execution import NodeExecution as Execution
 from autogpt_server.data.execution import (
     create_graph_execution,
-    get_execution_result,
     get_node_execution_input,
     merge_execution_input,
     parse_execution_output,
-    update_execution_status as execution_update,
-    upsert_execution_output,
+    update_execution_status,
     upsert_execution_input,
-    NodeExecution as Execution,
-    ExecutionStatus,
-    ExecutionQueue,
+    upsert_execution_output,
 )
-from autogpt_server.data.graph import Link, Node, get_node, get_graph
-from autogpt_server.util.service import AppService, expose, get_service_client  # type: ignore
+from autogpt_server.data.graph import Graph, Link, Node, get_graph, get_node
+from autogpt_server.util.service import AppService, expose, get_service_client
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +34,7 @@ ExecutionStream = Generator[Execution, None, None]
 
 
 def execute_node(
-    loop: asyncio.AbstractEventLoop,
-    agent_server_client: "AgentServer",
-    data: Execution
+    loop: asyncio.AbstractEventLoop, api_client: "AgentServer", data: Execution
 ) -> ExecutionStream:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
@@ -45,7 +42,7 @@ def execute_node(
 
     Args:
         loop: The event loop to run the async functions.
-        agent_server_client: The client to send execution updates to the server.
+        api_client: The client to send execution updates to the server.
         data: The execution data for executing the current node.
 
     Returns:
@@ -61,6 +58,11 @@ def execute_node(
     def wait(f: Coroutine[T, Any, T]) -> T:
         return loop.run_until_complete(f)
 
+    def update_execution(status: ExecutionStatus):
+        api_client.send_execution_update(
+            wait(update_execution_status(node_exec_id, status)).model_dump()
+        )
+
     node = wait(get_node(node_id))
     if not node:
         logger.error(f"Node {node_id} not found.")
@@ -74,28 +76,16 @@ def execute_node(
     # Execute the node
     prefix = get_log_prefix(graph_exec_id, node_exec_id, node_block.name)
     logger.warning(f"{prefix} execute with input:\n`{exec_data}`")
-
-    wait(execution_update(node_exec_id, ExecutionStatus.RUNNING))
-
-    # TODO: Remove need for multiple database lookups
-    execution_result = wait(get_execution_result(
-        graph_exec_id, node_exec_id
-    ))
-    agent_server_client.send_execution_update(execution_result.model_dump())  # type: ignore
+    update_execution(ExecutionStatus.RUNNING)
 
     try:
         for output_name, output_data in node_block.execute(exec_data):
             logger.warning(f"{prefix} Executed, output [{output_name}]:`{output_data}`")
-            wait(execution_update(node_exec_id, ExecutionStatus.COMPLETED))
             wait(upsert_execution_output(node_exec_id, output_name, output_data))
-
-            # TODO: Remove need for multiple database lookups
-            execution_result = wait(get_execution_result(
-                graph_exec_id, node_exec_id
-            ))
-            agent_server_client.send_execution_update(execution_result.model_dump())  # type: ignore
+            update_execution(ExecutionStatus.COMPLETED)
 
             for execution in enqueue_next_nodes(
+                api_client=api_client,
                 loop=loop,
                 node=node,
                 output=(output_name, output_data),
@@ -106,29 +96,29 @@ def execute_node(
     except Exception as e:
         error_msg = f"{e.__class__.__name__}: {e}"
         logger.exception(f"{prefix} failed with error. `%s`", error_msg)
-        wait(execution_update(node_exec_id, ExecutionStatus.FAILED))
         wait(upsert_execution_output(node_exec_id, "error", error_msg))
-
-        # TODO: Remove need for multiple database lookups
-        execution_result = wait(get_execution_result(
-            graph_exec_id, node_exec_id
-        ))
-        agent_server_client.send_execution_update(execution_result.model_dump())  # type: ignore
+        update_execution(ExecutionStatus.FAILED)
 
         raise e
 
 
 def enqueue_next_nodes(
-        loop: asyncio.AbstractEventLoop,
-        node: Node,
-        output: tuple[str, Any],
-        graph_exec_id: str,
-        prefix: str,
+    api_client: "AgentServer",
+    loop: asyncio.AbstractEventLoop,
+    node: Node,
+    output: tuple[str, Any],
+    graph_exec_id: str,
+    prefix: str,
 ) -> list[Execution]:
     def wait(f: Coroutine[T, Any, T]) -> T:
         return loop.run_until_complete(f)
 
-    def get_next_node_execution(node_link: Link) -> Execution | None:
+    def execution_update(node_exec_id: str, status: ExecutionStatus):
+        api_client.send_execution_update(
+            wait(update_execution_status(node_exec_id, status)).model_dump()
+        )
+
+    def update_execution_result(node_link: Link) -> Execution | None:
         next_output_name = node_link.source_name
         next_input_name = node_link.sink_name
         next_node_id = node_link.sink_id
@@ -142,14 +132,16 @@ def enqueue_next_nodes(
             logger.error(f"{prefix} Error, next node {next_node_id} not found.")
             return
 
-        next_node_exec_id = wait(upsert_execution_input(
-            node_id=next_node_id,
-            graph_exec_id=graph_exec_id,
-            input_name=next_input_name,
-            data=next_data
-        ))
-        next_node_input = wait(get_node_execution_input(next_node_exec_id))
+        next_node_exec_id = wait(
+            upsert_execution_input(
+                node_id=next_node_id,
+                graph_exec_id=graph_exec_id,
+                input_name=next_input_name,
+                data=next_data,
+            )
+        )
 
+        next_node_input = wait(get_node_execution_input(next_node_exec_id))
         is_valid, validation_msg = validate_exec(next_node, next_node_input)
         suffix = f"{next_output_name}~{next_input_name}#{next_node_id}:{validation_msg}"
 
@@ -157,16 +149,21 @@ def enqueue_next_nodes(
             logger.warning(f"{prefix} Skipped queueing {suffix}")
             return
 
+        # Input is complete, enqueue the execution.
         logger.warning(f"{prefix} Enqueued {suffix}")
+        execution_update(next_node_exec_id, ExecutionStatus.QUEUED)
         return Execution(
             graph_exec_id=graph_exec_id,
             node_exec_id=next_node_exec_id,
-            node_id=next_node_id,
+            node_id=next_node.id,
             data=next_node_input,
         )
 
-    executions = [get_next_node_execution(link) for link in node.output_links]
-    return [v for v in executions if v]
+    return [
+        execution
+        for link in node.output_links
+        if (execution := update_execution_result(link))
+    ]
 
 
 def validate_exec(node: Node, data: dict[str, Any]) -> tuple[bool, str]:
@@ -187,8 +184,8 @@ def validate_exec(node: Node, data: dict[str, Any]) -> tuple[bool, str]:
 
     error_message = f"Input data missing for {node_block.name}:"
 
-    input_fields_from_schema = node_block.input_schema.get_required_fields()  # type: ignore
-    if not input_fields_from_schema.issubset(data):  # type: ignore
+    input_fields_from_schema = node_block.input_schema.get_required_fields()
+    if not input_fields_from_schema.issubset(data):
         return False, f"{error_message} {input_fields_from_schema - set(data)}"
 
     input_fields_from_nodes = {link.sink_name for link in node.input_links}
@@ -205,6 +202,7 @@ def validate_exec(node: Node, data: dict[str, Any]) -> tuple[bool, str]:
 
 def get_agent_server_client() -> "AgentServer":
     from autogpt_server.server.server import AgentServer
+
     return get_service_client(AgentServer)
 
 
@@ -254,7 +252,7 @@ class ExecutionManager(AppService):
 
     @expose
     def add_execution(self, graph_id: str, data: dict[str, Any]) -> dict[Any, Any]:
-        graph = self.run_and_wait(get_graph(graph_id))
+        graph: Graph | None = self.run_and_wait(get_graph(graph_id))
         if not graph:
             raise Exception(f"Graph #{graph_id} not found.")
 
@@ -268,6 +266,7 @@ class ExecutionManager(AppService):
         graph_exec_id, node_execs = self.run_and_wait(
             create_graph_execution(
                 graph_id=graph_id,
+                graph_version=graph.version,
                 node_ids=[node.id for node in graph.starting_nodes],
                 data=data,
             )
@@ -285,15 +284,6 @@ class ExecutionManager(AppService):
                     data=input_data,
                 )
             )
-            # TODO: Remove need for multiple database lookups
-            execution_result = self.run_and_wait(get_execution_result(
-                node_exec.graph_exec_id, node_exec.node_exec_id
-            ))
-            try:
-                self.agent_server_client.send_execution_update(execution_result.model_dump())  # type: ignore
-            except Exception as e:
-                msg = f"Error sending execution of type {type(execution_result)}: {e}"
-                raise Exception(msg)
 
             executions.append(
                 {
@@ -308,7 +298,8 @@ class ExecutionManager(AppService):
         }
 
     def add_node_execution(self, execution: Execution) -> Execution:
-        self.run_and_wait(
-            execution_update(execution.node_exec_id, ExecutionStatus.QUEUED)
+        res = self.run_and_wait(
+            update_execution_status(execution.node_exec_id, ExecutionStatus.QUEUED)
         )
+        self.agent_server_client.send_execution_update(res.model_dump())
         return self.queue.add(execution)
