@@ -104,12 +104,12 @@ Follow these steps to create and test a new block:
 
 ## Key Points to Remember
 
-- **Unique ID**: Give your block a unique ID in the **__init__** method.
+- **Unique ID**: Give your block a unique ID in the **init** method.
 - **Input and Output Schemas**: Define clear input and output schemas.
 - **Error Handling**: Implement error handling in the `run` method.
 - **Output Results**: Use `yield` to output results in the `run` method.
 - **Register the Block**: Add your new block to the `__init__.py` file to make it available to the server.
-- **Testing**: Provide test input and output in the `__init__` method for automatic testing.
+- **Testing**: Provide test input and output in the **init** method for automatic testing.
 
 ## Understanding the Testing Process
 
