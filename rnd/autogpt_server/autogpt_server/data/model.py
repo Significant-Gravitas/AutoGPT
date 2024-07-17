@@ -55,7 +55,6 @@ class BlockSecret:
     ) -> dict[str, Any]:
         return {
             "type": "string",
-            "title": "BlockSecret",
         }
 
     @classmethod

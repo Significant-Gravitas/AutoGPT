@@ -7,6 +7,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { BlockSchema } from '@/lib/types';
 import SchemaTooltip from './SchemaTooltip';
+import { beautifyString } from '@/lib/utils';
 
 type CustomNodeData = {
   blockType: string;
@@ -69,12 +70,12 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               id={key}
               style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
             />
-            <span className="handle-label">{key}</span>
+            <span className="handle-label">{schema.properties[key].title || beautifyString(key)}</span>
           </>
         )}
         {type === 'source' && (
           <>
-            <span className="handle-label">{key}</span>
+            <span className="handle-label">{schema.properties[key].title || beautifyString(key)}</span>
             <Handle
               type={type}
               position={Position.Right}
@@ -149,10 +150,13 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     setActiveKey(null);
   };
 
-  const renderInputField = (key: string, schema: any, parentKey: string = ''): JSX.Element => {
+  const renderInputField = (key: string, schema: any, parentKey: string = '', displayKey: string = ''): JSX.Element => {
     const fullKey = parentKey ? `${parentKey}.${key}` : key;
     const error = errors[fullKey];
     const value = getValue(fullKey);
+    if (displayKey === '') {
+      displayKey = key;
+    }
 
     if (isHandleConnected(fullKey)) {
       return <div className="connected-input">Connected</div>;
@@ -167,10 +171,10 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     if (schema.type === 'object' && schema.properties) {
       return (
         <div key={fullKey} className="object-input">
-          <strong>{key}:</strong>
+          <strong>{displayKey}:</strong>
           {Object.entries(schema.properties).map(([propKey, propSchema]: [string, any]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
-              {renderInputField(propKey, propSchema, fullKey)}
+              {renderInputField(propKey, propSchema, fullKey, propSchema.title || beautifyString(propKey))}
             </div>
           ))}
         </div>
@@ -181,11 +185,11 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       const objectValue = value || {};
       return (
         <div key={fullKey} className="object-input">
-          <strong>{key}:</strong>
+          <strong>{displayKey}:</strong>
           {Object.entries(objectValue).map(([propKey, propValue]: [string, any]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
               <div className="clickable-input" onClick={() => handleInputClick(`${fullKey}.${propKey}`)}>
-                {propKey}: {typeof propValue === 'object' ? JSON.stringify(propValue, null, 2) : propValue}
+                {beautifyString(propKey)}: {typeof propValue === 'object' ? JSON.stringify(propValue, null, 2) : propValue}
               </div>
               <Button onClick={() => handleInputChange(`${fullKey}.${propKey}`, undefined)} className="array-item-remove">
                 &times;
@@ -199,7 +203,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                   <Input
                     type="text"
                     placeholder="Key"
-                    value={pair.key}
+                    value={beautifyString(pair.key)}
                     onChange={(e) => {
                       const newPairs = [...keyValuePairs];
                       newPairs[index].key = e.target.value;
@@ -211,7 +215,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                   <Input
                     type="text"
                     placeholder="Value"
-                    value={pair.value}
+                    value={beautifyString(pair.value)}
                     onChange={(e) => {
                       const newPairs = [...keyValuePairs];
                       newPairs[index].value = e.target.value;
@@ -249,7 +253,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       if (types.includes('string') && types.includes('null')) {
         return (
           <div key={fullKey} className="input-container">
-            {renderClickableInput(value, schema.placeholder || `Enter ${key} (optional)`)}
+            {renderClickableInput(value, schema.placeholder || `Enter ${displayKey} (optional)`)}
             {error && <span className="error-message">{error}</span>}
           </div>
         );
@@ -259,10 +263,10 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     if (schema.allOf) {
       return (
         <div key={fullKey} className="object-input">
-          <strong>{key}:</strong>
+          <strong>{displayKey}:</strong>
           {schema.allOf[0].properties && Object.entries(schema.allOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
-              {renderInputField(propKey, propSchema, fullKey)}
+              {renderInputField(propKey, propSchema, fullKey, propSchema.title || beautifyString(propKey))}
             </div>
           ))}
         </div>
@@ -272,10 +276,10 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     if (schema.oneOf) {
       return (
         <div key={fullKey} className="object-input">
-          <strong>{key}:</strong>
+          <strong>{displayKey}:</strong>
           {schema.oneOf[0].properties && Object.entries(schema.oneOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
-              {renderInputField(propKey, propSchema, fullKey)}
+              {renderInputField(propKey, propSchema, fullKey, propSchema.title || beautifyString(propKey))}
             </div>
           ))}
         </div>
@@ -291,10 +295,10 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               onChange={(e) => handleInputChange(fullKey, e.target.value)}
               className="select-input"
             >
-              <option value="">Select {key}</option>
+              <option value="">Select {displayKey}</option>
               {schema.enum.map((option: string) => (
                 <option key={option} value={option}>
-                  {option}
+                  {beautifyString(option)}
                 </option>
               ))}
             </select>
@@ -302,7 +306,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </div>
         ) : (
           <div key={fullKey} className="input-container">
-            {renderClickableInput(value, schema.placeholder || `Enter ${key}`)}
+            {renderClickableInput(value, schema.placeholder || `Enter ${displayKey}`)}
             {error && <span className="error-message">{error}</span>}
           </div>
         );
@@ -314,7 +318,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               onChange={(e) => handleInputChange(fullKey, e.target.value === 'true')}
               className="select-input"
             >
-              <option value="">Select {key}</option>
+              <option value="">Select {displayKey}</option>
               <option value="true">True</option>
               <option value="false">False</option>
             </select>
@@ -363,7 +367,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       default:
         return (
           <div key={fullKey} className="input-container">
-            {renderClickableInput(value ? `${key} (Complex)` : null, `Enter ${key} (Complex)`)}
+            {renderClickableInput(value, schema.placeholder || `Enter ${beautifyString(displayKey)} (Complex)`)}
             {error && <span className="error-message">{error}</span>}
           </div>
         );
@@ -395,7 +399,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   return (
     <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}>
       <div className="node-header">
-        <div className="node-title">{data.blockType || data.title}</div>
+        <div className="node-title">{beautifyString(data.blockType?.replace(/Block$/, '') || data.title)}</div>
       </div>
       <div className="node-content">
         <div className="input-section">
@@ -411,10 +415,10 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                       id={key}
                       style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
                     />
-                    <span className="handle-label">{key}</span>
+                    <span className="handle-label">{schema.title || beautifyString(key)}</span>
                     <SchemaTooltip schema={schema} />
                   </div>
-                  {renderInputField(key, schema)}
+                  {renderInputField(key, schema, '', schema.title || beautifyString(key))}
                 </div>
               );
             })}
