@@ -111,10 +111,17 @@ poetry run pytest
 ### Formatting & Linting
 Auto formatter and linter are set up in the project. To run them:
 
+Install:
+```sh
+poetry install --with dev
+```
+
+Format the code:
 ```sh
 poetry run format
 ```
 
+Lint the code:
 ```sh
 poetry run lint
 ```
