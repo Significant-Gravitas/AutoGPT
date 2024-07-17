@@ -52,13 +52,16 @@ export const AgentImportForm: React.FC<React.FormHTMLAttributes<HTMLFormElement>
       description: values.agentDescription,
       is_active: !values.importAsTemplate,
       is_template: values.importAsTemplate,
-    }
-    api.createGraph(payload)
+    };
+
+    (values.importAsTemplate ? api.createTemplate(payload) : api.createGraph(payload))
       .then((response) => {
-        window.location.href = `/build?flowID=${response.id}`;
+        const qID = values.importAsTemplate ? "templateID" : "flowID";
+        window.location.href = `/build?${qID}=${response.id}`;
       })
       .catch(error => {
-        form.setError("root", { message: `Could not create agent: ${error}` })
+        const entity_type = values.importAsTemplate ? 'template' : 'agent';
+        form.setError("root", { message: `Could not create ${entity_type}: ${error}` });
       })
   }
 
@@ -169,7 +172,7 @@ export const AgentImportForm: React.FC<React.FormHTMLAttributes<HTMLFormElement>
           )}
         />
         <Button type="submit" className="w-full" disabled={!agentObject}>
-          <EnterIcon className="mr-2" /> Import
+          <EnterIcon className="mr-2" /> Import & Edit
         </Button>
       </form>
     </Form>
