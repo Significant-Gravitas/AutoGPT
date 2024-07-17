@@ -29,9 +29,6 @@ def run_processes(processes: list[AppProcess], **kwargs):
 
 
 def main(**kwargs):
-    debugpy.listen(9986)
-    debugpy.wait_for_client()
-    debugpy.breakpoint()
     settings = get_config_and_secrets()
     set_start_method("spawn", force=True)
     freeze_support()

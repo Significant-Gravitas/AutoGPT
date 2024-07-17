@@ -7,6 +7,8 @@ import os
 
 from cx_Freeze import Executable, setup  # type: ignore
 
+GUID = "{323a1ee5-317d-4423-8490-effd8f5bedff}"
+
 packages = [
     m.name
     for m in iter_modules()
@@ -104,7 +106,9 @@ setup(
             # Exclude the two module from readability.compat as it causes issues
             "excludes": ["readability.compat.two"],
             "include_files": include_files,
-        },
+            "replace_paths": [
+                ("D:\a\\AutoGPT\\AutoGPT\rnd\autogpt_server\\", "%AppData%\\..\\Local\\Programs\\AutoGPTServer\\"),
+]        },
         # Mac .app specific options
         "bdist_mac": {
             "bundle_name": "AutoGPT",
@@ -136,6 +140,7 @@ setup(
             "add_to_path": True,
             "install_icon": "../../assets/gpt_dark_RGB.ico",
             "license_file": license_file,
+            "upgrade_code": GUID,
         },
         # Linux .appimage specific options
         "bdist_appimage": {},
