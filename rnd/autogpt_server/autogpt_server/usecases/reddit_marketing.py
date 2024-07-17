@@ -1,10 +1,7 @@
-from autogpt_server.data.graph import Graph, Link, Node, create_graph
 from autogpt_server.blocks.llm import LlmCallBlock
-from autogpt_server.blocks.reddit import (
-    RedditGetPostsBlock,
-    RedditPostCommentBlock,
-)
+from autogpt_server.blocks.reddit import RedditGetPostsBlock, RedditPostCommentBlock
 from autogpt_server.blocks.text import TextFormatterBlock, TextMatcherBlock
+from autogpt_server.data.graph import Graph, Link, Node, create_graph
 from autogpt_server.util.test import SpinTestServer, wait_execution
 
 
@@ -152,4 +149,5 @@ async def reddit_marketing_agent():
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(reddit_marketing_agent())

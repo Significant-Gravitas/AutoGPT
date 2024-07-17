@@ -1,7 +1,7 @@
-import re
 import os
-
+import re
 from typing import Type
+
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.util.test import execute_block_test
 

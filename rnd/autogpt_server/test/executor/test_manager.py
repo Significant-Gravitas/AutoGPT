@@ -3,8 +3,8 @@ import pytest
 from autogpt_server.data import execution, graph
 from autogpt_server.executor import ExecutionManager
 from autogpt_server.server import AgentServer
-from autogpt_server.util.test import SpinTestServer, wait_execution
 from autogpt_server.usecases.sample import create_test_graph
+from autogpt_server.util.test import SpinTestServer, wait_execution
 
 
 async def execute_graph(test_manager: ExecutionManager, test_graph: graph.Graph) -> str:

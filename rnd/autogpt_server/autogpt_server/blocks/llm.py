@@ -86,18 +86,19 @@ class LlmCallBlock(Block):
                 "prompt": "User prompt",
             },
             test_output=("response", {"key1": "key1Value", "key2": "key2Value"}),
-            test_mock={"llm_call": lambda *args, **kwargs: json.dumps({
-                "key1": "key1Value",
-                "key2": "key2Value",
-            })},
+            test_mock={
+                "llm_call": lambda *args, **kwargs: json.dumps(
+                    {
+                        "key1": "key1Value",
+                        "key2": "key2Value",
+                    }
+                )
+            },
         )
 
     @staticmethod
     def llm_call(
-            api_key: str,
-            model: LlmModel,
-            prompt: list[dict],
-            json_format: bool
+        api_key: str, model: LlmModel, prompt: list[dict], json_format: bool
     ) -> str:
         provider = model.metadata.provider
 
@@ -145,16 +146,17 @@ class LlmCallBlock(Block):
 
         if input_data.expected_format:
             expected_format = [
-                f'"{k}": "{v}"' for k, v in
-                input_data.expected_format.items()
+                f'"{k}": "{v}"' for k, v in input_data.expected_format.items()
             ]
             format_prompt = ",\n  ".join(expected_format)
-            sys_prompt = trim_prompt(f"""
+            sys_prompt = trim_prompt(
+                f"""
               |Reply in json format:
               |{{
               |  {format_prompt}
               |}}
-            """)
+            """
+            )
             prompt.append({"role": "system", "content": sys_prompt})
 
         prompt.append({"role": "user", "content": input_data.prompt})
@@ -173,8 +175,8 @@ class LlmCallBlock(Block):
         retry_prompt = ""
         model = input_data.model
         api_key = (
-            input_data.api_key.get_secret_value() or
-            LlmApiKeys[model.metadata.provider].get_secret_value()
+            input_data.api_key.get_secret_value()
+            or LlmApiKeys[model.metadata.provider].get_secret_value()
         )
 
         for retry_count in range(input_data.retry):
@@ -196,7 +198,8 @@ class LlmCallBlock(Block):
                     yield "response", {"response": response_text}
                     return
 
-                retry_prompt = trim_prompt(f"""
+                retry_prompt = trim_prompt(
+                    f"""
                   |This is your previous error response:
                   |--
                   |{response_text}
@@ -206,7 +209,8 @@ class LlmCallBlock(Block):
                   |--
                   |{parsed_error}
                   |--
-                """)
+                """
+                )
                 prompt.append({"role": "user", "content": retry_prompt})
             except Exception as e:
                 logger.error(f"Error calling LLM: {e}")
@@ -236,11 +240,12 @@ class TextSummarizerBlock(Block):
             test_input={"text": "Lorem ipsum..." * 100},
             test_output=("summary", "Final summary of a long text"),
             test_mock={
-                "llm_call": lambda input_data:
-                {"final_summary": "Final summary of a long text"}
-                if "final_summary" in input_data.expected_format
-                else {"summary": "Summary of a chunk of text"}
-            }
+                "llm_call": lambda input_data: (
+                    {"final_summary": "Final summary of a long text"}
+                    if "final_summary" in input_data.expected_format
+                    else {"summary": "Summary of a chunk of text"}
+                )
+            },
         )
 
     def run(self, input_data: Input) -> BlockOutput:
@@ -252,9 +257,7 @@ class TextSummarizerBlock(Block):
 
     def _run(self, input_data: Input) -> BlockOutput:
         chunks = self._split_text(
-            input_data.text,
-            input_data.max_tokens,
-            input_data.chunk_overlap
+            input_data.text, input_data.max_tokens, input_data.chunk_overlap
         )
         summaries = []
 
@@ -272,7 +275,7 @@ class TextSummarizerBlock(Block):
         chunk_size = max_tokens - overlap
 
         for i in range(0, len(words), chunk_size):
-            chunk = " ".join(words[i:i + max_tokens])
+            chunk = " ".join(words[i : i + max_tokens])
             chunks.append(chunk)
 
         return chunks
@@ -288,12 +291,14 @@ class TextSummarizerBlock(Block):
     def _summarize_chunk(self, chunk: str, input_data: Input) -> str:
         prompt = f"Summarize the following text concisely:\n\n{chunk}"
 
-        llm_response = self.llm_call(LlmCallBlock.Input(
-            prompt=prompt,
-            api_key=input_data.api_key,
-            model=input_data.model,
-            expected_format={"summary": "The summary of the given text."}
-        ))
+        llm_response = self.llm_call(
+            LlmCallBlock.Input(
+                prompt=prompt,
+                api_key=input_data.api_key,
+                model=input_data.model,
+                expected_format={"summary": "The summary of the given text."},
+            )
+        )
 
         return llm_response["summary"]
 
@@ -301,25 +306,33 @@ class TextSummarizerBlock(Block):
         combined_text = " ".join(summaries)
 
         if len(combined_text.split()) <= input_data.max_tokens:
-            prompt = ("Provide a final, concise summary of the following summaries:\n\n"
-                      + combined_text)
+            prompt = (
+                "Provide a final, concise summary of the following summaries:\n\n"
+                + combined_text
+            )
 
-            llm_response = self.llm_call(LlmCallBlock.Input(
-                prompt=prompt,
-                api_key=input_data.api_key,
-                model=input_data.model,
-                expected_format={
-                    "final_summary": "The final summary of all provided summaries."
-                }
-            ))
+            llm_response = self.llm_call(
+                LlmCallBlock.Input(
+                    prompt=prompt,
+                    api_key=input_data.api_key,
+                    model=input_data.model,
+                    expected_format={
+                        "final_summary": "The final summary of all provided summaries."
+                    },
+                )
+            )
 
             return llm_response["final_summary"]
         else:
             # If combined summaries are still too long, recursively summarize
-            return self._run(TextSummarizerBlock.Input(
-                text=combined_text,
-                api_key=input_data.api_key,
-                model=input_data.model,
-                max_tokens=input_data.max_tokens,
-                chunk_overlap=input_data.chunk_overlap
-            )).send(None)[1]  # Get the first yielded value
+            return self._run(
+                TextSummarizerBlock.Input(
+                    text=combined_text,
+                    api_key=input_data.api_key,
+                    model=input_data.model,
+                    max_tokens=input_data.max_tokens,
+                    chunk_overlap=input_data.chunk_overlap,
+                )
+            ).send(None)[
+                1
+            ]  # Get the first yielded value

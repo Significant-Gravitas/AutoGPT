@@ -1,12 +1,12 @@
 from datetime import datetime, timezone
+from typing import Iterator
 
 import praw
 from pydantic import BaseModel, Field
-from typing import Iterator
 
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
-from autogpt_server.util.mock import MockObject
 from autogpt_server.data.model import BlockSecret, SecretField
+from autogpt_server.util.mock import MockObject
 
 
 class RedditCredentials(BaseModel):
@@ -53,15 +53,14 @@ class RedditGetPostsBlock(Block):
         )
         last_minutes: int | None = Field(
             description="Post time to stop minutes ago while fetching posts",
-            default=None
+            default=None,
         )
         last_post: str | None = Field(
             description="Post ID to stop when reached while fetching posts",
-            default=None
+            default=None,
         )
         post_limit: int | None = Field(
-            description="Number of posts to fetch",
-            default=10
+            description="Number of posts to fetch", default=10
         )
 
     class Output(BlockSchema):
@@ -85,10 +84,18 @@ class RedditGetPostsBlock(Block):
                 "post_limit": 2,
             },
             test_output=[
-                ("post", RedditPost(
-                    id="id1", subreddit="subreddit", title="title1", body="body1")),
-                ("post", RedditPost(
-                    id="id2", subreddit="subreddit", title="title2", body="body2")),
+                (
+                    "post",
+                    RedditPost(
+                        id="id1", subreddit="subreddit", title="title1", body="body1"
+                    ),
+                ),
+                (
+                    "post",
+                    RedditPost(
+                        id="id2", subreddit="subreddit", title="title2", body="body2"
+                    ),
+                ),
             ],
             test_mock={
                 "get_posts": lambda _: [
@@ -96,7 +103,7 @@ class RedditGetPostsBlock(Block):
                     MockObject(id="id2", title="title2", selftext="body2"),
                     MockObject(id="id3", title="title2", selftext="body2"),
                 ]
-            }
+            },
         )
 
     @staticmethod
@@ -110,8 +117,7 @@ class RedditGetPostsBlock(Block):
         for post in self.get_posts(input_data):
             if input_data.last_minutes:
                 post_datetime = datetime.fromtimestamp(
-                    post.created_utc,
-                    tz=timezone.utc
+                    post.created_utc, tz=timezone.utc
                 )
                 time_difference = current_time - post_datetime
                 if time_difference.total_seconds() / 60 > input_data.last_minutes:
@@ -124,15 +130,14 @@ class RedditGetPostsBlock(Block):
                 id=post.id,
                 subreddit=input_data.subreddit,
                 title=post.title,
-                body=post.selftext
+                body=post.selftext,
             )
 
 
 class RedditPostCommentBlock(Block):
     class Input(BlockSchema):
         creds: RedditCredentials = Field(
-            description="Reddit credentials",
-            default=RedditCredentials()
+            description="Reddit credentials", default=RedditCredentials()
         )
         data: RedditComment = Field(description="Reddit comment")
 
@@ -146,7 +151,7 @@ class RedditPostCommentBlock(Block):
             output_schema=RedditPostCommentBlock.Output,
             test_input={"data": {"post_id": "id", "comment": "comment"}},
             test_output=[("comment_id", "dummy_comment_id")],
-            test_mock={"reply_post": lambda creds, comment: "dummy_comment_id"}
+            test_mock={"reply_post": lambda creds, comment: "dummy_comment_id"},
         )
 
     @staticmethod

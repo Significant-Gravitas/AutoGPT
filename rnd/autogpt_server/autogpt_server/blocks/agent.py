@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING, Iterator
 
 from autogpt.agents.agent import Agent, AgentSettings
 from autogpt.app.config import ConfigBuilder
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
-from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
 from forge.agent.components import AgentComponent
 from forge.agent.protocols import CommandProvider
 from forge.command import command
@@ -21,6 +19,8 @@ from forge.llm.providers.schema import ModelProviderName
 from forge.models.json_schema import JSONSchema
 from pydantic import Field, SecretStr
 
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
 
 if TYPE_CHECKING:
     from autogpt.app.config import AppConfig
@@ -52,11 +52,11 @@ class OutputComponent(CommandProvider):
 
 class BlockAgent(Agent):
     def __init__(
-            self,
-            settings: BlockAgentSettings,
-            llm_provider: MultiProvider,
-            file_storage: FileStorage,
-            app_config: AppConfig,
+        self,
+        settings: BlockAgentSettings,
+        llm_provider: MultiProvider,
+        file_storage: FileStorage,
+        app_config: AppConfig,
     ):
         super().__init__(settings, llm_provider, file_storage, app_config)
 
@@ -68,8 +68,10 @@ class BlockAgent(Agent):
             if not isinstance(attr_value, AgentComponent):
                 continue
             component_name = type(attr_value).__name__
-            if (component_name != "SystemComponent" and
-                    component_name not in settings.enabled_components):
+            if (
+                component_name != "SystemComponent"
+                and component_name not in settings.enabled_components
+            ):
                 delattr(self, attr_name)
 
 
@@ -84,7 +86,8 @@ class AutoGPTAgentBlock(Block):
             placeholder="8 + 5",
         )
         openai_api_key: BlockSecret = SecretField(
-            key="openai_api_key", description="OpenAI API key")
+            key="openai_api_key", description="OpenAI API key"
+        )
         enabled_components: list[str] = Field(
             default_factory=lambda: [OutputComponent.__name__],
             description="List of [AgentComponents](https://docs.agpt.co/forge/components/built-in-components/) enabled for the agent.",

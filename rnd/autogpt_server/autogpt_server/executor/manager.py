@@ -1,25 +1,25 @@
 import asyncio
 import logging
 from concurrent.futures import ProcessPoolExecutor
-from typing import Any, Coroutine, Generator, TypeVar, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 
 if TYPE_CHECKING:
     from autogpt_server.server.server import AgentServer
+
 from autogpt_server.data import db
 from autogpt_server.data.block import Block, get_block
+from autogpt_server.data.execution import ExecutionQueue, ExecutionStatus
+from autogpt_server.data.execution import NodeExecution as Execution
 from autogpt_server.data.execution import (
     create_graph_execution,
     get_node_execution_input,
     merge_execution_input,
     parse_execution_output,
     update_execution_status,
-    upsert_execution_output,
     upsert_execution_input,
-    NodeExecution as Execution,
-    ExecutionStatus,
-    ExecutionQueue,
+    upsert_execution_output,
 )
-from autogpt_server.data.graph import Link, Node, get_node, get_graph, Graph
+from autogpt_server.data.graph import Graph, Link, Node, get_graph, get_node
 from autogpt_server.util.service import AppService, expose, get_service_client
 
 logger = logging.getLogger(__name__)
@@ -34,9 +34,7 @@ ExecutionStream = Generator[Execution, None, None]
 
 
 def execute_node(
-    loop: asyncio.AbstractEventLoop,
-    api_client: "AgentServer",
-    data: Execution
+    loop: asyncio.AbstractEventLoop, api_client: "AgentServer", data: Execution
 ) -> ExecutionStream:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
@@ -105,12 +103,12 @@ def execute_node(
 
 
 def enqueue_next_nodes(
-        api_client: "AgentServer",
-        loop: asyncio.AbstractEventLoop,
-        node: Node,
-        output: tuple[str, Any],
-        graph_exec_id: str,
-        prefix: str,
+    api_client: "AgentServer",
+    loop: asyncio.AbstractEventLoop,
+    node: Node,
+    output: tuple[str, Any],
+    graph_exec_id: str,
+    prefix: str,
 ) -> list[Execution]:
     def wait(f: Coroutine[T, Any, T]) -> T:
         return loop.run_until_complete(f)
@@ -134,12 +132,14 @@ def enqueue_next_nodes(
             logger.error(f"{prefix} Error, next node {next_node_id} not found.")
             return
 
-        next_node_exec_id = wait(upsert_execution_input(
-            node_id=next_node_id,
-            graph_exec_id=graph_exec_id,
-            input_name=next_input_name,
-            data=next_data
-        ))
+        next_node_exec_id = wait(
+            upsert_execution_input(
+                node_id=next_node_id,
+                graph_exec_id=graph_exec_id,
+                input_name=next_input_name,
+                data=next_data,
+            )
+        )
 
         next_node_input = wait(get_node_execution_input(next_node_exec_id))
         is_valid, validation_msg = validate_exec(next_node, next_node_input)
@@ -160,7 +160,8 @@ def enqueue_next_nodes(
         )
 
     return [
-        execution for link in node.output_links
+        execution
+        for link in node.output_links
         if (execution := update_execution_result(link))
     ]
 
@@ -201,6 +202,7 @@ def validate_exec(node: Node, data: dict[str, Any]) -> tuple[bool, str]:
 
 def get_agent_server_client() -> "AgentServer":
     from autogpt_server.server.server import AgentServer
+
     return get_service_client(AgentServer)
 
 
@@ -296,9 +298,8 @@ class ExecutionManager(AppService):
         }
 
     def add_node_execution(self, execution: Execution) -> Execution:
-        res = self.run_and_wait(update_execution_status(
-            execution.node_exec_id,
-            ExecutionStatus.QUEUED
-        ))
+        res = self.run_and_wait(
+            update_execution_status(execution.node_exec_id, ExecutionStatus.QUEUED)
+        )
         self.agent_server_client.send_execution_update(res.model_dump())
         return self.queue.add(execution)

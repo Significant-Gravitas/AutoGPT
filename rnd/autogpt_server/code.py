@@ -11,11 +11,13 @@ def run(*command: str) -> None:
 
 def lint():
     run("ruff", "check", ".", "--exit-zero")
-    run("autopep8", "--diff", "--exit-code", "--recursive", ".")
+    run("isort", "--diff", "--check", "--profile", "black", ".")
+    run("black", "--diff", "--check", ".")
     run("pyright")
 
 
 def format():
-    run("autopep8", "--in-place", "--recursive", ".")
     run("ruff", "check", "--fix", ".")
+    run("isort", "--profile", "black", ".")
+    run("black", ".")
     run("pyright", ".")

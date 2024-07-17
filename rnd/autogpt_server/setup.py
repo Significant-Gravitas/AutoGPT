@@ -103,7 +103,6 @@ setup(
             "applications_shortcut": True,
             "volume_label": "AutoGPTServer",
             "background": "builtin-arrow",
-
             "license": {
                 "default-language": "en_US",
                 "licenses": {"en_US": license_file},

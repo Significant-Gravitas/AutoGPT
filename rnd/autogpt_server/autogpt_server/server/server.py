@@ -17,7 +17,8 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import autogpt_server.server.ws_api
-from autogpt_server.data import block, db, execution, graph as graph_db
+from autogpt_server.data import block, db, execution
+from autogpt_server.data import graph as graph_db
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import (
@@ -27,8 +28,7 @@ from autogpt_server.server.model import (
     WsMessage,
 )
 from autogpt_server.util.data import get_frontend_path
-from autogpt_server.util.service import expose
-from autogpt_server.util.service import AppService, get_service_client
+from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
 
 

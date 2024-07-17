@@ -6,7 +6,7 @@ from fastapi import WebSocket
 
 from autogpt_server.data.execution import ExecutionResult, ExecutionStatus
 from autogpt_server.server.conn_manager import ConnectionManager
-from autogpt_server.server.model import WsMessage, Methods
+from autogpt_server.server.model import Methods, WsMessage
 
 
 @pytest.fixture
