@@ -37,17 +37,21 @@ class SpinTestServer:
 
 
 async def wait_execution(
-        exec_manager: ExecutionManager,
-        graph_id: str,
-        graph_exec_id: str,
-        num_execs: int,
-        timeout: int = 20,
+    exec_manager: ExecutionManager,
+    graph_id: str,
+    graph_exec_id: str,
+    num_execs: int,
+    timeout: int = 20,
 ) -> list:
     async def is_execution_completed():
         execs = await AgentServer().get_run_execution_results(graph_id, graph_exec_id)
-        return exec_manager.queue.empty() and len(execs) == num_execs and all(
-            v.status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]
-            for v in execs
+        return (
+            exec_manager.queue.empty()
+            and len(execs) == num_execs
+            and all(
+                v.status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]
+                for v in execs
+            )
         )
 
     # Wait for the executions to complete
@@ -98,7 +102,8 @@ def execute_block_test(block: Block):
                 log(f"{prefix} {mark} comparing `{data}` vs `{expected_data}`")
                 if not is_matching:
                     raise ValueError(
-                        f"{prefix}: wrong output {data} vs {expected_data}")
+                        f"{prefix}: wrong output {data} vs {expected_data}"
+                    )
 
             compare(output_data, ex_output_data)
             compare(output_name, ex_output_name)

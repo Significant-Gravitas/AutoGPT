@@ -1,6 +1,7 @@
 import json
 import os
 from typing import Any, Dict, Generic, Set, Tuple, Type, TypeVar
+
 from pydantic import BaseModel, Field, PrivateAttr
 from pydantic_settings import (
     BaseSettings,
@@ -57,27 +58,28 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     @classmethod
     def settings_customise_sources(
-            cls,
-            settings_cls: Type[BaseSettings],
-            init_settings: PydanticBaseSettingsSource,
-            env_settings: PydanticBaseSettingsSource,
-            dotenv_settings: PydanticBaseSettingsSource,
-            file_secret_settings: PydanticBaseSettingsSource,
+        cls,
+        settings_cls: Type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
     ) -> Tuple[PydanticBaseSettingsSource, ...]:
         return (JsonConfigSettingsSource(settings_cls),)
 
 
 class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     """Secrets for the server."""
+
     openai_api_key: str = Field(default="", description="OpenAI API key")
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")
-    
+
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")
     reddit_username: str = Field(default="", description="Reddit username")
     reddit_password: str = Field(default="", description="Reddit password")
-    
+
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(

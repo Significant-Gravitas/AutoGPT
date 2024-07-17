@@ -1,22 +1,23 @@
-from autogpt_server.data.block import Block, BlockSchema, BlockOutput
-
 from typing import Any
+
 from pydantic import Field
+
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 
 
 class ValueBlock(Block):
     """
     This block allows you to provide a constant value as a block, in a stateless manner.
     The common use-case is simply pass the `input` data, it will `output` the same data.
-    But this will not retain the state, once it is executed, the output is consumed. 
+    But this will not retain the state, once it is executed, the output is consumed.
 
     To retain the state, you can feed the `output` to the `data` input, so that the data
     is retained in the block for the next execution. You can then trigger the block by
     feeding the `input` pin with any data, and the block will produce value of `data`.
-    
+
     Ex:
          <constant_data>  <any_trigger>
-                ||           ||   
+                ||           ||
        =====> `data`      `input`
       ||        \\         //
       ||          ValueBlock
@@ -25,10 +26,15 @@ class ValueBlock(Block):
     """
 
     class Input(BlockSchema):
-        input: Any = Field(description="Trigger the block to produce the output. "
-                                       "The value is only used when `data` is None.")
-        data: Any = Field(description="The constant data to be retained in the block. "
-                                      "This value is passed as `output`.", default=None)
+        input: Any = Field(
+            description="Trigger the block to produce the output. "
+            "The value is only used when `data` is None."
+        )
+        data: Any = Field(
+            description="The constant data to be retained in the block. "
+            "This value is passed as `output`.",
+            default=None,
+        )
 
     class Output(BlockSchema):
         output: Any
