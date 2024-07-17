@@ -155,7 +155,7 @@ jobs:
       - name: Install dependencies for autogpt_builder
         working-directory: rnd/autogpt_builder
         run: |
-          npm install
+          yarn install
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -200,8 +200,6 @@ jobs:
         run: |
           mkdir prisma
           poetry run prisma py fetch --force
-          ls ./prisma
-          pwd
         env:
           PRISMA_BINARY_CACHE_DIR: "./prisma"
           PRISMA_HOME_DIR: "./prisma"
