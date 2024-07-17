@@ -1,4 +1,5 @@
 from uuid import uuid4
+
 from prisma import Prisma
 from pydantic import BaseModel, Field, field_validator
 

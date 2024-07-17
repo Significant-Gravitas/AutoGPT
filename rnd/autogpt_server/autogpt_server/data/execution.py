@@ -103,7 +103,7 @@ EXECUTION_RESULT_INCLUDE = {
 
 
 async def create_graph_execution(
-        graph_id: str, graph_version: int, node_ids: list[str], data: dict[str, Any]
+    graph_id: str, graph_version: int, node_ids: list[str], data: dict[str, Any]
 ) -> tuple[str, list[ExecutionResult]]:
     """
     Create a new AgentGraphExecution record.
@@ -185,9 +185,9 @@ async def upsert_execution_input(
 
 
 async def upsert_execution_output(
-        node_exec_id: str,
-        output_name: str,
-        output_data: Any,
+    node_exec_id: str,
+    output_name: str,
+    output_data: Any,
 ) -> None:
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
@@ -202,8 +202,7 @@ async def upsert_execution_output(
 
 
 async def update_execution_status(
-        node_exec_id: str,
-        status: ExecutionStatus
+    node_exec_id: str, status: ExecutionStatus
 ) -> ExecutionResult:
     now = datetime.now(tz=timezone.utc)
     data = {

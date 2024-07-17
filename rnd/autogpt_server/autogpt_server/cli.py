@@ -108,7 +108,9 @@ def reddit(server_address: str):
     Create an event graph
     """
     import requests
+
     from autogpt_server.usecases.reddit_marketing import create_test_graph
+
     test_graph = create_test_graph()
     url = f"{server_address}/graphs"
     headers = {"Content-Type": "application/json"}
@@ -127,7 +129,9 @@ def populate_db(server_address: str):
     Create an event graph
     """
     import requests
+
     from autogpt_server.usecases.sample import create_test_graph
+
     test_graph = create_test_graph()
     url = f"{server_address}/graphs"
     headers = {"Content-Type": "application/json"}
@@ -161,7 +165,9 @@ def graph(server_address: str):
     Create an event graph
     """
     import requests
+
     from autogpt_server.usecases.sample import create_test_graph
+
     url = f"{server_address}/graphs"
     headers = {"Content-Type": "application/json"}
     data = create_test_graph().model_dump_json()
@@ -211,9 +217,6 @@ def websocket(server_address: str, graph_id: str):
     """
     import asyncio
 
-    import websockets
-
-    from autogpt_server.server.ws_api import ExecutionSubscription, Methods, WsMessage
     import websockets
 
     from autogpt_server.server.ws_api import ExecutionSubscription, Methods, WsMessage

@@ -1,7 +1,8 @@
+from enum import Enum
+
 import requests
 
-from enum import Enum
-from autogpt_server.data.block import Block, BlockSchema, BlockOutput
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 
 
 class HttpMethod(Enum):

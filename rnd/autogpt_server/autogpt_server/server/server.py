@@ -17,7 +17,8 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import autogpt_server.server.ws_api
-from autogpt_server.data import block, db, execution, graph as graph_db
+from autogpt_server.data import block, db, execution
+from autogpt_server.data import graph as graph_db
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import (
@@ -27,8 +28,7 @@ from autogpt_server.server.model import (
     WsMessage,
 )
 from autogpt_server.util.data import get_frontend_path
-from autogpt_server.util.service import expose  # type: ignore
-from autogpt_server.util.service import AppService, get_service_client
+from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
 
 
@@ -530,7 +530,7 @@ class AgentServer(AppService):
         self, graph_id: str, node_input: dict[Any, Any]
     ) -> dict[Any, Any]:
         try:
-            return self.execution_manager_client.add_execution(graph_id, node_input)  # type: ignore
+            return self.execution_manager_client.add_execution(graph_id, node_input)
         except Exception as e:
             msg = e.__str__().encode().decode("unicode_escape")
             raise HTTPException(status_code=400, detail=msg)

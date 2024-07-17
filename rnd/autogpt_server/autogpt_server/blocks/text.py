@@ -1,8 +1,9 @@
-import re
 import json
-
+import re
 from typing import Any
+
 from pydantic import Field
+
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 
 
@@ -44,12 +45,12 @@ class TextMatcherBlock(Block):
             flags = flags | re.IGNORECASE
         if input_data.dot_all:
             flags = flags | re.DOTALL
-            
+
         if isinstance(input_data.text, str):
             text = input_data.text
         else:
             text = json.dumps(input_data.text)
-            
+
         if re.search(input_data.match, text, flags=flags):
             yield "positive", output
         else:
@@ -93,7 +94,7 @@ class TextParserBlock(Block):
             flags = flags | re.IGNORECASE
         if input_data.dot_all:
             flags = flags | re.DOTALL
-            
+
         if isinstance(input_data.text, str):
             text = input_data.text
         else:
@@ -108,13 +109,9 @@ class TextParserBlock(Block):
 
 class TextFormatterBlock(Block):
     class Input(BlockSchema):
-        texts: list[str] = Field(
-            description="Texts (list) to format",
-            default=[]
-        )
+        texts: list[str] = Field(description="Texts (list) to format", default=[])
         named_texts: dict[str, str] = Field(
-            description="Texts (dict) to format",
-            default={}
+            description="Texts (dict) to format", default={}
         )
         format: str = Field(
             description="Template to format the text using `texts` and `named_texts`",

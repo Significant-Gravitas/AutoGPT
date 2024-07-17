@@ -1,7 +1,8 @@
-import os
 import glob
 import importlib
+import os
 from pathlib import Path
+
 from autogpt_server.data.block import Block
 
 # Dynamically load all modules under autogpt_server.blocks
@@ -18,9 +19,6 @@ for module in modules:
     AVAILABLE_MODULES.append(module)
 
 # Load all Block instances from the available modules
-AVAILABLE_BLOCKS = {
-    block.id: block
-    for block in [v() for v in Block.__subclasses__()]
-}
+AVAILABLE_BLOCKS = {block.id: block for block in [v() for v in Block.__subclasses__()]}
 
 __all__ = ["AVAILABLE_MODULES", "AVAILABLE_BLOCKS"]
