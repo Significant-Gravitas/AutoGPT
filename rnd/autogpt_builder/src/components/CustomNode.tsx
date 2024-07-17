@@ -350,7 +350,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           <div key={fullKey} className="input-container">
             <input
               type="number"
-              value={typeof value === 'number' ? value : typeof value === 'string' ? value : ''}
+              value={["number", "string"].includes(typeof value) ? value : ''}
               onChange={(e) => handleInputChange(fullKey, parseFloat(e.target.value))}
               className="number-input"
             />
