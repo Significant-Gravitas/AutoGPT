@@ -22,9 +22,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ClockIcon, Pencil2Icon } from '@radix-ui/react-icons';
+import { ClockIcon, DownloadIcon, Pencil2Icon } from '@radix-ui/react-icons';
 import AutoGPTServerAPI, { Flow, NodeExecutionResult } from '@/lib/autogpt_server_api';
-import { cn, hashString } from '@/lib/utils';
+import { cn, exportAsJSONFile, hashString } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -390,6 +390,14 @@ const FlowInfo: React.FC<{
         <Link className={buttonVariants({ variant: "outline" })} href={`/build?flowID=${flow.id}`}>
           <Pencil2Icon className="mr-2" /> Edit
         </Link>
+        <Button
+          variant="outline"
+          className="px-3"
+          title="Download as a JSON-file"
+          onClick={() => exportAsJSONFile(flow, `${flow.name}_v${flow.version}.json`)}
+        >
+          <DownloadIcon />
+        </Button>
       </div>
     </CardHeader>
     <CardContent>
