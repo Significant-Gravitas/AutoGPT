@@ -18,7 +18,6 @@ pydantic = "^2.7.2"
 pytest = "^8.2.1"
 uvicorn = { extras = ["standard"], version = "^0.30.1" }
 fastapi = "^0.109.0"
-ruff = "^0.4.8"
 flake8 = "^7.0.0"
 jsonschema = "^4.22.0"
 psutil = "^5.9.8"
@@ -42,6 +41,10 @@ poethepoet = "^0.26.1"
 httpx = "^0.27.0"
 pytest-watcher = "^0.4.2"
 requests = "^2.32.3"
+ruff = "^0.5.2"
+pyright = "^1.1.371"
+isort = "^5.13.2"
+black = "^24.4.2"
 
 [build-system]
 requires = ["poetry-core"]
@@ -50,6 +53,8 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.scripts]
 app = "autogpt_server.app:main"
 cli = "autogpt_server.cli:main"
+format = "code:format"
+lint = "code:lint"
 
 # https://poethepoet.natn.io/index.html
 [tool.poe]

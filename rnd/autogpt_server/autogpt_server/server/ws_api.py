@@ -1,8 +1,8 @@
-
 from fastapi import WebSocket, WebSocketDisconnect
 
 from autogpt_server.server.conn_manager import ConnectionManager
-from autogpt_server.server.model import ExecutionSubscription, WsMessage, Methods
+from autogpt_server.server.model import ExecutionSubscription, Methods, WsMessage
+
 
 async def websocket_router(websocket: WebSocket, manager: ConnectionManager):
     await manager.connect(websocket)

@@ -1,14 +1,14 @@
 import logging
 import time
+from datetime import datetime
 from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from datetime import datetime
 
 from autogpt_server.data import schedule as model
-from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.executor.manager import ExecutionManager
+from autogpt_server.util.service import AppService, expose, get_service_client
 
 logger = logging.getLogger(__name__)
 
