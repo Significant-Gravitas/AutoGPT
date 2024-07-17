@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import Field
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 
 
 class ValueBlock(Block):
@@ -68,6 +68,8 @@ class PrintingBlock(Block):
     def __init__(self):
         super().__init__(
             id="f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c",
+            description="Print the given text to the console, this is used for a debugging purpose.",
+            categories={BlockCategory.basic},
             input_schema=PrintingBlock.Input,
             output_schema=PrintingBlock.Output,
             test_input={"text": "Hello, World!"},
@@ -91,6 +93,8 @@ class ObjectLookupBlock(Block):
     def __init__(self):
         super().__init__(
             id="a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+            description="Lookup the given key in the input dictionary/object/list and return the value.",
+            categories={BlockCategory.basic},
             input_schema=ObjectLookupBlock.Input,
             output_schema=ObjectLookupBlock.Output,
             test_input=[

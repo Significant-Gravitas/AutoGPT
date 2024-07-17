@@ -6,7 +6,7 @@ import anthropic
 import openai
 from groq import Groq
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SecretField
 from autogpt_server.util import json
 
@@ -58,13 +58,13 @@ MODEL_METADATA = {
 }
 
 
-class LlmCallBlock(Block):
+class ObjectLlmCallBlock(Block):
     class Input(BlockSchema):
         prompt: str
+        expected_format: dict[str, str]
         model: LlmModel = LlmModel.GPT4_TURBO
         api_key: BlockSecret = SecretField(key="openai_api_key")
         sys_prompt: str = ""
-        expected_format: dict[str, str] = {}
         retry: int = 3
 
     class Output(BlockSchema):
@@ -74,8 +74,10 @@ class LlmCallBlock(Block):
     def __init__(self):
         super().__init__(
             id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
-            input_schema=LlmCallBlock.Input,
-            output_schema=LlmCallBlock.Output,
+            description="Call a Large Language Model (LLM) to generate formatted object based on the given prompt.",
+            categories={BlockCategory.llm},
+            input_schema=ObjectLlmCallBlock.Input,
+            output_schema=ObjectLlmCallBlock.Output,
             test_input={
                 "model": LlmModel.GPT4_TURBO,
                 "api_key": "fake-api",
@@ -219,6 +221,51 @@ class LlmCallBlock(Block):
         yield "error", retry_prompt
 
 
+class TextLlmCallBlock(Block):
+    class Input(BlockSchema):
+        prompt: str
+        model: LlmModel = LlmModel.GPT4_TURBO
+        api_key: BlockSecret = SecretField(key="openai_api_key")
+        sys_prompt: str = ""
+        retry: int = 3
+
+    class Output(BlockSchema):
+        response: str
+        error: str
+
+    def __init__(self):
+        super().__init__(
+            id="1f292d4a-41a4-4977-9684-7c8d560b9f91",
+            description="Call a Large Language Model (LLM) to generate a string based on the given prompt.",
+            categories={BlockCategory.llm},
+            input_schema=TextLlmCallBlock.Input,
+            output_schema=TextLlmCallBlock.Output,
+            test_input={"prompt": "User prompt"},
+            test_output=("response", "Response text"),
+            test_mock={"llm_call": lambda *args, **kwargs: "Response text"},
+        )
+
+    @staticmethod
+    def llm_call(input_data: ObjectLlmCallBlock.Input) -> str:
+        object_block = ObjectLlmCallBlock()
+        for output_name, output_data in object_block.run(input_data):
+            if output_name == "response":
+                return output_data["response"]
+            else:
+                raise output_data
+        raise ValueError("Failed to get a response from the LLM.")
+
+    def run(self, input_data: Input) -> BlockOutput:
+        try:
+            object_input_data = ObjectLlmCallBlock.Input(
+                **input_data.dict(),
+                expected_format={},
+            )
+            yield "response", self.llm_call(object_input_data)
+        except Exception as e:
+            yield "error", str(e)
+
+
 class TextSummarizerBlock(Block):
     class Input(BlockSchema):
         text: str
@@ -235,6 +282,8 @@ class TextSummarizerBlock(Block):
     def __init__(self):
         super().__init__(
             id="c3d4e5f6-7g8h-9i0j-1k2l-m3n4o5p6q7r8",
+            description="Utilize a Large Language Model (LLM) to summarize a long text.",
+            categories={BlockCategory.llm, BlockCategory.text},
             input_schema=TextSummarizerBlock.Input,
             output_schema=TextSummarizerBlock.Output,
             test_input={"text": "Lorem ipsum..." * 100},
@@ -281,8 +330,8 @@ class TextSummarizerBlock(Block):
         return chunks
 
     @staticmethod
-    def llm_call(input_data: LlmCallBlock.Input) -> dict[str, str]:
-        llm_block = LlmCallBlock()
+    def llm_call(input_data: ObjectLlmCallBlock.Input) -> dict[str, str]:
+        llm_block = ObjectLlmCallBlock()
         for output_name, output_data in llm_block.run(input_data):
             if output_name == "response":
                 return output_data
@@ -292,7 +341,7 @@ class TextSummarizerBlock(Block):
         prompt = f"Summarize the following text concisely:\n\n{chunk}"
 
         llm_response = self.llm_call(
-            LlmCallBlock.Input(
+            ObjectLlmCallBlock.Input(
                 prompt=prompt,
                 api_key=input_data.api_key,
                 model=input_data.model,
@@ -312,7 +361,7 @@ class TextSummarizerBlock(Block):
             )
 
             llm_response = self.llm_call(
-                LlmCallBlock.Input(
+                ObjectLlmCallBlock.Input(
                     prompt=prompt,
                     api_key=input_data.api_key,
                     model=input_data.model,

@@ -3,7 +3,7 @@ from pathlib import Path
 from autogpt_server.blocks.basic import ValueBlock
 from autogpt_server.blocks.block import BlockInstallationBlock
 from autogpt_server.blocks.http import HttpRequestBlock
-from autogpt_server.blocks.llm import LlmCallBlock
+from autogpt_server.blocks.llm import TextLlmCallBlock
 from autogpt_server.blocks.text import TextFormatterBlock, TextParserBlock
 from autogpt_server.data.graph import Graph, Link, Node, create_graph
 from autogpt_server.util.test import SpinTestServer, wait_execution
@@ -40,7 +40,7 @@ def create_test_graph() -> Graph:
     |                                   ||
     |                                   ||
     |                                    v
-    |        LlmCallBlock  <===== TextFormatterBlock (query)
+    |        TextLlmCallBlock  <===== TextFormatterBlock (query)
     |            ||                      ^
     |            v                      ||
     |       TextParserBlock             ||
@@ -84,7 +84,7 @@ Here is your previous attempt:
         },
     )
     code_gen_llm_call = Node(
-        block_id=LlmCallBlock().id,
+        block_id=TextLlmCallBlock().id,
         input_default={
             "sys_prompt": f"""
 You are a software engineer and you are asked to write the full class implementation.

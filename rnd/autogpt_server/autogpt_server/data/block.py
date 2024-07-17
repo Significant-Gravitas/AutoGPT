@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Generator, Generic, Type, TypeVar, cast
+from enum import Enum
+from typing import Any, ClassVar, Generator, Generic, NamedTuple, Type, TypeVar, cast
 
 import jsonref
 import jsonschema
@@ -11,6 +12,23 @@ from autogpt_server.util import json
 BlockInput = dict[str, Any]
 BlockData = tuple[str, Any]
 BlockOutput = Generator[BlockData, None, None]
+
+
+class Category(NamedTuple):
+    name: str
+    description: str
+
+
+class BlockCategory(Enum):
+    llm = Category(
+        "llm", "Block that utilizes the Large Language Model to perform a task."
+    )
+    http = Category("http", "Block that executes a network request through HTTP.")
+    social = Category("social", "Block that interacts with social media platforms.")
+    text = Category("text", "Block that processes text data.")
+    file = Category("file", "Block that reads or writes files.")
+    web = Category("web", "Block that interacts with web pages.")
+    basic = Category("basic", "Basic blocks that perform basi operations.")
 
 
 class BlockSchema(BaseModel):
@@ -101,6 +119,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     def __init__(
         self,
         id: str = "",
+        description: str = "",
+        categories: set[BlockCategory] | None = None,
         input_schema: Type[BlockSchemaInputType] = EmptySchema,
         output_schema: Type[BlockSchemaOutputType] = EmptySchema,
         test_input: BlockInput | list[BlockInput] | None = None,
@@ -126,6 +146,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.test_input = test_input
         self.test_output = test_output
         self.test_mock = test_mock
+        self.description = description
+        self.categories = categories or set()
 
     @abstractmethod
     def run(self, input_data: BlockSchemaInputType) -> BlockOutput:
@@ -150,6 +172,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             "name": self.name,
             "inputSchema": self.input_schema.jsonschema(),
             "outputSchema": self.output_schema.jsonschema(),
+            "description": self.description,
+            "categories": list(self.categories),
         }
 
     def execute(self, input_data: BlockInput) -> BlockOutput:
