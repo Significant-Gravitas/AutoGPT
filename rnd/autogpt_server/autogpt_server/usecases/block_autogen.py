@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from autogpt_server.blocks.ai import LlmCallBlock
+from autogpt_server.blocks.llm import LlmCallBlock
 from autogpt_server.blocks.basic import ValueBlock
 from autogpt_server.blocks.block import BlockInstallationBlock
 from autogpt_server.blocks.http import HttpRequestBlock
