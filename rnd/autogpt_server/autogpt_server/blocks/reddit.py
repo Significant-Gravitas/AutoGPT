@@ -1,5 +1,3 @@
-# type: ignore
-
 from datetime import datetime, timedelta, timezone
 
 import praw
@@ -7,15 +5,16 @@ from typing import Any
 from pydantic import BaseModel, Field
 from typing import Iterator
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema, BlockFieldSecret
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.util.mock import MockObject
+from autogpt_server.data.model import BlockSecret, SecretField
 
 
 class RedditCredentials(BaseModel):
-    client_id: BlockFieldSecret = BlockFieldSecret(key="reddit_client_id")
-    client_secret: BlockFieldSecret = BlockFieldSecret(key="reddit_client_secret")
-    username: BlockFieldSecret = BlockFieldSecret(key="reddit_username")
-    password: BlockFieldSecret = BlockFieldSecret(key="reddit_password")
+    client_id: BlockSecret = SecretField(key="reddit_client_id")
+    client_secret: BlockSecret = SecretField(key="reddit_client_secret")
+    username: BlockSecret = SecretField(key="reddit_username")
+    password: BlockSecret = SecretField(key="reddit_password")
     user_agent: str = "AutoGPT:1.0 (by /u/autogpt)"
 
 
@@ -33,10 +32,10 @@ class RedditComment(BaseModel):
 
 def get_praw(creds: RedditCredentials) -> praw.Reddit:
     client = praw.Reddit(
-        client_id=creds.client_id.get(),
-        client_secret=creds.client_secret.get(),
-        username=creds.username.get(),
-        password=creds.password.get(),
+        client_id=creds.client_id.get_secret_value(),
+        client_secret=creds.client_secret.get_secret_value(),
+        username=creds.username.get_secret_value(),
+        password=creds.password.get_secret_value(),
         user_agent=creds.user_agent,
     )
     me = client.user.me()
