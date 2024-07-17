@@ -9,9 +9,30 @@ from autogpt_server.util.test import SpinTestServer, wait_execution
 
 
 def create_test_graph() -> Graph:
-    #                                  /--- post_id -----------\                                                     /--- post_id        ---\
-    # subreddit --> RedditGetPostsBlock ---- post_body -------- TextFormatterBlock ----- LlmCallBlock / TextRelevancy --- relevant/not   -- TextMatcherBlock -- Yes  {postid, text} --- RedditPostCommentBlock
-    #                                  \--- post_title -------/                                                      \--- marketing_text ---/                -- No
+    """
+                    subreddit
+                       ||
+                        v
+        RedditGetPostsBlock (post_id, post_title, post_body)
+                  //     ||     \\
+              post_id  post_title  post_body
+                 ||       ||        ||
+                 v        v         v
+              TextFormatterBlock (format)
+                      ||
+                      v
+            LlmCallBlock / TextRelevancy
+                 ||       ||       ||
+            post_id  is_relevant  marketing_text
+               ||       ||        ||
+               v        v         v
+                 TextMatcherBlock
+                 ||       ||
+              positive  negative
+                ||
+                v
+        RedditPostCommentBlock
+    """
     # Hardcoded inputs
     reddit_get_post_input = {
         "post_limit": 3,
@@ -26,7 +47,8 @@ Based on the following post, write your marketing comment:
     }
     llm_call_input = {
         "sys_prompt": """
-You are an expert at marketing, and have been tasked with picking Reddit posts that are relevant to your product.
+You are an expert at marketing.
+You have been tasked with picking Reddit posts that are relevant to your product.
 The product you are marketing is: Auto-GPT an autonomous AI agent utilizing GPT model.
 You reply the post that you find it relevant to be replied with marketing text.
 Make sure to only comment on a relevant post.

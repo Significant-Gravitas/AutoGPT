@@ -134,7 +134,7 @@ Here are a couple of sample of the Block class implementation:
         code_text_parser,
         block_installation,
     ]
-    
+
     # ======= Links ========= #
     links = [
         Link(
@@ -148,7 +148,7 @@ Here are a couple of sample of the Block class implementation:
             sink_id=search_http_request.id,
             source_name="output",
             sink_name="body_#_query"),
-        
+
         Link(
             source_id=search_http_request.id,
             sink_id=search_result_constant.id,
@@ -160,7 +160,7 @@ Here are a couple of sample of the Block class implementation:
             source_name="output",
             sink_name="data"
         ),
-        
+
         Link(
             source_id=search_result_constant.id,
             sink_id=prompt_text_formatter.id,
@@ -173,7 +173,7 @@ Here are a couple of sample of the Block class implementation:
             source_name="output",
             sink_name="named_texts_#_query"
         ),
-        
+
         Link(
             source_id=prompt_text_formatter.id,
             sink_id=code_gen_llm_call.id,
@@ -187,14 +187,14 @@ Here are a couple of sample of the Block class implementation:
             source_name="response_#_response",
             sink_name="text"
         ),
-        
+
         Link(
             source_id=code_text_parser.id,
             sink_id=block_installation.id,
             source_name="positive",
             sink_name="code"
         ),
-        
+
         Link(
             source_id=block_installation.id,
             sink_id=prompt_text_formatter.id,
@@ -208,7 +208,7 @@ Here are a couple of sample of the Block class implementation:
             sink_name="input"
         ),
     ]
-    
+
     # ======= Graph ========= #
     return Graph(
         name="BlockAutoGen",
@@ -225,7 +225,13 @@ async def block_autogen_agent():
         input_data = {"input": "Write me a block that writes a string into a file."}
         response = await server.agent_server.execute_graph(test_graph.id, input_data)
         print(response)
-        result = await wait_execution(test_manager, test_graph.id, response["id"], 10, 1200)
+        result = await wait_execution(
+            exec_manager=test_manager,
+            graph_id=test_graph.id,
+            graph_exec_id=response["id"],
+            num_execs=10,
+            timeout=1200
+        )
         print(result)
 
 

@@ -48,7 +48,7 @@ class BlockFieldSecret:
         if isinstance(value, BlockFieldSecret):
             return value
         return BlockFieldSecret(value=value)
-    
+
     @classmethod
     def __get_pydantic_json_schema__(
             cls, source_type: Any, handler: GetCoreSchemaHandler) -> dict[str, Any]:
@@ -167,7 +167,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     ):
         """
         Initialize the block with the given schema.
-        
+
         Args:
             id: The unique identifier for the block, this value will be persisted in the
                 DB. So it should be a unique and constant across the application run.

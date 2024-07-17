@@ -151,7 +151,7 @@ class LlmCallBlock(Block):
             sys_prompt = trim_prompt(f"""
               |Reply in json format:
               |{{
-              |  {format_prompt}                
+              |  {format_prompt}
               |}}
             """)
             prompt.append({"role": "system", "content": sys_prompt})

@@ -530,7 +530,8 @@ class AgentServer(AppService):
         self, graph_id: str, node_input: dict[Any, Any]
     ) -> dict[Any, Any]:
         try:
-            return self.execution_manager_client.add_execution(graph_id, node_input)  # type: ignore
+            # type: ignore
+            return self.execution_manager_client.add_execution(graph_id, node_input)
         except Exception as e:
             msg = e.__str__().encode().decode("unicode_escape")
             raise HTTPException(status_code=400, detail=msg)

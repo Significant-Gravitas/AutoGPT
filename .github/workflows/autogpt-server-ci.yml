@@ -111,6 +111,9 @@ jobs:
       - name: Run Database Migrations
         run: poetry run prisma migrate dev --name updates
 
+      - name: Run Linter
+        run: poetry run lint
+
       - name: Run pytest with coverage
         run: |
           poetry run pytest -vv \

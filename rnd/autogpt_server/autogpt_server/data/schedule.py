@@ -20,9 +20,8 @@ class ExecutionSchedule(BaseDbModel):
             is_enabled: Optional[bool] = None,
             **kwargs
     ):
-        if is_enabled is None:
-            is_enabled = True
-        super().__init__(is_enabled=is_enabled, **kwargs)
+        kwargs["is_enabled"] = (is_enabled is None) or is_enabled
+        super().__init__(**kwargs)
 
     @staticmethod
     def from_db(schedule: AgentGraphExecutionSchedule):

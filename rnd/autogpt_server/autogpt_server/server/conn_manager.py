@@ -5,6 +5,7 @@ from fastapi import WebSocket
 from autogpt_server.data import execution
 from autogpt_server.server.model import WsMessage, Methods
 
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()

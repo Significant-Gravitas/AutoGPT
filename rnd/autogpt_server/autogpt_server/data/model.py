@@ -6,6 +6,7 @@ from pydantic_core import PydanticUndefined, PydanticUndefinedType
 
 T = TypeVar("T")
 
+
 def SchemaField(
     default: T | PydanticUndefinedType = PydanticUndefined,
     *args,

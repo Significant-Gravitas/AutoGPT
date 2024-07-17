@@ -214,9 +214,6 @@ def websocket(server_address: str, graph_id: str):
     import websockets
 
     from autogpt_server.server.ws_api import ExecutionSubscription, Methods, WsMessage
-    import websockets
-
-    from autogpt_server.server.ws_api import ExecutionSubscription, Methods, WsMessage
 
     async def send_message(server_address: str):
         uri = f"ws://{server_address}"

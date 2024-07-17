@@ -59,7 +59,7 @@ def execute_node(
 
     def wait(f: Coroutine[T, Any, T]) -> T:
         return loop.run_until_complete(f)
-    
+
     def update_execution(status: ExecutionStatus):
         api_client.send_execution_update(
             wait(update_execution_status(node_exec_id, status)).model_dump()
@@ -114,7 +114,7 @@ def enqueue_next_nodes(
 ) -> list[Execution]:
     def wait(f: Coroutine[T, Any, T]) -> T:
         return loop.run_until_complete(f)
-    
+
     def execution_update(node_exec_id: str, status: ExecutionStatus):
         api_client.send_execution_update(
             wait(update_execution_status(node_exec_id, status)).model_dump()
@@ -183,8 +183,8 @@ def validate_exec(node: Node, data: dict[str, Any]) -> tuple[bool, str]:
 
     error_message = f"Input data missing for {node_block.name}:"
 
-    input_fields_from_schema = node_block.input_schema.get_required_fields()  # type: ignore
-    if not input_fields_from_schema.issubset(data):  # type: ignore
+    input_fields_from_schema = node_block.input_schema.get_required_fields()
+    if not input_fields_from_schema.issubset(data):
         return False, f"{error_message} {input_fields_from_schema - set(data)}"
 
     input_fields_from_nodes = {link.sink_name for link in node.input_links}

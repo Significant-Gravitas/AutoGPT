@@ -44,12 +44,12 @@ class TextMatcherBlock(Block):
             flags = flags | re.IGNORECASE
         if input_data.dot_all:
             flags = flags | re.DOTALL
-            
+
         if isinstance(input_data.text, str):
             text = input_data.text
         else:
             text = json.dumps(input_data.text)
-            
+
         if re.search(input_data.match, text, flags=flags):
             yield "positive", output
         else:
@@ -93,7 +93,7 @@ class TextParserBlock(Block):
             flags = flags | re.IGNORECASE
         if input_data.dot_all:
             flags = flags | re.DOTALL
-            
+
         if isinstance(input_data.text, str):
             text = input_data.text
         else:

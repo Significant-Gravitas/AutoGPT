@@ -1,9 +1,8 @@
 # type: ignore
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import praw
-from typing import Any
 from pydantic import BaseModel, Field
 from typing import Iterator
 

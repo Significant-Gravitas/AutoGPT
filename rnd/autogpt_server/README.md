@@ -106,6 +106,19 @@ To run the tests:
 poetry run pytest
 ```
 
+## Development
+
+### Formatting & Linting
+Auto formatter and linter are set up in the project. To run them:
+
+```sh
+poetry run format
+```
+
+```sh
+poetry run lint
+```
+
 ## Project Outline
 
 The current project has the following main modules:

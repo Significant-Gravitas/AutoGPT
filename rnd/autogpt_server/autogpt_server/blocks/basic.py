@@ -13,7 +13,7 @@ class ValueBlock(Block):
     To retain the state, you can feed the `output` to the `data` input, so that the data
     is retained in the block for the next execution. You can then trigger the block by
     feeding the `input` pin with any data, and the block will produce value of `data`.
-    
+
     Ex:
          <constant_data>  <any_trigger>
                 ||           ||   

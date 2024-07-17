@@ -43,7 +43,7 @@ class BlockInstallationBlock(Block):
         else:
             yield "error", "No UUID found in the code."
             return
-        
+
         block_dir = os.path.dirname(__file__)
         file_path = f"{block_dir}/{file_name}.py"
         module_name = f"autogpt_server.blocks.{file_name}"

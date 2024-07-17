@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING, Iterator
 
 from autogpt.agents.agent import Agent, AgentSettings
 from autogpt.app.config import ConfigBuilder
-from autogpt_server.data.block import Block, BlockFieldSecret, BlockOutput, BlockSchema
-from autogpt_server.data.model import SchemaField
 from forge.agent.components import AgentComponent
 from forge.agent.protocols import (
     CommandProvider,
@@ -25,6 +23,9 @@ from forge.llm.providers.schema import ModelProviderName
 from forge.models.json_schema import JSONSchema
 from pydantic import Field, SecretStr
 
+from autogpt_server.data.block import Block, BlockFieldSecret, BlockOutput, BlockSchema
+from autogpt_server.data.model import SchemaField
+
 if TYPE_CHECKING:
     from autogpt.app.config import AppConfig
 
@@ -38,7 +39,7 @@ class BlockAgentSettings(AgentSettings):
 class OutputComponent(CommandProvider):
     def get_commands(self) -> Iterator[Command]:
         yield self.output
-    
+
     @command(
         parameters={
             "output": JSONSchema(
@@ -55,11 +56,11 @@ class OutputComponent(CommandProvider):
 
 class BlockAgent(Agent):
     def __init__(
-        self,
-        settings: BlockAgentSettings,
-        llm_provider: MultiProvider,
-        file_storage: FileStorage,
-        app_config: AppConfig,
+            self,
+            settings: BlockAgentSettings,
+            llm_provider: MultiProvider,
+            file_storage: FileStorage,
+            app_config: AppConfig,
     ):
         super().__init__(settings, llm_provider, file_storage, app_config)
 
@@ -71,19 +72,24 @@ class BlockAgent(Agent):
             if not isinstance(attr_value, AgentComponent):
                 continue
             component_name = type(attr_value).__name__
-            if component_name != "SystemComponent" and component_name not in settings.enabled_components:
+            if (component_name != "SystemComponent" and
+                    component_name not in settings.enabled_components):
                 delattr(self, attr_name)
 
 
 class AutoGPTAgentBlock(Block):
     class Input(BlockSchema):
-        task: str = SchemaField(display_name="Agent Task", placeholder="e.g. Make calculation and use Output command")
+        task: str = SchemaField(
+            display_name="Agent Task",
+            placeholder="e.g. Make calculation and use Output command"
+        )
         input: str = SchemaField(display_name="Input data", placeholder="8 + 5")
         openai_api_key: BlockFieldSecret = BlockFieldSecret(key="openai_api_key")
-        enabled_components: list[str] = Field(default_factory=lambda: [OutputComponent.__name__])
+        enabled_components: list[str] = Field(
+            default_factory=lambda: [OutputComponent.__name__])
         disabled_commands: list[str] = Field(default_factory=list)
         fast_mode: bool = False
-    
+
     class Output(BlockSchema):
         result: str
 
@@ -93,7 +99,7 @@ class AutoGPTAgentBlock(Block):
             input_schema=AutoGPTAgentBlock.Input,
             output_schema=AutoGPTAgentBlock.Output,
             test_input={
-                "task": "Make calculations and use output command to output the result.",
+                "task": "Make calculations and use output command to output the result",
                 "input": "5 + 3",
                 "openai_api_key": "openai_api_key",
                 "enabled_components": [OutputComponent.__name__],
@@ -115,7 +121,7 @@ class AutoGPTAgentBlock(Block):
         settings = OpenAIProvider.default_settings.model_copy()
         settings.credentials = OpenAICredentials(api_key=SecretStr(openai_api_key))
         openai_provider = OpenAIProvider(settings=settings)
-        
+
         multi_provider = MultiProvider()
         # HACK: Add OpenAI provider to the multi provider with api key
         multi_provider._provider_instances[ModelProviderName.OPENAI] = openai_provider
@@ -124,18 +130,17 @@ class AutoGPTAgentBlock(Block):
 
     @staticmethod
     def get_result(agent: BlockAgent) -> str:
-        # Execute agent
+        error: Exception | None = None
+
         for tries in range(3):
             try:
                 proposal = asyncio.run(agent.propose_action())
-                break
+                result = asyncio.run(agent.execute(proposal))
+                return str(result)
             except Exception as e:
-                if tries == 2:
-                    raise e
+                error = e
 
-        result = asyncio.run(agent.execute(proposal))
-
-        return str(result)
+        raise error or Exception("Failed to get result")
 
     def run(self, input_data: Input) -> BlockOutput:
         # Set up configuration
