@@ -8,11 +8,7 @@ import { BlockSchema } from "@/lib/types";
 import { Info } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
-type Props = {
-  schema: BlockSchema;
-}
-
-const SchemaTooltip: React.FC<Props> = ({ schema }) => {
+const SchemaTooltip: React.FC<{ schema: BlockSchema }> = ({ schema }) => {
   if (!schema.description) return null;
 
   return (
