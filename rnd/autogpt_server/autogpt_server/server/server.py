@@ -27,7 +27,7 @@ from autogpt_server.server.model import (
     WsMessage,
 )
 from autogpt_server.util.data import get_frontend_path
-from autogpt_server.util.service import expose  # type: ignore
+from autogpt_server.util.service import expose
 from autogpt_server.util.service import AppService, get_service_client
 from autogpt_server.util.settings import Settings
 
@@ -530,7 +530,6 @@ class AgentServer(AppService):
         self, graph_id: str, node_input: dict[Any, Any]
     ) -> dict[Any, Any]:
         try:
-            # type: ignore
             return self.execution_manager_client.add_execution(graph_id, node_input)
         except Exception as e:
             msg = e.__str__().encode().decode("unicode_escape")

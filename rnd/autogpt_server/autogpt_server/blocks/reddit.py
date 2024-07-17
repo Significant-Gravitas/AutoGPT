@@ -1,5 +1,3 @@
-# type: ignore
-
 from datetime import datetime, timezone
 
 import praw
@@ -155,7 +153,7 @@ class RedditPostCommentBlock(Block):
         client = get_praw(creds)
         submission = client.submission(id=comment.post_id)
         comment = submission.reply(comment.comment)
-        return comment.id
+        return comment.id  # type: ignore
 
     def run(self, input_data: Input) -> BlockOutput:
         yield "comment_id", self.reply_post(input_data.creds, input_data.data)
