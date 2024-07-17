@@ -1,4 +1,4 @@
-This is a gude to setting up and running the AutoGPT Server and Builder. This tutorial will cover downloading the necessary files, setting up the server, and testing the system.
+This is a guide to setting up and running the AutoGPT Server and Builder. This tutorial will cover downloading the necessary files, setting up the server, and testing the system.
 
 https://github.com/user-attachments/assets/fd0d0f35-3155-4263-b575-ba3efb126cb4
 
@@ -9,15 +9,15 @@ https://github.com/user-attachments/assets/fd0d0f35-3155-4263-b575-ba3efb126cb4
 4. Open the extracted folder and navigate to the "rnd" directory.
 5. Enter the "AutoGPT server" folder.
 6. Open a terminal window in this directory.
-7. Locate and open the README file in the AutoGPT server folder.
-8. Copy and paste each command from the README into your terminal.
+7. Locate and open the README file in the AutoGPT server folder: [doc](./autogpt_server/README.md#setup).
+8. Copy and paste each command from the setup section in the README into your terminal.
    - Important: Wait for each command to finish before running the next one.
 9. If all commands run without errors, enter the final command: `poetry run app`
 10. You should now see the server running in your terminal.
 
 11. Navigate back to the "rnd" folder.
 12. Open the "AutoGPT builder" folder.
-13. Open the README file in this folder.
+13. Open the README file in this folder: [doc](./autogpt_builder/README.md#getting-started).
 14. In your terminal, run the following commands:
     ```
     npm install
