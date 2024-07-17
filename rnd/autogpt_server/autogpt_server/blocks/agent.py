@@ -7,24 +7,20 @@ from typing import TYPE_CHECKING, Iterator
 
 from autogpt.agents.agent import Agent, AgentSettings
 from autogpt.app.config import ConfigBuilder
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
 from forge.agent.components import AgentComponent
-from forge.agent.protocols import (
-    CommandProvider,
-)
+from forge.agent.protocols import CommandProvider
 from forge.command import command
 from forge.command.command import Command
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.file_storage.base import FileStorage
-from forge.llm.providers import (
-    MultiProvider,
-)
+from forge.llm.providers import MultiProvider
 from forge.llm.providers.openai import OpenAICredentials, OpenAIProvider
 from forge.llm.providers.schema import ModelProviderName
 from forge.models.json_schema import JSONSchema
 from pydantic import Field, SecretStr
 
-from autogpt_server.data.block import Block, BlockFieldSecret, BlockOutput, BlockSchema
-from autogpt_server.data.model import SchemaField
 
 if TYPE_CHECKING:
     from autogpt.app.config import AppConfig
@@ -80,15 +76,27 @@ class BlockAgent(Agent):
 class AutoGPTAgentBlock(Block):
     class Input(BlockSchema):
         task: str = SchemaField(
-            display_name="Agent Task",
-            placeholder="e.g. Make calculation and use Output command"
+            description="Task description for the agent.",
+            placeholder="Calculate and use Output command",
         )
-        input: str = SchemaField(display_name="Input data", placeholder="8 + 5")
-        openai_api_key: BlockFieldSecret = BlockFieldSecret(key="openai_api_key")
+        input: str = SchemaField(
+            description="Input data for the task",
+            placeholder="8 + 5",
+        )
+        openai_api_key: BlockSecret = SecretField(
+            key="openai_api_key", description="OpenAI API key")
         enabled_components: list[str] = Field(
-            default_factory=lambda: [OutputComponent.__name__])
-        disabled_commands: list[str] = Field(default_factory=list)
-        fast_mode: bool = False
+            default_factory=lambda: [OutputComponent.__name__],
+            description="List of [AgentComponents](https://docs.agpt.co/forge/components/built-in-components/) enabled for the agent.",
+        )
+        disabled_commands: list[str] = Field(
+            default_factory=list,
+            description="List of commands from enabled components to disable.",
+        )
+        fast_mode: bool = Field(
+            False,
+            description="If true uses fast llm, otherwise uses smart and slow llm.",
+        )
 
     class Output(BlockSchema):
         result: str
@@ -112,7 +120,7 @@ class AutoGPTAgentBlock(Block):
             test_mock={
                 "get_provider": lambda _: MultiProvider(),
                 "get_result": lambda _: "8",
-            }
+            },
         )
 
     @staticmethod
@@ -163,13 +171,12 @@ class AutoGPTAgentBlock(Block):
             agent_id="TemporaryAgentID",
             name="WrappedAgent",
             description="Wrapped agent for the Agent Server.",
-            task=f"Your task: {input_data.task}\n"
-                 f"Input data: {input_data.input}",
+            task=f"Your task: {input_data.task}\n" f"Input data: {input_data.input}",
             enabled_components=input_data.enabled_components,
         )
         # Switch big brain mode
         state.config.big_brain = not input_data.fast_mode
-        provider = self.get_provider(input_data.openai_api_key.get())
+        provider = self.get_provider(input_data.openai_api_key.get_secret_value())
 
         agent = BlockAgent(state, provider, file_storage, config)
 

@@ -18,7 +18,7 @@ To set up the project, follow these steps inside this directory:
    poetry shell
    ```
    
-1. Install dependencies
+2. Install dependencies
 
    ```sh
    poetry install
@@ -54,48 +54,6 @@ Run the following command:
 
 ```sh
 poetry run app
-```
-
-### Running the App in the Background
-
-**Note: this is a Unix feature and can fail on Windows. If it fails, you can run the previous command and manually move the process to the background.*  
-
-1. Start the server. This starts the server in the background.
-
-   ```sh
-   poetry run cli start
-   ```
-   
-2. Stop the server.
-
-   ```sh
-   poetry run cli stop
-   ```
-   
-## Adding Test Data
-
-1. Start the server using one of the above methods.
-
-2. Run the populate DB command:
-
-   ```sh
-   poetry run cli test populate-db http://0.0.0.0:8000
-   ```
-   
-   This will add a graph, a graph execution, and a cron schedule to run the graph every 5 minutes.
-
-### Reddit Graph
-
-There is a command to add the test Reddit graph:
-
-```sh
-poetry run cli test reddit http://0.0.0.0:8000
-```
-
-For help, run:
-
-```sh
-poetry run cli test reddit --help
 ```
 
 ## Testing
