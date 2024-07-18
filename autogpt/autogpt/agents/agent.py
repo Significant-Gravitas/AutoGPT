@@ -18,7 +18,11 @@ from forge.components.action_history import (
     ActionHistoryComponent,
     EpisodicActionHistory,
 )
-from forge.components.code_executor.code_executor import CodeExecutorComponent
+from forge.components.action_history.action_history import ActionHistoryConfiguration
+from forge.components.code_executor.code_executor import (
+    CodeExecutorComponent,
+    CodeExecutorConfiguration,
+)
 from forge.components.context.context import AgentContext, ContextComponent
 from forge.components.file_manager import FileManagerComponent
 from forge.components.git_operations import GitOperationsComponent
@@ -58,7 +62,7 @@ from .prompt_strategies.one_shot import (
 )
 
 if TYPE_CHECKING:
-    from forge.config.config import Config
+    from autogpt.app.config import AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -91,12 +95,14 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         settings: AgentSettings,
         llm_provider: MultiProvider,
         file_storage: FileStorage,
-        legacy_config: Config,
+        app_config: AppConfig,
     ):
         super().__init__(settings)
 
         self.llm_provider = llm_provider
-        prompt_config = OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
+        prompt_config = OneShotAgentPromptStrategy.default_configuration.model_copy(
+            deep=True
+        )
         prompt_config.use_functions_api = (
             settings.config.use_functions_api
             # Anthropic currently doesn't support tools + prefilling :(
@@ -107,33 +113,41 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
 
         # Components
         self.system = SystemComponent()
-        self.history = ActionHistoryComponent(
-            settings.history,
-            self.send_token_limit,
-            lambda x: self.llm_provider.count_tokens(x, self.llm.name),
-            legacy_config,
-            llm_provider,
-        ).run_after(WatchdogComponent)
-        self.user_interaction = UserInteractionComponent(legacy_config)
-        self.file_manager = FileManagerComponent(settings, file_storage)
+        self.history = (
+            ActionHistoryComponent(
+                settings.history,
+                lambda x: self.llm_provider.count_tokens(x, self.llm.name),
+                llm_provider,
+                ActionHistoryConfiguration(
+                    llm_name=app_config.fast_llm, max_tokens=self.send_token_limit
+                ),
+            )
+            .run_after(WatchdogComponent)
+            .run_after(SystemComponent)
+        )
+        if not app_config.noninteractive_mode:
+            self.user_interaction = UserInteractionComponent()
+        self.file_manager = FileManagerComponent(file_storage, settings)
         self.code_executor = CodeExecutorComponent(
             self.file_manager.workspace,
-            settings,
-            legacy_config,
+            CodeExecutorConfiguration(
+                docker_container_name=f"{settings.agent_id}_sandbox"
+            ),
         )
-        self.git_ops = GitOperationsComponent(legacy_config)
-        self.image_gen = ImageGeneratorComponent(
-            self.file_manager.workspace, legacy_config
+        self.git_ops = GitOperationsComponent()
+        self.image_gen = ImageGeneratorComponent(self.file_manager.workspace)
+        self.web_search = WebSearchComponent()
+        self.web_selenium = WebSeleniumComponent(
+            llm_provider,
+            app_config.app_data_dir,
         )
-        self.web_search = WebSearchComponent(legacy_config)
-        self.web_selenium = WebSeleniumComponent(legacy_config, llm_provider, self.llm)
         self.context = ContextComponent(self.file_manager.workspace, settings.context)
         self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(
             ContextComponent
         )
 
         self.event_history = settings.history
-        self.legacy_config = legacy_config
+        self.app_config = app_config
 
     async def propose_action(self) -> OneShotAgentActionProposal:
         """Proposes the next action to execute, based on the task and current state.
@@ -148,7 +162,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         constraints = await self.run_pipeline(DirectiveProvider.get_constraints)
         best_practices = await self.run_pipeline(DirectiveProvider.get_best_practices)
 
-        directives = self.state.directives.copy(deep=True)
+        directives = self.state.directives.model_copy(deep=True)
         directives.resources += resources
         directives.constraints += constraints
         directives.best_practices += best_practices
@@ -160,13 +174,19 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         # Get messages
         messages = await self.run_pipeline(MessageProvider.get_messages)
 
+        include_os_info = (
+            self.code_executor.config.execute_local_commands
+            if hasattr(self, "code_executor")
+            else False
+        )
+
         prompt: ChatPrompt = self.prompt_strategy.build_prompt(
             messages=messages,
             task=self.state.task,
             ai_profile=self.state.ai_profile,
             ai_directives=directives,
             commands=function_specs_from_commands(self.commands),
-            include_os_info=self.legacy_config.execute_local_commands,
+            include_os_info=include_os_info,
         )
 
         logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
@@ -277,7 +297,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             command
             for command in self.commands
             if not any(
-                name in self.legacy_config.disabled_commands for name in command.names
+                name in self.app_config.disabled_commands for name in command.names
             )
         ]
 

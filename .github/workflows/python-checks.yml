@@ -9,7 +9,7 @@ on:
       - 'forge/**'
       - 'benchmark/**'
       - '**.py'
-      - '!autogpt/tests/vcr_cassettes'
+      - '!forge/tests/vcr_cassettes'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
@@ -18,7 +18,7 @@ on:
       - 'forge/**'
       - 'benchmark/**'
       - '**.py'
-      - '!autogpt/tests/vcr_cassettes'
+      - '!forge/tests/vcr_cassettes'
 
 concurrency:
   group: ${{ format('lint-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}

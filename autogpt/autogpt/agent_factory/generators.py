@@ -6,7 +6,7 @@ from forge.file_storage.base import FileStorage
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
-    from forge.config.config import Config
+    from autogpt.app.config import AppConfig
     from forge.llm.providers import MultiProvider
 
 from .configurators import _configure_agent
@@ -16,7 +16,7 @@ from .profile_generator import generate_agent_profile_for_task
 async def generate_agent_for_task(
     agent_id: str,
     task: str,
-    app_config: Config,
+    app_config: AppConfig,
     file_storage: FileStorage,
     llm_provider: MultiProvider,
 ) -> Agent:

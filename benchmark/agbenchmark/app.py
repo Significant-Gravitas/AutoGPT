@@ -16,7 +16,7 @@ from agent_protocol_client import AgentApi, ApiClient, ApiException, Configurati
 from agent_protocol_client.models import Task, TaskRequestBody
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Extra, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from agbenchmark.challenges import ChallengeInfo
 from agbenchmark.config import AgentBenchmarkConfig
@@ -52,7 +52,9 @@ while challenge_spec_files:
 
     logger.debug(f"Loading {challenge_relpath}...")
     try:
-        challenge_info = ChallengeInfo.parse_file(challenge_spec_file)
+        challenge_info = ChallengeInfo.model_validate_json(
+            challenge_spec_file.read_text()
+        )
     except ValidationError as e:
         if logging.getLogger().level == logging.DEBUG:
             logger.warning(f"Spec file {challenge_relpath} failed to load:\n{e}")
@@ -64,7 +66,7 @@ while challenge_spec_files:
         challenge_info.eval_id = str(uuid.uuid4())
         # this will sort all the keys of the JSON systematically
         # so that the order is always the same
-        write_pretty_json(challenge_info.dict(), challenge_spec_file)
+        write_pretty_json(challenge_info.model_dump(), challenge_spec_file)
 
     CHALLENGES[challenge_info.eval_id] = challenge_info
 
@@ -111,8 +113,7 @@ class CreateReportRequest(BaseModel):
     # category: Optional[str] = []
     mock: Optional[bool] = False
 
-    class Config:
-        extra = Extra.forbid  # this will forbid any extra fields
+    model_config = ConfigDict(extra="forbid")
 
 
 updates_list = []
@@ -153,7 +154,7 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
         pids = find_agbenchmark_without_uvicorn()
         logger.info(f"pids already running with agbenchmark: {pids}")
 
-        logger.debug(f"Request to /reports: {body.dict()}")
+        logger.debug(f"Request to /reports: {body.model_dump()}")
 
         # Start the benchmark in a separate thread
         benchmark_process = Process(
@@ -326,7 +327,9 @@ def setup_fastapi_app(agbenchmark_config: AgentBenchmarkConfig) -> FastAPI:
                 config={},
             )
 
-            logger.debug(f"Returning evaluation data:\n{eval_info.json(indent=4)}")
+            logger.debug(
+                f"Returning evaluation data:\n{eval_info.model_dump_json(indent=4)}"
+            )
             return eval_info
         except ApiException as e:
             logger.error(f"Error {e} whilst trying to evaluate task: {task_id}")

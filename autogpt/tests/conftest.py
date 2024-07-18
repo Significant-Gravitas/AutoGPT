@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 from forge.config.ai_profile import AIProfile
-from forge.config.config import Config, ConfigBuilder
 from forge.file_storage.local import (
     FileStorage,
     FileStorageConfiguration,
@@ -16,11 +15,11 @@ from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
+from autogpt.app.config import AppConfig, ConfigBuilder
 from autogpt.app.main import _configure_llm_provider
 
 pytest_plugins = [
     "tests.integration.agent_factory",
-    "tests.vcr",
 ]
 
 
@@ -62,7 +61,7 @@ def config(
 
 
 @pytest.fixture(scope="session")
-def setup_logger(config: Config):
+def setup_logger():
     configure_logging(
         debug=True,
         log_dir=Path(__file__).parent / "logs",
@@ -71,12 +70,14 @@ def setup_logger(config: Config):
 
 
 @pytest.fixture
-def llm_provider(config: Config) -> MultiProvider:
+def llm_provider(config: AppConfig) -> MultiProvider:
     return _configure_llm_provider(config)
 
 
 @pytest.fixture
-def agent(config: Config, llm_provider: MultiProvider, storage: FileStorage) -> Agent:
+def agent(
+    config: AppConfig, llm_provider: MultiProvider, storage: FileStorage
+) -> Agent:
     ai_profile = AIProfile(
         ai_name="Base",
         ai_role="A base AI",
@@ -94,13 +95,13 @@ def agent(config: Config, llm_provider: MultiProvider, storage: FileStorage) -> 
             allow_fs_access=not config.restrict_to_workspace,
             use_functions_api=config.openai_functions,
         ),
-        history=Agent.default_settings.history.copy(deep=True),
+        history=Agent.default_settings.history.model_copy(deep=True),
     )
 
     agent = Agent(
         settings=agent_settings,
         llm_provider=llm_provider,
         file_storage=storage,
-        legacy_config=config,
+        app_config=config,
     )
     return agent

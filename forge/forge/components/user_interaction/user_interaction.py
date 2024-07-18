@@ -4,16 +4,12 @@ import click
 
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
-from forge.config.config import Config
 from forge.models.json_schema import JSONSchema
 from forge.utils.const import ASK_COMMAND
 
 
 class UserInteractionComponent(CommandProvider):
     """Provides commands to interact with the user."""
-
-    def __init__(self, config: Config):
-        self._enabled = not config.noninteractive_mode
 
     def get_commands(self) -> Iterator[Command]:
         yield self.ask_user
