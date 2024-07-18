@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { CustomNodeData } from './types';
+import { CustomNodeData } from "@/components/CustomNode/types";
+import {getValue} from "@/components/CustomNode/utils";
 
 export const useCustomNode = (data: CustomNodeData, id: string) => {
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(data.isPropertiesOpen || false);
@@ -45,6 +46,7 @@ export const useCustomNode = (data: CustomNodeData, id: string) => {
     isPropertiesOpen,
     isAdvancedOpen,
     isModalOpen,
+    setIsModalOpen,
     modalValue,
     activeKey,
     toggleProperties,
