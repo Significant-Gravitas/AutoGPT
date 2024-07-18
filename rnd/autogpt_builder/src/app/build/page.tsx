@@ -9,7 +9,7 @@ export default function Home() {
           <div className="z-10 w-full flex items-center justify-between font-mono text-sm relative">
               <p className="border border-gray-600 rounded-xl pb-4 pt-4 p-4">
                   Get started by adding a&nbsp;
-                  <code className="font-mono font-bold">node</code>
+                  <code className="font-mono font-bold">block</code>
               </p>
               <div className="absolute top-0 right-0 p-4">
                   <a
