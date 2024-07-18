@@ -1,12 +1,12 @@
 import React, { useState, useEffect, FC, memo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import 'reactflow/dist/style.css';
-import './customnode.css';
-import ModalComponent from './ModalComponent';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
+import '../customnode.css';
+import ModalComponent from '../ModalComponent';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 import { BlockSchema } from '@/lib/types';
-import SchemaTooltip from './SchemaTooltip';
+import SchemaTooltip from '../SchemaTooltip';
 import { beautifyString } from '@/lib/utils';
 
 type CustomNodeData = {

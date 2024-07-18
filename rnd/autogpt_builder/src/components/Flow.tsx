@@ -13,7 +13,7 @@ import ReactFlow, {
   Connection,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import CustomNode from './CustomNode';
+import CustomNode from './CustomNode/CustomNode';
 import './flow.css';
 import AutoGPTServerAPI, { Block, Graph } from '@/lib/autogpt_server_api';
 import { ObjectSchema } from '@/lib/types';
