@@ -63,7 +63,7 @@ class ObjectLlmCallBlock(Block):
         prompt: str
         expected_format: dict[str, str]
         model: LlmModel = LlmModel.GPT4_TURBO
-        api_key: BlockSecret = SecretField(key="openai_api_key")
+        api_key: BlockSecret = SecretField(value="")
         sys_prompt: str = ""
         retry: int = 3
 
@@ -225,7 +225,7 @@ class TextLlmCallBlock(Block):
     class Input(BlockSchema):
         prompt: str
         model: LlmModel = LlmModel.GPT4_TURBO
-        api_key: BlockSecret = SecretField(key="openai_api_key")
+        api_key: BlockSecret = SecretField(value="")
         sys_prompt: str = ""
         retry: int = 3
 

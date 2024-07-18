@@ -65,9 +65,9 @@ class BlockSecret:
         return core_schema.json_or_python_schema(
             json_schema=validate_fun,
             python_schema=validate_fun,
-            serialization=core_schema.plain_serializer_function_ser_schema(
-                lambda val: BlockSecret.STR
-            ),
+            # serialization=core_schema.plain_serializer_function_ser_schema(
+            #     lambda val: BlockSecret.STR
+            # ),
         )
 
 
