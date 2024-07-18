@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from enum import Enum, member
+from enum import Enum
 from typing import Any, ClassVar, Generator, Generic, Type, TypeVar, cast
 
 import jsonref
@@ -15,22 +15,16 @@ BlockOutput = Generator[BlockData, None, None]
 
 
 class BlockCategory(Enum):
-    class Obj(BaseModel):
-        category: str
-        description: str
+    LLM = "Block that leverages the Large Language Model to perform a task."
+    HTTP = "Block that executes a network request through HTTP."
+    SOCIAL = "Block that interacts with social media platforms."
+    TEXT = "Block that processes text data."
+    FILE = "Block that reads or writes files."
+    SEARCH = "Block that searches or extracts information from the internet."
+    BASIC = "Basic blocks that perform basic operations."
 
-        @classmethod
-        def get(cls, category: str, description: str) -> member:
-            obj = cls(category=category, description=description)
-            return member(obj)
-
-    LLM = Obj.get("llm", "Block that uses the Large Language Model to perform a task.")
-    HTTP = Obj.get("http", "Block that executes a network request through HTTP.")
-    SOCIAL = Obj.get("social", "Block that interacts with social media platforms.")
-    TEXT = Obj.get("text", "Block that processes text data.")
-    FILE = Obj.get("file", "Block that reads or writes files.")
-    WEB = Obj.get("web", "Block that interacts with web pages.")
-    BASIC = Obj.get("basic", "Basic blocks that perform basic operations.")
+    def dict(self) -> dict[str, str]:
+        return {"category": self.name, "description": self.value}
 
 
 class BlockSchema(BaseModel):
@@ -175,7 +169,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             "inputSchema": self.input_schema.jsonschema(),
             "outputSchema": self.output_schema.jsonschema(),
             "description": self.description,
-            "categories": list(self.categories),
+            "categories": [category.dict() for category in self.categories],
         }
 
     def execute(self, input_data: BlockInput) -> BlockOutput:
