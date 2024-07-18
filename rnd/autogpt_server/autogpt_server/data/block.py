@@ -16,10 +16,8 @@ BlockOutput = Generator[BlockData, None, None]
 
 class BlockCategory(Enum):
     LLM = "Block that leverages the Large Language Model to perform a task."
-    HTTP = "Block that executes a network request through HTTP."
     SOCIAL = "Block that interacts with social media platforms."
     TEXT = "Block that processes text data."
-    FILE = "Block that reads or writes files."
     SEARCH = "Block that searches or extracts information from the internet."
     BASIC = "Basic blocks that perform basic operations."
 
