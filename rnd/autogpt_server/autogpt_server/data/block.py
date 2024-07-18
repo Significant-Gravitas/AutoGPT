@@ -19,7 +19,7 @@ class BlockCategory(Enum):
     SOCIAL = "Block that interacts with social media platforms."
     TEXT = "Block that processes text data."
     SEARCH = "Block that searches or extracts information from the internet."
-    BASIC = "Blocks that perform basic operations."
+    BASIC = "Block that performs basic operations."
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
