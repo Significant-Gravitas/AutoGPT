@@ -108,7 +108,6 @@ Follow these steps to create and test a new block:
 - **Input and Output Schemas**: Define clear input and output schemas.
 - **Error Handling**: Implement error handling in the `run` method.
 - **Output Results**: Use `yield` to output results in the `run` method.
-- **Register the Block**: Add your new block to the `__init__.py` file to make it available to the server.
 - **Testing**: Provide test input and output in the **init** method for automatic testing.
 
 ## Understanding the Testing Process
