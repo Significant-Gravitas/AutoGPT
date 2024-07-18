@@ -90,7 +90,7 @@ class ObjectLookupBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+            id="b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
             input_schema=ObjectLookupBlock.Input,
             output_schema=ObjectLookupBlock.Output,
             test_input=[
