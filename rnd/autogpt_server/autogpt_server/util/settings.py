@@ -82,6 +82,8 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     openweathermap_api_key: str = Field(default="", description="OpenWeatherMap API key")
 
+    medium_api_key: str = Field(default="", description="Medium API key")
+
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(
