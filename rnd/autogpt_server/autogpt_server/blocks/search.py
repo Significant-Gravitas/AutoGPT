@@ -6,6 +6,7 @@ import requests
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SecretField
 
+
 class GetRequest:
     @classmethod
     def get_request(cls, url: str, json=False) -> Any:
