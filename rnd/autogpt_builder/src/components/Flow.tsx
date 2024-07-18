@@ -68,10 +68,11 @@ const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id
     );
   };
 
-const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
-  flowID,
-  className,
-}) => {
+const FlowEditor: React.FC<{
+  flowID?: string;
+  template?: boolean;
+  className?: string;
+}> = ({ flowID, template, className }) => {
   const [nodes, setNodes] = useState<Node<CustomNodeData>[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [nodeId, setNodeId] = useState<number>(1);
@@ -111,9 +112,9 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
   useEffect(() => {
     if (!flowID || availableNodes.length == 0) return;
 
-    api.getGraph(flowID)
+    (template ? api.getTemplate(flowID) : api.getGraph(flowID))
       .then(graph => loadGraph(graph));
-  }, [flowID, availableNodes]);
+  }, [flowID, template, availableNodes]);
 
   const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
 
@@ -292,7 +293,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     return inputData;
   };
 
-  const saveAgent = async () => {
+  async function saveAgent (asTemplate: boolean = false) {
     setNodes((nds) =>
       nds.map((node) => ({
         ...node,
@@ -359,8 +360,12 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     }
 
     const newSavedAgent = savedAgent
-      ? await api.updateGraph(savedAgent.id, payload)
-      : await api.createGraph(payload);
+      ? await (savedAgent.is_template
+        ? api.updateTemplate(savedAgent.id, payload) 
+        : api.updateGraph(savedAgent.id, payload))
+      : await (asTemplate
+        ? api.createTemplate(payload)
+        : api.createGraph(payload));
     console.debug('Response from the API:', newSavedAgent);
     setSavedAgent(newSavedAgent);
 
@@ -467,8 +472,15 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
             onChange={(e) => setAgentDescription(e.target.value)}
           />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>  {/* Added gap for spacing */}
-            <Button onClick={saveAgent}>Save Agent</Button>
-            <Button onClick={runAgent}>Save & Run Agent</Button>
+            <Button onClick={() => saveAgent(savedAgent?.is_template)}>
+              Save {savedAgent?.is_template ? "Template" : "Agent"}
+            </Button>
+            {!savedAgent?.is_template &&
+              <Button onClick={runAgent}>Save & Run Agent</Button>
+            }
+            {!savedAgent &&
+              <Button onClick={() => saveAgent(true)}>Save as Template</Button>
+            }
           </div>
         </div>
       </ReactFlow>

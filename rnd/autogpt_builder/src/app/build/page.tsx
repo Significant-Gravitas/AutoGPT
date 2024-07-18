@@ -4,6 +4,8 @@ import { useSearchParams } from "next/navigation";
 import FlowEditor from '@/components/Flow';
 
 export default function Home() {
+  const query = useSearchParams();
+
   return (
       <div className="flex flex-col items-center px-12">
           <div className="z-10 w-full items-center justify-between font-mono text-sm lg:flex">
@@ -35,7 +37,8 @@ export default function Home() {
           <div className="w-full flex justify-center mt-10">
               <FlowEditor
                 className="flow-container w-full min-h-[75vh] border border-gray-300 dark:border-gray-700 rounded-lg"
-                flowID={useSearchParams().get("flowID") ?? undefined}
+                flowID={query.get("flowID") ?? query.get("templateID") ?? undefined}
+                template={!!query.get("templateID")}
               />
           </div>
       </div>
