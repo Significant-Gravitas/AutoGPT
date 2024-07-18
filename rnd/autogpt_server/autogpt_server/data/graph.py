@@ -264,7 +264,9 @@ async def create_graph(graph: Graph) -> Graph:
         ]
     )
 
-    if created_graph := await get_graph(graph.id, graph.version):
+    if created_graph := await get_graph(
+        graph.id, graph.version, template=graph.is_template
+    ):
         return created_graph
 
-    raise ValueError(f"Failed to create graph {graph.id}:{graph.version}.")
+    raise ValueError(f"Created graph {graph.id} v{graph.version} is not in DB")

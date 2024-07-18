@@ -22,6 +22,7 @@ You can set configuration variables via the `.env` file. If you don't have a `.e
 - `GROQ_API_KEY`: Set this if you want to use Groq models with AutoGPT
 - `HUGGINGFACE_API_TOKEN`: HuggingFace API, to be used for both image generation and audio to text. Optional.
 - `HUGGINGFACE_IMAGE_MODEL`: HuggingFace model to use for image generation. Default: CompVis/stable-diffusion-v1-4
+- `LLAMAFILE_API_BASE`: Llamafile API base URL. Default: `http://localhost:8080/v1`
 - `OPENAI_API_KEY`: Set this if you want to use OpenAI models; [OpenAI API Key](https://platform.openai.com/account/api-keys).
 - `OPENAI_ORGANIZATION`: Organization ID in OpenAI. Optional.
 - `PLAIN_OUTPUT`: Plain output, which disables the spinner. Default: False

@@ -29,3 +29,52 @@ export function deepEquals(x: any, y: any): boolean {
       : (x === y)
   );
 }
+
+export function beautifyString(name: string): string {
+  // Regular expression to identify places to split, considering acronyms
+  const result = name
+    .replace(/([a-z])([A-Z])/g, '$1 $2')  // Add space before capital letters
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')  // Add space between acronyms and next word
+    .replace(/_/g, ' ')  // Replace underscores with spaces
+    .replace(/\b\w/g, char => char.toUpperCase());  // Capitalize the first letter of each word
+
+  return applyExceptions(result);
+};
+
+const exceptionMap: Record<string, string> = {
+  'Auto GPT': 'AutoGPT',
+  'Gpt': 'GPT',
+  'Creds': 'Credentials',
+  'Id': 'ID',
+  'Openai': 'OpenAI',
+  'Api': 'API',
+  'Url': 'URL',
+  'Http': 'HTTP',
+  'Json': 'JSON',
+};
+
+const applyExceptions = (str: string): string => {
+  Object.keys(exceptionMap).forEach(key => {
+    const regex = new RegExp(`\\b${key}\\b`, 'g');
+    str = str.replace(regex, exceptionMap[key]);
+  });
+  return str;
+};
+
+export function exportAsJSONFile(obj: object, filename: string): void {
+  // Create downloadable blob
+  const jsonString = JSON.stringify(obj, null, 2);
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  // Trigger the browser to download the blob to a file
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  // Clean up
+  URL.revokeObjectURL(url);
+}

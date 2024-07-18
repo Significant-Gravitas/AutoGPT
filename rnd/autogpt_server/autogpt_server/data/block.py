@@ -4,71 +4,13 @@ from typing import Any, ClassVar, Generator, Generic, Type, TypeVar, cast
 import jsonref
 import jsonschema
 from prisma.models import AgentBlock
-from pydantic import BaseModel, GetCoreSchemaHandler
-from pydantic_core import CoreSchema, core_schema
+from pydantic import BaseModel
 
 from autogpt_server.util import json
-from autogpt_server.util.settings import Secrets
 
 BlockInput = dict[str, Any]
 BlockData = tuple[str, Any]
 BlockOutput = Generator[BlockData, None, None]
-
-
-class BlockFieldSecret:
-    def __init__(self, key=None, value=None):
-        if value is not None:
-            self._value = value
-            return
-
-        self._value = self.__get_secret(key)
-        if self._value is None:
-            raise ValueError(f"Secret {key} not found.")
-
-    STR: ClassVar[str] = "<secret>"
-    SECRETS: ClassVar[Secrets] = Secrets()
-
-    def __repr__(self):
-        return BlockFieldSecret.STR
-
-    def __str__(self):
-        return BlockFieldSecret.STR
-
-    @staticmethod
-    def __get_secret(key: str | None):
-        if not key or not hasattr(BlockFieldSecret.SECRETS, key):
-            return None
-        return getattr(BlockFieldSecret.SECRETS, key)
-
-    def get(self):
-        return str(self._value)
-
-    @classmethod
-    def parse_value(cls, value: Any) -> "BlockFieldSecret":
-        if isinstance(value, BlockFieldSecret):
-            return value
-        return BlockFieldSecret(value=value)
-    
-    @classmethod
-    def __get_pydantic_json_schema__(
-            cls, source_type: Any, handler: GetCoreSchemaHandler) -> dict[str, Any]:
-        return {
-            "type": "string",
-            "title": "BlockFieldSecret",
-            "description": "A secret field",
-        }
-
-    @classmethod
-    def __get_pydantic_core_schema__(
-            cls, source_type: Any, handler: GetCoreSchemaHandler) -> CoreSchema:
-        validate_fun = core_schema.no_info_plain_validator_function(cls.parse_value)
-        return core_schema.json_or_python_schema(
-            json_schema=validate_fun,
-            python_schema=validate_fun,
-            serialization=core_schema.plain_serializer_function_ser_schema(
-                lambda val: BlockFieldSecret.STR
-            ),
-        )
 
 
 class BlockSchema(BaseModel):
@@ -157,17 +99,17 @@ class EmptySchema(BlockSchema):
 
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     def __init__(
-            self,
-            id: str = "",
-            input_schema: Type[BlockSchemaInputType] = EmptySchema,
-            output_schema: Type[BlockSchemaOutputType] = EmptySchema,
-            test_input: BlockInput | list[BlockInput] | None = None,
-            test_output: BlockData | list[BlockData] | None = None,
-            test_mock: dict[str, Any] | None = None,
+        self,
+        id: str = "",
+        input_schema: Type[BlockSchemaInputType] = EmptySchema,
+        output_schema: Type[BlockSchemaOutputType] = EmptySchema,
+        test_input: BlockInput | list[BlockInput] | None = None,
+        test_output: BlockData | list[BlockData] | None = None,
+        test_mock: dict[str, Any] | None = None,
     ):
         """
         Initialize the block with the given schema.
-        
+
         Args:
             id: The unique identifier for the block, this value will be persisted in the
                 DB. So it should be a unique and constant across the application run.
@@ -224,8 +166,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
 
 # ======================= Block Helper Functions ======================= #
 
+
 def get_blocks() -> dict[str, Block]:
     from autogpt_server.blocks import AVAILABLE_BLOCKS  # noqa: E402
+
     return AVAILABLE_BLOCKS
 
 

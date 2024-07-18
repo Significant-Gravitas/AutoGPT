@@ -17,3 +17,11 @@ Frontend:
 documentation:
 - changed-files:
   - any-glob-to-any-file: docs/**
+
+Builder:
+- changed-files:
+  - any-glob-to-any-file: rnd/autogpt_builder/**
+
+Server:
+- changed-files:
+  - any-glob-to-any-file: rnd/autogpt_server/**

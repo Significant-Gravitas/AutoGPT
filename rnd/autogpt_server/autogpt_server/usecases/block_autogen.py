@@ -1,13 +1,12 @@
 from pathlib import Path
 
-from autogpt_server.blocks.llm import LlmCallBlock
 from autogpt_server.blocks.basic import ValueBlock
 from autogpt_server.blocks.block import BlockInstallationBlock
 from autogpt_server.blocks.http import HttpRequestBlock
-from autogpt_server.blocks.text import TextParserBlock, TextFormatterBlock
-from autogpt_server.data.graph import Graph, Node, Link, create_graph
+from autogpt_server.blocks.llm import LlmCallBlock
+from autogpt_server.blocks.text import TextFormatterBlock, TextParserBlock
+from autogpt_server.data.graph import Graph, Link, Node, create_graph
 from autogpt_server.util.test import SpinTestServer, wait_execution
-
 
 sample_block_modules = {
     "ai": "Block that calls the AI model to generate text.",
@@ -32,7 +31,7 @@ def create_test_graph() -> Graph:
         TextFormatterBlock (input query)
                  ||
                  v
-         HttpRequestBlock (browse)    
+         HttpRequestBlock (browse)
                  ||
                  v
      ------> ValueBlock===============
@@ -50,9 +49,7 @@ def create_test_graph() -> Graph:
     ------ BlockInstallationBlock  ======
     """
     # ======= Nodes ========= #
-    input_data = Node(
-        block_id=ValueBlock().id
-    )
+    input_data = Node(block_id=ValueBlock().id)
     input_text_formatter = Node(
         block_id=TextFormatterBlock().id,
         input_default={
@@ -83,7 +80,7 @@ Here is the information I get to write a Python code for that:
 Here is your previous attempt:
 {previous_attempt}
 """,
-            "named_texts_#_previous_attempt": "No previous attempt found."
+            "named_texts_#_previous_attempt": "No previous attempt found.",
         },
     )
     code_gen_llm_call = Node(
@@ -134,81 +131,77 @@ Here are a couple of sample of the Block class implementation:
         code_text_parser,
         block_installation,
     ]
-    
+
     # ======= Links ========= #
     links = [
         Link(
             source_id=input_data.id,
             sink_id=input_text_formatter.id,
             source_name="output",
-            sink_name="named_texts_#_query"),
-
+            sink_name="named_texts_#_query",
+        ),
         Link(
             source_id=input_text_formatter.id,
             sink_id=search_http_request.id,
             source_name="output",
-            sink_name="body_#_query"),
-        
+            sink_name="body_#_query",
+        ),
         Link(
             source_id=search_http_request.id,
             sink_id=search_result_constant.id,
             source_name="response_#_reply",
-            sink_name="input"),
+            sink_name="input",
+        ),
         Link(  # Loopback for constant block
             source_id=search_result_constant.id,
             sink_id=search_result_constant.id,
             source_name="output",
-            sink_name="data"
+            sink_name="data",
         ),
-        
         Link(
             source_id=search_result_constant.id,
             sink_id=prompt_text_formatter.id,
             source_name="output",
-            sink_name="named_texts_#_search_result"
+            sink_name="named_texts_#_search_result",
         ),
         Link(
             source_id=input_data.id,
             sink_id=prompt_text_formatter.id,
             source_name="output",
-            sink_name="named_texts_#_query"
+            sink_name="named_texts_#_query",
         ),
-        
         Link(
             source_id=prompt_text_formatter.id,
             sink_id=code_gen_llm_call.id,
             source_name="output",
-            sink_name="prompt"
+            sink_name="prompt",
         ),
-
         Link(
             source_id=code_gen_llm_call.id,
             sink_id=code_text_parser.id,
             source_name="response_#_response",
-            sink_name="text"
+            sink_name="text",
         ),
-        
         Link(
             source_id=code_text_parser.id,
             sink_id=block_installation.id,
             source_name="positive",
-            sink_name="code"
+            sink_name="code",
         ),
-        
         Link(
             source_id=block_installation.id,
             sink_id=prompt_text_formatter.id,
             source_name="error",
-            sink_name="named_texts_#_previous_attempt"
+            sink_name="named_texts_#_previous_attempt",
         ),
         Link(  # Re-trigger search result.
             source_id=block_installation.id,
             sink_id=search_result_constant.id,
             source_name="error",
-            sink_name="input"
+            sink_name="input",
         ),
     ]
-    
+
     # ======= Graph ========= #
     return Graph(
         name="BlockAutoGen",
@@ -225,7 +218,13 @@ async def block_autogen_agent():
         input_data = {"input": "Write me a block that writes a string into a file."}
         response = await server.agent_server.execute_graph(test_graph.id, input_data)
         print(response)
-        result = await wait_execution(test_manager, test_graph.id, response["id"], 10, 1200)
+        result = await wait_execution(
+            exec_manager=test_manager,
+            graph_id=test_graph.id,
+            graph_exec_id=response["id"],
+            num_execs=10,
+            timeout=1200,
+        )
         print(result)
 
 

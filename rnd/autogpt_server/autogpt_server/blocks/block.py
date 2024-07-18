@@ -1,7 +1,7 @@
-import re
 import os
-
+import re
 from typing import Type
+
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.util.test import execute_block_test
 
@@ -43,7 +43,7 @@ class BlockInstallationBlock(Block):
         else:
             yield "error", "No UUID found in the code."
             return
-        
+
         block_dir = os.path.dirname(__file__)
         file_path = f"{block_dir}/{file_name}.py"
         module_name = f"autogpt_server.blocks.{file_name}"

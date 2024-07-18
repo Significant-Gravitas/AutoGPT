@@ -1,9 +1,10 @@
 import pytest
+
 from autogpt_server.data import db, graph
 from autogpt_server.executor import ExecutionScheduler
+from autogpt_server.usecases.sample import create_test_graph
 from autogpt_server.util.service import get_service_client
 from autogpt_server.util.test import SpinTestServer
-from autogpt_server.usecases.sample import create_test_graph
 
 
 @pytest.mark.asyncio(scope="session")

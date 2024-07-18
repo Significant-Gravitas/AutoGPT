@@ -7,230 +7,138 @@ export default class AutoGPTServerAPI {
   private socket: WebSocket | null = null;
   private messageHandlers: { [key: string]: (data: any) => void } = {};
 
-  constructor(baseUrl: string = process.env.AGPT_SERVER_URL || "http://localhost:8000") {
+  constructor(
+    baseUrl: string = process.env.AGPT_SERVER_URL || "http://localhost:8000/api"
+  ) {
     this.baseUrl = baseUrl;
     this.wsUrl = `ws://${new URL(this.baseUrl).host}/ws`;
   }
 
   async getBlocks(): Promise<Block[]> {
-    try {
-      const response = await fetch(`${this.baseUrl}/blocks`);
-      if (!response.ok) {
-        console.warn("GET /blocks returned non-OK response:", response);
-        throw new Error(`HTTP error ${response.status}!`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching blocks:', error);
-      throw error;
-    }
+    return await this._get("/blocks");
   }
 
-  async listFlowIDs(): Promise<string[]> {
-    try {
-      const response = await fetch(`${this.baseUrl}/graphs`);
-      if (!response.ok) {
-        console.warn("GET /graphs returned non-OK response:", response);
-        throw new Error(`HTTP error ${response.status}!`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching flows:', error);
-      throw error;
-    }
+  async listGraphIDs(): Promise<string[]> {
+    return this._get("/graphs")
   }
 
-  async getFlow(id: string, version?: number): Promise<Flow> {
-    let path = `/graphs/${id}`;
-    if (version !== undefined) {
-      path += `?version=${version}`;
-    }
-    try {
-      const response = await fetch(this.baseUrl + path);
-      if (!response.ok) {
-        console.warn(`GET ${path} returned non-OK response:`, response);
-        throw new Error(`HTTP error ${response.status}!`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching flow:', error);
-      throw error;
-    }
+  async listTemplates(): Promise<GraphMeta[]> {
+    return this._get("/templates")
   }
 
-  async getFlowAllVersions(id: string): Promise<Flow[]> {
-    let path = `/graphs/${id}/versions`;
-    try {
-      const response = await fetch(this.baseUrl + path);
-      if (!response.ok) {
-        console.warn(`GET ${path} returned non-OK response:`, response);
-        throw new Error(`HTTP error ${response.status}!`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error(`Error fetching flow ${id} versions:`, error);
-      throw error;
-    }
+  async getGraph(id: string, version?: number): Promise<Graph> {
+    const query = version !== undefined ? `?version=${version}` : "";
+    return this._get(`/graphs/${id}` + query);
   }
 
-  async createFlow(flowCreateBody: FlowCreatable): Promise<Flow>;
-  async createFlow(fromTemplateID: string, templateVersion: number): Promise<Flow>;
-  async createFlow(
-    flowOrTemplateID: FlowCreatable | string, templateVersion?: number
-  ): Promise<Flow> {
-    let requestBody: FlowCreateRequestBody;
-    if (typeof(flowOrTemplateID) == "string") {
+  async getTemplate(id: string, version?: number): Promise<Graph> {
+    const query = version !== undefined ? `?version=${version}` : "";
+    return this._get(`/templates/${id}` + query);
+  }
+
+  async getGraphAllVersions(id: string): Promise<Graph[]> {
+    return this._get(`/graphs/${id}/versions`);
+  }
+
+  async getTemplateAllVersions(id: string): Promise<Graph[]> {
+    return this._get(`/templates/${id}/versions`);
+  }
+
+  async createGraph(graphCreateBody: GraphCreatable): Promise<Graph>;
+  async createGraph(fromTemplateID: string, templateVersion: number): Promise<Graph>;
+  async createGraph(
+    graphOrTemplateID: GraphCreatable | string, templateVersion?: number
+  ): Promise<Graph> {
+    let requestBody: GraphCreateRequestBody;
+
+    if (typeof(graphOrTemplateID) == "string") {
       if (templateVersion == undefined) {
         throw new Error("templateVersion not specified")
       }
       requestBody = {
-        template_id: flowOrTemplateID,
+        template_id: graphOrTemplateID,
         template_version: templateVersion,
       }
     } else {
-      requestBody = { graph: flowOrTemplateID }
+      requestBody = { graph: graphOrTemplateID }
     }
-    console.debug("POST /graphs payload:", requestBody);
 
-    try {
-      const response = await fetch(`${this.baseUrl}/graphs`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-      const response_data = await response.json();
-      if (!response.ok) {
-        console.warn(
-          `POST /graphs returned non-OK response:`, response_data.detail, response
-        );
-        throw new Error(`HTTP error ${response.status}! ${response_data.detail}`)
-      }
-      return response_data;
-    } catch (error) {
-      console.error("Error storing flow:", error);
-      throw error;
-    }
+    return this._request("POST", "/graphs", requestBody);
   }
 
-  async updateFlow(flowID: string, flow: FlowUpdateable): Promise<Flow> {
-    const path = `/graphs/${flowID}`;
-    console.debug(`PUT ${path} payload:`, flow);
-
-    try {
-      const response = await fetch(`${this.baseUrl}${path}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(flow),
-      });
-      const response_data = await response.json();
-      if (!response.ok) {
-        console.warn(
-          `PUT ${path} returned non-OK response:`, response_data.detail, response
-        );
-        throw new Error(`HTTP error ${response.status}! ${response_data.detail}`)
-      }
-      return response_data;
-    } catch (error) {
-      console.error("Error updating flow:", error);
-      throw error;
-    }
+  async createTemplate(templateCreateBody: GraphCreatable): Promise<Graph> {
+    const requestBody: GraphCreateRequestBody = { graph: templateCreateBody };
+    return this._request("POST", "/templates", requestBody);
   }
 
-  async setFlowActiveVersion(flowID: string, version: number): Promise<Flow> {
-    const path = `/graphs/${flowID}/versions/active`;
-    const payload: { active_graph_version: number } = { active_graph_version: version };
-    console.debug(`PUT ${path} payload:`, payload);
+  async updateGraph(id: string, graph: GraphUpdateable): Promise<Graph> {
+    return await this._request("PUT", `/graphs/${id}`, graph);
+  }
 
-    try {
-      const response = await fetch(`${this.baseUrl}${path}`, {
-        method: 'PUT',
+  async updateTemplate(id: string, template: GraphUpdateable): Promise<Graph> {
+    return await this._request("PUT", `/templates/${id}`, template);
+  }
+
+  async setGraphActiveVersion(id: string, version: number): Promise<Graph> {
+    return this._request(
+      "PUT", `/graphs/${id}/versions/active`, { active_graph_version: version }
+    );
+  }
+
+  async executeGraph(
+    id: string, inputData: { [key: string]: any } = {}
+  ): Promise<GraphExecuteResponse> {
+    return this._request("POST", `/graphs/${id}/execute`, inputData);
+  }
+
+  async listGraphRunIDs(graphID: string, graphVersion?: number): Promise<string[]> {
+    const query = graphVersion !== undefined ? `?graph_version=${graphVersion}` : "";
+    return this._get(`/graphs/${graphID}/executions` + query);
+  }
+
+  async getGraphExecutionInfo(graphID: string, runID: string): Promise<NodeExecutionResult[]> {
+    return (await this._get(`/graphs/${graphID}/executions/${runID}`))
+    .map((result: any) => ({
+      ...result,
+      add_time: new Date(result.add_time),
+      queue_time: result.queue_time ? new Date(result.queue_time) : undefined,
+      start_time: result.start_time ? new Date(result.start_time) : undefined,
+      end_time: result.end_time ? new Date(result.end_time) : undefined,
+    }));
+  }
+
+  private async _get(path: string) {
+    return this._request("GET", path);
+  }
+
+  private async _request(
+    method: "GET" | "POST" | "PUT" | "PATCH",
+    path: string,
+    payload?: { [key: string]: any },
+  ) {
+    if (method != "GET") {
+      console.debug(`${method} ${path} payload:`, payload);
+    }
+
+    const response = await fetch(
+      this.baseUrl + path,
+      method != "GET" ? {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
-      });
-      const response_data = await response.json();
-      if (!response.ok) {
-        console.warn(
-          `PUT ${path} returned non-OK response:`, response_data.detail, response
-        );
-        throw new Error(`HTTP error ${response.status}! ${response_data.detail}`)
-      }
-      return response_data;
-    } catch (error) {
-      console.error("Error updating flow:", error);
-      throw error;
-    }
-  }
+      } : undefined
+    );
+    const response_data = await response.json();
 
-  async executeFlow(
-    flowId: string, inputData: { [key: string]: any } = {}
-  ): Promise<FlowExecuteResponse> {
-    const path = `/graphs/${flowId}/execute`;
-    console.debug(`POST ${path}`);
-    try {
-      const response = await fetch(this.baseUrl + path, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(inputData),
-      });
-      const response_data = await response.json();
-      if (!response.ok) {
-        console.warn(
-          `POST ${path} returned non-OK response:`, response_data.detail, response
-        );
-        throw new Error(`HTTP error ${response.status}! ${response_data.detail}`)
-      }
-      return response_data;
-    } catch (error) {
-      console.error("Error executing flow:", error);
-      throw error;
+    if (!response.ok) {
+      console.warn(
+        `${method} ${path} returned non-OK response:`, response_data.detail, response
+      );
+      throw new Error(`HTTP error ${response.status}! ${response_data.detail}`);
     }
-  }
-
-  async listFlowRunIDs(flowId: string, flowVersion?: number): Promise<string[]> {
-    let path = `/graphs/${flowId}/executions`;
-    if (flowVersion !== undefined) {
-      path += `?graph_version=${flowVersion}`;
-    }
-    try {
-      const response = await fetch(this.baseUrl + path);
-      if (!response.ok) {
-        console.warn(`GET ${path} returned non-OK response:`, response);
-        throw new Error(`HTTP error ${response.status}!`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching flow runs:', error);
-      throw error;
-    }
-  }
-
-  async getFlowExecutionInfo(flowId: string, runId: string): Promise<NodeExecutionResult[]> {
-    const path = `/graphs/${flowId}/executions/${runId}`;
-    try {
-      const response = await fetch(this.baseUrl + path);
-      if (!response.ok) {
-        console.warn(`GET ${path} returned non-OK response:`, response);
-        throw new Error(`HTTP error ${response.status}!`);
-      }
-      return (await response.json()).map((result: any) => ({
-        ...result,
-        add_time: new Date(result.add_time),
-        queue_time: result.queue_time ? new Date(result.queue_time) : undefined,
-        start_time: result.start_time ? new Date(result.start_time) : undefined,
-        end_time: result.end_time ? new Date(result.end_time) : undefined,
-      }));
-    } catch (error) {
-      console.error('Error fetching execution status:', error);
-      throw error;
-    }
+    return response_data;
   }
 
   connectWebSocket(): Promise<void> {
@@ -324,7 +232,7 @@ export type LinkCreatable = Omit<Link, "id"> & {
 }
 
 /* Mirror of autogpt_server/data/graph.py:GraphMeta */
-export type FlowMeta = {
+export type GraphMeta = {
   id: string;
   version: number;
   is_active: boolean;
@@ -334,13 +242,13 @@ export type FlowMeta = {
 }
 
 /* Mirror of autogpt_server/data/graph.py:Graph */
-export type Flow = FlowMeta & {
+export type Graph = GraphMeta & {
   nodes: Array<Node>;
   links: Array<Link>;
 };
 
-export type FlowUpdateable = Omit<
-  Flow,
+export type GraphUpdateable = Omit<
+  Graph,
   "version" | "is_active" | "is_template" | "links"
 > & {
   version?: number;
@@ -349,17 +257,17 @@ export type FlowUpdateable = Omit<
   links: Array<LinkCreatable>;
 }
 
-export type FlowCreatable = Omit<FlowUpdateable, "id"> & { id?: string }
+export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string }
 
-export type FlowCreateRequestBody = {
+export type GraphCreateRequestBody = {
   template_id: string;
   template_version: number;
 } | {
-  graph: FlowCreatable;
+  graph: GraphCreatable;
 }
 
 /* Derived from autogpt_server/executor/manager.py:ExecutionManager.add_execution */
-export type FlowExecuteResponse = {
+export type GraphExecuteResponse = {
   /* ID of the initiated run */
   id: string;
   /* List of node executions */

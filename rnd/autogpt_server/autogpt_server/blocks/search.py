@@ -3,7 +3,7 @@ from urllib.parse import quote
 
 import requests
 
-from autogpt_server.data.block import Block, BlockSchema, BlockOutput
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 
 
 class GetRequest:
@@ -37,7 +37,7 @@ class WikipediaSummaryBlock(Block, GetRequest):
             topic = input_data.topic
             url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{topic}"
             response = self.get_request(url, json=True)
-            yield "summary", response['extract']
+            yield "summary", response["extract"]
 
         except requests.exceptions.HTTPError as http_err:
             yield "error", f"HTTP error occurred: {http_err}"
