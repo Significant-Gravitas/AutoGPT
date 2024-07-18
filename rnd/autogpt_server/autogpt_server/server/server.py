@@ -70,7 +70,7 @@ class AgentServer(AppService):
         )
 
         # Define the API routes
-        router = APIRouter()
+        router = APIRouter(prefix="/api")
         router.add_api_route(
             path="/blocks",
             endpoint=self.get_graph_blocks,  # type: ignore

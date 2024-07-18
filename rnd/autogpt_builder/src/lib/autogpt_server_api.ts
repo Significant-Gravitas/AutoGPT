@@ -7,7 +7,9 @@ export default class AutoGPTServerAPI {
   private socket: WebSocket | null = null;
   private messageHandlers: { [key: string]: (data: any) => void } = {};
 
-  constructor(baseUrl: string = process.env.AGPT_SERVER_URL || "http://localhost:8000") {
+  constructor(
+    baseUrl: string = process.env.AGPT_SERVER_URL || "http://localhost:8000/api"
+  ) {
     this.baseUrl = baseUrl;
     this.wsUrl = `ws://${new URL(this.baseUrl).host}/ws`;
   }
