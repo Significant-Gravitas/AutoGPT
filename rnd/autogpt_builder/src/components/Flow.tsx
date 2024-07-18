@@ -457,6 +457,7 @@ const FlowEditor: React.FC<{
         onConnect={onConnect}
         nodeTypes={nodeTypes}
         onEdgesDelete={onEdgesDelete}
+        deleteKeyCode={["Backspace", "Delete"]}
       >
         <div style={{ position: 'absolute', right: 10, zIndex: 4 }}>
           <Input
