@@ -80,6 +80,8 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     reddit_username: str = Field(default="", description="Reddit username")
     reddit_password: str = Field(default="", description="Reddit password")
 
+    openweathermap_api_key: str = Field(default="", description="OpenWeatherMap API key")
+
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(
