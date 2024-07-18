@@ -7,7 +7,9 @@ export default class AutoGPTServerAPI {
   private socket: WebSocket | null = null;
   private messageHandlers: { [key: string]: (data: any) => void } = {};
 
-  constructor(baseUrl: string = process.env.AGPT_SERVER_URL || "http://localhost:8000") {
+  constructor(
+    baseUrl: string = process.env.AGPT_SERVER_URL || "http://localhost:8000/api"
+  ) {
     this.baseUrl = baseUrl;
     this.wsUrl = `ws://${new URL(this.baseUrl).host}/ws`;
   }
@@ -20,13 +22,26 @@ export default class AutoGPTServerAPI {
     return this._get("/graphs")
   }
 
+  async listTemplates(): Promise<GraphMeta[]> {
+    return this._get("/templates")
+  }
+
   async getGraph(id: string, version?: number): Promise<Graph> {
     const query = version !== undefined ? `?version=${version}` : "";
     return this._get(`/graphs/${id}` + query);
   }
 
+  async getTemplate(id: string, version?: number): Promise<Graph> {
+    const query = version !== undefined ? `?version=${version}` : "";
+    return this._get(`/templates/${id}` + query);
+  }
+
   async getGraphAllVersions(id: string): Promise<Graph[]> {
     return this._get(`/graphs/${id}/versions`);
+  }
+
+  async getTemplateAllVersions(id: string): Promise<Graph[]> {
+    return this._get(`/templates/${id}/versions`);
   }
 
   async createGraph(graphCreateBody: GraphCreatable): Promise<Graph>;
@@ -51,8 +66,17 @@ export default class AutoGPTServerAPI {
     return this._request("POST", "/graphs", requestBody);
   }
 
+  async createTemplate(templateCreateBody: GraphCreatable): Promise<Graph> {
+    const requestBody: GraphCreateRequestBody = { graph: templateCreateBody };
+    return this._request("POST", "/templates", requestBody);
+  }
+
   async updateGraph(id: string, graph: GraphUpdateable): Promise<Graph> {
     return await this._request("PUT", `/graphs/${id}`, graph);
+  }
+
+  async updateTemplate(id: string, template: GraphUpdateable): Promise<Graph> {
+    return await this._request("PUT", `/templates/${id}`, template);
   }
 
   async setGraphActiveVersion(id: string, version: number): Promise<Graph> {
