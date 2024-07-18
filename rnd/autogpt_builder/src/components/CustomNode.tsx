@@ -451,7 +451,6 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       </div>
       {isPropertiesOpen && (
         <div className="node-properties">
-          <h4>Node Output</h4>
           <p>
             <strong>Status:</strong>{' '}
             {typeof data.status === 'object' ? JSON.stringify(data.status) : data.status || 'N/A'}
