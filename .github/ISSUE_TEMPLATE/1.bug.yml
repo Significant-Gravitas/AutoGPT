@@ -128,6 +128,13 @@ body:
             label: Specify the area
             description: Please specify the area you think is best related to the issue.
 
+  - type: input
+    attributes:
+      label: What commit or version are you using?
+      description: It is helpful for us to reproduce to know what version of the software you were using when this happened. Please run `git log -n 1 --pretty=format:"%H"` to output the full commit hash.
+    validations:
+      required: true
+
   - type: textarea
     attributes:
       label: Describe your issue.
