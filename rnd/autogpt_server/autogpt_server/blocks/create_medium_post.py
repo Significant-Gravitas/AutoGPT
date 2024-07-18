@@ -1,111 +1,165 @@
+from typing import List
+
 import requests
-from autogpt_server.data.block import Block, BlockSchema, BlockOutput, BlockFieldSecret
+
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
+
 
 class CreateMediumPostBlock(Block):
     class Input(BlockSchema):
-        author_id: str
-        title: str
-        content: str
-        content_format: str = "html"
-        tags: list[str] = []
-        canonical_url: str = ""
-        publish_status: str = "public"
-        license: str = "all-rights-reserved"
-        notify_followers: bool = False
-        api_key: BlockFieldSecret = BlockFieldSecret(key="medium_api_key")
+        author_id: str = SecretField(
+            key="medium_author_id",
+            description="""The Medium AuthorID of the user. You can get this by calling the /me endpoint of the Medium API.\n\ncurl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me" the response will contain the authorId field.""",
+            placeholder="Enter the author's Medium AuthorID",
+        )
+        title: str = SchemaField(
+            description="The title of your Medium post",
+            placeholder="Enter your post title",
+        )
+        content: str = SchemaField(
+            description="The main content of your Medium post",
+            placeholder="Enter your post content",
+        )
+        content_format: str = SchemaField(
+            description="The format of the content: 'html' or 'markdown'",
+            placeholder="html",
+        )
+        tags: List[str] = SchemaField(
+            description="List of tags for your Medium post (up to 5)",
+            placeholder="['technology', 'AI', 'blogging']",
+        )
+        canonical_url: str = SchemaField(
+            default=None,
+            description="The original home of this content, if it was originally published elsewhere",
+            placeholder="https://yourblog.com/original-post",
+        )
+        publish_status: str = SchemaField(
+            description="The publish status: 'public', 'draft', or 'unlisted'",
+            placeholder="public",
+        )
+        license: str = SchemaField(
+            description="The license of the post: 'all-rights-reserved', 'cc-40-by', 'cc-40-by-sa', 'cc-40-by-nd', 'cc-40-by-nc', 'cc-40-by-nc-nd', 'cc-40-by-nc-sa', 'cc-40-zero', 'public-domain'",
+            placeholder="all-rights-reserved",
+        )
+        notify_followers: bool = SchemaField(
+            description="Whether to notify followers that the user has published",
+            placeholder="False",
+        )
+        api_key: BlockSecret = SecretField(
+            key="medium_api_key",
+            description="""The API key for the Medium integration. You can get this from https://medium.com/me/settings/security and scrolling down to "integration Tokens".""",
+            placeholder="Enter your Medium API key",
+        )
 
     class Output(BlockSchema):
-        post_id: str
-        post_url: str
-        author_id: str
-        published_at: int
-        error: str
+        post_id: str = SchemaField(description="The ID of the created Medium post")
+        post_url: str = SchemaField(description="The URL of the created Medium post")
+        author_id: str = SchemaField(description="The Medium user ID of the author")
+        published_at: int = SchemaField(
+            description="The timestamp when the post was published"
+        )
+        error: str = SchemaField(
+            description="Error message if the post creation failed"
+        )
 
     def __init__(self):
         super().__init__(
-            id="m3d1um-p0st-cr3a-t10n-bl0ck-1d3nt1f13r",
+            id="3f7b2dcb-4a78-4e3f-b0f1-88132e1b89df",
             input_schema=CreateMediumPostBlock.Input,
             output_schema=CreateMediumPostBlock.Output,
             test_input={
-                "author_id": "5303d74c64f66366f00cb9b2a94f3251bf5",
+                "author_id": "1234567890abcdef",
                 "title": "Test Post",
-                "content": "<h1>Test Post</h1><p>This is a test post created by AutoGPT.</p>",
-                "tags": ["test", "autogpt"],
-                "api_key": "test-api-key"
+                "content": "<h1>Test Content</h1><p>This is a test post.</p>",
+                "content_format": "html",
+                "tags": ["test", "automation"],
+                "publish_status": "draft",
+                "api_key": "your_test_api_key",
             },
-            test_output=("post_created", {
-                "post_id": "e6f36a",
-                "post_url": "https://medium.com/@username/test-post-e6f36a",
-                "author_id": "5303d74c64f66366f00cb9b2a94f3251bf5",
-                "published_at": 1442286338435
-            }),
-            test_mock={"create_post": lambda *args, **kwargs: {
-                "data": {
-                    "id": "e6f36a",
-                    "title": "Test Post",
-                    "authorId": "5303d74c64f66366f00cb9b2a94f3251bf5",
-                    "url": "https://medium.com/@username/test-post-e6f36a",
-                    "publishStatus": "public",
-                    "publishedAt": 1442286338435,
+            test_output=[
+                ("post_id", "e6f36a"),
+                ("post_url", "https://medium.com/@username/test-post-e6f36a"),
+                ("author_id", "1234567890abcdef"),
+                ("published_at", 1626282600),
+            ],
+            test_mock={
+                "create_post": lambda *args, **kwargs: {
+                    "data": {
+                        "id": "e6f36a",
+                        "url": "https://medium.com/@username/test-post-e6f36a",
+                        "authorId": "1234567890abcdef",
+                        "publishedAt": 1626282600,
+                    }
                 }
-            }}
+            },
         )
 
-    @staticmethod
-    def create_post(author_id: str, api_key: str, post_data: dict) -> dict:
-        url = f"https://api.medium.com/v1/users/{author_id}/posts"
+    def create_post(
+        self,
+        api_key,
+        author_id,
+        title,
+        content,
+        content_format,
+        tags,
+        canonical_url,
+        publish_status,
+        license,
+        notify_followers,
+    ):
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "Accept-Charset": "utf-8"
         }
-        response = requests.post(url, json=post_data, headers=headers)
-        response.raise_for_status()
+
+        data = {
+            "title": title,
+            "content": content,
+            "contentFormat": content_format,
+            "tags": tags,
+            "canonicalUrl": canonical_url,
+            "publishStatus": publish_status,
+            "license": license,
+            "notifyFollowers": notify_followers,
+        }
+
+        response = requests.post(
+            f"https://api.medium.com/v1/users/{author_id}/posts",
+            headers=headers,
+            json=data,
+        )
+
         return response.json()
 
     def run(self, input_data: Input) -> BlockOutput:
-        post_data = {
-            "title": input_data.title,
-            "contentFormat": input_data.content_format,
-            "content": input_data.content,
-            "tags": input_data.tags[:3],  # Medium only uses the first 3 tags
-            "canonicalUrl": input_data.canonical_url,
-            "publishStatus": input_data.publish_status,
-            "license": input_data.license,
-            "notifyFollowers": input_data.notify_followers
-        }
-
         try:
-            response = self.create_post(input_data.author_id, input_data.api_key.get(), post_data)
-            post_data = response["data"]
-            
-            yield "post_id", post_data["id"],
-            yield "post_url", post_data["url"],
-            yield "author_id", post_data["authorId"],
-            yield "published_at", post_data["publishedAt"],
+            response = self.create_post(
+                input_data.api_key.get_secret_value(),
+                input_data.author_id,
+                input_data.title,
+                input_data.content,
+                input_data.content_format,
+                input_data.tags,
+                input_data.canonical_url,
+                input_data.publish_status,
+                input_data.license,
+                input_data.notify_followers,
+            )
 
-        except requests.HTTPError as e:
-            error_message = str(e)
-            if e.response is not None:
-                status_code = e.response.status_code
-                if status_code == 400:
-                    error_message = "Bad Request: The request was invalid. This could be due to missing required fields, invalid values, or an incorrect author ID."
-                elif status_code == 401:
-                    error_message = "Unauthorized: The access token is invalid or has been revoked."
-                elif status_code == 403:
-                    error_message = "Forbidden: The user does not have permission to publish, or the author ID is incorrect."
-                
-                # Try to get more details from the response
-                try:
-                    response_json = e.response.json()
-                    if "errors" in response_json:
-                        error_message += f" Details: {response_json['errors']}"
-                except ValueError:
-                    pass  # The response body wasn't valid JSON
-            
-            yield "error", error_message
+            if "data" in response:
+                yield "post_id", response["data"]["id"]
+                yield "post_url", response["data"]["url"]
+                yield "author_id", response["data"]["authorId"]
+                yield "published_at", response["data"]["publishedAt"]
+            else:
+                error_message = response.get("errors", [{}])[0].get(
+                    "message", "Unknown error occurred"
+                )
+                yield "error", f"Failed to create Medium post: {error_message}"
+
         except requests.RequestException as e:
-            yield "error", f"Network error occurred: {str(e)}"
+            yield "error", f"Network error occurred while creating Medium post: {str(e)}"
         except Exception as e:
-            yield "error", f"An unexpected error occurred: {str(e)}"
+            yield "error", f"Error occurred while creating Medium post: {str(e)}"
