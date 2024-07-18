@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Iterator
 
 import praw
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SecretField
@@ -15,6 +15,8 @@ class RedditCredentials(BaseModel):
     username: BlockSecret = SecretField(key="reddit_username")
     password: BlockSecret = SecretField(key="reddit_password")
     user_agent: str = "AutoGPT:1.0 (by /u/autogpt)"
+
+    model_config = ConfigDict(title="Reddit Credentials")
 
 
 class RedditPost(BaseModel):
