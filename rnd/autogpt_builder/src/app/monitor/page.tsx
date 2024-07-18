@@ -93,10 +93,14 @@ const Monitor = () => {
     }));
   }
 
+  const column1 = "md:col-span-2 xl:col-span-3 xxl:col-span-2";
+  const column2 = "md:col-span-3 lg:col-span-2 xl:col-span-3 space-y-4";
+  const column3 = "col-span-full xl:col-span-4 xxl:col-span-5";
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10 gap-4">
       <AgentFlowList
-        className="md:col-span-2 xl:col-span-3 xxl:col-span-2"
+        className={column1}
         flows={flows}
         flowRuns={flowRuns}
         selectedFlow={selectedFlow}
@@ -106,7 +110,7 @@ const Monitor = () => {
         }}
       />
       <FlowRunsList
-        className="md:col-span-3 lg:col-span-2 xl:col-span-3 space-y-4"
+        className={column2}
         flows={flows}
         runs={
           (
@@ -119,23 +123,23 @@ const Monitor = () => {
         selectedRun={selectedRun}
         onSelectRun={r => setSelectedRun(r.id == selectedRun?.id ? null : r)}
       />
-      <div className="col-span-full xl:col-span-4 xxl:col-span-5">
-        {selectedRun && (
-          <FlowRunInfo
-            flow={selectedFlow || flows.find(f => f.id == selectedRun.graphID)!}
-            flowRun={selectedRun}
-          />
-        ) || selectedFlow && (
-          <FlowInfo
-            flow={selectedFlow}
-            flowRuns={flowRuns.filter(r => r.graphID == selectedFlow.id)}
-          />
-        ) || (
-          <Card className="p-6">
-            <FlowRunsStats flows={flows} flowRuns={flowRuns} />
-          </Card>
-        )}
-      </div>
+      {selectedRun && (
+        <FlowRunInfo
+          flow={selectedFlow || flows.find(f => f.id == selectedRun.graphID)!}
+          flowRun={selectedRun}
+          className={column3}
+        />
+      ) || selectedFlow && (
+        <FlowInfo
+          flow={selectedFlow}
+          flowRuns={flowRuns.filter(r => r.graphID == selectedFlow.id)}
+          className={column3}
+        />
+      ) || (
+        <Card className={`p-6 ${column3}`}>
+          <FlowRunsStats flows={flows} flowRuns={flowRuns} />
+        </Card>
+      )}
     </div>
   );
 };
@@ -395,11 +399,11 @@ const FlowRunStatusBadge: React.FC<{
   </Badge>
 );
 
-const FlowInfo: React.FC<{
+const FlowInfo: React.FC<React.HTMLAttributes<HTMLDivElement> & {
   flow: Graph;
   flowRuns: FlowRun[];
   flowVersion?: number | "all";
-}> = ({ flow, flowRuns, flowVersion }) => {
+}> = ({ flow, flowRuns, flowVersion, ...props }) => {
   const api = new AutoGPTServerAPI();
 
   const [flowVersions, setFlowVersions] = useState<Graph[] | null>(null);
@@ -409,7 +413,7 @@ const FlowInfo: React.FC<{
     api.getGraphAllVersions(flow.id).then(result => setFlowVersions(result));
   }, [flow.id]);
 
-  return <Card>
+  return <Card {...props}>
     <CardHeader className="flex-row justify-between space-y-0 space-x-3">
       <div>
         <CardTitle>
@@ -473,15 +477,15 @@ const FlowInfo: React.FC<{
   </Card>;
 };
 
-const FlowRunInfo: React.FC<{
+const FlowRunInfo: React.FC<React.HTMLAttributes<HTMLDivElement> & {
   flow: Graph;
   flowRun: FlowRun;
-}> = ({ flow, flowRun }) => {
+}> = ({ flow, flowRun, ...props }) => {
   if (flowRun.graphID != flow.id) {
     throw new Error(`FlowRunInfo can't be used with non-matching flowRun.flowID and flow.id`)
   }
 
-  return <Card>
+  return <Card {...props}>
     <CardHeader className="flex-row items-center justify-between space-y-0 space-x-3">
       <div>
         <CardTitle>
