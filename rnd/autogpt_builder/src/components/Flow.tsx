@@ -32,7 +32,7 @@ type CustomNodeData = {
   hardcodedValues: { [key: string]: any };
   setHardcodedValues: (values: { [key: string]: any }) => void;
   connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
-  isPropertiesOpen: boolean;
+  isOutputOpen: boolean;
   status?: string;
   output_data?: any;
   block_id: string;
@@ -206,7 +206,7 @@ const FlowEditor: React.FC<{
           ));
         },
         connections: [],
-        isPropertiesOpen: false,
+        isOutputOpen: false,
         block_id: blockId,
       },
     };
@@ -240,7 +240,7 @@ const FlowEditor: React.FC<{
             ));
           },
           connections: [],
-          isPropertiesOpen: false,
+          isOutputOpen: false,
         },
       };
       return newNode;
@@ -421,7 +421,7 @@ const FlowEditor: React.FC<{
               ...node.data,
               status: nodeExecution.status,
               output_data: nodeExecution.output_data,
-              isPropertiesOpen: true,
+              isOutputOpen: true,
             },
           };
         }

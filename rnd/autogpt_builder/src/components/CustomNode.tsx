@@ -17,13 +17,13 @@ type CustomNodeData = {
   hardcodedValues: { [key: string]: any };
   setHardcodedValues: (values: { [key: string]: any }) => void;
   connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
-  isPropertiesOpen: boolean;
+  isOutputOpen: boolean;
   status?: string;
   output_data?: any;
 };
 
 const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
-  const [isPropertiesOpen, setIsPropertiesOpen] = useState(data.isPropertiesOpen || false);
+  const [isOutputOpen, setIsOutputOpen] = useState(data.isOutputOpen || false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [keyValuePairs, setKeyValuePairs] = useState<{ key: string, value: string }[]>([]);
   const [newKey, setNewKey] = useState<string>('');
@@ -35,7 +35,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   useEffect(() => {
     if (data.output_data || data.status) {
-      setIsPropertiesOpen(true);
+      setIsOutputOpen(true);
     }
   }, [data.output_data, data.status]);
 
@@ -43,8 +43,8 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     console.log(`Node ${id} data:`, data);
   }, [id, data]);
 
-  const toggleProperties = () => {
-    setIsPropertiesOpen(!isPropertiesOpen);
+  const toggleOutput = () => {
+    setIsOutputOpen(!isOutputOpen);
   };
 
   const toggleAdvancedSettings = () => {
@@ -427,8 +427,8 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           {data.outputSchema && generateHandles(data.outputSchema, 'source')}
         </div>
       </div>
-      {isPropertiesOpen && (
-        <div className="node-properties">
+      {isOutputOpen && (
+        <div className="node-output">
           <p>
             <strong>Status:</strong>{' '}
             {typeof data.status === 'object' ? JSON.stringify(data.status) : data.status || 'N/A'}
@@ -442,8 +442,8 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         </div>
       )}
       <div className="node-footer">
-        <Button onClick={toggleProperties} className="toggle-button">
-          Toggle Properties
+        <Button onClick={toggleOutput} className="toggle-button">
+          Toggle Output
         </Button>
         {hasOptionalFields() && (
           <Button onClick={toggleAdvancedSettings} className="toggle-button">
