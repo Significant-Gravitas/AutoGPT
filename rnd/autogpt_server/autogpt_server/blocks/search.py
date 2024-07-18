@@ -170,7 +170,7 @@ class GetOpenWeatherMapWeather(Block, GetRequest):
 
         except requests.exceptions.HTTPError as http_err:
             if http_err.response.status_code == 403:
-                yield "error", f"Request to weather API failed: 403 Forbidden. Check your API key and permissions."
+                yield "error", "Request to weather API failed: 403 Forbidden. Check your API key and permissions."
             else:
                 yield "error", f"HTTP error occurred: {http_err}"
         except requests.RequestException as e:
