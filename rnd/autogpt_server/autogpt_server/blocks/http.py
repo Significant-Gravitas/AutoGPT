@@ -31,7 +31,7 @@ class HttpRequestBlock(Block):
         super().__init__(
             id="6595ae1f-b924-42cb-9a41-551a0611c4b4",
             description="This block makes an HTTP request to the given URL.",
-            categories={BlockCategory.HTTP},
+            categories={BlockCategory.BASIC, BlockCategory.HTTP},
             input_schema=HttpRequestBlock.Input,
             output_schema=HttpRequestBlock.Output,
         )
