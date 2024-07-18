@@ -157,7 +157,8 @@ class GetOpenWeatherMapWeather(Block, GetRequest):
         try:
             units = "metric" if input_data.use_celsius else "imperial"
             api_key = input_data.api_key.get_secret_value()
-            url = f"http://api.openweathermap.org/data/2.5/weather?q={quote(input_data.location)}&appid={api_key}&units={units}"
+            location = input_data.location
+            url = f"http://api.openweathermap.org/data/2.5/weather?q={quote(location)}&appid={api_key}&units={units}"
             weather_data = self.get_request(url, json=True)
 
             if 'main' in weather_data and 'weather' in weather_data:
