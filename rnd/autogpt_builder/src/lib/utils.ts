@@ -37,7 +37,7 @@ export function beautifyString(name: string): string {
     .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')  // Add space between acronyms and next word
     .replace(/_/g, ' ')  // Replace underscores with spaces
     .replace(/\b\w/g, char => char.toUpperCase());  // Capitalize the first letter of each word
-  
+
   return applyExceptions(result);
 };
 
@@ -60,3 +60,21 @@ const applyExceptions = (str: string): string => {
   });
   return str;
 };
+
+export function exportAsJSONFile(obj: object, filename: string): void {
+  // Create downloadable blob
+  const jsonString = JSON.stringify(obj, null, 2);
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  // Trigger the browser to download the blob to a file
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  // Clean up
+  URL.revokeObjectURL(url);
+}
