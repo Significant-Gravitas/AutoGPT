@@ -93,11 +93,11 @@ body:
         If you are using AutoGPT with `SMART_LLM=gpt-3.5-turbo`, your problems may be caused by
         the [limitations](https://github.com/Significant-Gravitas/AutoGPT/issues?q=is%3Aissue+label%3A%22AI+model+limitation%22) of GPT-3.5.
       options:
-        - GPT-3.5 (OpenAI)
-        - GPT-4 (OpenAI)
-        - GPT-4 (Azure)
+        - Azure
+        - Groq
         - Anthropic
         - Llamafile
+        - Other (detail in issue)
     validations:
       required: true
 
