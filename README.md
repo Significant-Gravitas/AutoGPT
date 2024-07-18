@@ -14,6 +14,8 @@ https://github.com/user-attachments/assets/8508f4dc-b362-4cab-900f-644964a96cdf
 
 The AutoGPT Builder is the frontend. It allows you to design agents using an easy flowchart style. You build your agent by connecting blocks, where each block performs a single action. It's simple and intuitive!
 
+[Read this guide](https://docs.agpt.co/server/new_blocks/) to learn how to build your own custom blocks.
+
 ### 💽 AutoGPT Server
 
 The AutoGPT Server is the backend. This is where your agents run. Once deployed, agents can be triggered by external sources and can operate continuously.
