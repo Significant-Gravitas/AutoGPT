@@ -5,15 +5,19 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api.formatters import TextFormatter
 
 from autogpt_server.data.block import Block, BlockSchema, BlockOutput
+from autogpt_server.data.model import SchemaField
 
 class YouTubeTranscriber(Block):
     class Input(BlockSchema):
-        youtube_url: str
+        youtube_url: str = SchemaField(
+            description="The URL of the YouTube video to transcribe",
+            placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        )
 
     class Output(BlockSchema):
-        video_id: str
-        transcript: str
-        error: str
+        video_id: str = SchemaField(description="The extracted YouTube video ID")
+        transcript: str = SchemaField(description="The transcribed text of the video")
+        error: str = SchemaField(description="Any error message if the transcription fails")
 
     def __init__(self):
         super().__init__(
@@ -23,12 +27,18 @@ class YouTubeTranscriber(Block):
             test_input={
                 "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
             },
-            test_output=("transcript", "Never gonna give you up\nNever gonna let you down\n...")
+            test_output=[
+                ("video_id", "dQw4w9WgXcQ"),
+                ("transcript", "Never gonna give you up\nNever gonna let you down\n..."),
+            ],
+            test_mock={
+                "extract_video_id": lambda url: "dQw4w9WgXcQ",
+                "get_transcript": lambda video_id: [{"text": "Never gonna give you up"}, {"text": "Never gonna let you down"}],
+            }
         )
 
     @staticmethod
     def extract_video_id(url: str) -> str:
-        # Try to extract the video ID from the URL
         parsed_url = urlparse(url)
         if parsed_url.netloc == 'youtu.be':
             return parsed_url.path[1:]
@@ -40,15 +50,18 @@ class YouTubeTranscriber(Block):
                 return parsed_url.path.split('/')[2]
             if parsed_url.path[:3] == '/v/':
                 return parsed_url.path.split('/')[2]
-        # If we get here, we can't handle the URL
         raise ValueError(f"Invalid YouTube URL: {url}")
+
+    @staticmethod
+    def get_transcript(video_id: str):
+        return YouTubeTranscriptApi.get_transcript(video_id)
 
     def run(self, input_data: Input) -> BlockOutput:
         try:
             video_id = self.extract_video_id(input_data.youtube_url)
             yield "video_id", video_id
 
-            transcript = YouTubeTranscriptApi.get_transcript(video_id)
+            transcript = self.get_transcript(video_id)
             formatter = TextFormatter()
             transcript_text = formatter.format_transcript(transcript)
 
