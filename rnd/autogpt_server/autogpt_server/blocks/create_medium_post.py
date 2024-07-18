@@ -11,57 +11,51 @@ class CreateMediumPostBlock(Block):
         author_id: str = SecretField(
             key="medium_author_id",
             description="""The Medium AuthorID of the user. You can get this by calling the /me endpoint of the Medium API.\n\ncurl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me" the response will contain the authorId field.""",
-            placeholder="Enter the author's Medium AuthorID"
+            placeholder="Enter the author's Medium AuthorID",
         )
         title: str = SchemaField(
             description="The title of your Medium post",
-            placeholder="Enter your post title"
+            placeholder="Enter your post title",
         )
         content: str = SchemaField(
             description="The main content of your Medium post",
-            placeholder="Enter your post content"
+            placeholder="Enter your post content",
         )
         content_format: str = SchemaField(
             description="The format of the content: 'html' or 'markdown'",
-            placeholder="html"
+            placeholder="html",
         )
         tags: List[str] = SchemaField(
             description="List of tags for your Medium post (up to 5)",
-            placeholder="['technology', 'AI', 'blogging']"
+            placeholder="['technology', 'AI', 'blogging']",
         )
         canonical_url: str = SchemaField(
             default=None,
             description="The original home of this content, if it was originally published elsewhere",
-            placeholder="https://yourblog.com/original-post"
+            placeholder="https://yourblog.com/original-post",
         )
         publish_status: str = SchemaField(
             description="The publish status: 'public', 'draft', or 'unlisted'",
-            placeholder="public"
+            placeholder="public",
         )
         license: str = SchemaField(
             description="The license of the post: 'all-rights-reserved', 'cc-40-by', 'cc-40-by-sa', 'cc-40-by-nd', 'cc-40-by-nc', 'cc-40-by-nc-nd', 'cc-40-by-nc-sa', 'cc-40-zero', 'public-domain'",
-            placeholder="all-rights-reserved"
+            placeholder="all-rights-reserved",
         )
         notify_followers: bool = SchemaField(
             description="Whether to notify followers that the user has published",
-            placeholder="False"
+            placeholder="False",
         )
         api_key: BlockSecret = SecretField(
             key="medium_api_key",
             description="""The API key for the Medium integration. You can get this from https://medium.com/me/settings/security and scrolling down to "integration Tokens".""",
-            placeholder="Enter your Medium API key"
+            placeholder="Enter your Medium API key",
         )
 
     class Output(BlockSchema):
-        post_id: str = SchemaField(
-            description="The ID of the created Medium post"
-        )
-        post_url: str = SchemaField(
-            description="The URL of the created Medium post"
-        )
-        author_id: str = SchemaField(
-            description="The Medium user ID of the author"
-        )
+        post_id: str = SchemaField(description="The ID of the created Medium post")
+        post_url: str = SchemaField(description="The URL of the created Medium post")
+        author_id: str = SchemaField(description="The Medium user ID of the author")
         published_at: int = SchemaField(
             description="The timestamp when the post was published"
         )
@@ -81,7 +75,7 @@ class CreateMediumPostBlock(Block):
                 "content_format": "html",
                 "tags": ["test", "automation"],
                 "publish_status": "draft",
-                "api_key": "your_test_api_key"
+                "api_key": "your_test_api_key",
             },
             test_output=[
                 ("post_id", "e6f36a"),
@@ -95,19 +89,31 @@ class CreateMediumPostBlock(Block):
                         "id": "e6f36a",
                         "url": "https://medium.com/@username/test-post-e6f36a",
                         "authorId": "1234567890abcdef",
-                        "publishedAt": 1626282600
+                        "publishedAt": 1626282600,
                     }
                 }
-            }
+            },
         )
 
-    def create_post(self, api_key, author_id, title, content, content_format, tags, canonical_url, publish_status, license, notify_followers):
+    def create_post(
+        self,
+        api_key,
+        author_id,
+        title,
+        content,
+        content_format,
+        tags,
+        canonical_url,
+        publish_status,
+        license,
+        notify_followers,
+    ):
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-        
+
         data = {
             "title": title,
             "content": content,
@@ -116,15 +122,15 @@ class CreateMediumPostBlock(Block):
             "canonicalUrl": canonical_url,
             "publishStatus": publish_status,
             "license": license,
-            "notifyFollowers": notify_followers
+            "notifyFollowers": notify_followers,
         }
-        
+
         response = requests.post(
             f"https://api.medium.com/v1/users/{author_id}/posts",
             headers=headers,
-            json=data
+            json=data,
         )
-        
+
         return response.json()
 
     def run(self, input_data: Input) -> BlockOutput:
@@ -139,18 +145,20 @@ class CreateMediumPostBlock(Block):
                 input_data.canonical_url,
                 input_data.publish_status,
                 input_data.license,
-                input_data.notify_followers
+                input_data.notify_followers,
             )
-            
-            if 'data' in response:
-                yield "post_id", response['data']['id']
-                yield "post_url", response['data']['url']
-                yield "author_id", response['data']['authorId']
-                yield "published_at", response['data']['publishedAt']
+
+            if "data" in response:
+                yield "post_id", response["data"]["id"]
+                yield "post_url", response["data"]["url"]
+                yield "author_id", response["data"]["authorId"]
+                yield "published_at", response["data"]["publishedAt"]
             else:
-                error_message = response.get('errors', [{}])[0].get('message', 'Unknown error occurred')
+                error_message = response.get("errors", [{}])[0].get(
+                    "message", "Unknown error occurred"
+                )
                 yield "error", f"Failed to create Medium post: {error_message}"
-        
+
         except requests.RequestException as e:
             yield "error", f"Network error occurred while creating Medium post: {str(e)}"
         except Exception as e:
