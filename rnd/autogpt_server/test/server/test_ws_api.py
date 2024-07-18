@@ -75,7 +75,6 @@ async def test_websocket_router_invalid_method(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
     mock_websocket.receive_text.side_effect = [
-        
         WsMessage(method=Methods.EXECUTION_EVENT).model_dump_json(),
         WebSocketDisconnect(),
     ]

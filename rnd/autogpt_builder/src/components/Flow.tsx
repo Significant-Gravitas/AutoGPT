@@ -15,11 +15,13 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import CustomNode from './CustomNode';
 import './flow.css';
-import AutoGPTServerAPI, { Block, Flow } from '@/lib/autogpt_server_api';
+import AutoGPTServerAPI, { Block, Graph } from '@/lib/autogpt_server_api';
 import { ObjectSchema } from '@/lib/types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ChevronRight, ChevronLeft } from "lucide-react";
+import { deepEquals } from '@/lib/utils';
+import { beautifyString } from '@/lib/utils';
 
 
 type CustomNodeData = {
@@ -58,7 +60,7 @@ const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id
         />
         {filteredNodes.map((node) => (
           <div key={node.id} className="sidebarNodeRowStyle dark-theme">
-            <span>{node.name}</span>
+            <span>{beautifyString(node.name).replace(/Block$/, '')}</span>
             <Button onClick={() => addNode(node.id, node.name)}>Add</Button>
           </div>
         ))}
@@ -66,21 +68,39 @@ const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id
     );
   };
 
-const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
-  flowID,
-  className,
-}) => {
+const FlowEditor: React.FC<{
+  flowID?: string;
+  template?: boolean;
+  className?: string;
+}> = ({ flowID, template, className }) => {
   const [nodes, setNodes] = useState<Node<CustomNodeData>[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [nodeId, setNodeId] = useState<number>(1);
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
-  const [agentId, setAgentId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>('');
   const [agentName, setAgentName] = useState<string>('');
 
   const apiUrl = process.env.AGPT_SERVER_URL!;
-  const api = new AutoGPTServerAPI(apiUrl);
+  const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
+
+  useEffect(() => {
+    api.connectWebSocket()
+      .then(() => {
+        console.log('WebSocket connected');
+        api.onWebSocketMessage('execution_event', (data) => {
+          updateNodesWithExecutionData([data]);
+        });
+      })
+      .catch((error) => {
+        console.error('Failed to connect WebSocket:', error);
+      });
+
+    return () => {
+      api.disconnectWebSocket();
+    };
+  }, [api]);
 
   useEffect(() => {
     api.getBlocks()
@@ -88,13 +108,13 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
       .catch();
   }, []);
 
-  // Load existing flow
+  // Load existing graph
   useEffect(() => {
     if (!flowID || availableNodes.length == 0) return;
 
-    api.getFlow(flowID)
-      .then(flow => loadFlow(flow));
-  }, [flowID, availableNodes]);
+    (template ? api.getTemplate(flowID) : api.getGraph(flowID))
+      .then(graph => loadGraph(graph));
+  }, [flowID, template, availableNodes]);
 
   const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
 
@@ -195,10 +215,12 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     setNodeId((prevId) => prevId + 1);
   };
 
-  function loadFlow(flow: Flow) {
-    setAgentId(flow.id);
+  function loadGraph(graph: Graph) {
+    setSavedAgent(graph);
+    setAgentName(graph.name);
+    setAgentDescription(graph.description);
 
-    setNodes(flow.nodes.map(node => {
+    setNodes(graph.nodes.map(node => {
       const block = availableNodes.find(block => block.id === node.block_id)!;
       const newNode = {
         id: node.id,
@@ -224,7 +246,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
       return newNode;
     }));
 
-    setEdges(flow.links.map(link => ({
+    setEdges(graph.links.map(link => ({
       id: `${link.source_id}_${link.source_name}_${link.sink_id}_${link.sink_name}`,
       source: link.source_id,
       target: link.sink_id,
@@ -271,121 +293,115 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     return inputData;
   };
 
-  const saveAgent = async () => {
-    try {
+  async function saveAgent (asTemplate: boolean = false) {
+    setNodes((nds) =>
+      nds.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          status: undefined,
+        },
+      }))
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    console.log("All nodes before formatting:", nodes);
+    const blockIdToNodeIdMap = {};
 
-      setNodes((nds) =>
-        nds.map((node) => ({
-          ...node,
-          data: {
-            ...node.data,
-            status: null,
-          },
-        }))
-      );
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      console.log("All nodes before formatting:", nodes);
-      const blockIdToNodeIdMap = {};
-
-      const formattedNodes = nodes.map(node => {
-        nodes.forEach(node => {
-          const key = `${node.data.block_id}_${node.position.x}_${node.position.y}`;
-          blockIdToNodeIdMap[key] = node.id;
-        });
-        const inputDefault = prepareNodeInputData(node, nodes, edges);
-        const inputNodes = edges
-          .filter(edge => edge.target === node.id)
-          .map(edge => ({
-            name: edge.targetHandle || '',
-            node_id: edge.source,
-          }));
-
-        const outputNodes = edges
-          .filter(edge => edge.source === node.id)
-          .map(edge => ({
-            name: edge.sourceHandle || '',
-            node_id: edge.target,
-          }));
-
-        return {
-          id: node.id,
-          block_id: node.data.block_id,
-          input_default: inputDefault,
-          input_nodes: inputNodes,
-          output_nodes: outputNodes,
-          metadata: { position: node.position }
-        };
+    const formattedNodes = nodes.map(node => {
+      nodes.forEach(node => {
+        const key = `${node.data.block_id}_${node.position.x}_${node.position.y}`;
+        blockIdToNodeIdMap[key] = node.id;
       });
+      const inputDefault = prepareNodeInputData(node, nodes, edges);
+      const inputNodes = edges
+        .filter(edge => edge.target === node.id)
+        .map(edge => ({
+          name: edge.targetHandle || '',
+          node_id: edge.source,
+        }));
 
-      const links = edges.map(edge => ({
-        source_id: edge.source,
-        sink_id: edge.target,
-        source_name: edge.sourceHandle || '',
-        sink_name: edge.targetHandle || ''
-      }));
+      const outputNodes = edges
+        .filter(edge => edge.source === node.id)
+        .map(edge => ({
+          name: edge.sourceHandle || '',
+          node_id: edge.target,
+        }));
 
-      const payload = {
-        id: agentId || '',
-        name: agentName || 'Agent Name',
-        description: agentDescription || 'Agent Description',
-        nodes: formattedNodes,
-        links: links  // Ensure this field is included
+      return {
+        id: node.id,
+        block_id: node.data.block_id,
+        input_default: inputDefault,
+        input_nodes: inputNodes,
+        output_nodes: outputNodes,
+        metadata: { position: node.position }
       };
+    });
 
-      const createData = await api.createFlow(payload);
-      const newAgentId = createData.id;
-      setAgentId(newAgentId);
-      console.log('Response from the API:', JSON.stringify(createData, null, 2));
+    const links = edges.map(edge => ({
+      source_id: edge.source,
+      sink_id: edge.target,
+      source_name: edge.sourceHandle || '',
+      sink_name: edge.targetHandle || ''
+    }));
 
-      // Update the node IDs in the frontend
-      const updatedNodes = createData.nodes.map(backendNode => {
-        const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
-        const frontendNodeId = blockIdToNodeIdMap[key];
-        const frontendNode = nodes.find(node => node.id === frontendNodeId);
+    const payload = {
+      id: savedAgent?.id!,
+      name: agentName || 'Agent Name',
+      description: agentDescription || 'Agent Description',
+      nodes: formattedNodes,
+      links: links  // Ensure this field is included
+    };
 
-        return frontendNode
-          ? {
-              ...frontendNode,
-              position: backendNode.metadata.position,
-              data: {
-                ...frontendNode.data,
-                backend_id: backendNode.id,
-              },
-            }
-          : null;
-      }).filter(node => node !== null);
-
-      setNodes(updatedNodes);
-
-      return newAgentId;
-    } catch (error) {
-      console.error('Error running agent:', error);
+    if (savedAgent && deepEquals(payload, savedAgent)) {
+      console.debug("No need to save: Graph is the same as version on server");
+      return;
+    } else {
+      console.debug("Saving new Graph version; old vs new:", savedAgent, payload);
     }
+
+    const newSavedAgent = savedAgent
+      ? await (savedAgent.is_template
+        ? api.updateTemplate(savedAgent.id, payload) 
+        : api.updateGraph(savedAgent.id, payload))
+      : await (asTemplate
+        ? api.createTemplate(payload)
+        : api.createGraph(payload));
+    console.debug('Response from the API:', newSavedAgent);
+    setSavedAgent(newSavedAgent);
+
+    // Update the node IDs in the frontend
+    const updatedNodes = newSavedAgent.nodes.map(backendNode => {
+      const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
+      const frontendNodeId = blockIdToNodeIdMap[key];
+      const frontendNode = nodes.find(node => node.id === frontendNodeId);
+
+      return frontendNode
+        ? {
+            ...frontendNode,
+            position: backendNode.metadata.position,
+            data: {
+              ...frontendNode.data,
+              backend_id: backendNode.id,
+            },
+          }
+        : null;
+    }).filter(node => node !== null);
+
+    setNodes(updatedNodes);
+
+    return newSavedAgent.id;
   };
 
   const runAgent = async () => {
     try {
       const newAgentId = await saveAgent();
       if (!newAgentId) {
-        console.error('Error saving agent');
+        console.error('Error saving agent; aborting run');
         return;
       }
 
-      const executeData = await api.executeFlow(newAgentId);
-      const runId = executeData.id;
-
-      const pollExecution = async () => {
-        const data = await api.getFlowExecutionInfo(newAgentId, runId);
-        updateNodesWithExecutionData(data);
-
-        if (data.every((node) => node.status === 'COMPLETED')) {
-          console.log('All nodes completed execution');
-        } else {
-          setTimeout(pollExecution, 1000);
-        }
-      };
-
-      pollExecution();
+      api.subscribeToExecution(newAgentId);
+      api.runGraph(newAgentId);
 
     } catch (error) {
       console.error('Error running agent:', error);
@@ -456,8 +472,15 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
             onChange={(e) => setAgentDescription(e.target.value)}
           />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>  {/* Added gap for spacing */}
-            <Button onClick={saveAgent}>Save Agent</Button>
-            <Button onClick={runAgent}>Save & Run Agent</Button>
+            <Button onClick={() => saveAgent(savedAgent?.is_template)}>
+              Save {savedAgent?.is_template ? "Template" : "Agent"}
+            </Button>
+            {!savedAgent?.is_template &&
+              <Button onClick={runAgent}>Save & Run Agent</Button>
+            }
+            {!savedAgent &&
+              <Button onClick={() => saveAgent(true)}>Save as Template</Button>
+            }
           </div>
         </div>
       </ReactFlow>

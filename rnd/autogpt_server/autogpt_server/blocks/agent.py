@@ -7,22 +7,20 @@ from typing import TYPE_CHECKING, Iterator
 
 from autogpt.agents.agent import Agent, AgentSettings
 from autogpt.app.config import ConfigBuilder
-from autogpt_server.data.block import Block, BlockFieldSecret, BlockOutput, BlockSchema
 from forge.agent.components import AgentComponent
-from forge.agent.protocols import (
-    CommandProvider,
-)
+from forge.agent.protocols import CommandProvider
 from forge.command import command
 from forge.command.command import Command
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.file_storage.base import FileStorage
-from forge.llm.providers import (
-    MultiProvider,
-)
+from forge.llm.providers import MultiProvider
 from forge.llm.providers.openai import OpenAICredentials, OpenAIProvider
 from forge.llm.providers.schema import ModelProviderName
 from forge.models.json_schema import JSONSchema
 from pydantic import Field, SecretStr
+
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
 
 if TYPE_CHECKING:
     from autogpt.app.config import AppConfig
@@ -37,7 +35,7 @@ class BlockAgentSettings(AgentSettings):
 class OutputComponent(CommandProvider):
     def get_commands(self) -> Iterator[Command]:
         yield self.output
-    
+
     @command(
         parameters={
             "output": JSONSchema(
@@ -70,19 +68,39 @@ class BlockAgent(Agent):
             if not isinstance(attr_value, AgentComponent):
                 continue
             component_name = type(attr_value).__name__
-            if component_name != "SystemComponent" and component_name not in settings.enabled_components:
+            if (
+                component_name != "SystemComponent"
+                and component_name not in settings.enabled_components
+            ):
                 delattr(self, attr_name)
 
 
 class AutoGPTAgentBlock(Block):
     class Input(BlockSchema):
-        task: str
-        input: str
-        openai_api_key: BlockFieldSecret = BlockFieldSecret(key="openai_api_key")
-        enabled_components: list[str] = Field(default_factory=lambda: [OutputComponent.__name__])
-        disabled_commands: list[str] = Field(default_factory=list)
-        fast_mode: bool = False
-    
+        task: str = SchemaField(
+            description="Task description for the agent.",
+            placeholder="Calculate and use Output command",
+        )
+        input: str = SchemaField(
+            description="Input data for the task",
+            placeholder="8 + 5",
+        )
+        openai_api_key: BlockSecret = SecretField(
+            key="openai_api_key", description="OpenAI API key"
+        )
+        enabled_components: list[str] = Field(
+            default_factory=lambda: [OutputComponent.__name__],
+            description="List of [AgentComponents](https://docs.agpt.co/forge/components/built-in-components/) enabled for the agent.",
+        )
+        disabled_commands: list[str] = Field(
+            default_factory=list,
+            description="List of commands from enabled components to disable.",
+        )
+        fast_mode: bool = Field(
+            False,
+            description="If true uses fast llm, otherwise uses smart and slow llm.",
+        )
+
     class Output(BlockSchema):
         result: str
 
@@ -92,7 +110,7 @@ class AutoGPTAgentBlock(Block):
             input_schema=AutoGPTAgentBlock.Input,
             output_schema=AutoGPTAgentBlock.Output,
             test_input={
-                "task": "Make calculations and use output command to output the result.",
+                "task": "Make calculations and use output command to output the result",
                 "input": "5 + 3",
                 "openai_api_key": "openai_api_key",
                 "enabled_components": [OutputComponent.__name__],
@@ -105,7 +123,7 @@ class AutoGPTAgentBlock(Block):
             test_mock={
                 "get_provider": lambda _: MultiProvider(),
                 "get_result": lambda _: "8",
-            }
+            },
         )
 
     @staticmethod
@@ -114,7 +132,7 @@ class AutoGPTAgentBlock(Block):
         settings = OpenAIProvider.default_settings.model_copy()
         settings.credentials = OpenAICredentials(api_key=SecretStr(openai_api_key))
         openai_provider = OpenAIProvider(settings=settings)
-        
+
         multi_provider = MultiProvider()
         # HACK: Add OpenAI provider to the multi provider with api key
         multi_provider._provider_instances[ModelProviderName.OPENAI] = openai_provider
@@ -123,18 +141,17 @@ class AutoGPTAgentBlock(Block):
 
     @staticmethod
     def get_result(agent: BlockAgent) -> str:
-        # Execute agent
+        error: Exception | None = None
+
         for tries in range(3):
             try:
                 proposal = asyncio.run(agent.propose_action())
-                break
+                result = asyncio.run(agent.execute(proposal))
+                return str(result)
             except Exception as e:
-                if tries == 2:
-                    raise e
+                error = e
 
-        result = asyncio.run(agent.execute(proposal))
-
-        return str(result)
+        raise error or Exception("Failed to get result")
 
     def run(self, input_data: Input) -> BlockOutput:
         # Set up configuration
@@ -157,13 +174,12 @@ class AutoGPTAgentBlock(Block):
             agent_id="TemporaryAgentID",
             name="WrappedAgent",
             description="Wrapped agent for the Agent Server.",
-            task=f"Your task: {input_data.task}\n"
-                 f"Input data: {input_data.input}",
+            task=f"Your task: {input_data.task}\n" f"Input data: {input_data.input}",
             enabled_components=input_data.enabled_components,
         )
         # Switch big brain mode
         state.config.big_brain = not input_data.fast_mode
-        provider = self.get_provider(input_data.openai_api_key.get())
+        provider = self.get_provider(input_data.openai_api_key.get_secret_value())
 
         agent = BlockAgent(state, provider, file_storage, config)
 

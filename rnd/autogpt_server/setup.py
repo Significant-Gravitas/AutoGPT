@@ -87,7 +87,9 @@ setup(
             "excludes": ["readability.compat.two"],
             "include_files": [
                 # source, destination in the bundle
-                # (../frontend, example_files) would also work but you'd need to load the frontend differently in the data.py to correctly get the path when frozen
+                # (../frontend, example_files) would also work, but you'd need to load
+                # the frontend differently in the data.py to correctly
+                # get the path when frozen.
                 ("../example_files", "example_files"),
             ],
         },
@@ -101,7 +103,6 @@ setup(
             "applications_shortcut": True,
             "volume_label": "AutoGPTServer",
             "background": "builtin-arrow",
-
             "license": {
                 "default-language": "en_US",
                 "licenses": {"en_US": license_file},
@@ -112,7 +113,8 @@ setup(
                         "Disagree",
                         "Print",
                         "Save",
-                        "If you agree, click Agree to continue the installation. If you do not agree, click Disagree to cancel the installation.",
+                        "If you agree, click Agree to continue the installation. If "
+                        "you do not agree, click Disagree to cancel the installation.",
                     ]
                 },
             },
