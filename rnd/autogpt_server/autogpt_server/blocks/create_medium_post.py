@@ -1,7 +1,10 @@
-from autogpt_server.data.block import Block, BlockSchema, BlockOutput
-from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
-import requests
 from typing import List
+
+import requests
+
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
+
 
 class CreateMediumPostBlock(Block):
     class Input(BlockSchema):
