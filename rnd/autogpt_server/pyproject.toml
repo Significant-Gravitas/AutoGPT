@@ -35,6 +35,7 @@ groq = "^0.8.0"
 anthropic = "^0.25.1"
 
 
+ollama = "^0.3.0"
 [tool.poetry.group.dev.dependencies]
 cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main", develop = true }
 poethepoet = "^0.26.1"
@@ -53,8 +54,8 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.scripts]
 app = "autogpt_server.app:main"
 cli = "autogpt_server.cli:main"
-format = "code:format"
-lint = "code:lint"
+format = "linter:format"
+lint = "linter:lint"
 
 # https://poethepoet.natn.io/index.html
 [tool.poe]
