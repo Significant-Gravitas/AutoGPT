@@ -42,9 +42,9 @@ class ValueBlock(Block):
     def __init__(self):
         super().__init__(
             id="1ff065e9-88e8-4358-9d82-8dc91f622ba9",
-            description="This block forward the `input` pin to `output` pin. "
+            description="This block forwards the `input` pin to `output` pin. "
             "If the `data` is provided, it will prioritize forwarding `data` "
-            "over `input`. By connecting the `output` pin to `data` pin,"
+            "over `input`. By connecting the `output` pin to `data` pin, "
             "you can retain a constant value for the next executions.",
             categories={BlockCategory.BASIC},
             input_schema=ValueBlock.Input,
