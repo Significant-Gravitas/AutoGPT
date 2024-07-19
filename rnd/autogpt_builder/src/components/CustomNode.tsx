@@ -17,13 +17,13 @@ type CustomNodeData = {
   hardcodedValues: { [key: string]: any };
   setHardcodedValues: (values: { [key: string]: any }) => void;
   connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
-  isPropertiesOpen: boolean;
+  isOutputOpen: boolean;
   status?: string;
   output_data?: any;
 };
 
 const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
-  const [isPropertiesOpen, setIsPropertiesOpen] = useState(data.isPropertiesOpen || false);
+  const [isOutputOpen, setIsOutputOpen] = useState(data.isOutputOpen || false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [keyValuePairs, setKeyValuePairs] = useState<{ key: string, value: string }[]>([]);
   const [newKey, setNewKey] = useState<string>('');
@@ -35,7 +35,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   useEffect(() => {
     if (data.output_data || data.status) {
-      setIsPropertiesOpen(true);
+      setIsOutputOpen(true);
     }
   }, [data.output_data, data.status]);
 
@@ -43,8 +43,8 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     console.log(`Node ${id} data:`, data);
   }, [id, data]);
 
-  const toggleProperties = () => {
-    setIsPropertiesOpen(!isPropertiesOpen);
+  const toggleOutput = () => {
+    setIsOutputOpen(!isOutputOpen);
   };
 
   const toggleAdvancedSettings = () => {
@@ -162,11 +162,19 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       return <div className="connected-input">Connected</div>;
     }
 
-    const renderClickableInput = (value: string | null = null, placeholder: string = "") => (
-      <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
-        {value || <i className="text-gray-500">{placeholder}</i>}
-      </div>
-    );
+    const renderClickableInput = (value: string | null = null, placeholder: string = "", secret: boolean = false) => {
+
+      // if secret is true, then the input field will be a password field if the value is not null
+      return secret ? (
+        <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
+          {value ? <i className="text-gray-500">********</i> : <i className="text-gray-500">{placeholder}</i>}
+        </div>
+      ) : (
+        <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
+          {value || <i className="text-gray-500">{placeholder}</i>}
+        </div>
+      )
+    };
 
     if (schema.type === 'object' && schema.properties) {
       return (
@@ -288,28 +296,42 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
     switch (schema.type) {
       case 'string':
-        return schema.enum ? (
-          <div key={fullKey} className="input-container">
-            <select
-              value={value || ''}
-              onChange={(e) => handleInputChange(fullKey, e.target.value)}
-              className="select-input"
-            >
-              <option value="">Select {displayKey}</option>
-              {schema.enum.map((option: string) => (
-                <option key={option} value={option}>
-                  {beautifyString(option)}
-                </option>
-              ))}
-            </select>
+        if (schema.enum) {
+
+          return (
+            <div key={fullKey} className="input-container">
+              <select
+                value={value || ''}
+                onChange={(e) => handleInputChange(fullKey, e.target.value)}
+                className="select-input"
+              >
+                <option value="">Select {displayKey}</option>
+                {schema.enum.map((option: string) => (
+                  <option key={option} value={option}>
+                    {beautifyString(option)}
+                  </option>
+                ))}
+              </select>
+              {error && <span className="error-message">{error}</span>}
+            </div>
+          )
+        }
+
+        else if (schema.secret) {
+          return (<div key={fullKey} className="input-container">
+            {renderClickableInput(value, schema.placeholder || `Enter ${displayKey}`, true)}
             {error && <span className="error-message">{error}</span>}
-          </div>
-        ) : (
-          <div key={fullKey} className="input-container">
-            {renderClickableInput(value, schema.placeholder || `Enter ${displayKey}`)}
-            {error && <span className="error-message">{error}</span>}
-          </div>
-        );
+          </div>)
+
+        }
+        else {
+          return (
+            <div key={fullKey} className="input-container">
+              {renderClickableInput(value, schema.placeholder || `Enter ${displayKey}`)}
+              {error && <span className="error-message">{error}</span>}
+            </div>
+          );
+        }
       case 'boolean':
         return (
           <div key={fullKey} className="input-container">
@@ -427,9 +449,8 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           {data.outputSchema && generateHandles(data.outputSchema, 'source')}
         </div>
       </div>
-      {isPropertiesOpen && (
-        <div className="node-properties">
-          <h4>Node Output</h4>
+      {isOutputOpen && (
+        <div className="node-output">
           <p>
             <strong>Status:</strong>{' '}
             {typeof data.status === 'object' ? JSON.stringify(data.status) : data.status || 'N/A'}
@@ -443,8 +464,8 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         </div>
       )}
       <div className="node-footer">
-        <Button onClick={toggleProperties} className="toggle-button">
-          Toggle Properties
+        <Button onClick={toggleOutput} className="toggle-button">
+          Toggle Output
         </Button>
         {hasOptionalFields() && (
           <Button onClick={toggleAdvancedSettings} className="toggle-button">
