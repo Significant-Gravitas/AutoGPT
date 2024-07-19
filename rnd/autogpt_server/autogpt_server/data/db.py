@@ -1,13 +1,13 @@
+import os
 from uuid import uuid4
 
+from dotenv import load_dotenv
 from prisma import Prisma
 from pydantic import BaseModel, Field, field_validator
-import os
-from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv('DATABASE_URL')
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 prisma = Prisma(auto_register=True, datasource={"url": DATABASE_URL})
 
