@@ -3,28 +3,31 @@ import { Handle, Position, NodeProps } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './customnode.css';
 import ModalComponent from './ModalComponent';
-
-type Schema = {
-  type: string;
-  properties: { [key: string]: any };
-  required?: string[];
-};
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { BlockSchema } from '@/lib/types';
+import SchemaTooltip from './SchemaTooltip';
+import { beautifyString } from '@/lib/utils';
 
 type CustomNodeData = {
   blockType: string;
   title: string;
-  inputSchema: Schema;
-  outputSchema: Schema;
+  inputSchema: BlockSchema;
+  outputSchema: BlockSchema;
   hardcodedValues: { [key: string]: any };
   setHardcodedValues: (values: { [key: string]: any }) => void;
   connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
-  isPropertiesOpen: boolean;
+  isOutputOpen: boolean;
   status?: string;
   output_data?: any;
 };
 
 const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
-  const [isPropertiesOpen, setIsPropertiesOpen] = useState(data.isPropertiesOpen || false);
+  const [isOutputOpen, setIsOutputOpen] = useState(data.isOutputOpen || false);
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  const [keyValuePairs, setKeyValuePairs] = useState<{ key: string, value: string }[]>([]);
+  const [newKey, setNewKey] = useState<string>('');
+  const [newValue, setNewValue] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [modalValue, setModalValue] = useState<string>('');
@@ -32,7 +35,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   useEffect(() => {
     if (data.output_data || data.status) {
-      setIsPropertiesOpen(true);
+      setIsOutputOpen(true);
     }
   }, [data.output_data, data.status]);
 
@@ -40,11 +43,21 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     console.log(`Node ${id} data:`, data);
   }, [id, data]);
 
-  const toggleProperties = () => {
-    setIsPropertiesOpen(!isPropertiesOpen);
+  const toggleOutput = () => {
+    setIsOutputOpen(!isOutputOpen);
   };
 
-  const generateHandles = (schema: Schema, type: 'source' | 'target') => {
+  const toggleAdvancedSettings = () => {
+    setIsAdvancedOpen(!isAdvancedOpen);
+  };
+
+  const hasOptionalFields = () => {
+    return data.inputSchema && Object.keys(data.inputSchema.properties).some((key) => {
+      return !(data.inputSchema.required?.includes(key));
+    });
+  };
+
+  const generateHandles = (schema: BlockSchema, type: 'source' | 'target') => {
     if (!schema?.properties) return null;
     const keys = Object.keys(schema.properties);
     return keys.map((key) => (
@@ -55,19 +68,19 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               type={type}
               position={Position.Left}
               id={key}
-              style={{ background: '#555', borderRadius: '50%' }}
+              style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
             />
-            <span className="handle-label">{key}</span>
+            <span className="handle-label">{schema.properties[key].title || beautifyString(key)}</span>
           </>
         )}
         {type === 'source' && (
           <>
-            <span className="handle-label">{key}</span>
+            <span className="handle-label">{schema.properties[key].title || beautifyString(key)}</span>
             <Handle
               type={type}
               position={Position.Right}
               id={key}
-              style={{ background: '#555', borderRadius: '50%' }}
+              style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
             />
           </>
         )}
@@ -76,41 +89,24 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   };
 
   const handleInputChange = (key: string, value: any) => {
-    const newValues = { ...data.hardcodedValues, [key]: value };
+    const keys = key.split('.');
+    const newValues = JSON.parse(JSON.stringify(data.hardcodedValues));
+    let current = newValues;
+
+    for (let i = 0; i < keys.length - 1; i++) {
+      if (!current[keys[i]]) current[keys[i]] = {};
+      current = current[keys[i]];
+    }
+    current[keys[keys.length - 1]] = value;
+
     console.log(`Updating hardcoded values for node ${id}:`, newValues);
     data.setHardcodedValues(newValues);
     setErrors((prevErrors) => ({ ...prevErrors, [key]: null }));
   };
 
-  const validateInput = (key: string, value: any, schema: any) => {
-    switch (schema.type) {
-      case 'string':
-        if (schema.enum && !schema.enum.includes(value)) {
-          return `Invalid value for ${key}`;
-        }
-        break;
-      case 'boolean':
-        if (typeof value !== 'boolean') {
-          return `Invalid value for ${key}`;
-        }
-        break;
-      case 'number':
-        if (typeof value !== 'number') {
-          return `Invalid value for ${key}`;
-        }
-        break;
-      case 'array':
-        if (!Array.isArray(value) || value.some((item: any) => typeof item !== 'string')) {
-          return `Invalid value for ${key}`;
-        }
-        if (schema.minItems && value.length < schema.minItems) {
-          return `${key} requires at least ${schema.minItems} items`;
-        }
-        break;
-      default:
-        return null;
-    }
-    return null;
+  const getValue = (key: string) => {
+    const keys = key.split('.');
+    return keys.reduce((acc, k) => (acc && acc[k] !== undefined) ? acc[k] : '', data.hardcodedValues);
   };
 
   const isHandleConnected = (key: string) => {
@@ -123,113 +119,242 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     });
   };
 
+  const handleAddProperty = () => {
+    if (newKey && newValue) {
+      const newPairs = [...keyValuePairs, { key: newKey, value: newValue }];
+      setKeyValuePairs(newPairs);
+      setNewKey('');
+      setNewValue('');
+      const expectedFormat = newPairs.reduce((acc, pair) => ({ ...acc, [pair.key]: pair.value }), {});
+      handleInputChange('expected_format', expectedFormat);
+    }
+  };
+
   const handleInputClick = (key: string) => {
     setActiveKey(key);
-    setModalValue(data.hardcodedValues[key] || '');
+    const value = getValue(key);
+    setModalValue(typeof value === 'object' ? JSON.stringify(value, null, 2) : value);
     setIsModalOpen(true);
   };
 
   const handleModalSave = (value: string) => {
     if (activeKey) {
-      handleInputChange(activeKey, value);
+      try {
+        const parsedValue = JSON.parse(value);
+        handleInputChange(activeKey, parsedValue);
+      } catch (error) {
+        handleInputChange(activeKey, value);
+      }
     }
     setIsModalOpen(false);
     setActiveKey(null);
   };
 
-  const addArrayItem = (key: string) => {
-    const currentValues = data.hardcodedValues[key] || [];
-    handleInputChange(key, [...currentValues, '']);
-  };
+  const renderInputField = (key: string, schema: any, parentKey: string = '', displayKey: string = ''): JSX.Element => {
+    const fullKey = parentKey ? `${parentKey}.${key}` : key;
+    const error = errors[fullKey];
+    const value = getValue(fullKey);
+    if (displayKey === '') {
+      displayKey = key;
+    }
 
-  const removeArrayItem = (key: string, index: number) => {
-    const currentValues = data.hardcodedValues[key] || [];
-    currentValues.splice(index, 1);
-    handleInputChange(key, [...currentValues]);
-  };
+    if (isHandleConnected(fullKey)) {
+      return <div className="connected-input">Connected</div>;
+    }
 
-  const handleArrayItemChange = (key: string, index: number, value: string) => {
-    const currentValues = data.hardcodedValues[key] || [];
-    currentValues[index] = value;
-    handleInputChange(key, [...currentValues]);
-  };
+    const renderClickableInput = (value: string | null = null, placeholder: string = "", secret: boolean = false) => {
 
-  const addDynamicTextInput = () => {
-    const dynamicKeyPrefix = 'texts_$_';
-    const currentKeys = Object.keys(data.hardcodedValues).filter(key => key.startsWith(dynamicKeyPrefix));
-    const nextIndex = currentKeys.length + 1;
-    const newKey = `${dynamicKeyPrefix}${nextIndex}`;
-    handleInputChange(newKey, '');
-  };
+      // if secret is true, then the input field will be a password field if the value is not null
+      return secret ? (
+        <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
+          {value ? <i className="text-gray-500">********</i> : <i className="text-gray-500">{placeholder}</i>}
+        </div>
+      ) : (
+        <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
+          {value || <i className="text-gray-500">{placeholder}</i>}
+        </div>
+      )
+    };
 
-  const removeDynamicTextInput = (key: string) => {
-    const newValues = { ...data.hardcodedValues };
-    delete newValues[key];
-    data.setHardcodedValues(newValues);
-  };
-
-  const handleDynamicTextInputChange = (key: string, value: string) => {
-    handleInputChange(key, value);
-  };
-
-  const renderInputField = (key: string, schema: any) => {
-    const error = errors[key];
-    switch (schema.type) {
-      case 'string':
-        return schema.enum ? (
-          <div key={key} className="input-container">
-            <select
-              value={data.hardcodedValues[key] || ''}
-              onChange={(e) => handleInputChange(key, e.target.value)}
-              className="select-input"
-            >
-              {schema.enum.map((option: string) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-            {error && <span className="error-message">{error}</span>}
-          </div>
-        ) : (
-          <div key={key} className="input-container">
-            <div className="clickable-input" onClick={() => handleInputClick(key)}>
-              {data.hardcodedValues[key] || `Enter ${key}`}
+    if (schema.type === 'object' && schema.properties) {
+      return (
+        <div key={fullKey} className="object-input">
+          <strong>{displayKey}:</strong>
+          {Object.entries(schema.properties).map(([propKey, propSchema]: [string, any]) => (
+            <div key={`${fullKey}.${propKey}`} className="nested-input">
+              {renderInputField(propKey, propSchema, fullKey, propSchema.title || beautifyString(propKey))}
             </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (schema.type === 'object' && schema.additionalProperties) {
+      const objectValue = value || {};
+      return (
+        <div key={fullKey} className="object-input">
+          <strong>{displayKey}:</strong>
+          {Object.entries(objectValue).map(([propKey, propValue]: [string, any]) => (
+            <div key={`${fullKey}.${propKey}`} className="nested-input">
+              <div className="clickable-input" onClick={() => handleInputClick(`${fullKey}.${propKey}`)}>
+                {beautifyString(propKey)}: {typeof propValue === 'object' ? JSON.stringify(propValue, null, 2) : propValue}
+              </div>
+              <Button onClick={() => handleInputChange(`${fullKey}.${propKey}`, undefined)} className="array-item-remove">
+                &times;
+              </Button>
+            </div>
+          ))}
+          {key === 'expected_format' && (
+            <div className="nested-input">
+              {keyValuePairs.map((pair, index) => (
+                <div key={index} className="key-value-input">
+                  <Input
+                    type="text"
+                    placeholder="Key"
+                    value={beautifyString(pair.key)}
+                    onChange={(e) => {
+                      const newPairs = [...keyValuePairs];
+                      newPairs[index].key = e.target.value;
+                      setKeyValuePairs(newPairs);
+                      const expectedFormat = newPairs.reduce((acc, pair) => ({ ...acc, [pair.key]: pair.value }), {});
+                      handleInputChange('expected_format', expectedFormat);
+                    }}
+                  />
+                  <Input
+                    type="text"
+                    placeholder="Value"
+                    value={beautifyString(pair.value)}
+                    onChange={(e) => {
+                      const newPairs = [...keyValuePairs];
+                      newPairs[index].value = e.target.value;
+                      setKeyValuePairs(newPairs);
+                      const expectedFormat = newPairs.reduce((acc, pair) => ({ ...acc, [pair.key]: pair.value }), {});
+                      handleInputChange('expected_format', expectedFormat);
+                    }}
+                  />
+                </div>
+              ))}
+              <div className="key-value-input">
+                <Input
+                  type="text"
+                  placeholder="Key"
+                  value={newKey}
+                  onChange={(e) => setNewKey(e.target.value)}
+                />
+                <Input
+                  type="text"
+                  placeholder="Value"
+                  value={newValue}
+                  onChange={(e) => setNewValue(e.target.value)}
+                />
+              </div>
+              <Button onClick={handleAddProperty}>Add Property</Button>
+            </div>
+          )}
+          {error && <span className="error-message">{error}</span>}
+        </div>
+      );
+    }
+
+    if (schema.anyOf) {
+      const types = schema.anyOf.map((s: any) => s.type);
+      if (types.includes('string') && types.includes('null')) {
+        return (
+          <div key={fullKey} className="input-container">
+            {renderClickableInput(value, schema.placeholder || `Enter ${displayKey} (optional)`)}
             {error && <span className="error-message">{error}</span>}
           </div>
         );
+      }
+    }
+
+    if (schema.allOf) {
+      return (
+        <div key={fullKey} className="object-input">
+          <strong>{displayKey}:</strong>
+          {schema.allOf[0].properties && Object.entries(schema.allOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
+            <div key={`${fullKey}.${propKey}`} className="nested-input">
+              {renderInputField(propKey, propSchema, fullKey, propSchema.title || beautifyString(propKey))}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (schema.oneOf) {
+      return (
+        <div key={fullKey} className="object-input">
+          <strong>{displayKey}:</strong>
+          {schema.oneOf[0].properties && Object.entries(schema.oneOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
+            <div key={`${fullKey}.${propKey}`} className="nested-input">
+              {renderInputField(propKey, propSchema, fullKey, propSchema.title || beautifyString(propKey))}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    switch (schema.type) {
+      case 'string':
+        if (schema.enum) {
+
+          return (
+            <div key={fullKey} className="input-container">
+              <select
+                value={value || ''}
+                onChange={(e) => handleInputChange(fullKey, e.target.value)}
+                className="select-input"
+              >
+                <option value="">Select {displayKey}</option>
+                {schema.enum.map((option: string) => (
+                  <option key={option} value={option}>
+                    {beautifyString(option)}
+                  </option>
+                ))}
+              </select>
+              {error && <span className="error-message">{error}</span>}
+            </div>
+          )
+        }
+
+        else if (schema.secret) {
+          return (<div key={fullKey} className="input-container">
+            {renderClickableInput(value, schema.placeholder || `Enter ${displayKey}`, true)}
+            {error && <span className="error-message">{error}</span>}
+          </div>)
+
+        }
+        else {
+          return (
+            <div key={fullKey} className="input-container">
+              {renderClickableInput(value, schema.placeholder || `Enter ${displayKey}`)}
+              {error && <span className="error-message">{error}</span>}
+            </div>
+          );
+        }
       case 'boolean':
         return (
-          <div key={key} className="input-container">
-            <label className="radio-label">
-              <input
-                type="radio"
-                value="true"
-                checked={data.hardcodedValues[key] === true}
-                onChange={() => handleInputChange(key, true)}
-              />
-              True
-            </label>
-            <label className="radio-label">
-              <input
-                type="radio"
-                value="false"
-                checked={data.hardcodedValues[key] === false}
-                onChange={() => handleInputChange(key, false)}
-              />
-              False
-            </label>
+          <div key={fullKey} className="input-container">
+            <select
+              value={value === undefined ? '' : value.toString()}
+              onChange={(e) => handleInputChange(fullKey, e.target.value === 'true')}
+              className="select-input"
+            >
+              <option value="">Select {displayKey}</option>
+              <option value="true">True</option>
+              <option value="false">False</option>
+            </select>
             {error && <span className="error-message">{error}</span>}
           </div>
         );
       case 'number':
+      case 'integer':
         return (
-          <div key={key} className="input-container">
+          <div key={fullKey} className="input-container">
             <input
               type="number"
-              value={data.hardcodedValues[key] || ''}
-              onChange={(e) => handleInputChange(key, parseFloat(e.target.value))}
+              value={value || ''}
+              onChange={(e) => handleInputChange(fullKey, parseFloat(e.target.value))}
               className="number-input"
             />
             {error && <span className="error-message">{error}</span>}
@@ -237,143 +362,95 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         );
       case 'array':
         if (schema.items && schema.items.type === 'string') {
-          const arrayValues = data.hardcodedValues[key] || [];
+          const arrayValues = value || [];
           return (
-            <div key={key} className="input-container">
+            <div key={fullKey} className="input-container">
               {arrayValues.map((item: string, index: number) => (
-                <div key={`${key}-${index}`} className="array-item-container">
+                <div key={`${fullKey}.${index}`} className="array-item-container">
                   <input
                     type="text"
                     value={item}
-                    onChange={(e) => handleArrayItemChange(key, index, e.target.value)}
+                    onChange={(e) => handleInputChange(`${fullKey}.${index}`, e.target.value)}
                     className="array-item-input"
                   />
-                  <button onClick={() => removeArrayItem(key, index)} className="array-item-remove">
+                  <Button onClick={() => handleInputChange(`${fullKey}.${index}`, '')} className="array-item-remove">
                     &times;
-                  </button>
+                  </Button>
                 </div>
               ))}
-              <button onClick={() => addArrayItem(key)} className="array-item-add">
+              <Button onClick={() => handleInputChange(fullKey, [...arrayValues, ''])} className="array-item-add">
                 Add Item
-              </button>
+              </Button>
               {error && <span className="error-message">{error}</span>}
             </div>
           );
         }
         return null;
       default:
-        return null;
+        return (
+          <div key={fullKey} className="input-container">
+            {renderClickableInput(value, schema.placeholder || `Enter ${beautifyString(displayKey)} (Complex)`)}
+            {error && <span className="error-message">{error}</span>}
+          </div>
+        );
     }
-  };
-
-  const renderDynamicTextFields = () => {
-    const dynamicKeyPrefix = 'texts_$_';
-    const dynamicKeys = Object.keys(data.hardcodedValues).filter(key => key.startsWith(dynamicKeyPrefix));
-
-    return dynamicKeys.map((key, index) => (
-      <div key={key} className="input-container">
-        <div className="handle-container">
-          <Handle
-            type="target"
-            position={Position.Left}
-            id={key}
-            style={{ background: '#555', borderRadius: '50%' }}
-          />
-          <span className="handle-label">{key}</span>
-          {!isHandleConnected(key) && (
-            <>
-              <input
-                type="text"
-                value={data.hardcodedValues[key]}
-                onChange={(e) => handleDynamicTextInputChange(key, e.target.value)}
-                className="dynamic-text-input"
-              />
-              <button onClick={() => removeDynamicTextInput(key)} className="array-item-remove">
-                &times;
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    ));
   };
 
   const validateInputs = () => {
     const newErrors: { [key: string]: string | null } = {};
-    Object.keys(data.inputSchema.properties).forEach((key) => {
-      const value = data.hardcodedValues[key];
-      const schema = data.inputSchema.properties[key];
-      const error = validateInput(key, value, schema);
-      if (error) {
-        newErrors[key] = error;
-      }
-    });
+    const validateRecursive = (schema: any, parentKey: string = '') => {
+      Object.entries(schema.properties).forEach(([key, propSchema]: [string, any]) => {
+        const fullKey = parentKey ? `${parentKey}.${key}` : key;
+        const value = getValue(fullKey);
+
+        if (propSchema.type === 'object' && propSchema.properties) {
+          validateRecursive(propSchema, fullKey);
+        } else {
+          if (propSchema.required && !value) {
+            newErrors[fullKey] = `${fullKey} is required`;
+          }
+        }
+      });
+    };
+
+    validateRecursive(data.inputSchema);
     setErrors(newErrors);
     return Object.values(newErrors).every((error) => error === null);
   };
 
-  const handleSubmit = () => {
-    if (validateInputs()) {
-      console.log("Valid data:", data.hardcodedValues);
-    } else {
-      console.log("Invalid data:", errors);
-    }
-  };
-
-
   return (
-    <div className="custom-node">
+    <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}>
       <div className="node-header">
-        <div className="node-title">{data.blockType || data.title}</div>
-        <button onClick={toggleProperties} className="toggle-button">
-          &#9776;
-        </button>
+        <div className="node-title">{beautifyString(data.blockType?.replace(/Block$/, '') || data.title)}</div>
       </div>
       <div className="node-content">
         <div className="input-section">
           {data.inputSchema &&
-            Object.keys(data.inputSchema.properties).map((key) => (
-              <div key={key}>
-                {key !== 'texts' ? (
-                  <div>
-                    <div className="handle-container">
-                      <Handle
-                        type="target"
-                        position={Position.Left}
-                        id={key}
-                        style={{ background: '#555', borderRadius: '50%' }}
-                      />
-                      <span className="handle-label">{key}</span>
-                    </div>
-                    {!isHandleConnected(key) && renderInputField(key, data.inputSchema.properties[key])}
+            Object.entries(data.inputSchema.properties).map(([key, schema]) => {
+              const isRequired = data.inputSchema.required?.includes(key);
+              return (isRequired || isAdvancedOpen) && (
+                <div key={key}>
+                  <div className="handle-container">
+                    <Handle
+                      type="target"
+                      position={Position.Left}
+                      id={key}
+                      style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
+                    />
+                    <span className="handle-label">{schema.title || beautifyString(key)}</span>
+                    <SchemaTooltip schema={schema} />
                   </div>
-                ) : (
-                  <div key={key} className="input-container">
-                    <div className="handle-container">
-                      <Handle
-                        type="target"
-                        position={Position.Left}
-                        id={key}
-                        style={{ background: '#555', borderRadius: '50%' }}
-                      />
-                      <span className="handle-label">{key}</span>
-                    </div>
-                    {renderDynamicTextFields()}
-                    <button onClick={addDynamicTextInput} className="array-item-add">
-                      Add Text Input
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
+                  {renderInputField(key, schema, '', schema.title || beautifyString(key))}
+                </div>
+              );
+            })}
         </div>
         <div className="output-section">
           {data.outputSchema && generateHandles(data.outputSchema, 'source')}
         </div>
       </div>
-      {isPropertiesOpen && (
-        <div className="node-properties">
-          <h4>Node Output</h4>
+      {isOutputOpen && (
+        <div className="node-output">
           <p>
             <strong>Status:</strong>{' '}
             {typeof data.status === 'object' ? JSON.stringify(data.status) : data.status || 'N/A'}
@@ -386,12 +463,22 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </p>
         </div>
       )}
-      <button onClick={handleSubmit}>Submit</button>
+      <div className="node-footer">
+        <Button onClick={toggleOutput} className="toggle-button">
+          Toggle Output
+        </Button>
+        {hasOptionalFields() && (
+          <Button onClick={toggleAdvancedSettings} className="toggle-button">
+            Toggle Advanced
+          </Button>
+        )}
+      </div>
       <ModalComponent
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={handleModalSave}
         value={modalValue}
+        key={activeKey}
       />
     </div>
   );
