@@ -5,13 +5,13 @@ import sys
 # GitHub API endpoint
 api_url = os.environ["GITHUB_API_URL"]
 repo = os.environ["GITHUB_REPOSITORY"]
-run_id = os.environ["GITHUB_RUN_ID"]
+sha = os.environ["GITHUB_SHA"]
 
 # GitHub token for authentication
 github_token = os.environ["GITHUB_TOKEN"]
 
-# API endpoint for the current workflow run
-endpoint = f"{api_url}/repos/{repo}/actions/runs/{run_id}/jobs"
+# API endpoint for check runs for the specific SHA
+endpoint = f"{api_url}/repos/{repo}/commits/{sha}/check-runs"
 
 # Set up headers for authentication
 headers = {
@@ -23,27 +23,32 @@ headers = {
 response = requests.get(endpoint, headers=headers)
 
 if response.status_code != 200:
-    print(f"Error: Unable to fetch workflow data. Status code: {response.status_code}")
+    print(f"Error: Unable to fetch check runs data. Status code: {response.status_code}")
     sys.exit(1)
 
-jobs = response.json()["jobs"]
+check_runs = response.json()["check_runs"]
 
-# Flag to track if all other jobs have passed or are neutral
+# Flag to track if all other check runs have passed
 all_others_passed = True
 
-# Current job name
-current_job = os.environ["GITHUB_JOB"]
+# Current run id
+current_run_id = os.environ["GITHUB_RUN_ID"]
 
-for job in jobs:
-    if job["name"] != current_job:
-        status = job["conclusion"]
-        if status not in ["success", "neutral", "skipped"]:
-            all_others_passed = False
-            print(f"Job "{job["name"]}" has status: {status}")
+for run in check_runs:
+    if str(run["id"]) != current_run_id:
+        status = run["status"]
+        conclusion = run["conclusion"]
+        
+        if status == "completed":
+            if conclusion not in ["success", "skipped", "neutral"]:
+                all_others_passed = False
+                print(f"Check run {run['name']} (ID: {run['id']}) has conclusion: {conclusion}")
+        else:
+            print(f"Check run {run['name']} (ID: {run['id']}) is still {status}.")
 
 if all_others_passed:
-    print("All other jobs have passed or are neutral. This check passes.")
+    print("All other completed check runs have passed. This check passes.")
     sys.exit(0)
 else:
-    print("Some jobs have failed. This check fails.")
+    print("Some check runs have failed. This check fails.")
     sys.exit(1)
