@@ -19,7 +19,7 @@ from forge.llm.providers.schema import ModelProviderName
 from forge.models.json_schema import JSONSchema
 from pydantic import Field, SecretStr
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
 
 if TYPE_CHECKING:
@@ -107,6 +107,8 @@ class AutoGPTAgentBlock(Block):
     def __init__(self):
         super().__init__(
             id="d2e2ecd2-9ae6-422d-8dfe-ceca500ce6a6",
+            description="AutoGPT agent, it utilizes a Large Language Model and enabled components/tools to perform a task.",
+            categories={BlockCategory.LLM},
             input_schema=AutoGPTAgentBlock.Input,
             output_schema=AutoGPTAgentBlock.Output,
             test_input={
