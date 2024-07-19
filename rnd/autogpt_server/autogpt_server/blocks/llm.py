@@ -3,6 +3,7 @@ from enum import Enum
 from typing import NamedTuple
 
 import anthropic
+import ollama
 import openai
 from groq import Groq
 
@@ -16,6 +17,7 @@ LlmApiKeys = {
     "openai": BlockSecret("openai_api_key"),
     "anthropic": BlockSecret("anthropic_api_key"),
     "groq": BlockSecret("groq_api_key"),
+    "ollama": BlockSecret(value=""),
 }
 
 
@@ -39,6 +41,8 @@ class LlmModel(str, Enum):
     MIXTRAL_8X7B = "mixtral-8x7b-32768"
     GEMMA_7B = "gemma-7b-it"
     GEMMA2_9B = "gemma2-9b-it"
+    # Ollama models
+    OLLAMA_LLAMA3_8B = "llama3"
 
     @property
     def metadata(self) -> ModelMetadata:
@@ -57,6 +61,7 @@ MODEL_METADATA = {
     LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768),
     LlmModel.GEMMA_7B: ModelMetadata("groq", 8192),
     LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192),
+    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192),
 }
 
 
@@ -135,6 +140,12 @@ class ObjectLlmCallBlock(Block):
                 response_format=response_format,  # type: ignore
             )
             return response.choices[0].message.content or ""
+        elif provider == "ollama":
+            response = ollama.generate(
+                model=model.value,
+                prompt=prompt[0]["content"],
+            )
+            return response["response"]
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
