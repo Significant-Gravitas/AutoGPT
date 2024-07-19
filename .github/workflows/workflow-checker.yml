@@ -1,8 +1,10 @@
 name: PR Status Checker
 
 on:
-  pull_request:
-    branches: [ main ]
+  workflow_run:
+    workflows: ["*"]
+    types:
+      - completed
 
 jobs:
   status-check:
