@@ -135,17 +135,17 @@ jobs:
         run: |
           poetry run pytest -vv \
             test
-        env:
-          CI: true
-          PLAIN_OUTPUT: True
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_PASS: ${{ secrets.DB_PASS }}
-          DB_NAME: ${{ secrets.DB_NAME }}
-          DB_PORT: 5432
-          RUN_ENV: local
-          PORT: 8080
-          DATABASE_URL: postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASS }}@localhost:5432/${{ secrets.DB_NAME }}
+    env:
+      CI: true
+      PLAIN_OUTPUT: True
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASS: ${{ secrets.DB_PASS }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      DB_PORT: 5432
+      RUN_ENV: local
+      PORT: 8080
+      DATABASE_URL: postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASS }}@localhost:5432/${{ secrets.DB_NAME }}
 
       # - name: Upload coverage reports to Codecov
       #   uses: codecov/codecov-action@v4
