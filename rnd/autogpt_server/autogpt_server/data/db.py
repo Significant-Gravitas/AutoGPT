@@ -3,7 +3,9 @@ from uuid import uuid4
 from prisma import Prisma
 from pydantic import BaseModel, Field, field_validator
 import os
+from dotenv import load_dotenv
 
+load_dotenv()
 
 # Use the DATABASE_URL from env vars, defaults to SQLlite
 DATABASE_URL = os.getenv('DATABASE_URL', 'file:./database.db')
