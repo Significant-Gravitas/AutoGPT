@@ -33,24 +33,21 @@ jobs:
         platform-os: [ubuntu, macos, macos-arm64, windows]
     runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
 
-#    services:
-#      postgres:
-#        image: pgvector/pgvector:pg16
-#        env:
-#          POSTGRES_HOST: localhost
-#          POSTGRES_USER: ${{ secrets.DB_USER }}
-#          PGUSER: ${{ secrets.DB_USER }}
-#          POSTGRES_PASSWORD: ${{ secrets.DB_PASS }}
-#          POSTGRES_DB: ${{ secrets.DB_NAME }}
-#        ports:
-#          - 5432:5432
-#        options: >-
-#          --health-cmd pg_isready
-#          --health-interval 10s
-#          --health-timeout 5s
-#          --health-retries 5
-
     steps:
+      - name: Install Docker (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install docker
+          colima start
+          sudo ln -sf $HOME/.colima/default/docker.sock /var/run/docker.sock
+
+      - name: Install Docker (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install docker-desktop
+          Start-Process 'C:\Program Files\Docker\Docker\Docker Desktop.exe'
+          Start-Sleep -s 60  # Wait for Docker to start
+        shell: pwsh
       # Quite slow on macOS (2~4 minutes to set up Docker)
       # - name: Set up Docker (macOS)
       #   if: runner.os == 'macOS'
@@ -100,35 +97,6 @@ jobs:
           path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
           key: poetry-${{ runner.os }}-${{ hashFiles('rnd/autogpt_server/poetry.lock') }}
 
-      - name: Install PostgreSQL (Ubuntu)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql postgresql-contrib
-          sudo systemctl start postgresql.service
-          sudo -u postgres psql -c "CREATE USER ${{ secrets.DB_USER }} WITH PASSWORD '${{ secrets.DB_PASS }}';"
-          sudo -u postgres psql -c "CREATE DATABASE ${{ secrets.DB_NAME }} OWNER ${{ secrets.DB_USER }};"
-
-      - name: Install PostgreSQL (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install postgresql@14
-          brew services start postgresql@14
-          createuser -s postgres
-          psql -c "CREATE USER ${{ secrets.DB_USER }} WITH PASSWORD '${{ secrets.DB_PASS }}';" postgres
-          psql -c "CREATE DATABASE ${{ secrets.DB_NAME }} OWNER ${{ secrets.DB_USER }};" postgres
-
-      - name: Install PostgreSQL (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          choco install postgresql --params '/Password:root'
-          refreshenv
-          $env:PATH += ";C:\Program Files\PostgreSQL\bin"
-          echo "C:\Program Files\PostgreSQL\bin" >> $env:GITHUB_PATH
-          psql -U postgres -c "CREATE USER ${{ secrets.DB_USER }} WITH PASSWORD '${{ secrets.DB_PASS }}';"
-          psql -U postgres -c "CREATE DATABASE ${{ secrets.DB_NAME }} OWNER ${{ secrets.DB_USER }};"
-        shell: pwsh
-
       - name: Install Poetry (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -164,6 +132,23 @@ jobs:
         run: |
           poetry run pytest -vv \
             test
+
+    #    services:
+    #      postgres:
+    #        image: pgvector/pgvector:pg16
+    #        env:
+    #          POSTGRES_HOST: localhost
+    #          POSTGRES_USER: ${{ secrets.DB_USER }}
+    #          PGUSER: ${{ secrets.DB_USER }}
+    #          POSTGRES_PASSWORD: ${{ secrets.DB_PASS }}
+    #          POSTGRES_DB: ${{ secrets.DB_NAME }}
+    #        ports:
+    #          - 5432:5432
+    #        options: >-
+    #          --health-cmd pg_isready
+    #          --health-interval 10s
+    #          --health-timeout 5s
+    #          --health-retries 5
     env:
       CI: true
       PLAIN_OUTPUT: True
