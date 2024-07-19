@@ -45,10 +45,11 @@ for run in check_runs:
                 print(f"Check run {run['name']} (ID: {run['id']}) has conclusion: {conclusion}")
         else:
             print(f"Check run {run['name']} (ID: {run['id']}) is still {status}.")
+            all_others_passed = False
 
 if all_others_passed:
     print("All other completed check runs have passed. This check passes.")
     sys.exit(0)
 else:
-    print("Some check runs have failed. This check fails.")
+    print("Some check runs have failed or have not completed. This check fails.")
     sys.exit(1)
