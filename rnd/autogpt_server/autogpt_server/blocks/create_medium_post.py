@@ -8,7 +8,7 @@ from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
 
 class CreateMediumPostBlock(Block):
     class Input(BlockSchema):
-        author_id: str = SecretField(
+        author_id: BlockSecret = SecretField(
             key="medium_author_id",
             description="""The Medium AuthorID of the user. You can get this by calling the /me endpoint of the Medium API.\n\ncurl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me" the response will contain the authorId field.""",
             placeholder="Enter the author's Medium AuthorID",
@@ -29,7 +29,7 @@ class CreateMediumPostBlock(Block):
             description="List of tags for your Medium post (up to 5)",
             placeholder="['technology', 'AI', 'blogging']",
         )
-        canonical_url: str = SchemaField(
+        canonical_url: str | None = SchemaField(
             default=None,
             description="The original home of this content, if it was originally published elsewhere",
             placeholder="https://yourblog.com/original-post",

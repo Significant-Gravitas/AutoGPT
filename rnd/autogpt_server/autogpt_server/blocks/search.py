@@ -6,6 +6,7 @@ import requests
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SecretField
 
+
 class GetRequest:
     @classmethod
     def get_request(cls, url: str, json=False) -> Any:
@@ -141,16 +142,22 @@ class GetOpenWeatherMapWeather(Block, GetRequest):
             id="f7a8b2c3-6d4e-5f8b-9e7f-6d4e5f8b9e7f",
             input_schema=GetOpenWeatherMapWeather.Input,
             output_schema=GetOpenWeatherMapWeather.Output,
-            test_input={"location": "New York", "api_key": "YOUR_API_KEY", "use_celsius": True},
+            test_input={
+                "location": "New York",
+                "api_key": "YOUR_API_KEY",
+                "use_celsius": True,
+            },
             test_output=[
                 ("temperature", "21.66"),
                 ("humidity", "32"),
-                ("condition", "overcast clouds")
+                ("condition", "overcast clouds"),
             ],
-            test_mock={"get_request": lambda url, json: {
-                "main": {"temp": 21.66, "humidity": 32},
-                "weather": [{"description": "overcast clouds"}]
-            }},
+            test_mock={
+                "get_request": lambda url, json: {
+                    "main": {"temp": 21.66, "humidity": 32},
+                    "weather": [{"description": "overcast clouds"}],
+                }
+            },
         )
 
     def run(self, input_data: Input) -> BlockOutput:
@@ -161,16 +168,16 @@ class GetOpenWeatherMapWeather(Block, GetRequest):
             url = f"http://api.openweathermap.org/data/2.5/weather?q={quote(location)}&appid={api_key}&units={units}"
             weather_data = self.get_request(url, json=True)
 
-            if 'main' in weather_data and 'weather' in weather_data:
-                yield "temperature", str(weather_data['main']['temp'])
-                yield "humidity", str(weather_data['main']['humidity'])
-                yield "condition", weather_data['weather'][0]['description']
+            if "main" in weather_data and "weather" in weather_data:
+                yield "temperature", str(weather_data["main"]["temp"])
+                yield "humidity", str(weather_data["main"]["humidity"])
+                yield "condition", weather_data["weather"][0]["description"]
             else:
                 yield "error", f"Expected keys not found in response: {weather_data}"
 
         except requests.exceptions.HTTPError as http_err:
             if http_err.response.status_code == 403:
-                yield "error", f"Request to weather API failed: 403 Forbidden. Check your API key and permissions."
+                yield "error", "Request to weather API failed: 403 Forbidden. Check your API key and permissions."
             else:
                 yield "error", f"HTTP error occurred: {http_err}"
         except requests.RequestException as e:
