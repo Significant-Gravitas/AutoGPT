@@ -156,11 +156,11 @@
   margin-top: 5px;
 }
 
-.node-properties {
+.node-output {
   margin-top: 5px;
   margin-bottom: 5px;
   background: #fff;
-  border: 1px solid #000; /* Border for properties section */
+  border: 1px solid #000; /* Border for output section */
   padding: 10px;
   border-radius: 10px;
   width: 100%;
