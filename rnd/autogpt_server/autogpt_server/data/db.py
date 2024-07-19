@@ -1,10 +1,7 @@
-import os
 from uuid import uuid4
 
-from dotenv import load_dotenv
 from prisma import Prisma
 from pydantic import BaseModel, Field, field_validator
-
 
 prisma = Prisma(auto_register=True)
 
