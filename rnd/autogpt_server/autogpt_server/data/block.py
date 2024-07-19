@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import Any, ClassVar, Generator, Generic, Type, TypeVar, cast
 
 import jsonref
@@ -11,6 +12,17 @@ from autogpt_server.util import json
 BlockInput = dict[str, Any]
 BlockData = tuple[str, Any]
 BlockOutput = Generator[BlockData, None, None]
+
+
+class BlockCategory(Enum):
+    LLM = "Block that leverages the Large Language Model to perform a task."
+    SOCIAL = "Block that interacts with social media platforms."
+    TEXT = "Block that processes text data."
+    SEARCH = "Block that searches or extracts information from the internet."
+    BASIC = "Block that performs basic operations."
+
+    def dict(self) -> dict[str, str]:
+        return {"category": self.name, "description": self.value}
 
 
 class BlockSchema(BaseModel):
@@ -101,6 +113,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     def __init__(
         self,
         id: str = "",
+        description: str = "",
+        categories: set[BlockCategory] | None = None,
         input_schema: Type[BlockSchemaInputType] = EmptySchema,
         output_schema: Type[BlockSchemaOutputType] = EmptySchema,
         test_input: BlockInput | list[BlockInput] | None = None,
@@ -126,6 +140,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.test_input = test_input
         self.test_output = test_output
         self.test_mock = test_mock
+        self.description = description
+        self.categories = categories or set()
 
     @abstractmethod
     def run(self, input_data: BlockSchemaInputType) -> BlockOutput:
@@ -150,6 +166,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             "name": self.name,
             "inputSchema": self.input_schema.jsonschema(),
             "outputSchema": self.output_schema.jsonschema(),
+            "description": self.description,
+            "categories": [category.dict() for category in self.categories],
         }
 
     def execute(self, input_data: BlockInput) -> BlockOutput:

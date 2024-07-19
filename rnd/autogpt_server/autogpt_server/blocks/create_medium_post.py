@@ -39,10 +39,12 @@ class CreateMediumPostBlock(Block):
             placeholder="public",
         )
         license: str = SchemaField(
+            default="all-rights-reserved",
             description="The license of the post: 'all-rights-reserved', 'cc-40-by', 'cc-40-by-sa', 'cc-40-by-nd', 'cc-40-by-nc', 'cc-40-by-nc-nd', 'cc-40-by-nc-sa', 'cc-40-zero', 'public-domain'",
             placeholder="all-rights-reserved",
         )
         notify_followers: bool = SchemaField(
+            default=False,
             description="Whether to notify followers that the user has published",
             placeholder="False",
         )
@@ -139,7 +141,7 @@ class CreateMediumPostBlock(Block):
         try:
             response = self.create_post(
                 input_data.api_key.get_secret_value(),
-                input_data.author_id,
+                input_data.author_id.get_secret_value(),
                 input_data.title,
                 input_data.content,
                 input_data.content_format,
