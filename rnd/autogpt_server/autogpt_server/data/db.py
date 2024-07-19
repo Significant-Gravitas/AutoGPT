@@ -5,11 +5,8 @@ from dotenv import load_dotenv
 from prisma import Prisma
 from pydantic import BaseModel, Field, field_validator
 
-load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-prisma = Prisma(auto_register=True, datasource={"url": DATABASE_URL})
+prisma = Prisma(auto_register=True)
 
 
 async def connect():
