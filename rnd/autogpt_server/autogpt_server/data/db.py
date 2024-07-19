@@ -7,8 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Use the DATABASE_URL from env vars, defaults to SQLlite
-DATABASE_URL = os.getenv('DATABASE_URL', 'file:./database.db')
+DATABASE_URL = os.getenv('DATABASE_URL')
 
 prisma = Prisma(auto_register=True, datasource={"url": DATABASE_URL})
 
