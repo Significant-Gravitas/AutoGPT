@@ -133,22 +133,22 @@ jobs:
           poetry run pytest -vv \
             test
 
-    #    services:
-    #      postgres:
-    #        image: pgvector/pgvector:pg16
-    #        env:
-    #          POSTGRES_HOST: localhost
-    #          POSTGRES_USER: ${{ secrets.DB_USER }}
-    #          PGUSER: ${{ secrets.DB_USER }}
-    #          POSTGRES_PASSWORD: ${{ secrets.DB_PASS }}
-    #          POSTGRES_DB: ${{ secrets.DB_NAME }}
-    #        ports:
-    #          - 5432:5432
-    #        options: >-
-    #          --health-cmd pg_isready
-    #          --health-interval 10s
-    #          --health-timeout 5s
-    #          --health-retries 5
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_USER: ${{ secrets.DB_USER }}
+          PGUSER: ${{ secrets.DB_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.DB_PASS }}
+          POSTGRES_DB: ${{ secrets.DB_NAME }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       CI: true
       PLAIN_OUTPUT: True
