@@ -139,7 +139,7 @@ class CreateMediumPostBlock(Block):
         try:
             response = self.create_post(
                 input_data.api_key.get_secret_value(),
-                input_data.author_id,
+                input_data.author_id.get_secret_value(),
                 input_data.title,
                 input_data.content,
                 input_data.content_format,
