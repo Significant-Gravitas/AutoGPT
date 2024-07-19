@@ -108,6 +108,7 @@ class ObjectLookupBlock(Block):
                 {"input": [1, 2, 3], "key": 1},
                 {"input": [1, 2, 3], "key": 3},
                 {"input": ObjectLookupBlock.Input(input="!!", key="key"), "key": "key"},
+                {"input": [{"k1": "v1"}, {"k2": "v2"}, {"k1": "v3"}], "key": "k1"},
             ],
             test_output=[
                 ("output", 2),
@@ -115,6 +116,7 @@ class ObjectLookupBlock(Block):
                 ("output", 2),
                 ("missing", [1, 2, 3]),
                 ("output", "key"),
+                ("output", ["v1", "v3"]),
             ],
         )
 
