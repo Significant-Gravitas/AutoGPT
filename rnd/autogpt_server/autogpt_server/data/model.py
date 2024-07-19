@@ -103,7 +103,7 @@ def SchemaField(
     json_extra: dict[str, Any] = {}
     if placeholder:
         json_extra["placeholder"] = placeholder
-    if secret: 
+    if secret:
         json_extra["secret"] = True
 
     return Field(
