@@ -3,7 +3,7 @@ from urllib.parse import quote
 
 import requests
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SecretField
 
 
@@ -26,6 +26,8 @@ class WikipediaSummaryBlock(Block, GetRequest):
     def __init__(self):
         super().__init__(
             id="h5e7f8g9-1b2c-3d4e-5f6g-7h8i9j0k1l2m",
+            description="This block fetches the summary of a given topic from Wikipedia.",
+            categories={BlockCategory.SEARCH},
             input_schema=WikipediaSummaryBlock.Input,
             output_schema=WikipediaSummaryBlock.Output,
             test_input={"topic": "Artificial Intelligence"},
@@ -61,6 +63,8 @@ class WebSearchBlock(Block, GetRequest):
     def __init__(self):
         super().__init__(
             id="b2c3d4e5-6f7g-8h9i-0j1k-l2m3n4o5p6q7",
+            description="This block searches the internet for the given search query.",
+            categories={BlockCategory.SEARCH},
             input_schema=WebSearchBlock.Input,
             output_schema=WebSearchBlock.Output,
             test_input={"query": "Artificial Intelligence"},
@@ -100,6 +104,8 @@ class WebScraperBlock(Block, GetRequest):
     def __init__(self):
         super().__init__(
             id="a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",  # Unique ID for the block
+            description="This block scrapes the content from the given web URL.",
+            categories={BlockCategory.SEARCH},
             input_schema=WebScraperBlock.Input,
             output_schema=WebScraperBlock.Output,
             test_input={"url": "https://en.wikipedia.org/wiki/Artificial_intelligence"},

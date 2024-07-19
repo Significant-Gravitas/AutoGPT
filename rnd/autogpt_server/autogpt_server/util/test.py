@@ -82,7 +82,10 @@ def execute_block_test(block: Block):
 
     for mock_name, mock_obj in (block.test_mock or {}).items():
         log(f"{prefix} mocking {mock_name}...")
-        setattr(block, mock_name, mock_obj)
+        if hasattr(block, mock_name):
+            setattr(block, mock_name, mock_obj)
+        else:
+            log(f"{prefix} mock {mock_name} not found in block")
 
     for input_data in block.test_input:
         log(f"{prefix} in: {input_data}")
