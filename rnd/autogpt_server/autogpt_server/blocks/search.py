@@ -1,6 +1,6 @@
 from typing import Any
 from urllib.parse import quote
-
+import uuid
 import requests
 
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
@@ -139,7 +139,7 @@ class GetOpenWeatherMapWeather(Block, GetRequest):
 
     def __init__(self):
         super().__init__(
-            id="f7a8b2c3-6d4e-5f8b-9e7f-6d4e5f8b9e7f",
+            id=str(uuid.uuid4()),  # 使用uuid库自动生成唯一ID
             input_schema=GetOpenWeatherMapWeather.Input,
             output_schema=GetOpenWeatherMapWeather.Output,
             test_input={
@@ -184,3 +184,28 @@ class GetOpenWeatherMapWeather(Block, GetRequest):
             yield "error", f"Request to weather API failed: {e}"
         except KeyError as e:
             yield "error", f"Error processing weather data: {e}"
+
+    class BlockRegistry:
+        def __init__(self):
+            self.registered_ids = set()
+
+        def register_block(self, block_id):
+            if block_id in self.registered_ids:
+                raise ValueError(f"Block ID {block_id} already exists!")
+            self.registered_ids.add(block_id)
+
+    block_registry = BlockRegistry()
+
+    class MyBlock:
+        def __init__(self, id):
+            if not id:
+                id = str(uuid.uuid4())
+            block_registry.register_block(id)
+            super().__init__(id=id)
+
+    # Example usage
+    try:
+        block1 = MyBlock(id="a5b2c3d4-5e6f-7g8h-9i0j-z1l2m3n4o5p6")
+        block2 = MyBlock(id="a5b2c3d4-5e6f-7g8h-9i0j-z1l2m3n4o5p6")
+    except ValueError as e:
+        print(e)
