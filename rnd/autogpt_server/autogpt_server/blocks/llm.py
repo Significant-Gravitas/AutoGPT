@@ -26,6 +26,7 @@ class ModelMetadata(NamedTuple):
 
 class LlmModel(str, Enum):
     # OpenAI models
+    GPT4O_MINI = "gpt-4o-mini"
     GPT4O = "gpt-4o"
     GPT4_TURBO = "gpt-4-turbo"
     GPT3_5_TURBO = "gpt-3.5-turbo"
@@ -45,6 +46,7 @@ class LlmModel(str, Enum):
 
 
 MODEL_METADATA = {
+    LlmModel.GPT4O_MINI: ModelMetadata("openai", 128000),
     LlmModel.GPT4O: ModelMetadata("openai", 128000),
     LlmModel.GPT4_TURBO: ModelMetadata("openai", 128000),
     LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385),
@@ -258,7 +260,7 @@ class TextLlmCallBlock(Block):
     def run(self, input_data: Input) -> BlockOutput:
         try:
             object_input_data = ObjectLlmCallBlock.Input(
-                **input_data.model_dump(),
+                **{attr: getattr(input_data, attr) for attr in input_data.model_fields},
                 expected_format={},
             )
             yield "response", self.llm_call(object_input_data)

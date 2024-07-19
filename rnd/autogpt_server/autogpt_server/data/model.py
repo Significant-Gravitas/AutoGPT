@@ -65,6 +65,9 @@ class BlockSecret:
         return core_schema.json_or_python_schema(
             json_schema=validate_fun,
             python_schema=validate_fun,
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                lambda val: BlockSecret.STR
+            ),
         )
 
 
@@ -81,6 +84,7 @@ def SecretField(
         title=title,
         description=description,
         placeholder=placeholder,
+        secret=True,
         **kwargs,
     )
 
@@ -92,12 +96,15 @@ def SchemaField(
     title: Optional[str] = None,
     description: Optional[str] = None,
     placeholder: Optional[str] = None,
+    secret: bool = False,
     exclude: bool = False,
     **kwargs,
 ) -> T:
     json_extra: dict[str, Any] = {}
     if placeholder:
         json_extra["placeholder"] = placeholder
+    if secret:
+        json_extra["secret"] = True
 
     return Field(
         default,

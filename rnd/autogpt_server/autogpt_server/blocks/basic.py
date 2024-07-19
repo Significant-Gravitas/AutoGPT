@@ -97,7 +97,7 @@ class ObjectLookupBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+            id="b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
             description="Lookup the given key in the input dictionary/object/list and return the value.",
             categories={BlockCategory.BASIC},
             input_schema=ObjectLookupBlock.Input,

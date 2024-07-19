@@ -16,21 +16,24 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ClockIcon, Pencil2Icon } from '@radix-ui/react-icons';
-import AutoGPTServerAPI, { Graph, NodeExecutionResult } from '@/lib/autogpt_server_api';
-import { cn, hashString } from '@/lib/utils';
+import { ChevronDownIcon, ClockIcon, EnterIcon, ExitIcon, Pencil2Icon } from '@radix-ui/react-icons';
+import AutoGPTServerAPI, { Graph, GraphMeta, NodeExecutionResult } from '@/lib/autogpt_server_api';
+import { cn, exportAsJSONFile, hashString } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AgentImportForm } from '@/components/agent-import-form';
 
 const Monitor = () => {
   const [flows, setFlows] = useState<Graph[]>([]);
@@ -90,10 +93,14 @@ const Monitor = () => {
     }));
   }
 
+  const column1 = "md:col-span-2 xl:col-span-3 xxl:col-span-2";
+  const column2 = "md:col-span-3 lg:col-span-2 xl:col-span-3 space-y-4";
+  const column3 = "col-span-full xl:col-span-4 xxl:col-span-5";
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10 gap-4">
       <AgentFlowList
-        className="md:col-span-2 xl:col-span-3 xxl:col-span-2"
+        className={column1}
         flows={flows}
         flowRuns={flowRuns}
         selectedFlow={selectedFlow}
@@ -103,7 +110,7 @@ const Monitor = () => {
         }}
       />
       <FlowRunsList
-        className="md:col-span-3 lg:col-span-2 xl:col-span-3 space-y-4"
+        className={column2}
         flows={flows}
         runs={
           (
@@ -116,23 +123,23 @@ const Monitor = () => {
         selectedRun={selectedRun}
         onSelectRun={r => setSelectedRun(r.id == selectedRun?.id ? null : r)}
       />
-      <div className="col-span-full xl:col-span-4 xxl:col-span-5">
-        {selectedRun && (
-          <FlowRunInfo
-            flow={selectedFlow || flows.find(f => f.id == selectedRun.graphID)!}
-            flowRun={selectedRun}
-          />
-        ) || selectedFlow && (
-          <FlowInfo
-            flow={selectedFlow}
-            flowRuns={flowRuns.filter(r => r.graphID == selectedFlow.id)}
-          />
-        ) || (
-          <Card className="p-6">
-            <FlowRunsStats flows={flows} flowRuns={flowRuns} />
-          </Card>
-        )}
-      </div>
+      {selectedRun && (
+        <FlowRunInfo
+          flow={selectedFlow || flows.find(f => f.id == selectedRun.graphID)!}
+          flowRun={selectedRun}
+          className={column3}
+        />
+      ) || selectedFlow && (
+        <FlowInfo
+          flow={selectedFlow}
+          flowRuns={flowRuns.filter(r => r.graphID == selectedFlow.id)}
+          className={column3}
+        />
+      ) || (
+        <Card className={`p-6 ${column3}`}>
+          <FlowRunsStats flows={flows} flowRuns={flowRuns} />
+        </Card>
+      )}
     </div>
   );
 };
@@ -205,11 +212,65 @@ const AgentFlowList = (
     onSelectFlow: (f: Graph) => void,
     className?: string,
   }
-) => (
-  <Card className={className}>
-    <CardHeader>
+) => {
+  const [templates, setTemplates] = useState<GraphMeta[]>([]);
+  const api = new AutoGPTServerAPI();
+  useEffect(() => {
+    api.listTemplates().then(templates => setTemplates(templates))
+  }, []);
+
+  return <Card className={className}>
+    <CardHeader className="flex-row justify-between items-center space-x-3 space-y-0">
       <CardTitle>Agents</CardTitle>
+
+      <div className="flex items-center">{/* Split "Create" button */}
+        <Button variant="outline" className="rounded-r-none" asChild>
+          <Link href="/build">Create</Link>
+        </Button>
+        <Dialog>{/* https://ui.shadcn.com/docs/components/dialog#notes */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className={"rounded-l-none border-l-0 px-2"}>
+                <ChevronDownIcon />
+              </Button>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent>
+              <DialogTrigger asChild>
+                <DropdownMenuItem>
+                  <EnterIcon className="mr-2" /> Import from file
+                </DropdownMenuItem>
+              </DialogTrigger>
+              {templates.length > 0 && <>{/* List of templates */}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Use a template</DropdownMenuLabel>
+                {templates.map(template => (
+                  <DropdownMenuItem
+                    key={template.id}
+                    onClick={() => {
+                      api.createGraph(template.id, template.version)
+                        .then(newGraph => {
+                          window.location.href = `/build?flowID=${newGraph.id}`;
+                        });
+                    }}
+                  >
+                    {template.name}
+                  </DropdownMenuItem>
+                ))}
+              </>}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DialogContent>
+            <DialogHeader className="text-lg">
+              Import an Agent (template) from a file
+            </DialogHeader>
+            <AgentImportForm />
+          </DialogContent>
+        </Dialog>
+      </div>
     </CardHeader>
+
     <CardContent>
       <Table>
         <TableHeader>
@@ -264,7 +325,7 @@ const AgentFlowList = (
       </Table>
     </CardContent>
   </Card>
-);
+};
 
 const FlowStatusBadge = ({ status }: { status: "active" | "disabled" | "failing" }) => (
   <Badge
@@ -338,11 +399,11 @@ const FlowRunStatusBadge: React.FC<{
   </Badge>
 );
 
-const FlowInfo: React.FC<{
+const FlowInfo: React.FC<React.HTMLAttributes<HTMLDivElement> & {
   flow: Graph;
   flowRuns: FlowRun[];
   flowVersion?: number | "all";
-}> = ({ flow, flowRuns, flowVersion }) => {
+}> = ({ flow, flowRuns, flowVersion, ...props }) => {
   const api = new AutoGPTServerAPI();
 
   const [flowVersions, setFlowVersions] = useState<Graph[] | null>(null);
@@ -352,7 +413,7 @@ const FlowInfo: React.FC<{
     api.getGraphAllVersions(flow.id).then(result => setFlowVersions(result));
   }, [flow.id]);
 
-  return <Card>
+  return <Card {...props}>
     <CardHeader className="flex-row justify-between space-y-0 space-x-3">
       <div>
         <CardTitle>
@@ -390,6 +451,14 @@ const FlowInfo: React.FC<{
         <Link className={buttonVariants({ variant: "outline" })} href={`/build?flowID=${flow.id}`}>
           <Pencil2Icon className="mr-2" /> Edit
         </Link>
+        <Button
+          variant="outline"
+          className="px-2.5"
+          title="Export to a JSON-file"
+          onClick={() => exportAsJSONFile(flow, `${flow.name}_v${flow.version}.json`)}
+        >
+          <ExitIcon />
+        </Button>
       </div>
     </CardHeader>
     <CardContent>
@@ -408,15 +477,15 @@ const FlowInfo: React.FC<{
   </Card>;
 };
 
-const FlowRunInfo: React.FC<{
+const FlowRunInfo: React.FC<React.HTMLAttributes<HTMLDivElement> & {
   flow: Graph;
   flowRun: FlowRun;
-}> = ({ flow, flowRun }) => {
+}> = ({ flow, flowRun, ...props }) => {
   if (flowRun.graphID != flow.id) {
     throw new Error(`FlowRunInfo can't be used with non-matching flowRun.flowID and flow.id`)
   }
 
-  return <Card>
+  return <Card {...props}>
     <CardHeader className="flex-row items-center justify-between space-y-0 space-x-3">
       <div>
         <CardTitle>
