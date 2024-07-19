@@ -74,6 +74,8 @@ class CreateMediumPostBlock(Block):
                 "content": "<h1>Test Content</h1><p>This is a test post.</p>",
                 "content_format": "html",
                 "tags": ["test", "automation"],
+                "license": "all-rights-reserved",
+                "notify_followers": False,
                 "publish_status": "draft",
                 "api_key": "your_test_api_key",
             },
