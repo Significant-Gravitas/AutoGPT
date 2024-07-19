@@ -4,7 +4,7 @@
   "is_active": false,
   "is_template": true,
   "name": "Medium Blogger",
-  "description": "Agent Description",
+  "description": "An Agent that conducts research on a given topic, then writes and publishes a SEO blog post on Medium.",
   "nodes": [
     {
       "id": "382efac9-3def-4baf-b16a-d6d2512a5c8b",
