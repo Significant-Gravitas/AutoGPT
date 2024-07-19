@@ -53,8 +53,8 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.scripts]
 app = "autogpt_server.app:main"
 cli = "autogpt_server.cli:main"
-format = "code:format"
-lint = "code:lint"
+format = "some_code:format"
+lint = "some_code:lint"
 
 # https://poethepoet.natn.io/index.html
 [tool.poe]
