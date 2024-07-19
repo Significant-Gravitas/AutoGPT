@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ChevronDownIcon, ClockIcon, EnterIcon, ExitIcon, Pencil2Icon } from '@radix-ui/react-icons';
-import AutoGPTServerAPI, { Graph, GraphMeta, NodeExecutionResult } from '@/lib/autogpt_server_api';
+import AutoGPTServerAPI, { GraphMeta, NodeExecutionResult } from '@/lib/autogpt_server_api';
 import { cn, exportAsJSONFile, hashString } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -36,9 +36,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AgentImportForm } from '@/components/agent-import-form';
 
 const Monitor = () => {
-  const [flows, setFlows] = useState<Graph[]>([]);
+  const [flows, setFlows] = useState<GraphMeta[]>([]);
   const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
-  const [selectedFlow, setSelectedFlow] = useState<Graph | null>(null);
+  const [selectedFlow, setSelectedFlow] = useState<GraphMeta | null>(null);
   const [selectedRun, setSelectedRun] = useState<FlowRun | null>(null);
 
   const api = new AutoGPTServerAPI();
@@ -50,16 +50,10 @@ const Monitor = () => {
   }, []);
 
   function fetchFlowsAndRuns() {
-    // Fetch flow IDs
-    api.listGraphIDs()
-    .then(flowIDs => {
-      Promise.all(flowIDs.map(flowID => {
-        refreshFlowRuns(flowID);
-
-        // Fetch flow
-        return api.getGraph(flowID);
-      }))
-      .then(flows => setFlows(flows));
+    api.listGraphs()
+    .then(flows => {
+      setFlows(flows);
+      flows.map(flow => refreshFlowRuns(flow.id));
     });
   }
 
@@ -206,10 +200,10 @@ function flowRunFromNodeExecutionResults(
 
 const AgentFlowList = (
   { flows, flowRuns, selectedFlow, onSelectFlow, className }: {
-    flows: Graph[],
+    flows: GraphMeta[],
     flowRuns?: FlowRun[],
-    selectedFlow: Graph | null,
-    onSelectFlow: (f: Graph) => void,
+    selectedFlow: GraphMeta | null,
+    onSelectFlow: (f: GraphMeta) => void,
     className?: string,
   }
 ) => {
@@ -341,7 +335,7 @@ const FlowStatusBadge = ({ status }: { status: "active" | "disabled" | "failing"
 );
 
 const FlowRunsList: React.FC<{
-  flows: Graph[];
+  flows: GraphMeta[];
   runs: FlowRun[];
   className?: string;
   selectedRun?: FlowRun | null;
@@ -400,13 +394,13 @@ const FlowRunStatusBadge: React.FC<{
 );
 
 const FlowInfo: React.FC<React.HTMLAttributes<HTMLDivElement> & {
-  flow: Graph;
+  flow: GraphMeta;
   flowRuns: FlowRun[];
   flowVersion?: number | "all";
 }> = ({ flow, flowRuns, flowVersion, ...props }) => {
   const api = new AutoGPTServerAPI();
 
-  const [flowVersions, setFlowVersions] = useState<Graph[] | null>(null);
+  const [flowVersions, setFlowVersions] = useState<GraphMeta[] | null>(null);
   const [selectedVersion, setSelectedFlowVersion] = useState(flowVersion ?? "all");
 
   useEffect(() => {
@@ -478,7 +472,7 @@ const FlowInfo: React.FC<React.HTMLAttributes<HTMLDivElement> & {
 };
 
 const FlowRunInfo: React.FC<React.HTMLAttributes<HTMLDivElement> & {
-  flow: Graph;
+  flow: GraphMeta;
   flowRun: FlowRun;
 }> = ({ flow, flowRun, ...props }) => {
   if (flowRun.graphID != flow.id) {
@@ -509,7 +503,7 @@ const FlowRunInfo: React.FC<React.HTMLAttributes<HTMLDivElement> & {
 };
 
 const FlowRunsStats: React.FC<{
-  flows: Graph[],
+  flows: GraphMeta[],
   flowRuns: FlowRun[],
   title?: string,
   className?: string,
@@ -570,7 +564,7 @@ const FlowRunsStats: React.FC<{
 
 const FlowRunsTimeline = (
   { flows, flowRuns, dataMin, className }: {
-    flows: Graph[],
+    flows: GraphMeta[],
     flowRuns: FlowRun[],
     dataMin: "dataMin" | number,
     className?: string,
