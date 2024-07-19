@@ -74,7 +74,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     openai_api_key: str = Field(default="", description="OpenAI API key")
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")
-    ollama_api_key: str = Field(default="", description="Ollama API key")
 
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")

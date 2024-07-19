@@ -3,9 +3,9 @@ from enum import Enum
 from typing import NamedTuple
 
 import anthropic
+import ollama
 import openai
 from groq import Groq
-import ollama
 
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SecretField
@@ -17,7 +17,7 @@ LlmApiKeys = {
     "openai": BlockSecret("openai_api_key"),
     "anthropic": BlockSecret("anthropic_api_key"),
     "groq": BlockSecret("groq_api_key"),
-    "ollama": BlockSecret("ollama_api_key"),
+    "ollama": BlockSecret(value=""),
 }
 
 
@@ -139,11 +139,11 @@ class LlmCallBlock(Block):
             )
             return response.choices[0].message.content or ""
         elif provider == "ollama":
-            response =  ollama.generate(
-              model=model.value,
-              prompt=prompt[0]['content'],
+            response = ollama.generate(
+                model=model.value,
+                prompt=prompt[0]["content"],
             )
-            return response['response']
+            return response["response"]
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
