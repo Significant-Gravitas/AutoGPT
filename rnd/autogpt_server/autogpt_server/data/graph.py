@@ -123,16 +123,6 @@ async def get_node(node_id: str) -> Node | None:
     return Node.from_db(node) if node else None
 
 
-# TODO: Delete this
-async def get_graph_ids() -> list[str]:
-    return [
-        graph.id
-        for graph in await AgentGraph.prisma().find_many(
-            distinct=["id"], where={"isActive": True}
-        )
-    ]
-
-
 async def get_graphs_meta(
     filter_by: Literal["active", "template"] | None = "active"
 ) -> list[GraphMeta]:
