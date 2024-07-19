@@ -3,10 +3,11 @@ from enum import Enum
 from typing import NamedTuple
 
 import anthropic
+import ollama
 import openai
 from groq import Groq
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SecretField
 from autogpt_server.util import json
 
@@ -16,6 +17,7 @@ LlmApiKeys = {
     "openai": BlockSecret("openai_api_key"),
     "anthropic": BlockSecret("anthropic_api_key"),
     "groq": BlockSecret("groq_api_key"),
+    "ollama": BlockSecret(value=""),
 }
 
 
@@ -39,6 +41,8 @@ class LlmModel(str, Enum):
     MIXTRAL_8X7B = "mixtral-8x7b-32768"
     GEMMA_7B = "gemma-7b-it"
     GEMMA2_9B = "gemma2-9b-it"
+    # Ollama models
+    OLLAMA_LLAMA3_8B = "llama3"
 
     @property
     def metadata(self) -> ModelMetadata:
@@ -57,16 +61,17 @@ MODEL_METADATA = {
     LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768),
     LlmModel.GEMMA_7B: ModelMetadata("groq", 8192),
     LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192),
+    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192),
 }
 
 
-class LlmCallBlock(Block):
+class ObjectLlmCallBlock(Block):
     class Input(BlockSchema):
         prompt: str
+        expected_format: dict[str, str]
         model: LlmModel = LlmModel.GPT4_TURBO
-        api_key: BlockSecret = SecretField(key="openai_api_key")
+        api_key: BlockSecret = SecretField(value="")
         sys_prompt: str = ""
-        expected_format: dict[str, str] = {}
         retry: int = 3
 
     class Output(BlockSchema):
@@ -76,8 +81,10 @@ class LlmCallBlock(Block):
     def __init__(self):
         super().__init__(
             id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
-            input_schema=LlmCallBlock.Input,
-            output_schema=LlmCallBlock.Output,
+            description="Call a Large Language Model (LLM) to generate formatted object based on the given prompt.",
+            categories={BlockCategory.LLM},
+            input_schema=ObjectLlmCallBlock.Input,
+            output_schema=ObjectLlmCallBlock.Output,
             test_input={
                 "model": LlmModel.GPT4_TURBO,
                 "api_key": "fake-api",
@@ -133,6 +140,12 @@ class LlmCallBlock(Block):
                 response_format=response_format,  # type: ignore
             )
             return response.choices[0].message.content or ""
+        elif provider == "ollama":
+            response = ollama.generate(
+                model=model.value,
+                prompt=prompt[0]["content"],
+            )
+            return response["response"]
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
@@ -221,6 +234,51 @@ class LlmCallBlock(Block):
         yield "error", retry_prompt
 
 
+class TextLlmCallBlock(Block):
+    class Input(BlockSchema):
+        prompt: str
+        model: LlmModel = LlmModel.GPT4_TURBO
+        api_key: BlockSecret = SecretField(value="")
+        sys_prompt: str = ""
+        retry: int = 3
+
+    class Output(BlockSchema):
+        response: str
+        error: str
+
+    def __init__(self):
+        super().__init__(
+            id="1f292d4a-41a4-4977-9684-7c8d560b9f91",
+            description="Call a Large Language Model (LLM) to generate a string based on the given prompt.",
+            categories={BlockCategory.LLM},
+            input_schema=TextLlmCallBlock.Input,
+            output_schema=TextLlmCallBlock.Output,
+            test_input={"prompt": "User prompt"},
+            test_output=("response", "Response text"),
+            test_mock={"llm_call": lambda *args, **kwargs: "Response text"},
+        )
+
+    @staticmethod
+    def llm_call(input_data: ObjectLlmCallBlock.Input) -> str:
+        object_block = ObjectLlmCallBlock()
+        for output_name, output_data in object_block.run(input_data):
+            if output_name == "response":
+                return output_data["response"]
+            else:
+                raise output_data
+        raise ValueError("Failed to get a response from the LLM.")
+
+    def run(self, input_data: Input) -> BlockOutput:
+        try:
+            object_input_data = ObjectLlmCallBlock.Input(
+                **{attr: getattr(input_data, attr) for attr in input_data.model_fields},
+                expected_format={},
+            )
+            yield "response", self.llm_call(object_input_data)
+        except Exception as e:
+            yield "error", str(e)
+
+
 class TextSummarizerBlock(Block):
     class Input(BlockSchema):
         text: str
@@ -237,6 +295,8 @@ class TextSummarizerBlock(Block):
     def __init__(self):
         super().__init__(
             id="c3d4e5f6-7g8h-9i0j-1k2l-m3n4o5p6q7r8",
+            description="Utilize a Large Language Model (LLM) to summarize a long text.",
+            categories={BlockCategory.LLM, BlockCategory.TEXT},
             input_schema=TextSummarizerBlock.Input,
             output_schema=TextSummarizerBlock.Output,
             test_input={"text": "Lorem ipsum..." * 100},
@@ -283,8 +343,8 @@ class TextSummarizerBlock(Block):
         return chunks
 
     @staticmethod
-    def llm_call(input_data: LlmCallBlock.Input) -> dict[str, str]:
-        llm_block = LlmCallBlock()
+    def llm_call(input_data: ObjectLlmCallBlock.Input) -> dict[str, str]:
+        llm_block = ObjectLlmCallBlock()
         for output_name, output_data in llm_block.run(input_data):
             if output_name == "response":
                 return output_data
@@ -294,7 +354,7 @@ class TextSummarizerBlock(Block):
         prompt = f"Summarize the following text concisely:\n\n{chunk}"
 
         llm_response = self.llm_call(
-            LlmCallBlock.Input(
+            ObjectLlmCallBlock.Input(
                 prompt=prompt,
                 api_key=input_data.api_key,
                 model=input_data.model,
@@ -314,7 +374,7 @@ class TextSummarizerBlock(Block):
             )
 
             llm_response = self.llm_call(
-                LlmCallBlock.Input(
+                ObjectLlmCallBlock.Input(
                     prompt=prompt,
                     api_key=input_data.api_key,
                     model=input_data.model,

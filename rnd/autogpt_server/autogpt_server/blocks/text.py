@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import Field
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 
 
 class TextMatcherBlock(Block):
@@ -22,6 +22,10 @@ class TextMatcherBlock(Block):
     def __init__(self):
         super().__init__(
             id="3060088f-6ed9-4928-9ba7-9c92823a7ccd",
+            description="This block matches the given text with the pattern (regex) and"
+            " forwards the provided data to positive (if matching) or"
+            " negative (if not matching) output.",
+            categories={BlockCategory.TEXT},
             input_schema=TextMatcherBlock.Input,
             output_schema=TextMatcherBlock.Output,
             test_input=[
@@ -72,6 +76,8 @@ class TextParserBlock(Block):
     def __init__(self):
         super().__init__(
             id="3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+            description="This block extracts the text from the given text using the pattern (regex).",
+            categories={BlockCategory.TEXT},
             input_schema=TextParserBlock.Input,
             output_schema=TextParserBlock.Output,
             test_input=[
@@ -123,6 +129,8 @@ class TextFormatterBlock(Block):
     def __init__(self):
         super().__init__(
             id="db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+            description="This block formats the given texts using the format template.",
+            categories={BlockCategory.TEXT},
             input_schema=TextFormatterBlock.Input,
             output_schema=TextFormatterBlock.Output,
             test_input=[
