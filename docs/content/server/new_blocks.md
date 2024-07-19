@@ -52,7 +52,10 @@ Follow these steps to create and test a new block:
    ```python
    def __init__(self):
        super().__init__(
-           id="h5e7f8g9-1b2c-3d4e-5f6g-7h8i9j0k1l2m", # Unique ID for the block
+           # Unique ID for the block
+           # you can generate this with this python one liner
+           # print(__import__('uuid').uuid4())
+           id="h5e7f8g9-1b2c-3d4e-5f6g-7h8i9j0k1l2m",
            input_schema=WikipediaSummaryBlock.Input,  # Assign input schema
            output_schema=WikipediaSummaryBlock.Output,  # Assign output schema
 
