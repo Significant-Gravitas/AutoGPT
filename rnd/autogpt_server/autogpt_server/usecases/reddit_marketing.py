@@ -1,4 +1,4 @@
-from autogpt_server.blocks.llm import LlmCallBlock
+from autogpt_server.blocks.llm import ObjectLlmCallBlock
 from autogpt_server.blocks.reddit import RedditGetPostsBlock, RedditPostCommentBlock
 from autogpt_server.blocks.text import TextFormatterBlock, TextMatcherBlock
 from autogpt_server.data.graph import Graph, Link, Node, create_graph
@@ -18,7 +18,7 @@ def create_test_graph() -> Graph:
               TextFormatterBlock (format)
                       ||
                       v
-            LlmCallBlock / TextRelevancy
+            ObjectLlmCallBlock / TextRelevancy
                  ||       ||       ||
             post_id  is_relevant  marketing_text
                ||       ||        ||
@@ -68,7 +68,7 @@ Make sure to only comment on a relevant post.
         block_id=TextFormatterBlock().id,
         input_default=text_formatter_input,
     )
-    llm_call_node = Node(block_id=LlmCallBlock().id, input_default=llm_call_input)
+    llm_call_node = Node(block_id=ObjectLlmCallBlock().id, input_default=llm_call_input)
     text_matcher_node = Node(
         block_id=TextMatcherBlock().id,
         input_default=text_matcher_input,
