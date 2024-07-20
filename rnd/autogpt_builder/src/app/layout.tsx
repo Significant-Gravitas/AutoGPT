@@ -14,6 +14,8 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 
+import { GoogleOAuthProvider } from '@react-oauth/google';
+
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
@@ -67,12 +69,14 @@ export default function RootLayout({
           defaultTheme="light"
           disableTransitionOnChange
         >
-          <div className="min-h-screen bg-gray-200 text-gray-900">
-            <NavBar />
-            <main className="mx-auto p-4">
-              {children}
-            </main>
-          </div>
+          <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!}>
+            <div className="min-h-screen bg-gray-200 text-gray-900">
+              <NavBar />
+              <main className="mx-auto p-4">
+                {children}
+              </main>
+            </div>
+          </GoogleOAuthProvider>
         </ThemeProvider>
       </body>
     </html>

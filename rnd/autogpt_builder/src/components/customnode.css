@@ -146,6 +146,11 @@
   padding: 5px 10px;
 }
 
+.custom-node .google-signin-container {
+  margin-top: 10px;
+  padding: 0 10px;
+}
+
 .array-item-add {
   background: #5bc0de;
   border: none;

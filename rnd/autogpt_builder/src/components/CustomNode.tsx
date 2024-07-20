@@ -1,4 +1,4 @@
-import React, { useState, useEffect, FC, memo } from 'react';
+import React, { useState, useEffect, FC, memo, useCallback } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './customnode.css';
@@ -8,6 +8,8 @@ import { Input } from './ui/input';
 import { BlockSchema } from '@/lib/types';
 import SchemaTooltip from './SchemaTooltip';
 import { beautifyString } from '@/lib/utils';
+import GoogleSignInButton from './GoogleSignInButton';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 
 type CustomNodeData = {
   blockType: string;
@@ -32,6 +34,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [modalValue, setModalValue] = useState<string>('');
   const [errors, setErrors] = useState<{ [key: string]: string | null }>({});
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
     if (data.output_data || data.status) {
@@ -87,6 +90,15 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       </div>
     ));
   };
+
+  const handleTokenChange = useCallback((token: string | null) => {
+    if (token !== data.hardcodedValues['access_token']) {
+      data.setHardcodedValues({
+        ...data.hardcodedValues,
+        access_token: token
+      });
+    }
+  }, [data.hardcodedValues, data.setHardcodedValues]);
 
   const handleInputChange = (key: string, value: any) => {
     const keys = key.split('.');
@@ -386,6 +398,13 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           );
         }
         return null;
+      case 'oauth2':
+        return (
+          <div key={fullKey} className="input-container">
+            <GoogleSignInButton onTokenChange={handleTokenChange} />
+            {error && <span className="error-message">{error}</span>}
+          </div>
+        );
       default:
         return (
           <div key={fullKey} className="input-container">
@@ -425,29 +444,32 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       </div>
       <div className="node-content">
         <div className="input-section">
-          {data.inputSchema &&
-            Object.entries(data.inputSchema.properties).map(([key, schema]) => {
-              const isRequired = data.inputSchema.required?.includes(key);
-              return (isRequired || isAdvancedOpen) && (
-                <div key={key}>
-                  <div className="handle-container">
-                    <Handle
-                      type="target"
-                      position={Position.Left}
-                      id={key}
-                      style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
-                    />
-                    <span className="handle-label">{schema.title || beautifyString(key)}</span>
-                    <SchemaTooltip schema={schema} />
+            {data.inputSchema &&
+              Object.entries(data.inputSchema.properties).map(([key, schema]) => {
+                const isRequired = data.inputSchema.required?.includes(key);
+                return (isRequired || isAdvancedOpen) && (
+                  <div key={key}>
+                    <div className="handle-container">
+                      <Handle
+                        type="target"
+                        position={Position.Left}
+                        id={key}
+                        style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
+                      />
+                      <span className="handle-label">{schema.title || beautifyString(key)}</span>
+                      <SchemaTooltip schema={schema} />
+                    </div>
+                    {renderInputField(key, schema, '', schema.title || beautifyString(key))}
                   </div>
-                  {renderInputField(key, schema, '', schema.title || beautifyString(key))}
-                </div>
-              );
-            })}
+                );
+              })}
         </div>
         <div className="output-section">
-          {data.outputSchema && generateHandles(data.outputSchema, 'source')}
+            {data.outputSchema && generateHandles(data.outputSchema, 'source')}
         </div>
+      </div>
+      <div className="google-signin-container">
+        <GoogleSignInButton onTokenChange={handleTokenChange} />
       </div>
       {isOutputOpen && (
         <div className="node-output">
