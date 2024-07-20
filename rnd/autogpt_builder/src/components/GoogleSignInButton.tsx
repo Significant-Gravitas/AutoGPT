@@ -7,7 +7,7 @@ interface GoogleSignInButtonProps {
 }
 
 const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = React.memo(({ onTokenChange }) => {
-  const { token, error, login, logout } = useGoogleAuth('https://www.googleapis.com/auth/spreadsheets.readonly');
+  const { token, error, login, logout } = useGoogleAuth('https://www.googleapis.com/auth/spreadsheets');
 
   const handleTokenChange = useCallback((newToken: string | null) => {
     onTokenChange(newToken);
