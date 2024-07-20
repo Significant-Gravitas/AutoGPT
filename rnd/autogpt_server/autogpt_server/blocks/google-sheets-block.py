@@ -3,7 +3,7 @@ from autogpt_server.data.model import SchemaField
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-class GoogleSheetsBlock(Block):
+class GoogleSheetsReader(Block):
     class Input(BlockSchema):
         spreadsheet_id: str = SchemaField(
             description="The ID of the Google Sheet to read",
@@ -25,8 +25,8 @@ class GoogleSheetsBlock(Block):
     def __init__(self):
         super().__init__(
             id="google-sheets-block",
-            input_schema=GoogleSheetsBlock.Input,
-            output_schema=GoogleSheetsBlock.Output,
+            input_schema=GoogleSheetsReader.Input,
+            output_schema=GoogleSheetsReader.Output,
         )
 
     def run(self, input_data: Input) -> BlockOutput:
