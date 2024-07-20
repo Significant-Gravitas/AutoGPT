@@ -26,3 +26,6 @@
 # Explicitly re-ignore some folders
 .*
 **/__pycache__
+
+# rnd
+!rnd/
