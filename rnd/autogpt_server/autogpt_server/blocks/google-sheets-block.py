@@ -39,6 +39,5 @@ class GoogleSheetsReader(Block):
         if not values:
             yield "data", {"error": "No data found."}
         else:
-            headers = values[0]
-            data = [dict(zip(headers, row)) for row in values[1:]]
+            data = [row for row in values[0:]]
             yield "rows", data
