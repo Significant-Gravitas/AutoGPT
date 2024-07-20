@@ -468,7 +468,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
             {data.outputSchema && generateHandles(data.outputSchema, 'source')}
         </div>
       </div>
-      {data.blockType === 'GoogleSheetsBlock' && (
+      {data.blockType.includes('Google') && (
           <div className="google-signin-container">
             <GoogleSignInButton onTokenChange={handleTokenChange} />
           </div>
