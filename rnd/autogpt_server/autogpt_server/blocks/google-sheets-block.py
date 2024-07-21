@@ -3,12 +3,20 @@ from autogpt_server.data.model import SchemaField
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from typing import Union, List
+import re
+
+def extract_spreadsheet_id(url: str) -> str:
+    """Extract the spreadsheet ID from a Google Sheets URL."""
+    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+    if match:
+        return match.group(1)
+    raise ValueError("Invalid Google Sheets URL")
 
 class GoogleSheetsWriter(Block):
     class Input(BlockSchema):
-        spreadsheet_id: str = SchemaField(
-            description="The ID of the Google Sheet to write to",
-            placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+        spreadsheet_url: str = SchemaField(
+            description="The link to the Google Sheet to write to.",
+            placeholder="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
         )
         sheet_name: str = SchemaField(
             description="The name of the sheet to append data to",
@@ -20,8 +28,8 @@ class GoogleSheetsWriter(Block):
             placeholder="['John Doe', 'johndoe@example.com', '30']"
         )
         access_token: str = SchemaField(
-            description="Google OAuth2 access token. You can obtain this from the Google Cloud Console.",
-            placeholder="ya29.a0AbVbY6P...",
+            description="Google OAuth2 access token. Click 'Sign in with Google' below to automatically generate this token. Keep this secret!",
+            placeholder="Sign in with Google below",
             secret=True
         )
 
@@ -37,13 +45,14 @@ class GoogleSheetsWriter(Block):
 
     def run(self, input_data: Input) -> BlockOutput:
         try:
+            spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_url)
             credentials = Credentials(input_data.access_token)
             service = build("sheets", "v4", credentials=credentials)
             sheet = service.spreadsheets()
 
             # Get the current sheet data to find the next empty row
             result = sheet.values().get(
-                spreadsheetId=input_data.spreadsheet_id,
+                spreadsheetId=spreadsheet_id,
                 range=f"{input_data.sheet_name}!A:A"
             ).execute()
             values = result.get('values', [])
@@ -57,7 +66,7 @@ class GoogleSheetsWriter(Block):
             }
 
             result = sheet.values().append(
-                spreadsheetId=input_data.spreadsheet_id,
+                spreadsheetId=spreadsheet_id,
                 range=append_range,
                 valueInputOption='USER_ENTERED',
                 insertDataOption='INSERT_ROWS',
@@ -79,12 +88,12 @@ class GoogleSheetsWriter(Block):
 
 class GoogleSheetsReader(Block):
     class Input(BlockSchema):
-        spreadsheet_id: str = SchemaField(
-            description="Your Google Sheet ID (found in the sheet's URL)",
-            placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+        spreadsheet_url: str = SchemaField(
+            description="The link to the Google Sheet to read from.",
+            placeholder="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
         )
         read_single_row: bool = SchemaField(
-            description="Do you want to read just one row? Select 'Yes' for a single row, 'No' for multiple rows.",
+            description="Do you want to read just one row? Select 'True' for a single row, 'False' for a range.",
             default=False
         )
         sheet_name: str = SchemaField(
@@ -97,12 +106,13 @@ class GoogleSheetsReader(Block):
             placeholder="3"
         )
         cell_range: str = SchemaField(
-            description="If reading multiple rows, what range of cells do you want? (e.g., 'A1:E10' for the first 10 rows of columns A to E)",
+            description="If reading a range, what range of cells do you want? (e.g., 'A1:E10' for the first 10 rows of columns A to E)",
             placeholder="A1:E10",
             default="A1:Z1000"
         )
         access_token: str = SchemaField(
-            description="Your Google OAuth2 access token (keep this secret!)",
+            placeholder="Sign in with Google below",
+            description="Google OAuth2 access token. Click 'Sign in with Google' below to automatically generate this token. Keep this secret!",
             secret=True
         )
 
@@ -120,6 +130,7 @@ class GoogleSheetsReader(Block):
 
     def run(self, input_data: Input) -> BlockOutput:
         try:
+            spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_url)
             credentials = Credentials(input_data.access_token)
             service = build("sheets", "v4", credentials=credentials)
             sheet = service.spreadsheets()
@@ -129,7 +140,7 @@ class GoogleSheetsReader(Block):
             else:
                 range_to_read = f"{input_data.sheet_name}!{input_data.cell_range}"
 
-            result = sheet.values().get(spreadsheetId=input_data.spreadsheet_id, range=range_to_read).execute()
+            result = sheet.values().get(spreadsheetId=spreadsheet_id, range=range_to_read).execute()
             values = result.get("values", [])
 
             if not values:
