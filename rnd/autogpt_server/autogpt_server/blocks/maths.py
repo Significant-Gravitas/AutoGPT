@@ -1,9 +1,10 @@
-from autogpt_server.data.block import Block, BlockSchema, BlockOutput
-from autogpt_server.data.model import SchemaField
-from typing import Union
-from enum import Enum
 import operator
-from typing import Any
+from enum import Enum
+from typing import Any, Union
+
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.model import SchemaField
+
 
 class Operation(Enum):
     ADD = "Add"
@@ -12,23 +13,22 @@ class Operation(Enum):
     DIVIDE = "Divide"
     POWER = "Power"
 
+
 class MathsBlock(Block):
     class Input(BlockSchema):
         operation: Operation = SchemaField(
             description="Choose the math operation you want to perform",
-            placeholder="Select an operation"
+            placeholder="Select an operation",
         )
         a: float = SchemaField(
-            description="Enter the first number (A)",
-            placeholder="For example: 10"
+            description="Enter the first number (A)", placeholder="For example: 10"
         )
         b: float = SchemaField(
-            description="Enter the second number (B)",
-            placeholder="For example: 5"
+            description="Enter the second number (B)", placeholder="For example: 5"
         )
         round_result: bool = SchemaField(
             description="Do you want to round the result to a whole number?",
-            default=False
+            default=False,
         )
 
     class Output(BlockSchema):
@@ -48,12 +48,9 @@ class MathsBlock(Block):
                 "operation": Operation.ADD,
                 "a": 10,
                 "b": 5,
-                "round_result": False
+                "round_result": False,
             },
-            test_output=[
-                ("result", 15),
-                ("explanation", "Added 10 and 5 to get 15")
-            ]
+            test_output=[("result", 15), ("explanation", "Added 10 and 5 to get 15")],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
@@ -66,7 +63,7 @@ class MathsBlock(Block):
             Operation.SUBTRACT: (operator.sub, "Subtracted"),
             Operation.MULTIPLY: (operator.mul, "Multiplied"),
             Operation.DIVIDE: (operator.truediv, "Divided"),
-            Operation.POWER: (operator.pow, "Raised")
+            Operation.POWER: (operator.pow, "Raised"),
         }
 
         op_func, op_word = operations[operation]
@@ -74,9 +71,9 @@ class MathsBlock(Block):
         try:
             if operation == Operation.DIVIDE and b == 0:
                 raise ZeroDivisionError("Cannot divide by zero")
-            
+
             result = op_func(a, b)
-            
+
             if operation == Operation.POWER:
                 explanation = f"{op_word} {a} to the power of {b} to get {result}"
             elif operation == Operation.DIVIDE:
@@ -99,7 +96,6 @@ class MathsBlock(Block):
             yield "explanation", f"An error occurred: {str(e)}"
 
 
-
 class CounterBlock(Block):
     class Input(BlockSchema):
         collection: Any = SchemaField(
@@ -108,12 +104,8 @@ class CounterBlock(Block):
         )
 
     class Output(BlockSchema):
-        count: int = SchemaField(
-            description="The number of items in the collection"
-        )
-        type: str = SchemaField(
-            description="The type of the input collection"
-        )
+        count: int = SchemaField(description="The number of items in the collection")
+        type: str = SchemaField(description="The type of the input collection")
         explanation: str = SchemaField(
             description="A simple explanation of what was counted"
         )
@@ -123,24 +115,22 @@ class CounterBlock(Block):
             id="count-block",
             input_schema=CounterBlock.Input,
             output_schema=CounterBlock.Output,
-            test_input={
-                "collection": [1, 2, 3, 4, 5]
-            },
+            test_input={"collection": [1, 2, 3, 4, 5]},
             test_output=[
                 ("count", 5),
                 ("type", "list"),
-                ("explanation", "Counted 5 items in a list")
-            ]
+                ("explanation", "Counted 5 items in a list"),
+            ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
         collection = input_data.collection
-        
+
         try:
             if isinstance(collection, (str, list, tuple, set, dict)):
                 count = len(collection)
                 collection_type = type(collection).__name__
-            elif hasattr(collection, '__iter__'):
+            elif hasattr(collection, "__iter__"):
                 count = sum(1 for _ in collection)
                 collection_type = "iterable"
             else:
