@@ -36,6 +36,7 @@ anthropic = "^0.25.1"
 
 
 ollama = "^0.3.0"
+feedparser = "^6.0.11"
 [tool.poetry.group.dev.dependencies]
 cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main", develop = true }
 poethepoet = "^0.26.1"
