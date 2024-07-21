@@ -4,7 +4,7 @@ from typing import Iterator
 import praw
 from pydantic import BaseModel, ConfigDict, Field
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SecretField
 from autogpt_server.util.mock import MockObject
 
@@ -71,6 +71,8 @@ class RedditGetPostsBlock(Block):
     def __init__(self):
         super().__init__(
             id="c6731acb-4285-4ee1-bc9b-03d0766c370f",
+            description="This block fetches Reddit posts from a defined subreddit name.",
+            categories={BlockCategory.SOCIAL},
             input_schema=RedditGetPostsBlock.Input,
             output_schema=RedditGetPostsBlock.Output,
             test_input={
@@ -149,6 +151,8 @@ class RedditPostCommentBlock(Block):
     def __init__(self):
         super().__init__(
             id="4a92261b-701e-4ffb-8970-675fd28e261f",
+            description="This block posts a Reddit comment on a specified Reddit post.",
+            categories={BlockCategory.SOCIAL},
             input_schema=RedditPostCommentBlock.Input,
             output_schema=RedditPostCommentBlock.Output,
             test_input={"data": {"post_id": "id", "comment": "comment"}},
