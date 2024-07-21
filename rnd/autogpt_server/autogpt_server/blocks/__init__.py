@@ -19,6 +19,16 @@ for module in modules:
     AVAILABLE_MODULES.append(module)
 
 # Load all Block instances from the available modules
-AVAILABLE_BLOCKS = {block.id: block for block in [v() for v in Block.__subclasses__()]}
+AVAILABLE_BLOCKS = {}
+for cls in Block.__subclasses__():
+    block = cls()
+
+    if not isinstance(block.id, str) or len(block.id) != 36:
+        raise ValueError(f"Block ID {block.name} error: {block.id} is not a valid UUID")
+
+    if block.id in AVAILABLE_BLOCKS:
+        raise ValueError(f"Block ID {block.name} error: {block.id} is already in use")
+
+    AVAILABLE_BLOCKS[block.id] = block
 
 __all__ = ["AVAILABLE_MODULES", "AVAILABLE_BLOCKS"]
