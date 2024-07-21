@@ -41,7 +41,7 @@ class MathsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="simple-arithmetic-block",
+            id="b1ab9b19-67a6-406d-abf5-2dba76d00c79",
             input_schema=MathsBlock.Input,
             output_schema=MathsBlock.Output,
             test_input={
@@ -112,7 +112,7 @@ class CounterBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="count-block",
+            id="3c9c2f42-b0c3-435f-ba35-05f7a25c772a",
             input_schema=CounterBlock.Input,
             output_schema=CounterBlock.Output,
             test_input={"collection": [1, 2, 3, 4, 5]},
