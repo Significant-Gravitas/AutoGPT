@@ -7,7 +7,7 @@ import re
 
 def extract_spreadsheet_id(url: str) -> str:
     """Extract the spreadsheet ID from a Google Sheets URL."""
-    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url) # This works for clean urls and those with extra parameters at the end
     if match:
         return match.group(1)
     raise ValueError("Invalid Google Sheets URL")
