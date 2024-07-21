@@ -69,7 +69,11 @@ class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
     async def get_available_chat_models(self) -> Sequence[ChatModelInfo[ModelName]]:
         models = []
         for provider in self.get_available_providers():
-            models.extend(await provider.get_available_chat_models())
+            if hasattr(provider, 'is_configured') and provider.is_configured():
+                try:
+                    models.extend(await provider.get_available_chat_models())
+                except Exception as e:
+                    logger.warning(f"Failed to get models from {provider.__class__.__name__}: {e}")
         return models
 
     def get_token_limit(self, model_name: ModelName) -> int:
