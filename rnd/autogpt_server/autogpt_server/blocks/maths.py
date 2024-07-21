@@ -95,3 +95,61 @@ class MathsBlock(Block):
             yield "result", None
             yield "explanation", f"An error occurred: {str(e)}"
 
+
+class CounterBlock(Block):
+    class Input(BlockSchema):
+        collection: Any = SchemaField(
+            description="Enter the collection you want to count. This can be a list, dictionary, string, or any other iterable.",
+            placeholder="For example: [1, 2, 3] or {'a': 1, 'b': 2} or 'hello'",
+        )
+
+    class Output(BlockSchema):
+        count: int = SchemaField(description="The number of items in the collection")
+        type: str = SchemaField(description="The type of the input collection")
+        explanation: str = SchemaField(
+            description="A simple explanation of what was counted"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="count-block",
+            input_schema=CounterBlock.Input,
+            output_schema=CounterBlock.Output,
+            test_input={"collection": [1, 2, 3, 4, 5]},
+            test_output=[
+                ("count", 5),
+                ("type", "list"),
+                ("explanation", "Counted 5 items in a list"),
+            ],
+        )
+
+    def run(self, input_data: Input) -> BlockOutput:
+        collection = input_data.collection
+
+        try:
+            if isinstance(collection, (str, list, tuple, set, dict)):
+                count = len(collection)
+                collection_type = type(collection).__name__
+            elif hasattr(collection, "__iter__"):
+                count = sum(1 for _ in collection)
+                collection_type = "iterable"
+            else:
+                raise ValueError("Input is not a countable collection")
+
+            if isinstance(collection, str):
+                item_word = "character" if count == 1 else "characters"
+            elif isinstance(collection, dict):
+                item_word = "key-value pair" if count == 1 else "key-value pairs"
+            else:
+                item_word = "item" if count == 1 else "items"
+
+            explanation = f"Counted {count} {item_word} in a {collection_type}"
+
+            yield "count", count
+            yield "type", collection_type
+            yield "explanation", explanation
+
+        except Exception as e:
+            yield "count", None
+            yield "type", "error"
+            yield "explanation", f"An error occurred: {str(e)}"
