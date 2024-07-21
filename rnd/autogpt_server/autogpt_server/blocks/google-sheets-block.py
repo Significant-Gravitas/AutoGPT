@@ -54,7 +54,7 @@ class GoogleSheetsWriter(Block):
 
     def __init__(self):
         super().__init__(
-            id="google-sheets-writer",
+            id="919e684b-1c2a-4a9a-ac8b-d073de3c15b2",
             input_schema=GoogleSheetsWriter.Input,
             output_schema=GoogleSheetsWriter.Output,
         )
@@ -137,7 +137,7 @@ class GoogleSheetsReader(Block):
 
     def __init__(self):
         super().__init__(
-            id="google-sheets-reader",
+            id="460e5d53-7038-4a8c-9f75-ec0b593fb337",
             input_schema=GoogleSheetsReader.Input,
             output_schema=GoogleSheetsReader.Output,
         )
