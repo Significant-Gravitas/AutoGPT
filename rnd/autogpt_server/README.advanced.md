@@ -53,7 +53,7 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
 6. Run the migrations
 
    ```sh
-   prisma migrate dev --schema schema_postgres.prisma
+   prisma migrate dev --schema postgres/schema.prisma
   ```
 
 ## Running The Server
