@@ -7,7 +7,11 @@ import { cn } from "@/lib/utils"
 
 const TooltipProvider = TooltipPrimitive.Provider
 
-const Tooltip = TooltipPrimitive.Root
+const Tooltip = ({ children, delayDuration = 10 }) => (
+  <TooltipPrimitive.Root delayDuration={delayDuration}>
+    {children}
+  </TooltipPrimitive.Root>
+);
 
 const TooltipTrigger = TooltipPrimitive.Trigger
 

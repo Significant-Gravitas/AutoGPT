@@ -17,7 +17,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import CustomNode from './CustomNode';
 import './flow.css';
-import AutoGPTServerAPI, { Block, Flow } from '@/lib/autogpt_server_api';
+import AutoGPTServerAPI, { Block, Graph } from '@/lib/autogpt_server_api';
 import { ObjectSchema } from '@/lib/types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -36,7 +36,7 @@ type CustomNodeData = {
   hardcodedValues: { [key: string]: any };
   setHardcodedValues: (values: { [key: string]: any }) => void;
   connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
-  isPropertiesOpen: boolean;
+  isOutputOpen: boolean;
   status?: string;
   output_data?: any;
   block_id: string;
@@ -72,16 +72,17 @@ const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id
     );
   };
 
-const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
-  flowID,
-  className,
-}) => {
+const FlowEditor: React.FC<{
+  flowID?: string;
+  template?: boolean;
+  className?: string;
+}> = ({ flowID, template, className }) => {
   const [nodes, setNodes] = useState<Node<CustomNodeData>[]>([]);
   const [edges, setEdges] = useState<Edge<CustomEdgeData>[]>([]);
   const [nodeId, setNodeId] = useState<number>(1);
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [savedAgent, setSavedAgent] = useState<Flow | null>(null);
+  const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>('');
   const [agentName, setAgentName] = useState<string>('');
 
@@ -111,13 +112,13 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
       .catch();
   }, []);
 
-  // Load existing flow
+  // Load existing graph
   useEffect(() => {
     if (!flowID || availableNodes.length == 0) return;
 
-    api.getFlow(flowID)
-      .then(flow => loadFlow(flow));
-  }, [flowID, availableNodes]);
+    (template ? api.getTemplate(flowID) : api.getGraph(flowID))
+      .then(graph => loadGraph(graph));
+  }, [flowID, template, availableNodes]);
 
   const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
   const edgeTypes: EdgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
@@ -233,7 +234,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
           ));
         },
         connections: [],
-        isPropertiesOpen: false,
+        isOutputOpen: false,
         block_id: blockId,
       },
     };
@@ -242,12 +243,12 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     setNodeId((prevId) => prevId + 1);
   };
 
-  function loadFlow(flow: Flow) {
-    setSavedAgent(flow);
-    setAgentName(flow.name);
-    setAgentDescription(flow.description);
+  function loadGraph(graph: Graph) {
+    setSavedAgent(graph);
+    setAgentName(graph.name);
+    setAgentDescription(graph.description);
 
-    setNodes(flow.nodes.map(node => {
+    setNodes(graph.nodes.map(node => {
       const block = availableNodes.find(block => block.id === node.block_id)!;
       const newNode = {
         id: node.id,
@@ -267,13 +268,13 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
             ));
           },
           connections: [],
-          isPropertiesOpen: false,
+          isOutputOpen: false,
         },
       };
       return newNode;
     }));
 
-    setEdges(flow.links.map(link => ({
+    setEdges(graph.links.map(link => ({
       id: `${link.source_id}_${link.source_name}_${link.sink_id}_${link.sink_name}`,
       type: 'custom',
       data: {
@@ -326,7 +327,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     return inputData;
   };
 
-  const saveAgent = async () => {
+  async function saveAgent (asTemplate: boolean = false) {
     setNodes((nds) =>
       nds.map((node) => ({
         ...node,
@@ -393,8 +394,12 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
     }
 
     const newSavedAgent = savedAgent
-      ? await api.updateFlow(savedAgent.id, payload)
-      : await api.createFlow(payload);
+      ? await (savedAgent.is_template
+        ? api.updateTemplate(savedAgent.id, payload) 
+        : api.updateGraph(savedAgent.id, payload))
+      : await (asTemplate
+        ? api.createTemplate(payload)
+        : api.createGraph(payload));
     console.debug('Response from the API:', newSavedAgent);
     setSavedAgent(newSavedAgent);
 
@@ -450,7 +455,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
               ...node.data,
               status: nodeExecution.status,
               output_data: nodeExecution.output_data,
-              isPropertiesOpen: true,
+              isOutputOpen: true,
             },
           };
         }
@@ -488,6 +493,7 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
         edgeTypes={edgeTypes}
         connectionLineComponent={ConnectionLine}
         onEdgesDelete={onEdgesDelete}
+        deleteKeyCode={["Backspace", "Delete"]}
       >
         <div style={{ position: 'absolute', right: 10, zIndex: 4 }}>
           <Input
@@ -503,8 +509,15 @@ const FlowEditor: React.FC<{ flowID?: string; className?: string }> = ({
             onChange={(e) => setAgentDescription(e.target.value)}
           />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>  {/* Added gap for spacing */}
-            <Button onClick={saveAgent}>Save Agent</Button>
-            <Button onClick={runAgent}>Save & Run Agent</Button>
+            <Button onClick={() => saveAgent(savedAgent?.is_template)}>
+              Save {savedAgent?.is_template ? "Template" : "Agent"}
+            </Button>
+            {!savedAgent?.is_template &&
+              <Button onClick={runAgent}>Save & Run Agent</Button>
+            }
+            {!savedAgent &&
+              <Button onClick={() => saveAgent(true)}>Save as Template</Button>
+            }
           </div>
         </div>
       </ReactFlow>

@@ -84,6 +84,7 @@ def SecretField(
         title=title,
         description=description,
         placeholder=placeholder,
+        secret=True,
         **kwargs,
     )
 
@@ -95,12 +96,15 @@ def SchemaField(
     title: Optional[str] = None,
     description: Optional[str] = None,
     placeholder: Optional[str] = None,
+    secret: bool = False,
     exclude: bool = False,
     **kwargs,
 ) -> T:
     json_extra: dict[str, Any] = {}
     if placeholder:
         json_extra["placeholder"] = placeholder
+    if secret:
+        json_extra["secret"] = True
 
     return Field(
         default,
