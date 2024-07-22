@@ -21,6 +21,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install requests
     - name: Check Actions Status
-      run: python .github/scripts/check_actions_status.py
+      run: |
+        pwd
+        python .github/scripts/check_actions_status.py
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
