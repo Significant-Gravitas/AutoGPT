@@ -281,9 +281,8 @@ async def import_packaged_templates() -> None:
             print(f"WARNING: pre-packaged graph file {template_file} is not a template")
             continue
         if (
-            (exists := next((t for t in templates_in_db if t.id == template.id), None))
-            and exists.version >= template.version
-        ):
+            exists := next((t for t in templates_in_db if t.id == template.id), None)
+        ) and exists.version >= template.version:
             continue
         await create_graph(template)
         print(f"Loaded template '{template.name}' ({template.id})")
