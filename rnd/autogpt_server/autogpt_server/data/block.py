@@ -9,9 +9,10 @@ from pydantic import BaseModel
 
 from autogpt_server.util import json
 
-BlockInput = dict[str, Any]
-BlockData = tuple[str, Any]
-BlockOutput = Generator[BlockData, None, None]
+BlockData = tuple[str, Any]  # Input & Output data should be a tuple of (name, data).
+BlockInput = dict[str, Any]  # Input: 1 input pin consumes 1 data.
+BlockOutput = Generator[BlockData, None, None]  # Output: 1 output pin produces n data.
+CompletedBlockOutput = dict[str, list[Any]]  # Completed stream, collected as a dict.
 
 
 class BlockCategory(Enum):
