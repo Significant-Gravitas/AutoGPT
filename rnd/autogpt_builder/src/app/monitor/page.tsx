@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ChevronDownIcon, ClockIcon, EnterIcon, ExitIcon, Pencil2Icon } from '@radix-ui/react-icons';
-import AutoGPTServerAPI, { GraphMeta, NodeExecutionResult } from '@/lib/autogpt_server_api';
+import AutoGPTServerAPI, { Graph, GraphMeta, NodeExecutionResult } from '@/lib/autogpt_server_api';
 import { cn, exportAsJSONFile, hashString } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -400,8 +400,11 @@ const FlowInfo: React.FC<React.HTMLAttributes<HTMLDivElement> & {
 }> = ({ flow, flowRuns, flowVersion, ...props }) => {
   const api = new AutoGPTServerAPI();
 
-  const [flowVersions, setFlowVersions] = useState<GraphMeta[] | null>(null);
+  const [flowVersions, setFlowVersions] = useState<Graph[] | null>(null);
   const [selectedVersion, setSelectedFlowVersion] = useState(flowVersion ?? "all");
+  const selectedFlowVersion: Graph | undefined = flowVersions?.find(v => (
+    v.version == (selectedVersion == "all" ? flow.version : selectedVersion)
+  ));
 
   useEffect(() => {
     api.getGraphAllVersions(flow.id).then(result => setFlowVersions(result));
@@ -449,7 +452,10 @@ const FlowInfo: React.FC<React.HTMLAttributes<HTMLDivElement> & {
           variant="outline"
           className="px-2.5"
           title="Export to a JSON-file"
-          onClick={() => exportAsJSONFile(flow, `${flow.name}_v${flow.version}.json`)}
+          onClick={() => exportAsJSONFile(
+            flowVersions!.find(v => v.version == selectedFlowVersion!.version)!,
+            `${flow.name}_v${selectedFlowVersion!.version}.json`
+          )}
         >
           <ExitIcon />
         </Button>
@@ -457,11 +463,7 @@ const FlowInfo: React.FC<React.HTMLAttributes<HTMLDivElement> & {
     </CardHeader>
     <CardContent>
       <FlowRunsStats
-        flows={[
-          selectedVersion != "all"
-            ? flowVersions?.find(v => v.version == selectedVersion)!
-            : flow
-        ]}
+        flows={[selectedFlowVersion ?? flow]}
         flowRuns={flowRuns.filter(r =>
           r.graphID == flow.id
           && (selectedVersion == "all" || r.graphVersion == selectedVersion)
