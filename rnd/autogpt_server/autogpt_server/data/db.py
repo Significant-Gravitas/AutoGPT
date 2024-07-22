@@ -2,6 +2,13 @@ from uuid import uuid4
 
 from prisma import Prisma
 from pydantic import BaseModel, Field, field_validator
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+PRISMA_SCHEMA = os.getenv("PRISMA_SCHEMA", "schema.prisma")
+os.environ['PRISMA_SCHEMA_PATH'] = PRISMA_SCHEMA
 
 prisma = Prisma(auto_register=True)
 
