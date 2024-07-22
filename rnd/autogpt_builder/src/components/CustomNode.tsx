@@ -463,27 +463,27 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         </div>
       </div>
       {isOutputOpen && (
-      <div className="node-output" onClick={handleOutputClick}>
-        <p>
-          <strong>Status:</strong>{' '}
-          {typeof data.status === 'object' ? JSON.stringify(data.status) : data.status || 'N/A'}
-        </p>
-        <p>
-          <strong>Output Data:</strong>{' '}
-          {(() => {
-            const outputText = typeof data.output_data === 'object'
-              ? JSON.stringify(data.output_data)
-              : data.output_data;
-            
-            if (!outputText) return 'No output data';
-            
-            return outputText.length > 100
-              ? `${outputText.slice(0, 100)}... Press To Read More`
-              : outputText;
-          })()}
-        </p>
-      </div>
-    )}
+        <div className="node-output" onClick={handleOutputClick}>
+          <p>
+            <strong>Status:</strong>{' '}
+            {typeof data.status === 'object' ? JSON.stringify(data.status) : data.status || 'N/A'}
+          </p>
+          <p>
+            <strong>Output Data:</strong>{' '}
+            {(() => {
+              const outputText = typeof data.output_data === 'object'
+                ? JSON.stringify(data.output_data)
+                : data.output_data;
+              
+              if (!outputText) return 'No output data';
+              
+              return outputText.length > 100
+                ? `${outputText.slice(0, 100)}... Press To Read More`
+                : outputText;
+            })()}
+          </p>
+        </div>
+      )}
       <div className="node-footer">
         <Button onClick={toggleOutput} className="toggle-button">
           Toggle Output
