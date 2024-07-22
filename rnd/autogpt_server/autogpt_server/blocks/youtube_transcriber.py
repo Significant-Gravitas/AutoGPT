@@ -1,55 +1,61 @@
-import re
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api.formatters import TextFormatter
 
-from autogpt_server.data.block import Block, BlockSchema, BlockOutput
+from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.data.model import SchemaField
+
 
 class YouTubeTranscriber(Block):
     class Input(BlockSchema):
         youtube_url: str = SchemaField(
             description="The URL of the YouTube video to transcribe",
-            placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         )
 
     class Output(BlockSchema):
         video_id: str = SchemaField(description="The extracted YouTube video ID")
         transcript: str = SchemaField(description="The transcribed text of the video")
-        error: str = SchemaField(description="Any error message if the transcription fails")
+        error: str = SchemaField(
+            description="Any error message if the transcription fails"
+        )
 
     def __init__(self):
         super().__init__(
             id="f3a8f7e1-4b1d-4e5f-9f2a-7c3d5a2e6b4c",
             input_schema=YouTubeTranscriber.Input,
             output_schema=YouTubeTranscriber.Output,
-            test_input={
-                "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-            },
+            test_input={"youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
             test_output=[
                 ("video_id", "dQw4w9WgXcQ"),
-                ("transcript", "Never gonna give you up\nNever gonna let you down\n..."),
+                (
+                    "transcript",
+                    "Never gonna give you up\nNever gonna let you down\n...",
+                ),
             ],
             test_mock={
                 "extract_video_id": lambda url: "dQw4w9WgXcQ",
-                "get_transcript": lambda video_id: [{"text": "Never gonna give you up"}, {"text": "Never gonna let you down"}],
-            }
+                "get_transcript": lambda video_id: [
+                    {"text": "Never gonna give you up"},
+                    {"text": "Never gonna let you down"},
+                ],
+            },
         )
 
     @staticmethod
     def extract_video_id(url: str) -> str:
         parsed_url = urlparse(url)
-        if parsed_url.netloc == 'youtu.be':
+        if parsed_url.netloc == "youtu.be":
             return parsed_url.path[1:]
-        if parsed_url.netloc in ('www.youtube.com', 'youtube.com'):
-            if parsed_url.path == '/watch':
+        if parsed_url.netloc in ("www.youtube.com", "youtube.com"):
+            if parsed_url.path == "/watch":
                 p = parse_qs(parsed_url.query)
-                return p['v'][0]
-            if parsed_url.path[:7] == '/embed/':
-                return parsed_url.path.split('/')[2]
-            if parsed_url.path[:3] == '/v/':
-                return parsed_url.path.split('/')[2]
+                return p["v"][0]
+            if parsed_url.path[:7] == "/embed/":
+                return parsed_url.path.split("/")[2]
+            if parsed_url.path[:3] == "/v/":
+                return parsed_url.path.split("/")[2]
         raise ValueError(f"Invalid YouTube URL: {url}")
 
     @staticmethod
