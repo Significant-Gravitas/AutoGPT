@@ -23,8 +23,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import AutoGPTServerAPI, {
+  Graph,
+  GraphMeta,
+  NodeExecutionResult,
+} from '@/lib/autogpt-server-api';
 import { ChevronDownIcon, ClockIcon, EnterIcon, ExitIcon, Pencil2Icon } from '@radix-ui/react-icons';
-import AutoGPTServerAPI, { Graph, GraphMeta, NodeExecutionResult } from '@/lib/autogpt_server_api';
 import { cn, exportAsJSONFile, hashString } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
