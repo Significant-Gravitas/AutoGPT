@@ -2,7 +2,8 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from enum import Enum
 from multiprocessing import Manager
-from typing import Any
+from queue import Queue as LocalQueue
+from typing import Any, TypeVar
 
 from prisma.models import (
     AgentGraphExecution,
@@ -14,6 +15,11 @@ from pydantic import BaseModel
 
 from autogpt_server.data.block import BlockData, BlockInput, CompletedBlockOutput
 from autogpt_server.util import json
+
+
+class GraphExecution(BaseModel):
+    graph_exec_id: str
+    start_node_execs: list["NodeExecution"]
 
 
 class NodeExecution(BaseModel):
@@ -31,20 +37,26 @@ class ExecutionStatus(str, Enum):
     FAILED = "FAILED"
 
 
-class ExecutionQueue:
+T = TypeVar("T")
+
+
+class ExecutionQueue[T]:
     """
     Queue for managing the execution of agents.
     This will be shared between different processes
     """
 
-    def __init__(self):
-        self.queue = Manager().Queue()
+    def __init__(self, local=False):
+        if local:
+            self.queue = LocalQueue()
+        else:
+            self.queue = Manager().Queue()
 
-    def add(self, execution: NodeExecution) -> NodeExecution:
+    def add(self, execution: T) -> T:
         self.queue.put(execution)
         return execution
 
-    def get(self) -> NodeExecution:
+    def get(self) -> T:
         return self.queue.get()
 
     def empty(self) -> bool:

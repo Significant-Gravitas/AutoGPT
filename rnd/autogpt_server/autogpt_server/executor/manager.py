@@ -8,14 +8,15 @@ if TYPE_CHECKING:
 
 from autogpt_server.data import db
 from autogpt_server.data.block import Block, BlockData, BlockInput, get_block
-from autogpt_server.data.execution import ExecutionQueue, ExecutionStatus
-from autogpt_server.data.execution import NodeExecution as Execution
 from autogpt_server.data.execution import (
+    ExecutionQueue,
+    ExecutionStatus,
+    GraphExecution,
+    NodeExecution,
     create_graph_execution,
     get_node_execution_input,
     merge_execution_input,
     parse_execution_output,
-    update_execution_status,
     upsert_execution_input,
     upsert_execution_output,
 )
@@ -30,11 +31,11 @@ def get_log_prefix(graph_eid: str, node_eid: str, block_name: str = "-"):
 
 
 T = TypeVar("T")
-ExecutionStream = Generator[Execution, None, None]
+ExecutionStream = Generator[NodeExecution, None, None]
 
 
 def execute_node(
-    loop: asyncio.AbstractEventLoop, api_client: "AgentServer", data: Execution
+    loop: asyncio.AbstractEventLoop, api_client: "AgentServer", data: NodeExecution
 ) -> ExecutionStream:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
@@ -58,9 +59,7 @@ def execute_node(
         return loop.run_until_complete(f)
 
     def update_execution(status: ExecutionStatus):
-        api_client.send_execution_update(
-            wait(update_execution_status(node_exec_id, status)).model_dump()
-        )
+        api_client.update_execution_status(node_exec_id, status)
 
     node = wait(get_node(node_id))
     if not node:
@@ -114,16 +113,14 @@ def enqueue_next_nodes(
     output: BlockData,
     graph_exec_id: str,
     prefix: str,
-) -> list[Execution]:
+) -> list[NodeExecution]:
     def wait(f: Coroutine[T, Any, T]) -> T:
         return loop.run_until_complete(f)
 
     def execution_update(node_exec_id: str, status: ExecutionStatus):
-        api_client.send_execution_update(
-            wait(update_execution_status(node_exec_id, status)).model_dump()
-        )
+        api_client.update_execution_status(node_exec_id, status)
 
-    def update_execution_result(node_link: Link) -> Execution | None:
+    def update_execution_result(node_link: Link) -> NodeExecution | None:
         next_output_name = node_link.source_name
         next_input_name = node_link.sink_name
         next_node_id = node_link.sink_id
@@ -157,7 +154,7 @@ def enqueue_next_nodes(
         # Input is complete, enqueue the execution.
         logger.warning(f"{prefix} Enqueued {suffix}")
         execution_update(next_node_exec_id, ExecutionStatus.QUEUED)
-        return Execution(
+        return NodeExecution(
             graph_exec_id=graph_exec_id,
             node_exec_id=next_node_exec_id,
             node_id=next_node.id,
@@ -237,22 +234,26 @@ class Executor:
         cls.agent_server_client = get_agent_server_client()
 
     @classmethod
-    def on_start_execution(cls, q: ExecutionQueue, data: Execution) -> bool:
-        prefix = get_log_prefix(data.graph_exec_id, data.node_exec_id)
-        try:
-            logger.warning(f"{prefix} Start execution")
-            for execution in execute_node(cls.loop, cls.agent_server_client, data):
-                q.add(execution)
-            return True
-        except Exception as e:
-            logger.exception(f"{prefix} Error: {e}")
-            return False
+    def on_start_execution(cls, graph_data: GraphExecution):
+        queue = ExecutionQueue[NodeExecution](local=True)
+        for node_exec in graph_data.start_node_execs:
+            queue.add(node_exec)
+
+        while not queue.empty():
+            data = queue.get()
+            prefix = get_log_prefix(data.graph_exec_id, data.node_exec_id)
+            try:
+                logger.warning(f"{prefix} Start execution")
+                for execution in execute_node(cls.loop, cls.agent_server_client, data):
+                    queue.add(execution)
+            except Exception as e:
+                logger.exception(f"{prefix} Error: {e}")
 
 
 class ExecutionManager(AppService):
     def __init__(self, pool_size: int):
         self.pool_size = pool_size
-        self.queue = ExecutionQueue()
+        self.queue = ExecutionQueue[GraphExecution]()
 
     def run_service(self):
         with ProcessPoolExecutor(
@@ -261,11 +262,7 @@ class ExecutionManager(AppService):
         ) as executor:
             logger.warning(f"Execution manager started with {self.pool_size} workers.")
             while True:
-                executor.submit(
-                    Executor.on_start_execution,
-                    self.queue,
-                    self.queue.get(),
-                )
+                executor.submit(Executor.on_start_execution, self.queue.get())
 
     @property
     def agent_server_client(self) -> "AgentServer":
@@ -292,32 +289,25 @@ class ExecutionManager(AppService):
                 nodes_input=nodes_input,
             )
         )
-        executions: list[BlockInput] = []
+
+        starting_node_execs = []
         for node_exec in node_execs:
-            self.add_node_execution(
-                Execution(
+            starting_node_execs.append(
+                NodeExecution(
                     graph_exec_id=node_exec.graph_exec_id,
                     node_exec_id=node_exec.node_exec_id,
                     node_id=node_exec.node_id,
                     data=node_exec.input_data,
                 )
             )
-
-            executions.append(
-                {
-                    "id": node_exec.node_exec_id,
-                    "node_id": node_exec.node_id,
-                }
+            self.agent_server_client.update_execution_status(
+                node_exec.node_exec_id, ExecutionStatus.QUEUED
             )
 
-        return {
-            "id": graph_exec_id,
-            "executions": executions,
-        }
-
-    def add_node_execution(self, execution: Execution) -> Execution:
-        res = self.run_and_wait(
-            update_execution_status(execution.node_exec_id, ExecutionStatus.QUEUED)
+        graph_exec = GraphExecution(
+            graph_exec_id=graph_exec_id,
+            start_node_execs=starting_node_execs,
         )
-        self.agent_server_client.send_execution_update(res.model_dump())
-        return self.queue.add(execution)
+        self.queue.add(graph_exec)
+
+        return {"id": graph_exec_id}
