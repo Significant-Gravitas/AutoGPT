@@ -213,5 +213,5 @@ For example, to disable python coding features, set it to the value below:
 DISABLED_COMMANDS=execute_python_code,execute_python_file
 ```
 
-[components]: ./components/components.md
-[commands]: ./components/built-in-components.md
+[components]: ../forge/components/components.md
+[commands]: ../forge/components/built-in-components.md
