@@ -80,7 +80,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     reddit_username: str = Field(default="", description="Reddit username")
     reddit_password: str = Field(default="", description="Reddit password")
 
-    openweathermap_api_key: str = Field(default="", description="OpenWeatherMap API key")
+    openweathermap_api_key: str = Field(
+        default="", description="OpenWeatherMap API key"
+    )
 
     medium_api_key: str = Field(default="", description="Medium API key")
     medium_author_id: str = Field(default="", description="Medium author ID")

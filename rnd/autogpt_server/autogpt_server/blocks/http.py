@@ -2,7 +2,7 @@ from enum import Enum
 
 import requests
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 
 
 class HttpMethod(Enum):
@@ -30,6 +30,8 @@ class HttpRequestBlock(Block):
     def __init__(self):
         super().__init__(
             id="6595ae1f-b924-42cb-9a41-551a0611c4b4",
+            description="This block makes an HTTP request to the given URL.",
+            categories={BlockCategory.BASIC},
             input_schema=HttpRequestBlock.Input,
             output_schema=HttpRequestBlock.Output,
         )

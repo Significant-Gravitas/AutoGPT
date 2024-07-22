@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from pathlib import Path
 from typing import Any, Literal
 
 import prisma.types
@@ -121,16 +122,6 @@ async def get_node(node_id: str) -> Node | None:
         include=EXECUTION_NODE_INCLUDE,  # type: ignore
     )
     return Node.from_db(node) if node else None
-
-
-# TODO: Delete this
-async def get_graph_ids() -> list[str]:
-    return [
-        graph.id
-        for graph in await AgentGraph.prisma().find_many(
-            distinct=["id"], where={"isActive": True}
-        )
-    ]
 
 
 async def get_graphs_meta(
@@ -270,3 +261,28 @@ async def create_graph(graph: Graph) -> Graph:
         return created_graph
 
     raise ValueError(f"Created graph {graph.id} v{graph.version} is not in DB")
+
+
+# --------------------- Helper functions --------------------- #
+
+
+TEMPLATES_DIR = Path(__file__).parent.parent.parent / "graph_templates"
+
+
+async def import_packaged_templates() -> None:
+    templates_in_db = await get_graphs_meta(filter_by="template")
+
+    print("Loading templates...")
+    for template_file in TEMPLATES_DIR.glob("*.json"):
+        template_data = json.loads(template_file.read_bytes())
+
+        template = Graph.model_validate(template_data)
+        if not template.is_template:
+            print(f"WARNING: pre-packaged graph file {template_file} is not a template")
+            continue
+        if (
+            exists := next((t for t in templates_in_db if t.id == template.id), None)
+        ) and exists.version >= template.version:
+            continue
+        await create_graph(template)
+        print(f"Loaded template '{template.name}' ({template.id})")

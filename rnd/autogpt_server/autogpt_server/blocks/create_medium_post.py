@@ -8,7 +8,7 @@ from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
 
 class CreateMediumPostBlock(Block):
     class Input(BlockSchema):
-        author_id: str = SecretField(
+        author_id: BlockSecret = SecretField(
             key="medium_author_id",
             description="""The Medium AuthorID of the user. You can get this by calling the /me endpoint of the Medium API.\n\ncurl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me" the response will contain the authorId field.""",
             placeholder="Enter the author's Medium AuthorID",
@@ -29,7 +29,7 @@ class CreateMediumPostBlock(Block):
             description="List of tags for your Medium post (up to 5)",
             placeholder="['technology', 'AI', 'blogging']",
         )
-        canonical_url: str = SchemaField(
+        canonical_url: str | None = SchemaField(
             default=None,
             description="The original home of this content, if it was originally published elsewhere",
             placeholder="https://yourblog.com/original-post",
@@ -39,10 +39,12 @@ class CreateMediumPostBlock(Block):
             placeholder="public",
         )
         license: str = SchemaField(
+            default="all-rights-reserved",
             description="The license of the post: 'all-rights-reserved', 'cc-40-by', 'cc-40-by-sa', 'cc-40-by-nd', 'cc-40-by-nc', 'cc-40-by-nc-nd', 'cc-40-by-nc-sa', 'cc-40-zero', 'public-domain'",
             placeholder="all-rights-reserved",
         )
         notify_followers: bool = SchemaField(
+            default=False,
             description="Whether to notify followers that the user has published",
             placeholder="False",
         )
@@ -74,6 +76,8 @@ class CreateMediumPostBlock(Block):
                 "content": "<h1>Test Content</h1><p>This is a test post.</p>",
                 "content_format": "html",
                 "tags": ["test", "automation"],
+                "license": "all-rights-reserved",
+                "notify_followers": False,
                 "publish_status": "draft",
                 "api_key": "your_test_api_key",
             },
@@ -137,7 +141,7 @@ class CreateMediumPostBlock(Block):
         try:
             response = self.create_post(
                 input_data.api_key.get_secret_value(),
-                input_data.author_id,
+                input_data.author_id.get_secret_value(),
                 input_data.title,
                 input_data.content,
                 input_data.content_format,
