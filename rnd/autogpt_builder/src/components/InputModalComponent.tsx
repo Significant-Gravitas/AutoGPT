@@ -9,7 +9,7 @@ interface ModalProps {
   value: string;
 }
 
-const ModalComponent: FC<ModalProps> = ({ isOpen, onClose, onSave, value }) => {
+const InputModalComponent: FC<ModalProps> = ({ isOpen, onClose, onSave, value }) => {
   const [tempValue, setTempValue] = React.useState(value);
 
   useEffect(() => {
@@ -45,4 +45,4 @@ const ModalComponent: FC<ModalProps> = ({ isOpen, onClose, onSave, value }) => {
   );
 };
 
-export default ModalComponent;
+export default InputModalComponent;
