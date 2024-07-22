@@ -306,7 +306,7 @@ def merge_execution_input(data: BlockInput) -> BlockInput:
     - <input_name>_@_<index> for object input.
     This function will construct pins with the same name into a single list/dict/object.
     """
-    
+
     # Merge all input with <input_name>_$_<index> into a single list.
     items = list(data.items())
     list_input: list[Any] = []
