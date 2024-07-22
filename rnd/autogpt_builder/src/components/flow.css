@@ -88,7 +88,7 @@ input::placeholder, textarea::placeholder {
 
 .sidebar {
   position: fixed;
-  top: 0;
+  top: 68px;
   left: -600px;
   width: 350px;
   height: 100%;
