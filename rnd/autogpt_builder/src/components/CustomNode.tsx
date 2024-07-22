@@ -44,8 +44,8 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     console.log(`Node ${id} data:`, data);
   }, [id, data]);
 
-  const toggleProperties = (checked: boolean) => {
-    setIsPropertiesOpen(checked);
+  const toggleOutput = (checked: boolean) => {
+    setIsOutputOpen(checked);
   };
 
   const toggleAdvancedSettings = (checked: boolean) => {
@@ -437,8 +437,8 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         </div>
       )}
       <div className="flex items-center mt-2.5">
-        <Switch onCheckedChange={toggleProperties} className='custom-switch' />
-        <span className='m-1 mr-4'>Properties</span>
+        <Switch onCheckedChange={toggleOutput} className='custom-switch' />
+        <span className='m-1 mr-4'>Output</span>
         {hasOptionalFields() && (
           <>
             <Switch onCheckedChange={toggleAdvancedSettings} className='custom-switch' />
