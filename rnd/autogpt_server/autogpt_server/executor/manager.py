@@ -74,7 +74,7 @@ def execute_node(
 
     # Sanity check: validate the execution input.
     prefix = get_log_prefix(graph_exec_id, node_exec_id, node_block.name)
-    exec_data, error = validate_exec(node, data.data)
+    exec_data, error = validate_exec(node, data.data, resolve_input=False)
     if not exec_data:
         logger.error(f"{prefix} Skip execution, input validation error: {error}")
         return
@@ -171,13 +171,18 @@ def enqueue_next_nodes(
     ]
 
 
-def validate_exec(node: Node, data: BlockInput) -> tuple[BlockInput | None, str]:
+def validate_exec(
+    node: Node,
+    data: BlockInput,
+    resolve_input: bool = True,
+) -> tuple[BlockInput | None, str]:
     """
     Validate the input data for a node execution.
 
     Args:
         node: The node to execute.
         data: The input data for the node execution.
+        resolve_input: Whether to resolve dynamic pins into dict/list/object.
 
     Returns:
         A tuple of the validated data and the block name.
@@ -198,7 +203,9 @@ def validate_exec(node: Node, data: BlockInput) -> tuple[BlockInput | None, str]
         return None, f"{error_prefix} {input_fields_from_nodes - set(data)}"
 
     # Merge input data with default values and resolve dynamic dict/list/object pins.
-    data = merge_execution_input({**node.input_default, **data})
+    data = {**node.input_default, **data}
+    if resolve_input:
+        data = merge_execution_input(data)
 
     # Input data post-merge should contain all required fields from the schema.
     input_fields_from_schema = node_block.input_schema.get_required_fields()
