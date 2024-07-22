@@ -11,5 +11,4 @@ def dumps(data) -> str:
     return json.dumps(jsonable_encoder(data))
 
 
-def loads(data) -> dict:
-    return json.loads(data)
+loads = json.loads

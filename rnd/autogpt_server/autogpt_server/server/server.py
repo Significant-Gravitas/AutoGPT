@@ -45,6 +45,7 @@ class AgentServer(AppService):
     async def lifespan(self, _: FastAPI):
         await db.connect()
         self.run_and_wait(block.initialize_blocks())
+        self.run_and_wait(graph_db.import_packaged_templates())
         asyncio.create_task(self.event_broadcaster())
         yield
         await db.disconnect()
