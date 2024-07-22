@@ -27,6 +27,7 @@ import AutoGPTServerAPI, {
   Graph,
   GraphMeta,
   NodeExecutionResult,
+  safeCopyGraph,
 } from '@/lib/autogpt-server-api';
 import { ChevronDownIcon, ClockIcon, EnterIcon, ExitIcon, Pencil2Icon } from '@radix-ui/react-icons';
 import { cn, exportAsJSONFile, hashString } from '@/lib/utils';
@@ -456,8 +457,11 @@ const FlowInfo: React.FC<React.HTMLAttributes<HTMLDivElement> & {
           variant="outline"
           className="px-2.5"
           title="Export to a JSON-file"
-          onClick={() => exportAsJSONFile(
-            flowVersions!.find(v => v.version == selectedFlowVersion!.version)!,
+          onClick={async () => exportAsJSONFile(
+            safeCopyGraph(
+              flowVersions!.find(v => v.version == selectedFlowVersion!.version)!,
+              await api.getBlocks(),
+            ),
             `${flow.name}_v${selectedFlowVersion!.version}.json`
           )}
         >
