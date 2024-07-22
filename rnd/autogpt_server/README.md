@@ -39,17 +39,11 @@ To set up the project, follow these steps inside this directory:
    >
    > Then run the generation again. The path *should* look something like this:  
    > `<some path>/pypoetry/virtualenvs/autogpt-server-TQIRSwR6-py3.12/bin/prisma`
-
-4. Run the database
-
-   ```sh
-   from rnd/ 
-   docker compose up -d
-   ```
-5. Run the migrations
+   
+4. Migrate the database. Be careful because this deletes current data in the database.
 
    ```sh
-   prisma migrate dev --name init
+   poetry run prisma migrate dev
   ```
 
 ## Running The Server
