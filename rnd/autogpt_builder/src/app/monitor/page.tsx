@@ -82,7 +82,7 @@ const Monitor = () => {
         else {
           flowRuns.push(flowRun)
         }
-        return flowRuns
+        return [...flowRuns]
       }));
     }));
   }
