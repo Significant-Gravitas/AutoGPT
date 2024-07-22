@@ -249,10 +249,6 @@ async def get_node_execution_input(node_exec_id: str) -> BlockInput:
     """
     Get execution node input data from the previous node execution result.
 
-    Args:
-        node_exec_id: The id of the node execution.
-        resolve: If True, resolve exec input with constant/default data and merge it.
-
     Returns:
         dictionary of input data, key is the input name, value is the input data.
     """
@@ -303,6 +299,14 @@ def parse_execution_output(output: BlockData, name: str) -> Any | None:
 
 
 def merge_execution_input(data: BlockInput) -> BlockInput:
+    """
+    Merge all dynamic input pins which described by the following pattern:
+    - <input_name>_$_<index> for list input.
+    - <input_name>_#_<index> for dict input.
+    - <input_name>_@_<index> for object input.
+    This function will construct pins with the same name into a single list/dict/object.
+    """
+    
     # Merge all input with <input_name>_$_<index> into a single list.
     items = list(data.items())
     list_input: list[Any] = []
