@@ -31,7 +31,7 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
 4. Generate the Prisma client
 
    ```sh
-   poetry run prisma generate
+   poetry run prisma generate --schema schema_postgres.prisma
    ```
    
 
