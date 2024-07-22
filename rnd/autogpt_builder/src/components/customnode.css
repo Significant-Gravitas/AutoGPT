@@ -1,30 +1,12 @@
 .custom-node {
   padding: 15px;
-  border: 3px solid #000; /* Thicker border */
+  border: 3px solid #4b5563;
   border-radius: 12px;
   background: #ffffff; /* White background */
   color: #000000;
   width: 500px;
   box-sizing: border-box;
   transition: border-color 0.3s ease-in-out;
-}
-
-.node-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.node-title {
-  font-size: 18px;
-  font-weight: bold;
-}
-
-.node-footer {
-  display: flex;
-  align-items: center;
-  margin-top: 10px;
 }
 
 .node-content {
@@ -34,39 +16,23 @@
   gap: 1px;
 }
 
-.input-section {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-}
-
-.toggle-button {
-  color: #000000;
-  background: #ffffff;
-}
-
-.toggle-button:hover {
-  color: #000000;
-  background: #d1d1d1;
-}
-
-.handle-label {
-  color: #000000;
-  margin-left: 10px;
-  margin-right: 10px;
-}
-
-.output-section {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  align-items: flex-end;
-}
-
 .handle-container {
   display: flex;
   position: relative;
-  margin-bottom: 5px;
+  margin-bottom: 0px;
+  padding: 5px;
+  min-height: 44px;
+  width: 100%;
+  height: 100%;
+}
+
+.react-flow__handle {
+  background: transparent;
+  width: auto;
+  height: auto;
+  border: 0;
+  position: relative;
+  transform: none;
 }
 
 .input-container {
@@ -206,13 +172,6 @@
   border-color: #c0392b; /* Red border for failed nodes */
 }
 
-/* Adjust handle size */
-.custom-node .react-flow__handle {
-  width: 10px;
-  height: 10px;
-}
-
-/* Make edges thicker */
-.react-flow__edge {
-  stroke-width: 2px !important;
+.custom-switch {
+  padding-left: 2px;
 }
