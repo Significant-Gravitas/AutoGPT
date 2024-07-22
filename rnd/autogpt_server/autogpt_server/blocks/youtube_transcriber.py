@@ -35,7 +35,6 @@ class YouTubeTranscriber(Block):
                 ),
             ],
             test_mock={
-                "extract_video_id": lambda url: "dQw4w9WgXcQ",
                 "get_transcript": lambda video_id: [
                     {"text": "Never gonna give you up"},
                     {"text": "Never gonna let you down"},
