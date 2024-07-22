@@ -2,7 +2,7 @@ import os
 import re
 from typing import Type
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.util.test import execute_block_test
 
 
@@ -25,6 +25,8 @@ class BlockInstallationBlock(Block):
     def __init__(self):
         super().__init__(
             id="45e78db5-03e9-447f-9395-308d712f5f08",
+            description="Given a code string, this block allows the verification and installation of a block code into the system.",
+            categories={BlockCategory.BASIC},
             input_schema=BlockInstallationBlock.Input,
             output_schema=BlockInstallationBlock.Output,
         )

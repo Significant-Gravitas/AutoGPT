@@ -18,7 +18,7 @@ export default class AutoGPTServerAPI {
     return await this._get("/blocks");
   }
 
-  async listGraphIDs(): Promise<string[]> {
+  async listGraphs(): Promise<GraphMeta[]> {
     return this._get("/graphs")
   }
 

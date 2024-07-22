@@ -3,13 +3,13 @@ from pathlib import Path
 from autogpt_server.blocks.basic import ValueBlock
 from autogpt_server.blocks.block import BlockInstallationBlock
 from autogpt_server.blocks.http import HttpRequestBlock
-from autogpt_server.blocks.llm import LlmCallBlock
+from autogpt_server.blocks.llm import TextLlmCallBlock
 from autogpt_server.blocks.text import TextFormatterBlock, TextParserBlock
 from autogpt_server.data.graph import Graph, Link, Node, create_graph
 from autogpt_server.util.test import SpinTestServer, wait_execution
 
 sample_block_modules = {
-    "ai": "Block that calls the AI model to generate text.",
+    "llm": "Block that calls the AI model to generate text.",
     "basic": "Block that does basic operations.",
     "text": "Blocks that do text operations.",
     "reddit": "Blocks that interacts with Reddit.",
@@ -40,7 +40,7 @@ def create_test_graph() -> Graph:
     |                                   ||
     |                                   ||
     |                                    v
-    |        LlmCallBlock  <===== TextFormatterBlock (query)
+    |        TextLlmCallBlock  <===== TextFormatterBlock (query)
     |            ||                      ^
     |            v                      ||
     |       TextParserBlock             ||
@@ -50,6 +50,10 @@ def create_test_graph() -> Graph:
     """
     # ======= Nodes ========= #
     input_data = Node(block_id=ValueBlock().id)
+    input_query_constant = Node(
+        block_id=ValueBlock().id,
+        input_default={"data": None},
+    )
     input_text_formatter = Node(
         block_id=TextFormatterBlock().id,
         input_default={
@@ -84,7 +88,7 @@ Here is your previous attempt:
         },
     )
     code_gen_llm_call = Node(
-        block_id=LlmCallBlock().id,
+        block_id=TextLlmCallBlock().id,
         input_default={
             "sys_prompt": f"""
 You are a software engineer and you are asked to write the full class implementation.
@@ -123,6 +127,7 @@ Here are a couple of sample of the Block class implementation:
     )
     nodes = [
         input_data,
+        input_query_constant,
         input_text_formatter,
         search_http_request,
         search_result_constant,
@@ -136,9 +141,21 @@ Here are a couple of sample of the Block class implementation:
     links = [
         Link(
             source_id=input_data.id,
+            sink_id=input_query_constant.id,
+            source_name="output",
+            sink_name="input",
+        ),
+        Link(
+            source_id=input_data.id,
             sink_id=input_text_formatter.id,
             source_name="output",
             sink_name="named_texts_#_query",
+        ),
+        Link(
+            source_id=input_query_constant.id,
+            sink_id=input_query_constant.id,
+            source_name="output",
+            sink_name="data",
         ),
         Link(
             source_id=input_text_formatter.id,
@@ -165,7 +182,7 @@ Here are a couple of sample of the Block class implementation:
             sink_name="named_texts_#_search_result",
         ),
         Link(
-            source_id=input_data.id,
+            source_id=input_query_constant.id,
             sink_id=prompt_text_formatter.id,
             source_name="output",
             sink_name="named_texts_#_query",
@@ -179,7 +196,7 @@ Here are a couple of sample of the Block class implementation:
         Link(
             source_id=code_gen_llm_call.id,
             sink_id=code_text_parser.id,
-            source_name="response_#_response",
+            source_name="response",
             sink_name="text",
         ),
         Link(
@@ -197,6 +214,12 @@ Here are a couple of sample of the Block class implementation:
         Link(  # Re-trigger search result.
             source_id=block_installation.id,
             sink_id=search_result_constant.id,
+            source_name="error",
+            sink_name="input",
+        ),
+        Link(  # Re-trigger search result.
+            source_id=block_installation.id,
+            sink_id=input_query_constant.id,
             source_name="error",
             sink_name="input",
         ),

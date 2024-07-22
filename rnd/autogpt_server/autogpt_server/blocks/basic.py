@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import Field
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 
 
 class ValueBlock(Block):
@@ -42,6 +42,11 @@ class ValueBlock(Block):
     def __init__(self):
         super().__init__(
             id="1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+            description="This block forwards the `input` pin to `output` pin. "
+            "If the `data` is provided, it will prioritize forwarding `data` "
+            "over `input`. By connecting the `output` pin to `data` pin, "
+            "you can retain a constant value for the next executions.",
+            categories={BlockCategory.BASIC},
             input_schema=ValueBlock.Input,
             output_schema=ValueBlock.Output,
             test_input=[
@@ -68,6 +73,8 @@ class PrintingBlock(Block):
     def __init__(self):
         super().__init__(
             id="f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c",
+            description="Print the given text to the console, this is used for a debugging purpose.",
+            categories={BlockCategory.BASIC},
             input_schema=PrintingBlock.Input,
             output_schema=PrintingBlock.Output,
             test_input={"text": "Hello, World!"},
@@ -90,7 +97,9 @@ class ObjectLookupBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+            id="b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+            description="Lookup the given key in the input dictionary/object/list and return the value.",
+            categories={BlockCategory.BASIC},
             input_schema=ObjectLookupBlock.Input,
             output_schema=ObjectLookupBlock.Output,
             test_input=[
@@ -99,6 +108,7 @@ class ObjectLookupBlock(Block):
                 {"input": [1, 2, 3], "key": 1},
                 {"input": [1, 2, 3], "key": 3},
                 {"input": ObjectLookupBlock.Input(input="!!", key="key"), "key": "key"},
+                {"input": [{"k1": "v1"}, {"k2": "v2"}, {"k1": "v3"}], "key": "k1"},
             ],
             test_output=[
                 ("output", 2),
@@ -106,6 +116,7 @@ class ObjectLookupBlock(Block):
                 ("output", 2),
                 ("missing", [1, 2, 3]),
                 ("output", "key"),
+                ("output", ["v1", "v3"]),
             ],
         )
 
@@ -117,6 +128,13 @@ class ObjectLookupBlock(Block):
             yield "output", obj[key]
         elif isinstance(obj, list) and isinstance(key, int) and 0 <= key < len(obj):
             yield "output", obj[key]
+        elif isinstance(obj, list) and isinstance(key, str):
+            if len(obj) == 0:
+                yield "output", []
+            elif isinstance(obj[0], dict) and key in obj[0]:
+                yield "output", [item[key] for item in obj if key in item]
+            else:
+                yield "output", [getattr(val, key) for val in obj if hasattr(val, key)]
         elif isinstance(obj, object) and isinstance(key, str) and hasattr(obj, key):
             yield "output", getattr(obj, key)
         else:

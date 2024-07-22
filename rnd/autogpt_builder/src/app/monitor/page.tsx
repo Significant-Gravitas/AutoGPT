@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ChevronDownIcon, ClockIcon, EnterIcon, ExitIcon, Pencil2Icon } from '@radix-ui/react-icons';
-import AutoGPTServerAPI, { Graph, GraphMeta, NodeExecutionResult } from '@/lib/autogpt_server_api';
+import AutoGPTServerAPI, { GraphMeta, NodeExecutionResult } from '@/lib/autogpt_server_api';
 import { cn, exportAsJSONFile, hashString } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -36,9 +36,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AgentImportForm } from '@/components/agent-import-form';
 
 const Monitor = () => {
-  const [flows, setFlows] = useState<Graph[]>([]);
+  const [flows, setFlows] = useState<GraphMeta[]>([]);
   const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
-  const [selectedFlow, setSelectedFlow] = useState<Graph | null>(null);
+  const [selectedFlow, setSelectedFlow] = useState<GraphMeta | null>(null);
   const [selectedRun, setSelectedRun] = useState<FlowRun | null>(null);
 
   const api = new AutoGPTServerAPI();
@@ -50,16 +50,10 @@ const Monitor = () => {
   }, []);
 
   function fetchFlowsAndRuns() {
-    // Fetch flow IDs
-    api.listGraphIDs()
-    .then(flowIDs => {
-      Promise.all(flowIDs.map(flowID => {
-        refreshFlowRuns(flowID);
-
-        // Fetch flow
-        return api.getGraph(flowID);
-      }))
-      .then(flows => setFlows(flows));
+    api.listGraphs()
+    .then(flows => {
+      setFlows(flows);
+      flows.map(flow => refreshFlowRuns(flow.id));
     });
   }
 
@@ -93,10 +87,14 @@ const Monitor = () => {
     }));
   }
 
+  const column1 = "md:col-span-2 xl:col-span-3 xxl:col-span-2";
+  const column2 = "md:col-span-3 lg:col-span-2 xl:col-span-3 space-y-4";
+  const column3 = "col-span-full xl:col-span-4 xxl:col-span-5";
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10 gap-4">
       <AgentFlowList
-        className="md:col-span-2 xl:col-span-3 xxl:col-span-2"
+        className={column1}
         flows={flows}
         flowRuns={flowRuns}
         selectedFlow={selectedFlow}
@@ -106,7 +104,7 @@ const Monitor = () => {
         }}
       />
       <FlowRunsList
-        className="md:col-span-3 lg:col-span-2 xl:col-span-3 space-y-4"
+        className={column2}
         flows={flows}
         runs={
           (
@@ -119,23 +117,23 @@ const Monitor = () => {
         selectedRun={selectedRun}
         onSelectRun={r => setSelectedRun(r.id == selectedRun?.id ? null : r)}
       />
-      <div className="col-span-full xl:col-span-4 xxl:col-span-5">
-        {selectedRun && (
-          <FlowRunInfo
-            flow={selectedFlow || flows.find(f => f.id == selectedRun.graphID)!}
-            flowRun={selectedRun}
-          />
-        ) || selectedFlow && (
-          <FlowInfo
-            flow={selectedFlow}
-            flowRuns={flowRuns.filter(r => r.graphID == selectedFlow.id)}
-          />
-        ) || (
-          <Card className="p-6">
-            <FlowRunsStats flows={flows} flowRuns={flowRuns} />
-          </Card>
-        )}
-      </div>
+      {selectedRun && (
+        <FlowRunInfo
+          flow={selectedFlow || flows.find(f => f.id == selectedRun.graphID)!}
+          flowRun={selectedRun}
+          className={column3}
+        />
+      ) || selectedFlow && (
+        <FlowInfo
+          flow={selectedFlow}
+          flowRuns={flowRuns.filter(r => r.graphID == selectedFlow.id)}
+          className={column3}
+        />
+      ) || (
+        <Card className={`p-6 ${column3}`}>
+          <FlowRunsStats flows={flows} flowRuns={flowRuns} />
+        </Card>
+      )}
     </div>
   );
 };
@@ -202,10 +200,10 @@ function flowRunFromNodeExecutionResults(
 
 const AgentFlowList = (
   { flows, flowRuns, selectedFlow, onSelectFlow, className }: {
-    flows: Graph[],
+    flows: GraphMeta[],
     flowRuns?: FlowRun[],
-    selectedFlow: Graph | null,
-    onSelectFlow: (f: Graph) => void,
+    selectedFlow: GraphMeta | null,
+    onSelectFlow: (f: GraphMeta) => void,
     className?: string,
   }
 ) => {
@@ -337,7 +335,7 @@ const FlowStatusBadge = ({ status }: { status: "active" | "disabled" | "failing"
 );
 
 const FlowRunsList: React.FC<{
-  flows: Graph[];
+  flows: GraphMeta[];
   runs: FlowRun[];
   className?: string;
   selectedRun?: FlowRun | null;
@@ -395,21 +393,21 @@ const FlowRunStatusBadge: React.FC<{
   </Badge>
 );
 
-const FlowInfo: React.FC<{
-  flow: Graph;
+const FlowInfo: React.FC<React.HTMLAttributes<HTMLDivElement> & {
+  flow: GraphMeta;
   flowRuns: FlowRun[];
   flowVersion?: number | "all";
-}> = ({ flow, flowRuns, flowVersion }) => {
+}> = ({ flow, flowRuns, flowVersion, ...props }) => {
   const api = new AutoGPTServerAPI();
 
-  const [flowVersions, setFlowVersions] = useState<Graph[] | null>(null);
+  const [flowVersions, setFlowVersions] = useState<GraphMeta[] | null>(null);
   const [selectedVersion, setSelectedFlowVersion] = useState(flowVersion ?? "all");
 
   useEffect(() => {
     api.getGraphAllVersions(flow.id).then(result => setFlowVersions(result));
   }, [flow.id]);
 
-  return <Card>
+  return <Card {...props}>
     <CardHeader className="flex-row justify-between space-y-0 space-x-3">
       <div>
         <CardTitle>
@@ -473,15 +471,15 @@ const FlowInfo: React.FC<{
   </Card>;
 };
 
-const FlowRunInfo: React.FC<{
-  flow: Graph;
+const FlowRunInfo: React.FC<React.HTMLAttributes<HTMLDivElement> & {
+  flow: GraphMeta;
   flowRun: FlowRun;
-}> = ({ flow, flowRun }) => {
+}> = ({ flow, flowRun, ...props }) => {
   if (flowRun.graphID != flow.id) {
     throw new Error(`FlowRunInfo can't be used with non-matching flowRun.flowID and flow.id`)
   }
 
-  return <Card>
+  return <Card {...props}>
     <CardHeader className="flex-row items-center justify-between space-y-0 space-x-3">
       <div>
         <CardTitle>
@@ -505,7 +503,7 @@ const FlowRunInfo: React.FC<{
 };
 
 const FlowRunsStats: React.FC<{
-  flows: Graph[],
+  flows: GraphMeta[],
   flowRuns: FlowRun[],
   title?: string,
   className?: string,
@@ -566,7 +564,7 @@ const FlowRunsStats: React.FC<{
 
 const FlowRunsTimeline = (
   { flows, flowRuns, dataMin, className }: {
-    flows: Graph[],
+    flows: GraphMeta[],
     flowRuns: FlowRun[],
     dataMin: "dataMin" | number,
     className?: string,

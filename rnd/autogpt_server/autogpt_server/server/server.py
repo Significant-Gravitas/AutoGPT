@@ -45,6 +45,7 @@ class AgentServer(AppService):
     async def lifespan(self, _: FastAPI):
         await db.connect()
         self.run_and_wait(block.initialize_blocks())
+        self.run_and_wait(graph_db.import_packaged_templates())
         asyncio.create_task(self.event_broadcaster())
         yield
         await db.disconnect()
@@ -393,9 +394,8 @@ class AgentServer(AppService):
         return [{name: data} for name, data in obj.execute(data)]
 
     @classmethod
-    async def get_graphs(cls) -> list[str]:
-        # TODO: get_graph_ids() -> get_graphs_meta()
-        return await graph_db.get_graph_ids()
+    async def get_graphs(cls) -> list[graph_db.GraphMeta]:
+        return await graph_db.get_graphs_meta(filter_by="active")
 
     @classmethod
     async def get_templates(cls) -> list[graph_db.GraphMeta]:
