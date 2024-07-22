@@ -25,7 +25,7 @@ requests = "*"
 sentry-sdk = "^1.40.4"
 
 [package.extras]
-benchmark = ["agbenchmark"]
+benchmark = ["agbenchmark @ file:///workspaces/AutoGPT/benchmark"]
 
 [package.source]
 type = "directory"
@@ -329,7 +329,7 @@ watchdog = "4.0.0"
 webdriver-manager = "^4.0.1"
 
 [package.extras]
-benchmark = ["agbenchmark"]
+benchmark = ["agbenchmark @ file:///workspaces/AutoGPT/benchmark"]
 
 [package.source]
 type = "directory"
@@ -6331,6 +6331,20 @@ idna = ">=2.0"
 multidict = ">=4.0"
 
 [[package]]
+name = "youtube-transcript-api"
+version = "0.6.2"
+description = "This is an python API which allows you to get the transcripts/subtitles for a given YouTube video. It also works for automatically generated subtitles, supports translating subtitles and it does not require a headless browser, like other selenium based solutions do!"
+optional = false
+python-versions = "*"
+files = [
+    {file = "youtube_transcript_api-0.6.2-py3-none-any.whl", hash = "sha256:019dbf265c6a68a0591c513fff25ed5a116ce6525832aefdfb34d4df5567121c"},
+    {file = "youtube_transcript_api-0.6.2.tar.gz", hash = "sha256:cad223d7620633cec44f657646bffc8bbc5598bd8e70b1ad2fa8277dec305eb7"},
+]
+
+[package.dependencies]
+requests = "*"
+
+[[package]]
 name = "zipp"
 version = "3.19.2"
 description = "Backport of pathlib-compatible object wrapper for zip files"
@@ -6348,4 +6362,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "1aadbaecdb13f497ec2d19e149160e736c464fb1863025b0b8d1674999cfd523"
+content-hash = "174fa8f9a1c792303357b5336837492ac9add169f2547a58ff6bb308c2ea9159"
