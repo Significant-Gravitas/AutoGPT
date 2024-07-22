@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import ReactFlow, {
   addEdge,
   applyNodeChanges,
@@ -22,6 +22,7 @@ import { Input } from './ui/input';
 import { ChevronRight, ChevronLeft } from "lucide-react";
 import { deepEquals } from '@/lib/utils';
 import { beautifyString } from '@/lib/utils';
+import { history } from './history';
 
 
 type CustomNodeData = {
@@ -84,6 +85,8 @@ const FlowEditor: React.FC<{
 
   const apiUrl = process.env.AGPT_SERVER_URL!;
   const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
+  const initialPositionRef = useRef<{ [key: string]: { x: number; y: number } }>({});
+  const isDragging = useRef(false);
 
   useEffect(() => {
     api.connectWebSocket()
@@ -119,18 +122,85 @@ const FlowEditor: React.FC<{
   const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
 
   const onNodesChange: OnNodesChange = useCallback(
-    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
-    []
+    (changes) => {
+      changes.forEach(change => {
+        if (change.type === 'remove') {
+          const removedNode = nodes.find(node => node.id === change.id);
+          if (removedNode) {
+            history.push({
+              type: 'DELETE_NODE',
+              payload: removedNode,
+              undo: () => setNodes((nds) => [...nds, removedNode]),
+              redo: () => setNodes((nds) => nds.filter(node => node.id !== removedNode.id))
+            });
+          }
+        } else if (change.type === 'position' && !isDragging.current) {
+          const movedNode = nodes.find(node => node.id === change.id);
+          if (movedNode) {
+            const oldPosition = initialPositionRef.current[change.id] || movedNode.position;
+            const newPosition = change.position;
+
+            if (newPosition && (movedNode.position.x !== newPosition.x || movedNode.position.y !== newPosition.y)) {
+              history.push({
+                type: 'UPDATE_NODE_POSITION',
+                payload: { nodeId: change.id, oldPosition, newPosition },
+                undo: () => setNodes((nds) => nds.map(node => node.id === change.id ? { ...node, position: oldPosition } : node)),
+                redo: () => setNodes((nds) => nds.map(node => node.id === change.id ? { ...node, position: newPosition } : node)),
+              });
+              initialPositionRef.current[change.id] = newPosition;
+            }
+          }
+        }
+      });
+      setNodes((nds) => applyNodeChanges(changes, nds));
+    },
+    [nodes]
   );
 
+  const onNodesChangeStart = (event: MouseEvent, node: Node) => {
+    initialPositionRef.current[node.id] = { ...node.position };
+    isDragging.current = true;
+  };
+
+  const onNodesChangeEnd = (event: MouseEvent, node: Node) => {
+    isDragging.current = false;
+    const oldPosition = initialPositionRef.current[node.id];
+    const newPosition = node.position;
+    if (oldPosition && newPosition && (oldPosition.x !== newPosition.x || oldPosition.y !== newPosition.y)) {
+      history.push({
+        type: 'UPDATE_NODE_POSITION',
+        payload: { nodeId: node.id, oldPosition, newPosition },
+        undo: () => setNodes((nds) => nds.map(n => n.id === node.id ? { ...n, position: oldPosition } : n)),
+        redo: () => setNodes((nds) => nds.map(n => n.id === node.id ? { ...n, position: newPosition } : n)),
+      });
+      delete initialPositionRef.current[node.id];
+    }
+  };
+
   const onEdgesChange: OnEdgesChange = useCallback(
-    (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
-    []
+    (changes) => {
+      changes.forEach(change => {
+        if (change.type === 'remove') {
+          const removedEdge = edges.find(edge => edge.id === change.id);
+          if (removedEdge) {
+            history.push({
+              type: 'DELETE_EDGE',
+              payload: removedEdge,
+              undo: () => setEdges((eds) => [...eds, removedEdge]),
+              redo: () => setEdges((eds) => eds.filter(edge => edge.id !== removedEdge.id))
+            });
+          }
+        }
+      });
+      setEdges((eds) => applyEdgeChanges(changes, eds));
+    },
+    [edges]
   );
 
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) => addEdge(connection, eds));
+      const newEdge = { ...connection, id: `${connection.source}-${connection.target}` };
+      setEdges((eds) => addEdge(newEdge, eds));
       setNodes((nds) =>
         nds.map((node) => {
           if (node.id === connection.target) {
@@ -142,10 +212,10 @@ const FlowEditor: React.FC<{
                   ...node.data.connections,
                   {
                     source: connection.source,
-                    sourceHandle: connection.sourceHandle,
+                    sourceHandle: connection.sourceHandle ?? '',
                     target: connection.target,
-                    targetHandle: connection.targetHandle,
-                  } as { source: string; sourceHandle: string; target: string; targetHandle: string },
+                    targetHandle: connection.targetHandle ?? '',
+                  },
                 ],
               },
             };
@@ -153,9 +223,66 @@ const FlowEditor: React.FC<{
           return node;
         })
       );
+
+      history.push({
+        type: 'ADD_EDGE',
+        payload: newEdge,
+        undo: () => {
+          setEdges((eds) => eds.filter(edge => edge.id !== newEdge.id));
+          setNodes((nds) =>
+            nds.map((node) => {
+              if (node.id === connection.target) {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    connections: node.data.connections.filter(
+                      conn => !(conn.source === connection.source && conn.target === connection.target)
+                    ),
+                  },
+                };
+              }
+              return node;
+            })
+          );
+        },
+        redo: () => {
+          setEdges((eds) => addEdge(newEdge, eds));
+          setNodes((nds) =>
+            nds.map((node) => {
+              if (node.id === connection.target) {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    connections: [
+                      ...node.data.connections,
+                      {
+                        source: connection.source,
+                        sourceHandle: connection.sourceHandle ?? '',
+                        target: connection.target,
+                        targetHandle: connection.targetHandle ?? '',
+                      },
+                    ],
+                  },
+                };
+              }
+              return node;
+            })
+          );
+        }
+      });
     },
     [setEdges, setNodes]
   );
+
+  const handleUndo = () => {
+    history.undo();
+  };
+
+  const handleRedo = () => {
+    history.redo();
+  };
 
   const onEdgesDelete = useCallback(
   (edgesToDelete: Edge[]) => {
@@ -199,11 +326,30 @@ const FlowEditor: React.FC<{
         outputSchema: nodeSchema.outputSchema,
         hardcodedValues: {},
         setHardcodedValues: (values: { [key: string]: any }) => {
-          setNodes((nds) => nds.map((node) =>
-            node.id === newNode.id
-              ? { ...node, data: { ...node.data, hardcodedValues: values } }
-              : node
-          ));
+          const oldValues = newNode.data.hardcodedValues;
+          history.push({
+            type: 'UPDATE_INPUT',
+            payload: { nodeId: newNode.id, oldValues, newValues: values },
+            undo: () => {
+              setNodes((nds) =>
+                nds.map((node) =>
+                  node.id === newNode.id ? { ...node, data: { ...node.data, hardcodedValues: oldValues } } : node
+                )
+              );
+            },
+            redo: () => {
+              setNodes((nds) =>
+                nds.map((node) =>
+                  node.id === newNode.id ? { ...node, data: { ...node.data, hardcodedValues: values } } : node
+                )
+              );
+            },
+          });
+          setNodes((nds) =>
+            nds.map((node) =>
+              node.id === newNode.id ? { ...node, data: { ...node.data, hardcodedValues: values } } : node
+            )
+          );
         },
         connections: [],
         isOutputOpen: false,
@@ -213,6 +359,13 @@ const FlowEditor: React.FC<{
 
     setNodes((nds) => [...nds, newNode]);
     setNodeId((prevId) => prevId + 1);
+
+    history.push({
+      type: 'ADD_NODE',
+      payload: newNode,
+      undo: () => setNodes((nds) => nds.filter(node => node.id !== newNode.id)),
+      redo: () => setNodes((nds) => [...nds, newNode])
+    });
   };
 
   function loadGraph(graph: Graph) {
@@ -458,6 +611,8 @@ const FlowEditor: React.FC<{
         nodeTypes={nodeTypes}
         onEdgesDelete={onEdgesDelete}
         deleteKeyCode={["Backspace", "Delete"]}
+        onNodeDragStart={onNodesChangeStart}
+        onNodeDragStop={onNodesChangeEnd}
       >
         <div style={{ position: 'absolute', right: 10, zIndex: 4 }}>
           <Input
@@ -482,6 +637,10 @@ const FlowEditor: React.FC<{
             {!savedAgent &&
               <Button onClick={() => saveAgent(true)}>Save as Template</Button>
             }
+            <div>
+              <Button onClick={handleUndo} disabled={!history.canUndo()}>Undo</Button>
+              <Button onClick={handleRedo} disabled={!history.canRedo()}>Redo</Button>
+            </div>
           </div>
         </div>
       </ReactFlow>
