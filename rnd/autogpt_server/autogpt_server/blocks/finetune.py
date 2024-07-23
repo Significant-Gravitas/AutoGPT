@@ -1,5 +1,6 @@
 from typing import Any, List
 import json
+import tempfile
 import openai
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SecretField
@@ -13,6 +14,7 @@ class FinetuneBlock(Block):
         validation_split: float = 0.2
         n_epochs: int = 3
         batch_size: int = 1
+        learning_rate_multiplier: float = 0.3
 
     class Output(BlockSchema):
         job_id: str
@@ -42,12 +44,21 @@ class FinetuneBlock(Block):
         return '\n'.join(lines[:split_index]), '\n'.join(lines[split_index:])
 
     @staticmethod
-    def create_fine_tuning_job(api_key: str, model: str, training_data: str, validation_data: str, n_epochs: int,
+    def create_temp_file(data: str) -> str:
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.jsonl') as temp_file:
+            temp_file.write(data)
+            return temp_file.name
+
+    @staticmethod
+    def create_fine_tuning_job(api_key: str, model: str, training_data: str, validation_data: str, n_epochs: int, learning_rate_multiplier: int,
                                batch_size: int) -> dict:
         openai.api_key = api_key
 
-        training_file = openai.File.create(
-            file=training_data,
+        training_file_path = FinetuneBlock.create_temp_file(training_data)
+        validation_file_path = FinetuneBlock.create_temp_file(validation_data)
+
+        training_file = openai.files.create(
+            file=open(training_file_path, "rb"),
             purpose='fine-tune'
         )
 
@@ -56,18 +67,19 @@ class FinetuneBlock(Block):
             "model": model,
             "hyperparameters": {
                 "n_epochs": n_epochs,
-                "batch_size": batch_size
+                "batch_size": batch_size,
+                "learning_rate_multiplier": learning_rate_multiplier
             }
         }
 
         if validation_data:
-            validation_file = openai.File.create(
-                file=validation_data,
+            validation_file = openai.files.create(
+                file=open(validation_file_path, "rb"),
                 purpose='fine-tune'
             )
             job_params["validation_file"] = validation_file.id
 
-        job = openai.FineTuningJob.create(**job_params)
+        job = openai.fine_tuning.jobs.create(**job_params)
         return job
 
     def run(self, input_data: Input) -> BlockOutput:
@@ -81,6 +93,7 @@ class FinetuneBlock(Block):
                 training_data=training_data,
                 validation_data=validation_data,
                 n_epochs=input_data.n_epochs,
+                learning_rate_multiplier=input_data.learning_rate_multiplier,
                 batch_size=input_data.batch_size
             )
 

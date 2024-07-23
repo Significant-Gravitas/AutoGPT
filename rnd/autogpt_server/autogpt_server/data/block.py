@@ -21,6 +21,7 @@ class BlockCategory(Enum):
     TEXT = "Block that processes text data."
     SEARCH = "Block that searches or extracts information from the internet."
     BASIC = "Block that performs basic operations."
+    TRAINING = "Block that performs finetuning actions"
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
