@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from autogpt_server.server.server import AgentServer
 
 from autogpt_server.data import db
-from autogpt_server.data.block import Block, get_block
+from autogpt_server.data.block import Block, BlockData, BlockInput, get_block
 from autogpt_server.data.execution import ExecutionQueue, ExecutionStatus
 from autogpt_server.data.execution import NodeExecution as Execution
 from autogpt_server.data.execution import (
@@ -50,7 +50,6 @@ def execute_node(
     """
     graph_exec_id = data.graph_exec_id
     node_exec_id = data.node_exec_id
-    exec_data = data.data
     node_id = data.node_id
 
     asyncio.set_event_loop(loop)
@@ -73,8 +72,14 @@ def execute_node(
         logger.error(f"Block {node.block_id} not found.")
         return
 
-    # Execute the node
+    # Sanity check: validate the execution input.
     prefix = get_log_prefix(graph_exec_id, node_exec_id, node_block.name)
+    exec_data, error = validate_exec(node, data.data, resolve_input=False)
+    if not exec_data:
+        logger.error(f"{prefix} Skip execution, input validation error: {error}")
+        return
+
+    # Execute the node
     logger.warning(f"{prefix} execute with input:\n`{exec_data}`")
     update_execution(ExecutionStatus.RUNNING)
 
@@ -106,7 +111,7 @@ def enqueue_next_nodes(
     api_client: "AgentServer",
     loop: asyncio.AbstractEventLoop,
     node: Node,
-    output: tuple[str, Any],
+    output: BlockData,
     graph_exec_id: str,
     prefix: str,
 ) -> list[Execution]:
@@ -142,10 +147,10 @@ def enqueue_next_nodes(
         )
 
         next_node_input = wait(get_node_execution_input(next_node_exec_id))
-        is_valid, validation_msg = validate_exec(next_node, next_node_input)
+        next_node_input, validation_msg = validate_exec(next_node, next_node_input)
         suffix = f"{next_output_name}~{next_input_name}#{next_node_id}:{validation_msg}"
 
-        if not is_valid:
+        if not next_node_input:
             logger.warning(f"{prefix} Skipped queueing {suffix}")
             return
 
@@ -166,38 +171,54 @@ def enqueue_next_nodes(
     ]
 
 
-def validate_exec(node: Node, data: dict[str, Any]) -> tuple[bool, str]:
+def validate_exec(
+    node: Node,
+    data: BlockInput,
+    resolve_input: bool = True,
+) -> tuple[BlockInput | None, str]:
     """
     Validate the input data for a node execution.
 
     Args:
         node: The node to execute.
         data: The input data for the node execution.
+        resolve_input: Whether to resolve dynamic pins into dict/list/object.
 
     Returns:
-        A tuple of a boolean indicating if the data is valid, and a message if not.
-        Return the executed block name if the data is valid.
+        A tuple of the validated data and the block name.
+        If the data is invalid, the first element will be None, and the second element
+        will be an error message.
+        If the data is valid, the first element will be the resolved input data, and
+        the second element will be the block name.
     """
     node_block: Block | None = get_block(node.block_id)  # type: ignore
     if not node_block:
-        return False, f"Block for {node.block_id} not found."
+        return None, f"Block for {node.block_id} not found."
 
-    error_message = f"Input data missing for {node_block.name}:"
+    error_prefix = f"Input data missing for {node_block.name}:"
 
-    input_fields_from_schema = node_block.input_schema.get_required_fields()
-    if not input_fields_from_schema.issubset(data):
-        return False, f"{error_message} {input_fields_from_schema - set(data)}"
-
+    # Input data (without default values) should contain all required fields.
     input_fields_from_nodes = {link.sink_name for link in node.input_links}
     if not input_fields_from_nodes.issubset(data):
-        return False, f"{error_message} {input_fields_from_nodes - set(data)}"
+        return None, f"{error_prefix} {input_fields_from_nodes - set(data)}"
 
+    # Merge input data with default values and resolve dynamic dict/list/object pins.
+    data = {**node.input_default, **data}
+    if resolve_input:
+        data = merge_execution_input(data)
+
+    # Input data post-merge should contain all required fields from the schema.
+    input_fields_from_schema = node_block.input_schema.get_required_fields()
+    if not input_fields_from_schema.issubset(data):
+        return None, f"{error_prefix} {input_fields_from_schema - set(data)}"
+
+    # Last validation: Validate the input values against the schema.
     if error := node_block.input_schema.validate_data(data):  # type: ignore
         error_message = f"Input data doesn't match {node_block.name}: {error}"
         logger.error(error_message)
-        return False, error_message
+        return None, error_message
 
-    return True, node_block.name
+    return data, node_block.name
 
 
 def get_agent_server_client() -> "AgentServer":
@@ -251,37 +272,34 @@ class ExecutionManager(AppService):
         return get_agent_server_client()
 
     @expose
-    def add_execution(self, graph_id: str, data: dict[str, Any]) -> dict[Any, Any]:
+    def add_execution(self, graph_id: str, data: BlockInput) -> dict[Any, Any]:
         graph: Graph | None = self.run_and_wait(get_graph(graph_id))
         if not graph:
             raise Exception(f"Graph #{graph_id} not found.")
 
-        # Currently, there is no constraint on the number of root nodes in the graph.
+        nodes_input = []
         for node in graph.starting_nodes:
-            input_data = merge_execution_input({**node.input_default, **data})
-            valid, error = validate_exec(node, input_data)
-            if not valid:
+            input_data, error = validate_exec(node, data)
+            if not input_data:
                 raise Exception(error)
+            else:
+                nodes_input.append((node.id, input_data))
 
         graph_exec_id, node_execs = self.run_and_wait(
             create_graph_execution(
                 graph_id=graph_id,
                 graph_version=graph.version,
-                node_ids=[node.id for node in graph.starting_nodes],
-                data=data,
+                nodes_input=nodes_input,
             )
         )
-        executions: list[dict[str, Any]] = []
+        executions: list[BlockInput] = []
         for node_exec in node_execs:
-            input_data = self.run_and_wait(
-                get_node_execution_input(node_exec.node_exec_id)
-            )
             self.add_node_execution(
                 Execution(
                     graph_exec_id=node_exec.graph_exec_id,
                     node_exec_id=node_exec.node_exec_id,
                     node_id=node_exec.node_id,
-                    data=input_data,
+                    data=node_exec.input_data,
                 )
             )
 
