@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from concurrent.futures import Future, ProcessPoolExecutor
 from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 
@@ -265,9 +266,11 @@ class Executor:
             futures.append(
                 cls.executor.submit(cls.on_node_execution, queue, queue.get())
             )
-            while queue.empty() and len(futures) > 0:
-                future = futures.pop()
-                future.result()
+            while queue.empty() and futures:
+                futures = [f for f in futures if not f.done()]
+                # Avoid blocking continuously running task by doing short timed sleep.
+                if futures:
+                    time.sleep(1)
 
 
 class ExecutionManager(AppService):
