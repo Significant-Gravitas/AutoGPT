@@ -2,6 +2,8 @@ import operator
 from enum import Enum
 from typing import Any, Union
 
+import pydantic
+
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.data.model import SchemaField
 
@@ -12,6 +14,17 @@ class Operation(Enum):
     MULTIPLY = "Multiply"
     DIVIDE = "Divide"
     POWER = "Power"
+
+
+class MathsResult(pydantic.BaseModel):
+    result: Union[float, int] | None = None
+    explanation: str
+
+
+class CounterResult(pydantic.BaseModel):
+    count: int | None = None
+    type: str
+    explanation: str
 
 
 class MathsBlock(Block):
@@ -32,11 +45,8 @@ class MathsBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: Union[float, int] = SchemaField(
-            description="The result of your calculation"
-        )
-        explanation: str = SchemaField(
-            description="A simple explanation of the calculation performed"
+        result: MathsResult = SchemaField(
+            description="The result of your calculation with an explanation"
         )
 
     def __init__(self):
@@ -51,8 +61,12 @@ class MathsBlock(Block):
                 "round_result": False,
             },
             test_output=[
-                ("result", 15.0),
-                ("explanation", "Added 10.0 and 5.0 to get 15.0"),
+                (
+                    "result",
+                    MathsResult(
+                        result=15.0, explanation="Added 10.0 and 5.0 to get 15.0"
+                    ),
+                ),
             ],
         )
 
@@ -88,15 +102,16 @@ class MathsBlock(Block):
                 result = round(result)
                 explanation += " (rounded to the nearest whole number)"
 
-            yield "result", result
-            yield "explanation", explanation
+            yield "result", MathsResult(result=result, explanation=explanation)
 
-        except ZeroDivisionError as e:
-            yield "result", None
-            yield "explanation", str(e)
+        except ZeroDivisionError:
+            yield "result", MathsResult(
+                result=None, explanation="Cannot divide by zero"
+            )
         except Exception as e:
-            yield "result", None
-            yield "explanation", f"An error occurred: {str(e)}"
+            yield "result", MathsResult(
+                result=None, explanation=f"An error occurred: {str(e)}"
+            )
 
 
 class CounterBlock(Block):
@@ -107,11 +122,7 @@ class CounterBlock(Block):
         )
 
     class Output(BlockSchema):
-        count: int = SchemaField(description="The number of items in the collection")
-        type: str = SchemaField(description="The type of the input collection")
-        explanation: str = SchemaField(
-            description="A simple explanation of what was counted"
-        )
+        result: CounterResult = SchemaField(description="The result of the count")
 
     def __init__(self):
         super().__init__(
@@ -120,9 +131,12 @@ class CounterBlock(Block):
             output_schema=CounterBlock.Output,
             test_input={"collection": [1, 2, 3, 4, 5]},
             test_output=[
-                ("count", 5),
-                ("type", "list"),
-                ("explanation", "Counted 5 items in a list"),
+                (
+                    "result",
+                    CounterResult(
+                        count=5, type="list", explanation="Counted 5 items in a list"
+                    ),
+                ),
             ],
         )
 
@@ -148,11 +162,11 @@ class CounterBlock(Block):
 
             explanation = f"Counted {count} {item_word} in a {collection_type}"
 
-            yield "count", count
-            yield "type", collection_type
-            yield "explanation", explanation
+            yield "result", CounterResult(
+                count=count, type=collection_type, explanation=explanation
+            )
 
         except Exception as e:
-            yield "count", None
-            yield "type", "error"
-            yield "explanation", f"An error occurred: {str(e)}"
+            yield "result", CounterResult(
+                count=None, type="error", explanation=f"An error occurred: {str(e)}"
+            )
