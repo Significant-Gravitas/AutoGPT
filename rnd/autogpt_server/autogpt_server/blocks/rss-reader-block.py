@@ -1,5 +1,5 @@
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import feedparser
@@ -25,9 +25,9 @@ class RSSReaderBlock(Block):
             placeholder="https://example.com/rss",
         )
         start_datetime: datetime = SchemaField(
-            description="The date and time to start looking for posts from on the first loop.",
+            description="The date and time to start looking for posts from on the first loop. Defaults to 1 day ago.",
             placeholder="2023-06-23T12:00:00Z",
-            default=datetime.now(timezone.utc),
+            default=datetime.now(timezone.utc) - timedelta(days=1),
         )
         polling_rate: int = SchemaField(
             description="The number of seconds to wait between polling attempts.",
