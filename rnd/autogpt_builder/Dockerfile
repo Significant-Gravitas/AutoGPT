@@ -22,7 +22,7 @@ ENV NODE_ENV=production
 WORKDIR /app
 
 COPY --from=build /app/package*.json ./
-RUN npm ci --only=production
+RUN yarn install --frozen-lockfile
 
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
