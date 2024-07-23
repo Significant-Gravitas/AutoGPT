@@ -15,8 +15,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import CustomNode from './CustomNode';
 import './flow.css';
-import AutoGPTServerAPI, { Block, Graph } from '@/lib/autogpt_server_api';
-import { ObjectSchema } from '@/lib/types';
+import AutoGPTServerAPI, { Block, Graph, ObjectSchema } from '@/lib/autogpt-server-api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ChevronRight, ChevronLeft } from "lucide-react";
