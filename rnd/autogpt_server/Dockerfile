@@ -18,7 +18,7 @@ RUN apt-get update \
     && make prefix=/usr install
 
 
-ENV POETRY_VERSION=1.1.8 \
+ENV POETRY_VERSION=1.8.3 \
     POETRY_HOME="/opt/poetry" \
     POETRY_NO_INTERACTION=1 \
     POETRY_VIRTUALENVS_CREATE=false \
@@ -33,8 +33,7 @@ COPY forge /app/forge
 WORKDIR /app/rnd/autogpt_server
 
 # Install dependencies
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi
+RUN poetry install --no-interaction --no-ansi
 
 RUN poetry run prisma generate
 
