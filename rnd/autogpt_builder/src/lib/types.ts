@@ -1,10 +1,3 @@
-export type ObjectSchema = {
-  type: string;
-  properties: { [key: string]: any };
-  additionalProperties?: { type: string };
-  required?: string[];
-};
-
 export type BlockSchema = {
   type: string;
   properties: { [key: string]: any };

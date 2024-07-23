@@ -6,6 +6,7 @@ services:
       POSTGRES_USER: agpt_user
       POSTGRES_PASSWORD: pass123
       POSTGRES_DB: agpt_local
+      PGUSER: 5432
     healthcheck:
       test: pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB
       interval: 10s
@@ -47,3 +48,4 @@ services:
 networks:
   app-network:
     driver: bridge
+

@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from typing import Annotated, Any, Dict
 
@@ -19,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 import autogpt_server.server.ws_api
 from autogpt_server.data import block, db, execution
 from autogpt_server.data import graph as graph_db
+from autogpt_server.data.block import BlockInput, CompletedBlockOutput
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import (
@@ -45,6 +47,7 @@ class AgentServer(AppService):
     async def lifespan(self, _: FastAPI):
         await db.connect()
         self.run_and_wait(block.initialize_blocks())
+        self.run_and_wait(graph_db.import_packaged_templates())
         asyncio.create_task(self.event_broadcaster())
         yield
         await db.disconnect()
@@ -385,12 +388,16 @@ class AgentServer(AppService):
 
     @classmethod
     def execute_graph_block(
-        cls, block_id: str, data: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+        cls, block_id: str, data: BlockInput
+    ) -> CompletedBlockOutput:
         obj = block.get_block(block_id)  # type: ignore
         if not obj:
             raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
-        return [{name: data} for name, data in obj.execute(data)]
+
+        output = defaultdict(list)
+        for name, data in obj.execute(data):
+            output[name].append(data)
+        return output
 
     @classmethod
     async def get_graphs(cls) -> list[graph_db.GraphMeta]:
