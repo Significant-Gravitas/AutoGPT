@@ -630,6 +630,9 @@ def update_user(
         command_args: The arguments for the command.
         assistant_reply_dict: The assistant's reply.
     """
+    from forge.components.code_flow_executor import CodeFlowExecutionComponent
+    from forge.llm.prompting.utils import indent
+
     logger = logging.getLogger(__name__)
 
     print_assistant_thoughts(
@@ -644,15 +647,29 @@ def update_user(
     # First log new-line so user can differentiate sections better in console
     print()
     safe_tool_name = remove_ansi_escape(action_proposal.use_tool.name)
-    logger.info(
-        f"COMMAND = {Fore.CYAN}{safe_tool_name}{Style.RESET_ALL}  "
-        f"ARGUMENTS = {Fore.CYAN}{action_proposal.use_tool.arguments}{Style.RESET_ALL}",
-        extra={
-            "title": "NEXT ACTION:",
-            "title_color": Fore.CYAN,
-            "preserve_color": True,
-        },
-    )
+    if safe_tool_name == CodeFlowExecutionComponent.execute_code_flow.name:
+        plan = action_proposal.use_tool.arguments["plan_text"]
+        code = action_proposal.use_tool.arguments["python_code"]
+        logger.info(
+            f"\n{indent(code, f'{Fore.GREEN}>>> {Fore.RESET}')}\n",
+            extra={
+                "title": "PROPOSED ACTION:",
+                "title_color": Fore.GREEN,
+                "preserve_color": True,
+            },
+        )
+        logger.debug(
+            f"{plan}\n", extra={"title": "EXPLANATION:", "title_color": Fore.YELLOW}
+        )
+    else:
+        logger.info(
+            str(action_proposal.use_tool),
+            extra={
+                "title": "PROPOSED ACTION:",
+                "title_color": Fore.GREEN,
+                "preserve_color": True,
+            },
+        )
 
 
 async def get_user_feedback(
@@ -732,6 +749,12 @@ def print_assistant_thoughts(
     )
 
     if isinstance(thoughts, AssistantThoughts):
+        if thoughts.observations:
+            print_attribute(
+                "OBSERVATIONS",
+                remove_ansi_escape(thoughts.observations),
+                title_color=Fore.YELLOW,
+            )
         print_attribute(
             "REASONING", remove_ansi_escape(thoughts.reasoning), title_color=Fore.YELLOW
         )
@@ -753,7 +776,7 @@ def print_assistant_thoughts(
                     line.strip(), extra={"title": "- ", "title_color": Fore.GREEN}
                 )
         print_attribute(
-            "CRITICISM",
+            "SELF-CRITICISM",
             remove_ansi_escape(thoughts.self_criticism),
             title_color=Fore.YELLOW,
         )
@@ -764,7 +787,7 @@ def print_assistant_thoughts(
                 speak(assistant_thoughts_speak)
             else:
                 print_attribute(
-                    "SPEAK", assistant_thoughts_speak, title_color=Fore.YELLOW
+                    "TL;DR", assistant_thoughts_speak, title_color=Fore.YELLOW
                 )
     else:
         speak(thoughts_text)

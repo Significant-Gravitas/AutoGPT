@@ -4,9 +4,7 @@ from typing import Optional
 import pytest
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
-from forge.components.code_flow_executor.code_flow_executor import (
-    CodeFlowExecutionComponent,
-)
+from forge.components.code_flow_executor import CodeFlowExecutionComponent
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.llm.providers import AssistantChatMessage
@@ -100,7 +98,7 @@ async def test_code_flow_parse_response():
     assert "This is the observation." == response.thoughts.observations
     assert "This is the reasoning." == response.thoughts.reasoning
 
-    assert "execute_code_flow" == response.use_tool.name
+    assert CodeFlowExecutionComponent.execute_code_flow.name == response.use_tool.name
     assert "async def main() -> str" in response.use_tool.arguments["python_code"]
     assert (
         "Objective[objective1] Plan[plan1] Output[out1]"

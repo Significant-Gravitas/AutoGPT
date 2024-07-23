@@ -65,5 +65,5 @@ class CodeFlowExecutionComponent(CommandProvider):
             name: command
             for command in self.get_available_commands()
             for name in command.names
-            if name != "execute_code_flow"
+            if name != self.execute_code_flow.name
         }

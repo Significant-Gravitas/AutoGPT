@@ -23,9 +23,7 @@ from forge.components.code_executor.code_executor import (
     CodeExecutorComponent,
     CodeExecutorConfiguration,
 )
-from forge.components.code_flow_executor.code_flow_executor import (
-    CodeFlowExecutionComponent,
-)
+from forge.components.code_flow_executor import CodeFlowExecutionComponent
 from forge.components.context.context import AgentContext, ContextComponent
 from forge.components.file_manager import FileManagerComponent
 from forge.components.git_operations import GitOperationsComponent

@@ -4,6 +4,7 @@ from logging import Logger
 from typing import Callable, Iterable, Sequence, get_args, get_origin
 
 from forge.command import Command
+from forge.components.code_flow_executor import CodeFlowExecutionComponent
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.json.parsing import extract_dict_from_json
@@ -321,7 +322,7 @@ class CodeFlowAgentPromptStrategy(PromptStrategy):
             result = OneShotAgentActionProposal(
                 thoughts=parsed_response.thoughts,
                 use_tool=AssistantFunctionCall(
-                    name="execute_code_flow",
+                    name=CodeFlowExecutionComponent.execute_code_flow.name,
                     arguments={
                         "python_code": code_validation.functionCode,
                         "plan_text": parsed_response.immediate_plan,
