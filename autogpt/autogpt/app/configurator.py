@@ -51,8 +51,9 @@ async def apply_overrides_to_config(
         raise click.UsageError("--continuous-limit can only be used with --continuous")
 
     # Check availability of configured LLMs; fallback to other LLM if unavailable
-    config.fast_llm = await check_model(config.fast_llm, "fast_llm")
-    config.smart_llm = await check_model(config.smart_llm, "smart_llm")
+    config.fast_llm, config.smart_llm = await check_models(
+        (config.fast_llm, "fast_llm"), (config.smart_llm, "smart_llm")
+    )
 
     if skip_reprompt:
         config.skip_reprompt = True
@@ -61,17 +62,22 @@ async def apply_overrides_to_config(
         config.skip_news = True
 
 
-async def check_model(
-    model_name: ModelName, model_type: Literal["smart_llm", "fast_llm"]
-) -> ModelName:
+async def check_models(
+    *models: tuple[ModelName, Literal["smart_llm", "fast_llm"]]
+) -> tuple[ModelName, ...]:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
     multi_provider = MultiProvider()
-    models = await multi_provider.get_available_chat_models()
+    available_models = await multi_provider.get_available_chat_models()
 
-    if any(model_name == m.name for m in models):
-        return model_name
+    checked_models: list[ModelName] = []
+    for model, model_type in models:
+        if any(model == m.name for m in available_models):
+            checked_models.append(model)
+        else:
+            logger.warning(
+                f"You don't have access to {model}. "
+                f"Setting {model_type} to {GPT_3_MODEL}."
+            )
+            checked_models.append(GPT_3_MODEL)
 
-    logger.warning(
-        f"You don't have access to {model_name}. Setting {model_type} to {GPT_3_MODEL}."
-    )
-    return GPT_3_MODEL
+    return tuple(checked_models)
