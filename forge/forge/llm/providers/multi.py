@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Iterator, Optional, Sequence, TypeVar
+from typing import Any, Callable, Iterator, Optional, Sequence, TypeVar, get_args
 
 from pydantic import ValidationError
 
 from .anthropic import ANTHROPIC_CHAT_MODELS, AnthropicModelName, AnthropicProvider
 from .groq import GROQ_CHAT_MODELS, GroqModelName, GroqProvider
+from .llamafile import LLAMAFILE_CHAT_MODELS, LlamafileModelName, LlamafileProvider
 from .openai import OPEN_AI_CHAT_MODELS, OpenAIModelName, OpenAIProvider
 from .schema import (
     AssistantChatMessage,
@@ -24,10 +25,15 @@ from .schema import (
 
 _T = TypeVar("_T")
 
-ModelName = AnthropicModelName | GroqModelName | OpenAIModelName
+ModelName = AnthropicModelName | GroqModelName | LlamafileModelName | OpenAIModelName
 EmbeddingModelProvider = OpenAIProvider
 
-CHAT_MODELS = {**ANTHROPIC_CHAT_MODELS, **GROQ_CHAT_MODELS, **OPEN_AI_CHAT_MODELS}
+CHAT_MODELS = {
+    **ANTHROPIC_CHAT_MODELS,
+    **GROQ_CHAT_MODELS,
+    **LLAMAFILE_CHAT_MODELS,
+    **OPEN_AI_CHAT_MODELS,
+}
 
 
 class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
@@ -116,33 +122,52 @@ class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
 
     def get_available_providers(self) -> Iterator[ChatModelProvider]:
         for provider_name in ModelProviderName:
+            self._logger.debug(f"Checking if {provider_name} is available...")
             try:
                 yield self._get_provider(provider_name)
-            except Exception:
+                self._logger.debug(f"{provider_name} is available!")
+            except ValueError:
                 pass
 
     def _get_provider(self, provider_name: ModelProviderName) -> ChatModelProvider:
         _provider = self._provider_instances.get(provider_name)
         if not _provider:
             Provider = self._get_provider_class(provider_name)
-            settings = Provider.default_settings.copy(deep=True)
+            self._logger.debug(
+                f"{Provider.__name__} not yet in cache, trying to init..."
+            )
+
+            settings = Provider.default_settings.model_copy(deep=True)
             settings.budget = self._budget
             settings.configuration.extra_request_headers.update(
                 self._settings.configuration.extra_request_headers
             )
             if settings.credentials is None:
+                credentials_field = settings.model_fields["credentials"]
+                Credentials = get_args(  # Union[Credentials, None] -> Credentials
+                    credentials_field.annotation
+                )[0]
+                self._logger.debug(f"Loading {Credentials.__name__}...")
                 try:
-                    Credentials = settings.__fields__["credentials"].type_
                     settings.credentials = Credentials.from_env()
                 except ValidationError as e:
-                    raise ValueError(
-                        f"{provider_name} is unavailable: can't load credentials"
-                    ) from e
+                    if credentials_field.is_required():
+                        self._logger.debug(
+                            f"Could not load (required) {Credentials.__name__}"
+                        )
+                        raise ValueError(
+                            f"{Provider.__name__} is unavailable: "
+                            "can't load credentials"
+                        ) from e
+                    self._logger.debug(
+                        f"Could not load {Credentials.__name__}, continuing without..."
+                    )
 
             self._provider_instances[provider_name] = _provider = Provider(
                 settings=settings, logger=self._logger  # type: ignore
             )
             _provider._budget = self._budget  # Object binding not preserved by Pydantic
+            self._logger.debug(f"Initialized {Provider.__name__}!")
         return _provider
 
     @classmethod
@@ -153,6 +178,7 @@ class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
             return {
                 ModelProviderName.ANTHROPIC: AnthropicProvider,
                 ModelProviderName.GROQ: GroqProvider,
+                ModelProviderName.LLAMAFILE: LlamafileProvider,
                 ModelProviderName.OPENAI: OpenAIProvider,
             }[provider_name]
         except KeyError:
@@ -162,4 +188,10 @@ class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
         return f"{self.__class__.__name__}()"
 
 
-ChatModelProvider = AnthropicProvider | GroqProvider | OpenAIProvider | MultiProvider
+ChatModelProvider = (
+    AnthropicProvider
+    | GroqProvider
+    | LlamafileProvider
+    | OpenAIProvider
+    | MultiProvider
+)

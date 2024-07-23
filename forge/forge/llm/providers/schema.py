@@ -17,7 +17,7 @@ from typing import (
     TypeVar,
 )
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from forge.logging.utils import fmt_kwargs
 from forge.models.config import (
@@ -55,6 +55,7 @@ class ModelProviderName(str, enum.Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GROQ = "groq"
+    LLAMAFILE = "llamafile"
 
 
 class ChatMessage(BaseModel):
@@ -186,7 +187,7 @@ class ModelResponse(BaseModel):
 
     prompt_tokens_used: int
     completion_tokens_used: int
-    model_info: ModelInfo
+    llm_info: ModelInfo
 
 
 class ModelProviderConfiguration(SystemConfiguration):
@@ -204,8 +205,7 @@ class ModelProviderCredentials(ProviderCredentials):
     api_version: SecretStr | None = UserConfigurable(default=None)
     deployment_id: SecretStr | None = UserConfigurable(default=None)
 
-    class Config(ProviderCredentials.Config):
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")
 
 
 class ModelProviderUsage(BaseModel):
@@ -289,7 +289,7 @@ class BaseModelProvider(
         logger: Optional[logging.Logger] = None,
     ):
         if not settings:
-            settings = self.default_settings.copy(deep=True)
+            settings = self.default_settings.model_copy(deep=True)
 
         self._settings = settings
         self._configuration = settings.configuration
@@ -356,7 +356,7 @@ class EmbeddingModelResponse(ModelResponse):
     """Standard response struct for a response from an embedding model."""
 
     embedding: Embedding = Field(default_factory=list)
-    completion_tokens_used: int = Field(default=0, const=True)
+    completion_tokens_used: int = Field(default=0, frozen=True)
 
 
 class BaseEmbeddingModelProvider(BaseModelProvider[_ModelName, _ModelProviderSettings]):

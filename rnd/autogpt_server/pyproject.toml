@@ -10,18 +10,43 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
+agpt = { path = "../../autogpt", develop = true }
 click = "^8.1.7"
-pydantic = "^2.7.2"
+autogpt-forge = { path = "../../forge", develop = true }
 prisma = "^0.13.1"
+pydantic = "^2.7.2"
 pytest = "^8.2.1"
 uvicorn = { extras = ["standard"], version = "^0.30.1" }
 fastapi = "^0.109.0"
+flake8 = "^7.0.0"
+jsonschema = "^4.22.0"
+psutil = "^5.9.8"
+pyro5 = "^5.15"
+tenacity = "^8.3.0"
+apscheduler = "^3.10.4"
+croniter = "^2.0.5"
+pytest-asyncio = "^0.23.7"
+websockets = "^12.0"
+pydantic-settings = "^2.3.4"
+praw = "^7.7.1"
+openai = "^1.35.7"
+jsonref = "^1.1.0"
+groq = "^0.8.0"
+anthropic = "^0.25.1"
 
 
+ollama = "^0.3.0"
+python-dotenv = "^1.0.1"
 [tool.poetry.group.dev.dependencies]
-cx-freeze = "7.0.0"
+cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main", develop = true }
 poethepoet = "^0.26.1"
 httpx = "^0.27.0"
+pytest-watcher = "^0.4.2"
+requests = "^2.32.3"
+ruff = "^0.5.2"
+pyright = "^1.1.371"
+isort = "^5.13.2"
+black = "^24.4.2"
 
 [build-system]
 requires = ["poetry-core"]
@@ -29,6 +54,9 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 app = "autogpt_server.app:main"
+cli = "autogpt_server.cli:main"
+format = "linter:format"
+lint = "linter:lint"
 
 # https://poethepoet.natn.io/index.html
 [tool.poe]
@@ -46,8 +74,8 @@ install = ["build", "_dinstall"]
 [tool.poe.tasks._dbuild]
 cmd = "python setup.py build"
 
-[tool.poe.tasks.dist_mac]
-cmd = "python setup.py bdist_mac"
+[tool.poe.tasks.dist_app]
+cmd = "python setup.py bdist_app"
 
 [tool.poe.tasks.dist_dmg]
 cmd = "python setup.py bdist_dmg"
@@ -55,5 +83,23 @@ cmd = "python setup.py bdist_dmg"
 [tool.poe.tasks.dist_msi]
 cmd = "python setup.py bdist_msi"
 
+[tool.poe.tasks.dist_appimage]
+cmd = "python setup.py bdist_appimage"
+
+[tool.poe.tasks.dist_deb]
+cmd = "python setup.py bdist_deb"
+
 [tool.poe.tasks._dinstall]
 cmd = "python setup.py install"
+
+[tool.pytest-watcher]
+now = false
+clear = true
+delay = 0.2
+runner = "pytest"
+runner_args = []
+patterns = ["*.py"]
+ignore_patterns = []
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

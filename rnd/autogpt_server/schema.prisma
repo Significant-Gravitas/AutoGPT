@@ -11,114 +11,138 @@ generator client {
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
 model AgentGraph {
-  id          String  @id
+  id      String @default(uuid())
+  version Int    @default(1)
+
   name        String?
   description String?
+  isActive    Boolean @default(true)
+  isTemplate  Boolean @default(false)
 
-  startingAgentNodeId String
-  StartingAgentNode   AgentNode @relation("AgentGraphRoot", fields: [startingAgentNodeId], references: [id])
+  AgentNodes                  AgentNode[]
+  AgentGraphExecution         AgentGraphExecution[]
+  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
 
-  AgentNodes AgentNode[] @relation("AgentGraphNodes")
+  @@id(name: "graphVersionId", [id, version])
 }
 
 // This model describes a single node in the Agent Graph/Flow (Multi Agent System).
 model AgentNode {
-  id String @id
+  id String @id @default(uuid())
 
   agentBlockId String
   AgentBlock   AgentBlock @relation(fields: [agentBlockId], references: [id])
 
-  agentGraphId String
-  AgentGraph   AgentGraph @relation("AgentGraphNodes", fields: [agentGraphId], references: [id])
+  agentGraphId      String
+  agentGraphVersion Int        @default(1)
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
 
   // List of consumed input, that the parent node should provide.
-  Input AgentNodeLink[] @relation("AgentNodeInput")
+  Input AgentNodeLink[] @relation("AgentNodeSink")
 
   // List of produced output, that the child node should be executed.
-  Output AgentNodeLink[] @relation("AgentNodeOutput")
+  Output AgentNodeLink[] @relation("AgentNodeSource")
+
+  // JSON serialized dict[str, str] containing predefined input values.
+  constantInput String @default("{}")
+
+  // JSON serialized dict[str, str] containing the node metadata.
+  metadata String @default("{}")
 
   ExecutionHistory AgentNodeExecution[]
-
-  // Prisma requires explicit back-references.
-  ReferencedByAgentGraphAsRoot AgentGraph[] @relation("AgentGraphRoot")
 }
 
 // This model describes the link between two AgentNodes.
 model AgentNodeLink {
-  id String @id
+  id String @id @default(uuid())
 
-  agentNodeInputId       String
-  AgentNodeInput         AgentNode             @relation("AgentNodeOutput", fields: [agentNodeInputId], references: [id]) // Output of the node is the input of the link.
-  agentNodeInputSchemaId String
-  AgentNodeInputSchema   AgentBlockInputOutput @relation("AgentNodeInputSchema", fields: [agentNodeInputSchemaId], references: [id])
+  // Output of a node is connected to the source of the link.
+  agentNodeSourceId String
+  AgentNodeSource   AgentNode @relation("AgentNodeSource", fields: [agentNodeSourceId], references: [id])
+  sourceName        String
 
-  agentNodeOutputId       String
-  AgentNodeOutput         AgentNode             @relation("AgentNodeInput", fields: [agentNodeOutputId], references: [id]) // Input of the node is the output of the link.
-  agentNodeOutputSchemaId String
-  AgentNodeOutputSchema   AgentBlockInputOutput @relation("AgentNodeOutputSchema", fields: [agentNodeOutputSchemaId], references: [id])
+  // Input of a node is connected to the sink of the link.
+  agentNodeSinkId String
+  AgentNodeSink   AgentNode @relation("AgentNodeSink", fields: [agentNodeSinkId], references: [id])
+  sinkName        String
 }
 
 // This model describes a component that will be executed by the AgentNode.
 model AgentBlock {
-  id   String @id
+  id   String @id @default(uuid())
   name String @unique
 
-  // We allow a block to have multiple types of output.
-  Input  AgentBlockInputOutput[] @relation("AgentBlockInput")
-  Output AgentBlockInputOutput[] @relation("AgentBlockOutput")
+  // We allow a block to have multiple types of input & output.
+  // Serialized object-typed `jsonschema` with top-level properties as input/output name.
+  inputSchema  String
+  outputSchema String
 
   // Prisma requires explicit back-references.
   ReferencedByAgentNode AgentNode[]
 }
 
-// This model describes the output (produced event) or input (consumed event) of an AgentBlock.
-model AgentBlockInputOutput {
-  id          String @id
-  name        String
-  schema      String
-  description String
+// This model describes the execution of an AgentGraph.
+model AgentGraphExecution {
+  id String @id @default(uuid())
 
-  // Prisma requires explicit back-references.
-  ReferencedByAgentBlockInput       AgentBlock[]         @relation("AgentBlockInput")
-  ReferencedByAgentBlockOutput      AgentBlock[]         @relation("AgentBlockOutput")
-  ReferencedByAgentNodeLinkAsInput  AgentNodeLink[]      @relation("AgentNodeInputSchema")
-  ReferencedByAgentNodeLinkAsOutput AgentNodeLink[]      @relation("AgentNodeOutputSchema")
-  ReferencedByAgentNodeExecution    AgentNodeExecution[]
+  agentGraphId      String
+  agentGraphVersion Int        @default(1)
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
+
+  AgentNodeExecutions AgentNodeExecution[]
 }
 
 // This model describes the execution of an AgentNode.
 model AgentNodeExecution {
-  id String @id
+  id String @id @default(uuid())
+
+  agentGraphExecutionId String
+  AgentGraphExecution   AgentGraphExecution @relation(fields: [agentGraphExecutionId], references: [id])
 
   agentNodeId String
   AgentNode   AgentNode @relation(fields: [agentNodeId], references: [id])
 
-  inputData    String
-  inputFiles   FileDefinition[]       @relation("InputFiles")
-  outputData   String
-  outputFiles  FileDefinition[]       @relation("OutputFiles")
-  outputTypeId String?
-  outputType   AgentBlockInputOutput? @relation(fields: [outputTypeId], references: [id])
+  Input  AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionInput")
+  Output AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionOutput")
 
   // sqlite does not support enum
-  // enum Status { STARTED, RUNNING, SUCCESS, FAILED }
+  // enum Status { INCOMPLETE, QUEUED, RUNNING, SUCCESS, FAILED }
   executionStatus String
-
-  // JSON serialized object of the execution state: information required to resume the execution.
-  executionStateData String
+  addedTime       DateTime  @default(now())
+  queuedTime      DateTime?
+  startedTime     DateTime?
+  endedTime       DateTime?
 }
 
-// This model describes a file that can be used as input/output of an AgentNodeExecution.
-model FileDefinition {
-  id       String  @id
-  path     String
-  metadata String? // JSON serialized object
-  mimeType String?
-  size     Int?
-  hash     String?
-  encoding String?
+// This model describes the output of an AgentNodeExecution.
+model AgentNodeExecutionInputOutput {
+  id String @id @default(uuid())
+
+  name String
+  data String
+  time DateTime @default(now())
 
   // Prisma requires explicit back-references.
-  ReferencedByInputFiles  AgentNodeExecution[] @relation("InputFiles")
-  ReferencedByOutputFiles AgentNodeExecution[] @relation("OutputFiles")
+  referencedByInputExecId  String?
+  ReferencedByInputExec    AgentNodeExecution? @relation("AgentNodeExecutionInput", fields: [referencedByInputExecId], references: [id])
+  referencedByOutputExecId String?
+  ReferencedByOutputExec   AgentNodeExecution? @relation("AgentNodeExecutionOutput", fields: [referencedByOutputExecId], references: [id])
+}
+
+// This model describes the recurring execution schedule of an Agent.
+model AgentGraphExecutionSchedule {
+  id String @id
+
+  agentGraphId      String
+  agentGraphVersion Int        @default(1)
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
+
+  schedule  String // cron expression
+  isEnabled Boolean @default(true)
+  inputData String // JSON serialized object
+
+  // default and set the value on each update, lastUpdated field has no time zone.
+  lastUpdated DateTime @updatedAt
+
+  @@index([isEnabled])
 }

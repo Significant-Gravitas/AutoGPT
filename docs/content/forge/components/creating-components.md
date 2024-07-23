@@ -37,7 +37,7 @@ Since components are regular classes you can pass data (including other componen
 For example we can pass a config object and then retrieve an API key from it when needed:
 
 ```py
-class ConfigurableComponent(MessageProvider):
+class DataComponent(MessageProvider):
     def __init__(self, config: Config):
         self.config = config
 
@@ -50,6 +50,35 @@ class ConfigurableComponent(MessageProvider):
 
 !!! note
     Component-specific configuration handling isn't implemented yet.
+
+## Configuring components
+
+Components can be configured using a pydantic model.
+To make component configurable, it must inherit from `ConfigurableComponent[BM]` where `BM` is the configuration class inheriting from pydantic's `BaseModel`.
+You should pass the configuration instance to the `ConfigurableComponent`'s `__init__` or set its `config` property directly.
+Using configuration allows you to load confugration from a file, and also serialize and deserialize it easily for any agent.
+To learn more about configuration, including storing sensitive information and serialization see [Component Configuration](./components.md#component-configuration).
+
+```py
+# Example component configuration
+class UserGreeterConfiguration(BaseModel):
+    user_name: str
+
+class UserGreeterComponent(MessageProvider, ConfigurableComponent[UserGreeterConfiguration]):
+    def __init__(self):
+        # Creating configuration instance
+        # You could also pass it to the component constructor
+        # e.g. `def __init__(self, config: UserGreeterConfiguration):`
+        config = UserGreeterConfiguration(user_name="World")
+        # Passing the configuration instance to the parent class
+        UserGreeterComponent.__init__(self, config)
+        # This has the same effect as the line above:
+        # self.config = UserGreeterConfiguration(user_name="World")
+
+    def get_messages(self) -> Iterator[ChatMessage]:
+        # You can use the configuration like a regular model
+        yield ChatMessage.system(f"Hello, {self.config.user_name}!")
+```
 
 ## Providing commands
 
@@ -148,12 +177,12 @@ It gives an ability for the agent to ask user for input in the terminal.
         yield self.ask_user
     ```
 
-5. Since agent isn't always running in the terminal or interactive mode, we need to disable this component by setting `self._enabled` when it's not possible to ask for user input.
+5. Since agent isn't always running in the terminal or interactive mode, we need to disable this component by setting `self._enabled=False` when it's not possible to ask for user input.
 
     ```py
-    def __init__(self, config: Config):
+    def __init__(self, interactive_mode: bool):
         self.config = config
-        self._enabled = not config.noninteractive_mode
+        self._enabled = interactive_mode
     ```
 
 The final component should look like this:
@@ -164,10 +193,10 @@ class MyUserInteractionComponent(CommandProvider):
     """Provides commands to interact with the user."""
 
     # We pass config to check if we're in noninteractive mode
-    def __init__(self, config: Config):
+    def __init__(self, interactive_mode: bool):
         self.config = config
         # 5.
-        self._enabled = not config.noninteractive_mode
+        self._enabled = interactive_mode
 
     # 4.
     def get_commands(self) -> Iterator[Command]:
@@ -205,10 +234,10 @@ class MyAgent(Agent):
         settings: AgentSettings,
         llm_provider: MultiProvider,
         file_storage: FileStorage,
-        legacy_config: Config,
+        app_config: Config,
     ):
         # Call the parent constructor to bring in the default components
-        super().__init__(settings, llm_provider, file_storage, legacy_config)
+        super().__init__(settings, llm_provider, file_storage, app_config)
         # Disable the default user interaction component by overriding it
         self.user_interaction = MyUserInteractionComponent()
 ```
@@ -222,14 +251,14 @@ class MyAgent(Agent):
         settings: AgentSettings,
         llm_provider: MultiProvider,
         file_storage: FileStorage,
-        legacy_config: Config,
+        app_config: Config,
     ):
         # Call the parent constructor to bring in the default components
-        super().__init__(settings, llm_provider, file_storage, legacy_config)
+        super().__init__(settings, llm_provider, file_storage, app_config)
         # Disable the default user interaction component
         self.user_interaction = None
         # Add our own component
-        self.my_user_interaction = MyUserInteractionComponent(legacy_config)
+        self.my_user_interaction = MyUserInteractionComponent(app_config)
 ```
 
 ## Learn more

@@ -3,16 +3,14 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import TYPE_CHECKING, Iterator, Optional, TypeVar
+from typing import Iterator, Optional, TypeVar
 
 import spacy
-
-if TYPE_CHECKING:
-    from forge.config.config import Config
 
 from forge.json.parsing import extract_list_from_json
 from forge.llm.prompting import ChatPrompt
 from forge.llm.providers import ChatMessage, ModelTokenizer, MultiProvider
+from forge.llm.providers.multi import ModelName
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +55,8 @@ def chunk_content(
 async def summarize_text(
     text: str,
     llm_provider: MultiProvider,
-    config: Config,
+    model_name: ModelName,
+    spacy_model: str = "en_core_web_sm",
     question: Optional[str] = None,
     instruction: Optional[str] = None,
 ) -> tuple[str, list[tuple[str, str]]]:
@@ -82,7 +81,8 @@ async def summarize_text(
         text=text,
         instruction=instruction,
         llm_provider=llm_provider,
-        config=config,
+        model_name=model_name,
+        spacy_model=spacy_model,
     )
 
 
@@ -90,7 +90,8 @@ async def extract_information(
     source_text: str,
     topics_of_interest: list[str],
     llm_provider: MultiProvider,
-    config: Config,
+    model_name: ModelName,
+    spacy_model: str = "en_core_web_sm",
 ) -> list[str]:
     fmt_topics_list = "\n".join(f"* {topic}." for topic in topics_of_interest)
     instruction = (
@@ -106,7 +107,8 @@ async def extract_information(
         instruction=instruction,
         output_type=list[str],
         llm_provider=llm_provider,
-        config=config,
+        model_name=model_name,
+        spacy_model=spacy_model,
     )
 
 
@@ -114,7 +116,8 @@ async def _process_text(
     text: str,
     instruction: str,
     llm_provider: MultiProvider,
-    config: Config,
+    model_name: ModelName,
+    spacy_model: str = "en_core_web_sm",
     output_type: type[str | list[str]] = str,
 ) -> tuple[str, list[tuple[str, str]]] | list[str]:
     """Process text using the OpenAI API for summarization or information extraction
@@ -123,7 +126,8 @@ async def _process_text(
         text (str): The text to process.
         instruction (str): Additional instruction for processing.
         llm_provider: LLM provider to use.
-        config (Config): The global application config.
+        model_name: The name of the llm model to use.
+        spacy_model: The spaCy model to use for sentence splitting.
         output_type: `str` for summaries or `list[str]` for piece-wise info extraction.
 
     Returns:
@@ -133,13 +137,11 @@ async def _process_text(
     if not text.strip():
         raise ValueError("No content")
 
-    model = config.fast_llm
-
-    text_tlength = llm_provider.count_tokens(text, model)
+    text_tlength = llm_provider.count_tokens(text, model_name)
     logger.debug(f"Text length: {text_tlength} tokens")
 
     max_result_tokens = 500
-    max_chunk_length = llm_provider.get_token_limit(model) - max_result_tokens - 50
+    max_chunk_length = llm_provider.get_token_limit(model_name) - max_result_tokens - 50
     logger.debug(f"Max chunk length: {max_chunk_length} tokens")
 
     if text_tlength < max_chunk_length:
@@ -157,7 +159,7 @@ async def _process_text(
 
         response = await llm_provider.create_chat_completion(
             model_prompt=prompt.messages,
-            model_name=model,
+            model_name=model_name,
             temperature=0.5,
             max_output_tokens=max_result_tokens,
             completion_parser=lambda s: (
@@ -182,9 +184,9 @@ async def _process_text(
         chunks = list(
             split_text(
                 text,
-                config=config,
                 max_chunk_length=max_chunk_length,
-                tokenizer=llm_provider.get_tokenizer(model),
+                tokenizer=llm_provider.get_tokenizer(model_name),
+                spacy_model=spacy_model,
             )
         )
 
@@ -196,7 +198,8 @@ async def _process_text(
                 instruction=instruction,
                 output_type=output_type,
                 llm_provider=llm_provider,
-                config=config,
+                model_name=model_name,
+                spacy_model=spacy_model,
             )
             processed_results.extend(
                 chunk_result if output_type == list[str] else [chunk_result]
@@ -212,7 +215,8 @@ async def _process_text(
                     "Combine these partial summaries into one."
                 ),
                 llm_provider=llm_provider,
-                config=config,
+                model_name=model_name,
+                spacy_model=spacy_model,
             )
             return summary.strip(), [
                 (processed_results[i], chunks[i][0]) for i in range(0, len(chunks))
@@ -221,9 +225,9 @@ async def _process_text(
 
 def split_text(
     text: str,
-    config: Config,
     max_chunk_length: int,
     tokenizer: ModelTokenizer,
+    spacy_model: str = "en_core_web_sm",
     with_overlap: bool = True,
 ) -> Iterator[tuple[str, int]]:
     """
@@ -231,7 +235,7 @@ def split_text(
 
     Args:
         text (str): The text to split.
-        config (Config): Config object containing the Spacy model setting.
+        spacy_model (str): The spaCy model to use for sentence splitting.
         max_chunk_length (int, optional): The maximum length of a chunk.
         tokenizer (ModelTokenizer): Tokenizer to use for determining chunk length.
         with_overlap (bool, optional): Whether to allow overlap between chunks.
@@ -251,7 +255,7 @@ def split_text(
     n_chunks = math.ceil(text_length / max_chunk_length)
     target_chunk_length = math.ceil(text_length / n_chunks)
 
-    nlp: spacy.language.Language = spacy.load(config.browse_spacy_language_model)
+    nlp: spacy.language.Language = spacy.load(spacy_model)
     nlp.add_pipe("sentencizer")
     doc = nlp(text)
     sentences = [sentence.text.strip() for sentence in doc.sents]

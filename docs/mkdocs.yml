@@ -5,6 +5,9 @@ docs_dir: content
 nav:
   - Home: index.md
 
+  - The AutoGPT Server 🆕: 
+    - Build your own Blocks: server/new_blocks.md
+
   - AutoGPT Agent:
       - Introduction: AutoGPT/index.md
       - Setup:
@@ -15,7 +18,6 @@ nav:
               - Options: AutoGPT/configuration/options.md
               - Search: AutoGPT/configuration/search.md
               - Voice: AutoGPT/configuration/voice.md
-              - Image Generation: AutoGPT/configuration/imagegen.md
       - Usage: AutoGPT/usage.md
       - Help us improve AutoGPT:
           - Share your debug logs with us: AutoGPT/share-your-logs.md
@@ -41,7 +43,7 @@ nav:
       - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/frontend/README.md
 
   - Docs: docs/index.md
-
+    
   # - Challenges:
   #     - Introduction: challenges/introduction.md
   #     - List of Challenges:

@@ -1,22 +1,47 @@
-from multiprocessing import freeze_support
-from multiprocessing.spawn import freeze_support as freeze_support_spawn
+from multiprocessing import freeze_support, set_start_method
 
-from autogpt_server.data import ExecutionQueue
-from autogpt_server.executor import start_executor_manager
-from autogpt_server.server import start_server
+from autogpt_server.executor import ExecutionManager, ExecutionScheduler
+from autogpt_server.server import AgentServer
+from autogpt_server.util.process import AppProcess
+from autogpt_server.util.service import PyroNameServer
 
 
-def main() -> None:
-    queue = ExecutionQueue()
-    start_executor_manager(5, queue)
-    start_server(queue)
+def get_config_and_secrets():
+    from autogpt_server.util.settings import Settings
+
+    settings = Settings()
+    return settings
+
+
+def run_processes(processes: list[AppProcess], **kwargs):
+    """
+    Execute all processes in the app. The last process is run in the foreground.
+    """
+    try:
+        for process in processes[:-1]:
+            process.start(background=True, **kwargs)
+        processes[-1].start(background=False, **kwargs)
+    except Exception as e:
+        for process in processes:
+            process.stop()
+        raise e
+
+
+def main(**kwargs):
+    settings = get_config_and_secrets()
+    set_start_method("spawn", force=True)
+    freeze_support()
+
+    run_processes(
+        [
+            PyroNameServer(),
+            ExecutionManager(pool_size=settings.config.num_workers),
+            ExecutionScheduler(),
+            AgentServer(),
+        ],
+        **kwargs
+    )
 
 
 if __name__ == "__main__":
-    # These directives are required to make multiprocessing work with cx_Freeze
-    # and are both required and safe across platforms (Windows, macOS, Linux)
-    # They must be placed at the beginning of the executions before any other
-    # multiprocessing code is run
-    freeze_support()
-    freeze_support_spawn()
     main()

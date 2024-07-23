@@ -24,7 +24,6 @@ from forge.agent_protocol.models import (
     TaskRequestBody,
     TaskStepsListResponse,
 )
-from forge.config.config import Config
 from forge.file_storage import FileStorage
 from forge.llm.providers import ModelProviderBudget, MultiProvider
 from forge.models.action import ActionErrorResult, ActionSuccessResult
@@ -36,6 +35,7 @@ from sentry_sdk import set_user
 
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agents.agent_manager import AgentManager
+from autogpt.app.config import AppConfig
 from autogpt.app.utils import is_port_free
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ class AgentProtocolServer:
 
     def __init__(
         self,
-        app_config: Config,
+        app_config: AppConfig,
         database: AgentDB,
         file_storage: FileStorage,
         llm_provider: MultiProvider,
@@ -324,7 +324,7 @@ class AgentProtocolServer:
                             ""
                             if tool_result is None
                             else (
-                                orjson.loads(tool_result.json())
+                                orjson.loads(tool_result.model_dump_json())
                                 if not isinstance(tool_result, ActionErrorResult)
                                 else {
                                     "error": str(tool_result.error),
@@ -337,7 +337,7 @@ class AgentProtocolServer:
                 if last_proposal and tool_result
                 else {}
             ),
-            **assistant_response.dict(),
+            **assistant_response.model_dump(),
         }
 
         task_cumulative_cost = agent.llm_provider.get_incurred_cost()
@@ -461,7 +461,9 @@ class AgentProtocolServer:
         """
         task_llm_budget = self._task_budgets[task.task_id]
 
-        task_llm_provider_config = self.llm_provider._configuration.copy(deep=True)
+        task_llm_provider_config = self.llm_provider._configuration.model_copy(
+            deep=True
+        )
         _extra_request_headers = task_llm_provider_config.extra_request_headers
         _extra_request_headers["AP-TaskID"] = task.task_id
         if step_id:
@@ -469,7 +471,7 @@ class AgentProtocolServer:
         if task.additional_input and (user_id := task.additional_input.get("user_id")):
             _extra_request_headers["AutoGPT-UserID"] = user_id
 
-        settings = self.llm_provider._settings.copy()
+        settings = self.llm_provider._settings.model_copy()
         settings.budget = task_llm_budget
         settings.configuration = task_llm_provider_config
         task_llm_provider = self.llm_provider.__class__(
