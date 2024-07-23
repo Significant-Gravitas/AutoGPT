@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import AutoGPTServerAPI, { Graph, GraphCreatable } from "@/lib/autogpt_server_api"
+import AutoGPTServerAPI, { Graph, GraphCreatable } from "@/lib/autogpt-server-api"
 import { cn } from "@/lib/utils"
 import { EnterIcon } from "@radix-ui/react-icons"
 
