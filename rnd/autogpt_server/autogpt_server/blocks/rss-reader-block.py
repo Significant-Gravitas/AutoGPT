@@ -24,10 +24,10 @@ class RSSReaderBlock(Block):
             description="The URL of the RSS feed to read",
             placeholder="https://example.com/rss",
         )
-        start_datetime: datetime = SchemaField(
-            description="The date and time to start looking for posts from on the first loop. Defaults to 1 day ago.",
-            placeholder="2023-06-23T12:00:00Z",
-            default=datetime.now(timezone.utc) - timedelta(days=1),
+        time_period: int = SchemaField(
+            description="The time period to check in minutes relative to the run block runtime, e.g. 60 would check for new entries in the last hour.",
+            placeholder="1440",
+            default=1440,
         )
         polling_rate: int = SchemaField(
             description="The number of seconds to wait between polling attempts.",
@@ -48,7 +48,7 @@ class RSSReaderBlock(Block):
             output_schema=RSSReaderBlock.Output,
             test_input={
                 "rss_url": "https://example.com/rss",
-                "start_datetime": "2023-06-01T12:00:00Z",
+                "time_period": 10_000_000,
                 "polling_rate": 1,
                 "run_continuously": False,
             },
@@ -87,6 +87,9 @@ class RSSReaderBlock(Block):
 
     def run(self, input_data: Input) -> BlockOutput:
         keep_going = True
+        start_time = datetime.now(timezone.utc) - timedelta(
+            minutes=input_data.time_period
+        )
         while keep_going:
             keep_going = input_data.run_continuously
 
@@ -95,17 +98,17 @@ class RSSReaderBlock(Block):
             for entry in feed["entries"]:
                 pub_date = datetime(*entry["published_parsed"][:6], tzinfo=timezone.utc)
 
-                # if pub_date > input_data.start_datetime:
-                yield (
-                    "entry",
-                    RSSEntry(
-                        title=entry["title"],
-                        link=entry["link"],
-                        description=entry.get("summary", ""),
-                        pub_date=pub_date,
-                        author=entry.get("author", ""),
-                        categories=[tag["term"] for tag in entry.get("tags", [])],
-                    ),
-                )
+                if pub_date > start_time:
+                    yield (
+                        "entry",
+                        RSSEntry(
+                            title=entry["title"],
+                            link=entry["link"],
+                            description=entry.get("summary", ""),
+                            pub_date=pub_date,
+                            author=entry.get("author", ""),
+                            categories=[tag["term"] for tag in entry.get("tags", [])],
+                        ),
+                    )
 
             time.sleep(input_data.polling_rate)
