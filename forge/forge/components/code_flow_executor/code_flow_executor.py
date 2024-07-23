@@ -58,7 +58,7 @@ class CodeFlowExecutionComponent(CommandProvider):
         # limit the result to limit the characters
         if len(result) > MAX_RESULT_LENGTH:
             result = result[:MAX_RESULT_LENGTH] + "...[Truncated, Content is too long]"
-        return f"Execution Plan:\n{plan_text}\n\nExecution Output:\n{result}"
+        return result
 
     def _get_available_functions(self) -> dict[str, Callable]:
         return {
