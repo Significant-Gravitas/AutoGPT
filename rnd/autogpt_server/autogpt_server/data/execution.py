@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from enum import Enum
 from multiprocessing import Manager
-from typing import Any, TypeVar
+from typing import Any, Generic, TypeVar
 
 from prisma.models import (
     AgentGraphExecution,
@@ -39,7 +39,7 @@ class ExecutionStatus(str, Enum):
 T = TypeVar("T")
 
 
-class ExecutionQueue[T]:
+class ExecutionQueue(Generic[T]):
     """
     Queue for managing the execution of agents.
     This will be shared between different processes

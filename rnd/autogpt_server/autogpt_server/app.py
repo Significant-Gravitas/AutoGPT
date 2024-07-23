@@ -28,14 +28,13 @@ def run_processes(processes: list[AppProcess], **kwargs):
 
 
 def main(**kwargs):
-    settings = get_config_and_secrets()
     set_start_method("spawn", force=True)
     freeze_support()
 
     run_processes(
         [
             PyroNameServer(),
-            ExecutionManager(pool_size=settings.config.num_workers),
+            ExecutionManager(),
             ExecutionScheduler(),
             AgentServer(),
         ],

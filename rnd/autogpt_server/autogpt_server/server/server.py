@@ -605,7 +605,17 @@ class AgentServer(AppService):
     def update_configuration(
         cls,
         updated_settings: Annotated[
-            Dict[str, Any], Body(examples=[{"config": {"num_workers": 10}}])
+            Dict[str, Any],
+            Body(
+                examples=[
+                    {
+                        "config": {
+                            "num_graph_workers": 10,
+                            "num_node_workers": 1,
+                        }
+                    }
+                ]
+            ),
         ],
     ):
         settings = Settings()

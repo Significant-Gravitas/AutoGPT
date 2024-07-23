@@ -22,6 +22,7 @@ from autogpt_server.data.execution import (
 )
 from autogpt_server.data.graph import Graph, Link, Node, get_graph, get_node
 from autogpt_server.util.service import AppService, expose, get_service_client
+from autogpt_server.util.settings import Config
 
 logger = logging.getLogger(__name__)
 
@@ -246,11 +247,12 @@ class Executor:
 
     @classmethod
     def on_graph_executor_start(cls):
+        cls.pool_size = Config().num_node_workers
         cls.executor = ProcessPoolExecutor(
-            # We need to improve the frontend UX when allowing parallel node execution.
-            max_workers=1,
+            max_workers=cls.pool_size,
             initializer=cls.on_node_executor_start,
         )
+        logger.warning(f"Graph executor started with max-{cls.pool_size} node workers.")
 
     @classmethod
     def on_graph_execution(cls, graph_data: GraphExecution):
@@ -269,8 +271,8 @@ class Executor:
 
 
 class ExecutionManager(AppService):
-    def __init__(self, pool_size: int):
-        self.pool_size = pool_size
+    def __init__(self):
+        self.pool_size = Config().num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
 
     def run_service(self):
@@ -278,7 +280,9 @@ class ExecutionManager(AppService):
             max_workers=self.pool_size,
             initializer=Executor.on_graph_executor_start,
         ) as executor:
-            logger.warning(f"Execution manager started with {self.pool_size} workers.")
+            logger.warning(
+                f"Execution manager started with max-{self.pool_size} graph workers."
+            )
             while True:
                 executor.submit(Executor.on_graph_execution, self.queue.get())
 
