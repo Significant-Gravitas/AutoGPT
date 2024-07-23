@@ -327,6 +327,7 @@ gTTS = "^2.3.1"
 jinja2 = "^3.1.2"
 jsonschema = "*"
 litellm = "^1.17.9"
+numpy = ">=1.26.0,<2.0.0"
 openai = "^1.7.2"
 Pillow = "*"
 playsound = "~1.2.2"
@@ -345,12 +346,12 @@ sqlalchemy = "^2.0.19"
 tenacity = "^8.2.2"
 tiktoken = ">=0.7.0,<1.0.0"
 toml = "^0.10.2"
-uvicorn = ">=0.23.2,<1"
+uvicorn = {version = ">=0.23.2,<1", extras = ["standard"]}
 watchdog = "4.0.0"
 webdriver-manager = "^4.0.1"
 
 [package.extras]
-benchmark = ["agbenchmark @ file:///home/reinier/code/agpt/AutoGPT/benchmark"]
+benchmark = ["agbenchmark @ file:///Users/czerwinski/Projects/AutoGPT/benchmark"]
 
 [package.source]
 type = "directory"

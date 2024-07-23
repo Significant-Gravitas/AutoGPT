@@ -10,7 +10,7 @@ from .schema import ChatPrompt, LanguageModelClassification
 class PromptStrategy(abc.ABC):
     @property
     @abc.abstractmethod
-    def model_classification(self) -> LanguageModelClassification:
+    def llm_classification(self) -> LanguageModelClassification:
         ...
 
     @abc.abstractmethod

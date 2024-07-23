@@ -9,7 +9,7 @@ You can set configuration variables via the `.env` file. If you don't have a `.e
 - `ANTHROPIC_API_KEY`: Set this if you want to use Anthropic models with AutoGPT
 - `AZURE_CONFIG_FILE`: Location of the Azure Config file relative to the AutoGPT root directory. Default: azure.yaml
 - `COMPONENT_CONFIG_FILE`: Path to the component configuration file (json) for an agent. Optional
-- `DISABLED_COMMANDS`: Commands to disable. Use comma separated names of commands. See the list of commands from built-in components [here](../components/components.md). Default: None
+- `DISABLED_COMMANDS`: Commands to disable. Use comma separated names of commands. See the list of commands from built-in components [here](../../forge/components/components.md). Default: None
 - `ELEVENLABS_API_KEY`: ElevenLabs API Key. Optional.
 - `ELEVENLABS_VOICE_ID`: ElevenLabs Voice ID. Optional.
 - `EMBEDDING_MODEL`: LLM Model to use for embedding tasks. Default: `text-embedding-3-small`
@@ -22,6 +22,7 @@ You can set configuration variables via the `.env` file. If you don't have a `.e
 - `GROQ_API_KEY`: Set this if you want to use Groq models with AutoGPT
 - `HUGGINGFACE_API_TOKEN`: HuggingFace API, to be used for both image generation and audio to text. Optional.
 - `HUGGINGFACE_IMAGE_MODEL`: HuggingFace model to use for image generation. Default: CompVis/stable-diffusion-v1-4
+- `LLAMAFILE_API_BASE`: Llamafile API base URL. Default: `http://localhost:8080/v1`
 - `OPENAI_API_KEY`: Set this if you want to use OpenAI models; [OpenAI API Key](https://platform.openai.com/account/api-keys).
 - `OPENAI_ORGANIZATION`: Organization ID in OpenAI. Optional.
 - `PLAIN_OUTPUT`: Plain output, which disables the spinner. Default: False

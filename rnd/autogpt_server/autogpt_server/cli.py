@@ -42,7 +42,7 @@ def write_pid(pid: int):
 
 class MainApp(AppProcess):
     def run(self):
-        app.main(silent=True)
+        app.main(silent=True)  # type: ignore
 
 
 @click.group()
@@ -66,12 +66,12 @@ def start():
         os.remove(get_pid_path())
 
     print("Starting server")
-    pid = MainApp().start(background=True, silent=True)
+    pid = MainApp().start(background=True, silent=True)  # type: ignore
     print(f"Server running in process: {pid}")
 
     write_pid(pid)
     print("done")
-    os._exit(status=0)
+    os._exit(status=0)  # type: ignore
 
 
 @main.command()
@@ -102,12 +102,146 @@ def test():
 
 
 @test.command()
+@click.argument("server_address")
+def reddit(server_address: str):
+    """
+    Create an event graph
+    """
+    import requests
+
+    from autogpt_server.usecases.reddit_marketing import create_test_graph
+
+    test_graph = create_test_graph()
+    url = f"{server_address}/graphs"
+    headers = {"Content-Type": "application/json"}
+    data = test_graph.model_dump_json()
+
+    response = requests.post(url, headers=headers, data=data)
+
+    graph_id = response.json()["id"]
+    print(f"Graph created with ID: {graph_id}")
+
+
+@test.command()
+@click.argument("server_address")
+def populate_db(server_address: str):
+    """
+    Create an event graph
+    """
+    import requests
+
+    from autogpt_server.usecases.sample import create_test_graph
+
+    test_graph = create_test_graph()
+    url = f"{server_address}/graphs"
+    headers = {"Content-Type": "application/json"}
+    data = test_graph.model_dump_json()
+
+    response = requests.post(url, headers=headers, data=data)
+
+    graph_id = response.json()["id"]
+
+    if response.status_code == 200:
+        execute_url = f"{server_address}/graphs/{response.json()['id']}/execute"
+        text = "Hello, World!"
+        input_data = {"input": text}
+        response = requests.post(execute_url, headers=headers, json=input_data)
+
+        schedule_url = f"{server_address}/graphs/{graph_id}/schedules"
+        data = {
+            "graph_id": graph_id,
+            "cron": "*/5 * * * *",
+            "input_data": {"input": "Hello, World!"},
+        }
+        response = requests.post(schedule_url, headers=headers, json=data)
+
+    print("Database populated with: \n- graph\n- execution\n- schedule")
+
+
+@test.command()
+@click.argument("server_address")
+def graph(server_address: str):
+    """
+    Create an event graph
+    """
+    import requests
+
+    from autogpt_server.usecases.sample import create_test_graph
+
+    url = f"{server_address}/graphs"
+    headers = {"Content-Type": "application/json"}
+    data = create_test_graph().model_dump_json()
+    response = requests.post(url, headers=headers, data=data)
+
+    if response.status_code == 200:
+        print(response.json()["id"])
+        execute_url = f"{server_address}/graphs/{response.json()['id']}/execute"
+        text = "Hello, World!"
+        input_data = {"input": text}
+        response = requests.post(execute_url, headers=headers, json=input_data)
+
+    else:
+        print("Failed to send graph")
+        print(f"Response: {response.text}")
+
+
+@test.command()
+@click.argument("graph_id")
+@click.argument("content")
+def execute(graph_id: str, content: dict):
+    """
+    Create an event graph
+    """
+    import requests
+
+    headers = {"Content-Type": "application/json"}
+
+    execute_url = f"http://0.0.0.0:8000/graphs/{graph_id}/execute"
+    requests.post(execute_url, headers=headers, json=content)
+
+
+@test.command()
 def event():
     """
     Send an event to the running server
     """
     print("Event sent")
 
+
+@test.command()
+@click.argument("server_address")
+@click.argument("graph_id")
+def websocket(server_address: str, graph_id: str):
+    """
+    Tests the websocket connection.
+    """
+    import asyncio
+
+    import websockets
+
+    from autogpt_server.server.ws_api import ExecutionSubscription, Methods, WsMessage
+
+    async def send_message(server_address: str):
+        uri = f"ws://{server_address}"
+        async with websockets.connect(uri) as websocket:
+            try:
+                msg = WsMessage(
+                    method=Methods.SUBSCRIBE,
+                    data=ExecutionSubscription(graph_id=graph_id).model_dump(),
+                ).model_dump_json()
+                await websocket.send(msg)
+                print(f"Sending: {msg}")
+                while True:
+                    response = await websocket.recv()
+                    print(f"Response from server: {response}")
+            except InterruptedError:
+                exit(0)
+
+    asyncio.run(send_message(server_address))
+    print("Testing WS")
+
+
+main.add_command(test)
 
 if __name__ == "__main__":
     main()

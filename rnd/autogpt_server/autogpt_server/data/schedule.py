@@ -1,33 +1,31 @@
-import json
 from datetime import datetime
-from typing import Optional, Any
+from typing import Optional
 
 from prisma.models import AgentGraphExecutionSchedule
 
+from autogpt_server.data.block import BlockInput
 from autogpt_server.data.db import BaseDbModel
+from autogpt_server.util import json
 
 
 class ExecutionSchedule(BaseDbModel):
     graph_id: str
+    graph_version: int
     schedule: str
     is_enabled: bool
-    input_data: dict[str, Any]
+    input_data: BlockInput
     last_updated: Optional[datetime] = None
 
-    def __init__(
-            self,
-            is_enabled: Optional[bool] = None,
-            **kwargs
-    ):
-        if is_enabled is None:
-            is_enabled = True
-        super().__init__(is_enabled=is_enabled, **kwargs)
+    def __init__(self, is_enabled: Optional[bool] = None, **kwargs):
+        kwargs["is_enabled"] = (is_enabled is None) or is_enabled
+        super().__init__(**kwargs)
 
     @staticmethod
     def from_db(schedule: AgentGraphExecutionSchedule):
         return ExecutionSchedule(
             id=schedule.id,
             graph_id=schedule.agentGraphId,
+            graph_version=schedule.agentGraphVersion,
             schedule=schedule.schedule,
             is_enabled=schedule.isEnabled,
             last_updated=schedule.lastUpdated.replace(tzinfo=None),
@@ -37,22 +35,15 @@ class ExecutionSchedule(BaseDbModel):
 
 async def get_active_schedules(last_fetch_time: datetime) -> list[ExecutionSchedule]:
     query = AgentGraphExecutionSchedule.prisma().find_many(
-        where={
-            "isEnabled": True,
-            "lastUpdated": {"gt": last_fetch_time}
-        },
-        order={"lastUpdated": "asc"}
+        where={"isEnabled": True, "lastUpdated": {"gt": last_fetch_time}},
+        order={"lastUpdated": "asc"},
     )
-    return [
-        ExecutionSchedule.from_db(schedule)
-        for schedule in await query
-    ]
+    return [ExecutionSchedule.from_db(schedule) for schedule in await query]
 
 
 async def disable_schedule(schedule_id: str):
     await AgentGraphExecutionSchedule.prisma().update(
-        where={"id": schedule_id},
-        data={"isEnabled": False}
+        where={"id": schedule_id}, data={"isEnabled": False}
     )
 
 
@@ -63,10 +54,7 @@ async def get_schedules(graph_id: str) -> list[ExecutionSchedule]:
             "agentGraphId": graph_id,
         },
     )
-    return [
-        ExecutionSchedule.from_db(schedule)
-        for schedule in await query
-    ]
+    return [ExecutionSchedule.from_db(schedule) for schedule in await query]
 
 
 async def add_schedule(schedule: ExecutionSchedule) -> ExecutionSchedule:
@@ -74,6 +62,7 @@ async def add_schedule(schedule: ExecutionSchedule) -> ExecutionSchedule:
         data={
             "id": schedule.id,
             "agentGraphId": schedule.graph_id,
+            "agentGraphVersion": schedule.graph_version,
             "schedule": schedule.schedule,
             "isEnabled": schedule.is_enabled,
             "inputData": json.dumps(schedule.input_data),
@@ -84,6 +73,5 @@ async def add_schedule(schedule: ExecutionSchedule) -> ExecutionSchedule:
 
 async def update_schedule(schedule_id: str, is_enabled: bool):
     await AgentGraphExecutionSchedule.prisma().update(
-        where={"id": schedule_id},
-        data={"isEnabled": is_enabled}
+        where={"id": schedule_id}, data={"isEnabled": is_enabled}
     )
