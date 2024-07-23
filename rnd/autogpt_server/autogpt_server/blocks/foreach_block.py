@@ -12,7 +12,9 @@ class ForEachBlock(Block):
         )
 
     class Output(BlockSchema):
-        item: Tuple[int, Any] = SchemaField(description="A tuple with the index and current item in the iteration")
+        item: Tuple[int, Any] = SchemaField(
+            description="A tuple with the index and current item in the iteration"
+        )
 
     def __init__(self):
         super().__init__(
