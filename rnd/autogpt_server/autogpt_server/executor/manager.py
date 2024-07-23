@@ -78,6 +78,13 @@ def execute_node(
         logger.error(f"{prefix} Skip execution, input validation error: {error}")
         return
 
+    # Sanity check: validate the execution input.
+    prefix = get_log_prefix(graph_exec_id, node_exec_id, node_block.name)
+    exec_data, error = validate_exec(node, data.data, resolve_input=False)
+    if not exec_data:
+        logger.error(f"{prefix} Skip execution, input validation error: {error}")
+        return
+
     # Execute the node
     logger.warning(f"{prefix} execute with input:\n`{exec_data}`")
     update_execution(ExecutionStatus.RUNNING)
