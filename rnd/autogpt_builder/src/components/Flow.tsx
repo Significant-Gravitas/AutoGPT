@@ -11,17 +11,20 @@ import ReactFlow, {
   OnConnect,
   NodeTypes,
   Connection,
+  EdgeTypes,
+  MarkerType,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import CustomNode from './CustomNode';
 import './flow.css';
-import AutoGPTServerAPI, { Block, Graph } from '@/lib/autogpt_server_api';
-import { ObjectSchema } from '@/lib/types';
+import AutoGPTServerAPI, { Block, Graph, ObjectSchema } from '@/lib/autogpt-server-api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ChevronRight, ChevronLeft } from "lucide-react";
-import { deepEquals } from '@/lib/utils';
+import { deepEquals, getTypeColor } from '@/lib/utils';
 import { beautifyString } from '@/lib/utils';
+import { CustomEdge, CustomEdgeData } from './CustomEdge';
+import ConnectionLine from './ConnectionLine';
 
 
 type CustomNodeData = {
@@ -74,7 +77,7 @@ const FlowEditor: React.FC<{
   className?: string;
 }> = ({ flowID, template, className }) => {
   const [nodes, setNodes] = useState<Node<CustomNodeData>[]>([]);
-  const [edges, setEdges] = useState<Edge[]>([]);
+  const [edges, setEdges] = useState<Edge<CustomEdgeData>[]>([]);
   const [nodeId, setNodeId] = useState<number>(1);
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -117,6 +120,7 @@ const FlowEditor: React.FC<{
   }, [flowID, template, availableNodes]);
 
   const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
+  const edgeTypes: EdgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
 
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -128,58 +132,81 @@ const FlowEditor: React.FC<{
     []
   );
 
-  const onConnect: OnConnect = useCallback(
-    (connection: Connection) => {
-      setEdges((eds) => addEdge(connection, eds));
-      setNodes((nds) =>
-        nds.map((node) => {
-          if (node.id === connection.target) {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                connections: [
-                  ...node.data.connections,
-                  {
-                    source: connection.source,
-                    sourceHandle: connection.sourceHandle,
-                    target: connection.target,
-                    targetHandle: connection.targetHandle,
-                  } as { source: string; sourceHandle: string; target: string; targetHandle: string },
-                ],
-              },
-            };
-          }
-          return node;
-        })
-      );
-    },
-    [setEdges, setNodes]
-  );
+  const getOutputType = (id: string, handleId: string) => {
+    const node = nodes.find((node) => node.id === id);
+    if (!node) return 'unknown';
+
+    const outputSchema = node.data.outputSchema;
+    if (!outputSchema) return 'unknown';
+
+    const outputType = outputSchema.properties[handleId].type;
+    return outputType;
+  }
+
+  const getNodePos = (id: string) => {
+    const node = nodes.find((node) => node.id === id);
+    if (!node) return 0;
+
+    return node.position;
+  }
+
+  const onConnect: OnConnect = (connection: Connection) => {
+    const edgeColor = getTypeColor(getOutputType(connection.source!, connection.sourceHandle!));
+    const sourcePos = getNodePos(connection.source!)
+    console.log('sourcePos', sourcePos);
+    setEdges((eds) => addEdge({
+      type: 'custom',
+      markerEnd: { type: MarkerType.ArrowClosed, strokeWidth: 2, color: edgeColor },
+      data: { edgeColor, sourcePos },
+      ...connection
+    }, eds));
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === connection.target || node.id === connection.source) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              connections: [
+                ...node.data.connections,
+                {
+                  source: connection.source,
+                  sourceHandle: connection.sourceHandle,
+                  target: connection.target,
+                  targetHandle: connection.targetHandle,
+                } as { source: string; sourceHandle: string; target: string; targetHandle: string },
+              ],
+            },
+          };
+        }
+        return node;
+      })
+    );
+  }
 
   const onEdgesDelete = useCallback(
-  (edgesToDelete: Edge[]) => {
-    setNodes((nds) =>
-      nds.map((node) => ({
-        ...node,
-        data: {
-          ...node.data,
-          connections: node.data.connections.filter(
-            (conn: any) =>
-              !edgesToDelete.some(
-                (edge) =>
-                  edge.source === conn.source &&
-                  edge.target === conn.target &&
-                  edge.sourceHandle === conn.sourceHandle &&
-                  edge.targetHandle === conn.targetHandle
-              )
-          ),
-        },
-      }))
-    );
-  },
-  [setNodes]
-);
+    (edgesToDelete: Edge<CustomEdgeData>[]) => {
+      setNodes((nds) =>
+        nds.map((node) => ({
+          ...node,
+          data: {
+            ...node.data,
+            connections: node.data.connections.filter(
+              (conn: any) =>
+                !edgesToDelete.some(
+                  (edge) =>
+                    edge.source === conn.source &&
+                    edge.target === conn.target &&
+                    edge.sourceHandle === conn.sourceHandle &&
+                    edge.targetHandle === conn.targetHandle
+                )
+            ),
+          },
+        }))
+      );
+    },
+    [setNodes]
+  );
 
   const addNode = (blockId: string, nodeType: string) => {
     const nodeSchema = availableNodes.find(node => node.id === blockId);
@@ -248,14 +275,20 @@ const FlowEditor: React.FC<{
 
     setEdges(graph.links.map(link => ({
       id: `${link.source_id}_${link.source_name}_${link.sink_id}_${link.sink_name}`,
+      type: 'custom',
+      data: {
+        edgeColor: getTypeColor(getOutputType(link.source_id, link.source_name!)),
+        sourcePos: getNodePos(link.source_id)
+      },
+      markerEnd: { type: MarkerType.ArrowClosed, strokeWidth: 2, color: getTypeColor(getOutputType(link.source_id, link.source_name!)) },
       source: link.source_id,
       target: link.sink_id,
       sourceHandle: link.source_name || undefined,
       targetHandle: link.sink_name || undefined
-    })));
+    }) as Edge<CustomEdgeData>));
   }
 
-  const prepareNodeInputData = (node: Node<CustomNodeData>, allNodes: Node<CustomNodeData>[], allEdges: Edge[]) => {
+  const prepareNodeInputData = (node: Node<CustomNodeData>, allNodes: Node<CustomNodeData>[], allEdges: Edge<CustomEdgeData>[]) => {
     console.log("Preparing input data for node:", node.id, node.data.blockType);
 
     const blockSchema = availableNodes.find(n => n.id === node.data.block_id)?.inputSchema;
@@ -377,13 +410,13 @@ const FlowEditor: React.FC<{
 
       return frontendNode
         ? {
-            ...frontendNode,
-            position: backendNode.metadata.position,
-            data: {
-              ...frontendNode.data,
-              backend_id: backendNode.id,
-            },
-          }
+          ...frontendNode,
+          position: backendNode.metadata.position,
+          data: {
+            ...frontendNode.data,
+            backend_id: backendNode.id,
+          },
+        }
         : null;
     }).filter(node => node !== null);
 
@@ -434,20 +467,20 @@ const FlowEditor: React.FC<{
 
   return (
     <div className={className}>
-    <Button
-      variant="outline"
-      size="icon"
-      onClick={toggleSidebar}
-      style={{
-        position: 'fixed',
-        left: isSidebarOpen ? '350px' : '10px',
-        zIndex: 10000,
-        backgroundColor: 'black',
-        color: 'white',
-      }}
-    >
-      {isSidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-    </Button>
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={toggleSidebar}
+        style={{
+          position: 'fixed',
+          left: isSidebarOpen ? '350px' : '10px',
+          zIndex: 10000,
+          backgroundColor: 'black',
+          color: 'white',
+        }}
+      >
+        {isSidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+      </Button>
       <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
       <ReactFlow
         nodes={nodes}
@@ -456,6 +489,8 @@ const FlowEditor: React.FC<{
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        connectionLineComponent={ConnectionLine}
         onEdgesDelete={onEdgesDelete}
         deleteKeyCode={["Backspace", "Delete"]}
       >
