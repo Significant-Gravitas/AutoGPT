@@ -15,7 +15,7 @@ variable "node_count" {
 }
 
 variable "node_pool_name" {
-    description = "Name of the node pool in the cluster"
+  description = "Name of the node pool in the cluster"
 }
 
 variable "machine_type" {
