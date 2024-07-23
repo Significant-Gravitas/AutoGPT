@@ -1,12 +1,12 @@
 import logging
 import time
 from datetime import datetime
-from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from autogpt_server.data import schedule as model
+from autogpt_server.data.block import BlockInput
 from autogpt_server.executor.manager import ExecutionManager
 from autogpt_server.util.service import AppService, expose, get_service_client
 
@@ -68,7 +68,7 @@ class ExecutionScheduler(AppService):
 
     @expose
     def add_execution_schedule(
-        self, graph_id: str, graph_version: int, cron: str, input_data: dict[str, Any]
+        self, graph_id: str, graph_version: int, cron: str, input_data: BlockInput
     ) -> str:
         schedule = model.ExecutionSchedule(
             graph_id=graph_id,

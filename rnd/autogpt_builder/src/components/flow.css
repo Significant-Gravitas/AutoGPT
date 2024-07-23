@@ -91,13 +91,14 @@ input::placeholder, textarea::placeholder {
   top: 0;
   left: -600px;
   width: 350px;
-  height: 100%;
+  height: calc(100vh - 68px); /* Full height minus top offset */
   background-color: #ffffff;
   color: #000000;
   padding: 20px;
   transition: left 0.3s ease;
   z-index: 1000;
   overflow-y: auto;
+  margin-top: 68px; /* Margin to push content below the top fixed area */
 }
 
 .sidebar.open {
