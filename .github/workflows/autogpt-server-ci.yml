@@ -115,7 +115,7 @@ jobs:
         run: poetry install
 
       - name: Generate Prisma Client
-        run: poetry run prisma generate --schema postgres/schema_postgres.prisma
+        run: poetry run prisma generate --schema postgres/schema.prisma
 
       - name: Run Database Migrations
         run: poetry run prisma migrate dev --schema postgres/schema.prisma --name updates
