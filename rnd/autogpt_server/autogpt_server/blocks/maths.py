@@ -45,12 +45,15 @@ class MathsBlock(Block):
             input_schema=MathsBlock.Input,
             output_schema=MathsBlock.Output,
             test_input={
-                "operation": Operation.ADD,
-                "a": 10,
-                "b": 5,
+                "operation": Operation.ADD.value,
+                "a": 10.0,
+                "b": 5.0,
                 "round_result": False,
             },
-            test_output=[("result", 15), ("explanation", "Added 10 and 5 to get 15")],
+            test_output=[
+                ("result", 15.0),
+                ("explanation", "Added 10.0 and 5.0 to get 15.0"),
+            ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
