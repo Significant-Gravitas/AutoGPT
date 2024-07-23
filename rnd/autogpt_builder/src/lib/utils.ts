@@ -31,7 +31,8 @@ export function deepEquals(x: any, y: any): boolean {
 }
 
 /** Get tailwind text color class from type name */
-export function getTypeTextColor(type: string): string {
+export function getTypeTextColor(type: string | null): string {
+  if (type === null) return 'bg-gray-500';
   return {
     string: 'text-green-500',
     number: 'text-blue-500',
@@ -39,11 +40,13 @@ export function getTypeTextColor(type: string): string {
     object: 'text-purple-500',
     array: 'text-indigo-500',
     null: 'text-gray-500',
+    '': 'text-gray-500',
   }[type] || 'text-gray-500';
 }
 
 /** Get tailwind bg color class from type name */
-export function getTypeBgColor(type: string): string {
+export function getTypeBgColor(type: string | null): string {
+  if (type === null) return 'bg-gray-500';
   return {
     string: 'bg-green-500',
     number: 'bg-blue-500',
@@ -51,10 +54,12 @@ export function getTypeBgColor(type: string): string {
     object: 'bg-purple-500',
     array: 'bg-indigo-500',
     null: 'bg-gray-500',
+    '': 'bg-gray-500',
   }[type] || 'bg-gray-500';
 }
 
-export function getTypeColor(type: string): string {
+export function getTypeColor(type: string | null): string {
+  if (type === null) return 'bg-gray-500';
   return {
     string: '#22c55e',
     number: '#3b82f6',
@@ -62,6 +67,7 @@ export function getTypeColor(type: string): string {
     object: '#a855f7',
     array: '#6366f1',
     null: '#6b7280',
+    '': '#6b7280',
   }[type] || '#6b7280';
 }
 

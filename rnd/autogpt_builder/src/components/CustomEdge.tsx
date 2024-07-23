@@ -34,5 +34,4 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({ data, selected, source, s
   )
 };
 
-
 export const CustomEdge = memo(CustomEdgeFC);
