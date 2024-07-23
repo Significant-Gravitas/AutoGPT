@@ -2,7 +2,6 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from enum import Enum
 from multiprocessing import Manager
-from queue import Queue as LocalQueue
 from typing import Any, TypeVar
 
 from prisma.models import (
@@ -46,11 +45,8 @@ class ExecutionQueue[T]:
     This will be shared between different processes
     """
 
-    def __init__(self, local=False):
-        if local:
-            self.queue = LocalQueue()
-        else:
-            self.queue = Manager().Queue()
+    def __init__(self):
+        self.queue = Manager().Queue()
 
     def add(self, execution: T) -> T:
         self.queue.put(execution)

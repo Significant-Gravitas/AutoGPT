@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor
 from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 
 if TYPE_CHECKING:
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_log_prefix(graph_eid: str, node_eid: str, block_name: str = "-"):
-    return f"[ExecutionManager] [graph-{graph_eid}|node-{node_eid}|{block_name}]"
+    return f"[ExecutionManager][graph-eid-{graph_eid}|node-eid-{node_eid}|{block_name}]"
 
 
 T = TypeVar("T")
@@ -69,13 +69,6 @@ def execute_node(
     node_block = get_block(node.block_id)  # type: ignore
     if not node_block:
         logger.error(f"Block {node.block_id} not found.")
-        return
-
-    # Sanity check: validate the execution input.
-    prefix = get_log_prefix(graph_exec_id, node_exec_id, node_block.name)
-    exec_data, error = validate_exec(node, data.data, resolve_input=False)
-    if not exec_data:
-        logger.error(f"{prefix} Skip execution, input validation error: {error}")
         return
 
     # Sanity check: validate the execution input.
@@ -127,7 +120,7 @@ def enqueue_next_nodes(
     def execution_update(node_exec_id: str, status: ExecutionStatus):
         api_client.update_execution_status(node_exec_id, status)
 
-    def update_execution_result(node_link: Link) -> NodeExecution | None:
+    def register_next_execution(node_link: Link) -> NodeExecution | None:
         next_output_name = node_link.source_name
         next_input_name = node_link.sink_name
         next_node_id = node_link.sink_id
@@ -152,7 +145,7 @@ def enqueue_next_nodes(
 
         next_node_input = wait(get_node_execution_input(next_node_exec_id))
         next_node_input, validation_msg = validate_exec(next_node, next_node_input)
-        suffix = f"{next_output_name}~{next_input_name}#{next_node_id}:{validation_msg}"
+        suffix = f"{next_output_name}>{next_input_name}~{next_node_id}:{validation_msg}"
 
         if not next_node_input:
             logger.warning(f"{prefix} Skipped queueing {suffix}")
@@ -171,7 +164,7 @@ def enqueue_next_nodes(
     return [
         execution
         for link in node.output_links
-        if (execution := update_execution_result(link))
+        if (execution := register_next_execution(link))
     ]
 
 
@@ -235,26 +228,44 @@ class Executor:
     loop: asyncio.AbstractEventLoop
 
     @classmethod
-    def on_executor_start(cls):
+    def on_node_executor_start(cls):
         cls.loop = asyncio.new_event_loop()
         cls.loop.run_until_complete(db.connect())
         cls.agent_server_client = get_agent_server_client()
 
     @classmethod
-    def on_start_execution(cls, graph_data: GraphExecution):
-        queue = ExecutionQueue[NodeExecution](local=True)
+    def on_node_execution(cls, q: ExecutionQueue[NodeExecution], data: NodeExecution):
+        prefix = get_log_prefix(data.graph_exec_id, data.node_exec_id)
+        try:
+            logger.warning(f"{prefix} Start node execution")
+            for execution in execute_node(cls.loop, cls.agent_server_client, data):
+                q.add(execution)
+            logger.warning(f"{prefix} Finished node execution")
+        except Exception as e:
+            logger.exception(f"{prefix} Error: {e}")
+
+    @classmethod
+    def on_graph_executor_start(cls):
+        cls.executor = ProcessPoolExecutor(
+            # We need to improve the frontend UX when allowing parallel node execution.
+            max_workers=1,
+            initializer=cls.on_node_executor_start,
+        )
+
+    @classmethod
+    def on_graph_execution(cls, graph_data: GraphExecution):
+        queue = ExecutionQueue[NodeExecution]()
         for node_exec in graph_data.start_node_execs:
             queue.add(node_exec)
 
+        futures: list[Future] = []
         while not queue.empty():
-            data = queue.get()
-            prefix = get_log_prefix(data.graph_exec_id, data.node_exec_id)
-            try:
-                logger.warning(f"{prefix} Start execution")
-                for execution in execute_node(cls.loop, cls.agent_server_client, data):
-                    queue.add(execution)
-            except Exception as e:
-                logger.exception(f"{prefix} Error: {e}")
+            futures.append(
+                cls.executor.submit(cls.on_node_execution, queue, queue.get())
+            )
+            while queue.empty() and len(futures) > 0:
+                future = futures.pop()
+                future.result()
 
 
 class ExecutionManager(AppService):
@@ -265,11 +276,11 @@ class ExecutionManager(AppService):
     def run_service(self):
         with ProcessPoolExecutor(
             max_workers=self.pool_size,
-            initializer=Executor.on_executor_start,
+            initializer=Executor.on_graph_executor_start,
         ) as executor:
             logger.warning(f"Execution manager started with {self.pool_size} workers.")
             while True:
-                executor.submit(Executor.on_start_execution, self.queue.get())
+                executor.submit(Executor.on_graph_execution, self.queue.get())
 
     @property
     def agent_server_client(self) -> "AgentServer":
