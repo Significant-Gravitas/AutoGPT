@@ -6,10 +6,12 @@ terraform {
       version = "~> 4.0"
     }
   }
+
   backend "gcs" {
     bucket = "agpt-dev-terraform"
     prefix = "terraform/state"
   }
+
 }
 
 provider "google" {
@@ -48,4 +50,13 @@ module "gke_cluster" {
   network          = module.networking.network_self_link
   subnetwork       = module.networking.subnet_self_link
   enable_autopilot = var.enable_autopilot
+}
+
+module "iam" {
+  source = "./modules/iam"
+
+  project_id                 = var.project_id
+  service_accounts           = var.service_accounts
+  workload_identity_bindings = var.workload_identity_bindings
+  role_bindings              = var.role_bindings
 }

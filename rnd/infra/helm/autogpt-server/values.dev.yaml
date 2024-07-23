@@ -1,0 +1,40 @@
+# dev values, overwrite base values as needed.
+
+image:
+  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-server-dev/agpt-server-dev
+  pullPolicy: IfNotPresent
+  tag: "fe3d2a9"
+
+serviceAccount:
+  annotations:
+    iam.gke.io/gcp-service-account: "dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
+  name: "dev-agpt-server-sa"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+ingress:
+  enabled: true
+  className: "gce"
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: "agpt-dev-agpt-server-ip"
+    networking.gke.io/managed-certificates: "autogpt-server-cert"
+  hosts:
+    - host: server.agpt.co
+      paths:
+        - path: /*
+          pathType: ImplementationSpecific
+  tls: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+domain: "server.agpt.co"
