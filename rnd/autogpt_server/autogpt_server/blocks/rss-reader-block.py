@@ -1,10 +1,21 @@
 import time
 from datetime import datetime, timezone
+from typing import Any
 
 import feedparser
+import pydantic
 
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.data.model import SchemaField
+
+
+class RSSEntry(pydantic.BaseModel):
+    title: str
+    link: str
+    description: str
+    pub_date: datetime
+    author: str
+    categories: list[str]
 
 
 class RSSReaderBlock(Block):
@@ -16,7 +27,7 @@ class RSSReaderBlock(Block):
         start_datetime: datetime = SchemaField(
             description="The date and time to start looking for posts from on the first loop.",
             placeholder="2023-06-23T12:00:00Z",
-            default="2024-07-19T16:14:32.707240Z",
+            default=datetime.now(timezone.utc),
         )
         polling_rate: int = SchemaField(
             description="The number of seconds to wait between polling attempts.",
@@ -28,18 +39,7 @@ class RSSReaderBlock(Block):
         )
 
     class Output(BlockSchema):
-        title: str = SchemaField(description="The title of the RSS item")
-        link: str = SchemaField(description="The link to the full article")
-        description: str = SchemaField(
-            description="The description or summary of the RSS item"
-        )
-        pub_date: datetime = SchemaField(
-            description="The publication date and time of the RSS item"
-        )
-        author: str = SchemaField(description="The author of the RSS item", default="")
-        categories: list[str] = SchemaField(
-            description="The categories or tags of the RSS item", default_factory=list
-        )
+        entry: RSSEntry = SchemaField(description="The RSS item")
 
     def __init__(self):
         super().__init__(
@@ -48,20 +48,25 @@ class RSSReaderBlock(Block):
             output_schema=RSSReaderBlock.Output,
             test_input={
                 "rss_url": "https://example.com/rss",
-                "start_datetime": "2023-06-23T12:00:00Z",
-                "polling_rate": 300,
+                "start_datetime": "2023-06-01T12:00:00Z",
+                "polling_rate": 1,
                 "run_continuously": False,
             },
             test_output=[
-                ("title", "Example RSS Item"),
-                ("link", "https://example.com/article"),
-                ("description", "This is an example RSS item description."),
-                ("pub_date", datetime(2023, 6, 23, 12, 30, 0, tzinfo=timezone.utc)),
-                ("author", "John Doe"),
-                ("categories", ["Technology", "News"]),
+                (
+                    "entry",
+                    RSSEntry(
+                        title="Example RSS Item",
+                        link="https://example.com/article",
+                        description="This is an example RSS item description.",
+                        pub_date=datetime(2023, 6, 23, 12, 30, 0, tzinfo=timezone.utc),
+                        author="John Doe",
+                        categories=["Technology", "News"],
+                    ),
+                ),
             ],
             test_mock={
-                "feedparser.parse": lambda url: {
+                "parse_feed": lambda *args, **kwargs: {
                     "entries": [
                         {
                             "title": "Example RSS Item",
@@ -76,20 +81,31 @@ class RSSReaderBlock(Block):
             },
         )
 
+    @staticmethod
+    def parse_feed(url: str) -> dict[str, Any]:
+        return feedparser.parse(url)  # type: ignore
+
     def run(self, input_data: Input) -> BlockOutput:
-        while input_data.run_continuously:
-            feed = feedparser.parse(input_data.rss_url)
+        keep_going = True
+        while keep_going:
+            keep_going = input_data.run_continuously
 
-            for entry in feed.entries:
-                pub_date = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+            feed = self.parse_feed(input_data.rss_url)
 
-                if pub_date > input_data.start_datetime:
-                    yield "title", entry.title
-                    yield "link", entry.link
-                    yield "description", entry.get("summary", "")
-                    yield "pub_date", pub_date
-                    yield "author", entry.get("author", "")
-                    yield "categories", [tag.term for tag in entry.get("tags", [])]
-                    return
+            for entry in feed["entries"]:
+                pub_date = datetime(*entry["published_parsed"][:6], tzinfo=timezone.utc)
+
+                # if pub_date > input_data.start_datetime:
+                yield (
+                    "entry",
+                    RSSEntry(
+                        title=entry["title"],
+                        link=entry["link"],
+                        description=entry.get("summary", ""),
+                        pub_date=pub_date,
+                        author=entry.get("author", ""),
+                        categories=[tag["term"] for tag in entry.get("tags", [])],
+                    ),
+                )
 
             time.sleep(input_data.polling_rate)
