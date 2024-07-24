@@ -28,12 +28,12 @@ class ConditionBlock(Block):
             description="Enter the second value for comparison",
             placeholder="For example: 20 or 'world' or False",
         )
-        true_value: Any = SchemaField(
+        yes_value: Any = SchemaField(
             description="(Optional) Value to output if the condition is true. If not provided, value1 will be used.",
             placeholder="Leave empty to use value1, or enter a specific value",
             default=None,
         )
-        false_value: Any = SchemaField(
+        no_value: Any = SchemaField(
             description="(Optional) Value to output if the condition is false. If not provided, value1 will be used.",
             placeholder="Leave empty to use value1, or enter a specific value",
             default=None,
@@ -60,12 +60,12 @@ class ConditionBlock(Block):
                 "value1": 10,
                 "operator": ComparisonOperator.GREATER_THAN.value,
                 "value2": 5,
-                "true_value": "Greater",
-                "false_value": "Not greater",
+                "yes_value": "Greater",
+                "no_value": "Not greater",
             },
             test_output=[
                 ("result", True),
-                ("true_output", "Greater"),
+                ("yes_output", "Greater"),
             ],
         )
 
@@ -73,11 +73,11 @@ class ConditionBlock(Block):
         value1 = input_data.value1
         operator = input_data.operator
         value2 = input_data.value2
-        true_value = (
-            input_data.true_value if input_data.true_value is not None else value1
+        yes_value = (
+            input_data.yes_value if input_data.yes_value is not None else value1
         )
-        false_value = (
-            input_data.false_value if input_data.false_value is not None else value1
+        no_value = (
+            input_data.no_value if input_data.no_value is not None else value1
         )
 
         comparison_funcs = {
@@ -95,11 +95,11 @@ class ConditionBlock(Block):
             yield "result", result
 
             if result:
-                yield "true_output", true_value
+                yield "yes_output", yes_value
             else:
-                yield "false_output", false_value
+                yield "no_output", no_value
 
         except Exception:
             yield "result", None
-            yield "true_output", None
-            yield "false_output", None
+            yield "yes_output", None
+            yield "no_output", None
