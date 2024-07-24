@@ -31,7 +31,7 @@ class YouTubeTranscriber(Block):
                 ("video_id", "dQw4w9WgXcQ"),
                 (
                     "transcript",
-                    "Never gonna give you up\nNever gonna let you down\n...",
+                    "Never gonna give you up\nNever gonna let you down",
                 ),
             ],
             test_mock={
