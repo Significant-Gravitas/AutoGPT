@@ -2,8 +2,6 @@ import operator
 from enum import Enum
 from typing import Any
 
-import pydantic
-
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.data.model import SchemaField
 
@@ -14,12 +12,6 @@ class Operation(Enum):
     MULTIPLY = "Multiply"
     DIVIDE = "Divide"
     POWER = "Power"
-
-
-class CounterResult(pydantic.BaseModel):
-    count: int | None = None
-    type: str
-    explanation: str
 
 
 class MathsBlock(Block):
@@ -98,7 +90,7 @@ class CounterBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: CounterResult = SchemaField(description="The result of the count")
+        count: int = SchemaField(description="The number of items in the collection")
 
     def __init__(self):
         super().__init__(
@@ -107,12 +99,7 @@ class CounterBlock(Block):
             output_schema=CounterBlock.Output,
             test_input={"collection": [1, 2, 3, 4, 5]},
             test_output=[
-                (
-                    "result",
-                    CounterResult(
-                        count=5, type="list", explanation="Counted 5 items in a list"
-                    ),
-                ),
+                ("count", 5),
             ],
         )
 
@@ -122,27 +109,12 @@ class CounterBlock(Block):
         try:
             if isinstance(collection, (str, list, tuple, set, dict)):
                 count = len(collection)
-                collection_type = type(collection).__name__
             elif hasattr(collection, "__iter__"):
                 count = sum(1 for _ in collection)
-                collection_type = "iterable"
             else:
                 raise ValueError("Input is not a countable collection")
 
-            if isinstance(collection, str):
-                item_word = "character" if count == 1 else "characters"
-            elif isinstance(collection, dict):
-                item_word = "key-value pair" if count == 1 else "key-value pairs"
-            else:
-                item_word = "item" if count == 1 else "items"
+            yield "count", count
 
-            explanation = f"Counted {count} {item_word} in a {collection_type}"
-
-            yield "result", CounterResult(
-                count=count, type=collection_type, explanation=explanation
-            )
-
-        except Exception as e:
-            yield "result", CounterResult(
-                count=None, type="error", explanation=f"An error occurred: {str(e)}"
-            )
+        except Exception:
+            yield "count", -1  # Return -1 to indicate an error
