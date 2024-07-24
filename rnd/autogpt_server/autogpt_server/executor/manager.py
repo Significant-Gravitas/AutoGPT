@@ -278,6 +278,7 @@ class Executor:
             # Avoid parallel execution of the same node.
             if execution.node_id in futures and not futures[execution.node_id].done():
                 cls.wait_future(futures[execution.node_id])
+                logger.warning(f"{prefix} Re-enqueueing {execution.node_id}")
                 queue.add(execution)
                 continue
 
@@ -289,8 +290,10 @@ class Executor:
             while queue.empty() and futures:
                 for node_id, future in list(futures.items()):
                     if future.done():
+                        logger.warning(f"{prefix} Node {node_id} completed!")
                         del futures[node_id]
                     elif queue.empty():
+                        logger.warning(f"{prefix} Waiting for {node_id} to complete.")
                         cls.wait_future(future)
 
         logger.warning(f"{prefix} Finished graph execution")
@@ -301,6 +304,7 @@ class Executor:
             future.result(timeout=1)
         except TimeoutError:
             # Avoid being blocked by long-running node, by not waiting its completion.
+            logger.warning("Waiting for node execution timed out.")
             pass
 
 
