@@ -57,7 +57,7 @@ class IfBlock(Block):
             output_schema=IfBlock.Output,
             test_input={
                 "value1": 10,
-                "operator": ComparisonOperator.GREATER_THAN,
+                "operator": ComparisonOperator.GREATER_THAN.value,
                 "value2": 5,
                 "true_value": "Greater",
                 "false_value": "Not greater",
