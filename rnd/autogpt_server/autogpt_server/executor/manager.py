@@ -304,7 +304,6 @@ class Executor:
             future.result(timeout=3)
         except TimeoutError:
             # Avoid being blocked by long-running node, by not waiting its completion.
-            logger.warning("Waiting for node execution timed out.")
             pass
 
 
