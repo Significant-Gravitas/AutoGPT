@@ -14,7 +14,7 @@ const SchemaTooltip: React.FC<{ schema: BlockSchema }> = ({ schema }) => {
   return (
     <TooltipProvider delayDuration={400}>
       <Tooltip>
-        <TooltipTrigger className="flex items-center justify-center" asChild>
+        <TooltipTrigger asChild>
           <Info className="p-1 rounded-full hover:bg-gray-300" size={24} />
         </TooltipTrigger>
         <TooltipContent className="max-w-xs tooltip-content">

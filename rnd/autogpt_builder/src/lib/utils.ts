@@ -30,6 +30,47 @@ export function deepEquals(x: any, y: any): boolean {
   );
 }
 
+/** Get tailwind text color class from type name */
+export function getTypeTextColor(type: string | null): string {
+  if (type === null) return 'bg-gray-500';
+  return {
+    string: 'text-green-500',
+    number: 'text-blue-500',
+    boolean: 'text-yellow-500',
+    object: 'text-purple-500',
+    array: 'text-indigo-500',
+    null: 'text-gray-500',
+    '': 'text-gray-500',
+  }[type] || 'text-gray-500';
+}
+
+/** Get tailwind bg color class from type name */
+export function getTypeBgColor(type: string | null): string {
+  if (type === null) return 'bg-gray-500';
+  return {
+    string: 'bg-green-500',
+    number: 'bg-blue-500',
+    boolean: 'bg-yellow-500',
+    object: 'bg-purple-500',
+    array: 'bg-indigo-500',
+    null: 'bg-gray-500',
+    '': 'bg-gray-500',
+  }[type] || 'bg-gray-500';
+}
+
+export function getTypeColor(type: string | null): string {
+  if (type === null) return 'bg-gray-500';
+  return {
+    string: '#22c55e',
+    number: '#3b82f6',
+    boolean: '#eab308',
+    object: '#a855f7',
+    array: '#6366f1',
+    null: '#6b7280',
+    '': '#6b7280',
+  }[type] || '#6b7280';
+}
+
 export function beautifyString(name: string): string {
   // Regular expression to identify places to split, considering acronyms
   const result = name

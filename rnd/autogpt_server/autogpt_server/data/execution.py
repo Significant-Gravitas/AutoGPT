@@ -12,6 +12,7 @@ from prisma.models import (
 from prisma.types import AgentGraphExecutionWhereInput
 from pydantic import BaseModel
 
+from autogpt_server.data.block import BlockData, BlockInput, CompletedBlockOutput
 from autogpt_server.util import json
 
 
@@ -19,7 +20,7 @@ class NodeExecution(BaseModel):
     graph_exec_id: str
     node_exec_id: str
     node_id: str
-    data: dict[str, Any]
+    data: BlockInput
 
 
 class ExecutionStatus(str, Enum):
@@ -57,8 +58,8 @@ class ExecutionResult(BaseModel):
     node_exec_id: str
     node_id: str
     status: ExecutionStatus
-    input_data: dict[str, Any]  # 1 input pin should consume exactly 1 data.
-    output_data: dict[str, list[Any]]  # but 1 output pin can produce multiple output.
+    input_data: BlockInput
+    output_data: CompletedBlockOutput
     add_time: datetime
     queue_time: datetime | None
     start_time: datetime | None
@@ -66,11 +67,11 @@ class ExecutionResult(BaseModel):
 
     @staticmethod
     def from_db(execution: AgentNodeExecution):
-        input_data: dict[str, Any] = defaultdict()
+        input_data: BlockInput = defaultdict()
         for data in execution.Input or []:
             input_data[data.name] = json.loads(data.data)
 
-        output_data: dict[str, Any] = defaultdict(list)
+        output_data: CompletedBlockOutput = defaultdict(list)
         for data in execution.Output or []:
             output_data[data.name].append(json.loads(data.data))
 
@@ -103,7 +104,7 @@ EXECUTION_RESULT_INCLUDE = {
 
 
 async def create_graph_execution(
-    graph_id: str, graph_version: int, node_ids: list[str], data: dict[str, Any]
+    graph_id: str, graph_version: int, nodes_input: list[tuple[str, BlockInput]]
 ) -> tuple[str, list[ExecutionResult]]:
     """
     Create a new AgentGraphExecution record.
@@ -122,15 +123,17 @@ async def create_graph_execution(
                         "Input": {
                             "create": [
                                 {"name": name, "data": json.dumps(data)}
-                                for name, data in data.items()
+                                for name, data in node_input.items()
                             ]
                         },
                     }
-                    for node_id in node_ids
+                    for node_id, node_input in nodes_input
                 ]
             },
         },
-        include={"AgentNodeExecutions": True},
+        include={
+            "AgentNodeExecutions": {"include": EXECUTION_RESULT_INCLUDE}  # type: ignore
+        },
     )
 
     return result.id, [
@@ -242,7 +245,7 @@ async def get_execution_results(graph_exec_id: str) -> list[ExecutionResult]:
     return res
 
 
-async def get_node_execution_input(node_exec_id: str) -> dict[str, Any]:
+async def get_node_execution_input(node_exec_id: str) -> BlockInput:
     """
     Get execution node input data from the previous node execution result.
 
@@ -256,11 +259,10 @@ async def get_node_execution_input(node_exec_id: str) -> dict[str, Any]:
     if not execution.AgentNode:
         raise ValueError(f"Node {execution.agentNodeId} not found.")
 
-    exec_input = json.loads(execution.AgentNode.constantInput)
-    for input_data in execution.Input or []:
-        exec_input[input_data.name] = json.loads(input_data.data)
-
-    return merge_execution_input(exec_input)
+    return {
+        input_data.name: json.loads(input_data.data)
+        for input_data in execution.Input or []
+    }
 
 
 LIST_SPLIT = "_$_"
@@ -268,7 +270,7 @@ DICT_SPLIT = "_#_"
 OBJC_SPLIT = "_@_"
 
 
-def parse_execution_output(output: tuple[str, Any], name: str) -> Any | None:
+def parse_execution_output(output: BlockData, name: str) -> Any | None:
     # Allow extracting partial output data by name.
     output_name, output_data = output
 
@@ -296,7 +298,15 @@ def parse_execution_output(output: tuple[str, Any], name: str) -> Any | None:
     return None
 
 
-def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
+def merge_execution_input(data: BlockInput) -> BlockInput:
+    """
+    Merge all dynamic input pins which described by the following pattern:
+    - <input_name>_$_<index> for list input.
+    - <input_name>_#_<index> for dict input.
+    - <input_name>_@_<index> for object input.
+    This function will construct pins with the same name into a single list/dict/object.
+    """
+
     # Merge all input with <input_name>_$_<index> into a single list.
     items = list(data.items())
     list_input: list[Any] = []
