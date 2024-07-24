@@ -31,10 +31,12 @@ jobs:
       matrix:
         python-version: ["3.10"]
         platform-os: [ubuntu, macos, macos-arm64, windows]
+        db-platform: [postgres, sqlite]
     runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
 
     steps:
       - name: Setup PostgreSQL
+        if: matrix.db-platform == 'postgres'
         uses: ikalnytskyi/action-setup-postgres@v6
         with:
           username: ${{ secrets.DB_USER }}
@@ -114,13 +116,23 @@ jobs:
       - name: Install Python dependencies
         run: poetry install
 
-      - name: Generate Prisma Client
+      - name: Generate Prisma Client (Postgres)
+        if: matrix.db-platform == 'postgres'
         run: poetry run prisma generate --schema postgres/schema.prisma
 
-      - name: Run Database Migrations
+      - name: Run Database Migrations (Postgres)
+        if: matrix.db-platform == 'postgres'
         run: poetry run prisma migrate dev --schema postgres/schema.prisma --name updates
         env:
           CONNECTION_STR: ${{ steps.postgres.outputs.connection-uri }}
+
+      - name: Generate Prisma Client (SQLite)
+        if: matrix.db-platform == 'sqlite'
+        run: poetry run prisma generate
+
+      - name: Run Database Migrations (SQLite)
+        if: matrix.db-platform == 'sqlite'
+        run: poetry run prisma migrate dev --name updates
 
       - name: Run Linter
         run: poetry run lint
