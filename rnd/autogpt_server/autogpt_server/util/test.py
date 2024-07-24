@@ -113,4 +113,6 @@ def execute_block_test(block: Block):
             output_index += 1
 
     if output_index < len(block.test_output):
-        raise ValueError(f"{prefix} produced output less than expected")
+        raise ValueError(
+            f"{prefix} produced output less than expected. output_index={output_index}, len(block.test_output)={len(block.test_output)}"
+        )

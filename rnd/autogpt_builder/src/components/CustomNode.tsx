@@ -1,13 +1,15 @@
-import React, { useState, useEffect, FC, memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { useState, useEffect, FC, memo, useRef } from 'react';
+import { NodeProps } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './customnode.css';
-import ModalComponent from './ModalComponent';
+import InputModalComponent from './InputModalComponent';
+import OutputModalComponent from './OutputModalComponent';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { BlockSchema } from '@/lib/types';
-import SchemaTooltip from './SchemaTooltip';
 import { beautifyString } from '@/lib/utils';
+import { Switch } from "@/components/ui/switch"
+import NodeHandle from './NodeHandle';
 
 type CustomNodeData = {
   blockType: string;
@@ -32,6 +34,8 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [modalValue, setModalValue] = useState<string>('');
   const [errors, setErrors] = useState<{ [key: string]: string | null }>({});
+  const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
+  const outputDataRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (data.output_data || data.status) {
@@ -43,12 +47,12 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     console.log(`Node ${id} data:`, data);
   }, [id, data]);
 
-  const toggleOutput = () => {
-    setIsOutputOpen(!isOutputOpen);
+  const toggleOutput = (checked: boolean) => {
+    setIsOutputOpen(checked);
   };
 
-  const toggleAdvancedSettings = () => {
-    setIsAdvancedOpen(!isAdvancedOpen);
+  const toggleAdvancedSettings = (checked: boolean) => {
+    setIsAdvancedOpen(checked);
   };
 
   const hasOptionalFields = () => {
@@ -57,33 +61,12 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     });
   };
 
-  const generateHandles = (schema: BlockSchema, type: 'source' | 'target') => {
+  const generateOutputHandles = (schema: BlockSchema) => {
     if (!schema?.properties) return null;
     const keys = Object.keys(schema.properties);
     return keys.map((key) => (
-      <div key={key} className="handle-container">
-        {type === 'target' && (
-          <>
-            <Handle
-              type={type}
-              position={Position.Left}
-              id={key}
-              style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
-            />
-            <span className="handle-label">{schema.properties[key].title || beautifyString(key)}</span>
-          </>
-        )}
-        {type === 'source' && (
-          <>
-            <span className="handle-label">{schema.properties[key].title || beautifyString(key)}</span>
-            <Handle
-              type={type}
-              position={Position.Right}
-              id={key}
-              style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
-            />
-          </>
-        )}
+      <div key={key}>
+        <NodeHandle keyName={key} isConnected={isHandleConnected(key)} schema={schema.properties[key]} side="right" />
       </div>
     ));
   };
@@ -113,9 +96,11 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     return data.connections && data.connections.some((conn: any) => {
       if (typeof conn === 'string') {
         const [source, target] = conn.split(' -> ');
-        return target.includes(key) && target.includes(data.title);
+        return (target.includes(key) && target.includes(data.title)) ||
+          (source.includes(key) && source.includes(data.title));
       }
-      return conn.target === id && conn.targetHandle === key;
+      return (conn.target === id && conn.targetHandle === key) ||
+        (conn.source === id && conn.sourceHandle === key);
     });
   };
 
@@ -159,7 +144,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     }
 
     if (isHandleConnected(fullKey)) {
-      return <div className="connected-input">Connected</div>;
+      return <></>;
     }
 
     const renderClickableInput = (value: string | null = null, placeholder: string = "", secret: boolean = false) => {
@@ -418,67 +403,81 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     return Object.values(newErrors).every((error) => error === null);
   };
 
+  const handleOutputClick = () => {
+    setIsOutputModalOpen(true);
+    setModalValue(typeof data.output_data === 'object' ? JSON.stringify(data.output_data, null, 2) : data.output_data);
+  };
+
+  const isTextTruncated = (element: HTMLElement | null): boolean => {
+    if (!element) return false;
+    return element.scrollHeight > element.clientHeight || element.scrollWidth > element.clientWidth;
+  };
+
   return (
     <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}>
-      <div className="node-header">
-        <div className="node-title">{beautifyString(data.blockType?.replace(/Block$/, '') || data.title)}</div>
+      <div className="mb-2">
+        <div className="text-lg font-bold">{beautifyString(data.blockType?.replace(/Block$/, '') || data.title)}</div>
       </div>
       <div className="node-content">
-        <div className="input-section">
+        <div>
           {data.inputSchema &&
             Object.entries(data.inputSchema.properties).map(([key, schema]) => {
               const isRequired = data.inputSchema.required?.includes(key);
               return (isRequired || isAdvancedOpen) && (
                 <div key={key}>
-                  <div className="handle-container">
-                    <Handle
-                      type="target"
-                      position={Position.Left}
-                      id={key}
-                      style={{ background: '#555', borderRadius: '50%', width: '10px', height: '10px' }}
-                    />
-                    <span className="handle-label">{schema.title || beautifyString(key)}</span>
-                    <SchemaTooltip schema={schema} />
-                  </div>
+                  <NodeHandle keyName={key} isConnected={isHandleConnected(key)} schema={schema} side="left" />
                   {renderInputField(key, schema, '', schema.title || beautifyString(key))}
                 </div>
               );
             })}
         </div>
-        <div className="output-section">
-          {data.outputSchema && generateHandles(data.outputSchema, 'source')}
+        <div>
+          {data.outputSchema && generateOutputHandles(data.outputSchema)}
         </div>
       </div>
       {isOutputOpen && (
-        <div className="node-output">
+        <div className="node-output" onClick={handleOutputClick}>
           <p>
             <strong>Status:</strong>{' '}
             {typeof data.status === 'object' ? JSON.stringify(data.status) : data.status || 'N/A'}
           </p>
           <p>
             <strong>Output Data:</strong>{' '}
-            {typeof data.output_data === 'object'
-              ? JSON.stringify(data.output_data)
-              : data.output_data || 'N/A'}
+            {(() => {
+              const outputText = typeof data.output_data === 'object'
+                ? JSON.stringify(data.output_data)
+                : data.output_data;
+              
+              if (!outputText) return 'No output data';
+              
+              return outputText.length > 100
+                ? `${outputText.slice(0, 100)}... Press To Read More`
+                : outputText;
+            })()}
           </p>
         </div>
       )}
-      <div className="node-footer">
-        <Button onClick={toggleOutput} className="toggle-button">
-          Toggle Output
-        </Button>
+      <div className="flex items-center mt-2.5">
+        <Switch onCheckedChange={toggleOutput} className='custom-switch' />
+        <span className='m-1 mr-4'>Output</span>
         {hasOptionalFields() && (
-          <Button onClick={toggleAdvancedSettings} className="toggle-button">
-            Toggle Advanced
-          </Button>
+          <>
+            <Switch onCheckedChange={toggleAdvancedSettings} className='custom-switch' />
+            <span className='m-1'>Advanced</span>
+          </>
         )}
       </div>
-      <ModalComponent
+      <InputModalComponent
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={handleModalSave}
         value={modalValue}
         key={activeKey}
+      />
+      <OutputModalComponent
+        isOpen={isOutputModalOpen}
+        onClose={() => setIsOutputModalOpen(false)}
+        value={modalValue}
       />
     </div>
   );
