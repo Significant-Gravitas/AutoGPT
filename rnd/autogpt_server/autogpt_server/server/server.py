@@ -37,6 +37,7 @@ from autogpt_server.server.model import (
     WsMessage,
 )
 from autogpt_server.util.data import get_frontend_path
+from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
 
@@ -44,6 +45,7 @@ from autogpt_server.util.settings import Settings
 class AgentServer(AppService):
     event_queue: asyncio.Queue[ExecutionResult] = asyncio.Queue()
     manager = ConnectionManager()
+    mutex = KeyedMutex()
 
     async def event_broadcaster(self):
         while True:
@@ -601,6 +603,14 @@ class AgentServer(AppService):
         exec_result = self.run_and_wait(update_execution_status(exec_id, status))
         self.run_and_wait(self.event_queue.put(exec_result))
 
+    @expose
+    def acquire_lock(self, key: Any):
+        self.mutex.lock(key)
+
+    @expose
+    def release_lock(self, key: Any):
+        self.mutex.unlock(key)
+
     @classmethod
     def update_configuration(
         cls,
@@ -611,7 +621,7 @@ class AgentServer(AppService):
                     {
                         "config": {
                             "num_graph_workers": 10,
-                            "num_node_workers": 1,
+                            "num_node_workers": 10,
                         }
                     }
                 ]

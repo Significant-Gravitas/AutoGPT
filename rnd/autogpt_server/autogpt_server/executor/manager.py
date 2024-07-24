@@ -1,7 +1,7 @@
 import asyncio
 import logging
-import time
 from concurrent.futures import Future, ProcessPoolExecutor
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 
 if TYPE_CHECKING:
@@ -119,6 +119,14 @@ def enqueue_next_nodes(
     def wait(f: Coroutine[T, Any, T]) -> T:
         return loop.run_until_complete(f)
 
+    @contextmanager
+    def synchronized(key: Any):
+        api_client.acquire_lock(key)
+        try:
+            yield
+        finally:
+            api_client.release_lock(key)
+
     def execution_update(node_exec_id: str, status: ExecutionStatus):
         api_client.update_execution_status(node_exec_id, status)
 
@@ -136,14 +144,15 @@ def enqueue_next_nodes(
             logger.error(f"{prefix} Error, next node {next_node_id} not found.")
             return
 
-        next_node_exec_id = wait(
-            upsert_execution_input(
-                node_id=next_node_id,
-                graph_exec_id=graph_exec_id,
-                input_name=next_input_name,
-                data=next_data,
+        with synchronized(("upsert_execution_input", graph_exec_id, next_node_id)):
+            next_node_exec_id = wait(
+                upsert_execution_input(
+                    node_id=next_node_id,
+                    graph_exec_id=graph_exec_id,
+                    input_name=next_input_name,
+                    data=next_data,
+                )
             )
-        )
 
         next_node_input = wait(get_node_execution_input(next_node_exec_id))
         next_node_input, validation_msg = validate_exec(next_node, next_node_input)
@@ -227,8 +236,6 @@ def get_agent_server_client() -> "AgentServer":
 
 
 class Executor:
-    loop: asyncio.AbstractEventLoop
-
     @classmethod
     def on_node_executor_start(cls):
         cls.loop = asyncio.new_event_loop()
@@ -257,20 +264,44 @@ class Executor:
 
     @classmethod
     def on_graph_execution(cls, graph_data: GraphExecution):
+        prefix = get_log_prefix(graph_data.graph_exec_id, "*")
+        logger.warning(f"{prefix} Start graph execution")
+
         queue = ExecutionQueue[NodeExecution]()
         for node_exec in graph_data.start_node_execs:
             queue.add(node_exec)
 
-        futures: list[Future] = []
+        futures: dict[str, Future] = {}
         while not queue.empty():
-            futures.append(
-                cls.executor.submit(cls.on_node_execution, queue, queue.get())
+            execution = queue.get()
+
+            # Avoid parallel execution of the same node.
+            if execution.node_id in futures and not futures[execution.node_id].done():
+                cls.wait_future(futures[execution.node_id])
+                queue.add(execution)
+                continue
+
+            futures[execution.node_id] = cls.executor.submit(
+                cls.on_node_execution, queue, execution
             )
+
+            # Avoid terminating graph execution when some nodes are still running.
             while queue.empty() and futures:
-                futures = [f for f in futures if not f.done()]
-                # Avoid blocking continuously running task by doing short timed sleep.
-                if futures:
-                    time.sleep(1)
+                for node_id, future in list(futures.items()):
+                    if future.done():
+                        del futures[node_id]
+                    elif queue.empty():
+                        cls.wait_future(future)
+
+        logger.warning(f"{prefix} Finished graph execution")
+
+    @classmethod
+    def wait_future(cls, future: Future):
+        try:
+            future.result(timeout=1)
+        except TimeoutError:
+            # Avoid blocking long-running block by not waiting its completion.
+            pass
 
 
 class ExecutionManager(AppService):
