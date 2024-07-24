@@ -23,6 +23,16 @@
 # Frontend
 !frontend/build/web/
 
+# rnd
+!rnd/
+
 # Explicitly re-ignore some folders
 .*
 **/__pycache__
+# rnd
+rnd/autogpt_builder/.next/
+rnd/autogpt_builder/node_modules
+rnd/autogpt_builder/.env.example
+rnd/autogpt_builder/.env.local
+
+
