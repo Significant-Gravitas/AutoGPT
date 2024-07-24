@@ -47,6 +47,7 @@ class LlmModel(str, Enum):
     LLAMA3_1_8B = "llama-3.1-8b-instant"
     # Ollama models
     OLLAMA_LLAMA3_8B = "llama3"
+    OLLAMA_LLAMA3_405B = "llama3.1:405b"
 
     @property
     def metadata(self) -> ModelMetadata:
@@ -71,6 +72,7 @@ MODEL_METADATA = {
     LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072),
     LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072),
     LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192),
+    LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192),
 }
 
 
