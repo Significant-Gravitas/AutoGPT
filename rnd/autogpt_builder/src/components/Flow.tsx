@@ -201,12 +201,16 @@ const FlowEditor: React.FC<{
     isDragging.current = true;
   };
 
-  const onNodesChangeEnd = (event: MouseEvent, node: Node) => {
+  const onNodesChangeEnd = (event: MouseEvent, node: Node | null) => {
+    if (!node) return;
+  
     isDragging.current = false;
     const oldPosition = initialPositionRef.current[node.id];
     const newPosition = node.position;
 
     // Calculate the movement distance
+    if (!oldPosition || !newPosition) return;
+
     const distanceMoved = Math.sqrt(
       Math.pow(newPosition.x - oldPosition.x, 2) +
       Math.pow(newPosition.y - oldPosition.y, 2)
