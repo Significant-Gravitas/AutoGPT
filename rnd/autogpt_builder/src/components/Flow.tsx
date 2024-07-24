@@ -490,6 +490,8 @@ const FlowEditor: React.FC<{
               },
               data: {
                 ...node.data,
+                status: undefined, // Reset status
+                output_data: undefined, // Clear output data
                 setHardcodedValues: (values: { [key: string]: any }) => {
                   setNodes((nds) => nds.map((n) =>
                     n.id === newNodeId
