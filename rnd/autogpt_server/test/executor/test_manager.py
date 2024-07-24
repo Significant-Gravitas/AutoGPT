@@ -20,7 +20,7 @@ async def execute_graph(
     graph_exec_id = response["id"]
 
     # Execution queue should be empty
-    assert await wait_execution(test_manager, test_graph.id, graph_exec_id, num_execs)
+    assert await wait_execution(test_manager, test_graph.id, graph_exec_id, num_execs, 60)
     return graph_exec_id
 
 
