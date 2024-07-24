@@ -300,7 +300,7 @@ class Executor:
         try:
             future.result(timeout=1)
         except TimeoutError:
-            # Avoid blocking long-running block by not waiting its completion.
+            # Avoid being blocked by long-running node, by not waiting its completion.
             pass
 
 
