@@ -1,6 +1,6 @@
 import operator
 from enum import Enum
-from typing import Any, Union
+from typing import Any
 
 import pydantic
 
@@ -14,6 +14,7 @@ class Operation(Enum):
     MULTIPLY = "Multiply"
     DIVIDE = "Divide"
     POWER = "Power"
+
 
 class CounterResult(pydantic.BaseModel):
     count: int | None = None
@@ -84,9 +85,10 @@ class MathsBlock(Block):
             yield "result", result
 
         except ZeroDivisionError:
-            yield "result", float('inf')  # Return infinity for division by zero
-        except Exception as e:
-            yield "result", float('nan')  # Return NaN for other errors
+            yield "result", float("inf")  # Return infinity for division by zero
+        except Exception:
+            yield "result", float("nan")  # Return NaN for other errors
+
 
 class CounterBlock(Block):
     class Input(BlockSchema):
