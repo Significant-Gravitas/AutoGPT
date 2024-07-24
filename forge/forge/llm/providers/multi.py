@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Iterator, Optional, Sequence, TypeVar, get_args
+from typing import Any, AsyncIterator, Callable, Optional, Sequence, TypeVar, get_args
 
 from pydantic import ValidationError
 
@@ -68,7 +68,7 @@ class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
 
     async def get_available_chat_models(self) -> Sequence[ChatModelInfo[ModelName]]:
         models = []
-        for provider in self.get_available_providers():
+        async for provider in self.get_available_providers():
             models.extend(await provider.get_available_chat_models())
         return models
 
@@ -120,14 +120,18 @@ class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
         model_info = CHAT_MODELS[model]
         return self._get_provider(model_info.provider_name)
 
-    def get_available_providers(self) -> Iterator[ChatModelProvider]:
+    async def get_available_providers(self) -> AsyncIterator[ChatModelProvider]:
         for provider_name in ModelProviderName:
-            self._logger.debug(f"Checking if {provider_name} is available...")
+            self._logger.debug(f"Checking if provider {provider_name} is available...")
             try:
-                yield self._get_provider(provider_name)
-                self._logger.debug(f"{provider_name} is available!")
+                provider = self._get_provider(provider_name)
+                await provider.get_available_models()  # check connection
+                yield provider
+                self._logger.debug(f"Provider '{provider_name}' is available!")
             except ValueError:
                 pass
+            except Exception as e:
+                self._logger.debug(f"Provider '{provider_name}' is failing: {e}")
 
     def _get_provider(self, provider_name: ModelProviderName) -> ChatModelProvider:
         _provider = self._provider_instances.get(provider_name)
