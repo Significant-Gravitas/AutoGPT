@@ -1,10 +1,8 @@
-import React, { useState, useEffect, FC, memo, createContext } from 'react';
+import React, { useState, useEffect, FC, memo } from 'react';
 import { NodeProps } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './customnode.css';
 import ModalComponent from './ModalComponent';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
 import { BlockSchema } from '@/lib/types';
 import { beautifyString } from '@/lib/utils';
 import { Switch } from "@/components/ui/switch"
