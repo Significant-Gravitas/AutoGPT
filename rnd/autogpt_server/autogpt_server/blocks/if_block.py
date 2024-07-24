@@ -65,7 +65,6 @@ class IfBlock(Block):
             test_output=[
                 ("result", True),
                 ("true_output", "Greater"),
-                ("false_output", "Not greater"),
             ],
         )
 
