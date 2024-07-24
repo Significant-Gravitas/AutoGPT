@@ -479,25 +479,41 @@ const FlowEditor: React.FC<{
       if (event.key === 'v' || event.key === 'V') {
         // Paste copied nodes
         if (copiedNodes.length > 0) {
-          const newNodes = copiedNodes.map((node, index) => ({
-            ...node,
-            id: (nodeId + index).toString(),
-            position: {
-              x: node.position.x + 20, // Offset pasted nodes
-              y: node.position.y + 20,
-            },
-            selected: true, // Select the new nodes
-          }));
+          const newNodes = copiedNodes.map((node, index) => {
+            const newNodeId = (nodeId + index).toString();
+            return {
+              ...node,
+              id: newNodeId,
+              position: {
+                x: node.position.x + 20, // Offset pasted nodes
+                y: node.position.y + 20,
+              },
+              data: {
+                ...node.data,
+                setHardcodedValues: (values: { [key: string]: any }) => {
+                  setNodes((nds) => nds.map((n) =>
+                    n.id === newNodeId
+                      ? { ...n, data: { ...n.data, hardcodedValues: values } }
+                      : n
+                  ));
+                },
+              },
+            };
+          });
           const updatedNodes = nodes.map(node => ({ ...node, selected: false })); // Deselect old nodes
           setNodes([...updatedNodes, ...newNodes]);
           setNodeId(prevId => prevId + copiedNodes.length);
-          // Optionally, you can handle edges similarly
-          const newEdges = copiedEdges.map(edge => ({
-            ...edge,
-            id: `${edge.source}_${edge.sourceHandle}_${edge.target}_${edge.targetHandle}_${Date.now()}`,
-            source: (parseInt(edge.source) + copiedNodes.length).toString(),
-            target: (parseInt(edge.target) + copiedNodes.length).toString(),
-          }));
+
+          const newEdges = copiedEdges.map(edge => {
+            const newSourceId = newNodes.find(n => n.data.title === edge.source)?.id || edge.source;
+            const newTargetId = newNodes.find(n => n.data.title === edge.target)?.id || edge.target;
+            return {
+              ...edge,
+              id: `${newSourceId}_${edge.sourceHandle}_${newTargetId}_${edge.targetHandle}_${Date.now()}`,
+              source: newSourceId,
+              target: newTargetId,
+            };
+          });
           setEdges([...edges, ...newEdges]);
         }
       }
