@@ -34,8 +34,10 @@ jsonref = "^1.1.0"
 groq = "^0.8.0"
 anthropic = "^0.25.1"
 
-
 ollama = "^0.3.0"
+feedparser = "^6.0.11"
+python-dotenv = "^1.0.1"
+
 [tool.poetry.group.dev.dependencies]
 cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main", develop = true }
 poethepoet = "^0.26.1"

@@ -41,6 +41,10 @@ class LlmModel(str, Enum):
     MIXTRAL_8X7B = "mixtral-8x7b-32768"
     GEMMA_7B = "gemma-7b-it"
     GEMMA2_9B = "gemma2-9b-it"
+    # New Groq models (Preview)
+    LLAMA3_1_405B = "llama-3.1-405b-reasoning"
+    LLAMA3_1_70B = "llama-3.1-70b-versatile"
+    LLAMA3_1_8B = "llama-3.1-8b-instant"
     # Ollama models
     OLLAMA_LLAMA3_8B = "llama3"
 
@@ -61,6 +65,11 @@ MODEL_METADATA = {
     LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768),
     LlmModel.GEMMA_7B: ModelMetadata("groq", 8192),
     LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192),
+    LlmModel.LLAMA3_1_405B: ModelMetadata(
+        "groq", 8192
+    ),  # Limited to 16k during preview
+    LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072),
+    LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072),
     LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192),
 }
 

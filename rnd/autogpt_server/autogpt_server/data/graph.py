@@ -7,6 +7,7 @@ import prisma.types
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink
 from pydantic import PrivateAttr
 
+from autogpt_server.data.block import BlockInput
 from autogpt_server.data.db import BaseDbModel
 from autogpt_server.util import json
 
@@ -33,7 +34,7 @@ class Link(BaseDbModel):
 
 class Node(BaseDbModel):
     block_id: str
-    input_default: dict[str, Any] = {}  # dict[input_name, default_value]
+    input_default: BlockInput = {}  # dict[input_name, default_value]
     metadata: dict[str, Any] = {}
 
     _input_links: list[Link] = PrivateAttr(default=[])

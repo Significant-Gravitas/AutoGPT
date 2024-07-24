@@ -1,8 +1,9 @@
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
 from prisma.models import AgentGraphExecutionSchedule
 
+from autogpt_server.data.block import BlockInput
 from autogpt_server.data.db import BaseDbModel
 from autogpt_server.util import json
 
@@ -12,7 +13,7 @@ class ExecutionSchedule(BaseDbModel):
     graph_version: int
     schedule: str
     is_enabled: bool
-    input_data: dict[str, Any]
+    input_data: BlockInput
     last_updated: Optional[datetime] = None
 
     def __init__(self, is_enabled: Optional[bool] = None, **kwargs):
