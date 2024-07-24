@@ -7,6 +7,7 @@ import jsonschema
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
+from autogpt_server.data.model import ContributorDetails
 from autogpt_server.util import json
 
 BlockData = tuple[str, Any]  # Input & Output data should be a tuple of (name, data).
@@ -111,10 +112,12 @@ class EmptySchema(BlockSchema):
 
 
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
+
     def __init__(
         self,
         id: str = "",
         description: str = "",
+        contributors: list[ContributorDetails] = [],
         categories: set[BlockCategory] | None = None,
         input_schema: Type[BlockSchemaInputType] = EmptySchema,
         output_schema: Type[BlockSchemaOutputType] = EmptySchema,
@@ -143,6 +146,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.test_mock = test_mock
         self.description = description
         self.categories = categories or set()
+        self.contributors = contributors or set()
 
     @abstractmethod
     def run(self, input_data: BlockSchemaInputType) -> BlockOutput:
@@ -169,6 +173,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             "outputSchema": self.output_schema.jsonschema(),
             "description": self.description,
             "categories": [category.dict() for category in self.categories],
+            "contributors": [contributor.dict() for contributor in self.contributors],
         }
 
     def execute(self, input_data: BlockInput) -> BlockOutput:
