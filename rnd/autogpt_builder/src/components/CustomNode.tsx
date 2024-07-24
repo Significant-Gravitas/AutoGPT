@@ -6,9 +6,10 @@ import InputModalComponent from './InputModalComponent';
 import OutputModalComponent from './OutputModalComponent';
 import { BlockSchema } from '@/lib/types';
 import { beautifyString } from '@/lib/utils';
-import { Switch } from "@/components/ui/switch"
+import { Switch } from "@/components/ui/switch";
 import NodeHandle from './NodeHandle';
 import NodeInputField from './NodeInputField';
+import { history } from './history';
 
 type CustomNodeData = {
   blockType: string;
@@ -40,8 +41,14 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   }, [data.output_data, data.status]);
 
   useEffect(() => {
-    console.log(`Node ${id} data:`, data);
-  }, [id, data]);
+    // Store initial state in history
+    history.push({
+      type: 'UPDATE_INPUT',
+      payload: { nodeId: id, oldValues: {}, newValues: data.hardcodedValues },
+      undo: () => data.setHardcodedValues({}),
+      redo: () => data.setHardcodedValues(data.hardcodedValues),
+    });
+  }, []);
 
   const toggleOutput = (checked: boolean) => {
     setIsOutputOpen(checked);
@@ -79,6 +86,15 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     current[keys[keys.length - 1]] = value;
 
     console.log(`Updating hardcoded values for node ${id}:`, newValues);
+
+    // Push the change to history
+    history.push({
+      type: 'UPDATE_INPUT',
+      payload: { nodeId: id, oldValues: data.hardcodedValues, newValues },
+      undo: () => data.setHardcodedValues(data.hardcodedValues),
+      redo: () => data.setHardcodedValues(newValues),
+    });
+
     data.setHardcodedValues(newValues);
     setErrors((prevErrors) => ({ ...prevErrors, [key]: null }));
   };

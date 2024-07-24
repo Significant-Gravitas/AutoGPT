@@ -27,6 +27,9 @@ import { history } from './history';
 import { CustomEdge, CustomEdgeData } from './CustomEdge';
 import ConnectionLine from './ConnectionLine';
 
+// This is for the history, this is the minimum distance a block must move before it is logged
+// It helps to prevent spamming the history with small movements especially when pressing on a input in a block
+const MINIMUM_MOVE_BEFORE_LOG = 50;
 
 type CustomNodeData = {
   blockType: string;
@@ -169,8 +172,14 @@ const FlowEditor: React.FC<{
           if (movedNode) {
             const oldPosition = initialPositionRef.current[change.id] || movedNode.position;
             const newPosition = change.position;
+            
+            // Calculate the movement distance
+            const distanceMoved = Math.sqrt(
+              Math.pow(newPosition.x - oldPosition.x, 2) +
+              Math.pow(newPosition.y - oldPosition.y, 2)
+            );
 
-            if (newPosition && (movedNode.position.x !== newPosition.x || movedNode.position.y !== newPosition.y)) {
+            if (distanceMoved > MINIMUM_MOVE_BEFORE_LOG) { // Minimum movement threshold
               history.push({
                 type: 'UPDATE_NODE_POSITION',
                 payload: { nodeId: change.id, oldPosition, newPosition },
@@ -196,15 +205,22 @@ const FlowEditor: React.FC<{
     isDragging.current = false;
     const oldPosition = initialPositionRef.current[node.id];
     const newPosition = node.position;
-    if (oldPosition && newPosition && (oldPosition.x !== newPosition.x || oldPosition.y !== newPosition.y)) {
+
+    // Calculate the movement distance
+    const distanceMoved = Math.sqrt(
+      Math.pow(newPosition.x - oldPosition.x, 2) +
+      Math.pow(newPosition.y - oldPosition.y, 2)
+    );
+
+    if (distanceMoved > MINIMUM_MOVE_BEFORE_LOG) { // Minimum movement threshold
       history.push({
         type: 'UPDATE_NODE_POSITION',
         payload: { nodeId: node.id, oldPosition, newPosition },
         undo: () => setNodes((nds) => nds.map(n => n.id === node.id ? { ...n, position: oldPosition } : n)),
         redo: () => setNodes((nds) => nds.map(n => n.id === node.id ? { ...n, position: newPosition } : n)),
       });
-      delete initialPositionRef.current[node.id];
     }
+    delete initialPositionRef.current[node.id];
   };
 
   const onEdgesChange: OnEdgesChange = useCallback(
@@ -349,8 +365,8 @@ const FlowEditor: React.FC<{
                   (edge) =>
                     edge.source === conn.source &&
                     edge.target === conn.target &&
-                    edge.sourceHandle === conn.sourceHandle &&
-                    edge.targetHandle === conn.targetHandle
+                    edge.sourceHandle === edge.sourceHandle &&
+                    edge.targetHandle === edge.targetHandle
                 )
             ),
           },
@@ -378,25 +394,6 @@ const FlowEditor: React.FC<{
         outputSchema: nodeSchema.outputSchema,
         hardcodedValues: {},
         setHardcodedValues: (values: { [key: string]: any }) => {
-          const oldValues = newNode.data.hardcodedValues;
-          history.push({
-            type: 'UPDATE_INPUT',
-            payload: { nodeId: newNode.id, oldValues, newValues: values },
-            undo: () => {
-              setNodes((nds) =>
-                nds.map((node) =>
-                  node.id === newNode.id ? { ...node, data: { ...node.data, hardcodedValues: oldValues } } : node
-                )
-              );
-            },
-            redo: () => {
-              setNodes((nds) =>
-                nds.map((node) =>
-                  node.id === newNode.id ? { ...node, data: { ...node.data, hardcodedValues: values } } : node
-                )
-              );
-            },
-          });
           setNodes((nds) =>
             nds.map((node) =>
               node.id === newNode.id ? { ...node, data: { ...node.data, hardcodedValues: values } } : node
@@ -626,8 +623,6 @@ const FlowEditor: React.FC<{
       console.error('Error running agent:', error);
     }
   };
-
-
 
   const updateNodesWithExecutionData = (executionData: any[]) => {
     setNodes((nds) =>
