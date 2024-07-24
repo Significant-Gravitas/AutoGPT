@@ -144,7 +144,7 @@ def enqueue_next_nodes(
             logger.error(f"{prefix} Error, next node {next_node_id} not found.")
             return
 
-        with synchronized(("upsert_execution_input", graph_exec_id, next_node_id)):
+        with synchronized(("upsert_execution_input", next_node_id, graph_exec_id)):
             next_node_exec_id = wait(
                 upsert_execution_input(
                     node_id=next_node_id,
