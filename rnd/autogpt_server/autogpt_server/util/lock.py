@@ -1,8 +1,6 @@
 from threading import Lock
 from typing import Any
 
-from expiringdict import ExpiringDict
-
 
 class KeyedMutex:
     """
@@ -11,7 +9,7 @@ class KeyedMutex:
     """
 
     def __init__(self):
-        self.locks: dict[Any, Lock] = ExpiringDict(max_len=300, max_age_seconds=30)
+        self.locks: dict[Any, Lock] = {}
         self.locks_lock = Lock()
 
     def lock(self, key: Any):
