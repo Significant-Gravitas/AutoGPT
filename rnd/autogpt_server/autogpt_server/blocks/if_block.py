@@ -73,12 +73,8 @@ class ConditionBlock(Block):
         value1 = input_data.value1
         operator = input_data.operator
         value2 = input_data.value2
-        yes_value = (
-            input_data.yes_value if input_data.yes_value is not None else value1
-        )
-        no_value = (
-            input_data.no_value if input_data.no_value is not None else value1
-        )
+        yes_value = input_data.yes_value if input_data.yes_value is not None else value1
+        no_value = input_data.no_value if input_data.no_value is not None else value1
 
         comparison_funcs = {
             ComparisonOperator.EQUAL: lambda a, b: a == b,
