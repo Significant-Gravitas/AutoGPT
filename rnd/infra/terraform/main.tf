@@ -6,6 +6,10 @@ terraform {
       version = "~> 4.0"
     }
   }
+  backend "gcs" {
+    bucket = "agpt-dev-terraform"
+    prefix = "terraform/state"
+  }
 }
 
 provider "google" {
