@@ -1,8 +1,9 @@
-import React, { useState, useEffect, FC, memo } from 'react';
+import React, { useState, useEffect, FC, memo, useRef } from 'react';
 import { NodeProps } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './customnode.css';
-import ModalComponent from './ModalComponent';
+import InputModalComponent from './InputModalComponent';
+import OutputModalComponent from './OutputModalComponent';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { BlockSchema } from '@/lib/types';
@@ -33,6 +34,8 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [modalValue, setModalValue] = useState<string>('');
   const [errors, setErrors] = useState<{ [key: string]: string | null }>({});
+  const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
+  const outputDataRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (data.output_data || data.status) {
@@ -400,6 +403,16 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     return Object.values(newErrors).every((error) => error === null);
   };
 
+  const handleOutputClick = () => {
+    setIsOutputModalOpen(true);
+    setModalValue(typeof data.output_data === 'object' ? JSON.stringify(data.output_data, null, 2) : data.output_data);
+  };
+
+  const isTextTruncated = (element: HTMLElement | null): boolean => {
+    if (!element) return false;
+    return element.scrollHeight > element.clientHeight || element.scrollWidth > element.clientWidth;
+  };
+
   return (
     <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}>
       <div className="mb-2">
@@ -423,16 +436,24 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         </div>
       </div>
       {isOutputOpen && (
-        <div className="node-output">
+        <div className="node-output" onClick={handleOutputClick}>
           <p>
             <strong>Status:</strong>{' '}
             {typeof data.status === 'object' ? JSON.stringify(data.status) : data.status || 'N/A'}
           </p>
           <p>
             <strong>Output Data:</strong>{' '}
-            {typeof data.output_data === 'object'
-              ? JSON.stringify(data.output_data)
-              : data.output_data || 'N/A'}
+            {(() => {
+              const outputText = typeof data.output_data === 'object'
+                ? JSON.stringify(data.output_data)
+                : data.output_data;
+              
+              if (!outputText) return 'No output data';
+              
+              return outputText.length > 100
+                ? `${outputText.slice(0, 100)}... Press To Read More`
+                : outputText;
+            })()}
           </p>
         </div>
       )}
@@ -446,12 +467,17 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </>
         )}
       </div>
-      <ModalComponent
+      <InputModalComponent
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={handleModalSave}
         value={modalValue}
         key={activeKey}
+      />
+      <OutputModalComponent
+        isOpen={isOutputModalOpen}
+        onClose={() => setIsOutputModalOpen(false)}
+        value={modalValue}
       />
     </div>
   );
