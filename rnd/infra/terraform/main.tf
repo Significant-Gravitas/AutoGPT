@@ -17,6 +17,14 @@ provider "google" {
   zone    = var.zone
 }
 
+module "static_ips" {
+  source = "./modules/static_ip"
+
+  project_id  = var.project_id
+  ip_names    = var.static_ip_names
+  region      = var.region
+}
+
 module "networking" {
   source = "./modules/networking"
 
