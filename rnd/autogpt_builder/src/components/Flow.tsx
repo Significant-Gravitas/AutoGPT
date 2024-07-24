@@ -85,6 +85,8 @@ const FlowEditor: React.FC<{
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>('');
   const [agentName, setAgentName] = useState<string>('');
+  const [copiedNodes, setCopiedNodes] = useState<Node<CustomNodeData>[]>([]);
+  const [copiedEdges, setCopiedEdges] = useState<Edge<CustomEdgeData>[]>([]);
 
   const apiUrl = process.env.AGPT_SERVER_URL!;
   const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
@@ -648,6 +650,50 @@ const FlowEditor: React.FC<{
   };
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    if (event.ctrlKey || event.metaKey) {
+      if (event.key === 'c' || event.key === 'C') {
+        // Copy selected nodes
+        const selectedNodes = nodes.filter(node => node.selected);
+        const selectedEdges = edges.filter(edge => edge.selected);
+        setCopiedNodes(selectedNodes);
+        setCopiedEdges(selectedEdges);
+      }
+      if (event.key === 'v' || event.key === 'V') {
+        // Paste copied nodes
+        if (copiedNodes.length > 0) {
+          const newNodes = copiedNodes.map((node, index) => ({
+            ...node,
+            id: (nodeId + index).toString(),
+            position: {
+              x: node.position.x + 20, // Offset pasted nodes
+              y: node.position.y + 20,
+            },
+            selected: true, // Select the new nodes
+          }));
+          const updatedNodes = nodes.map(node => ({ ...node, selected: false })); // Deselect old nodes
+          setNodes([...updatedNodes, ...newNodes]);
+          setNodeId(prevId => prevId + copiedNodes.length);
+          // Optionally, you can handle edges similarly
+          const newEdges = copiedEdges.map(edge => ({
+            ...edge,
+            id: `${edge.source}_${edge.sourceHandle}_${edge.target}_${edge.targetHandle}_${Date.now()}`,
+            source: (parseInt(edge.source) + copiedNodes.length).toString(),
+            target: (parseInt(edge.target) + copiedNodes.length).toString(),
+          }));
+          setEdges([...edges, ...newEdges]);
+        }
+      }
+    }
+  }, [nodes, edges, copiedNodes, copiedEdges, nodeId]);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleKeyDown]);
 
   return (
     <div className={className}>
