@@ -115,10 +115,10 @@ jobs:
         run: poetry install
 
       - name: Generate Prisma Client
-        run: poetry run prisma generate
+        run: poetry run prisma generate --schema postgres/schema.prisma
 
       - name: Run Database Migrations
-        run: poetry run prisma migrate dev --name updates
+        run: poetry run prisma migrate dev --schema postgres/schema.prisma --name updates
         env:
           CONNECTION_STR: ${{ steps.postgres.outputs.connection-uri }}
 
