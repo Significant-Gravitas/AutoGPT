@@ -14,7 +14,7 @@ class ComparisonOperator(Enum):
     LESS_THAN_OR_EQUAL = "<="
 
 
-class IfBlock(Block):
+class ConditionBlock(Block):
     class Input(BlockSchema):
         value1: Any = SchemaField(
             description="Enter the first value for comparison",
@@ -43,18 +43,19 @@ class IfBlock(Block):
         result: bool = SchemaField(
             description="The result of the condition evaluation (True or False)"
         )
-        true_output: Any = SchemaField(
+        yes_output: Any = SchemaField(
             description="The output value if the condition is true"
         )
-        false_output: Any = SchemaField(
+        no_output: Any = SchemaField(
             description="The output value if the condition is false"
         )
 
     def __init__(self):
         super().__init__(
             id="715696a0-e1da-45c8-b209-c2fa9c3b0be6",
-            input_schema=IfBlock.Input,
-            output_schema=IfBlock.Output,
+            input_schema=ConditionBlock.Input,
+            output_schema=ConditionBlock.Output,
+            description="Handles conditional logic based on comparison operators",
             test_input={
                 "value1": 10,
                 "operator": ComparisonOperator.GREATER_THAN.value,
