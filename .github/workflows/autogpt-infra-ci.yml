@@ -1,4 +1,4 @@
-name: AutoGPT Builder CI
+name: AutoGPT Builder Infra
 
 on:
   push:
