@@ -15,12 +15,6 @@ class Operation(Enum):
     DIVIDE = "Divide"
     POWER = "Power"
 
-
-class MathsResult(pydantic.BaseModel):
-    result: Union[float, int] | None = None
-    explanation: str
-
-
 class CounterResult(pydantic.BaseModel):
     count: int | None = None
     type: str
@@ -45,9 +39,7 @@ class MathsBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: MathsResult = SchemaField(
-            description="The result of your calculation with an explanation"
-        )
+        result: float = SchemaField(description="The result of your calculation")
 
     def __init__(self):
         super().__init__(
@@ -61,12 +53,7 @@ class MathsBlock(Block):
                 "round_result": False,
             },
             test_output=[
-                (
-                    "result",
-                    MathsResult(
-                        result=15.0, explanation="Added 10.0 and 5.0 to get 15.0"
-                    ),
-                ),
+                ("result", 15.0),
             ],
         )
 
@@ -76,14 +63,14 @@ class MathsBlock(Block):
         b = input_data.b
 
         operations = {
-            Operation.ADD: (operator.add, "Added"),
-            Operation.SUBTRACT: (operator.sub, "Subtracted"),
-            Operation.MULTIPLY: (operator.mul, "Multiplied"),
-            Operation.DIVIDE: (operator.truediv, "Divided"),
-            Operation.POWER: (operator.pow, "Raised"),
+            Operation.ADD: operator.add,
+            Operation.SUBTRACT: operator.sub,
+            Operation.MULTIPLY: operator.mul,
+            Operation.DIVIDE: operator.truediv,
+            Operation.POWER: operator.pow,
         }
 
-        op_func, op_word = operations[operation]
+        op_func = operations[operation]
 
         try:
             if operation == Operation.DIVIDE and b == 0:
@@ -91,28 +78,15 @@ class MathsBlock(Block):
 
             result = op_func(a, b)
 
-            if operation == Operation.POWER:
-                explanation = f"{op_word} {a} to the power of {b} to get {result}"
-            elif operation == Operation.DIVIDE:
-                explanation = f"{op_word} {a} by {b} to get {result}"
-            else:
-                explanation = f"{op_word} {a} and {b} to get {result}"
-
             if input_data.round_result:
                 result = round(result)
-                explanation += " (rounded to the nearest whole number)"
 
-            yield "result", MathsResult(result=result, explanation=explanation)
+            yield "result", result
 
         except ZeroDivisionError:
-            yield "result", MathsResult(
-                result=None, explanation="Cannot divide by zero"
-            )
+            yield "result", float('inf')  # Return infinity for division by zero
         except Exception as e:
-            yield "result", MathsResult(
-                result=None, explanation=f"An error occurred: {str(e)}"
-            )
-
+            yield "result", float('nan')  # Return NaN for other errors
 
 class CounterBlock(Block):
     class Input(BlockSchema):
