@@ -124,6 +124,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         test_input: BlockInput | list[BlockInput] | None = None,
         test_output: BlockData | list[BlockData] | None = None,
         test_mock: dict[str, Any] | None = None,
+        disabled: bool = False,
     ):
         """
         Initialize the block with the given schema.
@@ -132,11 +133,14 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             id: The unique identifier for the block, this value will be persisted in the
                 DB. So it should be a unique and constant across the application run.
                 Use the UUID format for the ID.
+            description: The description of the block, explaining what the block does.
+            contributors: The list of contributors who contributed to the block.
             input_schema: The schema, defined as a Pydantic model, for the input data.
             output_schema: The schema, defined as a Pydantic model, for the output data.
             test_input: The list or single sample input data for the block, for testing.
             test_output: The list or single expected output if the test_input is run.
             test_mock: function names on the block implementation to mock on test run.
+            disabled: If the block is disabled, it will not be available for execution.
         """
         self.id = id
         self.input_schema = input_schema
@@ -147,6 +151,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.description = description
         self.categories = categories or set()
         self.contributors = contributors or set()
+        self.disabled = disabled
 
     @abstractmethod
     def run(self, input_data: BlockSchemaInputType) -> BlockOutput:

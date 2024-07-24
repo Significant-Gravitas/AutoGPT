@@ -28,6 +28,9 @@ for cls in Block.__subclasses__():
 
     if block.id in AVAILABLE_BLOCKS:
         raise ValueError(f"Block ID {block.name} error: {block.id} is already in use")
+    
+    if block.disabled:
+        continue
 
     AVAILABLE_BLOCKS[block.id] = block
 
