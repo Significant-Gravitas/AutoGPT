@@ -29,6 +29,7 @@ class BlockInstallationBlock(Block):
             categories={BlockCategory.BASIC},
             input_schema=BlockInstallationBlock.Input,
             output_schema=BlockInstallationBlock.Output,
+            disabled=True,
         )
 
     def run(self, input_data: Input) -> BlockOutput:
