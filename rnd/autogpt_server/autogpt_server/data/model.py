@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, ClassVar, Optional, TypeVar
 
-from pydantic import Field, GetCoreSchemaHandler
+from pydantic import BaseModel, Field, GetCoreSchemaHandler
 from pydantic_core import (
     CoreSchema,
     PydanticUndefined,
@@ -116,3 +116,7 @@ def SchemaField(
         json_schema_extra=json_extra,
         **kwargs,
     )
+
+
+class ContributorDetails(BaseModel):
+    name: str = Field(title="Name", description="The name of the contributor.")
