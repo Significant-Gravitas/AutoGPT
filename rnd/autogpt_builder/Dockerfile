@@ -1,8 +1,8 @@
 # Base stage for both dev and prod
 FROM node:21-alpine AS base
 WORKDIR /app
-COPY autogpt_builder/package*.json ./
-RUN npm ci
+COPY autogpt_builder/package.json autogpt_builder/yarn.lock ./
+RUN yarn install --frozen-lockfile
 
 # Dev stage
 FROM base AS dev
