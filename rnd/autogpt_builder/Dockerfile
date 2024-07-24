@@ -21,7 +21,7 @@ FROM node:21-alpine AS prod
 ENV NODE_ENV=production
 WORKDIR /app
 
-COPY --from=build /app/package*.json ./
+COPY --from=build /app/package.json /app/yarn.lock ./
 RUN yarn install --frozen-lockfile
 
 COPY --from=build /app/.next ./.next
