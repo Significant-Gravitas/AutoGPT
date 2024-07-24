@@ -301,7 +301,7 @@ class Executor:
     @classmethod
     def wait_future(cls, future: Future):
         try:
-            future.result(timeout=1)
+            future.result(timeout=3)
         except TimeoutError:
             # Avoid being blocked by long-running node, by not waiting its completion.
             logger.warning("Waiting for node execution timed out.")
