@@ -1,4 +1,5 @@
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from autogpt_server.data.model import ContributorDetails
 
 
 class ReadCsvBlock(Block):
@@ -20,6 +21,8 @@ class ReadCsvBlock(Block):
             id="acf7625e-d2cb-4941-bfeb-2819fc6fc015",
             input_schema=ReadCsvBlock.Input,
             output_schema=ReadCsvBlock.Output,
+            contributors=[ContributorDetails(name="Nicholas Tindle")],
+            categories={BlockCategory.TEXT},
             test_input={
                 "contents": "a, b, c\n1,2,3\n4,5,6",
             },
