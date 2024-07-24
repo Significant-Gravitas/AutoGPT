@@ -151,7 +151,7 @@ jobs:
       DB_PORT: 5432
       RUN_ENV: local
       PORT: 8080
-      DATABASE_URL: ${{ matrix.db-platform == 'postgres' && format('postgresql://{0}:{1}@localhost:5432/{2}', secrets.DB_USER, secrets.DB_PASS, secrets.DB_NAME) || 'file:./dev.db' }}
+      DATABASE_URL: postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASS }}@localhost:5432/${{ secrets.DB_NAME }}
 
       # - name: Upload coverage reports to Codecov
       #   uses: codecov/codecov-action@v4
