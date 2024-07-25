@@ -324,8 +324,11 @@ class Executor:
         try:
             future.result(timeout=3)
         except TimeoutError:
+            logger.warning(">>>>>>>>>>>>>>> Timeout, skip waiting for future.")
             # Avoid being blocked by long-running node, by not waiting its completion.
             pass
+        except Exception as e:
+            logger.exception(f">>>>>>>>>>>>>>> Error waiting for future: {e}")
 
 
 class ExecutionManager(AppService):
