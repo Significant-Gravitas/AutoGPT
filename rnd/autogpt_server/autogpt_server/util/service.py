@@ -33,7 +33,7 @@ class PyroNameServer(AppProcess):
     def run(self):
         try:
             print("Starting NameServer loop")
-            nameserver.start_ns_loop()
+            nameserver.start_ns_loop(host="0.0.0.0", port=9090)
         except KeyboardInterrupt:
             print("Shutting down NameServer")
 
@@ -77,8 +77,8 @@ class AppService(AppProcess):
 
     @conn_retry
     def __start_pyro(self):
-        daemon = pyro.Daemon()
-        ns = pyro.locate_ns()
+        daemon = pyro.Daemon(host="0.0.0.0")
+        ns = pyro.locate_ns(host="0.0.0.0", port=9090)
         uri = daemon.register(self)
         ns.register(self.service_name, uri)
         logger.warning(f"Service [{self.service_name}] Ready. Object URI = {uri}")

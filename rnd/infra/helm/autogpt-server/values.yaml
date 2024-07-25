@@ -1,6 +1,6 @@
 # base values, environment specific variables should be specified/overwritten in environment values
 
-replicaCount: 2
+replicaCount: 1
 
 image:
   repository: us-east1-docker.pkg.dev/agpt-dev/agpt-server-dev/agpt-server-dev
@@ -74,3 +74,14 @@ tolerations: []
 affinity: {}
 
 domain: ""
+
+cloudSqlProxy:
+  image:
+    repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
+    tag: 2.11.4
+  instanceConnectionName: ""
+  port: 5432
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "1"

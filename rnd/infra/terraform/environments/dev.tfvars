@@ -43,4 +43,13 @@ role_bindings = {
   "roles/iam.workloadIdentityUser" = [
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
   ]
+  "roles/compute.networkUser" = [
+    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
+  ],
+  "roles/container.hostServiceAgentUser" = [
+    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
+  ]
 }
+
+pods_ip_cidr_range     = "10.1.0.0/16"
+services_ip_cidr_range = "10.2.0.0/20"
