@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from concurrent.futures import Future, ProcessPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor, TimeoutError
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 
@@ -307,12 +307,8 @@ class Executor:
         try:
             future.result(timeout=3)
         except TimeoutError:
-            logger.warning("DEBUG >>>>>>>>>>>>>>> Timeout, skip waiting for future.")
             # Avoid being blocked by long-running node, by not waiting its completion.
             pass
-        except Exception as e:
-            logger.exception(f"DEBUG >>>>>>>>>>>>>>> Error waiting for future: {e}")
-            raise e
 
 
 class ExecutionManager(AppService):
