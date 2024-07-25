@@ -75,6 +75,14 @@ yarn install
 
 Once you have installed the dependencies, you can proceed to the next step.
 
+### Setting up the database
+
+In order to setup the database, you need to run the following command, in the same terminal you ran the `poetry install` command:
+
+```bash
+poetry run prisma migrate deploy
+```
+
 ### Running the server
 
 To run the server, you can run the following command in the same terminal you ran the `poetry install` command:
