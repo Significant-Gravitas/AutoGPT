@@ -1,16 +1,16 @@
-import React, { useState, useEffect, FC, memo, useRef } from 'react';
+import React, { useState, useEffect, FC, memo } from 'react';
 import { NodeProps } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './customnode.css';
 import InputModalComponent from './InputModalComponent';
 import OutputModalComponent from './OutputModalComponent';
 import { BlockSchema } from '@/lib/types';
-import { beautifyString } from '@/lib/utils';
+import { beautifyString, setNestedProperty } from '@/lib/utils';
 import { Switch } from "@/components/ui/switch"
 import NodeHandle from './NodeHandle';
 import NodeInputField from './NodeInputField';
 
-type CustomNodeData = {
+export type CustomNodeData = {
   blockType: string;
   title: string;
   inputSchema: BlockSchema;
@@ -21,6 +21,10 @@ type CustomNodeData = {
   isOutputOpen: boolean;
   status?: string;
   output_data?: any;
+  block_id: string;
+  backend_id?: string;
+  errors?: { [key: string]: string | null };
+  setErrors: (errors: { [key: string]: string | null }) => void;
 };
 
 const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
@@ -29,9 +33,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [modalValue, setModalValue] = useState<string>('');
-  const [errors, setErrors] = useState<{ [key: string]: string | null }>({});
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
-  const outputDataRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (data.output_data || data.status) {
@@ -78,13 +80,23 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     }
     current[keys[keys.length - 1]] = value;
 
+    // Remove key if value is incorrect
+    // Need to do this because otherwise schema validation 
+    // will fail for empty, constrained non-required fields
+    if (value === '' || value === null || value === undefined) {
+      delete current[keys[keys.length - 1]];
+    } else {
+      current[keys[keys.length - 1]] = value;
+    }
+
     console.log(`Updating hardcoded values for node ${id}:`, newValues);
     data.setHardcodedValues(newValues);
-    setErrors((prevErrors) => ({ ...prevErrors, [key]: null }));
+    // Remove error with the same key
+    setNestedProperty(data.errors, key, null);
+    data.setErrors({ ...data.errors });
   };
 
   const getValue = (key: string) => {
-    console.log(`Getting value for key: ${key}`);
     const keys = key.split('.');
     return keys.reduce((acc, k) => (acc && acc[k] !== undefined) ? acc[k] : '', data.hardcodedValues);
   };
@@ -122,28 +134,6 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     setActiveKey(null);
   };
 
-  const validateInputs = () => {
-    const newErrors: { [key: string]: string | null } = {};
-    const validateRecursive = (schema: any, parentKey: string = '') => {
-      Object.entries(schema.properties).forEach(([key, propSchema]: [string, any]) => {
-        const fullKey = parentKey ? `${parentKey}.${key}` : key;
-        const value = getValue(fullKey);
-
-        if (propSchema.type === 'object' && propSchema.properties) {
-          validateRecursive(propSchema, fullKey);
-        } else {
-          if (propSchema.required && !value) {
-            newErrors[fullKey] = `${fullKey} is required`;
-          }
-        }
-      });
-    };
-
-    validateRecursive(data.inputSchema);
-    setErrors(newErrors);
-    return Object.values(newErrors).every((error) => error === null);
-  };
-
   const handleOutputClick = () => {
     setIsOutputModalOpen(true);
     setModalValue(typeof data.output_data === 'object' ? JSON.stringify(data.output_data, null, 2) : data.output_data);
@@ -166,16 +156,16 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               const isRequired = data.inputSchema.required?.includes(key);
               return (isRequired || isAdvancedOpen) && (
                 <div key={key}>
-                  <NodeHandle keyName={key} isConnected={isHandleConnected(key)} schema={schema} side="left" />
+                  <NodeHandle keyName={key} isConnected={isHandleConnected(key)} isRequired={isRequired} schema={schema} side="left" />
                   {!isHandleConnected(key) &&
-                  <NodeInputField
-                    keyName={key}
-                    schema={schema}
-                    value={getValue(key)}
-                    handleInputClick={handleInputClick}
-                    handleInputChange={handleInputChange}
-                    errors={errors}
-                  />}
+                    <NodeInputField
+                      keyName={key}
+                      schema={schema}
+                      value={getValue(key)}
+                      handleInputClick={handleInputClick}
+                      handleInputChange={handleInputChange}
+                      errors={data.errors?.[key]}
+                    />}
                 </div>
               );
             })}
@@ -196,9 +186,9 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               const outputText = typeof data.output_data === 'object'
                 ? JSON.stringify(data.output_data)
                 : data.output_data;
-              
+
               if (!outputText) return 'No output data';
-              
+
               return outputText.length > 100
                 ? `${outputText.slice(0, 100)}... Press To Read More`
                 : outputText;

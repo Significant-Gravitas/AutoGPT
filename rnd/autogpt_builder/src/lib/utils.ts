@@ -119,3 +119,18 @@ export function exportAsJSONFile(obj: object, filename: string): void {
   // Clean up
   URL.revokeObjectURL(url);
 }
+
+export function setNestedProperty(obj: any, path: string, value: any) {
+  const keys = path.split(/[\/.]/); // Split by / or .
+  let current = obj;
+  while (keys.length > 1) {
+    const key = keys.shift();
+    if (key) {
+      if (!current[key]) {
+        current[key] = {};
+      }
+      current = current[key];
+    }
+  }
+  current[keys[0]] = value;
+}

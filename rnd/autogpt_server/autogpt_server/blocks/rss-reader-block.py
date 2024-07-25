@@ -32,6 +32,7 @@ class RSSReaderBlock(Block):
         polling_rate: int = SchemaField(
             description="The number of seconds to wait between polling attempts.",
             placeholder="300",
+            gt=0,
         )
         run_continuously: bool = SchemaField(
             description="Whether to run the block continuously or just once.",
