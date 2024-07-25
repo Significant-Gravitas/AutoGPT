@@ -145,6 +145,9 @@ def enqueue_next_nodes(
             logger.error(f"{prefix} Error, next node {next_node_id} not found.")
             return
 
+        # Upserting execution input includes reading the existing input pins in the node
+        # which then either updating the existing execution input or creating a new one.
+        # While reading, we should avoid any other process to add input to the same node.
         with synchronized(api_client, ("upsert_input", next_node_id, graph_exec_id)):
             next_node_exec_id = wait(
                 upsert_execution_input(
