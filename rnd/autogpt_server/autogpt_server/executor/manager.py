@@ -108,6 +108,15 @@ def execute_node(
         raise e
 
 
+@contextmanager
+def synchronized(api_client: "AgentServer", key: Any):
+    api_client.acquire_lock(key)
+    try:
+        yield
+    finally:
+        api_client.release_lock(key)
+
+
 def enqueue_next_nodes(
     api_client: "AgentServer",
     loop: asyncio.AbstractEventLoop,
@@ -118,14 +127,6 @@ def enqueue_next_nodes(
 ) -> list[NodeExecution]:
     def wait(f: Coroutine[T, Any, T]) -> T:
         return loop.run_until_complete(f)
-
-    @contextmanager
-    def synchronized(key: Any):
-        api_client.acquire_lock(key)
-        try:
-            yield
-        finally:
-            api_client.release_lock(key)
 
     def execution_update(node_exec_id: str, status: ExecutionStatus):
         api_client.update_execution_status(node_exec_id, status)
@@ -144,7 +145,7 @@ def enqueue_next_nodes(
             logger.error(f"{prefix} Error, next node {next_node_id} not found.")
             return
 
-        with synchronized(("upsert_execution_input", next_node_id, graph_exec_id)):
+        with synchronized(api_client, ("upsert_input", next_node_id, graph_exec_id)):
             next_node_exec_id = wait(
                 upsert_execution_input(
                     node_id=next_node_id,
