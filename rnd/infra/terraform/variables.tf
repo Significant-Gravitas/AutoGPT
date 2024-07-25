@@ -68,3 +68,9 @@ variable "enable_autopilot" {
   type        = bool
   default     = false
 }
+
+variable "static_ip_names" {
+  description = "List of custom names for static IPs"
+  type        = list(string)
+  default     = ["ip-1", "ip-2", "ip-3"]
+}
