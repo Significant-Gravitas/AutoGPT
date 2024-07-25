@@ -98,7 +98,6 @@ def execute_node(
                 graph_exec_id=graph_exec_id,
                 prefix=prefix,
             ):
-                logger.warning(f"DEBUG--> yield execution: {execution}")
                 yield execution
     except Exception as e:
         error_msg = f"{e.__class__.__name__}: {e}"
@@ -250,11 +249,10 @@ class Executor:
         try:
             logger.warning(f"{prefix} Start node execution")
             for execution in execute_node(cls.loop, cls.agent_server_client, data):
-                logger.warning(f"DEBUG--> q.add(execution): {execution}")
                 q.add(execution)
             logger.warning(f"{prefix} Finished node execution")
         except Exception as e:
-            logger.exception(f"{prefix} Error: {e}")
+            logger.exception(f"{prefix} Failed node execution: {e}")
 
     @classmethod
     def on_graph_executor_start(cls):
@@ -267,55 +265,40 @@ class Executor:
 
     @classmethod
     def on_graph_execution(cls, graph_data: GraphExecution):
-        prefix = "[MAIN]-- " + get_log_prefix(graph_data.graph_exec_id, "*")
+        prefix = get_log_prefix(graph_data.graph_exec_id, "*")
         logger.warning(f"{prefix} Start graph execution")
 
-        queue = ExecutionQueue[NodeExecution]()
-        for node_exec in graph_data.start_node_execs:
-            queue.add(node_exec)
+        try:
+            queue = ExecutionQueue[NodeExecution]()
+            for node_exec in graph_data.start_node_execs:
+                queue.add(node_exec)
 
-        futures: dict[str, Future] = {}
-        while not queue.empty():
-            execution = queue.get()
+            futures: dict[str, Future] = {}
+            while not queue.empty():
+                execution = queue.get()
 
-            # Avoid parallel execution of the same node.
-            if execution.node_id in futures and not futures[execution.node_id].done():
-                logger.warning(
-                    f"DEBUGW --> Waiting for {execution.node_id} to complete."
+                # Avoid parallel execution of the same node.
+                fut = futures.get(execution.node_id)
+                if fut and not fut.done():
+                    cls.wait_future(fut)
+                    logger.warning(f"{prefix} Re-enqueueing {execution.node_id}")
+                    queue.add(execution)
+                    continue
+
+                futures[execution.node_id] = cls.executor.submit(
+                    cls.on_node_execution, queue, execution
                 )
-                cls.wait_future(futures[execution.node_id])
-                if futures[execution.node_id].done():
-                    logger.warning(f"DEBUGW --> wait {execution.node_id} completed!")
-                else:
-                    logger.warning(f"DEBUGW --> wait {execution.node_id} ignored!")
-                logger.warning(f"{prefix} Re-enqueueing {execution.node_id}")
-                queue.add(execution)
-                continue
 
-            futures[execution.node_id] = cls.executor.submit(
-                cls.on_node_execution, queue, execution
-            )
-            logger.warning(f"DEBUG--> Done processing: {execution}")
+                # Avoid terminating graph execution when some nodes are still running.
+                while queue.empty() and futures:
+                    for node_id, future in list(futures.items()):
+                        if future.done():
+                            del futures[node_id]
+                        elif queue.empty():
+                            cls.wait_future(future)
 
-            # Avoid terminating graph execution when some nodes are still running.
-            while queue.empty() and futures:
-                logger.warning(f"DEBUG--> queue empty, f: {futures}")
-                for node_id, future in list(futures.items()):
-                    if future.done():
-                        logger.warning(f"{prefix} Node {node_id} completed!")
-                        del futures[node_id]
-                        logger.warning(f"{prefix} Deleting Node {node_id} completed!")
-                    elif queue.empty():
-                        logger.warning(f"{prefix} Waiting for {node_id} to complete.")
-                        cls.wait_future(future)
-                        if futures[execution.node_id].done():
-                            logger.warning(
-                                f"DEBUG --> wait {execution.node_id} completed!"
-                            )
-                        else:
-                            logger.warning(
-                                f"DEBUG --> wait {execution.node_id} ignored!"
-                            )
+        except Exception as e:
+            logger.exception(f"{prefix} Failed graph execution: {e}")
 
         logger.warning(f"{prefix} Finished graph execution")
 
@@ -324,11 +307,12 @@ class Executor:
         try:
             future.result(timeout=3)
         except TimeoutError:
-            logger.warning(">>>>>>>>>>>>>>> Timeout, skip waiting for future.")
+            logger.warning("DEBUG >>>>>>>>>>>>>>> Timeout, skip waiting for future.")
             # Avoid being blocked by long-running node, by not waiting its completion.
             pass
         except Exception as e:
-            logger.exception(f">>>>>>>>>>>>>>> Error waiting for future: {e}")
+            logger.exception(f"DEBUG >>>>>>>>>>>>>>> Error waiting for future: {e}")
+            raise e
 
 
 class ExecutionManager(AppService):
