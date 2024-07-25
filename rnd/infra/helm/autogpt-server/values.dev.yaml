@@ -3,7 +3,7 @@
 image:
   repository: us-east1-docker.pkg.dev/agpt-dev/agpt-server-dev/agpt-server-dev
   pullPolicy: IfNotPresent
-  tag: "fe3d2a9"
+  tag: "latest"
 
 serviceAccount:
   annotations:
