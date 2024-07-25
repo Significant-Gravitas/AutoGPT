@@ -98,6 +98,7 @@ def execute_node(
                 graph_exec_id=graph_exec_id,
                 prefix=prefix,
             ):
+                logger.warning(f"DEBUG--> yield execution: {execution}")
                 yield execution
     except Exception as e:
         error_msg = f"{e.__class__.__name__}: {e}"
@@ -249,6 +250,7 @@ class Executor:
         try:
             logger.warning(f"{prefix} Start node execution")
             for execution in execute_node(cls.loop, cls.agent_server_client, data):
+                logger.warning(f"DEBUG--> q.add(execution): {execution}")
                 q.add(execution)
             logger.warning(f"{prefix} Finished node execution")
         except Exception as e:
@@ -286,9 +288,11 @@ class Executor:
             futures[execution.node_id] = cls.executor.submit(
                 cls.on_node_execution, queue, execution
             )
+            logger.warning(f"DEBUG--> Done processing: {execution}")
 
             # Avoid terminating graph execution when some nodes are still running.
             while queue.empty() and futures:
+                logger.warning(f"DEBUG--> queue empty, f: {futures}")
                 for node_id, future in list(futures.items()):
                     if future.done():
                         logger.warning(f"{prefix} Node {node_id} completed!")
