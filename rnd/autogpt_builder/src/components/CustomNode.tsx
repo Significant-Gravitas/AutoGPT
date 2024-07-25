@@ -1,14 +1,14 @@
-import React, { useState, useEffect, FC, memo } from 'react';
+import React, { useState, useEffect, FC, memo, useRef } from 'react';
 import { NodeProps } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './customnode.css';
-import ModalComponent from './ModalComponent';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
+import InputModalComponent from './InputModalComponent';
+import OutputModalComponent from './OutputModalComponent';
 import { BlockSchema } from '@/lib/types';
 import { beautifyString } from '@/lib/utils';
 import { Switch } from "@/components/ui/switch"
 import NodeHandle from './NodeHandle';
+import NodeInputField from './NodeInputField';
 
 type CustomNodeData = {
   blockType: string;
@@ -26,13 +26,12 @@ type CustomNodeData = {
 const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [isOutputOpen, setIsOutputOpen] = useState(data.isOutputOpen || false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
-  const [keyValuePairs, setKeyValuePairs] = useState<{ key: string, value: string }[]>([]);
-  const [newKey, setNewKey] = useState<string>('');
-  const [newValue, setNewValue] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [modalValue, setModalValue] = useState<string>('');
   const [errors, setErrors] = useState<{ [key: string]: string | null }>({});
+  const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
+  const outputDataRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (data.output_data || data.status) {
@@ -85,6 +84,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   };
 
   const getValue = (key: string) => {
+    console.log(`Getting value for key: ${key}`);
     const keys = key.split('.');
     return keys.reduce((acc, k) => (acc && acc[k] !== undefined) ? acc[k] : '', data.hardcodedValues);
   };
@@ -101,18 +101,8 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     });
   };
 
-  const handleAddProperty = () => {
-    if (newKey && newValue) {
-      const newPairs = [...keyValuePairs, { key: newKey, value: newValue }];
-      setKeyValuePairs(newPairs);
-      setNewKey('');
-      setNewValue('');
-      const expectedFormat = newPairs.reduce((acc, pair) => ({ ...acc, [pair.key]: pair.value }), {});
-      handleInputChange('expected_format', expectedFormat);
-    }
-  };
-
   const handleInputClick = (key: string) => {
+    console.log(`Opening modal for key: ${key}`);
     setActiveKey(key);
     const value = getValue(key);
     setModalValue(typeof value === 'object' ? JSON.stringify(value, null, 2) : value);
@@ -130,252 +120,6 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     }
     setIsModalOpen(false);
     setActiveKey(null);
-  };
-
-  const renderInputField = (key: string, schema: any, parentKey: string = '', displayKey: string = ''): JSX.Element => {
-    const fullKey = parentKey ? `${parentKey}.${key}` : key;
-    const error = errors[fullKey];
-    const value = getValue(fullKey);
-    if (displayKey === '') {
-      displayKey = key;
-    }
-
-    if (isHandleConnected(fullKey)) {
-      return <></>;
-    }
-
-    const renderClickableInput = (value: string | null = null, placeholder: string = "", secret: boolean = false) => {
-
-      // if secret is true, then the input field will be a password field if the value is not null
-      return secret ? (
-        <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
-          {value ? <i className="text-gray-500">********</i> : <i className="text-gray-500">{placeholder}</i>}
-        </div>
-      ) : (
-        <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
-          {value || <i className="text-gray-500">{placeholder}</i>}
-        </div>
-      )
-    };
-
-    if (schema.type === 'object' && schema.properties) {
-      return (
-        <div key={fullKey} className="object-input">
-          <strong>{displayKey}:</strong>
-          {Object.entries(schema.properties).map(([propKey, propSchema]: [string, any]) => (
-            <div key={`${fullKey}.${propKey}`} className="nested-input">
-              {renderInputField(propKey, propSchema, fullKey, propSchema.title || beautifyString(propKey))}
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    if (schema.type === 'object' && schema.additionalProperties) {
-      const objectValue = value || {};
-      return (
-        <div key={fullKey} className="object-input">
-          <strong>{displayKey}:</strong>
-          {Object.entries(objectValue).map(([propKey, propValue]: [string, any]) => (
-            <div key={`${fullKey}.${propKey}`} className="nested-input">
-              <div className="clickable-input" onClick={() => handleInputClick(`${fullKey}.${propKey}`)}>
-                {beautifyString(propKey)}: {typeof propValue === 'object' ? JSON.stringify(propValue, null, 2) : propValue}
-              </div>
-              <Button onClick={() => handleInputChange(`${fullKey}.${propKey}`, undefined)} className="array-item-remove">
-                &times;
-              </Button>
-            </div>
-          ))}
-          {key === 'expected_format' && (
-            <div className="nested-input">
-              {keyValuePairs.map((pair, index) => (
-                <div key={index} className="key-value-input">
-                  <Input
-                    type="text"
-                    placeholder="Key"
-                    value={beautifyString(pair.key)}
-                    onChange={(e) => {
-                      const newPairs = [...keyValuePairs];
-                      newPairs[index].key = e.target.value;
-                      setKeyValuePairs(newPairs);
-                      const expectedFormat = newPairs.reduce((acc, pair) => ({ ...acc, [pair.key]: pair.value }), {});
-                      handleInputChange('expected_format', expectedFormat);
-                    }}
-                  />
-                  <Input
-                    type="text"
-                    placeholder="Value"
-                    value={beautifyString(pair.value)}
-                    onChange={(e) => {
-                      const newPairs = [...keyValuePairs];
-                      newPairs[index].value = e.target.value;
-                      setKeyValuePairs(newPairs);
-                      const expectedFormat = newPairs.reduce((acc, pair) => ({ ...acc, [pair.key]: pair.value }), {});
-                      handleInputChange('expected_format', expectedFormat);
-                    }}
-                  />
-                </div>
-              ))}
-              <div className="key-value-input">
-                <Input
-                  type="text"
-                  placeholder="Key"
-                  value={newKey}
-                  onChange={(e) => setNewKey(e.target.value)}
-                />
-                <Input
-                  type="text"
-                  placeholder="Value"
-                  value={newValue}
-                  onChange={(e) => setNewValue(e.target.value)}
-                />
-              </div>
-              <Button onClick={handleAddProperty}>Add Property</Button>
-            </div>
-          )}
-          {error && <span className="error-message">{error}</span>}
-        </div>
-      );
-    }
-
-    if (schema.anyOf) {
-      const types = schema.anyOf.map((s: any) => s.type);
-      if (types.includes('string') && types.includes('null')) {
-        return (
-          <div key={fullKey} className="input-container">
-            {renderClickableInput(value, schema.placeholder || `Enter ${displayKey} (optional)`)}
-            {error && <span className="error-message">{error}</span>}
-          </div>
-        );
-      }
-    }
-
-    if (schema.allOf) {
-      return (
-        <div key={fullKey} className="object-input">
-          <strong>{displayKey}:</strong>
-          {schema.allOf[0].properties && Object.entries(schema.allOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
-            <div key={`${fullKey}.${propKey}`} className="nested-input">
-              {renderInputField(propKey, propSchema, fullKey, propSchema.title || beautifyString(propKey))}
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    if (schema.oneOf) {
-      return (
-        <div key={fullKey} className="object-input">
-          <strong>{displayKey}:</strong>
-          {schema.oneOf[0].properties && Object.entries(schema.oneOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
-            <div key={`${fullKey}.${propKey}`} className="nested-input">
-              {renderInputField(propKey, propSchema, fullKey, propSchema.title || beautifyString(propKey))}
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    switch (schema.type) {
-      case 'string':
-        if (schema.enum) {
-
-          return (
-            <div key={fullKey} className="input-container">
-              <select
-                value={value || ''}
-                onChange={(e) => handleInputChange(fullKey, e.target.value)}
-                className="select-input"
-              >
-                <option value="">Select {displayKey}</option>
-                {schema.enum.map((option: string) => (
-                  <option key={option} value={option}>
-                    {beautifyString(option)}
-                  </option>
-                ))}
-              </select>
-              {error && <span className="error-message">{error}</span>}
-            </div>
-          )
-        }
-
-        else if (schema.secret) {
-          return (<div key={fullKey} className="input-container">
-            {renderClickableInput(value, schema.placeholder || `Enter ${displayKey}`, true)}
-            {error && <span className="error-message">{error}</span>}
-          </div>)
-
-        }
-        else {
-          return (
-            <div key={fullKey} className="input-container">
-              {renderClickableInput(value, schema.placeholder || `Enter ${displayKey}`)}
-              {error && <span className="error-message">{error}</span>}
-            </div>
-          );
-        }
-      case 'boolean':
-        return (
-          <div key={fullKey} className="input-container">
-            <select
-              value={value === undefined ? '' : value.toString()}
-              onChange={(e) => handleInputChange(fullKey, e.target.value === 'true')}
-              className="select-input"
-            >
-              <option value="">Select {displayKey}</option>
-              <option value="true">True</option>
-              <option value="false">False</option>
-            </select>
-            {error && <span className="error-message">{error}</span>}
-          </div>
-        );
-      case 'number':
-      case 'integer':
-        return (
-          <div key={fullKey} className="input-container">
-            <input
-              type="number"
-              value={value || ''}
-              onChange={(e) => handleInputChange(fullKey, parseFloat(e.target.value))}
-              className="number-input"
-            />
-            {error && <span className="error-message">{error}</span>}
-          </div>
-        );
-      case 'array':
-        if (schema.items && schema.items.type === 'string') {
-          const arrayValues = value || [];
-          return (
-            <div key={fullKey} className="input-container">
-              {arrayValues.map((item: string, index: number) => (
-                <div key={`${fullKey}.${index}`} className="array-item-container">
-                  <input
-                    type="text"
-                    value={item}
-                    onChange={(e) => handleInputChange(`${fullKey}.${index}`, e.target.value)}
-                    className="array-item-input"
-                  />
-                  <Button onClick={() => handleInputChange(`${fullKey}.${index}`, '')} className="array-item-remove">
-                    &times;
-                  </Button>
-                </div>
-              ))}
-              <Button onClick={() => handleInputChange(fullKey, [...arrayValues, ''])} className="array-item-add">
-                Add Item
-              </Button>
-              {error && <span className="error-message">{error}</span>}
-            </div>
-          );
-        }
-        return null;
-      default:
-        return (
-          <div key={fullKey} className="input-container">
-            {renderClickableInput(value, schema.placeholder || `Enter ${beautifyString(displayKey)} (Complex)`)}
-            {error && <span className="error-message">{error}</span>}
-          </div>
-        );
-    }
   };
 
   const validateInputs = () => {
@@ -400,6 +144,16 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     return Object.values(newErrors).every((error) => error === null);
   };
 
+  const handleOutputClick = () => {
+    setIsOutputModalOpen(true);
+    setModalValue(typeof data.output_data === 'object' ? JSON.stringify(data.output_data, null, 2) : data.output_data);
+  };
+
+  const isTextTruncated = (element: HTMLElement | null): boolean => {
+    if (!element) return false;
+    return element.scrollHeight > element.clientHeight || element.scrollWidth > element.clientWidth;
+  };
+
   return (
     <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}>
       <div className="mb-2">
@@ -413,7 +167,15 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               return (isRequired || isAdvancedOpen) && (
                 <div key={key}>
                   <NodeHandle keyName={key} isConnected={isHandleConnected(key)} schema={schema} side="left" />
-                  {renderInputField(key, schema, '', schema.title || beautifyString(key))}
+                  {!isHandleConnected(key) &&
+                  <NodeInputField
+                    keyName={key}
+                    schema={schema}
+                    value={getValue(key)}
+                    handleInputClick={handleInputClick}
+                    handleInputChange={handleInputChange}
+                    errors={errors}
+                  />}
                 </div>
               );
             })}
@@ -423,16 +185,24 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         </div>
       </div>
       {isOutputOpen && (
-        <div className="node-output">
+        <div className="node-output" onClick={handleOutputClick}>
           <p>
             <strong>Status:</strong>{' '}
             {typeof data.status === 'object' ? JSON.stringify(data.status) : data.status || 'N/A'}
           </p>
           <p>
             <strong>Output Data:</strong>{' '}
-            {typeof data.output_data === 'object'
-              ? JSON.stringify(data.output_data)
-              : data.output_data || 'N/A'}
+            {(() => {
+              const outputText = typeof data.output_data === 'object'
+                ? JSON.stringify(data.output_data)
+                : data.output_data;
+              
+              if (!outputText) return 'No output data';
+              
+              return outputText.length > 100
+                ? `${outputText.slice(0, 100)}... Press To Read More`
+                : outputText;
+            })()}
           </p>
         </div>
       )}
@@ -446,12 +216,17 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </>
         )}
       </div>
-      <ModalComponent
+      <InputModalComponent
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={handleModalSave}
         value={modalValue}
         key={activeKey}
+      />
+      <OutputModalComponent
+        isOpen={isOutputModalOpen}
+        onClose={() => setIsOutputModalOpen(false)}
+        value={modalValue}
       />
     </div>
   );

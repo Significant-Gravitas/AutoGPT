@@ -33,6 +33,7 @@ openai = "^1.35.7"
 jsonref = "^1.1.0"
 groq = "^0.8.0"
 anthropic = "^0.25.1"
+youtube-transcript-api = "^0.6.2"
 
 ollama = "^0.3.0"
 feedparser = "^6.0.11"
