@@ -2,12 +2,10 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import ReactFlow, {
   addEdge,
-  applyNodeChanges,
-  applyEdgeChanges,
+  useNodesState,
+  useEdgesState,
   Node,
   Edge,
-  OnNodesChange,
-  OnEdgesChange,
   OnConnect,
   NodeTypes,
   Connection,
@@ -76,8 +74,8 @@ const FlowEditor: React.FC<{
   template?: boolean;
   className?: string;
 }> = ({ flowID, template, className }) => {
-  const [nodes, setNodes] = useState<Node<CustomNodeData>[]>([]);
-  const [edges, setEdges] = useState<Edge<CustomEdgeData>[]>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<CustomNodeData>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<CustomEdgeData>([]);
   const [nodeId, setNodeId] = useState<number>(1);
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -123,16 +121,6 @@ const FlowEditor: React.FC<{
 
   const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
   const edgeTypes: EdgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
-
-  const onNodesChange: OnNodesChange = useCallback(
-    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
-    []
-  );
-
-  const onEdgesChange: OnEdgesChange = useCallback(
-    (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
-    []
-  );
 
   const getOutputType = (id: string, handleId: string) => {
     const node = nodes.find((node) => node.id === id);
@@ -251,7 +239,7 @@ const FlowEditor: React.FC<{
 
     setNodes(graph.nodes.map(node => {
       const block = availableNodes.find(block => block.id === node.block_id)!;
-      const newNode = {
+      const newNode: Node<CustomNodeData> = {
         id: node.id,
         type: 'custom',
         position: { x: node.metadata.position.x, y: node.metadata.position.y },
@@ -268,7 +256,14 @@ const FlowEditor: React.FC<{
               : node
             ));
           },
-          connections: [],
+          connections: graph.links
+            .filter(l => [l.source_id, l.sink_id].includes(node.id))
+            .map(link => ({
+              source: link.source_id,
+              sourceHandle: link.source_name,
+              target: link.sink_id,
+              targetHandle: link.sink_name,
+            })),
           isOutputOpen: false,
         },
       };
@@ -479,25 +474,43 @@ const FlowEditor: React.FC<{
       if (event.key === 'v' || event.key === 'V') {
         // Paste copied nodes
         if (copiedNodes.length > 0) {
-          const newNodes = copiedNodes.map((node, index) => ({
-            ...node,
-            id: (nodeId + index).toString(),
-            position: {
-              x: node.position.x + 20, // Offset pasted nodes
-              y: node.position.y + 20,
-            },
-            selected: true, // Select the new nodes
-          }));
+          const newNodes = copiedNodes.map((node, index) => {
+            const newNodeId = (nodeId + index).toString();
+            return {
+              ...node,
+              id: newNodeId,
+              position: {
+                x: node.position.x + 20, // Offset pasted nodes
+                y: node.position.y + 20,
+              },
+              data: {
+                ...node.data,
+                status: undefined, // Reset status
+                output_data: undefined, // Clear output data
+                setHardcodedValues: (values: { [key: string]: any }) => {
+                  setNodes((nds) => nds.map((n) =>
+                    n.id === newNodeId
+                      ? { ...n, data: { ...n.data, hardcodedValues: values } }
+                      : n
+                  ));
+                },
+              },
+            };
+          });
           const updatedNodes = nodes.map(node => ({ ...node, selected: false })); // Deselect old nodes
           setNodes([...updatedNodes, ...newNodes]);
           setNodeId(prevId => prevId + copiedNodes.length);
-          // Optionally, you can handle edges similarly
-          const newEdges = copiedEdges.map(edge => ({
-            ...edge,
-            id: `${edge.source}_${edge.sourceHandle}_${edge.target}_${edge.targetHandle}_${Date.now()}`,
-            source: (parseInt(edge.source) + copiedNodes.length).toString(),
-            target: (parseInt(edge.target) + copiedNodes.length).toString(),
-          }));
+
+          const newEdges = copiedEdges.map(edge => {
+            const newSourceId = newNodes.find(n => n.data.title === edge.source)?.id || edge.source;
+            const newTargetId = newNodes.find(n => n.data.title === edge.target)?.id || edge.target;
+            return {
+              ...edge,
+              id: `${newSourceId}_${edge.sourceHandle}_${newTargetId}_${edge.targetHandle}_${Date.now()}`,
+              source: newSourceId,
+              target: newTargetId,
+            };
+          });
           setEdges([...edges, ...newEdges]);
         }
       }
