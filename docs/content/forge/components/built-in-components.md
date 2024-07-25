@@ -155,11 +155,12 @@ Allows agent to search the web. Google credentials aren't required for DuckDuckG
 
 ### `WebSearchConfiguration`
 
-| Config variable                  | Details                                                                 | Type  | Default |
-| -------------------------------- | ----------------------------------------------------------------------- | ----- | ------- |
-| `google_api_key`                 | Google API key, *ENV:* `GOOGLE_API_KEY`                                 | `str` | `None`  |
-| `google_custom_search_engine_id` | Google Custom Search Engine ID, *ENV:* `GOOGLE_CUSTOM_SEARCH_ENGINE_ID` | `str` | `None`  |
-| `duckduckgo_max_attempts`        | Maximum number of attempts to search using DuckDuckGo                   | `int` | `3`     |
+| Config variable                  | Details                                                                 | Type                        | Default |
+| -------------------------------- | ----------------------------------------------------------------------- | --------------------------- | ------- |
+| `google_api_key`                 | Google API key, *ENV:* `GOOGLE_API_KEY`                                 | `str`                       | `None`  |
+| `google_custom_search_engine_id` | Google Custom Search Engine ID, *ENV:* `GOOGLE_CUSTOM_SEARCH_ENGINE_ID` | `str`                       | `None`  |
+| `duckduckgo_max_attempts`        | Maximum number of attempts to search using DuckDuckGo                   | `int`                       | `3`     |
+| `duckduckgo_backend`             | Backend to be used for DDG sdk                                          | `"api" \| "html" \| "lite"` | `"api"` |
 
 ### DirectiveProvider
 
@@ -183,6 +184,7 @@ Allows agent to read websites using Selenium.
 | `headless`                    | Run browser in headless mode                | `bool`                                        | `True`                                                                                                                       |
 | `user_agent`                  | User agent used by the browser              | `str`                                         | `"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"` |
 | `browse_spacy_language_model` | Spacy language model used for chunking text | `str`                                         | `"en_core_web_sm"`                                                                                                           |
+| `selenium_proxy`              | Http proxy to use with Selenium             | `str`                                         | `None`                                                                                                                       |
 
 ### DirectiveProvider
 
