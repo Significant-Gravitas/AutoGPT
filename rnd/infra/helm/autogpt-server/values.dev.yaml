@@ -11,7 +11,7 @@ serviceAccount:
   name: "dev-agpt-server-sa"
 
 service:
-  type: ClusterIP
+  type: LoadBalancer
   port: 80
   targetPort: 8000
 
@@ -38,3 +38,17 @@ resources:
     memory: 512Mi
 
 domain: "server.agpt.co"
+
+cloudSqlProxy:
+  image:
+    repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
+    tag: 2.11.4
+  instanceConnectionName: "agpt-dev:us-central1:agpt-server-dev"
+  port: 5432
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "1"
+
+env:
+  APP_ENV: "dev"

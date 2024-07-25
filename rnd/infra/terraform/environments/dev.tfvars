@@ -36,5 +36,11 @@ role_bindings = {
   ],
   "roles/cloudsql.editor" = [
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
+  ],
+  "roles/cloudsql.instanceUser" = [
+    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
+  ],
+  "roles/iam.workloadIdentityUser" = [
+    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
   ]
 }
