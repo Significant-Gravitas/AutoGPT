@@ -12,7 +12,7 @@ This guide will help you setup the server and builder for the project.
 We also offer this in video format. You can check it out [here](https://github.com/Significant-Gravitas/AutoGPT#how-to-get-started)
 
 !!! warning
-**DO NOT FOLLOW ANY OUTSIDE TUTORIALS AS THEY WILL LIKELY BE OUT OF DATE**
+    **DO NOT FOLLOW ANY OUTSIDE TUTORIALS AS THEY WILL LIKELY BE OUT OF DATE**
 
 ## Prerequisites
 
