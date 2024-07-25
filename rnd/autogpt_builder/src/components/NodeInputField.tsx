@@ -1,3 +1,4 @@
+import { Cross2Icon, PlusIcon } from "@radix-ui/react-icons";
 import { beautifyString } from "@/lib/utils";
 import { FC, useState } from "react";
 import { Button } from "./ui/button";
@@ -15,27 +16,25 @@ type BlockInputFieldProps = {
 
 const NodeInputField: FC<BlockInputFieldProps> =
   ({ keyName: key, schema, parentKey = '', value, handleInputClick, handleInputChange, errors }) => {
-    const [newKey, setNewKey] = useState<string>('');
-    const [newValue, setNewValue] = useState<string>('');
-    const [keyValuePairs, setKeyValuePairs] = useState<{ key: string, value: string }[]>([]);
-
     const fullKey = parentKey ? `${parentKey}.${key}` : key;
     const error = errors[fullKey];
     const displayKey = schema.title || beautifyString(key);
 
-    const handleAddProperty = () => {
-      if (newKey && newValue) {
-        const newPairs = [...keyValuePairs, { key: newKey, value: newValue }];
-        setKeyValuePairs(newPairs);
-        setNewKey('');
-        setNewValue('');
-        const expectedFormat = newPairs.reduce((acc, pair) => ({ ...acc, [pair.key]: pair.value }), {});
-        handleInputChange('expected_format', expectedFormat);
-      }
-    };
+    const [keyValuePairs, _setKeyValuePairs] = useState<{ key: string, value: string }[]>(
+      "additionalProperties" in schema && value
+        ? Object.entries(value).map(([key, value]) => ({ key: key, value: value}))
+        : []
+    );
+
+    function setKeyValuePairs(newKVPairs: typeof keyValuePairs): void {
+      _setKeyValuePairs(newKVPairs);
+      handleInputChange(
+        fullKey,
+        newKVPairs.reduce((obj, {key, value}) => ({ ...obj, [key]: value }), {})
+      );
+    }
 
     const renderClickableInput = (value: string | null = null, placeholder: string = "", secret: boolean = false) => {
-
       // if secret is true, then the input field will be a password field if the value is not null
       return secret ? (
         <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
@@ -70,67 +69,46 @@ const NodeInputField: FC<BlockInputFieldProps> =
     }
 
     if (schema.type === 'object' && schema.additionalProperties) {
-      const objectValue = value || {};
       return (
-        <div key={fullKey} className="object-input">
-          <strong>{displayKey}:</strong>
-          {Object.entries(objectValue).map(([propKey, propValue]: [string, any]) => (
-            <div key={`${fullKey}.${propKey}`} className="nested-input">
-              <div className="clickable-input" onClick={() => handleInputClick(`${fullKey}.${propKey}`)}>
-                {beautifyString(propKey)}: {typeof propValue === 'object' ? JSON.stringify(propValue, null, 2) : propValue}
-              </div>
-              <Button onClick={() => handleInputChange(`${fullKey}.${propKey}`, undefined)} className="array-item-remove">
-                &times;
-              </Button>
-            </div>
-          ))}
-          {key === 'expected_format' && (
-            <div className="nested-input">
-              {keyValuePairs.map((pair, index) => (
-                <div key={index} className="key-value-input">
-                  <Input
-                    type="text"
-                    placeholder="Key"
-                    value={beautifyString(pair.key)}
-                    onChange={(e) => {
-                      const newPairs = [...keyValuePairs];
-                      newPairs[index].key = e.target.value;
-                      setKeyValuePairs(newPairs);
-                      const expectedFormat = newPairs.reduce((acc, pair) => ({ ...acc, [pair.key]: pair.value }), {});
-                      handleInputChange('expected_format', expectedFormat);
-                    }}
-                  />
-                  <Input
-                    type="text"
-                    placeholder="Value"
-                    value={beautifyString(pair.value)}
-                    onChange={(e) => {
-                      const newPairs = [...keyValuePairs];
-                      newPairs[index].value = e.target.value;
-                      setKeyValuePairs(newPairs);
-                      const expectedFormat = newPairs.reduce((acc, pair) => ({ ...acc, [pair.key]: pair.value }), {});
-                      handleInputChange('expected_format', expectedFormat);
-                    }}
-                  />
-                </div>
-              ))}
-              <div className="key-value-input">
+        <div key={fullKey}>
+          <div>
+            {keyValuePairs.map(({ key, value }, index) => (
+              <div key={index} className="flex items-center w-[325px] space-x-2 mb-2">
                 <Input
                   type="text"
                   placeholder="Key"
-                  value={newKey}
-                  onChange={(e) => setNewKey(e.target.value)}
+                  value={key}
+                  onChange={(e) => setKeyValuePairs(
+                    keyValuePairs.toSpliced(index, 1, {
+                      key: e.target.value, value: value
+                    })
+                  )}
                 />
                 <Input
                   type="text"
                   placeholder="Value"
-                  value={newValue}
-                  onChange={(e) => setNewValue(e.target.value)}
+                  value={value}
+                  onChange={(e) => setKeyValuePairs(
+                    keyValuePairs.toSpliced(index, 1, {
+                      key: key, value: e.target.value
+                    })
+                  )}
                 />
+                <Button variant="ghost" className="px-2"
+                  onClick={() => setKeyValuePairs(keyValuePairs.toSpliced(index, 1))}
+                >
+                  <Cross2Icon />
+                </Button>
               </div>
-              <Button onClick={handleAddProperty}>Add Property</Button>
-            </div>
-          )}
+            ))}
+            <Button className="w-full"
+              onClick={() => setKeyValuePairs(
+                keyValuePairs.concat({ key: "", value: "" })
+              )}
+            >
+              <PlusIcon className="mr-2" /> Add Property
+            </Button>
+          </div>
           {error && <span className="error-message">{error}</span>}
         </div>
       );
