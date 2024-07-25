@@ -183,12 +183,6 @@ class AgentServer(AppService):
 
         app.add_exception_handler(500, self.handle_internal_error)  # type: ignore
 
-        app.mount(
-            path="/frontend",
-            app=StaticFiles(directory=get_frontend_path(), html=True),
-            name="example_files",
-        )
-
         app.include_router(router)
 
         @app.websocket("/ws")
