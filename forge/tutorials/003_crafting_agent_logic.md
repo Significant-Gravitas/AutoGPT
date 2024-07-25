@@ -1,6 +1,6 @@
 # AutoGPT Forge: Crafting Intelligent Agent Logic
 
-![Header](../../../docs/content/imgs/quickstart/t3_01.png)
+![Header](..%2F..%2F..%2Fdocs/content/imgs/quickstart/t3_01.png)
 **By Craig Swift & [Ryan Brandt](https://github.com/paperMoose)**
 
 Hey there! Ready for part 3 of our AutoGPT Forge tutorial series? If you missed the earlier parts, catch up here:
@@ -17,7 +17,7 @@ Make sure you've set up your project and created an agent as described in our in
 
 In the image below, you'll see my "SmartAgent" and the agent.py file inside the 'forge' folder. That's where we'll be adding our LLM-based logic. If you're unsure about the project structure or agent functions from our last guide, don't worry. We'll cover the basics as we go!
 
-![SmartAgent](../../../docs/content/imgs/quickstart/t3_02.png)
+![SmartAgent](..%2F..%2F..%2Fdocs/content/imgs/quickstart/t3_02.png)
 
 ---
 
@@ -125,7 +125,7 @@ Now that we've set this up, let's move to the next exciting part: The PromptEngi
 
 **The Art of Prompting**  
 
-![Prompting 101](../../../docs/content/imgs/quickstart/t3_03.png)
+![Prompting 101](..%2F..%2F..%2Fdocs/content/imgs/quickstart/t3_03.png)
 
 Prompting is like shaping messages for powerful language models like ChatGPT. Since these models respond to input details, creating the right prompt can be a challenge. That's where the **PromptEngine** comes in.
 
@@ -479,7 +479,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
 3. **Navigate to Benchmarking**
    - Look to the left, and you'll spot a trophy icon. Click it to enter the benchmarking arena.
   
-![Benchmarking page of the AutoGPT UI](../../../docs/content/imgs/quickstart/t3_04.png)
+![Benchmarking page of the AutoGPT UI](..%2F..%2F..%2Fdocs/content/imgs/quickstart/t3_04.png)
 
 4. **Select the 'WriteFile' Test**
    - Choose the 'WriteFile' test from the available options.
