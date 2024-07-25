@@ -1,0 +1,33 @@
+name: AutoGPT Builder Infra
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - '.github/workflows/autogpt-infra-ci.yml'
+      - 'rnd/infra/**'
+  pull_request:
+    paths:
+      - '.github/workflows/autogpt-infra-ci.yml'
+      - 'rnd/infra/**'
+
+defaults:
+  run:
+    shell: bash
+    working-directory: rnd/infra
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: TFLint
+        uses: pauloconnor/tflint-action@v0.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+            tflint_path: terraform/
+            tflint_recurse: true
+            tflint_changed_only: false
