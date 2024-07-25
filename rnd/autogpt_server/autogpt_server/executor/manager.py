@@ -267,7 +267,7 @@ class Executor:
 
     @classmethod
     def on_graph_execution(cls, graph_data: GraphExecution):
-        prefix = get_log_prefix(graph_data.graph_exec_id, "*")
+        prefix = "[MAIN]-- " + get_log_prefix(graph_data.graph_exec_id, "*")
         logger.warning(f"{prefix} Start graph execution")
 
         queue = ExecutionQueue[NodeExecution]()
@@ -280,7 +280,14 @@ class Executor:
 
             # Avoid parallel execution of the same node.
             if execution.node_id in futures and not futures[execution.node_id].done():
+                logger.warning(
+                    f"DEBUGW --> Waiting for {execution.node_id} to complete."
+                )
                 cls.wait_future(futures[execution.node_id])
+                if futures[execution.node_id].done():
+                    logger.warning(f"DEBUGW --> wait {execution.node_id} completed!")
+                else:
+                    logger.warning(f"DEBUGW --> wait {execution.node_id} ignored!")
                 logger.warning(f"{prefix} Re-enqueueing {execution.node_id}")
                 queue.add(execution)
                 continue
@@ -297,9 +304,18 @@ class Executor:
                     if future.done():
                         logger.warning(f"{prefix} Node {node_id} completed!")
                         del futures[node_id]
+                        logger.warning(f"{prefix} Deleting Node {node_id} completed!")
                     elif queue.empty():
                         logger.warning(f"{prefix} Waiting for {node_id} to complete.")
                         cls.wait_future(future)
+                        if futures[execution.node_id].done():
+                            logger.warning(
+                                f"DEBUG --> wait {execution.node_id} completed!"
+                            )
+                        else:
+                            logger.warning(
+                                f"DEBUG --> wait {execution.node_id} ignored!"
+                            )
 
         logger.warning(f"{prefix} Finished graph execution")
 
