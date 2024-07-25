@@ -13,9 +13,9 @@ import ReactFlow, {
   MarkerType,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import CustomNode from './CustomNode';
+import CustomNode, { CustomNodeData } from './CustomNode';
 import './flow.css';
-import AutoGPTServerAPI, { Block, Graph, ObjectSchema } from '@/lib/autogpt-server-api';
+import AutoGPTServerAPI, { Block, BlockIOSchema, Graph } from '@/lib/autogpt-server-api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ChevronRight, ChevronLeft } from "lucide-react";
@@ -23,22 +23,6 @@ import { deepEquals, getTypeColor } from '@/lib/utils';
 import { beautifyString } from '@/lib/utils';
 import { CustomEdge, CustomEdgeData } from './CustomEdge';
 import ConnectionLine from './ConnectionLine';
-
-
-type CustomNodeData = {
-  blockType: string;
-  title: string;
-  inputSchema: ObjectSchema;
-  outputSchema: ObjectSchema;
-  hardcodedValues: { [key: string]: any };
-  setHardcodedValues: (values: { [key: string]: any }) => void;
-  connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
-  isOutputOpen: boolean;
-  status?: string;
-  output_data?: any;
-  block_id: string;
-  backend_id?: string;
-};
 
 const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id: string, name: string) => void }> =
   ({ isOpen, availableNodes, addNode }) => {
@@ -129,8 +113,9 @@ const FlowEditor: React.FC<{
     const outputSchema = node.data.outputSchema;
     if (!outputSchema) return 'unknown';
 
-    const outputType = outputSchema.properties[handleId].type;
-    return outputType;
+    const outputHandle = outputSchema.properties[handleId];
+    if (!("type" in outputHandle)) return "unknown";
+    return outputHandle.type;
   }
 
   const getNodePos = (id: string) => {
@@ -295,13 +280,18 @@ const FlowEditor: React.FC<{
       return {};
     }
 
-    const getNestedData = (schema: ObjectSchema, values: { [key: string]: any }): { [key: string]: any } => {
+    const getNestedData = (
+      schema: BlockIOSchema, values: { [key: string]: any }
+    ): { [key: string]: any } => {
       let inputData: { [key: string]: any } = {};
 
-      if (schema.properties) {
+      if ("properties" in schema) {
         Object.keys(schema.properties).forEach((key) => {
           if (values[key] !== undefined) {
-            if (schema.properties[key].type === 'object') {
+            if (
+              "properties" in schema.properties[key]
+              || "additionalProperties" in schema.properties[key]
+            ) {
               inputData[key] = getNestedData(schema.properties[key], values[key]);
             } else {
               inputData[key] = values[key];
@@ -310,7 +300,7 @@ const FlowEditor: React.FC<{
         });
       }
 
-      if (schema.additionalProperties) {
+      if ("additionalProperties" in schema) {
         inputData = { ...inputData, ...values };
       }
 

@@ -1,11 +1,12 @@
 import { beautifyString } from "@/lib/utils";
+import { BlockIOSchema } from "@/lib/autogpt-server-api/types";
 import { FC, useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
 type BlockInputFieldProps = {
   keyName: string
-  schema: any
+  schema: BlockIOSchema
   parentKey?: string
   value: string | Array<string> | { [key: string]: string }
   handleInputClick: (key: string) => void
@@ -48,11 +49,11 @@ const NodeInputField: FC<BlockInputFieldProps> =
       )
     };
 
-    if (schema.type === 'object' && schema.properties) {
+    if ("properties" in schema) {
       return (
         <div key={fullKey} className="object-input">
           <strong>{displayKey}:</strong>
-          {Object.entries(schema.properties).map(([propKey, propSchema]: [string, any]) => (
+          {Object.entries(schema.properties).map(([propKey, propSchema]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
               <NodeInputField
                 keyName={propKey}
@@ -69,7 +70,7 @@ const NodeInputField: FC<BlockInputFieldProps> =
       );
     }
 
-    if (schema.type === 'object' && schema.additionalProperties) {
+    if ("additionalProperties" in schema) {
       const objectValue = value || {};
       return (
         <div key={fullKey} className="object-input">
@@ -136,8 +137,8 @@ const NodeInputField: FC<BlockInputFieldProps> =
       );
     }
 
-    if (schema.anyOf) {
-      const types = schema.anyOf.map((s: any) => s.type);
+    if ("anyOf" in schema) {
+      const types = schema.anyOf.map(s => "type" in s ? s.type : undefined);
       if (types.includes('string') && types.includes('null')) {
         return (
           <div key={fullKey} className="input-container">
@@ -148,11 +149,12 @@ const NodeInputField: FC<BlockInputFieldProps> =
       }
     }
 
-    if (schema.allOf) {
+    if ("allOf" in schema) {
       return (
         <div key={fullKey} className="object-input">
           <strong>{displayKey}:</strong>
-          {schema.allOf[0].properties && Object.entries(schema.allOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
+          {"properties" in schema.allOf[0] &&
+          Object.entries(schema.allOf[0].properties).map(([propKey, propSchema]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
               <NodeInputField
                 keyName={propKey}
@@ -169,11 +171,12 @@ const NodeInputField: FC<BlockInputFieldProps> =
       );
     }
 
-    if (schema.oneOf) {
+    if ("oneOf" in schema) {
       return (
         <div key={fullKey} className="object-input">
           <strong>{displayKey}:</strong>
-          {schema.oneOf[0].properties && Object.entries(schema.oneOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
+          {"properties" in schema.oneOf[0] &&
+          Object.entries(schema.oneOf[0].properties).map(([propKey, propSchema]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
               <NodeInputField
                 keyName={propKey}
@@ -186,6 +189,16 @@ const NodeInputField: FC<BlockInputFieldProps> =
               />
             </div>
           ))}
+        </div>
+      );
+    }
+
+    if (!("type" in schema)) {
+      console.warn(`Schema for input ${key} does not specify a type:`, schema);
+      return (
+        <div key={fullKey} className="input-container">
+          {renderClickableInput(value as string, schema.placeholder || `Enter ${beautifyString(displayKey)} (Complex)`)}
+          {error && <span className="error-message">{error}</span>}
         </div>
       );
     }
@@ -283,6 +296,7 @@ const NodeInputField: FC<BlockInputFieldProps> =
         }
         return null;
       default:
+        console.warn(`Schema for input ${key} specifies unknown type:`, schema);
         return (
           <div key={fullKey} className="input-container">
             {renderClickableInput(value as string, schema.placeholder || `Enter ${beautifyString(displayKey)} (Complex)`)}
