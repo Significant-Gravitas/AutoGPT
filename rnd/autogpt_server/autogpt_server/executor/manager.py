@@ -297,10 +297,9 @@ class Executor:
                         elif queue.empty():
                             cls.wait_future(future)
 
+            logger.warning(f"{prefix} Finished graph execution")
         except Exception as e:
             logger.exception(f"{prefix} Failed graph execution: {e}")
-
-        logger.warning(f"{prefix} Finished graph execution")
 
     @classmethod
     def wait_future(cls, future: Future):
