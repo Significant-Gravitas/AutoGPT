@@ -33,7 +33,7 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
    ```sh
    cp .env.example .env
    ```
-     
+
 5. Generate the Prisma client
 
    ```sh
