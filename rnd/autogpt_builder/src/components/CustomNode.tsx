@@ -1,5 +1,5 @@
-import React, { useState, useEffect, FC, memo, useRef } from 'react';
-import { NodeProps } from 'reactflow';
+import React, { useState, useEffect, FC, memo, useRef, useCallback } from 'react';
+import { NodeProps, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './customnode.css';
 import InputModalComponent from './InputModalComponent';
@@ -31,7 +31,13 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [modalValue, setModalValue] = useState<string>('');
   const [errors, setErrors] = useState<{ [key: string]: string | null }>({});
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+
   const outputDataRef = useRef<HTMLDivElement>(null);
+
+
+  const { setNodes, setEdges } = useReactFlow();
+
 
   useEffect(() => {
     if (data.output_data || data.status) {
@@ -154,10 +160,27 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     return element.scrollHeight > element.clientHeight || element.scrollWidth > element.clientWidth;
   };
 
+  const handleHovered = () => {
+    setIsHovered(true);
+    console.log('isHovered', isHovered);
+  }
+
+  const handleMouseLeave = () => {
+    setIsHovered(false);
+    console.log('isHovered', isHovered);
+  }
+
+  const deleteNode = useCallback(() => {
+    console.log('Deleting node:', id);
+    setNodes((nodes) => nodes.filter((node) => node.id !== id));
+    setEdges((edges) => edges.filter((edge) => edge.source !== id));
+  }, [id, setNodes, setEdges]);
+
   return (
-    <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}>
-      <div className="mb-2">
+    <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`} onMouseOver={handleHovered} onMouseLeave={handleMouseLeave}>
+      <div className="mb-2 inline-flex">
         <div className="text-lg font-bold">{beautifyString(data.blockType?.replace(/Block$/, '') || data.title)}</div>
+        {isHovered && <button className="text-sm" onClick={deleteNode}>Trash</button>}
       </div>
       <div className="node-content">
         <div>
@@ -168,14 +191,14 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                 <div key={key}>
                   <NodeHandle keyName={key} isConnected={isHandleConnected(key)} schema={schema} side="left" />
                   {!isHandleConnected(key) &&
-                  <NodeInputField
-                    keyName={key}
-                    schema={schema}
-                    value={getValue(key)}
-                    handleInputClick={handleInputClick}
-                    handleInputChange={handleInputChange}
-                    errors={errors}
-                  />}
+                    <NodeInputField
+                      keyName={key}
+                      schema={schema}
+                      value={getValue(key)}
+                      handleInputClick={handleInputClick}
+                      handleInputChange={handleInputChange}
+                      errors={errors}
+                    />}
                 </div>
               );
             })}
@@ -196,9 +219,9 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               const outputText = typeof data.output_data === 'object'
                 ? JSON.stringify(data.output_data)
                 : data.output_data;
-              
+
               if (!outputText) return 'No output data';
-              
+
               return outputText.length > 100
                 ? `${outputText.slice(0, 100)}... Press To Read More`
                 : outputText;
