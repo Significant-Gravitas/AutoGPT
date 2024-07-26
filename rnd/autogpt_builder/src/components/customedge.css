@@ -13,7 +13,7 @@
   cursor: pointer;
   border-radius: 50%;
   font-size: 12px;
-  line-height: 0;
+  line-height: 1;
 }
 
 .eedge-label-button:hover {

@@ -32,6 +32,8 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({ id, data, selected, sourc
     `M ${sourceX - 5} ${sourceY} C ${sourceX + 128} ${sourceY - yDifference - 128} ${targetX - 128} ${sourceY - yDifference - 128} ${targetX + 3}, ${targetY}` :
     path;
 
+  console.table({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, path, labelX, labelY });
+
   return (
     <>
       <BaseEdge
@@ -44,7 +46,9 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({ id, data, selected, sourc
           transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
         }}
           className="edge-label-renderer" >
-          <button className="edge-label-button" onClick={onEdgeClick}>X</button>
+          <button className="edge-label-button" onClick={onEdgeClick}>
+            X
+          </button>
         </div>
       </EdgeLabelRenderer>
     </>
