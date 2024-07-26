@@ -246,10 +246,10 @@ class Executor:
     The main events are:
         on_node_executor_start: Initialize the process that executes the node.
         on_node_execution: Execution logic for a node.
-        
+
         on_graph_executor_start: Initialize the process that executes the graph.
         on_graph_execution: Execution logic for a graph.
-        
+
     The execution flow:
         1. Graph execution request is added to the queue.
         2. Graph executor loop picks the request from the queue.
@@ -261,9 +261,9 @@ class Executor:
       [on_node_execution]
         7. Node executor picks the node execution request from the queue.
         8. Node executor executes the node.
-        9. Node executor enqueues the next executed nodes to the node execution queue.         
+        9. Node executor enqueues the next executed nodes to the node execution queue.
     """
-    
+
     @classmethod
     def on_node_executor_start(cls):
         cls.loop = asyncio.new_event_loop()
