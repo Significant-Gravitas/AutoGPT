@@ -15,7 +15,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import CustomNode from './CustomNode';
 import './flow.css';
-import AutoGPTServerAPI, { Block, Graph, ObjectSchema } from '@/lib/autogpt-server-api';
+import AutoGPTServerAPI, { Block, Graph, NodeExecutionResult, ObjectSchema } from '@/lib/autogpt-server-api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ChevronRight, ChevronLeft } from "lucide-react";
@@ -440,7 +440,7 @@ const FlowEditor: React.FC<{
 
 
 
-  const updateNodesWithExecutionData = (executionData: any[]) => {
+  const updateNodesWithExecutionData = (executionData: NodeExecutionResult[]) => {
     setNodes((nds) =>
       nds.map((node) => {
         const nodeExecution = executionData.find((exec) => exec.node_id === node.data.backend_id);
