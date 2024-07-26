@@ -7,7 +7,7 @@
 
 ---
 
-![Header](../../../docs/content/imgs/quickstart/t2_01.png)
+![Header](..%2F..%2Fdocs/content/imgs/quickstart/t2_01.png)
 
 
 
@@ -21,14 +21,14 @@ Large Language Models (LLMs) are state-of-the-art machine learning models that h
 
 Traditional autonomous agents operated with limited knowledge, often confined to specific tasks or environments. They were like calculators — efficient but limited to predefined functions. LLM-based agents, on the other hand don’t just compute; they understand, reason, and then act, drawing from a vast reservoir of information.  
 
-![AI visualising AI researchers hard at work](../../../docs/content/imgs/quickstart/t2_02.png)
+![AI visualising AI researchers hard at work](..%2F..%2Fdocs/content/imgs/quickstart/t2_02.png)
 
 
 ## The Anatomy of an LLM-Based AI Agent
 
 Diving deep into the core of an LLM-based AI agent, we find it’s structured much like a human, with distinct components akin to personality, memory, thought process, and abilities. Let’s break these down:  
 
-![The Github repository](../../../docs/content/imgs/quickstart/t2_03.png)
+![The Github repository](..%2F..%2Fdocs/content/imgs/quickstart/t2_03.png)
 Anatomy of an Agent from the Agent Landscape Survey  
 
 ### **Profile**  

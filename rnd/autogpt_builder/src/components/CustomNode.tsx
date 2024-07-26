@@ -167,7 +167,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               return (isRequired || isAdvancedOpen) && (
                 <div key={key}>
                   <NodeHandle keyName={key} isConnected={isHandleConnected(key)} schema={schema} side="left" />
-                  {isHandleConnected(key) ? <></> :
+                  {!isHandleConnected(key) &&
                   <NodeInputField
                     keyName={key}
                     schema={schema}
