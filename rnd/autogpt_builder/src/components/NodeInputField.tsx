@@ -235,25 +235,32 @@ const NodeInputField: FC<BlockInputFieldProps> =
           </div>
         );
       case 'array':
-        if (schema.items && schema.items.type === 'string') {
+        if (schema.items) {
           const arrayValues = value as Array<string> || [];
           return (
             <div key={fullKey} className="input-container">
               {arrayValues.map((item: string, index: number) => (
-                <div key={`${fullKey}.${index}`} className="array-item-container">
-                  <input
-                    type="text"
+                <div key={`${fullKey}.${index}`} className="flex items-center space-x-2 mb-2">
+                  <NodeInputField
                     value={item}
-                    onChange={(e) => handleInputChange(`${fullKey}.${index}`, e.target.value)}
-                    className="array-item-input"
+                    keyName={index.toString()}
+                    parentKey={fullKey}
+                    handleInputChange={handleInputChange}
+                    handleInputClick={handleInputClick}
+                    schema={schema.items}
+                    errors={errors}
                   />
-                  <Button onClick={() => handleInputChange(`${fullKey}.${index}`, '')} className="array-item-remove">
-                    &times;
+                  <Button variant="ghost" className="px-2" onClick={
+                    () => handleInputChange(fullKey, arrayValues.toSpliced(index, 1))
+                  }>
+                    <Cross2Icon />
                   </Button>
                 </div>
               ))}
-              <Button onClick={() => handleInputChange(fullKey, [...arrayValues, ''])} className="array-item-add">
-                Add Item
+              <Button onClick={
+                () => handleInputChange(fullKey, [...arrayValues, ''])
+              }>
+                <PlusIcon className="mr-2"/> Add Item
               </Button>
               {error && <span className="error-message">{error}</span>}
             </div>
