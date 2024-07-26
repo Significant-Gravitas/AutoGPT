@@ -33,7 +33,9 @@
       "path": ".."
     }
   ],
-  "settings": {},
+  "settings": {
+    "python.analysis.typeCheckingMode": "basic",
+  },
   "extensions": {
     "recommendations": [
       "charliermarsh.ruff",
