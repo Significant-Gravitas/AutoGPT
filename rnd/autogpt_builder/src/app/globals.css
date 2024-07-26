@@ -7,3 +7,60 @@
     text-wrap: balance;
   }
 }
+
+
+
+:root  {
+  --background: 180 100% 95%;
+  --foreground: 180 5% 0%;
+  --card: 180 50% 90%;
+  --card-foreground: 180 5% 10%;
+  --popover: 180 100% 95%;
+  --popover-foreground: 180 100% 0%;
+  --primary: 180 76.5% 30%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 180 30% 70%;
+  --secondary-foreground: 0 0% 0%;
+  --muted: 142 30% 85%;
+  --muted-foreground: 180 5% 35%;
+  --accent: 142 30% 80%;
+  --accent-foreground: 180 5% 10%;
+  --destructive: 0 100% 30%;
+  --destructive-foreground: 180 5% 90%;
+  --border: 180 30% 50%;
+  --input: 180 30% 18%;
+  --ring: 180 76.5% 30%;
+  --radius: 0.5rem;
+}
+.dark  {
+  --background: 180 50% 5%;
+  --foreground: 180 5% 90%;
+  --card: 180 50% 0%;
+  --card-foreground: 180 5% 90%;
+  --popover: 180 50% 5%;
+  --popover-foreground: 180 5% 90%;
+  --primary: 180 76.5% 30%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 180 30% 10%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 142 30% 15%;
+  --muted-foreground: 180 5% 60%;
+  --accent: 142 30% 15%;
+  --accent-foreground: 180 5% 90%;
+  --destructive: 0 100% 30%;
+  --destructive-foreground: 180 5% 90%;
+  --border: 180 30% 18%;
+  --input: 180 30% 18%;
+  --ring: 180 76.5% 30%;
+  --radius: 0.5rem;
+}
+
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
