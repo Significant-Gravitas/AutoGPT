@@ -15,7 +15,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import CustomNode, { CustomNodeData } from './CustomNode';
 import './flow.css';
-import AutoGPTServerAPI, { Block, BlockIOSchema, Graph } from '@/lib/autogpt-server-api';
+import AutoGPTServerAPI, { Block, BlockIOSubSchema, Graph } from '@/lib/autogpt-server-api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ChevronRight, ChevronLeft } from "lucide-react";
@@ -281,7 +281,7 @@ const FlowEditor: React.FC<{
     }
 
     const getNestedData = (
-      schema: BlockIOSchema, values: { [key: string]: any }
+      schema: BlockIOSubSchema, values: { [key: string]: any }
     ): { [key: string]: any } => {
       let inputData: { [key: string]: any } = {};
 

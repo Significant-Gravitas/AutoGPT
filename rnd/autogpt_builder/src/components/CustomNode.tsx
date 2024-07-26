@@ -8,7 +8,7 @@ import { BlockIORootSchema, NodeExecutionResult } from '@/lib/autogpt-server-api
 import { beautifyString } from '@/lib/utils';
 import { Switch } from "@/components/ui/switch"
 import NodeHandle from './NodeHandle';
-import NodeInputField from './NodeInputField';
+import { NodeGenericInputField } from './NodeInputField';
 
 export type CustomNodeData = {
   blockType: string;
@@ -31,7 +31,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [modalValue, setModalValue] = useState<string>('');
-  const [errors, setErrors] = useState<{ [key: string]: string | null }>({});
+  const [errors, setErrors] = useState<{ [key: string]: string | undefined }>({});
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
   const outputDataRef = useRef<HTMLDivElement>(null);
 
@@ -82,13 +82,13 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
     console.log(`Updating hardcoded values for node ${id}:`, newValues);
     data.setHardcodedValues(newValues);
-    setErrors((prevErrors) => ({ ...prevErrors, [key]: null }));
+    setErrors((prevErrors) => ({ ...prevErrors, [key]: undefined }));
   };
 
   const getValue = (key: string) => {
     console.log(`Getting value for key: ${key}`);
     const keys = key.split('.');
-    return keys.reduce((acc, k) => (acc && acc[k] !== undefined) ? acc[k] : '', data.hardcodedValues);
+    return keys.reduce((acc, k) => acc && acc[k] ? acc[k] : undefined, data.hardcodedValues);
   };
 
   const isHandleConnected = (key: string) => {
@@ -125,7 +125,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   };
 
   const validateInputs = () => {
-    const newErrors: { [key: string]: string | null } = {};
+    const newErrors: { [key: string]: string } = {};
     const validateRecursive = (schema: any, parentKey: string = '') => {
       Object.entries(schema.properties).forEach(([key, propSchema]: [string, any]) => {
         const fullKey = parentKey ? `${parentKey}.${key}` : key;
@@ -159,32 +159,40 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   };
 
   return (
-    <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}>
+    <div className={`custom-node dark-theme cursor-auto ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}>
       <div className="mb-2">
         <div className="text-lg font-bold">{beautifyString(data.blockType?.replace(/Block$/, '') || data.title)}</div>
       </div>
-      <div className="node-content">
+      <div className="flex justify-between items-start gap-2">
         <div>
           {data.inputSchema &&
-            Object.entries(data.inputSchema.properties).map(([key, schema]) => {
-              const isRequired = data.inputSchema.required?.includes(key);
+            Object.entries(data.inputSchema.properties).map(([propKey, propSchema]) => {
+              const isRequired = data.inputSchema.required?.includes(propKey);
               return (isRequired || isAdvancedOpen) && (
-                <div key={key}>
-                  <NodeHandle keyName={key} isConnected={isHandleConnected(key)} schema={schema} side="left" />
-                  {!isHandleConnected(key) &&
-                  <NodeInputField
-                    keyName={key}
-                    schema={schema}
-                    value={getValue(key)}
-                    handleInputClick={handleInputClick}
-                    handleInputChange={handleInputChange}
-                    errors={errors}
-                  />}
+                <div key={propKey}>
+                  <NodeHandle
+                    keyName={propKey}
+                    isConnected={isHandleConnected(propKey)}
+                    schema={propSchema}
+                    side="left"
+                  />
+                  {!isHandleConnected(propKey) &&
+                    <NodeGenericInputField
+                      className="mt-1 mb-2"
+                      propKey={propKey}
+                      propSchema={propSchema}
+                      currentValue={getValue(propKey)}
+                      handleInputChange={handleInputChange}
+                      handleInputClick={handleInputClick}
+                      errors={errors}
+                      displayName=""
+                    />
+                  }
                 </div>
               );
             })}
         </div>
-        <div>
+        <div className="flex-none">
           {data.outputSchema && generateOutputHandles(data.outputSchema)}
         </div>
       </div>
@@ -200,9 +208,9 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               const outputText = typeof data.output_data === 'object'
                 ? JSON.stringify(data.output_data)
                 : data.output_data;
-              
+
               if (!outputText) return 'No output data';
-              
+
               return outputText.length > 100
                 ? `${outputText.slice(0, 100)}... Press To Read More`
                 : outputText;
@@ -211,11 +219,11 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         </div>
       )}
       <div className="flex items-center mt-2.5">
-        <Switch onCheckedChange={toggleOutput} className='custom-switch' />
+        <Switch onCheckedChange={toggleOutput} />
         <span className='m-1 mr-4'>Output</span>
         {hasOptionalFields() && (
           <>
-            <Switch onCheckedChange={toggleAdvancedSettings} className='custom-switch' />
+            <Switch onCheckedChange={toggleAdvancedSettings} />
             <span className='m-1'>Advanced</span>
           </>
         )}

@@ -1,5 +1,5 @@
 .custom-node {
-  padding: 15px;
+  @apply p-3;
   border: 3px solid #4b5563;
   border-radius: 12px;
   background: #ffffff; /* White background */
@@ -7,13 +7,6 @@
   width: 500px;
   box-sizing: border-box;
   transition: border-color 0.3s ease-in-out;
-}
-
-.node-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1px;
 }
 
 .handle-container {
@@ -33,10 +26,6 @@
   border: 0;
   position: relative;
   transform: none;
-}
-
-.input-container {
-  margin-bottom: 5px;
 }
 
 .clickable-input {
@@ -63,65 +52,6 @@
   vertical-align: middle;
 }
 
-.select-input {
-  width: 100%;
-  padding: 5px;
-  border-radius: 4px;
-  border: 1px solid #000;
-  background: #fff;
-  color: #000;
-}
-
-.radio-label {
-  display: block;
-  margin: 5px 0;
-  color: #000;
-}
-
-.number-input {
-  width: 100%;
-  padding: 5px;
-  border-radius: 4px;
-  border: 1px solid #000;
-  background: #fff;
-  color: #000;
-}
-
-.array-item-container {
-  display: flex;
-  align-items: center;
-  margin-bottom: 5px;
-}
-
-.array-item-input {
-  flex-grow: 1;
-  padding: 5px;
-  border-radius: 4px;
-  border: 1px solid #000;
-  background: #fff;
-  color: #000;
-}
-
-.array-item-remove {
-  background: #d9534f;
-  border: none;
-  color: white;
-  cursor: pointer;
-  margin-left: 5px;
-  border-radius: 4px;
-  padding: 5px 10px;
-}
-
-.array-item-add {
-  background: #5bc0de;
-  border: none;
-  color: white;
-  cursor: pointer;
-  border-radius: 4px;
-  padding: 5px 10px;
-  margin-top: 5px;
-}
-
 .node-output {
   margin-top: 5px;
   margin-bottom: 5px;
@@ -138,27 +68,6 @@
   margin-top: 5px;
 }
 
-.object-input {
-  margin-left: 10px;
-  border-left: 1px solid #000; /* Border for nested inputs */
-  padding-left: 10px;
-}
-
-.nested-input {
-  margin-top: 5px;
-}
-
-.key-value-input {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  margin-bottom: 5px;
-}
-
-.key-value-input input {
-  flex-grow: 1;
-}
-
 /* Styles for node states */
 .completed {
   border-color: #27ae60; /* Green border for completed nodes */
@@ -170,8 +79,4 @@
 
 .failed {
   border-color: #c0392b; /* Red border for failed nodes */
-}
-
-.custom-switch {
-  padding-left: 2px;
 }

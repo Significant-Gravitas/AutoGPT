@@ -1,4 +1,4 @@
-import { BlockIOSchema } from "@/lib/autogpt-server-api/types";
+import { BlockIOSubSchema } from "@/lib/autogpt-server-api/types";
 import { beautifyString, getTypeBgColor, getTypeTextColor } from "@/lib/utils";
 import { FC } from "react";
 import { Handle, Position } from "reactflow";
@@ -6,7 +6,7 @@ import SchemaTooltip from "./SchemaTooltip";
 
 type HandleProps = {
   keyName: string,
-  schema: BlockIOSchema,
+  schema: BlockIOSubSchema,
   isConnected: boolean,
   side: 'left' | 'right'
 }
@@ -42,7 +42,7 @@ const NodeHandle: FC<HandleProps> = ({ keyName, isConnected, schema, side }) => 
           type="target"
           position={Position.Left}
           id={keyName}
-          className='group -ml-[29px]'
+          className='group -ml-[26px]'
         >
           <div className="pointer-events-none flex items-center">
             {dot}
@@ -59,7 +59,7 @@ const NodeHandle: FC<HandleProps> = ({ keyName, isConnected, schema, side }) => 
           type="source"
           position={Position.Right}
           id={keyName}
-          className='group -mr-[29px]'
+          className='group -mr-[26px]'
         >
           <div className="pointer-events-none flex items-center">
             {label}
