@@ -91,9 +91,10 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
     console.log(`Updating hardcoded values for node ${id}:`, newValues);
     data.setHardcodedValues(newValues);
+    const errors = data.errors || {};
     // Remove error with the same key
-    setNestedProperty(data.errors, key, null);
-    data.setErrors({ ...data.errors });
+    setNestedProperty(errors, key, null);
+    data.setErrors({ ...errors });
   };
 
   const getValue = (key: string) => {

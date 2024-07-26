@@ -433,10 +433,14 @@ const FlowEditor: React.FC<{
       // Validate values against schema using AJV
       const valid = validate(node.data.hardcodedValues);
       if (!valid) {
-        isValid = false;
-        console.log("Invalid", validate.errors);
         // Populate errors if validation fails
         validate.errors?.forEach((error) => {
+          // Skip error if there's an edge connected
+          const handle = error.instancePath.split(/[\/.]/)[0];
+          if (node.data.connections.some(conn => conn.target === node.id || conn.targetHandle === handle)) {
+            return;
+          }
+          isValid = false;
           if (error.instancePath && error.message) {
             const key = error.instancePath.slice(1);
             console.log("Error", key, error.message);

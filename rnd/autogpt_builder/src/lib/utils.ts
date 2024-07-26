@@ -123,14 +123,14 @@ export function exportAsJSONFile(obj: object, filename: string): void {
 export function setNestedProperty(obj: any, path: string, value: any) {
   const keys = path.split(/[\/.]/); // Split by / or .
   let current = obj;
-  while (keys.length > 1) {
-    const key = keys.shift();
-    if (key) {
-      if (!current[key]) {
-        current[key] = {};
-      }
-      current = current[key];
+
+  for (let i = 0; i < keys.length - 1; i++) {
+    const key = keys[i];
+    if (!current[key] || typeof current[key] !== 'object') {
+      current[key] = {};
     }
+    current = current[key];
   }
-  current[keys[0]] = value;
+
+  current[keys[keys.length - 1]] = value;
 }
