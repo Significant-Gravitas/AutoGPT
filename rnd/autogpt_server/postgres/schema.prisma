@@ -127,6 +127,9 @@ model AgentNodeExecutionInputOutput {
   ReferencedByInputExec    AgentNodeExecution? @relation("AgentNodeExecutionInput", fields: [referencedByInputExecId], references: [id])
   referencedByOutputExecId String?
   ReferencedByOutputExec   AgentNodeExecution? @relation("AgentNodeExecutionOutput", fields: [referencedByOutputExecId], references: [id])
+
+  // Input and Output pin names are unique for each AgentNodeExecution.
+  @@unique([referencedByInputExecId, referencedByOutputExecId, name])
 }
 
 // This model describes the recurring execution schedule of an Agent.
