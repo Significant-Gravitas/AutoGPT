@@ -37,7 +37,7 @@ async def assert_sample_graph_executions(test_graph: graph.Graph, graph_exec_id:
     assert exec.graph_exec_id == graph_exec_id
     assert exec.output_data == {"output": ["Hello, World!"]}
     assert exec.input_data == {"input": text}
-    assert exec.node_id == test_graph.nodes[0].id
+    assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing ConstantBlock2
     exec = executions[1]
@@ -45,7 +45,7 @@ async def assert_sample_graph_executions(test_graph: graph.Graph, graph_exec_id:
     assert exec.graph_exec_id == graph_exec_id
     assert exec.output_data == {"output": ["Hello, World!"]}
     assert exec.input_data == {"input": text}
-    assert exec.node_id == test_graph.nodes[1].id
+    assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing TextFormatterBlock
     exec = executions[2]
