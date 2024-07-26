@@ -1,4 +1,4 @@
-import { FC, memo, useMemo } from "react";
+import React, { FC, memo, useMemo, useState } from "react";
 import { BaseEdge, EdgeLabelRenderer, EdgeProps, getBezierPath, useReactFlow, XYPosition } from "reactflow";
 import './customedge.css';
 import { X } from 'lucide-react';
@@ -9,7 +9,7 @@ export type CustomEdgeData = {
 }
 
 const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({ id, data, selected, source, sourcePosition, sourceX, sourceY, target, targetPosition, targetX, targetY, markerEnd }) => {
-
+  const [isHovered, setIsHovered] = useState(false);
   const { setEdges } = useReactFlow();
 
   const onEdgeClick = () => {
@@ -38,9 +38,21 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({ id, data, selected, sourc
   return (
     <>
       <BaseEdge
-        style={{ strokeWidth: 2, stroke: (data?.edgeColor ?? '#555555') + (selected ? '' : '80') }}
         path={edgePath}
         markerEnd={markerEnd}
+        style={{
+          strokeWidth: isHovered ? 3 : 2,
+          stroke: (data?.edgeColor ?? '#555555') + (selected || isHovered ? '' : '80')
+        }}
+      />
+      <path
+        d={edgePath}
+        fill="none"
+        strokeOpacity={0}
+        strokeWidth={20}
+        className="react-flow__edge-interaction"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       />
       <EdgeLabelRenderer>
         <div
@@ -51,11 +63,16 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({ id, data, selected, sourc
           }}
           className="edge-label-renderer"
         >
-          <button className="edge-label-button" onClick={onEdgeClick}>
+          <button
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+            className={`edge-label-button ${isHovered ? 'visible' : ''}`}
+            onClick={onEdgeClick}
+          >
             <X size={14} />
           </button>
         </div>
-      </EdgeLabelRenderer>    
+      </EdgeLabelRenderer>
     </>
   )
 };
