@@ -1,6 +1,7 @@
 import { FC, memo, useMemo } from "react";
 import { BaseEdge, EdgeLabelRenderer, EdgeProps, getBezierPath, useReactFlow, XYPosition } from "reactflow";
 import './customedge.css';
+import { X } from 'lucide-react';
 
 export type CustomEdgeData = {
   edgeColor: string
@@ -51,7 +52,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({ id, data, selected, sourc
           className="edge-label-renderer"
         >
           <button className="edge-label-button" onClick={onEdgeClick}>
-            X
+            <X size={14} />
           </button>
         </div>
       </EdgeLabelRenderer>    

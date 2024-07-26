@@ -1,6 +1,5 @@
 .edge-label-renderer {
   position: absolute;
-  font-size: 12px;
   pointer-events: all;
 }
 
@@ -11,13 +10,19 @@
   border: 1px solid #fff;
   cursor: pointer;
   border-radius: 50%;
-  font-size: 12px;
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 0;
+  color: #555; /* Adjust color as needed */
 }
 
 .edge-label-button:hover {
   box-shadow: 0 0 6px 2px rgba(0, 0, 0, 0.08);
+  background: #f0f0f0; /* Slightly lighter on hover */
+}
+
+.edge-label-button svg {
+  width: 14px;
+  height: 14px;
 }
