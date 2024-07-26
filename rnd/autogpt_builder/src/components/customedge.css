@@ -1,0 +1,21 @@
+
+.edge-label-renderer {
+  position: absolute;
+  font-size: 12px;
+  pointer-events: all;
+}
+
+.edge-label-button {
+  width: 20px;
+    height: 20px;
+    background: #eee;
+    border: 1px solid #fff;
+    cursor: pointer;
+    border-radius: 50%;
+    font-size: 12px;
+    line-height: 1;
+}
+
+.eedge-label-button:hover {
+  box-shadow: 0 0 6px 2px rgba(0, 0, 0, 0.08);
+}

@@ -1,14 +1,21 @@
 import { FC, memo, useMemo } from "react";
-import { BaseEdge, EdgeProps, getBezierPath, XYPosition } from "reactflow";
+import { BaseEdge, EdgeLabelRenderer, EdgeProps, getBezierPath, useReactFlow, XYPosition } from "reactflow";
+import './customedge.css';
 
 export type CustomEdgeData = {
   edgeColor: string
   sourcePos: XYPosition
 }
 
-const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({ data, selected, source, sourcePosition, sourceX, sourceY, target, targetPosition, targetX, targetY, markerEnd }) => {
+const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({ id, data, selected, source, sourcePosition, sourceX, sourceY, target, targetPosition, targetX, targetY, markerEnd }) => {
 
-  const [path] = getBezierPath({
+  const { setEdges } = useReactFlow();
+
+  const onEdgeClick = () => {
+    setEdges((edges) => edges.filter((edge) => edge.id !== id));
+  }
+
+  const [path, labelX, labelY] = getBezierPath({
     sourceX: sourceX - 5,
     sourceY,
     sourcePosition,
@@ -26,11 +33,21 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({ data, selected, source, s
     path;
 
   return (
-    <BaseEdge
-      style={{ strokeWidth: 2, stroke: (data?.edgeColor ?? '#555555') + (selected ? '' : '80') }}
-      path={edgePath}
-      markerEnd={markerEnd}
-    />
+    <>
+      <BaseEdge
+        style={{ strokeWidth: 2, stroke: (data?.edgeColor ?? '#555555') + (selected ? '' : '80') }}
+        path={edgePath}
+        markerEnd={markerEnd}
+      />
+      <EdgeLabelRenderer>
+        <div style={{
+          transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+        }}
+          className="edge-label-renderer" >
+          <button className="edge-label-button" onClick={onEdgeClick}>X</button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
   )
 };
 
