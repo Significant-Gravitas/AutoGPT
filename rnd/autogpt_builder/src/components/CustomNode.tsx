@@ -8,7 +8,7 @@ import { BlockIORootSchema, NodeExecutionResult } from '@/lib/autogpt-server-api
 import { beautifyString } from '@/lib/utils';
 import { Switch } from "@/components/ui/switch"
 import NodeHandle from './NodeHandle';
-import { NodeGenericInputField } from './NodeInputField';
+import { NodeGenericInputField } from './node-input';
 
 export type CustomNodeData = {
   blockType: string;
