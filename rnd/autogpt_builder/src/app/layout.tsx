@@ -22,36 +22,35 @@ export const metadata: Metadata = {
 
 const NavBar = () => (
     <nav className="bg-white dark:bg-slate-800 p-4 flex justify-between items-center shadow">
-      <div className="flex space-x-4">
-        <Link href="/monitor" className={buttonVariants({ variant: "ghost" })}>
-          <TimerIcon className="mr-1" /> Monitor
-        </Link>
-        <Link href="/build" className={buttonVariants({ variant: "ghost" })}>
-          <Pencil1Icon className="mr-1" /> Build
-        </Link>
-      </div>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="h-8 w-8 rounded-full">
-            <Avatar>
-              <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
-              <AvatarFallback>CN</AvatarFallback>
-            </Avatar>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem>Profile</DropdownMenuItem>
-          <DropdownMenuItem>Settings</DropdownMenuItem>
-          <DropdownMenuItem>Switch Workspace</DropdownMenuItem>
-          <DropdownMenuItem>Log out</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        <div className="flex space-x-4">
+            <Link href="/monitor" className={buttonVariants({ variant: "ghost" })}>
+                <TimerIcon className="mr-1" /> Monitor
+            </Link>
+            <Link href="/build" className={buttonVariants({ variant: "ghost" })}>
+                <Pencil1Icon className="mr-1" /> Build
+            </Link>
+        </div>
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 rounded-full">
+                    <Avatar>
+                        <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
+                        <AvatarFallback>CN</AvatarFallback>
+                    </Avatar>
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuItem>Profile</DropdownMenuItem>
+                <DropdownMenuItem>Settings</DropdownMenuItem>
+                <DropdownMenuItem>Switch Workspace</DropdownMenuItem>
+                <DropdownMenuItem>Log out</DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
     </nav>
 );
-
 export default function RootLayout({
-                                     children,
-                                   }: Readonly<{
+ children,
+}: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
