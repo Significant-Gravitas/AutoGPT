@@ -90,7 +90,7 @@ def execute_node(
             wait(upsert_execution_output(node_exec_id, output_name, output_data))
             update_execution(ExecutionStatus.COMPLETED)
 
-            for execution in enqueue_next_nodes(
+            for execution in _enqueue_next_nodes(
                 api_client=api_client,
                 loop=loop,
                 node=node,
@@ -117,7 +117,7 @@ def synchronized(api_client: "AgentServer", key: Any):
         api_client.release_lock(key)
 
 
-def enqueue_next_nodes(
+def _enqueue_next_nodes(
     api_client: "AgentServer",
     loop: asyncio.AbstractEventLoop,
     node: Node,
@@ -240,6 +240,30 @@ def get_agent_server_client() -> "AgentServer":
 
 
 class Executor:
+    """
+    This class contains event handlers for the process pool executor events.
+
+    The main events are:
+        on_node_executor_start: Initialize the process that executes the node.
+        on_node_execution: Execution logic for a node.
+        
+        on_graph_executor_start: Initialize the process that executes the graph.
+        on_graph_execution: Execution logic for a graph.
+        
+    The execution flow:
+        1. Graph execution request is added to the queue.
+        2. Graph executor loop picks the request from the queue.
+        3. Graph executor loop submits the graph execution request to the executor pool.
+      [on_graph_execution]
+        4. Graph executor initialize the node execution queue.
+        5. Graph executor adds the starting nodes to the node execution queue.
+        6. Graph executor waits for all nodes to be executed.
+      [on_node_execution]
+        7. Node executor picks the node execution request from the queue.
+        8. Node executor executes the node.
+        9. Node executor enqueues the next executed nodes to the node execution queue.         
+    """
+    
     @classmethod
     def on_node_executor_start(cls):
         cls.loop = asyncio.new_event_loop()
