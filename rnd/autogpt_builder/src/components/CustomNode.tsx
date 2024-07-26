@@ -155,7 +155,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   };
 
   return (
-    <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}>
+    <div className={`custom-node dark-theme ${data.status?.toLowerCase() ?? ''}`}>
       <div className="mb-2">
         <div className="text-lg font-bold">{beautifyString(data.blockType?.replace(/Block$/, '') || data.title)}</div>
       </div>
@@ -168,14 +168,14 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                 <div key={key}>
                   <NodeHandle keyName={key} isConnected={isHandleConnected(key)} schema={schema} side="left" />
                   {!isHandleConnected(key) &&
-                  <NodeInputField
-                    keyName={key}
-                    schema={schema}
-                    value={getValue(key)}
-                    handleInputClick={handleInputClick}
-                    handleInputChange={handleInputChange}
-                    errors={errors}
-                  />}
+                    <NodeInputField
+                      keyName={key}
+                      schema={schema}
+                      value={getValue(key)}
+                      handleInputClick={handleInputClick}
+                      handleInputChange={handleInputChange}
+                      errors={errors}
+                    />}
                 </div>
               );
             })}
@@ -196,9 +196,9 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               const outputText = typeof data.output_data === 'object'
                 ? JSON.stringify(data.output_data)
                 : data.output_data;
-              
+
               if (!outputText) return 'No output data';
-              
+
               return outputText.length > 100
                 ? `${outputText.slice(0, 100)}... Press To Read More`
                 : outputText;
