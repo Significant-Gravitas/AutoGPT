@@ -51,11 +51,11 @@ class AppService(AppProcess):
         while True:
             time.sleep(10)
 
-    def run_async(self, coro: Coroutine[T, Any, T]):
+    def __run_async(self, coro: Coroutine[T, Any, T]):
         return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop)
 
     def run_and_wait(self, coro: Coroutine[T, Any, T]) -> T:
-        future = self.run_async(coro)
+        future = self.__run_async(coro)
         return future.result()
 
     def run(self):
@@ -85,7 +85,6 @@ class AppService(AppProcess):
         daemon.requestLoop()
 
     def __start_async_loop(self):
-        # asyncio.set_event_loop(self.shared_event_loop)
         self.shared_event_loop.run_forever()
 
 

@@ -17,6 +17,7 @@ from autogpt_server.data.execution import (
     create_graph_execution,
     merge_execution_input,
     parse_execution_output,
+    update_execution_status,
     upsert_execution_input,
     upsert_execution_output,
 )
@@ -60,7 +61,8 @@ def execute_node(
         return loop.run_until_complete(f)
 
     def update_execution(status: ExecutionStatus):
-        api_client.update_execution_status(node_exec_id, status)
+        exec_update = wait(update_execution_status(node_exec_id, status))
+        api_client.send_execution_update(exec_update.model_dump())
 
     node = wait(get_node(node_id))
     if not node:
@@ -128,7 +130,8 @@ def _enqueue_next_nodes(
         return loop.run_until_complete(f)
 
     def execution_update(node_exec_id: str, status: ExecutionStatus):
-        api_client.update_execution_status(node_exec_id, status)
+        exec_update = wait(update_execution_status(node_exec_id, status))
+        api_client.send_execution_update(exec_update.model_dump())
 
     def register_next_execution(node_link: Link) -> NodeExecution | None:
         next_output_name = node_link.source_name
@@ -387,9 +390,10 @@ class ExecutionManager(AppService):
                     data=node_exec.input_data,
                 )
             )
-            self.agent_server_client.update_execution_status(
-                node_exec.node_exec_id, ExecutionStatus.QUEUED
+            exec_update = self.run_and_wait(
+                update_execution_status(node_exec.node_exec_id, ExecutionStatus.QUEUED)
             )
+            self.agent_server_client.send_execution_update(exec_update.model_dump())
 
         graph_exec = GraphExecution(
             graph_exec_id=graph_exec_id,
