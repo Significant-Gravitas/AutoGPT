@@ -6,7 +6,7 @@ import InputModalComponent from './InputModalComponent';
 import OutputModalComponent from './OutputModalComponent';
 import { BlockSchema } from '@/lib/types';
 import { beautifyString } from '@/lib/utils';
-import { Switch } from "@/components/ui/switch"
+import { Switch } from '@/components/ui/switch';
 import NodeHandle from './NodeHandle';
 import NodeInputField from './NodeInputField';
 
@@ -17,7 +17,12 @@ type CustomNodeData = {
   outputSchema: BlockSchema;
   hardcodedValues: { [key: string]: any };
   setHardcodedValues: (values: { [key: string]: any }) => void;
-  connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
+  connections: Array<{
+    source: string;
+    sourceHandle: string;
+    target: string;
+    targetHandle: string;
+  }>;
   isOutputOpen: boolean;
   status?: string;
   output_data?: any;
@@ -52,9 +57,12 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   };
 
   const hasOptionalFields = () => {
-    return data.inputSchema && Object.keys(data.inputSchema.properties).some((key) => {
-      return !(data.inputSchema.required?.includes(key));
-    });
+    return (
+      data.inputSchema &&
+      Object.keys(data.inputSchema.properties).some((key) => {
+        return !data.inputSchema.required?.includes(key);
+      })
+    );
   };
 
   const generateOutputHandles = (schema: BlockSchema) => {
@@ -62,7 +70,12 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     const keys = Object.keys(schema.properties);
     return keys.map((key) => (
       <div key={key}>
-        <NodeHandle keyName={key} isConnected={isHandleConnected(key)} schema={schema.properties[key]} side="right" />
+        <NodeHandle
+          keyName={key}
+          isConnected={isHandleConnected(key)}
+          schema={schema.properties[key]}
+          side="right"
+        />
       </div>
     ));
   };
@@ -86,26 +99,38 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const getValue = (key: string) => {
     console.log(`Getting value for key: ${key}`);
     const keys = key.split('.');
-    return keys.reduce((acc, k) => (acc && acc[k] !== undefined) ? acc[k] : '', data.hardcodedValues);
+    return keys.reduce(
+      (acc, k) => (acc && acc[k] !== undefined ? acc[k] : ''),
+      data.hardcodedValues
+    );
   };
 
   const isHandleConnected = (key: string) => {
-    return data.connections && data.connections.some((conn: any) => {
-      if (typeof conn === 'string') {
-        const [source, target] = conn.split(' -> ');
-        return (target.includes(key) && target.includes(data.title)) ||
-          (source.includes(key) && source.includes(data.title));
-      }
-      return (conn.target === id && conn.targetHandle === key) ||
-        (conn.source === id && conn.sourceHandle === key);
-    });
+    return (
+      data.connections &&
+      data.connections.some((conn: any) => {
+        if (typeof conn === 'string') {
+          const [source, target] = conn.split(' -> ');
+          return (
+            (target.includes(key) && target.includes(data.title)) ||
+            (source.includes(key) && source.includes(data.title))
+          );
+        }
+        return (
+          (conn.target === id && conn.targetHandle === key) ||
+          (conn.source === id && conn.sourceHandle === key)
+        );
+      })
+    );
   };
 
   const handleInputClick = (key: string) => {
     console.log(`Opening modal for key: ${key}`);
     setActiveKey(key);
     const value = getValue(key);
-    setModalValue(typeof value === 'object' ? JSON.stringify(value, null, 2) : value);
+    setModalValue(
+      typeof value === 'object' ? JSON.stringify(value, null, 2) : value
+    );
     setIsModalOpen(true);
   };
 
@@ -125,18 +150,20 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const validateInputs = () => {
     const newErrors: { [key: string]: string | null } = {};
     const validateRecursive = (schema: any, parentKey: string = '') => {
-      Object.entries(schema.properties).forEach(([key, propSchema]: [string, any]) => {
-        const fullKey = parentKey ? `${parentKey}.${key}` : key;
-        const value = getValue(fullKey);
+      Object.entries(schema.properties).forEach(
+        ([key, propSchema]: [string, any]) => {
+          const fullKey = parentKey ? `${parentKey}.${key}` : key;
+          const value = getValue(fullKey);
 
-        if (propSchema.type === 'object' && propSchema.properties) {
-          validateRecursive(propSchema, fullKey);
-        } else {
-          if (propSchema.required && !value) {
-            newErrors[fullKey] = `${fullKey} is required`;
+          if (propSchema.type === 'object' && propSchema.properties) {
+            validateRecursive(propSchema, fullKey);
+          } else {
+            if (propSchema.required && !value) {
+              newErrors[fullKey] = `${fullKey} is required`;
+            }
           }
         }
-      });
+      );
     };
 
     validateRecursive(data.inputSchema);
@@ -146,37 +173,56 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   const handleOutputClick = () => {
     setIsOutputModalOpen(true);
-    setModalValue(typeof data.output_data === 'object' ? JSON.stringify(data.output_data, null, 2) : data.output_data);
+    setModalValue(
+      typeof data.output_data === 'object'
+        ? JSON.stringify(data.output_data, null, 2)
+        : data.output_data
+    );
   };
 
   const isTextTruncated = (element: HTMLElement | null): boolean => {
     if (!element) return false;
-    return element.scrollHeight > element.clientHeight || element.scrollWidth > element.clientWidth;
+    return (
+      element.scrollHeight > element.clientHeight ||
+      element.scrollWidth > element.clientWidth
+    );
   };
 
   return (
-    <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}>
+    <div
+      className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}
+    >
       <div className="mb-2">
-        <div className="text-lg font-bold">{beautifyString(data.blockType?.replace(/Block$/, '') || data.title)}</div>
+        <div className="text-lg font-bold">
+          {beautifyString(data.blockType?.replace(/Block$/, '') || data.title)}
+        </div>
       </div>
       <div className="node-content">
         <div>
           {data.inputSchema &&
             Object.entries(data.inputSchema.properties).map(([key, schema]) => {
               const isRequired = data.inputSchema.required?.includes(key);
-              return (isRequired || isAdvancedOpen) && (
-                <div key={key}>
-                  <NodeHandle keyName={key} isConnected={isHandleConnected(key)} schema={schema} side="left" />
-                  {!isHandleConnected(key) &&
-                  <NodeInputField
-                    keyName={key}
-                    schema={schema}
-                    value={getValue(key)}
-                    handleInputClick={handleInputClick}
-                    handleInputChange={handleInputChange}
-                    errors={errors}
-                  />}
-                </div>
+              return (
+                (isRequired || isAdvancedOpen) && (
+                  <div key={key}>
+                    <NodeHandle
+                      keyName={key}
+                      isConnected={isHandleConnected(key)}
+                      schema={schema}
+                      side="left"
+                    />
+                    {!isHandleConnected(key) && (
+                      <NodeInputField
+                        keyName={key}
+                        schema={schema}
+                        value={getValue(key)}
+                        handleInputClick={handleInputClick}
+                        handleInputChange={handleInputChange}
+                        errors={errors}
+                      />
+                    )}
+                  </div>
+                )
               );
             })}
         </div>
@@ -188,17 +234,20 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         <div className="node-output" onClick={handleOutputClick}>
           <p>
             <strong>Status:</strong>{' '}
-            {typeof data.status === 'object' ? JSON.stringify(data.status) : data.status || 'N/A'}
+            {typeof data.status === 'object'
+              ? JSON.stringify(data.status)
+              : data.status || 'N/A'}
           </p>
           <p>
             <strong>Output Data:</strong>{' '}
             {(() => {
-              const outputText = typeof data.output_data === 'object'
-                ? JSON.stringify(data.output_data)
-                : data.output_data;
-              
+              const outputText =
+                typeof data.output_data === 'object'
+                  ? JSON.stringify(data.output_data)
+                  : data.output_data;
+
               if (!outputText) return 'No output data';
-              
+
               return outputText.length > 100
                 ? `${outputText.slice(0, 100)}... Press To Read More`
                 : outputText;
@@ -207,12 +256,15 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         </div>
       )}
       <div className="flex items-center mt-2.5">
-        <Switch onCheckedChange={toggleOutput} className='custom-switch' />
-        <span className='m-1 mr-4'>Output</span>
+        <Switch onCheckedChange={toggleOutput} className="custom-switch" />
+        <span className="m-1 mr-4">Output</span>
         {hasOptionalFields() && (
           <>
-            <Switch onCheckedChange={toggleAdvancedSettings} className='custom-switch' />
-            <span className='m-1'>Advanced</span>
+            <Switch
+              onCheckedChange={toggleAdvancedSettings}
+              className="custom-switch"
+            />
+            <span className="m-1">Advanced</span>
           </>
         )}
       </div>

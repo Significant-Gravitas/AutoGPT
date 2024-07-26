@@ -1,37 +1,45 @@
 import React from 'react';
-import type { Metadata } from "next";
-import { ThemeProvider as NextThemeProvider } from "next-themes";
-import { type ThemeProviderProps } from "next-themes/dist/types";
-import { Inter } from "next/font/google";
-import Link from "next/link";
-import { CubeIcon, Pencil1Icon, ReaderIcon, TimerIcon } from "@radix-ui/react-icons";
-
-import "./globals.css";
-
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button, buttonVariants } from "@/components/ui/button";
+import type { Metadata } from 'next';
+import { ThemeProvider as NextThemeProvider } from 'next-themes';
+import { type ThemeProviderProps } from 'next-themes/dist/types';
+import { Inter } from 'next/font/google';
+import Link from 'next/link';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
+  CubeIcon,
+  Pencil1Icon,
+  ReaderIcon,
+  TimerIcon,
+} from '@radix-ui/react-icons';
 
-const inter = Inter({ subsets: ["latin"] });
+import './globals.css';
+
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button, buttonVariants } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: "NextGen AutoGPT",
-  description: "Your one stop shop to creating AI Agents",
+  title: 'NextGen AutoGPT',
+  description: 'Your one stop shop to creating AI Agents',
 };
 
 function ThemeProvider({ children, ...props }: ThemeProviderProps) {
-  return <NextThemeProvider {...props}>{children}</NextThemeProvider>
+  return <NextThemeProvider {...props}>{children}</NextThemeProvider>;
 }
 
 const NavBar = () => (
   <nav className="bg-white dark:bg-slate-800 p-4 flex justify-between items-center shadow">
     <div className="flex space-x-4">
-      <Link href="/monitor" className={buttonVariants({ variant: "ghost" })}>
+      <Link href="/monitor" className={buttonVariants({ variant: 'ghost' })}>
         <TimerIcon className="mr-1" /> Monitor
       </Link>
-      <Link href="/build" className={buttonVariants({ variant: "ghost" })}>
+      <Link href="/build" className={buttonVariants({ variant: 'ghost' })}>
         <Pencil1Icon className="mr-1" /> Build
       </Link>
     </div>
@@ -69,9 +77,7 @@ export default function RootLayout({
         >
           <div className="min-h-screen bg-gray-200 text-gray-900">
             <NavBar />
-            <main className="mx-auto p-4">
-              {children}
-            </main>
+            <main className="mx-auto p-4">{children}</main>
           </div>
         </ThemeProvider>
       </body>

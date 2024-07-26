@@ -9,7 +9,11 @@ interface OutputModalProps {
   value: string;
 }
 
-const OutputModalComponent: FC<OutputModalProps> = ({ isOpen, onClose, value }) => {
+const OutputModalComponent: FC<OutputModalProps> = ({
+  isOpen,
+  onClose,
+  value,
+}) => {
   const [tempValue, setTempValue] = React.useState(value);
 
   useEffect(() => {
@@ -25,7 +29,9 @@ const OutputModalComponent: FC<OutputModalProps> = ({ isOpen, onClose, value }) 
   return createPortal(
     <div className="fixed inset-0 bg-white bg-opacity-60 flex justify-center items-center z-50">
       <div className="bg-white p-5 rounded-lg w-[1000px] max-w-[100%]">
-        <center><h1 style={{ color: 'black' }}>Full Output</h1></center>
+        <center>
+          <h1 style={{ color: 'black' }}>Full Output</h1>
+        </center>
         <Textarea
           className="w-full h-[400px] p-2.5 rounded border border-[#dfdfdf] text-black bg-[#dfdfdf]"
           value={tempValue}

@@ -1,5 +1,5 @@
-import AutoGPTServerAPI from "./client";
+import AutoGPTServerAPI from './client';
 
 export default AutoGPTServerAPI;
-export * from "./types";
-export * from "./utils";
+export * from './types';
+export * from './utils';

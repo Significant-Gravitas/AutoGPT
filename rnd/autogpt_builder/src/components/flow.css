@@ -30,7 +30,8 @@ button:hover {
   background-color: #666;
 }
 
-input, textarea {
+input,
+textarea {
   background-color: #ffffff;
   color: #000000;
   border: 1px solid #555;
@@ -41,7 +42,8 @@ input, textarea {
   margin-top: 5px;
 }
 
-input::placeholder, textarea::placeholder {
+input::placeholder,
+textarea::placeholder {
   color: #aaa;
 }
 
