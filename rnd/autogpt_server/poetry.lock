@@ -25,7 +25,7 @@ requests = "*"
 sentry-sdk = "^1.40.4"
 
 [package.extras]
-benchmark = ["agbenchmark @ file:///workspaces/AutoGPT/benchmark"]
+benchmark = ["agbenchmark"]
 
 [package.source]
 type = "directory"
@@ -329,7 +329,7 @@ watchdog = "4.0.0"
 webdriver-manager = "^4.0.1"
 
 [package.extras]
-benchmark = ["agbenchmark @ file:///workspaces/AutoGPT/benchmark"]
+benchmark = ["agbenchmark"]
 
 [package.source]
 type = "directory"
@@ -1178,6 +1178,20 @@ files = [
 
 [package.extras]
 test = ["pytest (>=6)"]
+
+[[package]]
+name = "expiringdict"
+version = "1.2.2"
+description = "Dictionary with auto-expiring values for caching purposes"
+optional = false
+python-versions = "*"
+files = [
+    {file = "expiringdict-1.2.2-py3-none-any.whl", hash = "sha256:09a5d20bc361163e6432a874edd3179676e935eb81b925eccef48d409a8a45e8"},
+    {file = "expiringdict-1.2.2.tar.gz", hash = "sha256:300fb92a7e98f15b05cf9a856c1415b3bc4f2e132be07daa326da6414c23ee09"},
+]
+
+[package.extras]
+tests = ["coverage", "coveralls", "dill", "mock", "nose"]
 
 [[package]]
 name = "fastapi"
@@ -6348,4 +6362,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "422edccf59dc5cdcc1cb0f6991228b2f58ef807a934d1aeda9643fa0cad27780"
+content-hash = "9013ff78344cb68878809bd7220453879c32c9291e39d99321dbcc9a7359855c"
