@@ -42,15 +42,19 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({ id, data, selected, sourc
         markerEnd={markerEnd}
       />
       <EdgeLabelRenderer>
-        <div style={{
-          transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-        }}
-          className="edge-label-renderer" >
+        <div
+          style={{
+            position: 'absolute',
+            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            pointerEvents: 'all',
+          }}
+          className="edge-label-renderer"
+        >
           <button className="edge-label-button" onClick={onEdgeClick}>
             X
           </button>
         </div>
-      </EdgeLabelRenderer>
+      </EdgeLabelRenderer>    
     </>
   )
 };
