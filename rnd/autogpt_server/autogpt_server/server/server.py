@@ -23,10 +23,8 @@ from autogpt_server.data import graph as graph_db
 from autogpt_server.data.block import BlockInput, CompletedBlockOutput
 from autogpt_server.data.execution import (
     ExecutionResult,
-    ExecutionStatus,
     get_execution_results,
     list_executions,
-    update_execution_status,
 )
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
@@ -599,9 +597,9 @@ class AgentServer(AppService):
         return execution_scheduler.get_execution_schedules(graph_id)  # type: ignore
 
     @expose
-    def update_execution_status(self, exec_id: str, status: ExecutionStatus):
-        exec_result = self.run_and_wait(update_execution_status(exec_id, status))
-        self.run_and_wait(self.event_queue.put(exec_result))
+    def send_execution_update(self, execution_result_dict: dict[Any, Any]):
+        execution_result = ExecutionResult(**execution_result_dict)
+        self.run_and_wait(self.event_queue.put(execution_result))
 
     @expose
     def acquire_lock(self, key: Any):
