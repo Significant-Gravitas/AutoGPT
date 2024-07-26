@@ -9,6 +9,7 @@ import { beautifyString } from '@/lib/utils';
 import { Switch } from "@/components/ui/switch"
 import NodeHandle from './NodeHandle';
 import NodeInputField from './NodeInputField';
+import { Copy, Trash2 } from 'lucide-react';
 
 type CustomNodeData = {
   blockType: string;
@@ -36,7 +37,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const outputDataRef = useRef<HTMLDivElement>(null);
 
 
-  const { setNodes, setEdges } = useReactFlow();
+  const { getNode, setNodes, getEdges, setEdges } = useReactFlow();
 
 
   useEffect(() => {
@@ -172,15 +173,74 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   const deleteNode = useCallback(() => {
     console.log('Deleting node:', id);
-    setNodes((nodes) => nodes.filter((node) => node.id !== id));
-    setEdges((edges) => edges.filter((edge) => edge.source !== id));
-  }, [id, setNodes, setEdges]);
+
+    // Get all edges connected to this node
+    const connectedEdges = getEdges().filter(edge => edge.source === id || edge.target === id);
+
+    // For each connected edge, update the connected node's state
+    connectedEdges.forEach(edge => {
+      const connectedNodeId = edge.source === id ? edge.target : edge.source;
+      const connectedNode = getNode(connectedNodeId);
+
+      if (connectedNode) {
+        setNodes(nodes => nodes.map(node => {
+          if (node.id === connectedNodeId) {
+            // Update the node's data to reflect the disconnection
+            const updatedConnections = node.data.connections.filter(
+              conn => !(conn.source === id || conn.target === id)
+            );
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                connections: updatedConnections
+              }
+            };
+          }
+          return node;
+        }));
+      }
+    });
+
+    // Remove the node and its connected edges
+    setNodes(nodes => nodes.filter(node => node.id !== id));
+    setEdges(edges => edges.filter(edge => edge.source !== id && edge.target !== id));
+  }, [id, setNodes, setEdges, getNode, getEdges]);
+
+  const copyNode = useCallback(() => {
+    // This is a placeholder function. The actual copy functionality
+    // will be implemented by another team member.
+    console.log('Copy node:', id);
+  }, [id]);
 
   return (
-    <div className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`} onMouseOver={handleHovered} onMouseLeave={handleMouseLeave}>
-      <div className="mb-2 inline-flex">
+    <div
+      className={`custom-node dark-theme ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}
+      onMouseEnter={handleHovered}
+      onMouseLeave={handleMouseLeave}
+    >
+      <div className="mb-2">
         <div className="text-lg font-bold">{beautifyString(data.blockType?.replace(/Block$/, '') || data.title)}</div>
-        {isHovered && <button className="text-sm" onClick={deleteNode}>Trash</button>}
+        <div className="node-actions">
+          {isHovered && (
+            <>
+              <button
+                className="node-action-button"
+                onClick={copyNode}
+                title="Copy node"
+              >
+                <Copy size={18} />
+              </button>
+              <button
+                className="node-action-button"
+                onClick={deleteNode}
+                title="Delete node"
+              >
+                <Trash2 size={18} />
+              </button>
+            </>
+          )}
+        </div>
       </div>
       <div className="node-content">
         <div>
@@ -188,7 +248,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
             Object.entries(data.inputSchema.properties).map(([key, schema]) => {
               const isRequired = data.inputSchema.required?.includes(key);
               return (isRequired || isAdvancedOpen) && (
-                <div key={key}>
+                <div key={key} onMouseOver={() => { }}>
                   <NodeHandle keyName={key} isConnected={isHandleConnected(key)} schema={schema} side="left" />
                   {!isHandleConnected(key) &&
                     <NodeInputField
