@@ -15,7 +15,6 @@ from autogpt_server.data.execution import (
     GraphExecution,
     NodeExecution,
     create_graph_execution,
-    get_node_execution_input,
     merge_execution_input,
     parse_execution_output,
     upsert_execution_input,
@@ -149,16 +148,15 @@ def _enqueue_next_nodes(
         # which then either updating the existing execution input or creating a new one.
         # While reading, we should avoid any other process to add input to the same node.
         with synchronized(api_client, ("upsert_input", next_node_id, graph_exec_id)):
-            next_node_exec_id = wait(
+            next_node_exec_id, next_node_input = wait(
                 upsert_execution_input(
                     node_id=next_node_id,
                     graph_exec_id=graph_exec_id,
                     input_name=next_input_name,
-                    data=next_data,
+                    input_data=next_data,
                 )
             )
 
-        next_node_input = wait(get_node_execution_input(next_node_exec_id))
         next_node_input, validation_msg = validate_exec(next_node, next_node_input)
         suffix = f"{next_output_name}>{next_input_name}~{next_node_id}:{validation_msg}"
 
