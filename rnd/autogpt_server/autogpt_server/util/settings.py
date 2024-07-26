@@ -41,8 +41,17 @@ class UpdateTrackingModel(BaseModel, Generic[T]):
 class Config(UpdateTrackingModel["Config"], BaseSettings):
     """Config for the server."""
 
-    num_workers: int = Field(
-        default=9, ge=1, le=100, description="Number of workers to use for execution."
+    num_graph_workers: int = Field(
+        default=1,
+        ge=1,
+        le=100,
+        description="Maximum number of workers to use for graph execution.",
+    )
+    num_node_workers: int = Field(
+        default=1,
+        ge=1,
+        le=100,
+        description="Maximum number of workers to use for node execution within a single graph.",
     )
     # Add more configuration fields as needed
 

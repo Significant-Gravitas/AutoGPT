@@ -18,9 +18,16 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import autogpt_server.server.ws_api
-from autogpt_server.data import block, db, execution
+from autogpt_server.data import block, db
 from autogpt_server.data import graph as graph_db
 from autogpt_server.data.block import BlockInput, CompletedBlockOutput
+from autogpt_server.data.execution import (
+    ExecutionResult,
+    ExecutionStatus,
+    get_execution_results,
+    list_executions,
+    update_execution_status,
+)
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import (
@@ -30,17 +37,19 @@ from autogpt_server.server.model import (
     WsMessage,
 )
 from autogpt_server.util.data import get_frontend_path
+from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
 
 
 class AgentServer(AppService):
-    event_queue: asyncio.Queue[execution.ExecutionResult] = asyncio.Queue()
+    event_queue: asyncio.Queue[ExecutionResult] = asyncio.Queue()
     manager = ConnectionManager()
+    mutex = KeyedMutex()
 
     async def event_broadcaster(self):
         while True:
-            event: execution.ExecutionResult = await self.event_queue.get()
+            event: ExecutionResult = await self.event_queue.get()
             await self.manager.send_execution_result(event)
 
     @asynccontextmanager
@@ -552,17 +561,17 @@ class AgentServer(AppService):
                 status_code=404, detail=f"Agent #{graph_id}{rev} not found."
             )
 
-        return await execution.list_executions(graph_id, graph_version)
+        return await list_executions(graph_id, graph_version)
 
     @classmethod
     async def get_run_execution_results(
         cls, graph_id: str, run_id: str
-    ) -> list[execution.ExecutionResult]:
+    ) -> list[ExecutionResult]:
         graph = await graph_db.get_graph(graph_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
-        return await execution.get_execution_results(run_id)
+        return await get_execution_results(run_id)
 
     async def create_schedule(
         self, graph_id: str, cron: str, input_data: dict[Any, Any]
@@ -590,15 +599,33 @@ class AgentServer(AppService):
         return execution_scheduler.get_execution_schedules(graph_id)  # type: ignore
 
     @expose
-    def send_execution_update(self, execution_result_dict: dict[Any, Any]):
-        execution_result = execution.ExecutionResult(**execution_result_dict)
-        self.run_and_wait(self.event_queue.put(execution_result))
+    def update_execution_status(self, exec_id: str, status: ExecutionStatus):
+        exec_result = self.run_and_wait(update_execution_status(exec_id, status))
+        self.run_and_wait(self.event_queue.put(exec_result))
+
+    @expose
+    def acquire_lock(self, key: Any):
+        self.mutex.lock(key)
+
+    @expose
+    def release_lock(self, key: Any):
+        self.mutex.unlock(key)
 
     @classmethod
     def update_configuration(
         cls,
         updated_settings: Annotated[
-            Dict[str, Any], Body(examples=[{"config": {"num_workers": 10}}])
+            Dict[str, Any],
+            Body(
+                examples=[
+                    {
+                        "config": {
+                            "num_graph_workers": 10,
+                            "num_node_workers": 10,
+                        }
+                    }
+                ]
+            ),
         ],
     ):
         settings = Settings()
