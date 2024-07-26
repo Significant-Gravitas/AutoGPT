@@ -69,7 +69,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({ id, data, selected, sourc
             className={`edge-label-button ${isHovered ? 'visible' : ''}`}
             onClick={onEdgeClick}
           >
-            <X size={14} />
+            <X className="size-4" />
           </button>
         </div>
       </EdgeLabelRenderer>
