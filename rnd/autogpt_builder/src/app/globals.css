@@ -8,9 +8,7 @@
   }
 }
 
-
-
-:root  {
+:root {
   --background: 180 100% 95%;
   --foreground: 180 5% 0%;
   --card: 180 50% 90%;
@@ -32,7 +30,7 @@
   --ring: 180 76.5% 30%;
   --radius: 0.5rem;
 }
-.dark  {
+.dark {
   --background: 180 50% 5%;
   --foreground: 180 5% 90%;
   --card: 180 50% 0%;
@@ -54,7 +52,6 @@
   --ring: 180 76.5% 30%;
   --radius: 0.5rem;
 }
-
 
 @layer base {
   * {
