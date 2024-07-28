@@ -80,15 +80,6 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     }
     current[keys[keys.length - 1]] = value;
 
-    // Remove key if value is incorrect
-    // Need to do this because otherwise schema validation 
-    // will fail for empty, constrained non-required fields
-    if (value === '' || value === null || value === undefined) {
-      delete current[keys[keys.length - 1]];
-    } else {
-      current[keys[keys.length - 1]] = value;
-    }
-
     console.log(`Updating hardcoded values for node ${id}:`, newValues);
     data.setHardcodedValues(newValues);
     const errors = data.errors || {};

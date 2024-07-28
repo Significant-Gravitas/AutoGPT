@@ -19,7 +19,7 @@ import AutoGPTServerAPI, { Block, Graph, ObjectSchema } from '@/lib/autogpt-serv
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ChevronRight, ChevronLeft } from "lucide-react";
-import { deepEquals, getTypeColor, setNestedProperty } from '@/lib/utils';
+import { deepEquals, getTypeColor, removeEmptyStringsAndNulls, setNestedProperty } from '@/lib/utils';
 import { beautifyString } from '@/lib/utils';
 import { CustomEdge, CustomEdgeData } from './CustomEdge';
 import ConnectionLine from './ConnectionLine';
@@ -330,6 +330,7 @@ const FlowEditor: React.FC<{
         ...node,
         data: {
           ...node.data,
+          hardcodedValues: removeEmptyStringsAndNulls(node.data.hardcodedValues),
           status: undefined,
         },
       }))
@@ -364,6 +365,10 @@ const FlowEditor: React.FC<{
         input_default: inputDefault,
         input_nodes: inputNodes,
         output_nodes: outputNodes,
+        data: {
+          ...node.data,
+          hardcodedValues: removeEmptyStringsAndNulls(node.data.hardcodedValues),
+        },
         metadata: { position: node.position }
       };
     });
