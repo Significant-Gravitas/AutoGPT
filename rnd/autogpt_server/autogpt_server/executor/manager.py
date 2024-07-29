@@ -217,7 +217,7 @@ def _enqueue_next_nodes(
                     if link.is_static and link.sink_name not in idata
                 }
                 for input_name in static_link_names:
-                    idata[input_name] = next_data[input_name]
+                    idata[input_name] = next_node_input[input_name]
 
                 idata, msg = validate_exec(next_node, idata)
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"

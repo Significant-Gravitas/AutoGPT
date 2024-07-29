@@ -76,8 +76,10 @@ class ExecutionResult(BaseModel):
     @staticmethod
     def from_db(execution: AgentNodeExecution):
         if execution.executionData:
+            # Execution that has been queued for execution will persist its data.
             input_data = json.loads(execution.executionData)
         else:
+            # For incomplete execution, executionData will not be yet available.
             input_data: BlockInput = defaultdict()
             for data in execution.Input or []:
                 input_data[data.name] = json.loads(data.data)
@@ -277,7 +279,10 @@ async def get_execution_results(graph_exec_id: str) -> list[ExecutionResult]:
     executions = await AgentNodeExecution.prisma().find_many(
         where={"agentGraphExecutionId": graph_exec_id},
         include=EXECUTION_RESULT_INCLUDE,  # type: ignore
-        order={"addedTime": "asc"},
+        order=[
+            {"queuedTime": "asc"},
+            {"addedTime": "asc"},  # Fallback: Incomplete execs has no queuedTime.
+        ],
     )
     res = [ExecutionResult.from_db(execution) for execution in executions]
     return res

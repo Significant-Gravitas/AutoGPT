@@ -148,58 +148,62 @@ async def test_input_pin_always_waited(server):
 
 
 @pytest.mark.asyncio(scope="session")
-async def test_static_input_link_on_loop(server):
+async def test_static_input_link_on_graph(server):
     """
     This test is asserting the behaviour of static input link, e.g: reusable input link.
-    In this test, the input link is reused on the loop, and the input value is retained.
 
     Test scenario:
-    ValueBlock --C MathBlock -- IfBlock --
-                      |_________________|
+    *ValueBlock1*===a=========\\
+    *ValueBlock2*===a=====\\  ||
+    *ValueBlock3*===a===*MathBlock*====b / static====*ValueBlock5*
+    *ValueBlock4*=========================================//
 
-    ValueBlock will be connected to both the input of MathBlock (`a` and `b`).
-    Link to `a` will be static, IfBlock `no_output` will be also connected to `b`.
-    This will create a loop to add keep adding `ValueBlock` until IF condition is met.
+    In this test, there will be three input waiting in the MathBlock input pin `a`.
+    And there will be another output on input pin b `b`, which is a static link,
+    completing the input of those three incomplete executions.
     """
     nodes = [
+        graph.Node(block_id=ValueBlock().id, input_default={"input": 4}),
+        graph.Node(block_id=ValueBlock().id, input_default={"input": 4}),
+        graph.Node(block_id=ValueBlock().id, input_default={"input": 4}),
+        graph.Node(block_id=ValueBlock().id, input_default={"input": 5}),
         graph.Node(block_id=ValueBlock().id),
         graph.Node(
             block_id=MathsBlock().id,
             input_default={"operation": Operation.ADD.value},
         ),
-        graph.Node(
-            block_id=ConditionBlock().id,
-            input_default={
-                "operator": ComparisonOperator.GREATER_THAN.value,
-                "value2": 10,
-            },
-        ),
     ]
     links = [
         graph.Link(
             source_id=nodes[0].id,
-            sink_id=nodes[1].id,
+            sink_id=nodes[5].id,
             source_name="output",
             sink_name="a",
-            is_static=True,  # This is the static link to test.
-        ),
-        graph.Link(
-            source_id=nodes[0].id,
-            sink_id=nodes[1].id,
-            source_name="output",
-            sink_name="b",
         ),
         graph.Link(
             source_id=nodes[1].id,
-            sink_id=nodes[2].id,
-            source_name="result",
-            sink_name="value1",
+            sink_id=nodes[5].id,
+            source_name="output",
+            sink_name="a",
         ),
         graph.Link(
             source_id=nodes[2].id,
-            sink_id=nodes[1].id,
-            source_name="no_output",
+            sink_id=nodes[5].id,
+            source_name="output",
+            sink_name="a",
+        ),
+        graph.Link(
+            source_id=nodes[3].id,
+            sink_id=nodes[4].id,
+            source_name="output",
+            sink_name="input",
+        ),
+        graph.Link(
+            source_id=nodes[4].id,
+            sink_id=nodes[5].id,
+            source_name="output",
             sink_name="b",
+            is_static=True,  # This is the static link to test.
         ),
     ]
     test_graph = graph.Graph(
@@ -210,14 +214,14 @@ async def test_static_input_link_on_loop(server):
     )
 
     test_graph = await graph.create_graph(test_graph)
-    input_data = {"input": 3}
     graph_exec_id = await execute_graph(
-        server.agent_server, server.exec_manager, test_graph, input_data, 7
+        server.agent_server, server.exec_manager, test_graph, {}, 8
     )
     executions = await server.agent_server.get_run_execution_results(
         test_graph.id, graph_exec_id
     )
-    # Loop: 3+3=6, 6+3=9, 9+3=12
-    assert len(executions) == 7
-    assert executions[6].status == execution.ExecutionStatus.COMPLETED
-    assert executions[6].output_data == {"result": [True], "yes_output": [12]}
+    assert len(executions) == 8
+    # The last 3 executions will be a+b=4+5=9
+    for exec_data in executions[-3:]:
+        assert exec_data.status == execution.ExecutionStatus.COMPLETED
+        assert exec_data.output_data == {"result": [9]}
