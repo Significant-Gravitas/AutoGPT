@@ -152,48 +152,6 @@ const FlowEditor: React.FC<{
   const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
   const edgeTypes: EdgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
 
-  const onNodesChange: OnNodesChange = useCallback(
-    (changes) => {
-      changes.forEach(change => {
-        if (change.type === 'remove') {
-          const removedNode = nodes.find(node => node.id === change.id);
-          if (removedNode) {
-            history.push({
-              type: 'DELETE_NODE',
-              payload: removedNode,
-              undo: () => setNodes((nds) => [...nds, removedNode]),
-              redo: () => setNodes((nds) => nds.filter(node => node.id !== removedNode.id))
-            });
-          }
-        } else if (change.type === 'position' && !isDragging.current) {
-          const movedNode = nodes.find(node => node.id === change.id);
-          if (movedNode) {
-            const oldPosition = initialPositionRef.current[change.id] || movedNode.position;
-            const newPosition = change.position;
-            
-            // Calculate the movement distance
-            const distanceMoved = Math.sqrt(
-              Math.pow(newPosition.x - oldPosition.x, 2) +
-              Math.pow(newPosition.y - oldPosition.y, 2)
-            );
-
-            if (distanceMoved > MINIMUM_MOVE_BEFORE_LOG) { // Minimum movement threshold
-              history.push({
-                type: 'UPDATE_NODE_POSITION',
-                payload: { nodeId: change.id, oldPosition, newPosition },
-                undo: () => setNodes((nds) => nds.map(node => node.id === change.id ? { ...node, position: oldPosition } : node)),
-                redo: () => setNodes((nds) => nds.map(node => node.id === change.id ? { ...node, position: newPosition } : node)),
-              });
-              initialPositionRef.current[change.id] = newPosition;
-            }
-          }
-        }
-      });
-      setNodes((nds) => applyNodeChanges(changes, nds));
-    },
-    [nodes]
-  );
-
   const onNodesChangeStart = (event: MouseEvent, node: Node) => {
     initialPositionRef.current[node.id] = { ...node.position };
     isDragging.current = true;
@@ -225,29 +183,6 @@ const FlowEditor: React.FC<{
     delete initialPositionRef.current[node.id];
   };
 
-  const onEdgesChange: OnEdgesChange = useCallback(
-    (changes) => {
-      changes.forEach(change => {
-        if (change.type === 'remove') {
-          const removedEdge = edges.find(edge => edge.id === change.id);
-          if (removedEdge) {
-            history.push({
-              type: 'DELETE_EDGE',
-              payload: removedEdge,
-              undo: () => setEdges((eds) => [...eds, removedEdge]),
-              redo: () => {
-                setEdges((eds) => addEdge(removedEdge, eds));
-                updateNodesOnEdgeChange(removedEdge, 'add');
-              }
-            });
-            updateNodesOnEdgeChange(removedEdge, 'remove');
-          }
-        }
-      });
-      setEdges((eds) => applyEdgeChanges(changes, eds));
-    },
-    [edges]
-  );
 
   const updateNodesOnEdgeChange = (edge: Edge<CustomEdgeData>, action: 'add' | 'remove') => {
     setNodes((nds) =>
@@ -378,13 +313,13 @@ const FlowEditor: React.FC<{
     [setNodes]
   );
 
-  const addNode = (blockId: string, nodeType: string) => {
+  const addNode = useCallback((blockId: string, nodeType: string) => {
     const nodeSchema = availableNodes.find(node => node.id === blockId);
     if (!nodeSchema) {
       console.error(`Schema not found for block ID: ${blockId}`);
       return;
     }
-
+  
     const newNode: Node<CustomNodeData> = {
       id: nodeId.toString(),
       type: 'custom',
@@ -395,7 +330,7 @@ const FlowEditor: React.FC<{
         inputSchema: nodeSchema.inputSchema,
         outputSchema: nodeSchema.outputSchema,
         hardcodedValues: {},
-        setHardcodedValues: (values: { [key: string]: any }) => {
+        setHardcodedValues: (values) => {
           setNodes((nds) =>
             nds.map((node) =>
               node.id === newNode.id ? { ...node, data: { ...node.data, hardcodedValues: values } } : node
@@ -407,17 +342,18 @@ const FlowEditor: React.FC<{
         block_id: blockId,
       },
     };
-
+  
     setNodes((nds) => [...nds, newNode]);
     setNodeId((prevId) => prevId + 1);
-
+  
     history.push({
       type: 'ADD_NODE',
       payload: newNode,
       undo: () => setNodes((nds) => nds.filter(node => node.id !== newNode.id)),
       redo: () => setNodes((nds) => [...nds, newNode])
     });
-  };
+  }, [nodeId, availableNodes]);
+  
 
   const handleUndo = () => {
     history.undo();

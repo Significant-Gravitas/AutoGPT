@@ -33,6 +33,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [errors, setErrors] = useState<{ [key: string]: string | null }>({});
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
   const outputDataRef = useRef<HTMLDivElement>(null);
+  const isInitialSetup = useRef(true);
 
   useEffect(() => {
     if (data.output_data || data.status) {
@@ -41,13 +42,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   }, [data.output_data, data.status]);
 
   useEffect(() => {
-    // Store initial state in history
-    history.push({
-      type: 'UPDATE_INPUT',
-      payload: { nodeId: id, oldValues: {}, newValues: data.hardcodedValues },
-      undo: () => data.setHardcodedValues({}),
-      redo: () => data.setHardcodedValues(data.hardcodedValues),
-    });
+    isInitialSetup.current = false;
   }, []);
 
   const toggleOutput = (checked: boolean) => {
@@ -87,13 +82,14 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
     console.log(`Updating hardcoded values for node ${id}:`, newValues);
 
-    // Push the change to history
-    history.push({
-      type: 'UPDATE_INPUT',
-      payload: { nodeId: id, oldValues: data.hardcodedValues, newValues },
-      undo: () => data.setHardcodedValues(data.hardcodedValues),
-      redo: () => data.setHardcodedValues(newValues),
-    });
+    if (!isInitialSetup.current) {
+      history.push({
+        type: 'UPDATE_INPUT',
+        payload: { nodeId: id, oldValues: data.hardcodedValues, newValues },
+        undo: () => data.setHardcodedValues(data.hardcodedValues),
+        redo: () => data.setHardcodedValues(newValues),
+      });
+    }
 
     data.setHardcodedValues(newValues);
     setErrors((prevErrors) => ({ ...prevErrors, [key]: null }));
