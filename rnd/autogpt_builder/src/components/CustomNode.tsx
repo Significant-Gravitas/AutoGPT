@@ -1,17 +1,17 @@
-import React, { useState, useEffect, FC, memo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, FC, memo, useCallback } from 'react';
 import { NodeProps, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './customnode.css';
 import InputModalComponent from './InputModalComponent';
 import OutputModalComponent from './OutputModalComponent';
 import { BlockSchema } from '@/lib/types';
-import { beautifyString } from '@/lib/utils';
+import { beautifyString, setNestedProperty } from '@/lib/utils';
 import { Switch } from "@/components/ui/switch"
 import NodeHandle from './NodeHandle';
 import NodeInputField from './NodeInputField';
 import { Copy, Trash2 } from 'lucide-react';
 
-type CustomNodeData = {
+export type CustomNodeData = {
   blockType: string;
   title: string;
   inputSchema: BlockSchema;
@@ -22,6 +22,10 @@ type CustomNodeData = {
   isOutputOpen: boolean;
   status?: string;
   output_data?: any;
+  block_id: string;
+  backend_id?: string;
+  errors?: { [key: string]: string | null };
+  setErrors: (errors: { [key: string]: string | null }) => void;
 };
 
 const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
@@ -30,11 +34,8 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [modalValue, setModalValue] = useState<string>('');
-  const [errors, setErrors] = useState<{ [key: string]: string | null }>({});
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-
-  const outputDataRef = useRef<HTMLDivElement>(null);
 
 
   const { getNode, setNodes, getEdges, setEdges } = useReactFlow();
@@ -87,11 +88,13 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
     console.log(`Updating hardcoded values for node ${id}:`, newValues);
     data.setHardcodedValues(newValues);
-    setErrors((prevErrors) => ({ ...prevErrors, [key]: null }));
+    const errors = data.errors || {};
+    // Remove error with the same key
+    setNestedProperty(errors, key, null);
+    data.setErrors({ ...errors });
   };
 
   const getValue = (key: string) => {
-    console.log(`Getting value for key: ${key}`);
     const keys = key.split('.');
     return keys.reduce((acc, k) => (acc && acc[k] !== undefined) ? acc[k] : '', data.hardcodedValues);
   };
@@ -127,28 +130,6 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     }
     setIsModalOpen(false);
     setActiveKey(null);
-  };
-
-  const validateInputs = () => {
-    const newErrors: { [key: string]: string | null } = {};
-    const validateRecursive = (schema: any, parentKey: string = '') => {
-      Object.entries(schema.properties).forEach(([key, propSchema]: [string, any]) => {
-        const fullKey = parentKey ? `${parentKey}.${key}` : key;
-        const value = getValue(fullKey);
-
-        if (propSchema.type === 'object' && propSchema.properties) {
-          validateRecursive(propSchema, fullKey);
-        } else {
-          if (propSchema.required && !value) {
-            newErrors[fullKey] = `${fullKey} is required`;
-          }
-        }
-      });
-    };
-
-    validateRecursive(data.inputSchema);
-    setErrors(newErrors);
-    return Object.values(newErrors).every((error) => error === null);
   };
 
   const handleOutputClick = () => {
@@ -249,7 +230,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               const isRequired = data.inputSchema.required?.includes(key);
               return (isRequired || isAdvancedOpen) && (
                 <div key={key} onMouseOver={() => { }}>
-                  <NodeHandle keyName={key} isConnected={isHandleConnected(key)} schema={schema} side="left" />
+                  <NodeHandle keyName={key} isConnected={isHandleConnected(key)} isRequired={isRequired} schema={schema} side="left" />
                   {!isHandleConnected(key) &&
                     <NodeInputField
                       keyName={key}
@@ -257,7 +238,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                       value={getValue(key)}
                       handleInputClick={handleInputClick}
                       handleInputChange={handleInputChange}
-                      errors={errors}
+                      errors={data.errors?.[key]}
                     />}
                 </div>
               );
