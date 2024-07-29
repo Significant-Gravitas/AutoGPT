@@ -34,6 +34,11 @@ ingress:
         service:
           name: autogpt-server
           port: 8000
+  defaultBackend:
+    service:
+      name: autogpt-server
+      port:
+        number: 8000
 
 resources:
   requests:
