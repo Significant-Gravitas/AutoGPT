@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 conn_retry = retry(stop=stop_after_delay(5), wait=wait_exponential(multiplier=0.1))
 T = TypeVar("T")
 
-host = os.environ.get("PYRO_HOST")
+host = os.environ.get("PYRO_HOST", "localhost")
+
 
 def expose(func: Callable) -> Callable:
     def wrapper(*args, **kwargs):
