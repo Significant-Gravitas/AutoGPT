@@ -1,4 +1,4 @@
-import React, { useState, useEffect, FC, memo, useCallback } from 'react';
+import React, { useState, useEffect, FC, memo, useCallback, useRef } from 'react';
 import { NodeProps, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './customnode.css';
