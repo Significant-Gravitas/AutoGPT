@@ -38,6 +38,7 @@ type CustomNodeData = {
   output_data?: any;
   block_id: string;
   backend_id?: string;
+  setIsAnyModalOpen?: (isOpen: boolean) => void;
 };
 
 const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id: string, name: string) => void }> =
@@ -84,6 +85,7 @@ const FlowEditor: React.FC<{
   const [agentName, setAgentName] = useState<string>('');
   const [copiedNodes, setCopiedNodes] = useState<Node<CustomNodeData>[]>([]);
   const [copiedEdges, setCopiedEdges] = useState<Edge<CustomEdgeData>[]>([]);
+  const [isAnyModalOpen, setIsAnyModalOpen] = useState(false); // Track if any modal is open
 
   const apiUrl = process.env.AGPT_SERVER_URL!;
   const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
@@ -225,6 +227,7 @@ const FlowEditor: React.FC<{
         connections: [],
         isOutputOpen: false,
         block_id: blockId,
+        setIsAnyModalOpen: setIsAnyModalOpen, // Pass setIsAnyModalOpen function
       },
     };
 
@@ -265,6 +268,7 @@ const FlowEditor: React.FC<{
               targetHandle: link.sink_name,
             })),
           isOutputOpen: false,
+          setIsAnyModalOpen: setIsAnyModalOpen, // Pass setIsAnyModalOpen function
         },
       };
       return newNode;
@@ -463,6 +467,8 @@ const FlowEditor: React.FC<{
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    if (isAnyModalOpen) return; // Prevent copy/paste if any modal is open
+
     if (event.ctrlKey || event.metaKey) {
       if (event.key === 'c' || event.key === 'C') {
         // Copy selected nodes
@@ -515,7 +521,7 @@ const FlowEditor: React.FC<{
         }
       }
     }
-  }, [nodes, edges, copiedNodes, copiedEdges, nodeId]);
+  }, [nodes, edges, copiedNodes, copiedEdges, nodeId, isAnyModalOpen]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -542,7 +548,7 @@ const FlowEditor: React.FC<{
       </Button>
       <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
       <ReactFlow
-        nodes={nodes}
+        nodes={nodes.map(node => ({ ...node, data: { ...node.data, setIsAnyModalOpen } }))}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}

@@ -21,6 +21,7 @@ type CustomNodeData = {
   isOutputOpen: boolean;
   status?: string;
   output_data?: any;
+  setIsAnyModalOpen?: (isOpen: boolean) => void;
 };
 
 const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
@@ -40,8 +41,8 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   }, [data.output_data, data.status]);
 
   useEffect(() => {
-    console.log(`Node ${id} data:`, data);
-  }, [id, data]);
+    data.setIsAnyModalOpen?.(isModalOpen || isOutputModalOpen);
+  }, [isModalOpen, isOutputModalOpen, data]);
 
   const toggleOutput = (checked: boolean) => {
     setIsOutputOpen(checked);
