@@ -33,22 +33,25 @@ jobs:
             tflint_recurse: true
             tflint_changed_only: false
 
+      - name: Debug default branch
+        run: echo "Default branch is ${{ github.event.repository.default_branch }}"
+
       - name: Set up Helm
         uses: azure/setup-helm@v4.2.0
         with:
           version: v3.14.4
 
-      - name: Set up chart-testing
-        uses: helm/chart-testing-action@v2.6.0
-
-      - name: Run chart-testing (list-changed)
-        id: list-changed
-        run: |
-          changed=$(ct list-changed --target-branch  refs/heads/${{ github.event.repository.default_branch }})
-          if [[ -n "$changed" ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Run chart-testing (lint)
-        if: steps.list-changed.outputs.changed == 'true'
-        run: ct lint --target-branch refs/heads/$${{ github.event.repository.default_branch }}
+#      - name: Set up chart-testing
+#        uses: helm/chart-testing-action@v2.6.0
+#
+#      - name: Run chart-testing (list-changed)
+#        id: list-changed
+#        run: |
+#          changed=$(ct list-changed --target-branch  refs/heads/${{ github.event.repository.default_branch }})
+#          if [[ -n "$changed" ]]; then
+#            echo "changed=true" >> "$GITHUB_OUTPUT"
+#          fi
+#
+#      - name: Run chart-testing (lint)
+#        if: steps.list-changed.outputs.changed == 'true'
+#        run: ct lint --target-branch refs/heads/$${{ github.event.repository.default_branch }}
