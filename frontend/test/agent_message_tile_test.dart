@@ -1,4 +1,4 @@
-import 'package:auto_gpt_flutter_client/views/chat/agent_message_tile.dart';
+import 'package:auto_gpt_flutter_client/views/chat/agent_message_tile.dart' show AgentMessageTile;
 import 'package:auto_gpt_flutter_client/views/chat/json_code_snippet_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
