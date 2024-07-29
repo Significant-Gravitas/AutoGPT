@@ -159,14 +159,14 @@ async def test_static_input_link_on_graph(server):
     *ValueBlock4*=========================================//
 
     In this test, there will be three input waiting in the MathBlock input pin `a`.
-    And there will be another output on input pin b `b`, which is a static link,
-    completing the input of those three incomplete executions.
+    And later, another output is produced on input pin `b`, which is a static link,
+    this input will complete the input of those three incomplete executions.
     """
     nodes = [
-        graph.Node(block_id=ValueBlock().id, input_default={"input": 4}),
-        graph.Node(block_id=ValueBlock().id, input_default={"input": 4}),
-        graph.Node(block_id=ValueBlock().id, input_default={"input": 4}),
-        graph.Node(block_id=ValueBlock().id, input_default={"input": 5}),
+        graph.Node(block_id=ValueBlock().id, input_default={"input": 4}),  # a
+        graph.Node(block_id=ValueBlock().id, input_default={"input": 4}),  # a
+        graph.Node(block_id=ValueBlock().id, input_default={"input": 4}),  # a
+        graph.Node(block_id=ValueBlock().id, input_default={"input": 5}),  # b
         graph.Node(block_id=ValueBlock().id),
         graph.Node(
             block_id=MathsBlock().id,
