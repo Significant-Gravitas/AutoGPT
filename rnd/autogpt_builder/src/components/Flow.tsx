@@ -119,7 +119,6 @@ const FlowEditor: React.FC<{
     // Load existing graph
     useEffect(() => {
         if (!flowID || availableNodes.length == 0) return
-
         ;(template ? api.getTemplate(flowID) : api.getGraph(flowID)).then(
             (graph) => loadGraph(graph)
         )
