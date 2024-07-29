@@ -13,7 +13,7 @@ log = print
 class SpinTestServer:
     def __init__(self):
         self.name_server = PyroNameServer()
-        self.exec_manager = ExecutionManager(1)
+        self.exec_manager = ExecutionManager()
         self.agent_server = AgentServer()
         self.scheduler = ExecutionScheduler()
 

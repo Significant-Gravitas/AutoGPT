@@ -99,3 +99,15 @@ variable "role_bindings" {
   type        = map(list(string))
   default     = {}
 }
+
+variable "pods_ip_cidr_range" {
+  description = "The IP address range for pods"
+  type        = string
+  default     = "10.1.0.0/16"
+}
+
+variable "services_ip_cidr_range" {
+  description = "The IP address range for services"
+  type        = string
+  default     = "10.2.0.0/20"
+}

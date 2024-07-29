@@ -1,6 +1,6 @@
 # base values, environment specific variables should be specified/overwritten in environment values
 
-replicaCount: 2
+replicaCount: 1
 
 image:
   repository: us-east1-docker.pkg.dev/agpt-dev/agpt-server-dev/agpt-server-dev

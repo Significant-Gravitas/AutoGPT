@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import threading
 import time
 from abc import abstractmethod
@@ -15,6 +16,8 @@ from autogpt_server.util.process import AppProcess
 logger = logging.getLogger(__name__)
 conn_retry = retry(stop=stop_after_delay(5), wait=wait_exponential(multiplier=0.1))
 T = TypeVar("T")
+
+host = os.environ.get("PYRO_HOST", "localhost")
 
 
 def expose(func: Callable) -> Callable:
@@ -33,7 +36,7 @@ class PyroNameServer(AppProcess):
     def run(self):
         try:
             print("Starting NameServer loop")
-            nameserver.start_ns_loop()
+            nameserver.start_ns_loop(host=host, port=9090)
         except KeyboardInterrupt:
             print("Shutting down NameServer")
 
@@ -51,11 +54,11 @@ class AppService(AppProcess):
         while True:
             time.sleep(10)
 
-    def run_async(self, coro: Coroutine[T, Any, T]):
+    def __run_async(self, coro: Coroutine[T, Any, T]):
         return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop)
 
     def run_and_wait(self, coro: Coroutine[T, Any, T]) -> T:
-        future = self.run_async(coro)
+        future = self.__run_async(coro)
         return future.result()
 
     def run(self):
@@ -77,15 +80,14 @@ class AppService(AppProcess):
 
     @conn_retry
     def __start_pyro(self):
-        daemon = pyro.Daemon()
-        ns = pyro.locate_ns()
+        daemon = pyro.Daemon(host=host)
+        ns = pyro.locate_ns(host=host, port=9090)
         uri = daemon.register(self)
         ns.register(self.service_name, uri)
         logger.warning(f"Service [{self.service_name}] Ready. Object URI = {uri}")
         daemon.requestLoop()
 
     def __start_async_loop(self):
-        # asyncio.set_event_loop(self.shared_event_loop)
         self.shared_event_loop.run_forever()
 
 
