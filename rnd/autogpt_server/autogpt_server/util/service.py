@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import threading
 import time
 from abc import abstractmethod
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 conn_retry = retry(stop=stop_after_delay(5), wait=wait_exponential(multiplier=0.1))
 T = TypeVar("T")
 
+host = os.environ.get("PYRO_HOST")
 
 def expose(func: Callable) -> Callable:
     def wrapper(*args, **kwargs):
@@ -33,7 +35,7 @@ class PyroNameServer(AppProcess):
     def run(self):
         try:
             print("Starting NameServer loop")
-            nameserver.start_ns_loop(host="0.0.0.0", port=9090)
+            nameserver.start_ns_loop(host=host, port=9090)
         except KeyboardInterrupt:
             print("Shutting down NameServer")
 
@@ -77,8 +79,8 @@ class AppService(AppProcess):
 
     @conn_retry
     def __start_pyro(self):
-        daemon = pyro.Daemon(host="0.0.0.0")
-        ns = pyro.locate_ns(host="0.0.0.0", port=9090)
+        daemon = pyro.Daemon(host=host)
+        ns = pyro.locate_ns(host=host, port=9090)
         uri = daemon.register(self)
         ns.register(self.service_name, uri)
         logger.warning(f"Service [{self.service_name}] Ready. Object URI = {uri}")

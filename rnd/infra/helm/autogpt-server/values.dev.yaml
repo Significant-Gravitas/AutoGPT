@@ -75,3 +75,4 @@ cloudSqlProxy:
 
 env:
   APP_ENV: "dev"
+  PYRO_HOST: "0.0.0.0"
