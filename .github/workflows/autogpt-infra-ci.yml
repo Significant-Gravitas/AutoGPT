@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
 
       - name: TFLint
         uses: pauloconnor/tflint-action@v0.0.2
@@ -44,15 +46,6 @@ jobs:
       - name: Set up chart-testing
         uses: helm/chart-testing-action@v2.6.0
 
-      - name: Run chart-testing (list-changed)
-        id: list-changed
-        run: |
-          changed=$(ct list-changed --target-branch master)
-          if [[ -n "$changed" ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Run chart-testing (lint)
-        if: steps.list-changed.outputs.changed == 'true'
         run: |
           ct lint --target-branch master
