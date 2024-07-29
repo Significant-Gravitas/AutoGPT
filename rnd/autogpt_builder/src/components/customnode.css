@@ -175,6 +175,14 @@
   border-color: #c0392b; /* Red border for failed nodes */
 }
 
+.incomplete {
+  border-color: #9f14ab; /* Pink border for incomplete nodes */
+}
+
+.queued {
+  border-color: #25e6e6; /* Cyanic border for failed nodes */
+}
+
 .custom-switch {
   padding-left: 2px;
 }
