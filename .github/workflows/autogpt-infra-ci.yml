@@ -35,9 +35,6 @@ jobs:
             tflint_recurse: true
             tflint_changed_only: false
 
-      - name: Debug default branch
-        run: echo "Default branch is ${{ github.event.repository.default_branch }}"
-
       - name: Set up Helm
         uses: azure/setup-helm@v4.2.0
         with:
