@@ -17,23 +17,6 @@ defaults:
     working-directory: rnd/autogpt_builder
 
 jobs:
-  format:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '21'
-
-      - name: Install dependencies
-        run: |
-          npm install
-
-      - name: Run format
-        run: |
-          npm run format
 
   lint:
     runs-on: ubuntu-latest
@@ -48,6 +31,10 @@ jobs:
     - name: Install dependencies
       run: |
         npm install
+
+    - name: Check formatting with Prettier
+      run: |
+        npx prettier --check .
 
     - name: Run lint
       run: |
