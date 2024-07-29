@@ -5,9 +5,11 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Any, Dict
 
 import uvicorn
+from autogpt_libs.auth.middleware import auth_middleware
 from fastapi import (
     APIRouter,
     Body,
+    Depends,
     FastAPI,
     HTTPException,
     WebSocket,
@@ -82,6 +84,8 @@ class AgentServer(AppService):
 
         # Define the API routes
         router = APIRouter(prefix="/api")
+        router.dependencies.append(Depends(auth_middleware))
+
         router.add_api_route(
             path="/blocks",
             endpoint=self.get_graph_blocks,  # type: ignore
