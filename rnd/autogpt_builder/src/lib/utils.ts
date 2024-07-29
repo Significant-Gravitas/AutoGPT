@@ -119,3 +119,40 @@ export function exportAsJSONFile(obj: object, filename: string): void {
   // Clean up
   URL.revokeObjectURL(url);
 }
+
+export function setNestedProperty(obj: any, path: string, value: any) {
+  const keys = path.split(/[\/.]/); // Split by / or .
+  let current = obj;
+
+  for (let i = 0; i < keys.length - 1; i++) {
+    const key = keys[i];
+    if (!current[key] || typeof current[key] !== 'object') {
+      current[key] = {};
+    }
+    current = current[key];
+  }
+
+  current[keys[keys.length - 1]] = value;
+}
+
+export function removeEmptyStringsAndNulls(obj: any): any {
+  if (Array.isArray(obj)) {
+    // If obj is an array, recursively remove empty strings and nulls from its elements
+    return obj
+      .map(item => removeEmptyStringsAndNulls(item))
+      .filter(item => item !== null && (typeof item !== 'string' || item.trim() !== ''));
+  } else if (typeof obj === 'object' && obj !== null) {
+    // If obj is an object, recursively remove empty strings and nulls from its properties
+    for (const key in obj) {
+      if (obj.hasOwnProperty(key)) {
+        const value = obj[key];
+        if (value === null || (typeof value === 'string' && value.trim() === '')) {
+          delete obj[key];
+        } else {
+          obj[key] = removeEmptyStringsAndNulls(value);
+        }
+      }
+    }
+  }
+  return obj;
+}
