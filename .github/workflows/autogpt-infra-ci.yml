@@ -47,8 +47,7 @@ jobs:
       - name: Run chart-testing (list-changed)
         id: list-changed
         run: |
-          branch="${{ github.event.repository.default_branch }}"
-          changed=$(ct list-changed --target-branch "${branch#origin/}")
+          changed=$(ct list-changed --target-branch master)
           if [[ -n "$changed" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
@@ -56,5 +55,4 @@ jobs:
       - name: Run chart-testing (lint)
         if: steps.list-changed.outputs.changed == 'true'
         run: |
-          branch="${{ github.event.repository.default_branch }}"
-          ct lint --target-branch "${branch#origin/}"
+          ct lint --target-branch master
