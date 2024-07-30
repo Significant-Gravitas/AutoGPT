@@ -12,6 +12,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Providers } from "@/app/providers";
+import { CircleUser } from 'lucide-react';
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -28,6 +29,9 @@ const NavBar = () => (
             </Link>
             <Link href="/build" className={buttonVariants({ variant: "ghost" })}>
                 <Pencil1Icon className="mr-1" /> Build
+            </Link>
+            <Link href="/login" className={buttonVariants({ variant: "ghost" })}>
+                <CircleUser className="mr-1" /> Account
             </Link>
         </div>
         <DropdownMenu>
@@ -48,6 +52,7 @@ const NavBar = () => (
         </DropdownMenu>
     </nav>
 );
+
 export default function RootLayout({
  children,
 }: Readonly<{
