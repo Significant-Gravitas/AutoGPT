@@ -469,9 +469,6 @@ class AgentServer(AppService):
                 status_code=400, detail="Either graph or template_id must be provided."
             )
 
-        # TODO: replace uuid generation here to DB generated uuids.
-        graph.id = str(uuid.uuid4())
-
         graph.is_template = is_template
         graph.is_active = not is_template
 
