@@ -8,7 +8,13 @@ void main() {
   testWidgets('Renders AgentMessageTile', (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(
       home: Scaffold(
-        body: AgentMessageTile(message: 'Test Message'),
+        body: AgentMessageTile(
+          message: 'Test Message',
+          chat: null,
+          onArtifactsButtonPressed: null,
+          // Define the named parameter 'message'
+          message: null,
+        ),
       ),
     ));
 
