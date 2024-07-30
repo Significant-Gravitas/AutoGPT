@@ -1,7 +1,6 @@
 import pytest
 
 from autogpt_server.blocks.basic import ObjectLookupBlock, ValueBlock
-from autogpt_server.blocks.if_block import ComparisonOperator, ConditionBlock
 from autogpt_server.blocks.maths import MathsBlock, Operation
 from autogpt_server.data import execution, graph
 from autogpt_server.executor import ExecutionManager
