@@ -71,7 +71,6 @@ const FlowEditor: React.FC<{
   const [agentName, setAgentName] = useState<string>('');
   const [copiedNodes, setCopiedNodes] = useState<Node<CustomNodeData>[]>([]);
   const [copiedEdges, setCopiedEdges] = useState<Edge<CustomEdgeData>[]>([]);
-  const [isAnyModalOpen, setIsAnyModalOpen] = useState(false); // Track if any modal is open
 
   const apiUrl = process.env.AGPT_SERVER_URL!;
   const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
@@ -213,7 +212,6 @@ const FlowEditor: React.FC<{
         connections: [],
         isOutputOpen: false,
         block_id: blockId,
-        setIsAnyModalOpen: setIsAnyModalOpen, // Pass setIsAnyModalOpen function
         setErrors: (errors: { [key: string]: string | null }) => {
           setNodes((nds) => nds.map((node) =>
             node.id === newNode.id
@@ -240,7 +238,6 @@ const FlowEditor: React.FC<{
         type: 'custom',
         position: { x: node.metadata.position.x, y: node.metadata.position.y },
         data: {
-          setIsAnyModalOpen: setIsAnyModalOpen,
           block_id: block.id,
           blockType: block.name,
           title: `${block.name} ${node.id}`,
@@ -262,7 +259,6 @@ const FlowEditor: React.FC<{
               targetHandle: link.sink_name,
             })),
           isOutputOpen: false,
-          setIsAnyModalOpen: setIsAnyModalOpen, // Pass setIsAnyModalOpen function
           setErrors: (errors: { [key: string]: string | null }) => {
             setNodes((nds) => nds.map((node) =>
               node.id === newNode.id
@@ -510,8 +506,6 @@ const FlowEditor: React.FC<{
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
-    if (isAnyModalOpen) return; // Prevent copy/paste if any modal is open
-
     if (event.ctrlKey || event.metaKey) {
       if (event.key === 'c' || event.key === 'C') {
         // Copy selected nodes
@@ -564,7 +558,7 @@ const FlowEditor: React.FC<{
         }
       }
     }
-  }, [nodes, edges, copiedNodes, copiedEdges, nodeId, isAnyModalOpen]);
+  }, [nodes, edges, copiedNodes, copiedEdges, nodeId]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -591,7 +585,7 @@ const FlowEditor: React.FC<{
       </Button>
       <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
       <ReactFlow
-        nodes={nodes.map(node => ({ ...node, data: { ...node.data, setIsAnyModalOpen } }))}
+        nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
