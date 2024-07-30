@@ -40,6 +40,7 @@ class PyroNameServer(AppProcess):
 
 class AppService(AppProcess):
     shared_event_loop: asyncio.AbstractEventLoop
+    use_db: bool = True
 
     @classmethod
     @property
@@ -51,16 +52,17 @@ class AppService(AppProcess):
         while True:
             time.sleep(10)
 
-    def run_async(self, coro: Coroutine[T, Any, T]):
+    def __run_async(self, coro: Coroutine[T, Any, T]):
         return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop)
 
     def run_and_wait(self, coro: Coroutine[T, Any, T]) -> T:
-        future = self.run_async(coro)
+        future = self.__run_async(coro)
         return future.result()
 
     def run(self):
         self.shared_event_loop = asyncio.get_event_loop()
-        self.shared_event_loop.run_until_complete(db.connect())
+        if self.use_db:
+            self.shared_event_loop.run_until_complete(db.connect())
 
         # Initialize the async loop.
         async_thread = threading.Thread(target=self.__start_async_loop)
@@ -85,7 +87,6 @@ class AppService(AppProcess):
         daemon.requestLoop()
 
     def __start_async_loop(self):
-        # asyncio.set_event_loop(self.shared_event_loop)
         self.shared_event_loop.run_forever()
 
 

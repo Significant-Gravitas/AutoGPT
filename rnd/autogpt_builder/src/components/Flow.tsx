@@ -13,32 +13,17 @@ import ReactFlow, {
   MarkerType,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import CustomNode from './CustomNode';
+import CustomNode, { CustomNodeData } from './CustomNode';
 import './flow.css';
-import AutoGPTServerAPI, { Block, Graph, ObjectSchema } from '@/lib/autogpt-server-api';
+import AutoGPTServerAPI, { Block, Graph, NodeExecutionResult, ObjectSchema } from '@/lib/autogpt-server-api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ChevronRight, ChevronLeft } from "lucide-react";
-import { deepEquals, getTypeColor } from '@/lib/utils';
+import { deepEquals, getTypeColor, removeEmptyStringsAndNulls, setNestedProperty } from '@/lib/utils';
 import { beautifyString } from '@/lib/utils';
 import { CustomEdge, CustomEdgeData } from './CustomEdge';
 import ConnectionLine from './ConnectionLine';
-
-
-type CustomNodeData = {
-  blockType: string;
-  title: string;
-  inputSchema: ObjectSchema;
-  outputSchema: ObjectSchema;
-  hardcodedValues: { [key: string]: any };
-  setHardcodedValues: (values: { [key: string]: any }) => void;
-  connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
-  isOutputOpen: boolean;
-  status?: string;
-  output_data?: any;
-  block_id: string;
-  backend_id?: string;
-};
+import Ajv from 'ajv';
 
 const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id: string, name: string) => void }> =
   ({ isOpen, availableNodes, addNode }) => {
@@ -69,6 +54,8 @@ const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id
     );
   };
 
+const ajv = new Ajv({ strict: false, allErrors: true });
+
 const FlowEditor: React.FC<{
   flowID?: string;
   template?: boolean;
@@ -84,6 +71,7 @@ const FlowEditor: React.FC<{
   const [agentName, setAgentName] = useState<string>('');
   const [copiedNodes, setCopiedNodes] = useState<Node<CustomNodeData>[]>([]);
   const [copiedEdges, setCopiedEdges] = useState<Edge<CustomEdgeData>[]>([]);
+  const [isAnyModalOpen, setIsAnyModalOpen] = useState(false); // Track if any modal is open
 
   const apiUrl = process.env.AGPT_SERVER_URL!;
   const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
@@ -225,6 +213,14 @@ const FlowEditor: React.FC<{
         connections: [],
         isOutputOpen: false,
         block_id: blockId,
+        setIsAnyModalOpen: setIsAnyModalOpen, // Pass setIsAnyModalOpen function
+        setErrors: (errors: { [key: string]: string | null }) => {
+          setNodes((nds) => nds.map((node) =>
+            node.id === newNode.id
+              ? { ...node, data: { ...node.data, errors } }
+              : node
+          ));
+        }
       },
     };
 
@@ -244,6 +240,7 @@ const FlowEditor: React.FC<{
         type: 'custom',
         position: { x: node.metadata.position.x, y: node.metadata.position.y },
         data: {
+          setIsAnyModalOpen: setIsAnyModalOpen,
           block_id: block.id,
           blockType: block.name,
           title: `${block.name} ${node.id}`,
@@ -265,6 +262,14 @@ const FlowEditor: React.FC<{
               targetHandle: link.sink_name,
             })),
           isOutputOpen: false,
+          setIsAnyModalOpen: setIsAnyModalOpen, // Pass setIsAnyModalOpen function
+          setErrors: (errors: { [key: string]: string | null }) => {
+            setNodes((nds) => nds.map((node) =>
+              node.id === newNode.id
+                ? { ...node, data: { ...node.data, errors } }
+                : node
+            ));
+          }
         },
       };
       return newNode;
@@ -323,12 +328,13 @@ const FlowEditor: React.FC<{
     return inputData;
   };
 
-  async function saveAgent (asTemplate: boolean = false) {
+  async function saveAgent(asTemplate: boolean = false) {
     setNodes((nds) =>
       nds.map((node) => ({
         ...node,
         data: {
           ...node.data,
+          hardcodedValues: removeEmptyStringsAndNulls(node.data.hardcodedValues),
           status: undefined,
         },
       }))
@@ -363,6 +369,10 @@ const FlowEditor: React.FC<{
         input_default: inputDefault,
         input_nodes: inputNodes,
         output_nodes: outputNodes,
+        data: {
+          ...node.data,
+          hardcodedValues: removeEmptyStringsAndNulls(node.data.hardcodedValues),
+        },
         metadata: { position: node.position }
       };
     });
@@ -391,7 +401,7 @@ const FlowEditor: React.FC<{
 
     const newSavedAgent = savedAgent
       ? await (savedAgent.is_template
-        ? api.updateTemplate(savedAgent.id, payload) 
+        ? api.updateTemplate(savedAgent.id, payload)
         : api.updateGraph(savedAgent.id, payload))
       : await (asTemplate
         ? api.createTemplate(payload)
@@ -422,11 +432,50 @@ const FlowEditor: React.FC<{
     return newSavedAgent.id;
   };
 
+  const validateNodes = (): boolean => {
+    let isValid = true;
+
+    nodes.forEach(node => {
+      const validate = ajv.compile(node.data.inputSchema);
+      const errors = {} as { [key: string]: string | null };
+
+      // Validate values against schema using AJV
+      const valid = validate(node.data.hardcodedValues);
+      if (!valid) {
+        // Populate errors if validation fails
+        validate.errors?.forEach((error) => {
+          // Skip error if there's an edge connected
+          const handle = error.instancePath.split(/[\/.]/)[0];
+          if (node.data.connections.some(conn => conn.target === node.id || conn.targetHandle === handle)) {
+            return;
+          }
+          isValid = false;
+          if (error.instancePath && error.message) {
+            const key = error.instancePath.slice(1);
+            console.log("Error", key, error.message);
+            setNestedProperty(errors, key, error.message[0].toUpperCase() + error.message.slice(1));
+          } else if (error.keyword === "required") {
+            const key = error.params.missingProperty;
+            setNestedProperty(errors, key, "This field is required");
+          }
+        });
+      }
+      node.data.setErrors(errors);
+    });
+
+    return isValid;
+  };
+
   const runAgent = async () => {
     try {
       const newAgentId = await saveAgent();
       if (!newAgentId) {
         console.error('Error saving agent; aborting run');
+        return;
+      }
+
+      if (!validateNodes()) {
+        console.error('Validation failed; aborting run');
         return;
       }
 
@@ -438,9 +487,7 @@ const FlowEditor: React.FC<{
     }
   };
 
-
-
-  const updateNodesWithExecutionData = (executionData: any[]) => {
+  const updateNodesWithExecutionData = (executionData: NodeExecutionResult[]) => {
     setNodes((nds) =>
       nds.map((node) => {
         const nodeExecution = executionData.find((exec) => exec.node_id === node.data.backend_id);
@@ -463,6 +510,8 @@ const FlowEditor: React.FC<{
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    if (isAnyModalOpen) return; // Prevent copy/paste if any modal is open
+
     if (event.ctrlKey || event.metaKey) {
       if (event.key === 'c' || event.key === 'C') {
         // Copy selected nodes
@@ -515,7 +564,7 @@ const FlowEditor: React.FC<{
         }
       }
     }
-  }, [nodes, edges, copiedNodes, copiedEdges, nodeId]);
+  }, [nodes, edges, copiedNodes, copiedEdges, nodeId, isAnyModalOpen]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -542,7 +591,7 @@ const FlowEditor: React.FC<{
       </Button>
       <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
       <ReactFlow
-        nodes={nodes}
+        nodes={nodes.map(node => ({ ...node, data: { ...node.data, setIsAnyModalOpen } }))}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}

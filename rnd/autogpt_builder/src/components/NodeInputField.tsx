@@ -10,7 +10,7 @@ type BlockInputFieldProps = {
   value: string | Array<string> | { [key: string]: string }
   handleInputClick: (key: string) => void
   handleInputChange: (key: string, value: any) => void
-  errors: { [key: string]: string | null }
+  errors?: { [key: string]: string } | string | null
 }
 
 const NodeInputField: FC<BlockInputFieldProps> =
@@ -20,7 +20,7 @@ const NodeInputField: FC<BlockInputFieldProps> =
     const [keyValuePairs, setKeyValuePairs] = useState<{ key: string, value: string }[]>([]);
 
     const fullKey = parentKey ? `${parentKey}.${key}` : key;
-    const error = errors[fullKey];
+    const error = typeof errors === 'string' ? errors : errors?.[key] ?? "";
     const displayKey = schema.title || beautifyString(key);
 
     const handleAddProperty = () => {
@@ -35,14 +35,15 @@ const NodeInputField: FC<BlockInputFieldProps> =
     };
 
     const renderClickableInput = (value: string | null = null, placeholder: string = "", secret: boolean = false) => {
+      const className = `clickable-input ${error ? 'border-error' : ''}`
 
       // if secret is true, then the input field will be a password field if the value is not null
       return secret ? (
-        <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
-          {value ? <i className="text-gray-500">********</i> : <i className="text-gray-500">{placeholder}</i>}
+        <div className={className} onClick={() => handleInputClick(fullKey)}>
+          {value ? <span>********</span> : <i className="text-gray-500">{placeholder}</i>}
         </div>
       ) : (
-        <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
+        <div className={className} onClick={() => handleInputClick(fullKey)}>
           {value || <i className="text-gray-500">{placeholder}</i>}
         </div>
       )
@@ -247,11 +248,11 @@ const NodeInputField: FC<BlockInputFieldProps> =
       case 'integer':
         return (
           <div key={fullKey} className="input-container">
-            <input
+            <Input
               type="number"
               value={value as string || ''}
               onChange={(e) => handleInputChange(fullKey, parseFloat(e.target.value))}
-              className="number-input"
+              className={`number-input ${error ? 'border-error' : ''}`}
             />
             {error && <span className="error-message">{error}</span>}
           </div>
@@ -263,7 +264,7 @@ const NodeInputField: FC<BlockInputFieldProps> =
             <div key={fullKey} className="input-container">
               {arrayValues.map((item: string, index: number) => (
                 <div key={`${fullKey}.${index}`} className="array-item-container">
-                  <input
+                  <Input
                     type="text"
                     value={item}
                     onChange={(e) => handleInputChange(`${fullKey}.${index}`, e.target.value)}
@@ -277,7 +278,7 @@ const NodeInputField: FC<BlockInputFieldProps> =
               <Button onClick={() => handleInputChange(fullKey, [...arrayValues, ''])} className="array-item-add">
                 Add Item
               </Button>
-              {error && <span className="error-message">{error}</span>}
+              {error && <span className="error-message ml-2">{error}</span>}
             </div>
           );
         }

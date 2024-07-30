@@ -182,7 +182,9 @@ export default class AutoGPTServerAPI {
     }
   }
 
-  sendWebSocketMessage(method: string, data: any) {
+  sendWebSocketMessage<M extends keyof WebsocketMessageTypeMap>(
+    method: M, data: WebsocketMessageTypeMap[M]
+  ) {
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify({ method, data }));
     } else {
@@ -190,7 +192,9 @@ export default class AutoGPTServerAPI {
     }
   }
 
-  onWebSocketMessage(method: string, handler: (data: any) => void) {
+  onWebSocketMessage<M extends keyof WebsocketMessageTypeMap>(
+    method: M, handler: (data: WebsocketMessageTypeMap[M]) => void
+  ) {
     this.messageHandlers[method] = handler;
   }
 
@@ -198,7 +202,7 @@ export default class AutoGPTServerAPI {
     this.sendWebSocketMessage('subscribe', { graph_id: graphId });
   }
 
-  runGraph(graphId: string, data: any = {}) {
+  runGraph(graphId: string, data: WebsocketMessageTypeMap["run_graph"]["data"] = {}) {
     this.sendWebSocketMessage('run_graph', { graph_id: graphId, data });
   }
 }
@@ -211,4 +215,10 @@ type GraphCreateRequestBody = {
   template_version: number;
 } | {
   graph: GraphCreatable;
+}
+
+type WebsocketMessageTypeMap = {
+  subscribe: { graph_id: string; };
+  run_graph: { graph_id: string; data: { [key: string]: any }; };
+  execution_event: NodeExecutionResult;
 }
