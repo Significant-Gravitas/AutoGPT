@@ -53,6 +53,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=100,
         description="Maximum number of workers to use for node execution within a single graph.",
     )
+    # pyro_host: str = Field(
+    #     default="localhost",
+    #     description="The default hostname of the Pyro server.",
+    # )
     # Add more configuration fields as needed
 
     model_config = SettingsConfigDict(
@@ -88,6 +92,10 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     reddit_client_secret: str = Field(default="", description="Reddit client secret")
     reddit_username: str = Field(default="", description="Reddit username")
     reddit_password: str = Field(default="", description="Reddit password")
+    pyro_host: str = Field(
+        default="localhost",
+        description="The default hostname of the Pyro server.",
+    )
 
     openweathermap_api_key: str = Field(
         default="", description="OpenWeatherMap API key"

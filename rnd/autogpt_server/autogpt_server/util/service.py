@@ -13,11 +13,13 @@ from tenacity import retry, stop_after_delay, wait_exponential
 from autogpt_server.data import db
 from autogpt_server.util.process import AppProcess
 
+from autogpt_server.util.settings import Secrets
+
 logger = logging.getLogger(__name__)
 conn_retry = retry(stop=stop_after_delay(5), wait=wait_exponential(multiplier=0.1))
 T = TypeVar("T")
 
-host = os.environ.get("PYRO_HOST", "localhost")
+pyro_host = Secrets().pyro_host
 
 
 def expose(func: Callable) -> Callable:
@@ -36,7 +38,7 @@ class PyroNameServer(AppProcess):
     def run(self):
         try:
             print("Starting NameServer loop")
-            nameserver.start_ns_loop(host=host, port=9090)
+            nameserver.start_ns_loop(host=pyro_host, port=9090)
         except KeyboardInterrupt:
             print("Shutting down NameServer")
 
@@ -80,8 +82,8 @@ class AppService(AppProcess):
 
     @conn_retry
     def __start_pyro(self):
-        daemon = pyro.Daemon(host=host)
-        ns = pyro.locate_ns(host=host, port=9090)
+        daemon = pyro.Daemon(host=pyro_host)
+        ns = pyro.locate_ns(host=pyro_host, port=9090)
         uri = daemon.register(self)
         ns.register(self.service_name, uri)
         logger.warning(f"Service [{self.service_name}] Ready. Object URI = {uri}")
