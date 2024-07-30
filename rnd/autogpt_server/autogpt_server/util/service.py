@@ -40,6 +40,7 @@ class PyroNameServer(AppProcess):
 
 class AppService(AppProcess):
     shared_event_loop: asyncio.AbstractEventLoop
+    use_db: bool = True
 
     @classmethod
     @property
@@ -60,7 +61,8 @@ class AppService(AppProcess):
 
     def run(self):
         self.shared_event_loop = asyncio.get_event_loop()
-        self.shared_event_loop.run_until_complete(db.connect())
+        if self.use_db:
+            self.shared_event_loop.run_until_complete(db.connect())
 
         # Initialize the async loop.
         async_thread = threading.Thread(target=self.__start_async_loop)
