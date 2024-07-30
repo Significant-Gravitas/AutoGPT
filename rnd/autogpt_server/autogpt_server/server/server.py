@@ -44,6 +44,7 @@ class AgentServer(AppService):
     event_queue: asyncio.Queue[ExecutionResult] = asyncio.Queue()
     manager = ConnectionManager()
     mutex = KeyedMutex()
+    use_db = False
 
     async def event_broadcaster(self):
         while True:
@@ -53,8 +54,8 @@ class AgentServer(AppService):
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
         await db.connect()
-        self.run_and_wait(block.initialize_blocks())
-        self.run_and_wait(graph_db.import_packaged_templates())
+        await block.initialize_blocks()
+        await graph_db.import_packaged_templates()
         asyncio.create_task(self.event_broadcaster())
         yield
         await db.disconnect()
