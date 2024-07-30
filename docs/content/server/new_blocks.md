@@ -173,7 +173,7 @@ Below is a list of blocks that we would like to see implemented in the AutoGPT A
 - Reddit - Post, Reply, Get Comments, Get Followers, Get Following, Get Posts, Get Mentions, Get Trending Posts
 - Treatwell (and related Platforms) - Book, Cancel, Review, Get Recommendations
 - Substack - Read/Subscribe/Unsubscribe, Post/Reply, Get Recommendations
-- Discord - Read/Post/Reply, Get Recommendations
+- Discord - Read/Post/Reply, Moderation actions
 - GoodReads - Read/Post/Reply, Get Recommendations
 
 ### E-commerce
