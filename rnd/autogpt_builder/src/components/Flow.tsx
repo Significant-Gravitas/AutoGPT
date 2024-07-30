@@ -128,6 +128,20 @@ const FlowEditor: React.FC<{
     return node.position;
   }
 
+  // Function to clear status and output of all nodes
+  const clearNodesStatusAndOutput = useCallback(() => {
+    setNodes((nds) =>
+      nds.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          status: undefined,
+          output_data: undefined,
+        },
+      }))
+    );
+  }, [setNodes]);
+
   const onConnect: OnConnect = (connection: Connection) => {
     const edgeColor = getTypeColor(getOutputType(connection.source!, connection.sourceHandle!));
     const sourcePos = getNodePos(connection.source!)
@@ -160,6 +174,7 @@ const FlowEditor: React.FC<{
         return node;
       })
     );
+    clearNodesStatusAndOutput(); // Clear status and output on connection change
   }
 
   const onEdgesDelete = useCallback(
@@ -182,8 +197,9 @@ const FlowEditor: React.FC<{
           },
         }))
       );
+      clearNodesStatusAndOutput(); // Clear status and output on edge deletion
     },
-    [setNodes]
+    [setNodes, clearNodesStatusAndOutput]
   );
 
   const addNode = (blockId: string, nodeType: string) => {
@@ -226,6 +242,7 @@ const FlowEditor: React.FC<{
 
     setNodes((nds) => [...nds, newNode]);
     setNodeId((prevId) => prevId + 1);
+    clearNodesStatusAndOutput(); // Clear status and output when a new node is added
   };
 
   function loadGraph(graph: Graph) {
