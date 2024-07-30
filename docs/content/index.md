@@ -4,12 +4,25 @@ Welcome to the AutoGPT Documentation.
 
 The AutoGPT project consists of four main components:
 
-* The [Agent](#agent) &ndash; also known as just "AutoGPT"
-* The [Benchmark](#benchmark) &ndash; AKA `agbenchmark`
-* The [Forge](#forge)
-* The [Frontend](#frontend)
+- The [Server](#server) &ndash; known as the "New AutoGPT"
+- The [Agent](#agent) &ndash; also known as just "AutoGPT"
+- The [Benchmark](#benchmark) &ndash; AKA `agbenchmark`
+- The [Forge](#forge)
+- The [Frontend](#frontend)
 
 To tie these together, we also have a [CLI] at the root of the project.
+
+## 🌐 Server
+
+<!-- Setup, then Advanced, then New Blocks -->
+
+**[📖 Setup](server/setup.md)**
+&ensp;|&ensp;
+**[📖 Advanced Setup](server/advanced_setup.md)**
+&ensp;|&ensp;
+**[📖 Making New Blocks](server/new_blocks.md)**
+
+The server is the backbone of the New AutoGPT project. It provides the infrastructure for the agents to run, and the UI for you to interact with them. It integrates with the Forge, Agent, and a bespoke UI to provide a seamless experience.
 
 ---
 
@@ -21,7 +34,7 @@ To tie these together, we also have a [CLI] at the root of the project.
 &ensp;|&ensp;
 **[💻 Usage](AutoGPT/usage.md)**
 
-The heart of AutoGPT, and the project that kicked it all off: a semi-autonomous agent powered by LLMs to execute any task for you*.
+The heart of AutoGPT, and the project that kicked it all off: a semi-autonomous agent powered by LLMs to execute any task for you\*.
 
 We continue to develop this project with the goal of providing access to AI assistance to the masses, and building the future transparently and together.
 
@@ -29,7 +42,7 @@ We continue to develop this project with the goal of providing access to AI assi
 
 - 🚀 **Build with us** - We welcome any input, whether it's code or ideas for new features or improvements! Join us on [Discord](https://discord.gg/autogpt) and find out how you can join in on the action.
 
-<small>* it isn't quite there yet, but that is the ultimate goal that we are still pursuing</small>
+<small>\* it isn't quite there yet, but that is the ultimate goal that we are still pursuing</small>
 
 ---
 
@@ -55,7 +68,7 @@ Measure your agent's performance! The `agbenchmark` can be used with any agent t
 
 <!-- TODO: have the guides all in one place -->
 
-Forge your own agent! The Forge is a ready-to-go template for your agent application. All the boilerplate code is already handled, letting you channel all your creativity into the things that set *your* agent apart.
+Forge your own agent! The Forge is a ready-to-go template for your agent application. All the boilerplate code is already handled, letting you channel all your creativity into the things that set _your_ agent apart.
 
 - 🛠️ **Building with Ease** - We've set the groundwork so you can focus on your agent's personality and capabilities. Comprehensive tutorials are available [here](https://aiedge.medium.com/autogpt-forge-e3de53cc58ec).
 
@@ -74,6 +87,7 @@ An easy-to-use and open source frontend for any Agent Protocol-compliant agent.
 ---
 
 ## 🔧 CLI
+
 [CLI]: #cli
 
 The project CLI makes it easy to use all of the components in the repo, separately or
@@ -94,9 +108,9 @@ Commands:
 
 Common commands:
 
-* `./run agent start autogpt` &ndash; [runs](./AutoGPT/usage.md#serve-agent-protocol-mode-with-ui) the AutoGPT agent
-* `./run agent create <name>` &ndash; creates a new Forge-based agent project at `agents/<name>`
-* `./run benchmark start <agent>` &ndash; benchmarks the specified agent
+- `./run agent start autogpt` &ndash; [runs](./AutoGPT/usage.md#serve-agent-protocol-mode-with-ui) the AutoGPT agent
+- `./run agent create <name>` &ndash; creates a new Forge-based agent project at `agents/<name>`
+- `./run benchmark start <agent>` &ndash; benchmarks the specified agent
 
 ---
 
