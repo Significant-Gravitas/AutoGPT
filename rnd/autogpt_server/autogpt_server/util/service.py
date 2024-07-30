@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 import threading
 import time
 from abc import abstractmethod
@@ -12,7 +11,6 @@ from tenacity import retry, stop_after_delay, wait_exponential
 
 from autogpt_server.data import db
 from autogpt_server.util.process import AppProcess
-
 from autogpt_server.util.settings import Secrets
 
 logger = logging.getLogger(__name__)
