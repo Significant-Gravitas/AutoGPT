@@ -15,6 +15,8 @@ from autogpt_server.data.execution import (
     GraphExecution,
     NodeExecution,
     create_graph_execution,
+    get_incomplete_executions,
+    get_latest_execution,
     merge_execution_input,
     parse_execution_output,
     update_execution_status,
@@ -129,28 +131,41 @@ def _enqueue_next_nodes(
     def wait(f: Coroutine[T, Any, T]) -> T:
         return loop.run_until_complete(f)
 
-    def execution_update(node_exec_id: str, status: ExecutionStatus):
-        exec_update = wait(update_execution_status(node_exec_id, status))
+    def add_enqueued_execution(
+        node_exec_id: str, node_id: str, data: BlockInput
+    ) -> NodeExecution:
+        exec_update = wait(
+            update_execution_status(node_exec_id, ExecutionStatus.QUEUED, data)
+        )
         api_client.send_execution_update(exec_update.model_dump())
+        return NodeExecution(
+            graph_exec_id=graph_exec_id,
+            node_exec_id=node_exec_id,
+            node_id=node_id,
+            data=data,
+        )
 
-    def register_next_execution(node_link: Link) -> NodeExecution | None:
+    def register_next_executions(node_link: Link) -> list[NodeExecution]:
+        enqueued_executions = []
         next_output_name = node_link.source_name
         next_input_name = node_link.sink_name
         next_node_id = node_link.sink_id
 
         next_data = parse_execution_output(output, next_output_name)
         if next_data is None:
-            return
+            return enqueued_executions
 
         next_node = wait(get_node(next_node_id))
         if not next_node:
             logger.error(f"{prefix} Error, next node {next_node_id} not found.")
-            return
+            return enqueued_executions
 
-        # Upserting execution input includes reading the existing input pins in the node
-        # which then either updating the existing execution input or creating a new one.
-        # While reading, we should avoid any other process to add input to the same node.
+        # Multiple node can register the same next node, we need this to be atomic
+        # To avoid same execution to be enqueued multiple times,
+        # Or the same input to be consumed multiple times.
         with synchronized(api_client, ("upsert_input", next_node_id, graph_exec_id)):
+
+            # Add output data to the earliest incomplete execution, or create a new one.
             next_node_exec_id, next_node_input = wait(
                 upsert_execution_input(
                     node_id=next_node_id,
@@ -160,27 +175,68 @@ def _enqueue_next_nodes(
                 )
             )
 
-        next_node_input, validation_msg = validate_exec(next_node, next_node_input)
-        suffix = f"{next_output_name}>{next_input_name}~{next_node_id}:{validation_msg}"
+            # Complete missing static input pins data using the last execution input.
+            static_link_names = {
+                link.sink_name
+                for link in next_node.input_links
+                if link.is_static and link.sink_name not in next_node_input
+            }
+            if static_link_names and (
+                latest_execution := wait(
+                    get_latest_execution(next_node_id, graph_exec_id)
+                )
+            ):
+                for name in static_link_names:
+                    next_node_input[name] = latest_execution.input_data.get(name)
 
-        if not next_node_input:
-            logger.warning(f"{prefix} Skipped queueing {suffix}")
-            return
+            # Validate the input data for the next node.
+            next_node_input, validation_msg = validate_exec(next_node, next_node_input)
+            suffix = f"{next_output_name}>{next_input_name}~{next_node_exec_id}:{validation_msg}"
 
-        # Input is complete, enqueue the execution.
-        logger.warning(f"{prefix} Enqueued {suffix}")
-        execution_update(next_node_exec_id, ExecutionStatus.QUEUED)
-        return NodeExecution(
-            graph_exec_id=graph_exec_id,
-            node_exec_id=next_node_exec_id,
-            node_id=next_node.id,
-            data=next_node_input,
-        )
+            # Incomplete input data, skip queueing the execution.
+            if not next_node_input:
+                logger.warning(f"{prefix} Skipped queueing {suffix}")
+                return enqueued_executions
+
+            # Input is complete, enqueue the execution.
+            logger.warning(f"{prefix} Enqueued {suffix}")
+            enqueued_executions.append(
+                add_enqueued_execution(next_node_exec_id, next_node_id, next_node_input)
+            )
+
+            # Next execution stops here if the link is not static.
+            if not node_link.is_static:
+                return enqueued_executions
+
+            # If link is static, there could be some incomplete executions waiting for it.
+            # Load and complete the input missing input data, and try to re-enqueue them.
+            for iexec in wait(get_incomplete_executions(next_node_id, graph_exec_id)):
+                idata = iexec.input_data
+                ineid = iexec.node_exec_id
+
+                static_link_names = {
+                    link.sink_name
+                    for link in next_node.input_links
+                    if link.is_static and link.sink_name not in idata
+                }
+                for input_name in static_link_names:
+                    idata[input_name] = next_node_input[input_name]
+
+                idata, msg = validate_exec(next_node, idata)
+                suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
+                if not idata:
+                    logger.warning(f"{prefix} Re-enqueueing skipped: {suffix}")
+                    continue
+                logger.warning(f"{prefix} Re-enqueued {suffix}")
+                enqueued_executions.append(
+                    add_enqueued_execution(iexec.node_exec_id, next_node_id, idata)
+                )
+            return enqueued_executions
 
     return [
         execution
         for link in node.output_links
-        if (execution := register_next_execution(link))
+        for execution in register_next_executions(link)
     ]
 
 
@@ -391,7 +447,9 @@ class ExecutionManager(AppService):
                 )
             )
             exec_update = self.run_and_wait(
-                update_execution_status(node_exec.node_exec_id, ExecutionStatus.QUEUED)
+                update_execution_status(
+                    node_exec.node_exec_id, ExecutionStatus.QUEUED, node_exec.input_data
+                )
             )
             self.agent_server_client.send_execution_update(exec_update.model_dump())
 
