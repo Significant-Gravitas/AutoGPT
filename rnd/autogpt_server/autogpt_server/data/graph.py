@@ -17,6 +17,7 @@ class Link(BaseDbModel):
     sink_id: str
     source_name: str
     sink_name: str
+    is_static: bool = False
 
     @staticmethod
     def from_db(link: AgentNodeLink):
@@ -26,6 +27,7 @@ class Link(BaseDbModel):
             source_id=link.agentNodeSourceId,
             sink_name=link.sinkName,
             sink_id=link.agentNodeSinkId,
+            is_static=link.isStatic,
         )
 
     def __hash__(self):
@@ -224,7 +226,6 @@ async def create_graph(graph: Graph) -> Graph:
         }
     )
 
-    # TODO: replace bulk creation using create_many
     await asyncio.gather(
         *[
             AgentNode.prisma().create(
@@ -250,6 +251,7 @@ async def create_graph(graph: Graph) -> Graph:
                     "sinkName": link.sink_name,
                     "agentNodeSourceId": link.source_id,
                     "agentNodeSinkId": link.sink_id,
+                    "isStatic": link.is_static,
                 }
             )
             for link in graph.links
