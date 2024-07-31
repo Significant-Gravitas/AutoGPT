@@ -152,6 +152,8 @@ By following these steps, you can create new blocks that extend the functionalit
 
 Below is a list of blocks that we would like to see implemented in the AutoGPT Agent Server. If you're interested in contributing, feel free to pick one of these blocks or suggest your own by editing [docs/content/server/new_blocks.md](https://github.com/Significant-Gravitas/AutoGPT/edit/master/docs/content/server/new_blocks.md) and opening a pull request.
 
+If you would like to implement one of these blocks, open a pull request and we will start the review process.
+
 ### Consumer Services/Platforms
 
 - Google sheets - Read/Append [Read in Progress](https://github.com/Significant-Gravitas/AutoGPT/pull/7521)
@@ -183,18 +185,6 @@ Below is a list of blocks that we would like to see implemented in the AutoGPT A
 - eBay - Order, Track Order, Return, Review, Get Recommendations
 - Upwork - Post Jobs, Hire Freelancer, Review Freelancer, Fire Freelancer
 
-### Data/Information
-
-- Summarize top news of today, of this week, this month via apple news or other large media outlets BBC, techcrunch, hackernews etc
-- Create, read, summarize substack newsletters or any newsletters (blog writier vs blog reader)
-- Get/read/summarize most viral twitter, instagram, tiktok (general social media accounts) of the day, week, month
-- Get/Read any LinkedIn posts or profile that mention AI Agents
-- Post/Reply/Create via linkedIn
-- Read/Summarize discord (might not be able to do this because you need access)
-- Read / Get most read books in a given month, year etc from GoodReads or Amazon Books etc
-- Get dates for specific shows across all streaming services
-  - Suggest/Recommend/Get most watched shows in a given month, year, etc across all streaming platforms
-
 ### Business Tools
 
 - External Agents - Call other agents similar to AutoGPT
@@ -211,3 +201,18 @@ Below is a list of blocks that we would like to see implemented in the AutoGPT A
 - Shopify - Create/Read/Update/Delete Products, Orders, Customers
 - WooCommerce - Create/Read/Update/Delete Products, Orders, Customers
 - Squarespace - Create/Read/Update/Delete Pages, Products, Orders
+
+## Agent Templates we want to see
+
+
+### Data/Information
+
+- Summarize top news of today, of this week, this month via Apple News or other large media outlets BBC, TechCrunch, hackernews, etc
+- Create, read, and summarize substack newsletters or any newsletters (blog writer vs blog reader)
+- Get/read/summarize the most viral Twitter, Instagram, TikTok (general social media accounts) of the day, week, month
+- Get/Read any LinkedIn posts or profile that mention AI Agents
+- Read/Summarize discord (might not be able to do this because you need access)
+- Read / Get most read books in a given month, year, etc from GoodReads or Amazon Books, etc
+- Get dates for specific shows across all streaming services
+  - Suggest/Recommend/Get most watched shows in a given month, year, etc across all streaming platforms
+
