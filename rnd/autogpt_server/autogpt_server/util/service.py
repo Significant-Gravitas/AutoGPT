@@ -11,13 +11,13 @@ from tenacity import retry, stop_after_delay, wait_exponential
 
 from autogpt_server.data import db
 from autogpt_server.util.process import AppProcess
-from autogpt_server.util.settings import Secrets
+from autogpt_server.util.settings import Config
 
 logger = logging.getLogger(__name__)
 conn_retry = retry(stop=stop_after_delay(5), wait=wait_exponential(multiplier=0.1))
 T = TypeVar("T")
 
-pyro_host = Secrets().pyro_host
+pyro_host = Config().pyro_host
 
 
 def expose(func: Callable) -> Callable:
