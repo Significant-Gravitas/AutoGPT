@@ -77,8 +77,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             env_settings,
             file_secret_settings,
             dotenv_settings,
-            init_settings,
             JsonConfigSettingsSource(settings_cls),
+            init_settings,
         )
 
 
