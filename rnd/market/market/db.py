@@ -1,7 +1,11 @@
+from typing import Literal
+
 import prisma.models
 import prisma.types
-from prisma.errors import PrismaError
 from fuzzywuzzy import fuzz
+from prisma.errors import PrismaError
+
+from market.utils.extension_types import AgentsWithRank
 
 
 class AgentQueryError(Exception):
@@ -19,7 +23,7 @@ async def get_agents(
     description: str | None = None,
     description_threshold: int = 60,
     sort_by: str = "createdAt",
-    sort_order: str = "desc",
+    sort_order: Literal["desc"] | Literal["asc"] = "desc",
 ):
     """
     Retrieve a list of agents from the database based on the provided filters and pagination parameters.
@@ -130,6 +134,73 @@ async def get_agent_details(agent_id: str, version: int | None = None):
             raise AgentQueryError("Agent not found")
 
         return agent
+
+    except PrismaError as e:
+        raise AgentQueryError(f"Database query failed: {str(e)}")
+    except Exception as e:
+        raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
+
+
+async def search_db(
+    query: str,
+    page: int = 1,
+    page_size: int = 10,
+    category: str | None = None,
+    description_threshold: int = 60,
+    sort_by: str = "createdAt",
+    sort_order: Literal["desc"] | Literal["asc"] = "desc",
+):
+    """Perform a search for agents based on the provided query string.
+
+    Args:
+        query (str): the search string
+        page (int, optional): page for searching. Defaults to 1.
+        page_size (int, optional): the number of results to return. Defaults to 10.
+        category (str | None, optional): categorization filters. Defaults to None.
+        description_threshold (int, optional): number of characters to return. Defaults to 60.
+        sort_by (str, optional): sort by option. Defaults to "createdAt".
+        sort_order ("asc" | "desc", optional): the sort order. Defaults to "desc".
+
+    Raises:
+        AgentQueryError: Raises an error if the query fails.
+        AgentQueryError: Raises if an unexpected error occurs.
+
+    Returns:
+        _type_: _description_
+    """
+    try:
+        # This can all be replaced with a one line full text search when it's supported :')
+        a = await prisma.client.get_client().query_raw(
+            query=f"""
+                WITH query AS (
+                    SELECT to_tsquery(string_agg(lexeme || ':*', ' & ' ORDER BY positions)) AS q 
+                    FROM unnest(to_tsvector('${query}'))
+                )
+                SELECT 
+                subq.*,
+                ts_rank(subq.search_text::tsvector, query.q) AS rank
+                FROM (
+                SELECT 
+                    id, 
+                    "createdAt", 
+                    "updatedAt", 
+                    version, 
+                    name, 
+                    description, 
+                    author, 
+                    keywords, 
+                    categories, 
+                    CAST(search AS TEXT) AS search_text,
+                    graph
+                FROM "Agents"
+                ) subq, query
+                ORDER BY rank DESC
+                LIMIT {page_size};
+                """,
+            model=AgentsWithRank,
+        )
+
+        return a
 
     except PrismaError as e:
         raise AgentQueryError(f"Database query failed: {str(e)}")

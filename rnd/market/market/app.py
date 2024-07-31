@@ -1,22 +1,22 @@
-
-from contextlib import asynccontextmanager
 import os
+from contextlib import asynccontextmanager
+
+import sentry_sdk
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
 from prisma import Prisma
-import sentry_sdk
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
-from market.routes import agents
+from market.routes import agents, search
 
 load_dotenv()
 
 if os.environ.get("SENTRY_DSN"):
     sentry_sdk.init(
-        dsn=os.environ.get("SENTRY_DSN"), 
+        dsn=os.environ.get("SENTRY_DSN"),
         # Set traces_sample_rate to 1.0 to capture 100%
         # of transactions for performance monitoring.
         traces_sample_rate=1.0,
@@ -58,3 +58,4 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 app.include_router(agents.router, prefix="/market/agents", tags=["agents"])
+app.include_router(search.router, prefix="/market/search", tags=["search"])
