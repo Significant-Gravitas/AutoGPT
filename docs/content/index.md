@@ -4,7 +4,7 @@ Welcome to the AutoGPT Documentation.
 
 The AutoGPT project consists of four main components:
 
-- The [Server](#server) &ndash; known as the "New AutoGPT"
+- The [Server](#server) &ndash; known as the "AutoGPT Platform"
 - The [Agent](#agent) &ndash; also known as just "AutoGPT"
 - The [Benchmark](#benchmark) &ndash; AKA `agbenchmark`
 - The [Forge](#forge)
