@@ -2,7 +2,10 @@
 name = "market"
 version = "0.1.0"
 description = ""
-authors = ["SwiftyOS <craigswift13@gmail.com>"]
+authors = [
+  "SwiftyOS <craigswift13@gmail.com>",
+  "Nicholas Tindle <spam@ntindle.com>",
+]
 readme = "README.md"
 
 [tool.poetry.dependencies]

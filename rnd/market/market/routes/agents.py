@@ -2,12 +2,13 @@ import json
 from tempfile import NamedTemporaryFile
 from typing import Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Path, Query
 from fastapi.responses import FileResponse
 from prisma import Json
 
 import market.model
 from market.db import AgentQueryError, get_agent_details, get_agents
+from market.utils.analytics import track_download
 
 router = APIRouter()
 
@@ -114,6 +115,7 @@ async def get_agent_details_endpoint(
 
 @router.get("/agents/{agent_id}/download")
 async def download_agent(
+    background_tasks: BackgroundTasks,
     agent_id: str = Path(..., description="The ID of the agent to download"),
     version: Optional[int] = Query(None, description="Specific version of the agent"),
 ) -> FileResponse:
@@ -130,11 +132,12 @@ async def download_agent(
     Raises:
         HTTPException: If the agent is not found or an unexpected error occurs.
     """
-    # try:
     agent = await get_agent_details(agent_id, version)
 
     # The agent.graph is already a JSON string, no need to parse and re-stringify
     graph_data: Json = agent.graph
+
+    background_tasks.add_task(track_download, agent_id)
 
     # Prepare the file name for download
     file_name = f"agent_{agent_id}_v{version or 'latest'}.json"
