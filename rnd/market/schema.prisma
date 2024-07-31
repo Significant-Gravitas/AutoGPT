@@ -4,13 +4,15 @@ datasource db {
 }
 
 generator client {
-  provider             = "prisma-client-py"
-  recursive_type_depth = 5
-  interface            = "asyncio"
+  provider               = "prisma-client-py"
+  recursive_type_depth   = 5
+  interface              = "asyncio"
+  previewFeatures        = ["fullTextSearch"]
+  partial_type_generator = "market/utils/partial_types.py"
 }
 
 model Agents {
-  id        String   @default(uuid())
+  id        String   @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -22,9 +24,18 @@ model Agents {
 
   keywords   String[]
   categories String[]
+  search     Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
 
-  graph Json
-
+  graph            Json
+  AnalyticsTracker AnalyticsTracker[]
 
   @@id(name: "graphVersionId", [id, version])
+}
+
+model AnalyticsTracker {
+  id        String @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentId   String @db.Uuid
+  agent     Agents @relation(fields: [agentId], references: [id])
+  views     Int
+  downloads Int
 }
