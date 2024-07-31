@@ -4,7 +4,7 @@ import 'package:auto_gpt_flutter_client/views/task/task_list_tile.dart';
 import 'package:auto_gpt_flutter_client/models/task.dart';
 
 void main() {
-  final Task testTask = Task(id: 1, title: "Sample Task");
+  final Task testTask = Task(id: 1.toString(), title: "Sample Task");
 
   testWidgets('TaskListTile displays the task title',
       (WidgetTester tester) async {
