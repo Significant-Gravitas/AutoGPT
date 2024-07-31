@@ -44,7 +44,7 @@ This is useful when running on docker so you can copy the secrets into the conta
 
 ### SQLite
 
-By default, the server uses SQLite as the database. SQLite is a file-based database that is easy to set up and use. However, it is not recommended for production use.
+By default, the server uses SQLite as the database. SQLite is a file-based database that is easy to set up and use. However, it is not recommended for production usecases where auth is required because that subsystem requires Postgres.
 
 ### PostgreSQL
 
