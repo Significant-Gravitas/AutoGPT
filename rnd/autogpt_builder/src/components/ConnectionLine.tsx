@@ -1,34 +1,34 @@
 import {
-    BaseEdge,
-    ConnectionLineComponentProps,
-    getBezierPath,
-    Position,
-} from 'reactflow'
+  BaseEdge,
+  ConnectionLineComponentProps,
+  getBezierPath,
+  Position,
+} from "reactflow";
 
 const ConnectionLine: React.FC<ConnectionLineComponentProps> = ({
-    fromPosition,
-    fromHandle,
-    fromX,
-    fromY,
-    toPosition,
-    toX,
-    toY,
+  fromPosition,
+  fromHandle,
+  fromX,
+  fromY,
+  toPosition,
+  toX,
+  toY,
 }) => {
-    const sourceX =
-        fromPosition === Position.Right
-            ? fromX + (fromHandle?.width! / 2 - 5)
-            : fromX - (fromHandle?.width! / 2 - 5)
+  const sourceX =
+    fromPosition === Position.Right
+      ? fromX + (fromHandle?.width! / 2 - 5)
+      : fromX - (fromHandle?.width! / 2 - 5);
 
-    const [path] = getBezierPath({
-        sourceX: sourceX,
-        sourceY: fromY,
-        sourcePosition: fromPosition,
-        targetX: toX,
-        targetY: toY,
-        targetPosition: toPosition,
-    })
+  const [path] = getBezierPath({
+    sourceX: sourceX,
+    sourceY: fromY,
+    sourcePosition: fromPosition,
+    targetX: toX,
+    targetY: toY,
+    targetPosition: toPosition,
+  });
 
-    return <BaseEdge path={path} style={{ strokeWidth: 2, stroke: '#555' }} />
-}
+  return <BaseEdge path={path} style={{ strokeWidth: 2, stroke: "#555" }} />;
+};
 
-export default ConnectionLine
+export default ConnectionLine;

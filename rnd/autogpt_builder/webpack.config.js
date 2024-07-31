@@ -1,7 +1,7 @@
 module.exports = {
-    devServer: {
-        proxy: {
-            '/graphs': 'http://localhost:8000',
-        },
+  devServer: {
+    proxy: {
+      "/graphs": "http://localhost:8000",
     },
-}
+  },
+};
