@@ -61,7 +61,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             get_config_path() / "config.json",
         ],
         env_file=".env",
-        env_file_encoding="utf-8",
         extra="allow",
     )
 
@@ -74,7 +73,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> Tuple[PydanticBaseSettingsSource, ...]:
-        return (JsonConfigSettingsSource(settings_cls),)
+        return (
+            env_settings,
+            file_secret_settings,
+            dotenv_settings,
+            JsonConfigSettingsSource(settings_cls),
+            init_settings,
+        )
 
 
 class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
