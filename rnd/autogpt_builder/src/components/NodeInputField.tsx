@@ -29,7 +29,7 @@ const NodeInputField: FC<BlockInputFieldProps> = ({
   >([]);
 
   const fullKey = parentKey ? `${parentKey}.${key}` : key;
-  const error = typeof errors === "string" ? errors : errors?.[key] ?? "";
+  const error = typeof errors === "string" ? errors : (errors?.[key] ?? "");
   const displayKey = schema.title || beautifyString(key);
 
   const handleAddProperty = () => {

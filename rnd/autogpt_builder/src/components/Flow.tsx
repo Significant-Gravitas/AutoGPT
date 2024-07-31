@@ -372,8 +372,9 @@ const FlowEditor: React.FC<{
   ) => {
     console.log("Preparing input data for node:", node.id, node.data.blockType);
 
-    const blockSchema = availableNodes.find((n) => n.id === node.data.block_id)
-      ?.inputSchema;
+    const blockSchema = availableNodes.find(
+      (n) => n.id === node.data.block_id,
+    )?.inputSchema;
 
     if (!blockSchema) {
       console.error(`Schema not found for block ID: ${node.data.block_id}`);

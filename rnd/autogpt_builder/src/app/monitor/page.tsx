@@ -396,8 +396,8 @@ const FlowStatusBadge = ({
       status === "active"
         ? "bg-green-500 dark:bg-green-600"
         : status === "failing"
-        ? "bg-red-500 dark:bg-red-700"
-        : "bg-gray-500 dark:bg-gray-600"
+          ? "bg-red-500 dark:bg-red-700"
+          : "bg-gray-500 dark:bg-gray-600"
     }
   >
     {status}
@@ -459,10 +459,10 @@ const FlowRunStatusBadge: React.FC<{
       status === "running"
         ? "bg-blue-500 dark:bg-blue-700"
         : status === "waiting"
-        ? "bg-yellow-500 dark:bg-yellow-600"
-        : status === "success"
-        ? "bg-green-500 dark:bg-green-600"
-        : "bg-red-500 dark:bg-red-700",
+          ? "bg-yellow-500 dark:bg-yellow-600"
+          : status === "success"
+            ? "bg-green-500 dark:bg-green-600"
+            : "bg-red-500 dark:bg-red-700",
       className,
     )}
   >
@@ -651,8 +651,8 @@ const FlowRunsStats: React.FC<{
     typeof statsSince == "string"
       ? null
       : statsSince < 0
-      ? Date.now() + statsSince * 1000
-      : statsSince;
+        ? Date.now() + statsSince * 1000
+        : statsSince;
   const filteredFlowRuns =
     statsSinceTimestamp != null
       ? flowRuns.filter((fr) => fr.startTime > statsSinceTimestamp)
@@ -759,8 +759,8 @@ const FlowRunsTimeline = ({
           typeof dataMin == "string"
             ? dataMin
             : dataMin < 0
-            ? Date.now() + dataMin * 1000
-            : dataMin,
+              ? Date.now() + dataMin * 1000
+              : dataMin,
           Date.now(),
         ]}
         allowDataOverflow={true}
