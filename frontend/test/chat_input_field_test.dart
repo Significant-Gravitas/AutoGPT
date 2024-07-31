@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:auto_gpt_flutter_client/views/chat/chat_input_field.dart';
+// Comment out the import statement for the non-existent file
+// import 'package:auto_gpt_flutter_client/view_models/chat_view_model.dart'; // Import the library that defines ChatViewModel
 
 void main() {
   // Test if the ChatInputField widget renders correctly
@@ -9,7 +13,9 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: ChatInputField(
-            onSendPressed: () {},
+            onContinuousModePressed: () {},
+            viewModel: ChatViewModel(),
+            onSendPressed: (String input) {},
           ),
         ),
       ),
