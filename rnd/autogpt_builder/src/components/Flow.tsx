@@ -611,7 +611,7 @@ const FlowEditor: React.FC<{
       <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
       <ReactFlow
         nodes={nodes.map(node => ({ ...node, data: { ...node.data, setIsAnyModalOpen } }))}
-        edges={edges}
+        edges={edges.map(edge => ({...edge, data: { ...edge.data, clearNodesStatusAndOutput } }))}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
