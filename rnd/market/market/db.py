@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import List, Literal
 
 import prisma.models
 import prisma.types
@@ -145,9 +145,9 @@ async def search_db(
     query: str,
     page: int = 1,
     page_size: int = 10,
-    category: str | None = None,
+    categories: List[str] | None = None,
     description_threshold: int = 60,
-    sort_by: str = "createdAt",
+    sort_by: str = "rank",
     sort_order: Literal["desc"] | Literal["asc"] = "desc",
 ):
     """Perform a search for agents based on the provided query string.
@@ -156,9 +156,9 @@ async def search_db(
         query (str): the search string
         page (int, optional): page for searching. Defaults to 1.
         page_size (int, optional): the number of results to return. Defaults to 10.
-        category (str | None, optional): categorization filters. Defaults to None.
+        categories (List[str] | None, optional): list of category filters. Defaults to None.
         description_threshold (int, optional): number of characters to return. Defaults to 60.
-        sort_by (str, optional): sort by option. Defaults to "createdAt".
+        sort_by (str, optional): sort by option. Defaults to "rank".
         sort_order ("asc" | "desc", optional): the sort order. Defaults to "desc".
 
     Raises:
@@ -166,41 +166,54 @@ async def search_db(
         AgentQueryError: Raises if an unexpected error occurs.
 
     Returns:
-        _type_: _description_
+        List[AgentsWithRank]: List of agents matching the search criteria.
     """
     try:
-        # This can all be replaced with a one line full text search when it's supported :')
-        a = await prisma.client.get_client().query_raw(
-            query=f"""
-                WITH query AS (
-                    SELECT to_tsquery(string_agg(lexeme || ':*', ' & ' ORDER BY positions)) AS q 
-                    FROM unnest(to_tsvector('${query}'))
-                )
-                SELECT 
-                subq.*,
-                ts_rank(subq.search_text::tsvector, query.q) AS rank
-                FROM (
-                SELECT 
-                    id, 
-                    "createdAt", 
-                    "updatedAt", 
-                    version, 
-                    name, 
-                    description, 
-                    author, 
-                    keywords, 
-                    categories, 
-                    CAST(search AS TEXT) AS search_text,
-                    graph
-                FROM "Agents"
-                ) subq, query
-                ORDER BY rank DESC
-                LIMIT {page_size};
-                """,
+        offset = (page - 1) * page_size
+
+        category_filter = ""
+        if categories:
+            category_conditions = [f"'{cat}' = ANY(categories)" for cat in categories]
+            category_filter = "AND (" + " OR ".join(category_conditions) + ")"
+
+        # Construct the ORDER BY clause based on the sort_by parameter
+        if sort_by in ["createdAt", "updatedAt"]:
+            order_by_clause = f'"{sort_by}" {sort_order.upper()}, rank DESC'
+        elif sort_by == "name":
+            order_by_clause = f"name {sort_order.upper()}, rank DESC"
+        else:
+            order_by_clause = 'rank DESC, "createdAt" DESC'
+
+        sql_query = f"""
+        WITH query AS (
+            SELECT to_tsquery(string_agg(lexeme || ':*', ' & ' ORDER BY positions)) AS q 
+            FROM unnest(to_tsvector('{query}'))
+        )
+        SELECT 
+            id, 
+            "createdAt", 
+            "updatedAt", 
+            version, 
+            name, 
+            LEFT(description, {description_threshold}) AS description, 
+            author, 
+            keywords, 
+            categories, 
+            graph,
+            ts_rank(CAST(search AS tsvector), query.q) AS rank
+        FROM "Agents", query
+        WHERE 1=1 {category_filter}
+        ORDER BY {order_by_clause}
+        LIMIT {page_size}
+        OFFSET {offset};
+        """
+
+        results = await prisma.client.get_client().query_raw(
+            query=sql_query,
             model=AgentsWithRank,
         )
 
-        return a
+        return results
 
     except PrismaError as e:
         raise AgentQueryError(f"Database query failed: {str(e)}")
