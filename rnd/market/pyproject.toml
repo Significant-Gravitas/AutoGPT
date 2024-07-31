@@ -12,6 +12,8 @@ python-dotenv = "^1.0.1"
 uvicorn = "^0.30.3"
 fastapi = "^0.111.1"
 sentry-sdk = {extras = ["fastapi"], version = "^2.11.0"}
+fuzzywuzzy = "^0.18.0"
+python-levenshtein = "^0.25.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.1"
