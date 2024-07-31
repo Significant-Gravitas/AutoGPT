@@ -592,6 +592,10 @@ const FlowEditor: React.FC<{
     };
   }, [handleKeyDown]);
 
+  const onNodesDelete = useCallback(() => {
+    clearNodesStatusAndOutput();
+  }, [clearNodesStatusAndOutput]);
+
   return (
     <div className={className}>
       <Button
@@ -618,6 +622,7 @@ const FlowEditor: React.FC<{
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         connectionLineComponent={ConnectionLine}
+        onNodesDelete={onNodesDelete}
         onEdgesDelete={onEdgesDelete}
         deleteKeyCode={["Backspace", "Delete"]}
       >
