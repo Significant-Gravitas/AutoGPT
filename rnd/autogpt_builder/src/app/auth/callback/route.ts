@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-// The client you created from the Server-Side Auth instructions
-import { createClient } from '@/lib/supabase/server'
+import { createServerClient } from '@/lib/supabase/server'
 
 // Handle the callback to complete the user session login
 export async function GET(request: Request) {
@@ -10,7 +9,12 @@ export async function GET(request: Request) {
   const next = searchParams.get('next') ?? '/'
 
   if (code) {
-    const supabase = createClient()
+    const supabase = createServerClient()
+
+    if (!supabase) {
+      return NextResponse.redirect(`${origin}/error`)
+    }
+
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
     // data.session?.refresh_token is available if you need to store it for later use
     if (!error) {
