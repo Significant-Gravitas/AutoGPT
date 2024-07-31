@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException, Query, Path
-from typing import Optional
-from market.db import get_agents, get_agent_details, AgentQueryError
+from typing import Literal, Optional
+
+from fastapi import APIRouter, HTTPException, Path, Query
+
 import market.model
+from market.db import AgentQueryError, get_agent_details, get_agents
 
 router = APIRouter()
 
@@ -18,7 +20,9 @@ async def list_agents(
         60, ge=0, le=100, description="Fuzzy search threshold"
     ),
     sort_by: str = Query("createdAt", description="Field to sort by"),
-    sort_order: str = Query("desc", description="Sort order (asc or desc)"),
+    sort_order: Literal["asc"] | Literal["desc"] = Query(
+        "desc", description="Sort order (asc or desc)"
+    ),
 ):
     """
     Retrieve a list of agents based on the provided filters.
@@ -68,7 +72,7 @@ async def list_agents(
 
     except AgentQueryError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="An unexpected error occurred")
 
 
