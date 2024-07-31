@@ -445,13 +445,14 @@ const FlowEditor: React.FC<{
         // Populate errors if validation fails
         validate.errors?.forEach((error) => {
           // Skip error if there's an edge connected
-          const handle = error.instancePath.split(/[\/.]/)[0];
+          const path = error.instancePath || error.schemaPath;
+          const handle = path.split(/[\/.]/)[0];
           if (node.data.connections.some(conn => conn.target === node.id || conn.targetHandle === handle)) {
             return;
           }
           isValid = false;
-          if (error.instancePath && error.message) {
-            const key = error.instancePath.slice(1);
+          if (path && error.message) {
+            const key = path.slice(1);
             console.log("Error", key, error.message);
             setNestedProperty(errors, key, error.message[0].toUpperCase() + error.message.slice(1));
           } else if (error.keyword === "required") {
