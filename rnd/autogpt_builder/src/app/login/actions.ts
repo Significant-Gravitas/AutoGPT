@@ -17,16 +17,18 @@ export async function login(values: z.infer<typeof loginFormSchema>) {
   }
 
   // We are sure that the values are of the correct type because zod validates the form
-  const { error } = await supabase.auth.signInWithPassword(values)
-
+  const { data, error } = await supabase.auth.signInWithPassword(values)
 
   if (error) {
-    console.log('error', error)
-    redirect('/error')
+    return error.message
+  }
+
+  if (data.session) {
+    await supabase.auth.setSession(data.session);
   }
 
   revalidatePath('/', 'layout')
-  redirect('/')
+  redirect('/profile')
 }
 
 export async function signup(values: z.infer<typeof loginFormSchema>) {
@@ -37,13 +39,16 @@ export async function signup(values: z.infer<typeof loginFormSchema>) {
   }
 
   // We are sure that the values are of the correct type because zod validates the form
-  const { error } = await supabase.auth.signUp(values)
+  const { data, error } = await supabase.auth.signUp(values)
 
   if (error) {
-    console.log('error', error)
-    redirect('/error')
+    return error.message
+  }
+
+  if (data.session) {
+    await supabase.auth.setSession(data.session);
   }
 
   revalidatePath('/', 'layout')
-  redirect('/')
+  redirect('/profile')
 }
