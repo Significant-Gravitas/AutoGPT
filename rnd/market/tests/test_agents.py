@@ -1,6 +1,7 @@
+from datetime import datetime, timezone
+
 import pytest
 from fastapi.testclient import TestClient
-from datetime import datetime, timezone
 
 from market.app import app
 from market.db import AgentQueryError
@@ -41,6 +42,7 @@ mock_agents = [
 
 
 # TODO: Need to mock prisma somehow
+
 
 @pytest.mark.asyncio
 async def test_list_agents(test_client):

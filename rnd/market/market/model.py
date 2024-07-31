@@ -1,5 +1,6 @@
-import pydantic
 import typing
+
+import pydantic
 
 
 class AgentResponse(pydantic.BaseModel):
