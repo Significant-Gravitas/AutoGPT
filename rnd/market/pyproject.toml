@@ -11,7 +11,7 @@ prisma = "^0.12.0"
 python-dotenv = "^1.0.1"
 uvicorn = "^0.30.3"
 fastapi = "^0.111.1"
-sentry-sdk = {extras = ["fastapi"], version = "^2.11.0"}
+sentry-sdk = { extras = ["fastapi"], version = "^2.11.0" }
 fuzzywuzzy = "^0.18.0"
 python-levenshtein = "^0.25.1"
 
@@ -33,6 +33,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.scripts]
 format = "linter:format"
 lint = "linter:lint"
+
 
 [tool.pytest-watcher]
 now = false
