@@ -128,7 +128,7 @@ const FlowEditor: React.FC<{
     return node.position;
   }
 
-  // Function to clear status and output of all nodes
+  // Function to clear status, output, and close the output info dropdown of all nodes
   const clearNodesStatusAndOutput = useCallback(() => {
     setNodes((nds) =>
       nds.map((node) => ({
@@ -137,6 +137,7 @@ const FlowEditor: React.FC<{
           ...node.data,
           status: undefined,
           output_data: undefined,
+          isOutputOpen: false, // Close the output info dropdown
         },
       }))
     );
