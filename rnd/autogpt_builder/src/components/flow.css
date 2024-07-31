@@ -1,18 +1,13 @@
 /* flow.css or index.css */
 
 body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #121212;
-  color: #e0e0e0;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
 
@@ -30,8 +25,7 @@ button:hover {
   background-color: #666;
 }
 
-input,
-textarea {
+input, textarea {
   background-color: #ffffff;
   color: #000000;
   border: 1px solid #555;
@@ -42,8 +36,7 @@ textarea {
   margin-top: 5px;
 }
 
-input::placeholder,
-textarea::placeholder {
+input::placeholder, textarea::placeholder {
   color: #aaa;
 }
 
@@ -133,7 +126,6 @@ textarea::placeholder {
 .flow-container {
   width: 100%;
   height: 600px; /* Adjust this height as needed */
-  position: relative;
 }
 
 .flow-wrapper {
