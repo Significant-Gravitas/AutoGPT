@@ -1,6 +1,10 @@
+import json
+from tempfile import NamedTemporaryFile
 from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi.responses import FileResponse
+from prisma import Json
 
 import market.model
 from market.db import AgentQueryError, get_agent_details, get_agents
@@ -72,8 +76,10 @@ async def list_agents(
 
     except AgentQueryError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception:
-        raise HTTPException(status_code=500, detail="An unexpected error occurred")
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"An unexpected error occurred: {e}"
+        )
 
 
 @router.get("/agents/{agent_id}", response_model=market.model.AgentDetailResponse)
@@ -103,4 +109,42 @@ async def get_agent_details_endpoint(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"An unexpected error occurred: {str(e)}"
+        )
+
+
+@router.get("/agents/{agent_id}/download")
+async def download_agent(
+    agent_id: str = Path(..., description="The ID of the agent to download"),
+    version: Optional[int] = Query(None, description="Specific version of the agent"),
+) -> FileResponse:
+    """
+    Download the agent file by streaming its content.
+
+    Args:
+        agent_id (str): The ID of the agent to download.
+        version (Optional[int]): Specific version of the agent to download.
+
+    Returns:
+        StreamingResponse: A streaming response containing the agent's graph data.
+
+    Raises:
+        HTTPException: If the agent is not found or an unexpected error occurs.
+    """
+    # try:
+    agent = await get_agent_details(agent_id, version)
+
+    # The agent.graph is already a JSON string, no need to parse and re-stringify
+    graph_data: Json = agent.graph
+
+    # Prepare the file name for download
+    file_name = f"agent_{agent_id}_v{version or 'latest'}.json"
+
+    # Create a temporary file to store the graph data
+    with NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp_file:
+        tmp_file.write(json.dumps(graph_data))
+        tmp_file.flush()
+
+        # Return the temporary file as a streaming response
+        return FileResponse(
+            tmp_file.name, filename=file_name, media_type="application/json"
         )
