@@ -65,6 +65,9 @@ model AgentNodeLink {
   agentNodeSinkId String
   AgentNodeSink   AgentNode @relation("AgentNodeSink", fields: [agentNodeSinkId], references: [id])
   sinkName        String
+  
+  // Default: the data coming from the source can only be consumed by the sink once, Static: input data will be reused.
+  isStatic Boolean @default(false)
 }
 
 // This model describes a component that will be executed by the AgentNode.
@@ -108,6 +111,8 @@ model AgentNodeExecution {
   // sqlite does not support enum
   // enum Status { INCOMPLETE, QUEUED, RUNNING, SUCCESS, FAILED }
   executionStatus String
+  // Final JSON serialized input data for the node execution.
+  executionData   String?
   addedTime       DateTime  @default(now())
   queuedTime      DateTime?
   startedTime     DateTime?
