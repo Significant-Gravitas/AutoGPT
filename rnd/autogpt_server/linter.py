@@ -50,9 +50,9 @@ def schema():
 
 
 def schema_lint():
-    def read_schema(path: str) -> str:
+    def read_schema(path: str) -> list[str]:
         with open(path, "r") as f:
-            return "\n".join(v for v in f.read().splitlines() if not v.startswith("//"))
+            return [v for v in f.read().splitlines() if not v.startswith("//")]
 
     sqlite_schema = read_schema(os.path.join(directory, "schema.prisma"))
     postgres_schema = read_schema(os.path.join(directory, "postgres", "schema.prisma"))
