@@ -1,5 +1,5 @@
-from prisma.models import Agents
+import prisma.models
 
 
-class AgentsWithRank(Agents):
+class AgentsWithRank(prisma.models.Agents):
     rank: float

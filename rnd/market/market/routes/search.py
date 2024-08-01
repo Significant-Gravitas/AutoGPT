@@ -1,27 +1,31 @@
-from typing import List, Literal
+import typing
 
-from fastapi import APIRouter, Query
+import fastapi
 
-from market.db import search_db
-from market.utils.extension_types import AgentsWithRank
+import market.db
+import market.utils.extension_types
 
-router = APIRouter()
+router = fastapi.APIRouter()
 
 
 @router.get("/search")
 async def search(
     query: str,
-    page: int = Query(1, description="The pagination page to start on"),
-    page_size: int = Query(10, description="The number of items to return per page"),
-    categories: List[str] = Query(None, description="The categories to filter by"),
-    description_threshold: int = Query(
+    page: int = fastapi.Query(1, description="The pagination page to start on"),
+    page_size: int = fastapi.Query(
+        10, description="The number of items to return per page"
+    ),
+    categories: typing.List[str] = fastapi.Query(
+        None, description="The categories to filter by"
+    ),
+    description_threshold: int = fastapi.Query(
         60, description="The number of characters to return from the description"
     ),
-    sort_by: str = Query("rank", description="Sorting by column"),
-    sort_order: Literal["desc", "asc"] = Query(
+    sort_by: str = fastapi.Query("rank", description="Sorting by column"),
+    sort_order: typing.Literal["desc", "asc"] = fastapi.Query(
         "desc", description="The sort order based on sort_by"
     ),
-) -> List[AgentsWithRank]:
+) -> typing.List[market.utils.extension_types.AgentsWithRank]:
     """searches endpoint for agents
 
     Args:
@@ -33,7 +37,7 @@ async def search(
         sort_by (str, optional): Sorting by column. Defaults to "rank".
         sort_order ('asc' | 'desc', optional): the sort order based on sort_by. Defaults to "desc".
     """
-    return await search_db(
+    return await market.db.search_db(
         query=query,
         page=page,
         page_size=page_size,

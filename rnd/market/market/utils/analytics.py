@@ -1,4 +1,4 @@
-from prisma.models import AnalyticsTracker
+import prisma.models
 
 
 async def track_download(agent_id: str):
@@ -13,7 +13,7 @@ async def track_download(agent_id: str):
         Exception: If there is an error tracking the download event.
     """
     try:
-        await AnalyticsTracker.prisma().upsert(
+        await prisma.models.AnalyticsTracker.prisma().upsert(
             where={"agentId": agent_id},
             data={
                 "update": {"downloads": {"increment": 1}},
@@ -36,7 +36,7 @@ async def track_view(agent_id: str):
         Exception: If there is an error tracking the view event.
     """
     try:
-        await AnalyticsTracker.prisma().upsert(
+        await prisma.models.AnalyticsTracker.prisma().upsert(
             where={"agentId": agent_id},
             data={
                 "update": {"views": {"increment": 1}},

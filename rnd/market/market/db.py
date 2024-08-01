@@ -1,11 +1,12 @@
-from typing import List, Literal
+import typing
 
+import fuzzywuzzy
+import fuzzywuzzy.fuzz
+import prisma.errors
 import prisma.models
 import prisma.types
-from fuzzywuzzy import fuzz
-from prisma.errors import PrismaError
 
-from market.utils.extension_types import AgentsWithRank
+import market.utils.extension_types
 
 
 class AgentQueryError(Exception):
@@ -23,7 +24,7 @@ async def get_agents(
     description: str | None = None,
     description_threshold: int = 60,
     sort_by: str = "createdAt",
-    sort_order: Literal["desc"] | Literal["asc"] = "desc",
+    sort_order: typing.Literal["desc"] | typing.Literal["asc"] = "desc",
 ):
     """
     Retrieve a list of agents from the database based on the provided filters and pagination parameters.
@@ -68,7 +69,7 @@ async def get_agents(
                 skip=skip,
                 take=page_size,
             )
-        except PrismaError as e:
+        except prisma.errors.PrismaError as e:
             raise AgentQueryError(f"Database query failed: {str(e)}")
 
         # Apply fuzzy search on description if provided
@@ -78,7 +79,7 @@ async def get_agents(
                 for agent in agents:
                     if (
                         agent.description
-                        and fuzz.partial_ratio(
+                        and fuzzywuzzy.fuzz.partial_ratio(
                             description.lower(), agent.description.lower()
                         )
                         >= description_threshold
@@ -135,7 +136,7 @@ async def get_agent_details(agent_id: str, version: int | None = None):
 
         return agent
 
-    except PrismaError as e:
+    except prisma.errors.PrismaError as e:
         raise AgentQueryError(f"Database query failed: {str(e)}")
     except Exception as e:
         raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
@@ -145,10 +146,10 @@ async def search_db(
     query: str,
     page: int = 1,
     page_size: int = 10,
-    categories: List[str] | None = None,
+    categories: typing.List[str] | None = None,
     description_threshold: int = 60,
     sort_by: str = "rank",
-    sort_order: Literal["desc"] | Literal["asc"] = "desc",
+    sort_order: typing.Literal["desc"] | typing.Literal["asc"] = "desc",
 ):
     """Perform a search for agents based on the provided query string.
 
@@ -210,12 +211,12 @@ async def search_db(
 
         results = await prisma.client.get_client().query_raw(
             query=sql_query,
-            model=AgentsWithRank,
+            model=market.utils.extension_types.AgentsWithRank,
         )
 
         return results
 
-    except PrismaError as e:
+    except prisma.errors.PrismaError as e:
         raise AgentQueryError(f"Database query failed: {str(e)}")
     except Exception as e:
         raise AgentQueryError(f"Unexpected error occurred: {str(e)}")

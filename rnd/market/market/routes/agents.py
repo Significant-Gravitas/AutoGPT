@@ -1,31 +1,41 @@
 import json
-from tempfile import NamedTemporaryFile
-from typing import Literal, Optional
+import tempfile
+import typing
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Path, Query
-from fastapi.responses import FileResponse
-from prisma import Json
+import fastapi
+import fastapi.responses
+import prisma
 
+import market.db
 import market.model
-from market.db import AgentQueryError, get_agent_details, get_agents
 import market.utils.analytics
 
-router = APIRouter()
+router = fastapi.APIRouter()
 
 
 @router.get("/agents", response_model=market.model.AgentListResponse)
 async def list_agents(
-    page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(10, ge=1, le=100, description="Number of items per page"),
-    name: Optional[str] = Query(None, description="Filter by agent name"),
-    keyword: Optional[str] = Query(None, description="Filter by keyword"),
-    category: Optional[str] = Query(None, description="Filter by category"),
-    description: Optional[str] = Query(None, description="Fuzzy search in description"),
-    description_threshold: int = Query(
+    page: int = fastapi.Query(1, ge=1, description="Page number"),
+    page_size: int = fastapi.Query(
+        10, ge=1, le=100, description="Number of items per page"
+    ),
+    name: typing.Optional[str] = fastapi.Query(
+        None, description="Filter by agent name"
+    ),
+    keyword: typing.Optional[str] = fastapi.Query(
+        None, description="Filter by keyword"
+    ),
+    category: typing.Optional[str] = fastapi.Query(
+        None, description="Filter by category"
+    ),
+    description: typing.Optional[str] = fastapi.Query(
+        None, description="Fuzzy search in description"
+    ),
+    description_threshold: int = fastapi.Query(
         60, ge=0, le=100, description="Fuzzy search threshold"
     ),
-    sort_by: str = Query("createdAt", description="Field to sort by"),
-    sort_order: Literal["asc"] | Literal["desc"] = Query(
+    sort_by: str = fastapi.Query("createdAt", description="Field to sort by"),
+    sort_order: typing.Literal["asc", "desc"] = fastapi.Query(
         "desc", description="Sort order (asc or desc)"
     ),
 ):
@@ -50,7 +60,7 @@ async def list_agents(
         HTTPException: If there is a client error (status code 400) or an unexpected error (status code 500).
     """
     try:
-        result = await get_agents(
+        result = await market.db.get_agents(
             page=page,
             page_size=page_size,
             name=name,
@@ -62,7 +72,6 @@ async def list_agents(
             sort_order=sort_order,
         )
 
-        # Convert the result to the response model
         agents = [
             market.model.AgentResponse(**agent.dict()) for agent in result["agents"]
         ]
@@ -75,19 +84,21 @@ async def list_agents(
             total_pages=result["total_pages"],
         )
 
-    except AgentQueryError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except market.db.AgentQueryError as e:
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(
+        raise fastapi.HTTPException(
             status_code=500, detail=f"An unexpected error occurred: {e}"
         )
 
 
 @router.get("/agents/{agent_id}", response_model=market.model.AgentDetailResponse)
 async def get_agent_details_endpoint(
-    background_tasks: BackgroundTasks,
-    agent_id: str = Path(..., description="The ID of the agent to retrieve"),
-    version: Optional[int] = Query(None, description="Specific version of the agent"),
+    background_tasks: fastapi.BackgroundTasks,
+    agent_id: str = fastapi.Path(..., description="The ID of the agent to retrieve"),
+    version: typing.Optional[int] = fastapi.Query(
+        None, description="Specific version of the agent"
+    ),
 ):
     """
     Retrieve details of a specific agent.
@@ -103,24 +114,26 @@ async def get_agent_details_endpoint(
         HTTPException: If the agent is not found or an unexpected error occurs.
     """
     try:
-        agent = await get_agent_details(agent_id, version)
+        agent = await market.db.get_agent_details(agent_id, version)
         background_tasks.add_task(market.utils.analytics.track_view, agent_id)
         return market.model.AgentDetailResponse(**agent.model_dump())
 
-    except AgentQueryError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except market.db.AgentQueryError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(
+        raise fastapi.HTTPException(
             status_code=500, detail=f"An unexpected error occurred: {str(e)}"
         )
 
 
 @router.get("/agents/{agent_id}/download")
 async def download_agent(
-    background_tasks: BackgroundTasks,
-    agent_id: str = Path(..., description="The ID of the agent to download"),
-    version: Optional[int] = Query(None, description="Specific version of the agent"),
-) -> FileResponse:
+    background_tasks: fastapi.BackgroundTasks,
+    agent_id: str = fastapi.Path(..., description="The ID of the agent to download"),
+    version: typing.Optional[int] = fastapi.Query(
+        None, description="Specific version of the agent"
+    ),
+) -> fastapi.responses.FileResponse:
     """
     Download the agent file by streaming its content.
 
@@ -134,22 +147,20 @@ async def download_agent(
     Raises:
         HTTPException: If the agent is not found or an unexpected error occurs.
     """
-    agent = await get_agent_details(agent_id, version)
+    agent = await market.db.get_agent_details(agent_id, version)
 
-    # The agent.graph is already a JSON string, no need to parse and re-stringify
-    graph_data: Json = agent.graph
+    graph_data: prisma.Json = agent.graph
 
     background_tasks.add_task(market.utils.analytics.track_download, agent_id)
 
-    # Prepare the file name for download
     file_name = f"agent_{agent_id}_v{version or 'latest'}.json"
 
-    # Create a temporary file to store the graph data
-    with NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp_file:
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False
+    ) as tmp_file:
         tmp_file.write(json.dumps(graph_data))
         tmp_file.flush()
 
-        # Return the temporary file as a streaming response
-        return FileResponse(
+        return fastapi.responses.FileResponse(
             tmp_file.name, filename=file_name, media_type="application/json"
         )

@@ -1,6 +1,6 @@
-from prisma.models import Agents
+import prisma.models
 
-Agents.create_partial(
+prisma.models.Agents.create_partial(
     "AgentOnlyDescriptionNameAuthorIdCategories",
     include={"name", "author", "id", "categories"},
 )
