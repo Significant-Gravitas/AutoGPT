@@ -1,36 +1,47 @@
 import {
     AddAgentRequest,
-    Agent,
-    AgentList,
-    AgentDetail
-
-} from "./types"
+    AgentResponse,
+    ListAgentsParams,
+    AgentListResponse,
+    AgentDetailResponse
+} from "./types";
 
 export default class MarketplaceAPI {
     private baseUrl: string;
-    private messageHandlers: { [key: string]: (data: any) => void } = {};
 
     constructor(
-        baseUrl: string = process.env.AGPT_SERVER_URL || "http://localhost:8000/api"
+        baseUrl: string = process.env.AGPT_MARKETPLACE_URL || "http://localhost:8000/api"
     ) {
         this.baseUrl = baseUrl;
     }
 
-
-    async listAgents(): Promise<AgentList> {
-        return this._get("/agents")
+    async listAgents(params: ListAgentsParams = {}): Promise<AgentListResponse> {
+        const queryParams = new URLSearchParams(
+            Object.entries(params).filter(([_, v]) => v != null) as [string, string][]
+        );
+        return this._get(`/agents?${queryParams.toString()}`);
     }
 
-    async getAgent(id: string): Promise<AgentDetail> {
-        return this._get(`/agents/${id}`);
+    async getAgentDetails(id: string, version?: number): Promise<AgentDetailResponse> {
+        const queryParams = new URLSearchParams();
+        if (version) queryParams.append('version', version.toString());
+        return this._get(`/agents/${id}?${queryParams.toString()}`);
     }
 
-    async addAgent(agent: AddAgentRequest): Promise<Agent> {
-        return this._post("/agents", agent);
+    async downloadAgent(id: string, version?: number): Promise<AgentDetailResponse> {
+        const queryParams = new URLSearchParams();
+        if (version) queryParams.append('version', version.toString());
+        return this._get(`/agents/${id}/download?${queryParams.toString()}`);
     }
 
-    async downloadAgent(id: string): Promise<Blob> {
-        return this._get(`/agents/${id}/download`);
+    async downloadAgentFile(id: string, version?: number): Promise<Blob> {
+        const queryParams = new URLSearchParams();
+        if (version) queryParams.append('version', version.toString());
+        return this._getBlob(`/agents/${id}/download-file?${queryParams.toString()}`);
+    }
+
+    async createAgentEntry(request: AddAgentRequest): Promise<AgentResponse> {
+        return this._post("/admin/agent", request);
     }
 
     private async _get(path: string) {
@@ -41,6 +52,15 @@ export default class MarketplaceAPI {
         return this._request("POST", path, payload);
     }
 
+    private async _getBlob(path: string): Promise<Blob> {
+        const response = await fetch(this.baseUrl + path);
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.warn(`GET ${path} returned non-OK response:`, errorData.detail, response);
+            throw new Error(`HTTP error ${response.status}! ${errorData.detail}`);
+        }
+        return response.blob();
+    }
 
     private async _request(
         method: "GET" | "POST" | "PUT" | "PATCH",
