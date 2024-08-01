@@ -27,6 +27,7 @@ from autogpt_server.data.execution import (
     get_execution_results,
     list_executions,
 )
+from autogpt_server.data.user import get_or_create_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import (
@@ -38,6 +39,17 @@ from autogpt_server.server.model import (
 from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
+
+
+def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
+    if not payload:
+        # This handles the case when authentication is disabled
+        return "default_user_id"
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User ID not found in token")
+    return user_id
 
 
 class AgentServer(AppService):
@@ -83,6 +95,12 @@ class AgentServer(AppService):
         # Define the API routes
         router = APIRouter(prefix="/api")
         router.dependencies.append(Depends(auth_middleware))
+
+        router.add_api_route(
+            path="/auth/user",
+            endpoint=self.get_or_create_user_route,
+            methods=["POST"],
+        )
 
         router.add_api_route(
             path="/blocks",
@@ -387,6 +405,11 @@ class AgentServer(AppService):
             print("Client Disconnected")
 
     @classmethod
+    async def get_or_create_user_route(cls, user_data: dict = Depends(auth_middleware)):
+        user = await get_or_create_user(user_data)
+        return user.model_dump()
+
+    @classmethod
     def get_graph_blocks(cls) -> list[dict[Any, Any]]:
         return [v.to_dict() for v in block.get_blocks().values()]  # type: ignore
 
@@ -404,8 +427,10 @@ class AgentServer(AppService):
         return output
 
     @classmethod
-    async def get_graphs(cls) -> list[graph_db.GraphMeta]:
-        return await graph_db.get_graphs_meta(filter_by="active")
+    async def get_graphs(
+        cls, user_id: str = Depends(get_user_id)
+    ) -> list[graph_db.GraphMeta]:
+        return await graph_db.get_graphs_meta(filter_by="active", user_id=user_id)
 
     @classmethod
     async def get_templates(cls) -> list[graph_db.GraphMeta]:
@@ -413,9 +438,12 @@ class AgentServer(AppService):
 
     @classmethod
     async def get_graph(
-        cls, graph_id: str, version: int | None = None
+        cls,
+        graph_id: str,
+        version: int | None = None,
+        user_id: str = Depends(get_user_id),
     ) -> graph_db.Graph:
-        graph = await graph_db.get_graph(graph_id, version)
+        graph = await graph_db.get_graph(graph_id, version, user_id=user_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         return graph
@@ -432,29 +460,38 @@ class AgentServer(AppService):
         return graph
 
     @classmethod
-    async def get_graph_all_versions(cls, graph_id: str) -> list[graph_db.Graph]:
-        graphs = await graph_db.get_graph_all_versions(graph_id)
+    async def get_graph_all_versions(
+        cls, graph_id: str, user_id: str = Depends(get_user_id)
+    ) -> list[graph_db.Graph]:
+        graphs = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
         if not graphs:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         return graphs
 
     @classmethod
-    async def create_new_graph(cls, create_graph: CreateGraph) -> graph_db.Graph:
-        return await cls.create_graph(create_graph, is_template=False)
+    async def create_new_graph(
+        cls, create_graph: CreateGraph, user_id: str = Depends(get_user_id)
+    ) -> graph_db.Graph:
+        return await cls.create_graph(create_graph, is_template=False, user_id=user_id)
 
     @classmethod
-    async def create_new_template(cls, create_graph: CreateGraph) -> graph_db.Graph:
-        return await cls.create_graph(create_graph, is_template=True)
+    async def create_new_template(
+        cls, create_graph: CreateGraph, user_id: str = Depends(get_user_id)
+    ) -> graph_db.Graph:
+        return await cls.create_graph(create_graph, is_template=True, user_id=user_id)
 
     @classmethod
     async def create_graph(
-        cls, create_graph: CreateGraph, is_template: bool
+        cls, create_graph: CreateGraph, is_template: bool, user_id: str
     ) -> graph_db.Graph:
         if create_graph.graph:
             graph = create_graph.graph
         elif create_graph.template_id:
             graph = await graph_db.get_graph(
-                create_graph.template_id, create_graph.template_version, template=True
+                create_graph.template_id,
+                create_graph.template_version,
+                template=True,
+                user_id=user_id,
             )
             if not graph:
                 raise HTTPException(
@@ -478,16 +515,20 @@ class AgentServer(AppService):
             link.source_id = id_map[link.source_id]
             link.sink_id = id_map[link.sink_id]
 
-        return await graph_db.create_graph(graph)
+        return await graph_db.create_graph(graph, user_id=user_id)
 
     @classmethod
-    async def update_graph(cls, graph_id: str, graph: graph_db.Graph) -> graph_db.Graph:
+    async def update_graph(
+        cls, graph_id: str, graph: graph_db.Graph, user_id: str = Depends(get_user_id)
+    ) -> graph_db.Graph:
         # Sanity check
         if graph.id and graph.id != graph_id:
             raise HTTPException(400, detail="Graph ID does not match ID in URI")
 
         # Determine new version
-        existing_versions = await graph_db.get_graph_all_versions(graph_id)
+        existing_versions = await graph_db.get_graph_all_versions(
+            graph_id, user_id=user_id
+        )
         if not existing_versions:
             raise HTTPException(404, detail=f"Graph #{graph_id} not found")
         latest_version_number = max(g.version for g in existing_versions)
@@ -510,19 +551,22 @@ class AgentServer(AppService):
             link.source_id = id_map[link.source_id]
             link.sink_id = id_map[link.sink_id]
 
-        new_graph_version = await graph_db.create_graph(graph)
+        new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
         if new_graph_version.is_active:
             # Ensure new version is the only active version
             await graph_db.set_graph_active_version(
-                graph_id=graph_id, version=new_graph_version.version
+                graph_id=graph_id, version=new_graph_version.version, user_id=user_id
             )
 
         return new_graph_version
 
     @classmethod
     async def set_graph_active_version(
-        cls, graph_id: str, request_body: SetGraphActiveVersion
+        cls,
+        graph_id: str,
+        request_body: SetGraphActiveVersion,
+        user_id: str = Depends(get_user_id),
     ):
         new_active_version = request_body.active_graph_version
         if not await graph_db.get_graph(graph_id, new_active_version):
@@ -530,7 +574,9 @@ class AgentServer(AppService):
                 404, f"Graph #{graph_id} v{new_active_version} not found"
             )
         await graph_db.set_graph_active_version(
-            graph_id=graph_id, version=request_body.active_graph_version
+            graph_id=graph_id,
+            version=request_body.active_graph_version,
+            user_id=user_id,
         )
 
     async def execute_graph(
@@ -557,18 +603,22 @@ class AgentServer(AppService):
 
     @classmethod
     async def get_run_execution_results(
-        cls, graph_id: str, run_id: str
+        cls, graph_id: str, run_id: str, user_id: str = Depends(get_user_id)
     ) -> list[ExecutionResult]:
-        graph = await graph_db.get_graph(graph_id)
+        graph = await graph_db.get_graph(graph_id, user_id=user_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
         return await get_execution_results(run_id)
 
     async def create_schedule(
-        self, graph_id: str, cron: str, input_data: dict[Any, Any]
+        self,
+        graph_id: str,
+        cron: str,
+        input_data: dict[Any, Any],
+        user_id: str = Depends(get_user_id),
     ) -> dict[Any, Any]:
-        graph = await graph_db.get_graph(graph_id)
+        graph = await graph_db.get_graph(graph_id, user_id=user_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         execution_scheduler = self.execution_scheduler_client
@@ -579,16 +629,21 @@ class AgentServer(AppService):
         }
 
     def update_schedule(
-        self, schedule_id: str, input_data: dict[Any, Any]
+        self,
+        schedule_id: str,
+        input_data: dict[Any, Any],
+        user_id: str = Depends(get_user_id),
     ) -> dict[Any, Any]:
         execution_scheduler = self.execution_scheduler_client
         is_enabled = input_data.get("is_enabled", False)
-        execution_scheduler.update_schedule(schedule_id, is_enabled)  # type: ignore
+        execution_scheduler.update_schedule(schedule_id, is_enabled, user_id=user_id)  # type: ignore
         return {"id": schedule_id}
 
-    def get_execution_schedules(self, graph_id: str) -> dict[str, str]:
+    def get_execution_schedules(
+        self, graph_id: str, user_id: str = Depends(get_user_id)
+    ) -> dict[str, str]:
         execution_scheduler = self.execution_scheduler_client
-        return execution_scheduler.get_execution_schedules(graph_id)  # type: ignore
+        return execution_scheduler.get_execution_schedules(graph_id, user_id)  # type: ignore
 
     @expose
     def send_execution_update(self, execution_result_dict: dict[Any, Any]):

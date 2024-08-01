@@ -128,7 +128,8 @@ async def get_node(node_id: str) -> Node | None:
 
 
 async def get_graphs_meta(
-    filter_by: Literal["active", "template"] | None = "active"
+    filter_by: Literal["active", "template"] | None = "active",
+    user_id: str | None = None,
 ) -> list[GraphMeta]:
     """
     Retrieves graph metadata objects.
@@ -147,6 +148,9 @@ async def get_graphs_meta(
     elif filter_by == "template":
         where_clause["isTemplate"] = True
 
+    if user_id and filter_by != "template":
+        where_clause["userId"] = user_id
+
     graphs = await AgentGraph.prisma().find_many(
         where=where_clause,
         distinct=["id"],
@@ -160,7 +164,10 @@ async def get_graphs_meta(
 
 
 async def get_graph(
-    graph_id: str, version: int | None = None, template: bool = False
+    graph_id: str,
+    version: int | None = None,
+    template: bool = False,
+    user_id: str | None = None,
 ) -> Graph | None:
     """
     Retrieves a graph from the DB.
@@ -178,6 +185,9 @@ async def get_graph(
     elif not template:
         where_clause["isActive"] = True
 
+    if user_id and not template:
+        where_clause["userId"] = user_id
+
     graph = await AgentGraph.prisma().find_first(
         where=where_clause,
         include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
@@ -186,10 +196,23 @@ async def get_graph(
     return Graph.from_db(graph) if graph else None
 
 
-async def set_graph_active_version(graph_id: str, version: int) -> None:
+async def set_graph_active_version(graph_id: str, version: int, user_id: str) -> None:
+    # Check if the graph belongs to the user
+    graph = await AgentGraph.prisma().find_first(
+        where={
+            "id": graph_id,
+            "version": version,
+            "userId": user_id,
+        }
+    )
+    if not graph:
+        raise Exception(f"Graph #{graph_id} v{version} not found or not owned by user")
+
     updated_graph = await AgentGraph.prisma().update(
         data={"isActive": True},
-        where={"graphVersionId": {"id": graph_id, "version": version}},
+        where={
+            "graphVersionId": {"id": graph_id, "version": version},
+        },
     )
     if not updated_graph:
         raise Exception(f"Graph #{graph_id} v{version} not found")
@@ -197,13 +220,15 @@ async def set_graph_active_version(graph_id: str, version: int) -> None:
     # Deactivate all other versions
     await AgentGraph.prisma().update_many(
         data={"isActive": False},
-        where={"id": graph_id, "version": {"not": version}},
+        where={"id": graph_id, "version": {"not": version}, "userId": user_id},
     )
 
 
-async def get_graph_all_versions(graph_id: str) -> list[Graph]:
+async def get_graph_all_versions(
+    graph_id: str, user_id: str | None = None
+) -> list[Graph]:
     graph_versions = await AgentGraph.prisma().find_many(
-        where={"id": graph_id},
+        where={"id": graph_id, "userId": user_id},
         order={"version": "desc"},
         include={"AgentNodes": {"include": EXECUTION_NODE_INCLUDE}},  # type: ignore
     )
@@ -214,7 +239,7 @@ async def get_graph_all_versions(graph_id: str) -> list[Graph]:
     return [Graph.from_db(graph) for graph in graph_versions]
 
 
-async def create_graph(graph: Graph) -> Graph:
+async def create_graph(graph: Graph, user_id: str) -> Graph:
     await AgentGraph.prisma().create(
         data={
             "id": graph.id,
@@ -223,6 +248,7 @@ async def create_graph(graph: Graph) -> Graph:
             "description": graph.description,
             "isTemplate": graph.is_template,
             "isActive": graph.is_active,
+            "userId": user_id,
         }
     )
 
@@ -287,5 +313,5 @@ async def import_packaged_templates() -> None:
             exists := next((t for t in templates_in_db if t.id == template.id), None)
         ) and exists.version >= template.version:
             continue
-        await create_graph(template)
+        await create_graph(template, "")
         print(f"Loaded template '{template.name}' ({template.id})")

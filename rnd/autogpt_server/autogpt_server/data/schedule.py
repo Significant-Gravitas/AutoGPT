@@ -47,11 +47,12 @@ async def disable_schedule(schedule_id: str):
     )
 
 
-async def get_schedules(graph_id: str) -> list[ExecutionSchedule]:
+async def get_schedules(graph_id: str, user_id: str) -> list[ExecutionSchedule]:
     query = AgentGraphExecutionSchedule.prisma().find_many(
         where={
             "isEnabled": True,
             "agentGraphId": graph_id,
+            "userId": user_id,
         },
     )
     return [ExecutionSchedule.from_db(schedule) for schedule in await query]
@@ -71,7 +72,7 @@ async def add_schedule(schedule: ExecutionSchedule) -> ExecutionSchedule:
     return ExecutionSchedule.from_db(obj)
 
 
-async def update_schedule(schedule_id: str, is_enabled: bool):
+async def update_schedule(schedule_id: str, is_enabled: bool, user_id: str):
     await AgentGraphExecutionSchedule.prisma().update(
-        where={"id": schedule_id}, data={"isEnabled": is_enabled}
+        where={{"id": schedule_id}, {"userId": user_id}}, data={"isEnabled": is_enabled}
     )
