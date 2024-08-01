@@ -53,6 +53,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=100,
         description="Maximum number of workers to use for node execution within a single graph.",
     )
+    pyro_host: str = Field(
+        default="localhost",
+        description="The default hostname of the Pyro server.",
+    )
     # Add more configuration fields as needed
 
     model_config = SettingsConfigDict(

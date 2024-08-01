@@ -1,0 +1,7 @@
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: {{ include "autogpt-server.fullname" . }}-cert
+spec:
+  domains:
+    - {{ .Values.domain }}
