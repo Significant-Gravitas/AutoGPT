@@ -40,6 +40,7 @@ feedparser = "^6.0.11"
 python-dotenv = "^1.0.1"
 expiringdict = "^1.2.2"
 
+autogpt-libs = { path = "../autogpt_libs", develop = true }
 [tool.poetry.group.dev.dependencies]
 cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main", develop = true }
 poethepoet = "^0.26.1"
@@ -60,6 +61,8 @@ app = "autogpt_server.app:main"
 cli = "autogpt_server.cli:main"
 format = "linter:format"
 lint = "linter:lint"
+schema = "linter:schema"
+schema_lint = "linter:schema_lint"
 
 # https://poethepoet.natn.io/index.html
 [tool.poe]
