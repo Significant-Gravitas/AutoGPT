@@ -18,4 +18,12 @@ variable "subnet_cidr" {
   description = "The CIDR range for the subnet"
 }
 
+variable "pods_ip_cidr_range" {
+  description = "The IP address range for pods"
+  default     = "10.1.0.0/16"
+}
 
+variable "services_ip_cidr_range" {
+  description = "The IP address range for services"
+  default     = "10.2.0.0/20"
+}
