@@ -1,3 +1,4 @@
+import datetime
 import typing
 
 import pydantic
@@ -33,8 +34,8 @@ class AgentResponse(pydantic.BaseModel):
     keywords: list[str]
     categories: list[str]
     version: int
-    createdAt: str
-    updatedAt: str
+    createdAt: datetime.datetime
+    updatedAt: datetime.datetime
 
 
 class AgentListResponse(pydantic.BaseModel):
@@ -80,6 +81,6 @@ class AgentDetailResponse(pydantic.BaseModel):
     keywords: list[str]
     categories: list[str]
     version: int
-    createdAt: str
-    updatedAt: str
+    createdAt: datetime.datetime
+    updatedAt: datetime.datetime
     graph: dict[str, typing.Any]

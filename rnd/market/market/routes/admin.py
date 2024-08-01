@@ -24,7 +24,7 @@ async def create_agent_entry(request: market.model.AddAgentRequest):
             prisma.Json(request.graph),
         )
 
-        return agent
+        return fastapi.responses.PlainTextResponse(agent.model_dump_json())
     except market.db.AgentQueryError as e:
         raise fastapi.HTTPException(status_code=500, detail=str(e))
     except Exception as e:

@@ -10,6 +10,7 @@ import sentry_sdk.integrations.asyncio
 import sentry_sdk.integrations.fastapi
 import sentry_sdk.integrations.starlette
 
+import market.routes.admin
 import market.routes.agents
 import market.routes.search
 
@@ -56,3 +57,4 @@ app.include_router(
 app.include_router(
     market.routes.search.router, prefix="/market/search", tags=["search"]
 )
+app.include_router(market.routes.admin.router, prefix="/market/admin", tags=["admin"])
