@@ -3,6 +3,13 @@ import typing
 import pydantic
 
 
+class AddAgentRequest(pydantic.BaseModel):
+    graph: dict[str, typing.Any]
+    author: str
+    keywords: list[str]
+    categories: list[str]
+
+
 class AgentResponse(pydantic.BaseModel):
     """
     Represents a response from an agent.

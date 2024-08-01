@@ -1,6 +1,5 @@
 import typing
 
-import fuzzywuzzy
 import fuzzywuzzy.fuzz
 import prisma.errors
 import prisma.models
@@ -13,6 +12,51 @@ class AgentQueryError(Exception):
     """Custom exception for agent query errors"""
 
     pass
+
+
+async def create_agent_entry(
+    name: str,
+    description: str,
+    author: str,
+    keywords: typing.List[str],
+    categories: typing.List[str],
+    graph: prisma.Json,
+):
+    """
+    Create a new agent entry in the database.
+
+    Args:
+        name (str): The name of the agent.
+        description (str): The description of the agent.
+        author (str): The author of the agent.
+        keywords (List[str]): The keywords associated with the agent.
+        categories (List[str]): The categories associated with the agent.
+        graph (dict): The graph data of the agent.
+
+    Returns:
+        dict: The newly created agent entry.
+
+    Raises:
+        AgentQueryError: If there is an error creating the agent entry.
+    """
+    try:
+        agent = await prisma.models.Agents.prisma().create(
+            data={
+                "name": name,
+                "description": description,
+                "author": author,
+                "keywords": keywords,
+                "categories": categories,
+                "graph": graph,
+            }
+        )
+
+        return agent
+
+    except prisma.errors.PrismaError as e:
+        raise AgentQueryError(f"Database query failed: {str(e)}")
+    except Exception as e:
+        raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
 
 
 async def get_agents(
