@@ -128,6 +128,42 @@ async def get_agent_details_endpoint(
 
 @router.get("/agents/{agent_id}/download")
 async def download_agent(
+     background_tasks: fastapi.BackgroundTasks,
+    agent_id: str = fastapi.Path(..., description="The ID of the agent to retrieve"),
+    version: typing.Optional[int] = fastapi.Query(
+        None, description="Specific version of the agent"
+    ),
+):
+    """
+    Download details of a specific agent.
+    
+    NOTE: This is the same as agent details, however it also triggers 
+    the "download" tracking. We don't actually want to download a file though
+
+    Args:
+        agent_id (str): The ID of the agent to retrieve.
+        version (Optional[int]): Specific version of the agent (default: None).
+
+    Returns:
+        market.model.AgentDetailResponse: The response containing the agent details.
+
+    Raises:
+        HTTPException: If the agent is not found or an unexpected error occurs.
+    """
+    try:
+        agent = await market.db.get_agent_details(agent_id, version)
+        background_tasks.add_task(market.utils.analytics.track_download, agent_id)
+        return market.model.AgentDetailResponse(**agent.model_dump())
+
+    except market.db.AgentQueryError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise fastapi.HTTPException(
+            status_code=500, detail=f"An unexpected error occurred: {str(e)}"
+        )
+
+@router.get("/agents/{agent_id}/download-file")
+async def download_agent_file(
     background_tasks: fastapi.BackgroundTasks,
     agent_id: str = fastapi.Path(..., description="The ID of the agent to download"),
     version: typing.Optional[int] = fastapi.Query(
