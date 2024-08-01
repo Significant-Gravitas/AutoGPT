@@ -42,6 +42,7 @@ class AgentServer(AppService):
     event_queue: asyncio.Queue[ExecutionResult] = asyncio.Queue()
     manager = ConnectionManager()
     mutex = KeyedMutex()
+    use_db = False
 
     async def event_broadcaster(self):
         while True:
@@ -51,8 +52,8 @@ class AgentServer(AppService):
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
         await db.connect()
-        self.run_and_wait(block.initialize_blocks())
-        self.run_and_wait(graph_db.import_packaged_templates())
+        await block.initialize_blocks()
+        await graph_db.import_packaged_templates()
         asyncio.create_task(self.event_broadcaster())
         yield
         await db.disconnect()
@@ -460,9 +461,6 @@ class AgentServer(AppService):
             raise HTTPException(
                 status_code=400, detail="Either graph or template_id must be provided."
             )
-
-        # TODO: replace uuid generation here to DB generated uuids.
-        graph.id = str(uuid.uuid4())
 
         graph.is_template = is_template
         graph.is_active = not is_template
