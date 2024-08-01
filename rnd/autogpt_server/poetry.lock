@@ -342,7 +342,7 @@ description = "Shared libraries across NextGen AutoGPT"
 optional = false
 python-versions = ">=3.10,<4.0"
 files = []
-develop = false
+develop = true
 
 [package.dependencies]
 pyjwt = "^2.8.0"
@@ -6399,4 +6399,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "97d2f84df2c3373c8d04fc966d4605d10aeb22956223cf1372e8f92a475c5c2a"
+content-hash = "b9a68db94e5721bfc916e583626e6da66a3469451d179bf9ee117d0a31b865f2"
