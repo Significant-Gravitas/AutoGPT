@@ -2,17 +2,15 @@ import React from 'react';
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Link from "next/link";
-import { Pencil1Icon, TimerIcon } from "@radix-ui/react-icons";
-
-import "./globals.css";
-
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Providers } from "@/app/providers";
-import { CircleUser } from 'lucide-react';
+import { CircleUser, SquareActivity, Workflow } from 'lucide-react';
+
+import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -30,13 +28,13 @@ const NavBar = () => {
     <nav className="bg-white dark:bg-slate-800 p-4 flex justify-between items-center shadow">
       <div className="flex space-x-4">
         <Link href="/monitor" className={buttonVariants({ variant: "ghost" })}>
-          <TimerIcon className="mr-1" /> Monitor
+          <SquareActivity className="mr-1" /> Monitor
         </Link>
         <Link href="/build" className={buttonVariants({ variant: "ghost" })}>
-          <Pencil1Icon className="mr-1" /> Build
+          <Workflow className="mr-1" /> Build
         </Link>
         {isAvailable &&
-          <Link href="/login" className={buttonVariants({ variant: "ghost" })}>
+          <Link href="/profile" className={buttonVariants({ variant: "ghost" })}>
             <CircleUser className="mr-1" /> Account
           </Link>}
       </div>

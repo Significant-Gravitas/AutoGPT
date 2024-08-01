@@ -41,7 +41,7 @@ export default function LoginPage() {
   if (isUserLoading || isSupabaseLoading || user) {
     return (
       <div className="flex justify-center items-center h-[80vh]">
-        <FaSpinner className="mr-2 h-16 w-16 animate-spin" />
+        <FaSpinner className="mr-2 h-16 w-16 animate-spin"/>
       </div>
     );
   }
@@ -50,9 +50,9 @@ export default function LoginPage() {
     return <div>User accounts are disabled because Supabase client is unavailable</div>
   }
 
-  async function handleSignInWithGoogle() {
+  async function handleSignInWithProvider(provider: 'google' | 'github' | 'discord') {
     const { data, error } = await supabase!.auth.signInWithOAuth({
-      provider: 'google',
+      provider: provider,
       options: {
         redirectTo: `http://localhost:3000/auth/callback`,
         // Get Google provider_refresh_token
@@ -98,15 +98,15 @@ export default function LoginPage() {
     <div className="flex items-center justify-center h-[80vh]">
       <div className="w-full max-w-md p-8 bg-white rounded-lg shadow-md space-y-6">
         <div className='mb-6 space-y-2'>
-          <Button className="w-full" onClick={() => handleSignInWithGoogle()} variant="outline" type="button" disabled={isLoading}>
+          <Button className="w-full" onClick={() => handleSignInWithProvider('google')} variant="outline" type="button" disabled={isLoading}>
             <FaGoogle className="mr-2 h-4 w-4" />
             Sign in with Google
           </Button>
-          <Button className="w-full" onClick={() => handleSignInWithGoogle()} variant="outline" type="button" disabled={isLoading}>
+          <Button className="w-full" onClick={() => handleSignInWithProvider('github')} variant="outline" type="button" disabled={isLoading}>
             <FaGithub className="mr-2 h-4 w-4" />
             Sign in with GitHub
           </Button>
-          <Button className="w-full" onClick={() => handleSignInWithGoogle()} variant="outline" type="button" disabled={isLoading}>
+          <Button className="w-full" onClick={() => handleSignInWithProvider('discord')} variant="outline" type="button" disabled={isLoading}>
             <FaDiscord className="mr-2 h-4 w-4" />
             Sign in with Discord
           </Button>
