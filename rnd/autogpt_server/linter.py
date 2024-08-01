@@ -35,8 +35,6 @@ def format():
 
 
 def schema():
-    run("prisma", "migrate", "dev")
-
     file = os.path.join(directory, "schema.prisma")
     text = open(file, "r").read()
     text = re.sub(r'provider\s+=\s+".*"', 'provider = "postgresql"', text, 1)
@@ -47,6 +45,8 @@ def schema():
 
     run("prisma", "format", "--schema", "schema.prisma")
     run("prisma", "format", "--schema", "postgres/schema.prisma")
+    run("prisma", "migrate", "dev", "--schema", "schema.prisma")
+    run("prisma", "migrate", "dev", "--schema", "postgres/schema.prisma")
 
 
 def schema_lint():
