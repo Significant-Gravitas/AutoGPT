@@ -17,7 +17,6 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 import autogpt_server.server.ws_api
 from autogpt_server.data import block, db
@@ -36,7 +35,6 @@ from autogpt_server.server.model import (
     SetGraphActiveVersion,
     WsMessage,
 )
-from autogpt_server.util.data import get_frontend_path
 from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
@@ -194,12 +192,6 @@ class AgentServer(AppService):
         )
 
         app.add_exception_handler(500, self.handle_internal_error)  # type: ignore
-
-        app.mount(
-            path="/frontend",
-            app=StaticFiles(directory=get_frontend_path(), html=True),
-            name="example_files",
-        )
 
         app.include_router(router)
 
