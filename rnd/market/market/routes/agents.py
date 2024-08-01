@@ -8,7 +8,7 @@ from prisma import Json
 
 import market.model
 from market.db import AgentQueryError, get_agent_details, get_agents
-from market.utils.analytics import track_download
+import market.utils.analytics
 
 router = APIRouter()
 
@@ -85,6 +85,7 @@ async def list_agents(
 
 @router.get("/agents/{agent_id}", response_model=market.model.AgentDetailResponse)
 async def get_agent_details_endpoint(
+    background_tasks: BackgroundTasks,
     agent_id: str = Path(..., description="The ID of the agent to retrieve"),
     version: Optional[int] = Query(None, description="Specific version of the agent"),
 ):
@@ -103,6 +104,7 @@ async def get_agent_details_endpoint(
     """
     try:
         agent = await get_agent_details(agent_id, version)
+        background_tasks.add_task(market.utils.analytics.track_view, agent_id)
         return market.model.AgentDetailResponse(**agent.model_dump())
 
     except AgentQueryError as e:
@@ -137,7 +139,7 @@ async def download_agent(
     # The agent.graph is already a JSON string, no need to parse and re-stringify
     graph_data: Json = agent.graph
 
-    background_tasks.add_task(track_download, agent_id)
+    background_tasks.add_task(market.utils.analytics.track_download, agent_id)
 
     # Prepare the file name for download
     file_name = f"agent_{agent_id}_v{version or 'latest'}.json"
