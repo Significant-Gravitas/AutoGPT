@@ -10,7 +10,7 @@ import ReactFlow, {
   NodeTypes,
   Connection,
   EdgeTypes,
-  MarkerType,
+  MarkerType, Controls,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import CustomNode, { CustomNodeData } from './CustomNode';
@@ -18,17 +18,74 @@ import './flow.css';
 import AutoGPTServerAPI, { Block, Graph, NodeExecutionResult, ObjectSchema } from '@/lib/autogpt-server-api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { ChevronRight, ChevronLeft } from "lucide-react";
-import { deepEquals, getTypeColor, removeEmptyStringsAndNulls, setNestedProperty } from '@/lib/utils';
+import {ChevronRight, Save, Play, Workflow, Plus} from "lucide-react";
+import {cn, deepEquals, getTypeColor, removeEmptyStringsAndNulls, setNestedProperty} from '@/lib/utils';
 import { beautifyString } from '@/lib/utils';
 import { CustomEdge, CustomEdgeData } from './CustomEdge';
 import ConnectionLine from './ConnectionLine';
 import Ajv from 'ajv';
+import {Card, CardContent, CardHeader} from "@/components/ui/card";
+import {ScrollArea} from "@/components/ui/scroll-area";
+import {Label} from "@/components/ui/label";
+import {Separator} from "@/components/ui/separator";
+import {Tooltip, TooltipContent, TooltipTrigger} from "@/components/ui/tooltip";
+import SaveDialog from "@/components/modals/SaveDialog";
+import ActionPanel from "@/components/editor/ActionPanel";
+// const ActionPanel: React.FC<{isSideBarOpen: boolean, setIsSidebarOpen: any}> =
+//     ({ isSideBarOpen, setIsSidebarOpen}) => {
+//
+//   return (
+//       <aside className="hidden w-14 flex-col sm:flex">
+//         <Card>
+//           <CardContent className="p-0">
+//             <div className="flex flex-col items-center gap-4 px-2 sm:py-5 rounded-radius">
+//               <Tooltip>
+//                 <TooltipTrigger asChild>
+//                   <Button
+//                       variant="ghost"
+//                       size="icon"
+//                       onClick={() => setIsSidebarOpen(true)}
+//                       className={cn(isSideBarOpen ? "bg-accent" : "")}
+//                   >
+//                     <Workflow />
+//                     <span className="sr-only">Nodes</span>
+//                   </Button>
+//                 </TooltipTrigger>
+//                 <TooltipContent side="right">Add Nodes</TooltipContent>
+//               </Tooltip>
+//               <Tooltip>
+//                 <TooltipContent side="right">Save</TooltipContent>
+//                 <TooltipTrigger asChild>
+//                 <SaveDialog />
+//                 </TooltipTrigger>
+//               </Tooltip>
+//             </div>
+//             <div className="mt-auto flex flex-col items-center gap-4 px-2 sm:py-5">
+//               <Separator />
+//               <Tooltip>
+//                 <TooltipTrigger asChild>
+//                   <Button
+//                       size="icon"
+//                       variant="ghost"
+//                   >
+//                     <Play />
+//                     <span className="sr-only">Save and Run</span>
+//                   </Button>
+//                 </TooltipTrigger>
+//                 <TooltipContent side="right">Save and Run</TooltipContent>
+//               </Tooltip>
+//             </div>
+//           </CardContent>
+//         </Card>
+//       </aside>
+//   );
+// }
 
-const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id: string, name: string) => void }> =
-  ({ isOpen, availableNodes, addNode }) => {
+const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id: string, name: string) => void, setIsSidebarOpen: any}> =
+  ({ isOpen, availableNodes, addNode , setIsSidebarOpen}) => {
     const [searchQuery, setSearchQuery] = useState('');
 
+    isOpen = true;
     if (!isOpen) return null;
 
     const filteredNodes = availableNodes.filter(node =>
@@ -36,31 +93,57 @@ const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id
     );
 
     return (
-      <div className={`sidebar dark-theme ${isOpen ? 'open' : ''}`}>
-        <h3>Nodes</h3>
-        <Input
-          type="text"
-          placeholder="Search nodes..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-        {filteredNodes.map((node) => (
-          <div key={node.id} className="sidebarNodeRowStyle dark-theme">
-            <span>{beautifyString(node.name).replace(/Block$/, '')}</span>
-            <Button onClick={() => addNode(node.id, node.name)}>Add</Button>
-          </div>
-        ))}
-      </div>
+        <Card>
+          <CardHeader>
+            <div className={"flex flex-row justify-between items-center"}>
+              <Label htmlFor="Search Nodes">Nodes</Label>
+              <Tooltip delayDuration={900}>
+                <TooltipTrigger asChild>
+                  <Button variant={"ghost"} size={"icon"} onClick={setIsSidebarOpen(false)}>
+                    <ChevronRight />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side={"top"}>Collapse</TooltipContent>
+              </Tooltip>
+            </div>
+
+            <Input
+                type="text"
+                placeholder="Search nodes..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[60vh]">
+              {filteredNodes.map((node) => (
+                  <>
+                    <div key={node.id} className="sidebarNodeRowStyle">
+                      <span>{beautifyString(node.name).replace(/Block$/, '')}</span>
+                      <Button
+                          variant={"ghost"}
+                            size={"icon"}
+                          onClick={() => addNode(node.id, node.name)}>
+                        <Plus />
+                      </Button>
+                    </div>
+                    <Separator />
+                  </>
+              ))}
+            </ScrollArea>
+          </CardContent>
+        </Card>
     );
+
   };
 
-const ajv = new Ajv({ strict: false, allErrors: true });
+const ajv = new Ajv({strict: false, allErrors: true});
 
 const FlowEditor: React.FC<{
   flowID?: string;
   template?: boolean;
   className?: string;
-}> = ({ flowID, template, className }) => {
+}> = ({flowID, template, className}) => {
   const [nodes, setNodes, onNodesChange] = useNodesState<CustomNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<CustomEdgeData>([]);
   const [nodeId, setNodeId] = useState<number>(1);
@@ -78,15 +161,15 @@ const FlowEditor: React.FC<{
 
   useEffect(() => {
     api.connectWebSocket()
-      .then(() => {
-        console.log('WebSocket connected');
-        api.onWebSocketMessage('execution_event', (data) => {
-          updateNodesWithExecutionData([data]);
+        .then(() => {
+          console.log('WebSocket connected');
+          api.onWebSocketMessage('execution_event', (data) => {
+            updateNodesWithExecutionData([data]);
+          });
+        })
+        .catch((error) => {
+          console.error('Failed to connect WebSocket:', error);
         });
-      })
-      .catch((error) => {
-        console.error('Failed to connect WebSocket:', error);
-      });
 
     return () => {
       api.disconnectWebSocket();
@@ -95,8 +178,8 @@ const FlowEditor: React.FC<{
 
   useEffect(() => {
     api.getBlocks()
-      .then(blocks => setAvailableNodes(blocks))
-      .catch();
+        .then(blocks => setAvailableNodes(blocks))
+        .catch();
   }, []);
 
   // Load existing graph
@@ -104,11 +187,11 @@ const FlowEditor: React.FC<{
     if (!flowID || availableNodes.length == 0) return;
 
     (template ? api.getTemplate(flowID) : api.getGraph(flowID))
-      .then(graph => loadGraph(graph));
+        .then(graph => loadGraph(graph));
   }, [flowID, template, availableNodes]);
 
-  const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
-  const edgeTypes: EdgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
+  const nodeTypes: NodeTypes = useMemo(() => ({custom: CustomNode}), []);
+  const edgeTypes: EdgeTypes = useMemo(() => ({custom: CustomEdge}), []);
 
   const getOutputType = (id: string, handleId: string) => {
     const node = nodes.find((node) => node.id === id);
@@ -149,40 +232,40 @@ const FlowEditor: React.FC<{
     console.log('sourcePos', sourcePos);
     setEdges((eds) => addEdge({
       type: 'custom',
-      markerEnd: { type: MarkerType.ArrowClosed, strokeWidth: 2, color: edgeColor },
-      data: { edgeColor, sourcePos },
+      markerEnd: {type: MarkerType.ArrowClosed, strokeWidth: 2, color: edgeColor},
+      data: {edgeColor, sourcePos},
       ...connection
     }, eds));
     setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === connection.target || node.id === connection.source) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              connections: [
-                ...node.data.connections,
-                {
-                  source: connection.source,
-                  sourceHandle: connection.sourceHandle,
-                  target: connection.target,
-                  targetHandle: connection.targetHandle,
-                } as { source: string; sourceHandle: string; target: string; targetHandle: string },
-              ],
-            },
-          };
-        }
-        return node;
-      })
+        nds.map((node) => {
+          if (node.id === connection.target || node.id === connection.source) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                connections: [
+                  ...node.data.connections,
+                  {
+                    source: connection.source,
+                    sourceHandle: connection.sourceHandle,
+                    target: connection.target,
+                    targetHandle: connection.targetHandle,
+                  } as { source: string; sourceHandle: string; target: string; targetHandle: string },
+                ],
+              },
+            };
+          }
+          return node;
+        })
     );
     clearNodesStatusAndOutput(); // Clear status and output on connection change
   }
 
   const onEdgesDelete = useCallback(
-    (edgesToDelete: Edge<CustomEdgeData>[]) => {
-      setNodes((nds) =>
-        nds.map((node) => ({
-          ...node,
+      (edgesToDelete: Edge<CustomEdgeData>[]) => {
+        setNodes((nds) =>
+            nds.map((node) => ({
+              ...node,
           data: {
             ...node.data,
             connections: node.data.connections.filter(
@@ -598,21 +681,6 @@ const FlowEditor: React.FC<{
 
   return (
     <div className={className}>
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={toggleSidebar}
-        style={{
-          position: 'fixed',
-          left: isSidebarOpen ? '350px' : '10px',
-          zIndex: 10000,
-          backgroundColor: 'black',
-          color: 'white',
-        }}
-      >
-        {isSidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-      </Button>
-      <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
       <ReactFlow
         nodes={nodes.map(node => ({ ...node, data: { ...node.data, setIsAnyModalOpen } }))}
         edges={edges.map(edge => ({...edge, data: { ...edge.data, clearNodesStatusAndOutput } }))}
@@ -625,32 +693,45 @@ const FlowEditor: React.FC<{
         onNodesDelete={onNodesDelete}
         onEdgesDelete={onEdgesDelete}
         deleteKeyCode={["Backspace", "Delete"]}
+        attributionPosition={"bottom-right"}
       >
-        <div style={{ position: 'absolute', right: 10, zIndex: 4 }}>
-          <Input
-            type="text"
-            placeholder="Agent Name"
-            value={agentName}
-            onChange={(e) => setAgentName(e.target.value)}
-          />
-          <Input
-            type="text"
-            placeholder="Agent Description"
-            value={agentDescription}
-            onChange={(e) => setAgentDescription(e.target.value)}
-          />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>  {/* Added gap for spacing */}
-            <Button onClick={() => saveAgent(savedAgent?.is_template)}>
-              Save {savedAgent?.is_template ? "Template" : "Agent"}
-            </Button>
-            {!savedAgent?.is_template &&
-              <Button onClick={runAgent}>Save & Run Agent</Button>
-            }
-            {!savedAgent &&
-              <Button onClick={() => saveAgent(true)}>Save as Template</Button>
-            }
-          </div>
+        <div className={"flex flex-row absolute z-10 gap-2"}>
+          <ActionPanel actions={} onAction={} onActionPanelClose={} />
+          <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} setIsSidebarOpen={setIsSidebarOpen} />
         </div>
+
+
+        {/*<Card className={cn(*/}
+        {/*    "absolute right-2.5 z-10"*/}
+        {/*)}>*/}
+        {/*  <CardTitle></CardTitle>*/}
+        {/*  <CardContent className={"p-6"}>*/}
+        {/*    <Input*/}
+        {/*        type="text"*/}
+        {/*        placeholder="Agent Name"*/}
+        {/*        value={agentName}*/}
+        {/*        onChange={(e) => setAgentName(e.target.value)}*/}
+        {/*    />*/}
+        {/*    <Input*/}
+        {/*        type="text"*/}
+        {/*        placeholder="Agent Description"*/}
+        {/*        value={agentDescription}*/}
+        {/*        onChange={(e) => setAgentDescription(e.target.value)}*/}
+        {/*    />*/}
+        {/*    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>  /!* Added gap for spacing *!/*/}
+        {/*      <Button onClick={() => saveAgent(savedAgent?.is_template)}>*/}
+        {/*        Save {savedAgent?.is_template ? "Template" : "Agent"}*/}
+        {/*      </Button>*/}
+        {/*      {!savedAgent?.is_template &&*/}
+        {/*          <Button onClick={runAgent}>Save & Run Agent</Button>*/}
+        {/*      }*/}
+        {/*      {!savedAgent &&*/}
+        {/*          <Button onClick={() => saveAgent(true)}>Save as Template</Button>*/}
+        {/*      }*/}
+        {/*    </div>*/}
+        {/*  </CardContent>*/}
+        {/*  </Card>*/}
+
       </ReactFlow>
     </div>
   );
