@@ -49,6 +49,10 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   }, [data.output_data, data.status]);
 
   useEffect(() => {
+    setIsOutputOpen(data.isOutputOpen);
+  }, [data.isOutputOpen]);
+
+  useEffect(() => {
     data.setIsAnyModalOpen?.(isModalOpen || isOutputModalOpen);
   }, [isModalOpen, isOutputModalOpen, data]);
 
