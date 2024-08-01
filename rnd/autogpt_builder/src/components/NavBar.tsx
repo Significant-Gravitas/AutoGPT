@@ -8,7 +8,7 @@ import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import React from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Pencil1Icon, TimerIcon } from "@radix-ui/react-icons";
+import { Pencil1Icon, TimerIcon, ArchiveIcon } from "@radix-ui/react-icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Image from "next/image";
 
@@ -23,7 +23,7 @@ export function NavBar() {
                             size="icon"
                             className="shrink-0 md:hidden"
                         >
-                            <Menu className="size-5"/>
+                            <Menu className="size-5" />
                             <span className="sr-only">Toggle navigation menu</span>
                         </Button>
                     </SheetTrigger>
@@ -39,7 +39,13 @@ export function NavBar() {
                                 href="/build"
                                 className="text-muted-foreground hover:text-foreground flex flex-row gap-2"
                             >
-                                <Pencil1Icon className="size-6"/> Build
+                                <Pencil1Icon className="size-6" /> Build
+                            </Link>
+                            <Link
+                                href="/marketplace"
+                                className="text-muted-foreground hover:text-foreground flex flex-row gap-2"
+                            >
+                                <ArchiveIcon className="size-6" /> Marketplace
                             </Link>
                         </nav>
                     </SheetContent>
@@ -49,13 +55,19 @@ export function NavBar() {
                         href="/monitor"
                         className="text-muted-foreground hover:text-foreground flex flex-row gap-2 items-center"
                     >
-                        <TimerIcon className="size-4"/> Monitor
+                        <TimerIcon className="size-4" /> Monitor
                     </Link>
                     <Link
                         href="/build"
                         className="text-muted-foreground hover:text-foreground flex flex-row gap-2 items-center"
                     >
-                        <Pencil1Icon className="size-4"/> Build
+                        <Pencil1Icon className="size-4" /> Build
+                    </Link>
+                    <Link
+                        href="/marketplace"
+                        className="text-muted-foreground hover:text-foreground flex flex-row gap-2 items-center"
+                    >
+                        <ArchiveIcon className="size-4" /> Marketplace
                     </Link>
                 </nav>
             </div>
@@ -81,7 +93,7 @@ export function NavBar() {
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" className="size-8">
                             <Avatar>
-                                <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn"/>
+                                <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
                                 <AvatarFallback>CN</AvatarFallback>
                             </Avatar>
                         </Button>
