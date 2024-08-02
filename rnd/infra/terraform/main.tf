@@ -6,10 +6,12 @@ terraform {
       version = "~> 4.0"
     }
   }
+
   backend "gcs" {
     bucket = "agpt-dev-terraform"
     prefix = "terraform/state"
   }
+
 }
 
 provider "google" {
@@ -28,11 +30,13 @@ module "static_ips" {
 module "networking" {
   source = "./modules/networking"
 
-  project_id   = var.project_id
-  region       = var.region
-  network_name = var.network_name
-  subnet_name  = var.subnet_name
-  subnet_cidr  = var.subnet_cidr
+  project_id             = var.project_id
+  region                 = var.region
+  network_name           = var.network_name
+  subnet_name            = var.subnet_name
+  subnet_cidr            = var.subnet_cidr
+  pods_ip_cidr_range     = var.pods_ip_cidr_range
+  services_ip_cidr_range = var.services_ip_cidr_range
 }
 
 module "gke_cluster" {
@@ -48,4 +52,13 @@ module "gke_cluster" {
   network          = module.networking.network_self_link
   subnetwork       = module.networking.subnet_self_link
   enable_autopilot = var.enable_autopilot
+}
+
+module "iam" {
+  source = "./modules/iam"
+
+  project_id                 = var.project_id
+  service_accounts           = var.service_accounts
+  workload_identity_bindings = var.workload_identity_bindings
+  role_bindings              = var.role_bindings
 }

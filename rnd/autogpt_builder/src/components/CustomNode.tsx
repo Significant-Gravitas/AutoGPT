@@ -1,13 +1,15 @@
-import React, { useState, useEffect, FC, memo, useRef } from 'react';
-import { NodeProps } from 'reactflow';
+import React, { useState, useEffect, FC, memo, useCallback, useRef } from 'react';
+import { NodeProps, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './customnode.css';
 import InputModalComponent from './InputModalComponent';
 import OutputModalComponent from './OutputModalComponent';
 import { BlockIORootSchema, NodeExecutionResult } from '@/lib/autogpt-server-api/types';
-import { beautifyString } from '@/lib/utils';
+import { beautifyString, setNestedProperty } from '@/lib/utils';
 import { Switch } from "@/components/ui/switch"
 import NodeHandle from './NodeHandle';
+import { Copy, Trash2 } from 'lucide-react';
+import { history } from './history';
 import { NodeGenericInputField } from './node-input';
 
 export type CustomNodeData = {
@@ -23,6 +25,9 @@ export type CustomNodeData = {
   output_data?: NodeExecutionResult["output_data"];
   block_id: string;
   backend_id?: string;
+  errors?: { [key: string]: string | null };
+  setErrors: (errors: { [key: string]: string | null }) => void;
+  setIsAnyModalOpen?: (isOpen: boolean) => void;
 };
 
 const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
@@ -31,9 +36,14 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [modalValue, setModalValue] = useState<string>('');
-  const [errors, setErrors] = useState<{ [key: string]: string | undefined }>({});
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+
+
+  const { getNode, setNodes, getEdges, setEdges } = useReactFlow();
+
   const outputDataRef = useRef<HTMLDivElement>(null);
+  const isInitialSetup = useRef(true);
 
   useEffect(() => {
     if (data.output_data || data.status) {
@@ -42,8 +52,16 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   }, [data.output_data, data.status]);
 
   useEffect(() => {
-    console.log(`Node ${id} data:`, data);
-  }, [id, data]);
+    setIsOutputOpen(data.isOutputOpen);
+  }, [data.isOutputOpen]);
+
+  useEffect(() => {
+    data.setIsAnyModalOpen?.(isModalOpen || isOutputModalOpen);
+  }, [isModalOpen, isOutputModalOpen, data]);
+
+  useEffect(() => {
+    isInitialSetup.current = false;
+  }, []);
 
   const toggleOutput = (checked: boolean) => {
     setIsOutputOpen(checked);
@@ -81,12 +99,24 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     current[keys[keys.length - 1]] = value;
 
     console.log(`Updating hardcoded values for node ${id}:`, newValues);
+
+    if (!isInitialSetup.current) {
+      history.push({
+        type: 'UPDATE_INPUT',
+        payload: { nodeId: id, oldValues: data.hardcodedValues, newValues },
+        undo: () => data.setHardcodedValues(data.hardcodedValues),
+        redo: () => data.setHardcodedValues(newValues),
+      });
+    }
+
     data.setHardcodedValues(newValues);
-    setErrors((prevErrors) => ({ ...prevErrors, [key]: undefined }));
+    const errors = data.errors || {};
+    // Remove error with the same key
+    setNestedProperty(errors, key, null);
+    data.setErrors({ ...errors });
   };
 
   const getValue = (key: string) => {
-    console.log(`Getting value for key: ${key}`);
     const keys = key.split('.');
     return keys.reduce((acc, k) => acc && acc[k] ? acc[k] : undefined, data.hardcodedValues);
   };
@@ -124,28 +154,6 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     setActiveKey(null);
   };
 
-  const validateInputs = () => {
-    const newErrors: { [key: string]: string } = {};
-    const validateRecursive = (schema: any, parentKey: string = '') => {
-      Object.entries(schema.properties).forEach(([key, propSchema]: [string, any]) => {
-        const fullKey = parentKey ? `${parentKey}.${key}` : key;
-        const value = getValue(fullKey);
-
-        if (propSchema.type === 'object' && propSchema.properties) {
-          validateRecursive(propSchema, fullKey);
-        } else {
-          if (propSchema.required && !value) {
-            newErrors[fullKey] = `${fullKey} is required`;
-          }
-        }
-      });
-    };
-
-    validateRecursive(data.inputSchema);
-    setErrors(newErrors);
-    return Object.values(newErrors).every((error) => error === null);
-  };
-
   const handleOutputClick = () => {
     setIsOutputModalOpen(true);
     setModalValue(
@@ -158,10 +166,86 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     return element.scrollHeight > element.clientHeight || element.scrollWidth > element.clientWidth;
   };
 
+  const handleHovered = () => {
+    setIsHovered(true);
+    console.log('isHovered', isHovered);
+  }
+
+  const handleMouseLeave = () => {
+    setIsHovered(false);
+    console.log('isHovered', isHovered);
+  }
+
+  const deleteNode = useCallback(() => {
+    console.log('Deleting node:', id);
+
+    // Get all edges connected to this node
+    const connectedEdges = getEdges().filter(edge => edge.source === id || edge.target === id);
+
+    // For each connected edge, update the connected node's state
+    connectedEdges.forEach(edge => {
+      const connectedNodeId = edge.source === id ? edge.target : edge.source;
+      const connectedNode = getNode(connectedNodeId);
+
+      if (connectedNode) {
+        setNodes(nodes => nodes.map(node => {
+          if (node.id === connectedNodeId) {
+            // Update the node's data to reflect the disconnection
+            const updatedConnections = node.data.connections.filter(
+              conn => !(conn.source === id || conn.target === id)
+            );
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                connections: updatedConnections
+              }
+            };
+          }
+          return node;
+        }));
+      }
+    });
+
+    // Remove the node and its connected edges
+    setNodes(nodes => nodes.filter(node => node.id !== id));
+    setEdges(edges => edges.filter(edge => edge.source !== id && edge.target !== id));
+  }, [id, setNodes, setEdges, getNode, getEdges]);
+
+  const copyNode = useCallback(() => {
+    // This is a placeholder function. The actual copy functionality
+    // will be implemented by another team member.
+    console.log('Copy node:', id);
+  }, [id]);
+
   return (
-    <div className={`custom-node dark-theme cursor-auto ${data.status === 'RUNNING' ? 'running' : data.status === 'COMPLETED' ? 'completed' : data.status === 'FAILED' ? 'failed' : ''}`}>
+    <div 
+      className={`custom-node dark-theme ${data.status?.toLowerCase() ?? ''}`}
+      onMouseEnter={handleHovered}
+      onMouseLeave={handleMouseLeave}
+     >
       <div className="mb-2">
         <div className="text-lg font-bold">{beautifyString(data.blockType?.replace(/Block$/, '') || data.title)}</div>
+        <div className="node-actions">
+          {isHovered && (
+            <>
+              <button
+                className="node-action-button"
+                onClick={copyNode}
+                title="Copy node"
+              >
+                <Copy size={18} />
+              </button>
+              <button
+                className="node-action-button"
+                onClick={deleteNode}
+                title="Delete node"
+              >
+                <Trash2 size={18} />
+              </button>
+            </>
+          )}
+        </div>
       </div>
       <div className="flex justify-between items-start gap-2">
         <div>
@@ -169,7 +253,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
             Object.entries(data.inputSchema.properties).map(([propKey, propSchema]) => {
               const isRequired = data.inputSchema.required?.includes(propKey);
               return (isRequired || isAdvancedOpen) && (
-                <div key={propKey}>
+                <div key={propKey} onMouseOver={() => { }}>
                   <NodeHandle
                     keyName={propKey}
                     isConnected={isHandleConnected(propKey)}
@@ -184,7 +268,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                       currentValue={getValue(propKey)}
                       handleInputChange={handleInputChange}
                       handleInputClick={handleInputClick}
-                      errors={errors}
+                      errors={data.errors ?? {}}
                       displayName=""
                     />
                   }
