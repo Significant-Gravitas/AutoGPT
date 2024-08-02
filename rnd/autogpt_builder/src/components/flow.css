@@ -33,7 +33,6 @@ input, textarea {
   border-radius: 4px;
   width: calc(100% - 18px);
   box-sizing: border-box;
-  margin-top: 5px;
 }
 
 input::placeholder, textarea::placeholder {
