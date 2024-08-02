@@ -7,7 +7,7 @@ import market.model
 router = fastapi.APIRouter()
 
 
-@router.post("/admin/agent", response_model=market.model.AgentResponse)
+@router.post("/agent", response_model=market.model.AgentResponse)
 async def create_agent_entry(request: market.model.AddAgentRequest):
     """
     A basic endpoint to create a new agent entry in the database.

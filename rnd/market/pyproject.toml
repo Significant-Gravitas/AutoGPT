@@ -39,6 +39,8 @@ build-backend = "poetry.core.masonry.api"
 format = "scripts:format"
 lint = "scripts:lint"
 app = "scripts:app"
+setup = "scripts:setup"
+populate = "scripts:populate_database"
 
 [tool.pytest-watcher]
 now = false
