@@ -1,4 +1,4 @@
-import React, { useState, useEffect, FC, memo, useCallback } from 'react';
+import React, { useState, useEffect, FC, memo, useCallback, useRef } from 'react';
 import { NodeProps, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './customnode.css';
@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import NodeHandle from './NodeHandle';
 import NodeInputField from './NodeInputField';
 import { Copy, Trash2 } from 'lucide-react';
+import { history } from './history';
 
 export type CustomNodeData = {
   blockType: string;
@@ -41,6 +42,8 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   const { getNode, setNodes, getEdges, setEdges } = useReactFlow();
 
+  const outputDataRef = useRef<HTMLDivElement>(null);
+  const isInitialSetup = useRef(true);
 
   useEffect(() => {
     if (data.output_data || data.status) {
@@ -55,6 +58,10 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   useEffect(() => {
     data.setIsAnyModalOpen?.(isModalOpen || isOutputModalOpen);
   }, [isModalOpen, isOutputModalOpen, data]);
+
+  useEffect(() => {
+    isInitialSetup.current = false;
+  }, []);
 
   const toggleOutput = (checked: boolean) => {
     setIsOutputOpen(checked);
@@ -92,6 +99,16 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     current[keys[keys.length - 1]] = value;
 
     console.log(`Updating hardcoded values for node ${id}:`, newValues);
+
+    if (!isInitialSetup.current) {
+      history.push({
+        type: 'UPDATE_INPUT',
+        payload: { nodeId: id, oldValues: data.hardcodedValues, newValues },
+        undo: () => data.setHardcodedValues(data.hardcodedValues),
+        redo: () => data.setHardcodedValues(newValues),
+      });
+    }
+
     data.setHardcodedValues(newValues);
     const errors = data.errors || {};
     // Remove error with the same key
