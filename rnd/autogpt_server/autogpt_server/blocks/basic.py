@@ -106,7 +106,7 @@ class ObjectLookupBase(Block, ABC, Generic[T]):
     def block_id(self) -> str:
         pass
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         input_schema = ObjectLookupBaseInput[T]
         output_schema = ObjectLookupBaseOutput[T]
 
@@ -132,6 +132,8 @@ class ObjectLookupBase(Block, ABC, Generic[T]):
                 ("output", "key"),
                 ("output", ["v1", "v3"]),
             ],
+            *args,
+            **kwargs,
         )
 
     def run(self, input_data: ObjectLookupBaseInput[T]) -> BlockOutput:
@@ -161,10 +163,18 @@ class ObjectLookupBlock(ObjectLookupBase[Any]):
 
 
 class InputBlock(ObjectLookupBase[Any]):
+
+    def __init__(self):
+        super().__init__(categories={BlockCategory.BASIC, BlockCategory.INPUT_OUTPUT})
+
     def block_id(self) -> str:
         return "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b"
 
 
 class OutputBlock(ObjectLookupBase[Any]):
+
+    def __init__(self):
+        super().__init__(categories={BlockCategory.BASIC, BlockCategory.INPUT_OUTPUT})
+
     def block_id(self) -> str:
         return "363ae599-353e-4804-937e-b2ee3cef3da4"
