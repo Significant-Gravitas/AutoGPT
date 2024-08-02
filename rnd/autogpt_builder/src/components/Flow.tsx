@@ -392,7 +392,6 @@ const FlowEditor: React.FC<{
         type: 'custom',
         position: { x: node.metadata.position.x, y: node.metadata.position.y },
         data: {
-          setIsAnyModalOpen: setIsAnyModalOpen,
           block_id: block.id,
           blockType: block.name,
           title: `${block.name} ${node.id}`,
@@ -602,7 +601,7 @@ const FlowEditor: React.FC<{
         // Populate errors if validation fails
         validate.errors?.forEach((error) => {
           // Skip error if there's an edge connected
-          const path = error.instancePath || error.schemaPath;
+          const path = 'dataPath' in error ? error.dataPath as string : error.instancePath;
           const handle = path.split(/[\/.]/)[0];
           if (node.data.connections.some(conn => conn.target === node.id || conn.targetHandle === handle)) {
             return;
