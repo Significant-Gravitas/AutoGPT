@@ -12,7 +12,7 @@ export default class MarketplaceAPI {
 
   constructor(
     baseUrl: string = process.env.AGPT_MARKETPLACE_URL ||
-      "http://localhost:8001/market"
+      "http://localhost:8001/api/v1/market"
   ) {
     this.baseUrl = baseUrl;
   }
@@ -30,7 +30,7 @@ export default class MarketplaceAPI {
     const queryParams = new URLSearchParams(
       Object.entries(params).filter(([_, v]) => v != null) as [string, string][]
     );
-    return this._get(`/agents/agents?${queryParams.toString()}`);
+    return this._get(`/agents?${queryParams.toString()}`);
   }
 
   async getTopDownloadedAgents(
@@ -38,7 +38,7 @@ export default class MarketplaceAPI {
     pageSize: number = 10
   ): Promise<AgentListResponse> {
     return this._get(
-      `/agents/top-downloads/agents?page=${page}&page_size=${pageSize}`
+      `/top-downloads/agents?page=${page}&page_size=${pageSize}`
     );
   }
 
@@ -47,7 +47,7 @@ export default class MarketplaceAPI {
     pageSize: number = 10
   ): Promise<AgentListResponse> {
     return this._get(
-      `/agents/featured/agents?page=${page}&page_size=${pageSize}`
+      `/featured/agents?page=${page}&page_size=${pageSize}`
     );
   }
 
@@ -75,7 +75,7 @@ export default class MarketplaceAPI {
       );
     }
 
-    return this._get(`/search/search?${queryParams.toString()}`);
+    return this._get(`/search?${queryParams.toString()}`);
   }
 
   async getAgentDetails(
@@ -84,7 +84,7 @@ export default class MarketplaceAPI {
   ): Promise<AgentDetailResponse> {
     const queryParams = new URLSearchParams();
     if (version) queryParams.append("version", version.toString());
-    return this._get(`/agents/agents/${id}?${queryParams.toString()}`);
+    return this._get(`/agents/${id}?${queryParams.toString()}`);
   }
 
   async downloadAgent(
@@ -93,7 +93,7 @@ export default class MarketplaceAPI {
   ): Promise<AgentDetailResponse> {
     const queryParams = new URLSearchParams();
     if (version) queryParams.append("version", version.toString());
-    return this._get(`/agents/agents/${id}/download?${queryParams.toString()}`);
+    return this._get(`/agents/${id}/download?${queryParams.toString()}`);
   }
 
   async downloadAgentFile(id: string, version?: number): Promise<Blob> {

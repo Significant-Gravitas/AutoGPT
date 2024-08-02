@@ -50,6 +50,7 @@ app = fastapi.FastAPI(
     summary="Maketplace API",
     version="0.1",
     lifespan=lifespan,
+    root_path="/api/v1/market",
 )
 
 app.add_middleware(fastapi.middleware.gzip.GZipMiddleware, minimum_size=1000)
@@ -61,13 +62,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(
-    market.routes.agents.router, prefix="/market/agents", tags=["agents"]
-)
-app.include_router(
-    market.routes.search.router, prefix="/market/search", tags=["search"]
-)
-app.include_router(market.routes.admin.router, prefix="/market/admin", tags=["admin"])
+app.include_router(market.routes.agents.router, tags=["agents"])
+app.include_router(market.routes.search.router, tags=["search"])
+app.include_router(market.routes.admin.router, prefix="/admin", tags=["admin"])
 
 
 @app.get("/health")
