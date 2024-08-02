@@ -262,3 +262,78 @@ async def top_agents_by_downloads(
         raise fastapi.HTTPException(
             status_code=500, detail=f"An unexpected error occurred: {e}"
         ) from e
+
+
+@router.get("/featured/agents", response_model=market.model.AgentListResponse)
+async def get_featured_agents(
+    category: str = fastapi.Query(
+        "featured", description="Category of featured agents"
+    ),
+    page: int = fastapi.Query(1, ge=1, description="Page number"),
+    page_size: int = fastapi.Query(
+        10, ge=1, le=100, description="Number of items per page"
+    ),
+):
+    """
+    Retrieve a list of featured agents based on the provided category.
+
+    Args:
+        category (str): Category of featured agents (default: "featured").
+        page (int): Page number (default: 1).
+        page_size (int): Number of items per page (default: 10, min: 1, max: 100).
+
+    Returns:
+        market.model.AgentListResponse: A response containing the list of featured agents and pagination information.
+
+    Raises:
+        HTTPException: If there is a client error (status code 400) or an unexpected error (status code 500).
+    """
+    try:
+        result = await market.db.get_featured_agents(
+            category=category,
+            page=page,
+            page_size=page_size,
+        )
+
+        ret = market.model.AgentListResponse(
+            total_count=result.total_count,
+            page=result.page,
+            page_size=result.page_size,
+            total_pages=result.total_pages,
+            agents=[
+                market.model.AgentResponse(
+                    id=item.agent.id,
+                    name=item.agent.name,
+                    description=item.agent.description,
+                    author=item.agent.author,
+                    keywords=item.agent.keywords,
+                    categories=item.agent.categories,
+                    version=item.agent.version,
+                    createdAt=item.agent.createdAt,
+                    updatedAt=item.agent.updatedAt,
+                    views=(
+                        item.agent.AnalyticsTracker[0].views
+                        if item.agent.AnalyticsTracker
+                        and len(item.agent.AnalyticsTracker) > 0
+                        else 0
+                    ),
+                    downloads=(
+                        item.agent.AnalyticsTracker[0].downloads
+                        if item.agent.AnalyticsTracker
+                        and len(item.agent.AnalyticsTracker) > 0
+                        else 0
+                    ),
+                )
+                for item in result.featured_agents
+                if item.agent is not None
+            ],
+        )
+
+        return ret
+
+    except market.db.AgentQueryError as e:
+        raise fastapi.HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise fastapi.HTTPException(
+            status_code=500, detail=f"An unexpected error occurred: {e}"
+        ) from e

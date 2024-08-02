@@ -37,7 +37,7 @@ export default class MarketplaceAPI {
     pageSize: number = 10
   ): Promise<AgentListResponse> {
     return this._get(
-      `/agents/top-downloads/agents?page=${page}&page_size=${pageSize}`
+      `/agents/featured/agents?page=${page}&page_size=${pageSize}`
     );
   }
 

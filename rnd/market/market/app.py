@@ -6,11 +6,11 @@ import fastapi
 import fastapi.middleware.cors
 import fastapi.middleware.gzip
 import prisma
+import prometheus_fastapi_instrumentator
 import sentry_sdk
 import sentry_sdk.integrations.asyncio
 import sentry_sdk.integrations.fastapi
 import sentry_sdk.integrations.starlette
-import prometheus_fastapi_instrumentator
 
 import market.routes.admin
 import market.routes.agents

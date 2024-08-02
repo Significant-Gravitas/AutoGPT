@@ -35,6 +35,25 @@ class TopAgentsDBResponse(pydantic.BaseModel):
     total_pages: int
 
 
+class FeaturedAgentResponse(pydantic.BaseModel):
+    """
+    Represents a response containing a list of featured agents.
+
+    Attributes:
+        featured_agents (list[FeaturedAgent]): The list of featured agents.
+        total_count (int): The total count of featured agents.
+        page (int): The current page number.
+        page_size (int): The number of agents per page.
+        total_pages (int): The total number of pages.
+    """
+
+    featured_agents: list[prisma.models.FeaturedAgent]
+    total_count: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 async def create_agent_entry(
     name: str,
     description: str,
@@ -321,6 +340,90 @@ async def get_top_agents_by_downloads(
 
         return TopAgentsDBResponse(
             analytics=analytics,
+            total_count=total_count,
+            page=page,
+            page_size=page_size,
+            total_pages=(total_count + page_size - 1) // page_size,
+        )
+
+    except AgentQueryError as e:
+        # Log the error or handle it as needed
+        raise e from e
+    except ValueError as e:
+        raise AgentQueryError(f"Invalid input parameter: {str(e)}") from e
+    except Exception as e:
+        # Catch any other unexpected exceptions
+        raise AgentQueryError(f"Unexpected error occurred: {str(e)}") from e
+
+
+async def set_agent_featured(
+    agent_id: str, is_featured: bool = True, category: str = "featured"
+):
+    """Set an agent as featured in the database.
+
+    Args:
+        agent_id (str): The ID of the agent.
+        category (str, optional): The category to set the agent as featured. Defaults to "featured".
+
+    Raises:
+        AgentQueryError: If there is an error setting the agent as featured.
+    """
+    try:
+        agent = await prisma.models.Agents.prisma().find_unique(where={"id": agent_id})
+        if not agent:
+            raise AgentQueryError(f"Agent with ID {agent_id} not found.")
+
+        await prisma.models.FeaturedAgent.prisma().upsert(
+            where={"agentId": agent_id},
+            data={
+                "update": {"category": category, "is_featured": is_featured},
+                "create": {
+                    "category": category,
+                    "is_featured": is_featured,
+                    "agent": {"connect": {"id": agent_id}},
+                },
+            },
+        )
+
+    except prisma.errors.PrismaError as e:
+        raise AgentQueryError(f"Database query failed: {str(e)}")
+    except Exception as e:
+        raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
+
+
+async def get_featured_agents(
+    category: str = "featured", page: int = 1, page_size: int = 10
+) -> FeaturedAgentResponse:
+    """Retrieve a list of featured agents from the database based on the provided category.
+
+    Args:
+        category (str, optional): The category of featured agents to retrieve. Defaults to "featured".
+        page (int, optional): The page number to retrieve. Defaults to 1.
+        page_size (int, optional): The number of agents per page. Defaults to 10.
+
+    Returns:
+        dict: A dictionary containing the list of featured agents, total count, current page number, page size, and total number of pages.
+    """
+    try:
+        # Calculate pagination
+        skip = (page - 1) * page_size
+
+        # Execute the query
+        try:
+            featured_agents = await prisma.models.FeaturedAgent.prisma().find_many(
+                where={"category": category, "is_featured": True},
+                include={"agent": {"include": {"AnalyticsTracker": True}}},
+                skip=skip,
+                take=page_size,
+            )
+        except prisma.errors.PrismaError as e:
+            raise AgentQueryError(f"Database query failed: {str(e)}")
+
+        # Get total count for pagination info
+        total_count = len(featured_agents)
+
+        return FeaturedAgentResponse(
+            featured_agents=featured_agents,
             total_count=total_count,
             page=page,
             page_size=page_size,
