@@ -3,6 +3,7 @@ import os
 
 import dotenv
 import fastapi
+import fastapi.middleware.cors
 import fastapi.middleware.gzip
 import prisma
 import sentry_sdk
@@ -51,6 +52,14 @@ app = fastapi.FastAPI(
 )
 
 app.add_middleware(fastapi.middleware.gzip.GZipMiddleware, minimum_size=1000)
+# ! This is a security risk, do not use in production
+app.add_middleware(
+    middleware_class=fastapi.middleware.cors.CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(
     market.routes.agents.router, prefix="/market/agents", tags=["agents"]
 )
