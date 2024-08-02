@@ -118,7 +118,7 @@ const FlowEditor: React.FC<{
     const handleKeyDown = (event: KeyboardEvent) => {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const isUndo = (isMac ? event.metaKey : event.ctrlKey) && event.key === 'z';
-      const isRedo = (isMac ? event.metaKey : event.ctrlKey) && event.key === 'y';
+      const isRedo = (isMac ? event.metaKey : event.ctrlKey) && (event.key === 'y' || (event.shiftKey && event.key === 'Z'));
   
       if (isUndo) {
         event.preventDefault();
@@ -137,6 +137,7 @@ const FlowEditor: React.FC<{
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+  
 
   const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
   const edgeTypes: EdgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
