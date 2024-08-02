@@ -122,8 +122,10 @@ class DiscordMessageSenderBlock(Block):
         discord_bot_token: BlockSecret = SecretField(
             key="discord_bot_token", description="Discord bot token"
         )
-        channel_name: str  # The name of the channel to send the message to
-        message_content: str  # The content of the message to send
+        message_content: str = Field(description="The content of the message received")
+        channel_name: str = Field(
+            description="The name of the channel the message was received from"
+        )
 
     class Output(BlockSchema):
         status: str = Field(
