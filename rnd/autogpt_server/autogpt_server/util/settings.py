@@ -105,6 +105,8 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     medium_api_key: str = Field(default="", description="Medium API key")
     medium_author_id: str = Field(default="", description="Medium author ID")
 
+    discord_bot_token: str = Field(default="", description="Discord bot token")
+
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(
