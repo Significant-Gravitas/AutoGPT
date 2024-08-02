@@ -1,8 +1,10 @@
-from typing import Any
+from abc import ABC, abstractmethod
+from typing import Any, Generic, TypeVar
 
 from pydantic import Field
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from autogpt_server.util.mock import MockObject
 
 
 class ValueBlock(Block):
@@ -86,28 +88,39 @@ class PrintingBlock(Block):
         yield "status", "printed"
 
 
-class ObjectLookupBlock(Block):
-    class Input(BlockSchema):
-        input: Any = Field(description="Dictionary to lookup from")
-        key: str | int = Field(description="Key to lookup in the dictionary")
+T = TypeVar("T")
 
-    class Output(BlockSchema):
-        output: Any = Field(description="Value found for the given key")
-        missing: Any = Field(description="Value of the input that missing the key")
 
-    def __init__(self):
+class ObjectLookupBaseInput(BlockSchema, Generic[T]):
+    input: T = Field(description="Dictionary to lookup from")
+    key: str | int = Field(description="Key to lookup in the dictionary")
+
+
+class ObjectLookupBaseOutput(BlockSchema, Generic[T]):
+    output: T = Field(description="Value found for the given key")
+    missing: T = Field(description="Value of the input that missing the key")
+
+
+class ObjectLookupBase(Block, ABC, Generic[T]):
+    @abstractmethod
+    def block_id(self) -> str:
+        pass
+
+    def __init__(self, *args, **kwargs):
+        input_schema = ObjectLookupBaseInput[T]
+        output_schema = ObjectLookupBaseOutput[T]
+
         super().__init__(
-            id="b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+            id=self.block_id(),
             description="Lookup the given key in the input dictionary/object/list and return the value.",
-            categories={BlockCategory.BASIC},
-            input_schema=ObjectLookupBlock.Input,
-            output_schema=ObjectLookupBlock.Output,
+            input_schema=input_schema,
+            output_schema=output_schema,
             test_input=[
                 {"input": {"apple": 1, "banana": 2, "cherry": 3}, "key": "banana"},
                 {"input": {"x": 10, "y": 20, "z": 30}, "key": "w"},
                 {"input": [1, 2, 3], "key": 1},
                 {"input": [1, 2, 3], "key": 3},
-                {"input": ObjectLookupBlock.Input(input="!!", key="key"), "key": "key"},
+                {"input": MockObject(value="!!", key="key"), "key": "key"},
                 {"input": [{"k1": "v1"}, {"k2": "v2"}, {"k1": "v3"}], "key": "k1"},
             ],
             test_output=[
@@ -118,9 +131,11 @@ class ObjectLookupBlock(Block):
                 ("output", "key"),
                 ("output", ["v1", "v3"]),
             ],
+            *args,
+            **kwargs,
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: ObjectLookupBaseInput[T]) -> BlockOutput:
         obj = input_data.input
         key = input_data.key
 
@@ -139,3 +154,30 @@ class ObjectLookupBlock(Block):
             yield "output", getattr(obj, key)
         else:
             yield "missing", input_data.input
+
+
+class ObjectLookupBlock(ObjectLookupBase[Any]):
+
+    def __init__(self):
+        super().__init__(categories={BlockCategory.BASIC})
+
+    def block_id(self) -> str:
+        return "b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6"
+
+
+class InputBlock(ObjectLookupBase[Any]):
+
+    def __init__(self):
+        super().__init__(categories={BlockCategory.BASIC, BlockCategory.INPUT_OUTPUT})
+
+    def block_id(self) -> str:
+        return "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b"
+
+
+class OutputBlock(ObjectLookupBase[Any]):
+
+    def __init__(self):
+        super().__init__(categories={BlockCategory.BASIC, BlockCategory.INPUT_OUTPUT})
+
+    def block_id(self) -> str:
+        return "363ae599-353e-4804-937e-b2ee3cef3da4"
