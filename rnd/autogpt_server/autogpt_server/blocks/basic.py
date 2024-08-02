@@ -186,7 +186,7 @@ class OutputBlock(ObjectLookupBase[Any]):
 
 class DictionaryAddEntryBlock(Block):
     class Input(BlockSchema):
-        dictionary: dict = SchemaField(
+        dictionary: dict | None = SchemaField(
             default=None,
             description="The dictionary to add the entry to. If not provided, a new dictionary will be created.",
             placeholder='{"key1": "value1", "key2": "value2"}',
@@ -247,7 +247,7 @@ class DictionaryAddEntryBlock(Block):
 
 class ListAddEntryBlock(Block):
     class Input(BlockSchema):
-        list: List[Any] = SchemaField(
+        list: List[Any] | None = SchemaField(
             default=None,
             description="The list to add the entry to. If not provided, a new list will be created.",
             placeholder='[1, "string", {"key": "value"}]',
@@ -256,7 +256,7 @@ class ListAddEntryBlock(Block):
             description="The entry to add to the list. Can be of any type (string, int, dict, etc.).",
             placeholder='{"new_key": "new_value"}',
         )
-        position: int = SchemaField(
+        position: int | None = SchemaField(
             default=None,
             description="The position to insert the new entry. If not provided, the entry will be appended to the end of the list.",
             placeholder="0",
