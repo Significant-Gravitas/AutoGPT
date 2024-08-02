@@ -2,13 +2,11 @@ import React from 'react';
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Link from "next/link";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
+import { buttonVariants } from "@/components/ui/button";
 import { Providers } from "@/app/providers";
 import { CircleUser, SquareActivity, Workflow } from 'lucide-react';
+import getServerUser from '@/hooks/getServerUser';
+import ProfileDropdown from '@/components/ProfileDropdown';
 
 import "./globals.css";
 
@@ -19,10 +17,11 @@ export const metadata: Metadata = {
   description: "Your one stop shop to creating AI Agents",
 };
 
-const NavBar = () => {
+const NavBar = async () => {
   const isAvailable = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   );
+  const { user } = await getServerUser();
 
   return (
     <nav className="bg-white dark:bg-slate-800 p-4 flex justify-between items-center shadow">
@@ -33,27 +32,12 @@ const NavBar = () => {
         <Link href="/build" className={buttonVariants({ variant: "ghost" })}>
           <Workflow className="mr-1" /> Build
         </Link>
-        {isAvailable &&
-          <Link href="/profile" className={buttonVariants({ variant: "ghost" })}>
-            <CircleUser className="mr-1" /> Account
-          </Link>}
       </div>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="h-8 w-8 rounded-full">
-            <Avatar>
-              <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
-              <AvatarFallback>CN</AvatarFallback>
-            </Avatar>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem>Profile</DropdownMenuItem>
-          <DropdownMenuItem>Settings</DropdownMenuItem>
-          <DropdownMenuItem>Switch Workspace</DropdownMenuItem>
-          <DropdownMenuItem>Log out</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {isAvailable && !user &&
+        <Link href="/login" className={buttonVariants({ variant: "ghost" })}>
+          Log In<CircleUser className="ml-1" /> 
+        </Link>}
+      {isAvailable && user && <ProfileDropdown/>}
     </nav>
   );
 }

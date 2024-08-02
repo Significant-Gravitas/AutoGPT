@@ -27,7 +27,7 @@ export default function PrivatePage() {
   return (
     <div>
       <p>Hello {user.email}</p>
-      <Button onClick={() => supabase.auth.signOut()}>Sign out</Button>
+      <Button onClick={() => supabase.auth.signOut()}>Log out</Button>
     </div>
   )
 }
