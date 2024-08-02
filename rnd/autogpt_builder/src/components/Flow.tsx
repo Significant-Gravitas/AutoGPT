@@ -15,7 +15,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import CustomNode, { CustomNodeData } from './CustomNode';
 import './flow.css';
-import AutoGPTServerAPI, { Block, Graph, NodeExecutionResult, ObjectSchema } from '@/lib/autogpt-server-api';
+import AutoGPTServerAPI, { Block, BlockIOSchema, Graph, NodeExecutionResult, ObjectSchema } from '@/lib/autogpt-server-api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ChevronRight, ChevronLeft } from "lucide-react";
@@ -212,8 +212,9 @@ const FlowEditor: React.FC<{
     const outputSchema = node.data.outputSchema;
     if (!outputSchema) return 'unknown';
 
-    const outputType = outputSchema.properties[handleId].type;
-    return outputType;
+    const outputHandle = outputSchema.properties[handleId];
+    if (!("type" in outputHandle)) return "unknown";
+    return outputHandle.type;
   }
 
   const getNodePos = (id: string) => {
@@ -451,13 +452,18 @@ const FlowEditor: React.FC<{
       return {};
     }
 
-    const getNestedData = (schema: ObjectSchema, values: { [key: string]: any }): { [key: string]: any } => {
+    const getNestedData = (
+      schema: BlockIOSchema, values: { [key: string]: any }
+    ): { [key: string]: any } => {
       let inputData: { [key: string]: any } = {};
 
-      if (schema.properties) {
+      if ("properties" in schema) {
         Object.keys(schema.properties).forEach((key) => {
           if (values[key] !== undefined) {
-            if (schema.properties[key].type === 'object') {
+            if (
+              "properties" in schema.properties[key]
+              || "additionalProperties" in schema.properties[key]
+            ) {
               inputData[key] = getNestedData(schema.properties[key], values[key]);
             } else {
               inputData[key] = values[key];
@@ -466,7 +472,7 @@ const FlowEditor: React.FC<{
         });
       }
 
-      if (schema.additionalProperties) {
+      if ("additionalProperties" in schema) {
         inputData = { ...inputData, ...values };
       }
 
