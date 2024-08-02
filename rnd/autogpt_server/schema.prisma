@@ -1,6 +1,6 @@
 datasource db {
   provider = "sqlite"
-  url      = "file:./database.db"
+  url      = "file:./dev.db"
 }
 
 generator client {
@@ -11,13 +11,19 @@ generator client {
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
 model AgentGraph {
-  id          String  @id @default(uuid())
+  id      String @default(uuid())
+  version Int    @default(1)
+
   name        String?
   description String?
+  isActive    Boolean @default(true)
+  isTemplate  Boolean @default(false)
 
   AgentNodes                  AgentNode[]
   AgentGraphExecution         AgentGraphExecution[]
   AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
+
+  @@id(name: "graphVersionId", [id, version])
 }
 
 // This model describes a single node in the Agent Graph/Flow (Multi Agent System).
@@ -27,8 +33,9 @@ model AgentNode {
   agentBlockId String
   AgentBlock   AgentBlock @relation(fields: [agentBlockId], references: [id])
 
-  agentGraphId String
-  AgentGraph   AgentGraph @relation(fields: [agentGraphId], references: [id])
+  agentGraphId      String
+  agentGraphVersion Int        @default(1)
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
 
   // List of consumed input, that the parent node should provide.
   Input AgentNodeLink[] @relation("AgentNodeSink")
@@ -58,6 +65,9 @@ model AgentNodeLink {
   agentNodeSinkId String
   AgentNodeSink   AgentNode @relation("AgentNodeSink", fields: [agentNodeSinkId], references: [id])
   sinkName        String
+
+  // Default: the data coming from the source can only be consumed by the sink once, Static: input data will be reused.
+  isStatic Boolean @default(false)
 }
 
 // This model describes a component that will be executed by the AgentNode.
@@ -78,8 +88,9 @@ model AgentBlock {
 model AgentGraphExecution {
   id String @id @default(uuid())
 
-  agentGraphId String
-  AgentGraph   AgentGraph @relation(fields: [agentGraphId], references: [id])
+  agentGraphId      String
+  agentGraphVersion Int        @default(1)
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
 
   AgentNodeExecutions AgentNodeExecution[]
 }
@@ -100,6 +111,8 @@ model AgentNodeExecution {
   // sqlite does not support enum
   // enum Status { INCOMPLETE, QUEUED, RUNNING, SUCCESS, FAILED }
   executionStatus String
+  // Final JSON serialized input data for the node execution.
+  executionData   String?
   addedTime       DateTime  @default(now())
   queuedTime      DateTime?
   startedTime     DateTime?
@@ -119,14 +132,18 @@ model AgentNodeExecutionInputOutput {
   ReferencedByInputExec    AgentNodeExecution? @relation("AgentNodeExecutionInput", fields: [referencedByInputExecId], references: [id])
   referencedByOutputExecId String?
   ReferencedByOutputExec   AgentNodeExecution? @relation("AgentNodeExecutionOutput", fields: [referencedByOutputExecId], references: [id])
+
+  // Input and Output pin names are unique for each AgentNodeExecution.
+  @@unique([referencedByInputExecId, referencedByOutputExecId, name])
 }
 
 // This model describes the recurring execution schedule of an Agent.
 model AgentGraphExecutionSchedule {
   id String @id
 
-  agentGraphId String
-  AgentGraph   AgentGraph @relation(fields: [agentGraphId], references: [id])
+  agentGraphId      String
+  agentGraphVersion Int        @default(1)
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
 
   schedule  String // cron expression
   isEnabled Boolean @default(true)

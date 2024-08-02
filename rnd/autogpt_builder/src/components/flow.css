@@ -1,14 +1,9 @@
 /* flow.css or index.css */
 
 body {
-  margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #121212;
-  color: #e0e0e0;
 }
 
 code {
@@ -91,13 +86,14 @@ input::placeholder, textarea::placeholder {
   top: 0;
   left: -600px;
   width: 350px;
-  height: 100%;
+  height: calc(100vh - 68px); /* Full height minus top offset */
   background-color: #ffffff;
   color: #000000;
   padding: 20px;
   transition: left 0.3s ease;
   z-index: 1000;
   overflow-y: auto;
+  margin-top: 68px; /* Margin to push content below the top fixed area */
 }
 
 .sidebar.open {
@@ -130,7 +126,6 @@ input::placeholder, textarea::placeholder {
 .flow-container {
   width: 100%;
   height: 600px; /* Adjust this height as needed */
-  position: relative;
 }
 
 .flow-wrapper {

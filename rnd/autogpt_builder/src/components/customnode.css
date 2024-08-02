@@ -1,31 +1,12 @@
 .custom-node {
   padding: 15px;
-  border: 2px solid #fff;
+  border: 3px solid #4b5563;
   border-radius: 12px;
   background: #ffffff;
   color: #000000;
   width: 500px;
   box-sizing: border-box;
-  transition: background-color 0.3s ease-in-out;
-}
-
-.node-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.node-title {
-  font-size: 18px;
-  font-weight: bold;
-}
-
-.toggle-button {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: #000000;
+  transition: border-color 0.3s ease-in-out;
 }
 
 .node-content {
@@ -35,33 +16,77 @@
   gap: 1px;
 }
 
-.input-section {
+.custom-node .mb-2 {
   display: flex;
-  flex-direction: column;
-  flex: 1;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 40px;
+  /* Increased to accommodate larger buttons */
+  margin-bottom: 10px;
 }
 
-.handle-label {
-  color: #000000;
-  margin-left: 10px;
+.custom-node .mb-2 .text-lg {
+  flex-grow: 1;
   margin-right: 10px;
 }
 
-.output-section {
+.node-actions {
   display: flex;
-  flex-direction: column;
-  flex: 1;
-  align-items: flex-end;
+  gap: 5px;
 }
 
-.handle-label {
-  margin-left: 10px;
+.node-action-button {
+  width: 32px;
+  /* Increased size */
+  height: 32px;
+  /* Increased size */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f3f4f6;
+  /* Light gray background */
+  border: 1px solid #d1d5db;
+  /* Light border */
+  border-radius: 6px;
+  color: #4b5563;
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
 }
 
+.node-action-button:hover {
+  background-color: #e5e7eb;
+  color: #1f2937;
+}
+
+.node-action-button:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+
+.node-action-button svg {
+  width: 18px;
+  /* Increased icon size */
+  height: 18px;
+  /* Increased icon size */
+}
+/* Existing styles */
 .handle-container {
   display: flex;
   position: relative;
-  margin-bottom: 5px;
+  margin-bottom: 0px;
+  padding: 5px;
+  min-height: 44px;
+  width: 100%;
+  height: 100%;
+}
+
+.react-flow__handle {
+  background: transparent;
+  width: auto;
+  height: auto;
+  border: 0;
+  position: relative;
+  transform: none;
 }
 
 .input-container {
@@ -72,7 +97,8 @@
   padding: 5px;
   width: 325px;
   border-radius: 4px;
-  background: #d1d1d1;
+  background: #ffffff;
+  border: 1px solid #d1d1d1;
   color: #000000;
   cursor: pointer;
   word-break: break-all;
@@ -80,6 +106,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   position: relative;
+}
+
+.border-error {
+  border: 1px solid #d9534f;
 }
 
 .clickable-input span {
@@ -95,24 +125,23 @@
   width: 100%;
   padding: 5px;
   border-radius: 4px;
-  border: 1px solid #555;
-  background: #444;
-  color: #e0e0e0;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
 }
 
 .radio-label {
   display: block;
   margin: 5px 0;
-  color: #e0e0e0;
+  color: #000;
 }
 
 .number-input {
   width: 100%;
   padding: 5px;
   border-radius: 4px;
-  border: 1px solid #555;
-  background: #444;
-  color: #e0e0e0;
+  background: #fff;
+  color: #000;
 }
 
 .array-item-container {
@@ -125,9 +154,9 @@
   flex-grow: 1;
   padding: 5px;
   border-radius: 4px;
-  border: 1px solid #555;
-  background: #444;
-  color: #e0e0e0;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
 }
 
 .array-item-remove {
@@ -150,13 +179,14 @@
   margin-top: 5px;
 }
 
-.node-properties {
+.node-output {
   margin-top: 5px;
   margin-bottom: 5px;
-  background: #d1d1d1;
+  background: #fff;
+  border: 1px solid #000; /* Border for output section */
   padding: 10px;
   border-radius: 10px;
-  width: 325px;
+  width: 100%;
 }
 
 .error-message {
@@ -167,7 +197,7 @@
 
 .object-input {
   margin-left: 10px;
-  border-left: 1px solid #d1d1d1;
+  border-left: 1px solid #000; /* Border for nested inputs */
   padding-left: 10px;
 }
 
@@ -186,37 +216,27 @@
   flex-grow: 1;
 }
 
-@keyframes runningAnimation {
-  0% { background-color: #f39c12; }
-  50% { background-color: #e67e22; }
-  100% { background-color: #f39c12; }
+/* Styles for node states */
+.completed {
+  border-color: #27ae60; /* Green border for completed nodes */
 }
 
 .running {
-  animation: runningAnimation 0.5s infinite alternate;
-}
-
-/* Animation for completed status */
-@keyframes completedAnimation {
-  0% { background-color: #27ae60; }
-  100% { background-color: #2ecc71; }
-}
-
-.completed {
-  animation: completedAnimation 0.5s infinite alternate;
-}
-
-/* Animation for failed status */
-@keyframes failedAnimation {
-  0% { background-color: #c0392b; }
-  100% { background-color: #e74c3c; }
+  border-color: #f39c12; /* Orange border for running nodes */
 }
 
 .failed {
-  animation: failedAnimation 0.5s infinite alternate;
+  border-color: #c0392b; /* Red border for failed nodes */
 }
 
-/* Add more styles for better look */
-.custom-node {
-  transition: all 0.3s ease-in-out;
+.incomplete {
+  border-color: #9f14ab; /* Pink border for incomplete nodes */
+}
+
+.queued {
+  border-color: #25e6e6; /* Cyanic border for failed nodes */
+}
+
+.custom-switch {
+  padding-left: 2px;
 }

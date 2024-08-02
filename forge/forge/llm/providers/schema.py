@@ -55,6 +55,7 @@ class ModelProviderName(str, enum.Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GROQ = "groq"
+    LLAMAFILE = "llamafile"
 
 
 class ChatMessage(BaseModel):
@@ -186,7 +187,7 @@ class ModelResponse(BaseModel):
 
     prompt_tokens_used: int
     completion_tokens_used: int
-    model_info: ModelInfo
+    llm_info: ModelInfo
 
 
 class ModelProviderConfiguration(SystemConfiguration):

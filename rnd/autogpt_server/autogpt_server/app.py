@@ -1,4 +1,5 @@
 from multiprocessing import freeze_support, set_start_method
+
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server import AgentServer
 from autogpt_server.util.process import AppProcess
@@ -27,14 +28,13 @@ def run_processes(processes: list[AppProcess], **kwargs):
 
 
 def main(**kwargs):
-    settings = get_config_and_secrets()
     set_start_method("spawn", force=True)
     freeze_support()
 
     run_processes(
         [
             PyroNameServer(),
-            ExecutionManager(pool_size=settings.config.num_workers),
+            ExecutionManager(),
             ExecutionScheduler(),
             AgentServer(),
         ],

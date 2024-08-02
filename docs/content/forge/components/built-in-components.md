@@ -40,7 +40,7 @@ Necessary for saving and loading agent's state (preserving session).
 
 | Config variable  | Details                                | Type  | Default                            |
 | ---------------- | -------------------------------------- | ----- | ---------------------------------- |
-| `storage_path`     | Path to agent files, e.g. state        | `str` | `agents/{agent_id}/`[^1]           |
+| `storage_path`   | Path to agent files, e.g. state        | `str` | `agents/{agent_id}/`[^1]           |
 | `workspace_path` | Path to files that agent has access to | `str` | `agents/{agent_id}/workspace/`[^1] |
 
 [^1] This option is set dynamically during component construction as opposed to by default inside the configuration model, `{agent_id}` is replaced with the agent's unique identifier.
@@ -84,7 +84,7 @@ Keeps track of agent's actions and their outcomes. Provides their summary to the
 
 | Config variable        | Details                                                 | Type        | Default            |
 | ---------------------- | ------------------------------------------------------- | ----------- | ------------------ |
-| `model_name`           | Name of the llm model used to compress the history      | `ModelName` | `"gpt-3.5-turbo"`  |
+| `llm_name`             | Name of the llm model used to compress the history      | `ModelName` | `"gpt-3.5-turbo"`  |
 | `max_tokens`           | Maximum number of tokens to use for the history summary | `int`       | `1024`             |
 | `spacy_language_model` | Language model used for summary chunking using spacy    | `str`       | `"en_core_web_sm"` |
 | `full_message_count`   | Number of cycles to include unsummarized in the prompt  | `int`       | `4`                |
@@ -155,11 +155,12 @@ Allows agent to search the web. Google credentials aren't required for DuckDuckG
 
 ### `WebSearchConfiguration`
 
-| Config variable                  | Details                                                                 | Type  | Default |
-| -------------------------------- | ----------------------------------------------------------------------- | ----- | ------- |
-| `google_api_key`                 | Google API key, *ENV:* `GOOGLE_API_KEY`                                 | `str` | `None`  |
-| `google_custom_search_engine_id` | Google Custom Search Engine ID, *ENV:* `GOOGLE_CUSTOM_SEARCH_ENGINE_ID` | `str` | `None`  |
-| `duckduckgo_max_attempts`        | Maximum number of attempts to search using DuckDuckGo                   | `int` | `3`     |
+| Config variable                  | Details                                                                 | Type                        | Default |
+| -------------------------------- | ----------------------------------------------------------------------- | --------------------------- | ------- |
+| `google_api_key`                 | Google API key, *ENV:* `GOOGLE_API_KEY`                                 | `str`                       | `None`  |
+| `google_custom_search_engine_id` | Google Custom Search Engine ID, *ENV:* `GOOGLE_CUSTOM_SEARCH_ENGINE_ID` | `str`                       | `None`  |
+| `duckduckgo_max_attempts`        | Maximum number of attempts to search using DuckDuckGo                   | `int`                       | `3`     |
+| `duckduckgo_backend`             | Backend to be used for DDG sdk                                          | `"api" \| "html" \| "lite"` | `"api"` |
 
 ### DirectiveProvider
 
@@ -178,11 +179,12 @@ Allows agent to read websites using Selenium.
 
 | Config variable               | Details                                     | Type                                          | Default                                                                                                                      |
 | ----------------------------- | ------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `model_name`                  | Name of the llm model used to read websites | `ModelName`                                   | `"gpt-3.5-turbo"`                                                                                                            |
+| `llm_name`                    | Name of the llm model used to read websites | `ModelName`                                   | `"gpt-3.5-turbo"`                                                                                                            |
 | `web_browser`                 | Web browser used by Selenium                | `"chrome" \| "firefox" \| "safari" \| "edge"` | `"chrome"`                                                                                                                   |
 | `headless`                    | Run browser in headless mode                | `bool`                                        | `True`                                                                                                                       |
 | `user_agent`                  | User agent used by the browser              | `str`                                         | `"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"` |
 | `browse_spacy_language_model` | Spacy language model used for chunking text | `str`                                         | `"en_core_web_sm"`                                                                                                           |
+| `selenium_proxy`              | Http proxy to use with Selenium             | `str`                                         | `None`                                                                                                                       |
 
 ### DirectiveProvider
 
