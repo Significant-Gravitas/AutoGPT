@@ -48,6 +48,8 @@ async def create_agent_entry(
                 "keywords": keywords,
                 "categories": categories,
                 "graph": graph,
+                # Add analytics tracker maybe?
+                # "AnalyticsTracker": {"create": {"downloads": 0, "views": 0}},
             }
         )
 
@@ -194,7 +196,7 @@ async def search_db(
     description_threshold: int = 60,
     sort_by: str = "rank",
     sort_order: typing.Literal["desc"] | typing.Literal["asc"] = "desc",
-):
+) -> typing.List[market.utils.extension_types.AgentsWithRank]:
     """Perform a search for agents based on the provided query string.
 
     Args:
@@ -264,3 +266,51 @@ async def search_db(
         raise AgentQueryError(f"Database query failed: {str(e)}")
     except Exception as e:
         raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
+
+
+async def get_top_agents_by_downloads(page: int = 1, page_size: int = 10):
+    """Retrieve the top agents by download count.
+
+    Args:
+        page (int, optional): The page number. Defaults to 1.
+        page_size (int, optional): The number of agents per page. Defaults to 10.
+
+    Returns:
+        dict: A dictionary containing the list of agents, total count, current page number, page size, and total number of pages.
+    """
+    try:
+        # Calculate pagination
+        skip = (page - 1) * page_size
+
+        # Execute the query
+        try:
+            # Agents with no downloads will not be included in the results... is this the desired behavior?
+            analytics = await prisma.models.AnalyticsTracker.prisma().find_many(
+                include={"agent": True},
+                order={"downloads": "desc"},
+                skip=skip,
+                take=page_size,
+            )
+        except prisma.errors.PrismaError as e:
+            raise AgentQueryError(f"Database query failed: {str(e)}")
+
+        # Get total count for pagination info
+        total_count = len(analytics)
+
+        return {
+            # should this be analytics as the top object?
+            "agents": [agent.agent for agent in analytics],
+            "total_count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total_count + page_size - 1) // page_size,  # floor division
+        }
+
+    except AgentQueryError as e:
+        # Log the error or handle it as needed
+        raise e from e
+    except ValueError as e:
+        raise AgentQueryError(f"Invalid input parameter: {str(e)}") from e
+    except Exception as e:
+        # Catch any other unexpected exceptions
+        raise AgentQueryError(f"Unexpected error occurred: {str(e)}") from e

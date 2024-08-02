@@ -128,7 +128,7 @@ async def get_agent_details_endpoint(
 
 @router.get("/agents/{agent_id}/download")
 async def download_agent(
-     background_tasks: fastapi.BackgroundTasks,
+    background_tasks: fastapi.BackgroundTasks,
     agent_id: str = fastapi.Path(..., description="The ID of the agent to retrieve"),
     version: typing.Optional[int] = fastapi.Query(
         None, description="Specific version of the agent"
@@ -136,8 +136,8 @@ async def download_agent(
 ):
     """
     Download details of a specific agent.
-    
-    NOTE: This is the same as agent details, however it also triggers 
+
+    NOTE: This is the same as agent details, however it also triggers
     the "download" tracking. We don't actually want to download a file though
 
     Args:
@@ -161,6 +161,7 @@ async def download_agent(
         raise fastapi.HTTPException(
             status_code=500, detail=f"An unexpected error occurred: {str(e)}"
         )
+
 
 @router.get("/agents/{agent_id}/download-file")
 async def download_agent_file(
@@ -200,3 +201,50 @@ async def download_agent_file(
         return fastapi.responses.FileResponse(
             tmp_file.name, filename=file_name, media_type="application/json"
         )
+
+
+# top agents by downloads
+@router.get("/top-downloads/agents", response_model=market.model.AgentListResponse)
+async def top_agents_by_downloads(
+    page: int = fastapi.Query(1, ge=1, description="Page number"),
+    page_size: int = fastapi.Query(
+        10, ge=1, le=100, description="Number of items per page"
+    ),
+):
+    """
+    Retrieve a list of top agents based on the number of downloads.
+
+    Args:
+        page (int): Page number (default: 1).
+        page_size (int): Number of items per page (default: 10, min: 1, max: 100).
+
+    Returns:
+        market.model.AgentListResponse: A response containing the list of top agents and pagination information.
+
+    Raises:
+        HTTPException: If there is a client error (status code 400) or an unexpected error (status code 500).
+    """
+    try:
+        result = await market.db.get_top_agents_by_downloads(
+            page=page,
+            page_size=page_size,
+        )
+
+        agents = [
+            market.model.AgentResponse(**agent.dict()) for agent in result["agents"]
+        ]
+
+        return market.model.AgentListResponse(
+            agents=agents,
+            total_count=result["total_count"],
+            page=result["page"],
+            page_size=result["page_size"],
+            total_pages=result["total_pages"],
+        )
+
+    except market.db.AgentQueryError as e:
+        raise fastapi.HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise fastapi.HTTPException(
+            status_code=500, detail=f"An unexpected error occurred: {e}"
+        ) from e
