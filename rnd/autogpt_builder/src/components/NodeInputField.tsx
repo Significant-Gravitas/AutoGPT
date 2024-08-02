@@ -1,11 +1,13 @@
+import { Cross2Icon, PlusIcon } from "@radix-ui/react-icons";
 import { beautifyString } from "@/lib/utils";
+import { BlockIOSchema } from "@/lib/autogpt-server-api/types";
 import { FC, useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
 type BlockInputFieldProps = {
   keyName: string
-  schema: any
+  schema: BlockIOSchema
   parentKey?: string
   value: string | Array<string> | { [key: string]: string }
   handleInputClick: (key: string) => void
@@ -15,28 +17,28 @@ type BlockInputFieldProps = {
 
 const NodeInputField: FC<BlockInputFieldProps> =
   ({ keyName: key, schema, parentKey = '', value, handleInputClick, handleInputChange, errors }) => {
-    const [newKey, setNewKey] = useState<string>('');
-    const [newValue, setNewValue] = useState<string>('');
-    const [keyValuePairs, setKeyValuePairs] = useState<{ key: string, value: string }[]>([]);
-
     const fullKey = parentKey ? `${parentKey}.${key}` : key;
     const error = typeof errors === 'string' ? errors : errors?.[key] ?? "";
     const displayKey = schema.title || beautifyString(key);
 
-    const handleAddProperty = () => {
-      if (newKey && newValue) {
-        const newPairs = [...keyValuePairs, { key: newKey, value: newValue }];
-        setKeyValuePairs(newPairs);
-        setNewKey('');
-        setNewValue('');
-        const expectedFormat = newPairs.reduce((acc, pair) => ({ ...acc, [pair.key]: pair.value }), {});
-        handleInputChange('expected_format', expectedFormat);
-      }
-    };
+    const [keyValuePairs, _setKeyValuePairs] = useState<{ key: string, value: string }[]>(
+      "additionalProperties" in schema && value
+        ? Object.entries(value).map(([key, value]) => ({ key: key, value: value}))
+        : []
+    );
+
+    function setKeyValuePairs(newKVPairs: typeof keyValuePairs): void {
+      _setKeyValuePairs(newKVPairs);
+      handleInputChange(
+        fullKey,
+        newKVPairs.reduce((obj, {key, value}) => ({ ...obj, [key]: value }), {})
+      );
+    }
 
     const renderClickableInput = (value: string | null = null, placeholder: string = "", secret: boolean = false) => {
       const className = `clickable-input ${error ? 'border-error' : ''}`
 
+    const renderClickableInput = (value: string | null = null, placeholder: string = "", secret: boolean = false) => {
       // if secret is true, then the input field will be a password field if the value is not null
       return secret ? (
         <div className={className} onClick={() => handleInputClick(fullKey)}>
@@ -49,11 +51,11 @@ const NodeInputField: FC<BlockInputFieldProps> =
       )
     };
 
-    if (schema.type === 'object' && schema.properties) {
+    if ("properties" in schema) {
       return (
         <div key={fullKey} className="object-input">
           <strong>{displayKey}:</strong>
-          {Object.entries(schema.properties).map(([propKey, propSchema]: [string, any]) => (
+          {Object.entries(schema.properties).map(([propKey, propSchema]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
               <NodeInputField
                 keyName={propKey}
@@ -71,74 +73,53 @@ const NodeInputField: FC<BlockInputFieldProps> =
     }
 
     if (schema.type === 'object' && schema.additionalProperties) {
-      const objectValue = value || {};
       return (
-        <div key={fullKey} className="object-input">
-          <strong>{displayKey}:</strong>
-          {Object.entries(objectValue).map(([propKey, propValue]: [string, any]) => (
-            <div key={`${fullKey}.${propKey}`} className="nested-input">
-              <div className="clickable-input" onClick={() => handleInputClick(`${fullKey}.${propKey}`)}>
-                {beautifyString(propKey)}: {typeof propValue === 'object' ? JSON.stringify(propValue, null, 2) : propValue}
-              </div>
-              <Button onClick={() => handleInputChange(`${fullKey}.${propKey}`, undefined)} className="array-item-remove">
-                &times;
-              </Button>
-            </div>
-          ))}
-          {key === 'expected_format' && (
-            <div className="nested-input">
-              {keyValuePairs.map((pair, index) => (
-                <div key={index} className="key-value-input">
-                  <Input
-                    type="text"
-                    placeholder="Key"
-                    value={beautifyString(pair.key)}
-                    onChange={(e) => {
-                      const newPairs = [...keyValuePairs];
-                      newPairs[index].key = e.target.value;
-                      setKeyValuePairs(newPairs);
-                      const expectedFormat = newPairs.reduce((acc, pair) => ({ ...acc, [pair.key]: pair.value }), {});
-                      handleInputChange('expected_format', expectedFormat);
-                    }}
-                  />
-                  <Input
-                    type="text"
-                    placeholder="Value"
-                    value={beautifyString(pair.value)}
-                    onChange={(e) => {
-                      const newPairs = [...keyValuePairs];
-                      newPairs[index].value = e.target.value;
-                      setKeyValuePairs(newPairs);
-                      const expectedFormat = newPairs.reduce((acc, pair) => ({ ...acc, [pair.key]: pair.value }), {});
-                      handleInputChange('expected_format', expectedFormat);
-                    }}
-                  />
-                </div>
-              ))}
-              <div className="key-value-input">
+        <div key={fullKey}>
+          <div>
+            {keyValuePairs.map(({ key, value }, index) => (
+              <div key={index} className="flex items-center w-[325px] space-x-2 mb-2">
                 <Input
                   type="text"
                   placeholder="Key"
-                  value={newKey}
-                  onChange={(e) => setNewKey(e.target.value)}
+                  value={key}
+                  onChange={(e) => setKeyValuePairs(
+                    keyValuePairs.toSpliced(index, 1, {
+                      key: e.target.value, value: value
+                    })
+                  )}
                 />
                 <Input
                   type="text"
                   placeholder="Value"
-                  value={newValue}
-                  onChange={(e) => setNewValue(e.target.value)}
+                  value={value}
+                  onChange={(e) => setKeyValuePairs(
+                    keyValuePairs.toSpliced(index, 1, {
+                      key: key, value: e.target.value
+                    })
+                  )}
                 />
+                <Button variant="ghost" className="px-2"
+                  onClick={() => setKeyValuePairs(keyValuePairs.toSpliced(index, 1))}
+                >
+                  <Cross2Icon />
+                </Button>
               </div>
-              <Button onClick={handleAddProperty}>Add Property</Button>
-            </div>
-          )}
+            ))}
+            <Button className="w-full"
+              onClick={() => setKeyValuePairs(
+                keyValuePairs.concat({ key: "", value: "" })
+              )}
+            >
+              <PlusIcon className="mr-2" /> Add Property
+            </Button>
+          </div>
           {error && <span className="error-message">{error}</span>}
         </div>
       );
     }
 
-    if (schema.anyOf) {
-      const types = schema.anyOf.map((s: any) => s.type);
+    if ("anyOf" in schema) {
+      const types = schema.anyOf.map(s => "type" in s ? s.type : undefined);
       if (types.includes('string') && types.includes('null')) {
         return (
           <div key={fullKey} className="input-container">
@@ -149,11 +130,12 @@ const NodeInputField: FC<BlockInputFieldProps> =
       }
     }
 
-    if (schema.allOf) {
+    if ("allOf" in schema) {
       return (
         <div key={fullKey} className="object-input">
           <strong>{displayKey}:</strong>
-          {schema.allOf[0].properties && Object.entries(schema.allOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
+          {"properties" in schema.allOf[0] &&
+          Object.entries(schema.allOf[0].properties).map(([propKey, propSchema]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
               <NodeInputField
                 keyName={propKey}
@@ -170,11 +152,12 @@ const NodeInputField: FC<BlockInputFieldProps> =
       );
     }
 
-    if (schema.oneOf) {
+    if ("oneOf" in schema) {
       return (
         <div key={fullKey} className="object-input">
           <strong>{displayKey}:</strong>
-          {schema.oneOf[0].properties && Object.entries(schema.oneOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
+          {"properties" in schema.oneOf[0] &&
+          Object.entries(schema.oneOf[0].properties).map(([propKey, propSchema]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
               <NodeInputField
                 keyName={propKey}
@@ -187,6 +170,16 @@ const NodeInputField: FC<BlockInputFieldProps> =
               />
             </div>
           ))}
+        </div>
+      );
+    }
+
+    if (!("type" in schema)) {
+      console.warn(`Schema for input ${key} does not specify a type:`, schema);
+      return (
+        <div key={fullKey} className="input-container">
+          {renderClickableInput(value as string, schema.placeholder || `Enter ${beautifyString(displayKey)} (Complex)`)}
+          {error && <span className="error-message">{error}</span>}
         </div>
       );
     }
@@ -284,6 +277,7 @@ const NodeInputField: FC<BlockInputFieldProps> =
         }
         return null;
       default:
+        console.warn(`Schema for input ${key} specifies unknown type:`, schema);
         return (
           <div key={fullKey} className="input-container">
             {renderClickableInput(value as string, schema.placeholder || `Enter ${beautifyString(displayKey)} (Complex)`)}
