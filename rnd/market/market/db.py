@@ -4,7 +4,9 @@ import fuzzywuzzy.fuzz
 import prisma.errors
 import prisma.models
 import prisma.types
+import pydantic
 
+import market.model
 import market.utils.extension_types
 
 
@@ -12,6 +14,25 @@ class AgentQueryError(Exception):
     """Custom exception for agent query errors"""
 
     pass
+
+
+class TopAgentsDBResponse(pydantic.BaseModel):
+    """
+    Represents a response containing a list of top agents.
+
+    Attributes:
+        analytics (list[AgentResponse]): The list of top agents.
+        total_count (int): The total count of agents.
+        page (int): The current page number.
+        page_size (int): The number of agents per page.
+        total_pages (int): The total number of pages.
+    """
+
+    analytics: list[prisma.models.AnalyticsTracker]
+    total_count: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 async def create_agent_entry(
@@ -267,7 +288,9 @@ async def search_db(
         raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
 
 
-async def get_top_agents_by_downloads(page: int = 1, page_size: int = 10):
+async def get_top_agents_by_downloads(
+    page: int = 1, page_size: int = 10
+) -> TopAgentsDBResponse:
     """Retrieve the top agents by download count.
 
     Args:
@@ -296,14 +319,13 @@ async def get_top_agents_by_downloads(page: int = 1, page_size: int = 10):
         # Get total count for pagination info
         total_count = len(analytics)
 
-        return {
-            # should this be analytics as the top object?
-            "agents": [agent.agent for agent in analytics],
-            "total_count": total_count,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total_count + page_size - 1) // page_size,  # floor division
-        }
+        return TopAgentsDBResponse(
+            analytics=analytics,
+            total_count=total_count,
+            page=page,
+            page_size=page_size,
+            total_pages=(total_count + page_size - 1) // page_size,
+        )
 
     except AgentQueryError as e:
         # Log the error or handle it as needed

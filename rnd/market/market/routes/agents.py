@@ -230,17 +230,31 @@ async def top_agents_by_downloads(
             page_size=page_size,
         )
 
-        agents = [
-            market.model.AgentResponse(**agent.dict()) for agent in result["agents"]
-        ]
-
-        return market.model.AgentListResponse(
-            agents=agents,
-            total_count=result["total_count"],
-            page=result["page"],
-            page_size=result["page_size"],
-            total_pages=result["total_pages"],
+        ret = market.model.AgentListResponse(
+            total_count=result.total_count,
+            page=result.page,
+            page_size=result.page_size,
+            total_pages=result.total_pages,
+            agents=[
+                market.model.AgentResponse(
+                    id=item.agent.id,
+                    name=item.agent.name,
+                    description=item.agent.description,
+                    author=item.agent.author,
+                    keywords=item.agent.keywords,
+                    categories=item.agent.categories,
+                    version=item.agent.version,
+                    createdAt=item.agent.createdAt,
+                    updatedAt=item.agent.updatedAt,
+                    views=item.views,
+                    downloads=item.downloads,
+                )
+                for item in result.analytics
+                if item.agent is not None
+            ],
         )
+
+        return ret
 
     except market.db.AgentQueryError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e)) from e

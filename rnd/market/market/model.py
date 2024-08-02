@@ -36,6 +36,8 @@ class AgentResponse(pydantic.BaseModel):
     version: int
     createdAt: datetime.datetime
     updatedAt: datetime.datetime
+    views: int = 0
+    downloads: int = 0
 
 
 class AgentListResponse(pydantic.BaseModel):

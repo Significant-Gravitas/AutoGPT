@@ -19,17 +19,22 @@ def lint():
         print("Lint failed, try running `poetry run format` to fix the issues: ", e)
         raise e
 
+
 def populate_database():
-    import requests
-    import pathlib
     import glob
     import json
+    import pathlib
+
+    import requests
+
     import market.model
-    
-    templates = pathlib.Path(__file__).parent.parent / "autogpt_server" / "graph_templates"
-    
+
+    templates = (
+        pathlib.Path(__file__).parent.parent / "autogpt_server" / "graph_templates"
+    )
+
     all_files = glob.glob(str(templates / "*.json"))
-    
+
     for file in all_files:
         with open(file, "r") as f:
             data = f.read()
@@ -37,11 +42,13 @@ def populate_database():
                 graph=json.loads(data),
                 author="Populate DB",
                 categories=["Pre-Populated"],
-                keywords=["test"]
+                keywords=["test"],
             )
-            response = requests.post("http://localhost:8001/market/admin/agent", json=req.model_dump())
+            response = requests.post(
+                "http://localhost:8001/market/admin/agent", json=req.model_dump()
+            )
             print(response.text)
-    
+
 
 def format():
     run("ruff", "check", "--fix", ".")

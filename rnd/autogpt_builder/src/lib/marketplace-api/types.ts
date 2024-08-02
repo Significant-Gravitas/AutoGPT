@@ -31,6 +31,8 @@ export type Agent = {
   version: number;
   createdAt: string; // ISO8601 datetime string
   updatedAt: string; // ISO8601 datetime string
+  views: number;
+  downloads: number;
 };
 
 export type AgentList = {

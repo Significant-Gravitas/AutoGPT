@@ -75,6 +75,9 @@ const AgentCard: React.FC<{ agent: Agent; featured?: boolean }> = ({ agent, feat
                 <div className="text-xs text-gray-400">
                     Updated {new Date(agent.updatedAt).toLocaleDateString()}
                 </div>
+                <div className="text-xs text-gray-400">
+                    Downloads {agent.downloads}
+                </div>
                 {'rank' in agent && (
                     <div className="text-xs text-indigo-600">
                         Rank: {agent.rank.toFixed(2)}
