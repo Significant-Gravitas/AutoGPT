@@ -10,6 +10,7 @@ import sentry_sdk
 import sentry_sdk.integrations.asyncio
 import sentry_sdk.integrations.fastapi
 import sentry_sdk.integrations.starlette
+import prometheus_fastapi_instrumentator
 
 import market.routes.admin
 import market.routes.agents
@@ -67,3 +68,13 @@ app.include_router(
     market.routes.search.router, prefix="/market/search", tags=["search"]
 )
 app.include_router(market.routes.admin.router, prefix="/market/admin", tags=["admin"])
+
+
+@app.get("/")
+def hb():
+    return fastapi.responses.HTMLResponse(
+        content="<h1>Marketplace API</h1>", status_code=200
+    )
+
+
+prometheus_fastapi_instrumentator.Instrumentator().instrument(app).expose(app)
