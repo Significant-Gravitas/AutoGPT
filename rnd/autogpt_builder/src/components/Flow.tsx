@@ -10,7 +10,7 @@ import ReactFlow, {
   NodeTypes,
   Connection,
   EdgeTypes,
-  MarkerType, Controls,
+  MarkerType,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import CustomNode, { CustomNodeData } from './CustomNode';
@@ -18,7 +18,7 @@ import './flow.css';
 import AutoGPTServerAPI, { Block, Graph, NodeExecutionResult, ObjectSchema } from '@/lib/autogpt-server-api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import {ChevronRight, Save, Play, Workflow, Plus} from "lucide-react";
+import {ChevronRight, Save, Play, Workflow, Plus, Cuboid} from "lucide-react";
 import {cn, deepEquals, getTypeColor, removeEmptyStringsAndNulls, setNestedProperty} from '@/lib/utils';
 import { beautifyString } from '@/lib/utils';
 import { CustomEdge, CustomEdgeData } from './CustomEdge';
@@ -30,56 +30,7 @@ import {Label} from "@/components/ui/label";
 import {Separator} from "@/components/ui/separator";
 import {Tooltip, TooltipContent, TooltipTrigger} from "@/components/ui/tooltip";
 import SaveDialog from "@/components/modals/SaveDialog";
-import ActionPanel from "@/components/editor/ActionPanel";
-// const ActionPanel: React.FC<{isSideBarOpen: boolean, setIsSidebarOpen: any}> =
-//     ({ isSideBarOpen, setIsSidebarOpen}) => {
-//
-//   return (
-//       <aside className="hidden w-14 flex-col sm:flex">
-//         <Card>
-//           <CardContent className="p-0">
-//             <div className="flex flex-col items-center gap-4 px-2 sm:py-5 rounded-radius">
-//               <Tooltip>
-//                 <TooltipTrigger asChild>
-//                   <Button
-//                       variant="ghost"
-//                       size="icon"
-//                       onClick={() => setIsSidebarOpen(true)}
-//                       className={cn(isSideBarOpen ? "bg-accent" : "")}
-//                   >
-//                     <Workflow />
-//                     <span className="sr-only">Nodes</span>
-//                   </Button>
-//                 </TooltipTrigger>
-//                 <TooltipContent side="right">Add Nodes</TooltipContent>
-//               </Tooltip>
-//               <Tooltip>
-//                 <TooltipContent side="right">Save</TooltipContent>
-//                 <TooltipTrigger asChild>
-//                 <SaveDialog />
-//                 </TooltipTrigger>
-//               </Tooltip>
-//             </div>
-//             <div className="mt-auto flex flex-col items-center gap-4 px-2 sm:py-5">
-//               <Separator />
-//               <Tooltip>
-//                 <TooltipTrigger asChild>
-//                   <Button
-//                       size="icon"
-//                       variant="ghost"
-//                   >
-//                     <Play />
-//                     <span className="sr-only">Save and Run</span>
-//                   </Button>
-//                 </TooltipTrigger>
-//                 <TooltipContent side="right">Save and Run</TooltipContent>
-//               </Tooltip>
-//             </div>
-//           </CardContent>
-//         </Card>
-//       </aside>
-//   );
-// }
+import {ControlPanel, Control} from "@/components/editor/ControlPanel";
 
 const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id: string, name: string) => void, setIsSidebarOpen: any}> =
   ({ isOpen, availableNodes, addNode , setIsSidebarOpen}) => {
@@ -106,7 +57,6 @@ const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id
                 <TooltipContent side={"top"}>Collapse</TooltipContent>
               </Tooltip>
             </div>
-
             <Input
                 type="text"
                 placeholder="Search nodes..."
@@ -679,6 +629,19 @@ const FlowEditor: React.FC<{
     clearNodesStatusAndOutput();
   }, [clearNodesStatusAndOutput]);
 
+  const controlPanelControls: Control[] = [
+    {
+      label: 'Blocks',
+      icon: <Cuboid />,
+      onClick: toggleSidebar,
+    },
+    {
+      label: 'Run',
+      icon: <Play />,
+      onClick: runAgent,
+    },
+  ];
+
   return (
     <div className={className}>
       <ReactFlow
@@ -696,41 +659,48 @@ const FlowEditor: React.FC<{
         attributionPosition={"bottom-right"}
       >
         <div className={"flex flex-row absolute z-10 gap-2"}>
-          <ActionPanel actions={} onAction={} onActionPanelClose={} />
+          <ControlPanel
+              controls={controlPanelControls}
+          >
+            <SaveDialog
+                onSave={saveAgent}
+                agentMeta={savedAgent}
+                onNameChange={setAgentName}
+                onDescriptionChange={setAgentDescription}
+            />
+          </ControlPanel>
           <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} setIsSidebarOpen={setIsSidebarOpen} />
         </div>
 
-
-        {/*<Card className={cn(*/}
-        {/*    "absolute right-2.5 z-10"*/}
-        {/*)}>*/}
-        {/*  <CardTitle></CardTitle>*/}
-        {/*  <CardContent className={"p-6"}>*/}
-        {/*    <Input*/}
-        {/*        type="text"*/}
-        {/*        placeholder="Agent Name"*/}
-        {/*        value={agentName}*/}
-        {/*        onChange={(e) => setAgentName(e.target.value)}*/}
-        {/*    />*/}
-        {/*    <Input*/}
-        {/*        type="text"*/}
-        {/*        placeholder="Agent Description"*/}
-        {/*        value={agentDescription}*/}
-        {/*        onChange={(e) => setAgentDescription(e.target.value)}*/}
-        {/*    />*/}
-        {/*    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>  /!* Added gap for spacing *!/*/}
-        {/*      <Button onClick={() => saveAgent(savedAgent?.is_template)}>*/}
-        {/*        Save {savedAgent?.is_template ? "Template" : "Agent"}*/}
-        {/*      </Button>*/}
-        {/*      {!savedAgent?.is_template &&*/}
-        {/*          <Button onClick={runAgent}>Save & Run Agent</Button>*/}
-        {/*      }*/}
-        {/*      {!savedAgent &&*/}
-        {/*          <Button onClick={() => saveAgent(true)}>Save as Template</Button>*/}
-        {/*      }*/}
-        {/*    </div>*/}
-        {/*  </CardContent>*/}
-        {/*  </Card>*/}
+        <Card className={cn(
+            "absolute right-2.5 z-10"
+        )}>
+          <CardContent className={"p-6"}>
+            <Input
+                type="text"
+                placeholder="Agent Name"
+                value={agentName}
+                onChange={(e) => setAgentName(e.target.value)}
+            />
+            <Input
+                type="text"
+                placeholder="Agent Description"
+                value={agentDescription}
+                onChange={(e) => setAgentDescription(e.target.value)}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>  {/* Added gap for spacing */}
+              <Button onClick={() => saveAgent(savedAgent?.is_template)}>
+                Save {savedAgent?.is_template ? "Template" : "Agent"}
+              </Button>
+              {!savedAgent?.is_template &&
+                  <Button onClick={runAgent}>Save & Run Agent</Button>
+              }
+              {!savedAgent &&
+                  <Button onClick={() => saveAgent(true)}>Save as Template</Button>
+              }
+            </div>
+          </CardContent>
+          </Card>
 
       </ReactFlow>
     </div>

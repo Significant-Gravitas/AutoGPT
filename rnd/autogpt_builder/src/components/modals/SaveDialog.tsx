@@ -3,7 +3,8 @@
 import {
     Dialog,
     DialogContent,
-    DialogDescription, DialogFooter,
+    DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
     DialogTrigger
@@ -13,26 +14,47 @@ import {Save} from "lucide-react";
 import {Label} from "@/components/ui/label";
 import {Input} from "@/components/ui/input";
 import React from "react";
+import {Tooltip, TooltipContent, TooltipTrigger} from "@/components/ui/tooltip";
+import {GraphMeta} from "@/lib/autogpt-server-api";
 
+interface SaveDialogProps {
+    agentMeta: GraphMeta | null;
+    onSave: (isTemplate: boolean | undefined) => void;
+    onNameChange: (name: string) => void;
+    onDescriptionChange: (description: string) => void;
+}
 
+export const SaveDialog = ({ agentMeta, onSave, onNameChange, onDescriptionChange }: SaveDialogProps) => {
+    const handleSave = () => {
+        const isTemplate = agentMeta?.is_template ? true : undefined;
+        onSave(isTemplate);
+    };
 
-export const SaveDialog = () => {
+    const getType = () => {
+        return agentMeta?.is_template ? 'template' : 'agent';
+    }
+
     return (
         <Dialog>
-            <DialogTrigger asChild>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                >
-                    <Save />
-                    <span className="sr-only">Save</span>
-                </Button>
-            </DialogTrigger>
+            <Tooltip delayDuration={500}>
+                <TooltipTrigger asChild>
+                    <DialogTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                        >
+                            <Save />
+                            <span className="sr-only">Save {getType()}</span>
+                        </Button>
+                    </DialogTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="right">Save {getType()}</TooltipContent>
+            </Tooltip>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                     <DialogTitle>Save</DialogTitle>
                     <DialogDescription>
-                        Save your agent to access it later. You can also save it as a template.
+                        Let&apos;s save this {getType()} so you can access it later.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-3 py-4">
@@ -44,6 +66,8 @@ export const SaveDialog = () => {
                             id="name"
                             placeholder="Enter your agent name"
                             className="col-span-3"
+                            defaultValue={agentMeta?.name || ''}
+                            onChange={(e) => onNameChange(e.target.value)}
                         />
                     </div>
                     <div>
@@ -54,12 +78,13 @@ export const SaveDialog = () => {
                             id="description"
                             placeholder="Your agent description"
                             className="col-span-3"
+                            defaultValue={agentMeta?.description || ''}
+                            onChange={(e) => onDescriptionChange(e.target.value)}
                         />
                     </div>
                 </div>
                 <DialogFooter>
-                    <Button type="submit">Save Template</Button>
-                    <Button type="submit">Save Agent</Button>
+                    <Button type="submit" onClick={handleSave}>Save {getType()}</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
