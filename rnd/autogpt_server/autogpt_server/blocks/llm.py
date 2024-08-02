@@ -434,7 +434,7 @@ class AdvancedLlmCallBlock(Block):
         api_key: BlockSecret = SecretField(
             value="", description="API key for the chosen language model provider."
         )
-        max_tokens: int = SchemaField(
+        max_tokens: int | None = SchemaField(
             default=None,
             description="The maximum number of tokens to generate in the chat completion.",
             ge=1,
@@ -477,31 +477,38 @@ class AdvancedLlmCallBlock(Block):
 
     @staticmethod
     def llm_call(
-        api_key: str, model: LlmModel, messages: List[dict], max_tokens: int = None
+        api_key: str,
+        model: LlmModel,
+        messages: List[dict[str, str]],
+        max_tokens: int | None = None,
     ) -> str:
         provider = model.metadata.provider
 
         if provider == "openai":
             openai.api_key = api_key
             response = openai.chat.completions.create(
-                model=model.value, messages=messages, max_tokens=max_tokens
+                model=model.value,
+                messages=messages,  # type: ignore
+                max_tokens=max_tokens,
             )
             return response.choices[0].message.content or ""
         elif provider == "anthropic":
             client = anthropic.Anthropic(api_key=api_key)
             response = client.messages.create(
-                model=model.value, max_tokens=max_tokens or 4096, messages=messages
+                model=model.value, max_tokens=max_tokens or 4096, messages=messages  # type: ignore
             )
             return response.content[0].text if response.content else ""
         elif provider == "groq":
             client = Groq(api_key=api_key)
             response = client.chat.completions.create(
-                model=model.value, messages=messages, max_tokens=max_tokens
+                model=model.value,
+                messages=messages,  # type: ignore
+                max_tokens=max_tokens,
             )
             return response.choices[0].message.content or ""
         elif provider == "ollama":
             response = ollama.chat(
-                model=model.value, messages=messages, max_tokens=max_tokens
+                model=model.value, messages=messages, stream=False  # type: ignore
             )
             return response["message"]["content"]
         else:
