@@ -1,4 +1,5 @@
 "use client";
+
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Download, Calendar, Tag, ChevronDown, ChevronUp } from 'lucide-react';
@@ -6,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { AgentDetailResponse } from "@/lib/marketplace-api";
 import dynamic from 'next/dynamic';
 import { Node, Edge, NodeTypes, EdgeTypes } from 'reactflow';
+import MarketplaceAPI from "@/lib/marketplace-api";
+import AutoGPTServerAPI, { GraphCreatable } from "@/lib/autogpt-server-api";
 
 const ReactFlow = dynamic(() => import('reactflow').then((mod) => mod.default), { ssr: false });
 const Controls = dynamic(() => import('reactflow').then((mod) => mod.Controls), { ssr: false });
@@ -59,6 +62,34 @@ function convertGraphToReactFlow(graph: any): { nodes: Node[], edges: Edge[] } {
   return { nodes, edges };
 }
 
+async function installGraph(id: string): Promise<void> {
+  const apiUrl = process.env.AGPT_MARKETPLACE_URL;
+  const api = new MarketplaceAPI(apiUrl);
+
+  const serverAPIUrl = process.env.AGPT_SERVER_API_URL;
+  const serverAPI = new AutoGPTServerAPI(serverAPIUrl);
+  try {
+    console.log(`Installing agent with id: ${id}`);
+    let agent = await api.downloadAgent(id);
+    console.log(`Agent downloaded:`, agent);
+    const data: GraphCreatable = {
+      id: agent.id,
+      version: agent.version,
+      is_active: true,
+      is_template: false,
+      name: agent.name,
+      description: agent.description,
+      nodes: agent.graph.nodes,
+      links: agent.graph.links,
+    }
+    await serverAPI.createTemplate(data);
+    console.log(`Agent installed successfully`);
+  } catch (error) {
+    console.error(`Error installing agent:`, error);
+    throw error;
+  }
+}
+
 function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
   const [isGraphExpanded, setIsGraphExpanded] = useState(false);
   const { nodes, edges } = convertGraphToReactFlow(agent.graph);
@@ -73,12 +104,11 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
           <ArrowLeft className="mr-2" size={20} />
           Back to Marketplace
         </Link>
-        <Link href={`/api/marketplace/agent/${agent.id}/download`} passHref>
-          <Button className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-            <Download className="mr-2" size={16} />
-            Download Agent
-          </Button>
-        </Link>
+        <Button onClick={() => installGraph(agent.id)}
+          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+          <Download className="mr-2" size={16} />
+          Download Agent
+        </Button>
       </div>
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
         <div className="px-4 py-5 sm:px-6">

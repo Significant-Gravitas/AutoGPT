@@ -4,6 +4,7 @@ import {
   ListAgentsParams,
   AgentListResponse,
   AgentDetailResponse,
+  AgentWithRank,
 } from "./types";
 
 export default class MarketplaceAPI {
@@ -11,9 +12,18 @@ export default class MarketplaceAPI {
 
   constructor(
     baseUrl: string = process.env.AGPT_MARKETPLACE_URL ||
-      "http://localhost:8000/api"
+      "http://localhost:8001/market"
   ) {
     this.baseUrl = baseUrl;
+  }
+
+  async checkHealth(): Promise<{ status: string }> {
+    try {
+      this._get("/health");
+      return { status: "available" };
+    } catch (error) {
+      return { status: "unavailable" };
+    }
   }
 
   async listAgents(params: ListAgentsParams = {}): Promise<AgentListResponse> {
