@@ -7,7 +7,7 @@ from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SecretField
 
 
-class DiscordReader(Block):
+class DiscordReaderBlock(Block):
     class Input(BlockSchema):
         discord_bot_token: BlockSecret = SecretField(
             key="discord_bot_token", description="Discord bot token"
@@ -21,8 +21,8 @@ class DiscordReader(Block):
     def __init__(self):
         super().__init__(
             id="d3f4g5h6-1i2j-3k4l-5m6n-7o8p9q0r1s2t",  # Unique ID for the node
-            input_schema=DiscordReader.Input,  # Assign input schema
-            output_schema=DiscordReader.Output,  # Assign output schema
+            input_schema=DiscordReaderBlock.Input,  # Assign input schema
+            output_schema=DiscordReaderBlock.Output,  # Assign output schema
             test_input={"discord_bot_token": "test_token"},
             test_output=[
                 (
@@ -72,7 +72,7 @@ class DiscordReader(Block):
 
         await client.start(token)
 
-    def run(self, input_data: "DiscordReader.Input") -> BlockOutput:
+    def run(self, input_data: "DiscordReaderBlock.Input") -> BlockOutput:
         try:
             loop = asyncio.get_event_loop()
             future = self.run_bot(input_data.discord_bot_token.get_secret_value())
@@ -112,7 +112,7 @@ class DiscordReader(Block):
             raise ValueError(f"An error occurred: {e}")
 
 
-class DiscordMessageSender(Block):
+class DiscordMessageSenderBlock(Block):
     class Input(BlockSchema):
         discord_bot_token: BlockSecret = SecretField(
             key="discord_bot_token", description="Discord bot token"
@@ -126,8 +126,8 @@ class DiscordMessageSender(Block):
     def __init__(self):
         super().__init__(
             id="h1i2j3k4-5l6m-7n8o-9p0q-r1s2t3u4v5w6",  # Unique ID for the node
-            input_schema=DiscordMessageSender.Input,  # Assign input schema
-            output_schema=DiscordMessageSender.Output,  # Assign output schema
+            input_schema=DiscordMessageSenderBlock.Input,  # Assign input schema
+            output_schema=DiscordMessageSenderBlock.Output,  # Assign output schema
             test_input={
                 "discord_bot_token": "YOUR_DISCORD_BOT_TOKEN",
                 "channel_name": "general",
@@ -166,7 +166,7 @@ class DiscordMessageSender(Block):
         """Splits a message into chunks not exceeding the Discord limit."""
         return [message[i : i + limit] for i in range(0, len(message), limit)]
 
-    def run(self, input_data: "DiscordMessageSender.Input") -> BlockOutput:
+    def run(self, input_data: "DiscordMessageSenderBlock.Input") -> BlockOutput:
         try:
             loop = asyncio.get_event_loop()
             future = self.send_message(
