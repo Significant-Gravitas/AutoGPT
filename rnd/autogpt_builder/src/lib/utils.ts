@@ -41,6 +41,7 @@ export function getTypeTextColor(type: string | null): string {
     array: 'text-indigo-500',
     null: 'text-gray-500',
     '': 'text-gray-500',
+    any: 'text-gray-500',
   }[type] || 'text-gray-500';
 }
 
@@ -55,6 +56,7 @@ export function getTypeBgColor(type: string | null): string {
     array: 'bg-indigo-500',
     null: 'bg-gray-500',
     '': 'bg-gray-500',
+    any: 'bg-gray-500',
   }[type] || 'bg-gray-500';
 }
 
@@ -68,6 +70,7 @@ export function getTypeColor(type: string | null): string {
     array: '#6366f1',
     null: '#6b7280',
     '': '#6b7280',
+    any: '#6b7280',
   }[type] || '#6b7280';
 }
 
