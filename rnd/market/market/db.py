@@ -48,8 +48,7 @@ async def create_agent_entry(
                 "keywords": keywords,
                 "categories": categories,
                 "graph": graph,
-                # Add analytics tracker maybe?
-                # "AnalyticsTracker": {"create": {"downloads": 0, "views": 0}},
+                "AnalyticsTracker": {"create": {"downloads": 0, "views": 0}},
             }
         )
 
