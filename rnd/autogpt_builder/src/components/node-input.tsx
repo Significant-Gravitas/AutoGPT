@@ -146,7 +146,6 @@ export const NodeGenericInputField: FC<{
   }
 
   if (!("type" in propSchema)) {
-    console.warn(`Schema for '${propKey}' does not specify a type:`, propSchema);
     return (
       <NodeFallbackInput
         selfKey={propKey}
