@@ -1,3 +1,4 @@
+// THIS FILE IS AUTO-GENERATED, RUN `poetry run schema` TO UPDATE
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")

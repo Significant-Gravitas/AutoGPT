@@ -222,6 +222,21 @@ const FlowEditor: React.FC<{
     return node.position;
   }
 
+  // Function to clear status, output, and close the output info dropdown of all nodes
+  const clearNodesStatusAndOutput = useCallback(() => {
+    setNodes((nds) =>
+      nds.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          status: undefined,
+          output_data: undefined,
+          isOutputOpen: false, // Close the output info dropdown
+        },
+      }))
+    );
+  }, [setNodes]);
+
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
       const edgeColor = getTypeColor(getOutputType(connection.source!, connection.sourceHandle!));
@@ -274,6 +289,7 @@ const FlowEditor: React.FC<{
           return node;
         })
       );
+    clearNodesStatusAndOutput(); // Clear status and output on connection change
     },
     [nodes]
   );
@@ -298,8 +314,9 @@ const FlowEditor: React.FC<{
           },
         }))
       );
+      clearNodesStatusAndOutput(); // Clear status and output on edge deletion
     },
-    [setNodes]
+    [setNodes, clearNodesStatusAndOutput]
   );
 
   const addNode = useCallback((blockId: string, nodeType: string) => {
@@ -342,6 +359,7 @@ const FlowEditor: React.FC<{
   
     setNodes((nds) => [...nds, newNode]);
     setNodeId((prevId) => prevId + 1);
+    clearNodesStatusAndOutput(); // Clear status and output when a new node is added
   
     history.push({
       type: 'ADD_NODE',
@@ -706,6 +724,10 @@ const FlowEditor: React.FC<{
     };
   }, [handleKeyDown]);
 
+  const onNodesDelete = useCallback(() => {
+    clearNodesStatusAndOutput();
+  }, [clearNodesStatusAndOutput]);
+
   return (
     <div className={className}>
       <Button
@@ -725,13 +747,14 @@ const FlowEditor: React.FC<{
       <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
       <ReactFlow
         nodes={nodes.map(node => ({ ...node, data: { ...node.data, setIsAnyModalOpen } }))}
-        edges={edges}
+        edges={edges.map(edge => ({...edge, data: { ...edge.data, clearNodesStatusAndOutput } }))}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         connectionLineComponent={ConnectionLine}
+        onNodesDelete={onNodesDelete}
         onEdgesDelete={onEdgesDelete}
         deleteKeyCode={["Backspace", "Delete"]}
         onNodeDragStart={onNodesChangeStart}

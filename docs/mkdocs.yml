@@ -9,6 +9,7 @@ nav:
     - Build your own Blocks: server/new_blocks.md
     - Setup: server/setup.md
     - Advanced Setup: server/advanced_setup.md
+    - Using Ollama: server/ollama.md
 
   - AutoGPT Agent:
       - Introduction: AutoGPT/index.md
