@@ -3,3 +3,8 @@ autogpt/   @Significant-Gravitas/maintainers
 forge/     @Significant-Gravitas/forge-maintainers
 benchmark/          @Significant-Gravitas/benchmark-maintainers
 frontend/           @Significant-Gravitas/frontend-maintainers
+rnd/auto-gpt_builder/  @Significant-Gravitas/rnd-maintainers
+rnd/autogpt_libs/      @Significant-Gravitas/rnd-maintainers
+rnd/autogpt_server/    @Significant-Gravitas/rnd-maintainers
+rnd/example_files/     @Significant-Gravitas/rnd-maintainers
+rnd/market/            @Significant-Gravitas/rnd-maintainers
