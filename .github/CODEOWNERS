@@ -4,3 +4,4 @@ forge/ @Significant-Gravitas/forge-maintainers
 benchmark/ @Significant-Gravitas/benchmark-maintainers
 frontend/ @Significant-Gravitas/frontend-maintainers
 rnd/infra @Significant-Gravitas/devops
+.github/CODEOWNERS @Significant-Gravitas/admins
