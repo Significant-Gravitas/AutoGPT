@@ -1,6 +1,6 @@
-*                    @Significant-Gravitas/maintainers
-.github/workflows/   @Significant-Gravitas/devops
-forge/               @Significant-Gravitas/forge-maintainers
-benchmark/           @Significant-Gravitas/benchmark-maintainers
-frontend/            @Significant-Gravitas/frontend-maintainers
-rnd/infra            @Significant-Gravitas/devops
+* @Significant-Gravitas/maintainers
+.github/workflows/ @Significant-Gravitas/devops
+forge/ @Significant-Gravitas/forge-maintainers
+benchmark/ @Significant-Gravitas/benchmark-maintainers
+frontend/ @Significant-Gravitas/frontend-maintainers
+rnd/infra @Significant-Gravitas/devops
