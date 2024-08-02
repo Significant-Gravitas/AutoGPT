@@ -32,6 +32,33 @@ export default class MarketplaceAPI {
     );
   }
 
+  async searchAgents(
+    query: string,
+    page: number = 1,
+    pageSize: number = 10,
+    categories?: string[],
+    descriptionThreshold: number = 60,
+    sortBy: string = "rank",
+    sortOrder: "asc" | "desc" = "desc"
+  ): Promise<AgentWithRank[]> {
+    const queryParams = new URLSearchParams({
+      query,
+      page: page.toString(),
+      page_size: pageSize.toString(),
+      description_threshold: descriptionThreshold.toString(),
+      sort_by: sortBy,
+      sort_order: sortOrder,
+    });
+
+    if (categories && categories.length > 0) {
+      categories.forEach((category) =>
+        queryParams.append("categories", category)
+      );
+    }
+
+    return this._get(`/search/search?${queryParams.toString()}`);
+  }
+
   async getAgentDetails(
     id: string,
     version?: number

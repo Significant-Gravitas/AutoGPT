@@ -1,12 +1,21 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from 'next/navigation';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import MarketplaceAPI, { AgentResponse, AgentListResponse } from "@/lib/marketplace-api";
+import MarketplaceAPI, { AgentResponse, AgentListResponse, AgentWithRank } from "@/lib/marketplace-api";
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
+
+function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void {
+    let timeout: NodeJS.Timeout | null = null;
+    return (...args: Parameters<T>) => {
+        if (timeout) clearTimeout(timeout);
+        timeout = setTimeout(() => func(...args), wait);
+    };
+}
 
 interface AgentRowProps {
-    agent: AgentResponse;
+    agent: AgentResponse | AgentWithRank;
 }
 
 const AgentRow = ({ agent }: AgentRowProps) => {
@@ -17,24 +26,29 @@ const AgentRow = ({ agent }: AgentRowProps) => {
     };
 
     return (
-        <li className="flex justify-between gap-x-6 py-5 cursor-pointer hover:bg-gray-50" onClick={handleClick}>
-            <div className="flex min-w-0 gap-x-4">
-                <img className="h-12 w-12 flex-none rounded-full bg-gray-50" src="https://images.unsplash.com/photo-1562408590-e32931084e23?q=80&w=3270&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="" />
-                <div className="min-w-0 flex-auto">
-                    <p className="text-sm font-semibold leading-6 text-gray-900">{agent.name}</p>
-                    <p className="mt-1 truncate text-xs leading-5 text-gray-500">{agent.description}</p>
+        <li
+            className="flex flex-col md:flex-row justify-between gap-4 py-6 px-4 cursor-pointer hover:bg-gray-50 transition-colors duration-200 rounded-lg"
+            onClick={handleClick}
+        >
+            <div className="flex items-center gap-4">
+                <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center text-2xl font-bold text-gray-500">
+                    {agent.name.charAt(0)}
+                </div>
+                <div className="flex-1 min-w-0">
+                    <h3 className="text-lg font-semibold text-gray-900 truncate">{agent.name}</h3>
+                    <p className="mt-1 text-sm text-gray-500 line-clamp-2">{agent.description}</p>
                 </div>
             </div>
-            <div className="flex shrink-0 items-center gap-x-4">
-                <div className="hidden sm:flex sm:flex-col sm:items-end">
-                    <p className="text-sm leading-6 text-gray-900">{agent.categories.join(', ')}</p>
-                    <p className="mt-1 text-xs leading-5 text-gray-500">
-                        Last updated <time dateTime={agent.updatedAt}>{new Date(agent.updatedAt).toLocaleDateString()}</time>
-                    </p>
+            <div className="flex flex-col items-end justify-center">
+                <div className="text-sm text-gray-500">{agent.categories.join(', ')}</div>
+                <div className="mt-1 text-xs text-gray-400">
+                    Updated {new Date(agent.updatedAt).toLocaleDateString()}
                 </div>
-                <svg className="h-5 w-5 flex-none text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
-                </svg>
+                {'rank' in agent && (
+                    <div className="mt-1 text-xs text-indigo-600">
+                        Rank: {agent.rank.toFixed(2)}
+                    </div>
+                )}
             </div>
         </li>
     );
@@ -45,37 +59,44 @@ const Marketplace = () => {
     const api = useMemo(() => new MarketplaceAPI(apiUrl), [apiUrl]);
 
     const [searchValue, setSearchValue] = useState("");
-    const [agents, setAgents] = useState<AgentResponse[]>([]);
+    const [agents, setAgents] = useState<(AgentResponse | AgentWithRank)[]>([]);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [isLoading, setIsLoading] = useState(false);
 
-    const fetchAgents = async (searchTerm: string, currentPage: number) => {
+    const fetchAgents = useCallback(async (searchTerm: string, currentPage: number) => {
         setIsLoading(true);
         try {
-            let response: AgentListResponse;
+            let response: AgentListResponse | AgentWithRank[];
             if (searchTerm) {
-                response = await api.listAgents({ page: currentPage, page_size: 10, keyword: searchTerm });
+                response = await api.searchAgents(searchTerm, currentPage, 10);
+                const filteredAgents = (response as AgentWithRank[]).filter(agent => agent.rank > 0);
+                setAgents(filteredAgents);
+                setTotalPages(Math.ceil(filteredAgents.length / 10));
             } else {
                 response = await api.getTopDownloadedAgents(currentPage, 10);
+                setAgents(response.agents);
+                setTotalPages(response.total_pages);
             }
-            setAgents(response.agents);
-            setTotalPages(response.total_pages);
         } catch (error) {
             console.error("Error fetching agents:", error);
         } finally {
-            console.log("Finished fetching agents");
             setIsLoading(false);
         }
-    };
+    }, [api]);
+
+    const debouncedFetchAgents = useMemo(
+        () => debounce(fetchAgents, 300),
+        [fetchAgents]
+    );
 
     useEffect(() => {
-        fetchAgents(searchValue, page);
-    }, [searchValue, page, api]);
+        debouncedFetchAgents(searchValue, page);
+    }, [searchValue, page, debouncedFetchAgents]);
 
-    const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSearchValue(e.target.value);
-        setPage(1);
+        setPage(1); // Reset to first page on new search
     };
 
     const handleNextPage = () => {
@@ -91,49 +112,77 @@ const Marketplace = () => {
     };
 
     return (
-        <div className="relative overflow-hidden bg-white">
-            <section aria-labelledby="sale-heading" className="relative mx-auto flex max-w-7xl flex-col items-center px-4 pt-32 mb-10 text-center sm:px-6 lg:px-8">
-                <div aria-hidden="true" className="absolute inset-0">
-                    <div className="absolute inset-0 mx-auto max-w-7xl overflow-hidden xl:px-8">
-                        <img src="https://images.unsplash.com/photo-1562408590-e32931084e23?q=80&w=3270&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="" className="w-full object-cover object-center" />
-                    </div>
-                    <div className="absolute inset-0 bg-white bg-opacity-75"></div>
-                    <div className="absolute inset-0 bg-gradient-to-t from-white via-white"></div>
-                </div>
-                <div className="mx-auto max-w-2xl lg:max-w-none relative z-10">
-                    <h2 id="sale-heading" className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl lg:text-6xl">AutoGPT Marketplace</h2>
-                    <p className="mx-auto mt-4 max-w-xl text-xl text-gray-600">Discover and Share proven AI Agents and supercharge your business.</p>
-                </div>
-            </section>
-
-            <section aria-labelledby="testimonial-heading" className="relative justify-center mx-auto max-w-7xl px-4 sm:px-6 lg:py-8">
-                <div className="mb-4 flex justify-center">
-                    <Input
-                        placeholder="Search…"
-                        type="text"
-                        className="w-3/4"
-                        value={searchValue}
-                        onChange={handleSearch}
+        <div className="bg-gray-50 min-h-screen">
+            <div className="relative bg-indigo-600 py-24">
+                <div className="absolute inset-0">
+                    <img
+                        className="w-full h-full object-cover opacity-20"
+                        src="https://images.unsplash.com/photo-1562408590-e32931084e23?auto=format&fit=crop&w=2070&q=80"
+                        alt="Marketplace background"
                     />
+                    <div className="absolute inset-0 bg-indigo-600 mix-blend-multiply" aria-hidden="true"></div>
+                </div>
+                <div className="relative max-w-7xl mx-auto py-24 px-4 sm:px-6 lg:px-8">
+                    <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">AutoGPT Marketplace</h1>
+                    <p className="mt-6 max-w-3xl text-xl text-indigo-100">Discover and share proven AI Agents to supercharge your business. Explore our curated collection of powerful tools designed to enhance productivity and innovation.</p>
+                </div>
+            </div>
+
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+                <div className="mb-8 relative">
+                    <Input
+                        placeholder="Search agents..."
+                        type="text"
+                        className="w-full pl-10 pr-4 py-2 rounded-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+                        value={searchValue}
+                        onChange={handleInputChange}
+                    />
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                 </div>
 
                 {isLoading ? (
-                    <div className="text-center">Loading...</div>
-                ) : (
+                    <div className="text-center py-12">
+                        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                        <p className="mt-2 text-gray-600">Loading agents...</p>
+                    </div>
+                ) : agents.length > 0 ? (
                     <>
-                        <ul role="list" className="divide-y divide-gray-100">
+                        <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                            {searchValue ? "Search Results" : "Top Downloaded Agents"}
+                        </h2>
+                        <ul className="space-y-4">
                             {agents.map((agent) => (
                                 <AgentRow agent={agent} key={agent.id} />
                             ))}
                         </ul>
-                        <div className="flex justify-between mt-4">
-                            <Button onClick={handlePrevPage} disabled={page === 1}>Previous</Button>
-                            <span>Page {page} of {totalPages}</span>
-                            <Button onClick={handleNextPage} disabled={page === totalPages}>Next</Button>
+                        <div className="flex justify-between items-center mt-8">
+                            <Button
+                                onClick={handlePrevPage}
+                                disabled={page === 1}
+                                className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                            >
+                                <ChevronLeft size={16} />
+                                <span>Previous</span>
+                            </Button>
+                            <span className="text-sm text-gray-700">
+                                Page {page} of {totalPages}
+                            </span>
+                            <Button
+                                onClick={handleNextPage}
+                                disabled={page === totalPages}
+                                className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                            >
+                                <span>Next</span>
+                                <ChevronRight size={16} />
+                            </Button>
                         </div>
                     </>
+                ) : (
+                    <div className="text-center py-12">
+                        <p className="text-gray-600">No agents found matching your search criteria.</p>
+                    </div>
                 )}
-            </section>
+            </div>
         </div>
     );
 };
