@@ -2,6 +2,7 @@ import asyncio
 
 import aiohttp
 import discord
+from pydantic import Field
 
 from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SecretField
@@ -14,9 +15,13 @@ class DiscordReaderBlock(Block):
         )
 
     class Output(BlockSchema):
-        message_content: str  # The content of the message received
-        channel_name: str  # The name of the channel the message was received from
-        username: str  # The username of the user who sent the message
+        message_content: str = Field(description="The content of the message received")
+        channel_name: str = Field(
+            description="The name of the channel the message was received from"
+        )
+        username: str = Field(
+            description="The username of the user who sent the message"
+        )
 
     def __init__(self):
         super().__init__(
@@ -121,7 +126,9 @@ class DiscordMessageSenderBlock(Block):
         message_content: str  # The content of the message to send
 
     class Output(BlockSchema):
-        status: str  # The status of the operation (e.g., 'Message sent', 'Error')
+        status: str = Field(
+            description="The status of the operation (e.g., 'Message sent', 'Error')"
+        )
 
     def __init__(self):
         super().__init__(
