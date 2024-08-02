@@ -9,80 +9,51 @@ export type Block = {
 
 export type BlockIORootSchema = {
   type: "object";
-  properties: { [key: string]: BlockIOSubSchema };
+  properties: { [key: string]: BlockIOSchema };
   required?: string[];
+  additionalProperties?: { type: string };
 }
 
-export type BlockIOSubSchema =
-  | BlockIOSimpleTypeSubSchema
-  | BlockIOCombinedTypeSubSchema;
-
-type BlockIOSimpleTypeSubSchema =
-  | BlockIOObjectSubSchema
-  | BlockIOKVSubSchema
-  | BlockIOArraySubSchema
-  | BlockIOStringSubSchema
-  | BlockIONumberSubSchema
-  | BlockIOBooleanSubSchema
-  | BlockIONullSubSchema;
-
-type BlockIOSubSchemaMeta = {
+export type BlockIOSchema = {
   title?: string;
   description?: string;
   placeholder?: string;
-};
+} & (BlockIOSimpleTypeSchema | BlockIOCombinedTypeSchema);
 
-export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
+type BlockIOSimpleTypeSchema = {
   type: "object";
-  properties: { [key: string]: BlockIOSubSchema };
-  default?: { [key: keyof BlockIOObjectSubSchema["properties"]]: any };
-  required?: keyof BlockIOObjectSubSchema["properties"][];
-};
-
-export type BlockIOKVSubSchema = BlockIOSubSchemaMeta & {
-  type: "object";
-  additionalProperties: { type: "string" | "number" | "integer" };
-  default?: { [key: string]: string | number };
-};
-
-export type BlockIOArraySubSchema = BlockIOSubSchemaMeta & {
+  properties: { [key: string]: BlockIOSchema };
+  required?: string[];
+  additionalProperties?: { type: string };
+} | {
   type: "array";
-  items?: BlockIOSimpleTypeSubSchema;
-  default?: Array<string>;
-};
-
-export type BlockIOStringSubSchema = BlockIOSubSchemaMeta & {
+  items?: BlockIOSimpleTypeSchema;
+} | {
   type: "string";
   enum?: string[];
   secret?: true;
   default?: string;
-};
-
-export type BlockIONumberSubSchema = BlockIOSubSchemaMeta & {
+} | {
   type: "integer" | "number";
   default?: number;
-};
-
-export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
+} | {
   type: "boolean";
   default?: boolean;
-};
-
-export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
+} | {
   type: "null";
 };
 
 // At the time of writing, combined schemas only occur on the first nested level in a
 // block schema. It is typed this way to make the use of these objects less tedious.
-type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & ({
-  allOf: [BlockIOSimpleTypeSubSchema];
+type BlockIOCombinedTypeSchema = {
+  allOf: [BlockIOSimpleTypeSchema];
 } | {
-  anyOf: BlockIOSimpleTypeSubSchema[];
+  anyOf: BlockIOSimpleTypeSchema[];
   default?: string | number | boolean | null;
 } | {
-  oneOf: BlockIOSimpleTypeSubSchema[];
+  oneOf: BlockIOSimpleTypeSchema[];
   default?: string | number | boolean | null;
-});
+};
 
 /* Mirror of autogpt_server/data/graph.py:Node */
 export type Node = {
