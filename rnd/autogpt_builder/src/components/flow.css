@@ -1,14 +1,9 @@
 /* flow.css or index.css */
 
 body {
-  margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #121212;
-  color: #e0e0e0;
 }
 
 code {
@@ -131,7 +126,6 @@ input::placeholder, textarea::placeholder {
 .flow-container {
   width: 100%;
   height: 600px; /* Adjust this height as needed */
-  position: relative;
 }
 
 .flow-wrapper {
