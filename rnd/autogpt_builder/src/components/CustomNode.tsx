@@ -5,13 +5,12 @@ import './customnode.css';
 import InputModalComponent from './InputModalComponent';
 import OutputModalComponent from './OutputModalComponent';
 import { BlockIORootSchema, NodeExecutionResult } from '@/lib/autogpt-server-api/types';
-import { BlockSchema } from '@/lib/types';
 import { beautifyString, setNestedProperty } from '@/lib/utils';
 import { Switch } from "@/components/ui/switch"
 import NodeHandle from './NodeHandle';
-import NodeInputField from './NodeInputField';
 import { Copy, Trash2 } from 'lucide-react';
 import { history } from './history';
+import { NodeGenericInputField } from './node-input';
 
 export type CustomNodeData = {
   blockType: string;
@@ -22,8 +21,8 @@ export type CustomNodeData = {
   setHardcodedValues: (values: { [key: string]: any }) => void;
   connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
   isOutputOpen: boolean;
-  status?: string;
-  output_data?: any;
+  status?: NodeExecutionResult["status"];
+  output_data?: NodeExecutionResult["output_data"];
   block_id: string;
   backend_id?: string;
   errors?: { [key: string]: string | null };
@@ -119,7 +118,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   const getValue = (key: string) => {
     const keys = key.split('.');
-    return keys.reduce((acc, k) => (acc && acc[k] !== undefined) ? acc[k] : '', data.hardcodedValues);
+    return keys.reduce((acc, k) => acc && acc[k] ? acc[k] : undefined, data.hardcodedValues);
   };
 
   const isHandleConnected = (key: string) => {
@@ -248,28 +247,36 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           )}
         </div>
       </div>
-      <div className="node-content">
+      <div className="flex justify-between items-start gap-2">
         <div>
           {data.inputSchema &&
-            Object.entries(data.inputSchema.properties).map(([key, schema]) => {
-              const isRequired = data.inputSchema.required?.includes(key);
+            Object.entries(data.inputSchema.properties).map(([propKey, propSchema]) => {
+              const isRequired = data.inputSchema.required?.includes(propKey);
               return (isRequired || isAdvancedOpen) && (
-                <div key={key} onMouseOver={() => { }}>
-                  <NodeHandle keyName={key} isConnected={isHandleConnected(key)} isRequired={isRequired} schema={schema} side="left" />
-                  {!isHandleConnected(key) &&
-                    <NodeInputField
-                      keyName={key}
-                      schema={schema}
-                      value={getValue(key)}
-                      handleInputClick={handleInputClick}
+                <div key={propKey} onMouseOver={() => { }}>
+                  <NodeHandle
+                    keyName={propKey}
+                    isConnected={isHandleConnected(propKey)}
+                    schema={propSchema}
+                    side="left"
+                  />
+                  {!isHandleConnected(propKey) &&
+                    <NodeGenericInputField
+                      className="mt-1 mb-2"
+                      propKey={propKey}
+                      propSchema={propSchema}
+                      currentValue={getValue(propKey)}
                       handleInputChange={handleInputChange}
-                      errors={data.errors?.[key]}
-                    />}
+                      handleInputClick={handleInputClick}
+                      errors={data.errors ?? {}}
+                      displayName={propSchema.title || beautifyString(propKey)}
+                    />
+                  }
                 </div>
               );
             })}
         </div>
-        <div>
+        <div className="flex-none">
           {data.outputSchema && generateOutputHandles(data.outputSchema)}
         </div>
       </div>
@@ -296,11 +303,11 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         </div>
       )}
       <div className="flex items-center mt-2.5">
-        <Switch onCheckedChange={toggleOutput} className='custom-switch' />
+        <Switch className='pl-[2px]' onCheckedChange={toggleOutput} />
         <span className='m-1 mr-4'>Output</span>
         {hasOptionalFields() && (
           <>
-            <Switch onCheckedChange={toggleAdvancedSettings} className='custom-switch' />
+            <Switch className='pl-[2px]' onCheckedChange={toggleAdvancedSettings} />
             <span className='m-1'>Advanced</span>
           </>
         )}
