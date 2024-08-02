@@ -71,6 +71,7 @@ const FlowEditor: React.FC<{
   const [agentName, setAgentName] = useState<string>('');
   const [copiedNodes, setCopiedNodes] = useState<Node<CustomNodeData>[]>([]);
   const [copiedEdges, setCopiedEdges] = useState<Edge<CustomEdgeData>[]>([]);
+  const [isAnyModalOpen, setIsAnyModalOpen] = useState(false); // Track if any modal is open
 
   const apiUrl = process.env.AGPT_SERVER_URL!;
   const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
@@ -127,6 +128,21 @@ const FlowEditor: React.FC<{
     return node.position;
   }
 
+  // Function to clear status, output, and close the output info dropdown of all nodes
+  const clearNodesStatusAndOutput = useCallback(() => {
+    setNodes((nds) =>
+      nds.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          status: undefined,
+          output_data: undefined,
+          isOutputOpen: false, // Close the output info dropdown
+        },
+      }))
+    );
+  }, [setNodes]);
+
   const onConnect: OnConnect = (connection: Connection) => {
     const edgeColor = getTypeColor(getOutputType(connection.source!, connection.sourceHandle!));
     const sourcePos = getNodePos(connection.source!)
@@ -159,6 +175,7 @@ const FlowEditor: React.FC<{
         return node;
       })
     );
+    clearNodesStatusAndOutput(); // Clear status and output on connection change
   }
 
   const onEdgesDelete = useCallback(
@@ -181,8 +198,9 @@ const FlowEditor: React.FC<{
           },
         }))
       );
+      clearNodesStatusAndOutput(); // Clear status and output on edge deletion
     },
-    [setNodes]
+    [setNodes, clearNodesStatusAndOutput]
   );
 
   const addNode = (blockId: string, nodeType: string) => {
@@ -212,6 +230,7 @@ const FlowEditor: React.FC<{
         connections: [],
         isOutputOpen: false,
         block_id: blockId,
+        setIsAnyModalOpen: setIsAnyModalOpen, // Pass setIsAnyModalOpen function
         setErrors: (errors: { [key: string]: string | null }) => {
           setNodes((nds) => nds.map((node) =>
             node.id === newNode.id
@@ -224,6 +243,7 @@ const FlowEditor: React.FC<{
 
     setNodes((nds) => [...nds, newNode]);
     setNodeId((prevId) => prevId + 1);
+    clearNodesStatusAndOutput(); // Clear status and output when a new node is added
   };
 
   function loadGraph(graph: Graph) {
@@ -238,6 +258,7 @@ const FlowEditor: React.FC<{
         type: 'custom',
         position: { x: node.metadata.position.x, y: node.metadata.position.y },
         data: {
+          setIsAnyModalOpen: setIsAnyModalOpen,
           block_id: block.id,
           blockType: block.name,
           title: `${block.name} ${node.id}`,
@@ -259,6 +280,7 @@ const FlowEditor: React.FC<{
               targetHandle: link.sink_name,
             })),
           isOutputOpen: false,
+          setIsAnyModalOpen: setIsAnyModalOpen, // Pass setIsAnyModalOpen function
           setErrors: (errors: { [key: string]: string | null }) => {
             setNodes((nds) => nds.map((node) =>
               node.id === newNode.id
@@ -441,13 +463,14 @@ const FlowEditor: React.FC<{
         // Populate errors if validation fails
         validate.errors?.forEach((error) => {
           // Skip error if there's an edge connected
-          const handle = error.instancePath.split(/[\/.]/)[0];
+          const path = error.instancePath || error.schemaPath;
+          const handle = path.split(/[\/.]/)[0];
           if (node.data.connections.some(conn => conn.target === node.id || conn.targetHandle === handle)) {
             return;
           }
           isValid = false;
-          if (error.instancePath && error.message) {
-            const key = error.instancePath.slice(1);
+          if (path && error.message) {
+            const key = path.slice(1);
             console.log("Error", key, error.message);
             setNestedProperty(errors, key, error.message[0].toUpperCase() + error.message.slice(1));
           } else if (error.keyword === "required") {
@@ -506,6 +529,8 @@ const FlowEditor: React.FC<{
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    if (isAnyModalOpen) return; // Prevent copy/paste if any modal is open
+
     if (event.ctrlKey || event.metaKey) {
       if (event.key === 'c' || event.key === 'C') {
         // Copy selected nodes
@@ -558,7 +583,7 @@ const FlowEditor: React.FC<{
         }
       }
     }
-  }, [nodes, edges, copiedNodes, copiedEdges, nodeId]);
+  }, [nodes, edges, copiedNodes, copiedEdges, nodeId, isAnyModalOpen]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -566,6 +591,10 @@ const FlowEditor: React.FC<{
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [handleKeyDown]);
+
+  const onNodesDelete = useCallback(() => {
+    clearNodesStatusAndOutput();
+  }, [clearNodesStatusAndOutput]);
 
   return (
     <div className={className}>
@@ -585,14 +614,15 @@ const FlowEditor: React.FC<{
       </Button>
       <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
+        nodes={nodes.map(node => ({ ...node, data: { ...node.data, setIsAnyModalOpen } }))}
+        edges={edges.map(edge => ({...edge, data: { ...edge.data, clearNodesStatusAndOutput } }))}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         connectionLineComponent={ConnectionLine}
+        onNodesDelete={onNodesDelete}
         onEdgesDelete={onEdgesDelete}
         deleteKeyCode={["Backspace", "Delete"]}
       >

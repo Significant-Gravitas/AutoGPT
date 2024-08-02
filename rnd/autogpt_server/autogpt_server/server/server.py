@@ -5,9 +5,11 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Any, Dict
 
 import uvicorn
+from autogpt_libs.auth.middleware import auth_middleware
 from fastapi import (
     APIRouter,
     Body,
+    Depends,
     FastAPI,
     HTTPException,
     WebSocket,
@@ -15,7 +17,6 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 import autogpt_server.server.ws_api
 from autogpt_server.data import block, db
@@ -34,7 +35,6 @@ from autogpt_server.server.model import (
     SetGraphActiveVersion,
     WsMessage,
 )
-from autogpt_server.util.data import get_frontend_path
 from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
@@ -44,6 +44,7 @@ class AgentServer(AppService):
     event_queue: asyncio.Queue[ExecutionResult] = asyncio.Queue()
     manager = ConnectionManager()
     mutex = KeyedMutex()
+    use_db = False
 
     async def event_broadcaster(self):
         while True:
@@ -53,8 +54,8 @@ class AgentServer(AppService):
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
         await db.connect()
-        self.run_and_wait(block.initialize_blocks())
-        self.run_and_wait(graph_db.import_packaged_templates())
+        await block.initialize_blocks()
+        await graph_db.import_packaged_templates()
         asyncio.create_task(self.event_broadcaster())
         yield
         await db.disconnect()
@@ -81,6 +82,8 @@ class AgentServer(AppService):
 
         # Define the API routes
         router = APIRouter(prefix="/api")
+        router.dependencies.append(Depends(auth_middleware))
+
         router.add_api_route(
             path="/blocks",
             endpoint=self.get_graph_blocks,  # type: ignore
@@ -189,12 +192,6 @@ class AgentServer(AppService):
         )
 
         app.add_exception_handler(500, self.handle_internal_error)  # type: ignore
-
-        app.mount(
-            path="/frontend",
-            app=StaticFiles(directory=get_frontend_path(), html=True),
-            name="example_files",
-        )
 
         app.include_router(router)
 
@@ -468,9 +465,6 @@ class AgentServer(AppService):
             raise HTTPException(
                 status_code=400, detail="Either graph or template_id must be provided."
             )
-
-        # TODO: replace uuid generation here to DB generated uuids.
-        graph.id = str(uuid.uuid4())
 
         graph.is_template = is_template
         graph.is_active = not is_template

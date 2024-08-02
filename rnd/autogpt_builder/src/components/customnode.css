@@ -2,7 +2,7 @@
   padding: 15px;
   border: 3px solid #4b5563;
   border-radius: 12px;
-  background: #ffffff; /* White background */
+  background: #ffffff;
   color: #000000;
   width: 500px;
   box-sizing: border-box;
@@ -16,6 +16,60 @@
   gap: 1px;
 }
 
+.custom-node .mb-2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 40px;
+  /* Increased to accommodate larger buttons */
+  margin-bottom: 10px;
+}
+
+.custom-node .mb-2 .text-lg {
+  flex-grow: 1;
+  margin-right: 10px;
+}
+
+.node-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.node-action-button {
+  width: 32px;
+  /* Increased size */
+  height: 32px;
+  /* Increased size */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f3f4f6;
+  /* Light gray background */
+  border: 1px solid #d1d5db;
+  /* Light border */
+  border-radius: 6px;
+  color: #4b5563;
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+}
+
+.node-action-button:hover {
+  background-color: #e5e7eb;
+  color: #1f2937;
+}
+
+.node-action-button:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+
+.node-action-button svg {
+  width: 18px;
+  /* Increased icon size */
+  height: 18px;
+  /* Increased icon size */
+}
+/* Existing styles */
 .handle-container {
   display: flex;
   position: relative;
@@ -173,6 +227,14 @@
 
 .failed {
   border-color: #c0392b; /* Red border for failed nodes */
+}
+
+.incomplete {
+  border-color: #9f14ab; /* Pink border for incomplete nodes */
+}
+
+.queued {
+  border-color: #25e6e6; /* Cyanic border for failed nodes */
 }
 
 .custom-switch {

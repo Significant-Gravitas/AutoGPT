@@ -31,9 +31,9 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
 4. Copy .env.example to .env
 
    ```sh
-   cp env.example .env
+   cp .env.example .env
    ```
-     
+
 5. Generate the Prisma client
 
    ```sh
