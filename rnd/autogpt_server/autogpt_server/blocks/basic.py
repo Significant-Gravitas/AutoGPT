@@ -113,7 +113,6 @@ class ObjectLookupBase(Block, ABC, Generic[T]):
         super().__init__(
             id=self.block_id(),
             description="Lookup the given key in the input dictionary/object/list and return the value.",
-            categories={BlockCategory.BASIC},
             input_schema=input_schema,
             output_schema=output_schema,
             test_input=[
@@ -158,6 +157,10 @@ class ObjectLookupBase(Block, ABC, Generic[T]):
 
 
 class ObjectLookupBlock(ObjectLookupBase[Any]):
+
+    def __init__(self):
+        super().__init__(categories={BlockCategory.BASIC})
+
     def block_id(self) -> str:
         return "b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6"
 
