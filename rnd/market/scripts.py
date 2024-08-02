@@ -25,3 +25,7 @@ def format():
     run("isort", "--profile", "black", ".")
     run("black", ".")
     run("pyright", ".")
+
+
+def app():
+    run("uvicorn", "market.app:app", "--reload" , "--port", "8001")

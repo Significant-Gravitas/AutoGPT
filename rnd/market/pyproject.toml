@@ -36,9 +36,9 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-format = "linter:format"
-lint = "linter:lint"
-
+format = "scripts:format"
+lint = "scripts:lint"
+app = "scripts:app"
 
 [tool.pytest-watcher]
 now = false
