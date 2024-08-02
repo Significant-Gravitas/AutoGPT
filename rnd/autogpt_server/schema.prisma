@@ -65,7 +65,7 @@ model AgentNodeLink {
   agentNodeSinkId String
   AgentNodeSink   AgentNode @relation("AgentNodeSink", fields: [agentNodeSinkId], references: [id])
   sinkName        String
-  
+
   // Default: the data coming from the source can only be consumed by the sink once, Static: input data will be reused.
   isStatic Boolean @default(false)
 }

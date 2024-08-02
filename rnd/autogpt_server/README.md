@@ -3,6 +3,10 @@
 This is an initial project for creating the next generation of agent execution, which is an AutoGPT agent server.
 The agent server will enable the creation of composite multi-agent systems that utilize AutoGPT agents and other non-agent components as its primitives.
 
+## Docs
+
+You can access the docs for the [AutoGPT Agent Server here](https://docs.agpt.co/server/setup).
+
 ## Setup
 
 We use the Poetry to manage the dependencies. To set up the project, follow these steps inside this directory:

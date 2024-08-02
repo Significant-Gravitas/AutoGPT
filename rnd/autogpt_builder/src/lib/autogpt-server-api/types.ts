@@ -3,15 +3,56 @@ export type Block = {
   id: string;
   name: string;
   description: string;
-  inputSchema: ObjectSchema;
-  outputSchema: ObjectSchema;
+  inputSchema: BlockIORootSchema;
+  outputSchema: BlockIORootSchema;
 };
 
-export type ObjectSchema = {
-  type: string;
-  properties: { [key: string]: any };
-  additionalProperties?: { type: string };
+export type BlockIORootSchema = {
+  type: "object";
+  properties: { [key: string]: BlockIOSchema };
   required?: string[];
+  additionalProperties?: { type: string };
+}
+
+export type BlockIOSchema = {
+  title?: string;
+  description?: string;
+  placeholder?: string;
+} & (BlockIOSimpleTypeSchema | BlockIOCombinedTypeSchema);
+
+type BlockIOSimpleTypeSchema = {
+  type: "object";
+  properties: { [key: string]: BlockIOSchema };
+  required?: string[];
+  additionalProperties?: { type: string };
+} | {
+  type: "array";
+  items?: BlockIOSimpleTypeSchema;
+} | {
+  type: "string";
+  enum?: string[];
+  secret?: true;
+  default?: string;
+} | {
+  type: "integer" | "number";
+  default?: number;
+} | {
+  type: "boolean";
+  default?: boolean;
+} | {
+  type: "null";
+};
+
+// At the time of writing, combined schemas only occur on the first nested level in a
+// block schema. It is typed this way to make the use of these objects less tedious.
+type BlockIOCombinedTypeSchema = {
+  allOf: [BlockIOSimpleTypeSchema];
+} | {
+  anyOf: BlockIOSimpleTypeSchema[];
+  default?: string | number | boolean | null;
+} | {
+  oneOf: BlockIOSimpleTypeSchema[];
+  default?: string | number | boolean | null;
 };
 
 /* Mirror of autogpt_server/data/graph.py:Node */
