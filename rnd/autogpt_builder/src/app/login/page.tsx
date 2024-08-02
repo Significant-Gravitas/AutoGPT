@@ -54,7 +54,7 @@ export default function LoginPage() {
     const { data, error } = await supabase!.auth.signInWithOAuth({
       provider: provider,
       options: {
-        redirectTo: `http://localhost:3000/auth/callback`,
+        redirectTo: process.env.AUTH_CALLBACK_URL ?? `http://localhost:3000/auth/callback`,
         // Get Google provider_refresh_token
         // queryParams: {
         //   access_type: 'offline',
