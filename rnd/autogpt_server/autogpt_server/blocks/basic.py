@@ -182,6 +182,69 @@ class OutputBlock(ObjectLookupBase[Any]):
 
     def block_id(self) -> str:
         return "363ae599-353e-4804-937e-b2ee3cef3da4"
+
+
+class DictionaryAddEntryBlock(Block):
+    class Input(BlockSchema):
+        dictionary: dict = SchemaField(
+            default=None,
+            description="The dictionary to add the entry to. If not provided, a new dictionary will be created.",
+            placeholder='{"key1": "value1", "key2": "value2"}',
+        )
+        key: str = SchemaField(
+            description="The key for the new entry.", placeholder="new_key"
+        )
+        value: Any = SchemaField(
+            description="The value for the new entry.", placeholder="new_value"
+        )
+
+    class Output(BlockSchema):
+        updated_dictionary: dict = SchemaField(
+            description="The dictionary with the new entry added."
+        )
+        error: str = SchemaField(description="Error message if the operation failed.")
+
+    def __init__(self):
+        super().__init__(
+            id="31d1064e-7446-4693-a7d4-65e5ca1180d1",
+            description="Adds a new key-value pair to a dictionary. If no dictionary is provided, a new one is created.",
+            categories={BlockCategory.BASIC},
+            input_schema=DictionaryAddEntryBlock.Input,
+            output_schema=DictionaryAddEntryBlock.Output,
+            test_input=[
+                {
+                    "dictionary": {"existing_key": "existing_value"},
+                    "key": "new_key",
+                    "value": "new_value",
+                },
+                {"key": "first_key", "value": "first_value"},
+            ],
+            test_output=[
+                (
+                    "updated_dictionary",
+                    {"existing_key": "existing_value", "new_key": "new_value"},
+                ),
+                ("updated_dictionary", {"first_key": "first_value"}),
+            ],
+        )
+
+    def run(self, input_data: Input) -> BlockOutput:
+        try:
+            # If no dictionary is provided, create a new one
+            if input_data.dictionary is None:
+                updated_dict = {}
+            else:
+                # Create a copy of the input dictionary to avoid modifying the original
+                updated_dict = input_data.dictionary.copy()
+
+            # Add the new key-value pair
+            updated_dict[input_data.key] = input_data.value
+
+            yield "updated_dictionary", updated_dict
+        except Exception as e:
+            yield "error", f"Failed to add entry to dictionary: {str(e)}"
+
+
 class ListAddEntryBlock(Block):
     class Input(BlockSchema):
         list: List[Any] = SchemaField(
