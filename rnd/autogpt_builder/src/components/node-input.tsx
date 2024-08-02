@@ -40,20 +40,24 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
 }) => {
   object ??= ("default" in schema ? schema.default : null) ?? {};
   return (
-    <div className={className}>
+    <div className={cn(className, 'flex-col')}>
       {displayName && <strong>{displayName}:</strong>}
       {Object.entries(schema.properties).map(([propKey, propSchema]) => {
         const childKey = selfKey ? `${selfKey}.${propKey}` : propKey;
+        
         return (
-          <NodeGenericInputField
-            key={propKey}
-            propKey={childKey}
-            propSchema={propSchema}
-            currentValue={object[propKey]}
-            errors={errors}
-            handleInputChange={handleInputChange}
-            handleInputClick={handleInputClick}
-          />
+          <div className="flex flex-row space-y-2 w-full">
+            <span className="mr-2 mt-3">{propKey}</span>
+            <NodeGenericInputField
+              key={propKey}
+              propKey={childKey}
+              propSchema={propSchema}
+              currentValue={object[propKey]}
+              errors={errors}
+              handleInputChange={handleInputChange}
+              handleInputClick={handleInputClick}
+            />
+          </div>
         )
       })}
     </div>
@@ -81,126 +85,35 @@ export const NodeGenericInputField: FC<{
   className,
   displayName,
 }) => {
-  displayName ??= propSchema.title || beautifyString(propKey);
+    displayName ??= propSchema.title || beautifyString(propKey);
 
-  if ("allOf" in propSchema) {
-    // If this happens, that is because Pydantic wraps $refs in an allOf if the
-    // $ref has sibling schema properties (which isn't technically allowed),
-    // so there will only be one item in allOf[].
-    // AFAIK this should NEVER happen though, as $refs are resolved server-side.
-    propSchema = propSchema.allOf[0];
-    console.warn(`Unsupported 'allOf' in schema for '${propKey}'!`, propSchema);
-  }
+    if ("allOf" in propSchema) {
+      // If this happens, that is because Pydantic wraps $refs in an allOf if the
+      // $ref has sibling schema properties (which isn't technically allowed),
+      // so there will only be one item in allOf[].
+      // AFAIK this should NEVER happen though, as $refs are resolved server-side.
+      propSchema = propSchema.allOf[0];
+      console.warn(`Unsupported 'allOf' in schema for '${propKey}'!`, propSchema);
+    }
 
-  if ("properties" in propSchema) {
-    return (
-      <NodeObjectInputTree
-        selfKey={propKey}
-        schema={propSchema}
-        object={currentValue}
-        errors={errors}
-        className={cn("border-l border-gray-500 pl-2", className)}  // visual indent
-        displayName={displayName}
-        handleInputClick={handleInputClick}
-        handleInputChange={handleInputChange}
-      />
-    );
-  }
-
-  if ("additionalProperties" in propSchema) {
-    return (
-      <NodeKeyValueInput
-        selfKey={propKey}
-        schema={propSchema}
-        entries={currentValue}
-        errors={errors}
-        className={className}
-        displayName={displayName}
-        handleInputChange={handleInputChange}
-      />
-    );
-  }
-
-  if ("anyOf" in propSchema) {  // optional items
-    const types = propSchema.anyOf.map((s) => ("type" in s ? s.type : undefined));
-    if (types.includes("string") && types.includes("null")) {  // optional string
+    if ("properties" in propSchema) {
       return (
-        <NodeStringInput
+        <NodeObjectInputTree
           selfKey={propKey}
-          schema={{ ...propSchema, type: "string" } as BlockIOStringSubSchema}
-          value={currentValue}
-          error={errors[propKey]}
-          className={className}
+          schema={propSchema}
+          object={currentValue}
+          errors={errors}
+          className={cn("border-l border-gray-500 pl-2", className)}  // visual indent
           displayName={displayName}
-          handleInputChange={handleInputChange}
           handleInputClick={handleInputClick}
+          handleInputChange={handleInputChange}
         />
       );
     }
-  }
 
-  if ("oneOf" in propSchema) {
-    // At the time of writing, this isn't used in the backend -> no impl. needed
-    console.error(`Unsupported 'oneOf' in schema for '${propKey}'!`, propSchema);
-    return null;
-  }
-
-  if (!("type" in propSchema)) {
-    return (
-      <NodeFallbackInput
-        selfKey={propKey}
-        schema={propSchema}
-        value={currentValue}
-        error={errors[propKey]}
-        className={className}
-        displayName={displayName}
-        handleInputClick={handleInputClick}
-      />
-    );
-  }
-
-  switch (propSchema.type) {
-    case "string":
+    if ("additionalProperties" in propSchema) {
       return (
-        <NodeStringInput
-          selfKey={propKey}
-          schema={propSchema}
-          value={currentValue}
-          error={errors[propKey]}
-          className={className}
-          displayName={displayName}
-          handleInputChange={handleInputChange}
-          handleInputClick={handleInputClick}
-        />
-      );
-    case "boolean":
-      return (
-        <NodeBooleanInput
-          selfKey={propKey}
-          schema={propSchema}
-          value={currentValue}
-          error={errors[propKey]}
-          className={className}
-          displayName={displayName}
-          handleInputChange={handleInputChange}
-        />
-      );
-    case "number":
-    case "integer":
-      return (
-        <NodeNumberInput
-          selfKey={propKey}
-          schema={propSchema}
-          value={currentValue}
-          error={errors[propKey]}
-          className={className}
-          displayName={displayName}
-          handleInputChange={handleInputChange}
-        />
-      );
-    case "array":
-      return (
-        <NodeArrayInput
+        <NodeKeyValueInput
           selfKey={propKey}
           schema={propSchema}
           entries={currentValue}
@@ -208,11 +121,35 @@ export const NodeGenericInputField: FC<{
           className={className}
           displayName={displayName}
           handleInputChange={handleInputChange}
-          handleInputClick={handleInputClick}
         />
       );
-    default:
-      console.warn(`Schema for '${propKey}' specifies unknown type:`, propSchema);
+    }
+
+    if ("anyOf" in propSchema) {  // optional items
+      const types = propSchema.anyOf.map((s) => ("type" in s ? s.type : undefined));
+      if (types.includes("string") && types.includes("null")) {  // optional string
+        return (
+          <NodeStringInput
+            selfKey={propKey}
+            schema={{ ...propSchema, type: "string" } as BlockIOStringSubSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+            handleInputClick={handleInputClick}
+          />
+        );
+      }
+    }
+
+    if ("oneOf" in propSchema) {
+      // At the time of writing, this isn't used in the backend -> no impl. needed
+      console.error(`Unsupported 'oneOf' in schema for '${propKey}'!`, propSchema);
+      return null;
+    }
+
+    if (!("type" in propSchema)) {
       return (
         <NodeFallbackInput
           selfKey={propKey}
@@ -224,8 +161,75 @@ export const NodeGenericInputField: FC<{
           handleInputClick={handleInputClick}
         />
       );
+    }
+
+    switch (propSchema.type) {
+      case "string":
+        return (
+          <NodeStringInput
+            selfKey={propKey}
+            schema={propSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+            handleInputClick={handleInputClick}
+          />
+        );
+      case "boolean":
+        return (
+          <NodeBooleanInput
+            selfKey={propKey}
+            schema={propSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+          />
+        );
+      case "number":
+      case "integer":
+        return (
+          <NodeNumberInput
+            selfKey={propKey}
+            schema={propSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+          />
+        );
+      case "array":
+        return (
+          <NodeArrayInput
+            selfKey={propKey}
+            schema={propSchema}
+            entries={currentValue}
+            errors={errors}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+            handleInputClick={handleInputClick}
+          />
+        );
+      default:
+        console.warn(`Schema for '${propKey}' specifies unknown type:`, propSchema);
+        return (
+          <NodeFallbackInput
+            selfKey={propKey}
+            schema={propSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputClick={handleInputClick}
+          />
+        );
+    }
   }
-}
 
 const NodeKeyValueInput: FC<{
   selfKey: string;
@@ -337,53 +341,53 @@ const NodeArrayInput: FC<{
   className,
   displayName,
 }) => {
-  entries ??= schema.default ?? [];
-  return (
-    <div className={`input-container ${className ?? ""}`}>
-      {displayName && <strong>{displayName}</strong>}
-      {entries.map((entry: string, index: number) => {
-        const entryKey = `${selfKey}[${index}]`;
-        return (
-          <div key={entryKey}>
-            <div className="flex items-center space-x-2 mb-2">
-              {schema.items
-                ? <NodeGenericInputField
-                  propKey={entryKey}
-                  propSchema={schema.items}
-                  currentValue={entry}
-                  errors={errors}
-                  handleInputChange={handleInputChange}
-                  handleInputClick={handleInputClick}
-                />
-                : <NodeFallbackInput
-                  selfKey={entryKey}
-                  schema={schema.items}
-                  value={entry}
-                  error={errors[entryKey]}
-                  displayName={displayName ?? "something"}
-                  handleInputClick={handleInputClick}
-                />
+    entries ??= schema.default ?? [];
+    return (
+      <div className={`input-container ${className ?? ""}`}>
+        {displayName && <strong>{displayName}</strong>}
+        {entries.map((entry: string, index: number) => {
+          const entryKey = `${selfKey}[${index}]`;
+          return (
+            <div key={entryKey}>
+              <div className="flex items-center space-x-2 mb-2">
+                {schema.items
+                  ? <NodeGenericInputField
+                    propKey={entryKey}
+                    propSchema={schema.items}
+                    currentValue={entry}
+                    errors={errors}
+                    handleInputChange={handleInputChange}
+                    handleInputClick={handleInputClick}
+                  />
+                  : <NodeFallbackInput
+                    selfKey={entryKey}
+                    schema={schema.items}
+                    value={entry}
+                    error={errors[entryKey]}
+                    displayName={displayName ?? "something"}
+                    handleInputClick={handleInputClick}
+                  />
+                }
+                <Button
+                  variant="ghost" size="icon"
+                  onClick={() => handleInputChange(selfKey, entries.toSpliced(index, 1))}
+                >
+                  <Cross2Icon />
+                </Button>
+              </div>
+              {errors[entryKey] &&
+                <span className="error-message">{errors[entryKey]}</span>
               }
-              <Button
-                variant="ghost" size="icon"
-                onClick={() => handleInputChange(selfKey, entries.toSpliced(index, 1))}
-              >
-                <Cross2Icon />
-              </Button>
             </div>
-            {errors[entryKey] &&
-              <span className="error-message">{errors[entryKey]}</span>
-            }
-          </div>
-        )
-      })}
-      <Button onClick={() => handleInputChange(selfKey, [...entries, ""])}>
-        <PlusIcon className="mr-2" /> Add Item
-      </Button>
-      {errors[selfKey] && <span className="error-message">{errors[selfKey]}</span>}
-    </div>
-  );
-};
+          )
+        })}
+        <Button onClick={() => handleInputChange(selfKey, [...entries, ""])}>
+          <PlusIcon className="mr-2" /> Add Item
+        </Button>
+        {errors[selfKey] && <span className="error-message">{errors[selfKey]}</span>}
+      </div>
+    );
+  };
 
 const NodeStringInput: FC<{
   selfKey: string;
@@ -404,47 +408,50 @@ const NodeStringInput: FC<{
   className,
   displayName,
 }) => {
-  return (
-    <div className={`input-container ${className ?? ""}`}>
-      {schema.enum ? (
-        <Select
-          defaultValue={value}
-          onValueChange={newValue => handleInputChange(selfKey, newValue)}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder={displayName || schema.placeholder || schema.title} />
-          </SelectTrigger>
-          <SelectContent>
-            {schema.enum.map((option, index) => (
-              <SelectItem key={index} value={option}>
-                {beautifyString(option)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : (
-        <div className="relative">
-          <Input
-            type="text"
-            id={selfKey}
-            value={value}
-            onChange={e => handleInputChange(selfKey, e.target.value)}
-            className="pr-8"
-          />
-          <Button
-            variant="ghost" size="icon"
-            className="absolute inset-1 left-auto h-7 w-7 rounded-[0.25rem]"
-            onClick={() => handleInputClick(selfKey)}
-            title="Open a larger textbox input"
+    return (
+      <div className={`input-container ${className ?? ""}`}>
+        {schema.enum ? (
+          <Select
+            defaultValue={value}
+            onValueChange={newValue => handleInputChange(selfKey, newValue)}
           >
-            <Pencil2Icon />
-          </Button>
-        </div>
-      )}
-      {error && <span className="error-message">{error}</span>}
-    </div>
-  );
-};
+            <SelectTrigger>
+              <SelectValue placeholder={displayName || schema.placeholder || schema.title} />
+            </SelectTrigger>
+            <SelectContent>
+              {schema.enum.map((option, index) => (
+                <SelectItem key={index} value={option}>
+                  {beautifyString(option)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <div className="relative">
+            <Input
+              type="text"
+              id={selfKey}
+              value={value}
+              placeholder={
+                schema?.placeholder || `Enter ${beautifyString(displayName)}`
+              }
+              onChange={e => handleInputChange(selfKey, e.target.value)}
+              className="pr-8"
+            />
+            <Button
+              variant="ghost" size="icon"
+              className="absolute inset-1 left-auto h-7 w-8 rounded-[0.25rem]"
+              onClick={() => handleInputClick(selfKey)}
+              title="Open a larger textbox input"
+            >
+              <Pencil2Icon className="m-0 p-0" />
+            </Button>
+          </div>
+        )}
+        {error && <span className="error-message">{error}</span>}
+      </div>
+    );
+  };
 
 const NodeNumberInput: FC<{
   selfKey: string;
@@ -529,10 +536,10 @@ const ClickableInput: FC<{
   secret = false,
   className,
 }) => (
-  <div className={`clickable-input ${className}`} onClick={handleInputClick}>
-    {secret
-      ? <i className="text-gray-500">{value ? "********" : placeholder}</i>
-      : value || <i className="text-gray-500">{placeholder}</i>
-    }
-  </div>
-);
+    <div className={`clickable-input ${className}`} onClick={handleInputClick}>
+      {secret
+        ? <i className="text-gray-500">{value ? "********" : placeholder}</i>
+        : value || <i className="text-gray-500">{placeholder}</i>
+      }
+    </div>
+  );

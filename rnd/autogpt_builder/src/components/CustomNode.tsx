@@ -269,7 +269,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                       handleInputChange={handleInputChange}
                       handleInputClick={handleInputClick}
                       errors={data.errors ?? {}}
-                      displayName=""
+                      displayName={propSchema.title || beautifyString(propKey)}
                     />
                   }
                 </div>
@@ -303,11 +303,11 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         </div>
       )}
       <div className="flex items-center mt-2.5">
-        <Switch onCheckedChange={toggleOutput} />
+        <Switch className='pl-[2px]' onCheckedChange={toggleOutput} />
         <span className='m-1 mr-4'>Output</span>
         {hasOptionalFields() && (
           <>
-            <Switch onCheckedChange={toggleAdvancedSettings} />
+            <Switch className='pl-[2px]' onCheckedChange={toggleAdvancedSettings} />
             <span className='m-1'>Advanced</span>
           </>
         )}

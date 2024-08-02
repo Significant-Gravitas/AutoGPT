@@ -187,8 +187,9 @@
 
 .error-message {
   color: #d9534f;
-  font-size: 12px;
+  font-size: 13px;
   margin-top: 5px;
+  margin-left: 5px;
 }
 
 /* Styles for node states */
