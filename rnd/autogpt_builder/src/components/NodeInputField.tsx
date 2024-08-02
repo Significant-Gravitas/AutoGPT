@@ -1,23 +1,24 @@
 import { Cross2Icon, PlusIcon } from "@radix-ui/react-icons";
 import { beautifyString } from "@/lib/utils";
+import { BlockIOSchema } from "@/lib/autogpt-server-api/types";
 import { FC, useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
 type BlockInputFieldProps = {
   keyName: string
-  schema: any
+  schema: BlockIOSchema
   parentKey?: string
   value: string | Array<string> | { [key: string]: string }
   handleInputClick: (key: string) => void
   handleInputChange: (key: string, value: any) => void
-  errors: { [key: string]: string | null }
+  errors?: { [key: string]: string } | string | null
 }
 
 const NodeInputField: FC<BlockInputFieldProps> =
   ({ keyName: key, schema, parentKey = '', value, handleInputClick, handleInputChange, errors }) => {
     const fullKey = parentKey ? `${parentKey}.${key}` : key;
-    const error = errors[fullKey];
+    const error = typeof errors === 'string' ? errors : errors?.[key] ?? "";
     const displayKey = schema.title || beautifyString(key);
 
     const [keyValuePairs, _setKeyValuePairs] = useState<{ key: string, value: string }[]>(
@@ -35,23 +36,26 @@ const NodeInputField: FC<BlockInputFieldProps> =
     }
 
     const renderClickableInput = (value: string | null = null, placeholder: string = "", secret: boolean = false) => {
+      const className = `clickable-input ${error ? 'border-error' : ''}`
+
+    const renderClickableInput = (value: string | null = null, placeholder: string = "", secret: boolean = false) => {
       // if secret is true, then the input field will be a password field if the value is not null
       return secret ? (
-        <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
-          {value ? <i className="text-gray-500">********</i> : <i className="text-gray-500">{placeholder}</i>}
+        <div className={className} onClick={() => handleInputClick(fullKey)}>
+          {value ? <span>********</span> : <i className="text-gray-500">{placeholder}</i>}
         </div>
       ) : (
-        <div className="clickable-input" onClick={() => handleInputClick(fullKey)}>
+        <div className={className} onClick={() => handleInputClick(fullKey)}>
           {value || <i className="text-gray-500">{placeholder}</i>}
         </div>
       )
     };
 
-    if (schema.type === 'object' && schema.properties) {
+    if ("properties" in schema) {
       return (
         <div key={fullKey} className="object-input">
           <strong>{displayKey}:</strong>
-          {Object.entries(schema.properties).map(([propKey, propSchema]: [string, any]) => (
+          {Object.entries(schema.properties).map(([propKey, propSchema]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
               <NodeInputField
                 keyName={propKey}
@@ -114,8 +118,8 @@ const NodeInputField: FC<BlockInputFieldProps> =
       );
     }
 
-    if (schema.anyOf) {
-      const types = schema.anyOf.map((s: any) => s.type);
+    if ("anyOf" in schema) {
+      const types = schema.anyOf.map(s => "type" in s ? s.type : undefined);
       if (types.includes('string') && types.includes('null')) {
         return (
           <div key={fullKey} className="input-container">
@@ -126,11 +130,12 @@ const NodeInputField: FC<BlockInputFieldProps> =
       }
     }
 
-    if (schema.allOf) {
+    if ("allOf" in schema) {
       return (
         <div key={fullKey} className="object-input">
           <strong>{displayKey}:</strong>
-          {schema.allOf[0].properties && Object.entries(schema.allOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
+          {"properties" in schema.allOf[0] &&
+          Object.entries(schema.allOf[0].properties).map(([propKey, propSchema]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
               <NodeInputField
                 keyName={propKey}
@@ -147,11 +152,12 @@ const NodeInputField: FC<BlockInputFieldProps> =
       );
     }
 
-    if (schema.oneOf) {
+    if ("oneOf" in schema) {
       return (
         <div key={fullKey} className="object-input">
           <strong>{displayKey}:</strong>
-          {schema.oneOf[0].properties && Object.entries(schema.oneOf[0].properties).map(([propKey, propSchema]: [string, any]) => (
+          {"properties" in schema.oneOf[0] &&
+          Object.entries(schema.oneOf[0].properties).map(([propKey, propSchema]) => (
             <div key={`${fullKey}.${propKey}`} className="nested-input">
               <NodeInputField
                 keyName={propKey}
@@ -164,6 +170,16 @@ const NodeInputField: FC<BlockInputFieldProps> =
               />
             </div>
           ))}
+        </div>
+      );
+    }
+
+    if (!("type" in schema)) {
+      console.warn(`Schema for input ${key} does not specify a type:`, schema);
+      return (
+        <div key={fullKey} className="input-container">
+          {renderClickableInput(value as string, schema.placeholder || `Enter ${beautifyString(displayKey)} (Complex)`)}
+          {error && <span className="error-message">{error}</span>}
         </div>
       );
     }
@@ -225,11 +241,11 @@ const NodeInputField: FC<BlockInputFieldProps> =
       case 'integer':
         return (
           <div key={fullKey} className="input-container">
-            <input
+            <Input
               type="number"
               value={value as string || ''}
               onChange={(e) => handleInputChange(fullKey, parseFloat(e.target.value))}
-              className="number-input"
+              className={`number-input ${error ? 'border-error' : ''}`}
             />
             {error && <span className="error-message">{error}</span>}
           </div>
@@ -241,7 +257,7 @@ const NodeInputField: FC<BlockInputFieldProps> =
             <div key={fullKey} className="input-container">
               {arrayValues.map((item: string, index: number) => (
                 <div key={`${fullKey}.${index}`} className="array-item-container">
-                  <input
+                  <Input
                     type="text"
                     value={item}
                     onChange={(e) => handleInputChange(`${fullKey}.${index}`, e.target.value)}
@@ -255,12 +271,13 @@ const NodeInputField: FC<BlockInputFieldProps> =
               <Button onClick={() => handleInputChange(fullKey, [...arrayValues, ''])} className="array-item-add">
                 Add Item
               </Button>
-              {error && <span className="error-message">{error}</span>}
+              {error && <span className="error-message ml-2">{error}</span>}
             </div>
           );
         }
         return null;
       default:
+        console.warn(`Schema for input ${key} specifies unknown type:`, schema);
         return (
           <div key={fullKey} className="input-container">
             {renderClickableInput(value as string, schema.placeholder || `Enter ${beautifyString(displayKey)} (Complex)`)}
