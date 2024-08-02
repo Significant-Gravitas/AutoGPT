@@ -32,6 +32,15 @@ export default class MarketplaceAPI {
     );
   }
 
+  async getFeaturedAgents(
+    page: number = 1,
+    pageSize: number = 10
+  ): Promise<AgentListResponse> {
+    return this._get(
+      `/agents/top-downloads/agents?page=${page}&page_size=${pageSize}`
+    );
+  }
+
   async searchAgents(
     query: string,
     page: number = 1,
