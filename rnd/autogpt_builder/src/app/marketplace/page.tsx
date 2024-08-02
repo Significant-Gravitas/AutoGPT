@@ -1,11 +1,97 @@
+"use client";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from 'next/navigation';
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import MarketplaceAPI, { AgentResponse, AgentListResponse } from "@/lib/marketplace-api";
 
+interface AgentRowProps {
+    agent: AgentResponse;
+}
 
-const Marketplace = () => {
+const AgentRow = ({ agent }: AgentRowProps) => {
+    const router = useRouter();
+
+    const handleClick = () => {
+        router.push(`/marketplace/${agent.id}`);
+    };
 
     return (
+        <li className="flex justify-between gap-x-6 py-5 cursor-pointer hover:bg-gray-50" onClick={handleClick}>
+            <div className="flex min-w-0 gap-x-4">
+                <img className="h-12 w-12 flex-none rounded-full bg-gray-50" src="https://images.unsplash.com/photo-1562408590-e32931084e23?q=80&w=3270&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="" />
+                <div className="min-w-0 flex-auto">
+                    <p className="text-sm font-semibold leading-6 text-gray-900">{agent.name}</p>
+                    <p className="mt-1 truncate text-xs leading-5 text-gray-500">{agent.description}</p>
+                </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-x-4">
+                <div className="hidden sm:flex sm:flex-col sm:items-end">
+                    <p className="text-sm leading-6 text-gray-900">{agent.categories.join(', ')}</p>
+                    <p className="mt-1 text-xs leading-5 text-gray-500">
+                        Last updated <time dateTime={agent.updatedAt}>{new Date(agent.updatedAt).toLocaleDateString()}</time>
+                    </p>
+                </div>
+                <svg className="h-5 w-5 flex-none text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+                </svg>
+            </div>
+        </li>
+    );
+}
 
+const Marketplace = () => {
+    const apiUrl = process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL;
+    const api = useMemo(() => new MarketplaceAPI(apiUrl), [apiUrl]);
+
+    const [searchValue, setSearchValue] = useState("");
+    const [agents, setAgents] = useState<AgentResponse[]>([]);
+    const [page, setPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const fetchAgents = async (searchTerm: string, currentPage: number) => {
+        setIsLoading(true);
+        try {
+            let response: AgentListResponse;
+            if (searchTerm) {
+                response = await api.listAgents({ page: currentPage, page_size: 10, keyword: searchTerm });
+            } else {
+                response = await api.getTopDownloadedAgents(currentPage, 10);
+            }
+            setAgents(response.agents);
+            setTotalPages(response.total_pages);
+        } catch (error) {
+            console.error("Error fetching agents:", error);
+        } finally {
+            console.log("Finished fetching agents");
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchAgents(searchValue, page);
+    }, [searchValue, page, api]);
+
+    const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setSearchValue(e.target.value);
+        setPage(1);
+    };
+
+    const handleNextPage = () => {
+        if (page < totalPages) {
+            setPage(page + 1);
+        }
+    };
+
+    const handlePrevPage = () => {
+        if (page > 1) {
+            setPage(page - 1);
+        }
+    };
+
+    return (
         <div className="relative overflow-hidden bg-white">
-
             <section aria-labelledby="sale-heading" className="relative mx-auto flex max-w-7xl flex-col items-center px-4 pt-32 mb-10 text-center sm:px-6 lg:px-8">
                 <div aria-hidden="true" className="absolute inset-0">
                     <div className="absolute inset-0 mx-auto max-w-7xl overflow-hidden xl:px-8">
@@ -21,96 +107,35 @@ const Marketplace = () => {
             </section>
 
             <section aria-labelledby="testimonial-heading" className="relative justify-center mx-auto max-w-7xl px-4 sm:px-6 lg:py-8">
-
-                <form className="mb-4 flex justify-center">
-                    <input
+                <div className="mb-4 flex justify-center">
+                    <Input
+                        placeholder="Search…"
                         type="text"
-                        placeholder="Search..."
-                        className="w-3/4 max-w-xl px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring focus:ring-indigo-200"
+                        className="w-3/4"
+                        value={searchValue}
+                        onChange={handleSearch}
                     />
-                </form>
-                <ul role="list" className="divide-y divide-gray-100">
+                </div>
 
-                    <li className="flex justify-between gap-x-6 py-5">
-                        <div className="flex min-w-0 gap-x-4">
-                            <img className="h-12 w-12 flex-none rounded-full bg-gray-50" src="https://images.unsplash.com/photo-1562408590-e32931084e23?q=80&w=3270&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="" />
-                            <div className="min-w-0 flex-auto">
-                                <p className="text-sm font-semibold leading-6 text-gray-900">
-                                    <a href="#">
-                                        <span className="absolute inset-x-0 -top-px bottom-0"></span>
-                                        Agent Name
-                                    </a>
-                                </p>
-                                <p className="mt-1 flex text-xs leading-5 text-gray-500">
-                                    <a href="mailto:leslie.alexander@example.com" className="relative truncate hover:underline">Agent description</a>
-                                </p>
-                            </div>
+                {isLoading ? (
+                    <div className="text-center">Loading...</div>
+                ) : (
+                    <>
+                        <ul role="list" className="divide-y divide-gray-100">
+                            {agents.map((agent) => (
+                                <AgentRow agent={agent} key={agent.id} />
+                            ))}
+                        </ul>
+                        <div className="flex justify-between mt-4">
+                            <Button onClick={handlePrevPage} disabled={page === 1}>Previous</Button>
+                            <span>Page {page} of {totalPages}</span>
+                            <Button onClick={handleNextPage} disabled={page === totalPages}>Next</Button>
                         </div>
-                        <div className="flex shrink-0 items-center gap-x-4">
-                            <div className="hidden sm:flex sm:flex-col sm:items-end">
-                                <p className="text-sm leading-6 text-gray-900">Category</p>
-                                <p className="mt-1 text-xs leading-5 text-gray-500">Last updated <time dateTime="2023-01-23T13:23Z">3h ago</time></p>
-                            </div>
-                            <svg className="h-5 w-5 flex-none text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
-                            </svg>
-                        </div>
-                    </li>
-                    <li className="flex justify-between gap-x-6 py-5">
-                        <div className="flex min-w-0 gap-x-4">
-                            <img className="h-12 w-12 flex-none rounded-full bg-gray-50" src="https://images.unsplash.com/photo-1562408590-e32931084e23?q=80&w=3270&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="" />
-                            <div className="min-w-0 flex-auto">
-                                <p className="text-sm font-semibold leading-6 text-gray-900">
-                                    <a href="#">
-                                        <span className="absolute inset-x-0 -top-px bottom-0"></span>
-                                        Agent Name
-                                    </a>
-                                </p>
-                                <p className="mt-1 flex text-xs leading-5 text-gray-500">
-                                    <a href="mailto:leslie.alexander@example.com" className="relative truncate hover:underline">Agent description</a>
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-x-4">
-                            <div className="hidden sm:flex sm:flex-col sm:items-end">
-                                <p className="text-sm leading-6 text-gray-900">Category</p>
-                                <p className="mt-1 text-xs leading-5 text-gray-500">Last updated <time dateTime="2023-01-23T13:23Z">3h ago</time></p>
-                            </div>
-                            <svg className="h-5 w-5 flex-none text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
-                            </svg>
-                        </div>
-                    </li>
-                    <li className="flex justify-between gap-x-6 py-5">
-                        <div className="flex min-w-0 gap-x-4">
-                            <img className="h-12 w-12 flex-none rounded-full bg-gray-50" src="https://images.unsplash.com/photo-1562408590-e32931084e23?q=80&w=3270&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="" />
-                            <div className="min-w-0 flex-auto">
-                                <p className="text-sm font-semibold leading-6 text-gray-900">
-                                    <a href="#">
-                                        <span className="absolute inset-x-0 -top-px bottom-0"></span>
-                                        Agent Name
-                                    </a>
-                                </p>
-                                <p className="mt-1 flex text-xs leading-5 text-gray-500">
-                                    <a href="mailto:leslie.alexander@example.com" className="relative truncate hover:underline">Agent description</a>
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-x-4">
-                            <div className="hidden sm:flex sm:flex-col sm:items-end">
-                                <p className="text-sm leading-6 text-gray-900">Category</p>
-                                <p className="mt-1 text-xs leading-5 text-gray-500">Last updated <time dateTime="2023-01-23T13:23Z">3h ago</time></p>
-                            </div>
-                            <svg className="h-5 w-5 flex-none text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
-                            </svg>
-                        </div>
-                    </li>
-                </ul>
+                    </>
+                )}
             </section>
         </div>
     );
-
 };
 
 export default Marketplace;
