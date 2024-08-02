@@ -20,7 +20,19 @@ for module in modules:
 
 # Load all Block instances from the available modules
 AVAILABLE_BLOCKS = {}
-for cls in Block.__subclasses__():
+
+
+def all_subclasses(clz):
+    subclasses = clz.__subclasses__()
+    for subclass in subclasses:
+        subclasses += all_subclasses(subclass)
+    return subclasses
+
+
+for cls in all_subclasses(Block):
+    if not cls.__name__.endswith("Block"):
+        continue
+
     block = cls()
 
     if not isinstance(block.id, str) or len(block.id) != 36:
