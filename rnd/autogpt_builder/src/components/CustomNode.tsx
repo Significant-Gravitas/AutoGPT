@@ -4,6 +4,8 @@ import 'reactflow/dist/style.css';
 import './customnode.css';
 import InputModalComponent from './InputModalComponent';
 import OutputModalComponent from './OutputModalComponent';
+import { BlockIORootSchema, NodeExecutionResult } from '@/lib/autogpt-server-api/types';
+import { beautifyString } from '@/lib/utils';
 import { BlockSchema } from '@/lib/types';
 import { beautifyString, setNestedProperty } from '@/lib/utils';
 import { Switch } from "@/components/ui/switch"
@@ -15,8 +17,8 @@ import { history } from './history';
 export type CustomNodeData = {
   blockType: string;
   title: string;
-  inputSchema: BlockSchema;
-  outputSchema: BlockSchema;
+  inputSchema: BlockIORootSchema;
+  outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
   setHardcodedValues: (values: { [key: string]: any }) => void;
   connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
@@ -77,7 +79,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     });
   };
 
-  const generateOutputHandles = (schema: BlockSchema) => {
+  const generateOutputHandles = (schema: BlockIORootSchema) => {
     if (!schema?.properties) return null;
     const keys = Object.keys(schema.properties);
     return keys.map((key) => (
@@ -156,7 +158,9 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   const handleOutputClick = () => {
     setIsOutputModalOpen(true);
-    setModalValue(typeof data.output_data === 'object' ? JSON.stringify(data.output_data, null, 2) : data.output_data);
+    setModalValue(
+      data.output_data ? JSON.stringify(data.output_data, null, 2) : "[no output (yet)]"
+    );
   };
 
   const isTextTruncated = (element: HTMLElement | null): boolean => {
