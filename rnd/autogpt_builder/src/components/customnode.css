@@ -1,5 +1,5 @@
 .custom-node {
-  @apply p-3;
+  padding: 15px;
   border: 3px solid #4b5563;
   border-radius: 12px;
   background: #ffffff;
@@ -87,6 +87,10 @@
   border: 0;
   position: relative;
   transform: none;
+}
+
+.input-container {
+  margin-bottom: 5px;
 }
 
 .clickable-input {
@@ -187,9 +191,29 @@
 
 .error-message {
   color: #d9534f;
-  font-size: 13px;
+  font-size: 12px;
   margin-top: 5px;
-  margin-left: 5px;
+}
+
+.object-input {
+  margin-left: 10px;
+  border-left: 1px solid #000; /* Border for nested inputs */
+  padding-left: 10px;
+}
+
+.nested-input {
+  margin-top: 5px;
+}
+
+.key-value-input {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.key-value-input input {
+  flex-grow: 1;
 }
 
 /* Styles for node states */
