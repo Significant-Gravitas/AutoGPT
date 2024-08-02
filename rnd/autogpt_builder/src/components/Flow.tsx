@@ -784,7 +784,7 @@ const FlowEditor: React.FC<{
               <Button onClick={() => saveAgent(true)}>Save as Template</Button>
             }
             <div>
-              <Button onClick={handleUndo} disabled={!history.canUndo()}>Undo</Button>
+              <Button onClick={handleUndo} disabled={!history.canUndo()} style={{ marginRight: '10px' }}>Undo</Button>
               <Button onClick={handleRedo} disabled={!history.canRedo()}>Redo</Button>
             </div>
           </div>
