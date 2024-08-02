@@ -7,7 +7,7 @@ from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SecretField
 
 
-class DiscordBot(Block):
+class DiscordReader(Block):
     class Input(BlockSchema):
         discord_bot_token: BlockSecret = SecretField(
             key="discord_bot_token", description="Discord bot token"
@@ -21,8 +21,8 @@ class DiscordBot(Block):
     def __init__(self):
         super().__init__(
             id="d3f4g5h6-1i2j-3k4l-5m6n-7o8p9q0r1s2t",  # Unique ID for the node
-            input_schema=DiscordBot.Input,  # Assign input schema
-            output_schema=DiscordBot.Output,  # Assign output schema
+            input_schema=DiscordReader.Input,  # Assign input schema
+            output_schema=DiscordReader.Output,  # Assign output schema
             test_input={"discord_bot_token": "test_token"},
             test_output=[
                 (
@@ -72,7 +72,7 @@ class DiscordBot(Block):
 
         await client.start(token)
 
-    def run(self, input_data: "DiscordBot.Input") -> BlockOutput:
+    def run(self, input_data: "DiscordReader.Input") -> BlockOutput:
         try:
             loop = asyncio.get_event_loop()
             future = self.run_bot(input_data.discord_bot_token.get_secret_value())
