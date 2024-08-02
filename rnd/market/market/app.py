@@ -70,8 +70,8 @@ app.include_router(
 app.include_router(market.routes.admin.router, prefix="/market/admin", tags=["admin"])
 
 
-@app.get("/")
-def hb():
+@app.get("/health")
+def health():
     return fastapi.responses.HTMLResponse(
         content="<h1>Marketplace API</h1>", status_code=200
     )
