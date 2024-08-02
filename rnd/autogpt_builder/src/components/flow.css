@@ -126,3 +126,24 @@ input::placeholder, textarea::placeholder {
   width: 100%;
   height: 600px; /* Adjust this height as needed */
 }
+
+.flow-wrapper {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.flow-controls {
+  position: absolute;
+  left: -80px;
+  z-index: 1001;
+  display: flex;
+  gap: 10px;
+  transition: transform 0.3s ease;
+}
+
+.flow-controls.open {
+  transform: translateX(350px);
+}

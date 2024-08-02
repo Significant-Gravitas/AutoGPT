@@ -15,7 +15,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import CustomNode, { CustomNodeData } from './CustomNode';
 import './flow.css';
-import AutoGPTServerAPI, { Block, BlockIOSubSchema, Graph, NodeExecutionResult } from '@/lib/autogpt-server-api';
+import AutoGPTServerAPI, { Block, BlockIOSchema, Graph, NodeExecutionResult, ObjectSchema } from '@/lib/autogpt-server-api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ChevronRight, ChevronLeft } from "lucide-react";
@@ -392,6 +392,7 @@ const FlowEditor: React.FC<{
         type: 'custom',
         position: { x: node.metadata.position.x, y: node.metadata.position.y },
         data: {
+          setIsAnyModalOpen: setIsAnyModalOpen,
           block_id: block.id,
           blockType: block.name,
           title: `${block.name} ${node.id}`,
@@ -452,7 +453,7 @@ const FlowEditor: React.FC<{
     }
 
     const getNestedData = (
-      schema: BlockIOSubSchema, values: { [key: string]: any }
+      schema: BlockIOSchema, values: { [key: string]: any }
     ): { [key: string]: any } => {
       let inputData: { [key: string]: any } = {};
 
@@ -601,7 +602,7 @@ const FlowEditor: React.FC<{
         // Populate errors if validation fails
         validate.errors?.forEach((error) => {
           // Skip error if there's an edge connected
-          const path = 'dataPath' in error ? error.dataPath as string : error.instancePath;
+          const path = error.instancePath || error.schemaPath;
           const handle = path.split(/[\/.]/)[0];
           if (node.data.connections.some(conn => conn.target === node.id || conn.targetHandle === handle)) {
             return;
