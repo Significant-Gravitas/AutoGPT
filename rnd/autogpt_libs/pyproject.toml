@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "autogpt-libs"
+version = "0.1.0"
+description = "Shared libraries across NextGen AutoGPT"
+authors = ["Aarushi <aarushik93@gmail.com>"]
+readme = "README.md"
+packages = [{ include = "autogpt_libs" }]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+pyjwt = "^2.8.0"
+python-dotenv = "^1.0.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

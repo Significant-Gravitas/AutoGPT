@@ -4,8 +4,8 @@ import './customedge.css';
 import { X } from 'lucide-react';
 
 export type CustomEdgeData = {
-  edgeColor: string
-  sourcePos: XYPosition
+  edgeColor: string;
+  sourcePos?: XYPosition;
 }
 
 const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({ id, data, selected, source, sourcePosition, sourceX, sourceY, target, targetPosition, targetX, targetY, markerEnd }) => {
@@ -14,6 +14,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({ id, data, selected, sourc
 
   const onEdgeClick = () => {
     setEdges((edges) => edges.filter((edge) => edge.id !== id));
+    data.clearNodesStatusAndOutput();
   }
 
   const [path, labelX, labelY] = getBezierPath({
@@ -26,7 +27,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({ id, data, selected, sourc
   });
 
   // Calculate y difference between source and source node, to adjust self-loop edge
-  const yDifference = useMemo(() => sourceY - data!.sourcePos.y, [data!.sourcePos.y]);
+  const yDifference = useMemo(() => sourceY - (data?.sourcePos?.y || 0), [data?.sourcePos?.y]);
 
   // Define special edge path for self-loop
   const edgePath = source === target ?
