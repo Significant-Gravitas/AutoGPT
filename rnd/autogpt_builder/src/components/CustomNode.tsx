@@ -5,7 +5,6 @@ import './customnode.css';
 import InputModalComponent from './InputModalComponent';
 import OutputModalComponent from './OutputModalComponent';
 import { BlockIORootSchema, NodeExecutionResult } from '@/lib/autogpt-server-api/types';
-import { beautifyString } from '@/lib/utils';
 import { BlockSchema } from '@/lib/types';
 import { beautifyString, setNestedProperty } from '@/lib/utils';
 import { Switch } from "@/components/ui/switch"
