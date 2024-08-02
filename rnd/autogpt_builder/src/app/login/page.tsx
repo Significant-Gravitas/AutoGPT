@@ -96,7 +96,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex items-center justify-center h-[80vh]">
-      <div className="w-full max-w-md p-8 bg-secondary rounded-lg shadow-md space-y-6">
+      <div className="w-full max-w-md p-8 rounded-lg shadow-md space-y-6">
         <div className='mb-6 space-y-2'>
           <Button className="w-full" onClick={() => handleSignInWithProvider('google')} variant="outline" type="button" disabled={isLoading}>
             <FaGoogle className="mr-2 h-4 w-4" />
@@ -148,7 +148,7 @@ export default function LoginPage() {
               </Button>
               <Button
                 className='w-1/2 flex justify-center'
-                variant='secondary'
+                variant='outline'
                 type="button"
                 onClick={form.handleSubmit(onSignup)}
                 disabled={isLoading}
