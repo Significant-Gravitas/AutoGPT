@@ -15,6 +15,15 @@ interface BlocksControlProps {
     addBlock: (id: string, name: string) => void;
 }
 
+/**
+ * A React functional component that displays a control for managing blocks.
+ *
+ * @component
+ * @param {Object} BlocksControlProps - The properties for the BlocksControl component.
+ * @param {Block[]} BlocksControlProps.blocks - An array of blocks to be displayed and filtered.
+ * @param {(id: string, name: string) => void} BlocksControlProps.addBlock - A function to call when a block is added.
+ * @returns The rendered BlocksControl component.
+ */
 export const BlocksControl: React.FC<BlocksControlProps> = ({ blocks, addBlock }) => {
     const [searchQuery, setSearchQuery] = useState('');
 
