@@ -1,30 +1,83 @@
-import { Collapsible } from "@radix-ui/react-collapsible";
-import {CollapsibleContent, CollapsibleTrigger} from "@/components/ui/collapsible";
-import {Save} from "lucide-react";
-import {Button} from "@/components/ui/button";
 import React from "react";
+import {Popover, PopoverContent, PopoverTrigger} from "@/components/ui/popover";
+import {Card, CardContent, CardFooter} from "@/components/ui/card";
+import {Input} from "@/components/ui/input";
+import {Button} from "@/components/ui/button";
+import {GraphMeta} from "@/lib/autogpt-server-api";
+import {Label} from "@/components/ui/label";
+import {Save} from "lucide-react";
 
 interface SaveControlProps {
-
+    agentMeta: GraphMeta | null;
+    onSave: (isTemplate: boolean | undefined) => void;
+    onNameChange: (name: string) => void;
+    onDescriptionChange: (description: string) => void;
 }
 
-export const SaveControl= ( props:  SaveControlProps) => {
+export const SaveControl= ({
+        agentMeta,
+        onSave,
+        onNameChange,
+        onDescriptionChange
+}:  SaveControlProps) => {
+
+    let isTemplate = agentMeta?.is_template ? true : undefined;
+    const handleSave = () => {
+        onSave(isTemplate);
+    };
+
+    const getType = () => {
+        return agentMeta?.is_template ? 'template' : 'agent';
+    }
 
     return (
-        <Collapsible>
-            <CollapsibleTrigger>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                >
-                    <Save className={"size-5"}/>
-                    <span className="sr-only">Save</span>
-                </Button>
-                </CollapsibleTrigger>
-            <CollapsibleContent>
-                Yes. Free to use for personal and commercial projects. No attribution
-                required.
-            </CollapsibleContent>
-        </Collapsible>
+        <Popover >
+            <PopoverTrigger
+                className="hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-800 dark:hover:text-gray-50 dark:text-white"
+            >
+                <Save className="size-4"/>
+            </PopoverTrigger>
+            <PopoverContent side="right" sideOffset={15} align="start">
+                <Card className="border-none shadow-none">
+                    <CardContent>
+                        <div className="grid gap-3">
+                            <Label htmlFor="name">
+                                Name
+                            </Label>
+                            <Input
+                                id="name"
+                                placeholder="Enter your agent name"
+                                className="col-span-3"
+                                defaultValue={agentMeta?.name || ''}
+                                onChange={(e) => onNameChange(e.target.value)}
+                            />
+                            <Label htmlFor="description">
+                                Description
+                            </Label>
+                            <Input
+                                id="description"
+                                placeholder="Your agent description"
+                                className="col-span-3"
+                                defaultValue={agentMeta?.description || ''}
+                                onChange={(e) => onDescriptionChange(e.target.value)}
+                            />
+                        </div>
+                    </CardContent>
+                    <CardFooter className="flex flex-col items-stretch gap-2 ">
+                        <Button className="w-full" onClick={handleSave}>
+                            Save {getType()}
+                        </Button>
+                        {!agentMeta && (
+                            <Button variant="secondary" className="w-full" onClick={() => {
+                                isTemplate = true;
+                                handleSave();
+                            }}>
+                                Save as Template
+                            </Button>
+                        )}
+                    </CardFooter>
+                </Card>
+            </PopoverContent>
+        </Popover>
     );
 }

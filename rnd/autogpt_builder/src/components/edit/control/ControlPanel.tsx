@@ -35,6 +35,8 @@ export const ControlPanel= ( {controls, children}: ControlPanelProps) => {
             <Card>
                 <CardContent className="p-0">
                     <div className="flex flex-col items-center gap-4 px-2 sm:py-5 rounded-radius">
+                        {children}
+                        <Separator />
                         {controls.map((control, index) => (
                             <Tooltip key={index} delayDuration={500}>
                                 <TooltipTrigger asChild>
@@ -50,8 +52,6 @@ export const ControlPanel= ( {controls, children}: ControlPanelProps) => {
                                 <TooltipContent side="right">{control.label}</TooltipContent>
                             </Tooltip>
                         ))}
-                        <Separator />
-                        {children}
                     </div>
                 </CardContent>
             </Card>
