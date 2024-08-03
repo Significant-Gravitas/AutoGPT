@@ -14,6 +14,15 @@ interface SaveControlProps {
     onDescriptionChange: (description: string) => void;
 }
 
+/**
+ * A SaveControl component to be used within the ControlPanel. It allows the user to save the agent / template.
+ * @param {Object} SaveControlProps - The properties of the SaveControl component.
+ * @param {GraphMeta | null} SaveControlProps.agentMeta - The agent's metadata, or null if creating a new agent.
+ * @param {(isTemplate: boolean | undefined) => void} SaveControlProps.onSave - Function to save the agent or template.
+ * @param {(name: string) => void} SaveControlProps.onNameChange - Function to handle name changes.
+ * @param {(description: string) => void} SaveControlProps.onDescriptionChange - Function to handle description changes.
+ * @returns The SaveControl component.
+ */
 export const SaveControl= ({
         agentMeta,
         onSave,
@@ -21,6 +30,13 @@ export const SaveControl= ({
         onDescriptionChange
 }:  SaveControlProps) => {
 
+    /**
+     * Note for improvement:
+     * At the moment we are leveraging onDescriptionChange and onNameChange to handle the changes in the description and name of the agent.
+     * We should migrate this to be handled with form controls and a form library.
+    */
+
+    // Determines if we're saving a template or an agent
     let isTemplate = agentMeta?.is_template ? true : undefined;
     const handleSave = () => {
         onSave(isTemplate);
