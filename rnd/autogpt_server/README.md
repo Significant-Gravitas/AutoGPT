@@ -53,7 +53,7 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
 
    ```sh
    poetry run prisma migrate dev
-  ```
+   ```
 
 ## Running The Server
 
