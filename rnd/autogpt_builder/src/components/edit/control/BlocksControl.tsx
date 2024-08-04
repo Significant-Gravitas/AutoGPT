@@ -57,22 +57,19 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({ blocks, addBlock }
                                     key={block.id}
                                     className="m-2"
                                 >
-                                    <div className="border-b last:border-b-0 ">
-                                        <div className="flex items-center justify-between m-3">
-                                            <div className="flex-1 min-w-0 mr-2">
-                                                <span className="font-medium truncate block">{beautifyString(block.name)}</span>
-                                            </div>
-                                            <div className="flex items-center gap-1 flex-shrink-0">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="p-0"
-                                                    onClick={() => addBlock(block.id, block.name)}
-                                                    aria-label="Add block"
-                                                >
-                                                    <PlusIcon />
-                                                </Button>
-                                            </div>
+                                    <div className="flex items-center justify-between m-3">
+                                        <div className="flex-1 min-w-0 mr-2">
+                                            <span className="font-medium truncate block">{beautifyString(block.name)}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => addBlock(block.id, block.name)}
+                                                aria-label="Add block"
+                                            >
+                                                <PlusIcon />
+                                            </Button>
                                         </div>
                                     </div>
                                 </Card>
