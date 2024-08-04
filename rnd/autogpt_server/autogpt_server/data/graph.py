@@ -109,6 +109,10 @@ class Graph(GraphMeta):
 
     @property
     def subgraph_map(self) -> dict[str, str]:
+        """
+        Returns a mapping of node_id to subgraph_id.
+        A node in the main graph will be mapped to the graph's id.
+        """
         subgraph_map = {
             node_id: subgraph_id
             for subgraph_id, node_ids in self.subgraphs.items()
@@ -120,6 +124,10 @@ class Graph(GraphMeta):
         return subgraph_map
 
     def reassign_ids(self):
+        """
+        Reassigns all IDs in the graph to new UUIDs.
+        This method can be used before storing a new graph to the database.
+        """
         self.validate_graph()
 
         id_map = {
