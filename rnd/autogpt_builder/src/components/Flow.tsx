@@ -15,49 +15,20 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import CustomNode, { CustomNodeData } from './CustomNode';
 import './flow.css';
-import AutoGPTServerAPI, { Block, BlockIOSchema, Graph, NodeExecutionResult, ObjectSchema } from '@/lib/autogpt-server-api';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { ChevronRight, ChevronLeft } from "lucide-react";
+import AutoGPTServerAPI, { Block, BlockIOSchema, Graph, NodeExecutionResult } from '@/lib/autogpt-server-api';
+import { Play, Undo2, Redo2} from "lucide-react";
 import { deepEquals, getTypeColor, removeEmptyStringsAndNulls, setNestedProperty } from '@/lib/utils';
-import { beautifyString } from '@/lib/utils';
 import { history } from './history';
 import { CustomEdge, CustomEdgeData } from './CustomEdge';
 import ConnectionLine from './ConnectionLine';
 import Ajv from 'ajv';
+import {Control, ControlPanel} from "@/components/edit/control/ControlPanel";
+import {SaveControl} from "@/components/edit/control/SaveControl";
+import {BlocksControl} from "@/components/edit/control/BlocksControl";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
 const MINIMUM_MOVE_BEFORE_LOG = 50;
-
-const Sidebar: React.FC<{ isOpen: boolean, availableNodes: Block[], addNode: (id: string, name: string) => void }> =
-  ({ isOpen, availableNodes, addNode }) => {
-    const [searchQuery, setSearchQuery] = useState('');
-
-    if (!isOpen) return null;
-
-    const filteredNodes = availableNodes.filter(node =>
-      node.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-    return (
-      <div className={`sidebar dark-theme ${isOpen ? 'open' : ''}`}>
-        <h3>Nodes</h3>
-        <Input
-          type="text"
-          placeholder="Search nodes..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-        {filteredNodes.map((node) => (
-          <div key={node.id} className="sidebarNodeRowStyle dark-theme">
-            <span>{beautifyString(node.name).replace(/Block$/, '')}</span>
-            <Button onClick={() => addNode(node.id, node.name)}>Add</Button>
-          </div>
-        ))}
-      </div>
-    );
-  };
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -70,7 +41,6 @@ const FlowEditor: React.FC<{
   const [edges, setEdges, onEdgesChange] = useEdgesState<CustomEdgeData>([]);
   const [nodeId, setNodeId] = useState<number>(1);
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>('');
   const [agentName, setAgentName] = useState<string>('');
@@ -665,8 +635,6 @@ const FlowEditor: React.FC<{
     );
   };
 
-  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
-
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
     if (isAnyModalOpen) return; // Prevent copy/paste if any modal is open
 
@@ -735,23 +703,26 @@ const FlowEditor: React.FC<{
     clearNodesStatusAndOutput();
   }, [clearNodesStatusAndOutput]);
 
+  const editorControls: Control[] = [
+    {
+      label: 'Undo',
+      icon: <Undo2 />,
+      onClick: handleUndo,
+    },
+    {
+      label: 'Redo',
+      icon: <Redo2 />,
+      onClick: handleRedo,
+    },
+    {
+        label: 'Run',
+        icon: <Play />,
+      onClick: runAgent,
+    }
+  ];
+
   return (
     <div className={className}>
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={toggleSidebar}
-        style={{
-          position: 'fixed',
-          left: isSidebarOpen ? '350px' : '10px',
-          zIndex: 10000,
-          backgroundColor: 'black',
-          color: 'white',
-        }}
-      >
-        {isSidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-      </Button>
-      <Sidebar isOpen={isSidebarOpen} availableNodes={availableNodes} addNode={addNode} />
       <ReactFlow
         nodes={nodes.map(node => ({ ...node, data: { ...node.data, setIsAnyModalOpen } }))}
         edges={edges.map(edge => ({...edge, data: { ...edge.data, clearNodesStatusAndOutput } }))}
@@ -767,34 +738,16 @@ const FlowEditor: React.FC<{
         onNodeDragStart={onNodesChangeStart}
         onNodeDragStop={onNodesChangeEnd}
       >
-        <div style={{ position: 'absolute', right: 10, zIndex: 4 }}>
-          <Input
-            type="text"
-            placeholder="Agent Name"
-            value={agentName}
-            onChange={(e) => setAgentName(e.target.value)}
-          />
-          <Input
-            type="text"
-            placeholder="Agent Description"
-            value={agentDescription}
-            onChange={(e) => setAgentDescription(e.target.value)}
-          />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>  {/* Added gap for spacing */}
-            <Button onClick={() => saveAgent(savedAgent?.is_template)}>
-              Save {savedAgent?.is_template ? "Template" : "Agent"}
-            </Button>
-            {!savedAgent?.is_template &&
-              <Button onClick={runAgent}>Save & Run Agent</Button>
-            }
-            {!savedAgent &&
-              <Button onClick={() => saveAgent(true)}>Save as Template</Button>
-            }
-            <div>
-              <Button onClick={handleUndo} disabled={!history.canUndo()} style={{ marginRight: '10px' }}>Undo</Button>
-              <Button onClick={handleRedo} disabled={!history.canRedo()}>Redo</Button>
-            </div>
-          </div>
+        <div className={"flex flex-row absolute z-10 gap-2"}>
+          <ControlPanel controls={editorControls} >
+            <BlocksControl blocks={availableNodes} addBlock={addNode} />
+            <SaveControl
+                agentMeta={savedAgent}
+                onSave={saveAgent}
+                onDescriptionChange={setAgentDescription}
+                onNameChange={setAgentName}
+            />
+          </ControlPanel>
         </div>
       </ReactFlow>
     </div>
