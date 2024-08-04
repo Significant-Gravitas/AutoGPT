@@ -24,6 +24,11 @@ model AgentGraph {
   AgentGraphExecution         AgentGraphExecution[]
   AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
 
+  // All sub-graphs are defined within this 1-level depth list (even if it's a nested graph).
+  AgentSubGraphs     AgentGraph[] @relation("AgentSubGraph")
+  agentGraphParentId String?
+  AgentGraphParent   AgentGraph?  @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version])
+
   @@id(name: "graphVersionId", [id, version])
 }
 
