@@ -175,7 +175,7 @@ class Graph(GraphMeta):
         # subgraphs: all nodes in subgraph must be present in the graph.
         for subgraph_id, node_ids in self.subgraphs.items():
             for node_id in node_ids:
-                if node_id not in [v.id for v in self.nodes]:
+                if node_id not in node_map:
                     raise ValueError(f"Subgraph {subgraph_id}'s node {node_id} invalid")
         subgraph_map = self.subgraph_map
 
