@@ -5,7 +5,7 @@ from autogpt_server.blocks.maths import MathsBlock, Operation
 from autogpt_server.data import execution, graph
 from autogpt_server.executor import ExecutionManager
 from autogpt_server.server import AgentServer
-from autogpt_server.usecases.sample import create_test_graph
+from autogpt_server.usecases.sample import create_test_graph, create_test_user
 from autogpt_server.util.test import wait_execution
 
 
@@ -75,7 +75,8 @@ async def assert_sample_graph_executions(
 @pytest.mark.asyncio(scope="session")
 async def test_agent_execution(server):
     test_graph = create_test_graph()
-    await graph.create_graph(test_graph)
+    test_user = await create_test_user()
+    await graph.create_graph(test_graph, user_id=test_user.id)
     data = {"input_1": "Hello", "input_2": "World"}
     graph_exec_id = await execute_graph(
         server.agent_server, server.exec_manager, test_graph, data, 4
@@ -130,8 +131,8 @@ async def test_input_pin_always_waited(server):
         nodes=nodes,
         links=links,
     )
-
-    test_graph = await graph.create_graph(test_graph)
+    test_user = await create_test_user()
+    test_graph = await graph.create_graph(test_graph, user_id=test_user.id)
     graph_exec_id = await execute_graph(
         server.agent_server, server.exec_manager, test_graph, {}, 3
     )
@@ -211,8 +212,8 @@ async def test_static_input_link_on_graph(server):
         nodes=nodes,
         links=links,
     )
-
-    test_graph = await graph.create_graph(test_graph)
+    test_user = await create_test_user()
+    test_graph = await graph.create_graph(test_graph, user_id=test_user.id)
     graph_exec_id = await execute_graph(
         server.agent_server, server.exec_manager, test_graph, {}, 8
     )

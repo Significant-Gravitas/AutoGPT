@@ -2,14 +2,15 @@ import pytest
 
 from autogpt_server.data import db, graph
 from autogpt_server.executor import ExecutionScheduler
-from autogpt_server.usecases.sample import create_test_graph
+from autogpt_server.usecases.sample import create_test_graph, create_test_user
 from autogpt_server.util.service import get_service_client
 
 
 @pytest.mark.asyncio(scope="session")
 async def test_agent_schedule(server):
     await db.connect()
-    test_graph = await graph.create_graph(create_test_graph())
+    test_user = await create_test_user()
+    test_graph = await graph.create_graph(create_test_graph(), user_id=test_user.id)
 
     scheduler = get_service_client(ExecutionScheduler)
 
