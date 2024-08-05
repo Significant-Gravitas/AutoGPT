@@ -155,9 +155,13 @@ async def reddit_marketing_agent():
         test_user = await create_test_user()
         test_graph = await create_graph(create_test_graph(), user_id=test_user.id)
         input_data = {"subreddit": "AutoGPT"}
-        response = await server.agent_server.execute_graph(test_graph.id, input_data)
+        response = await server.agent_server.execute_graph(
+            test_graph.id, input_data, test_user.id
+        )
         print(response)
-        result = await wait_execution(exec_man, test_graph.id, response["id"], 13, 120)
+        result = await wait_execution(
+            exec_man, test_user.id, test_graph.id, response["id"], 13, 120
+        )
         print(result)
 
 

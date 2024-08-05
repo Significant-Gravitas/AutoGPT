@@ -10,6 +10,7 @@ from autogpt_server.util import json
 
 class ExecutionSchedule(BaseDbModel):
     graph_id: str
+    user_id: str
     graph_version: int
     schedule: str
     is_enabled: bool
@@ -25,6 +26,7 @@ class ExecutionSchedule(BaseDbModel):
         return ExecutionSchedule(
             id=schedule.id,
             graph_id=schedule.agentGraphId,
+            user_id=schedule.userId,
             graph_version=schedule.agentGraphVersion,
             schedule=schedule.schedule,
             is_enabled=schedule.isEnabled,

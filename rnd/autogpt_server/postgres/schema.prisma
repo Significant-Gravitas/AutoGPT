@@ -22,6 +22,9 @@ model User {
   AgentGraphs                  AgentGraph[]
   AgentGraphExecutions         AgentGraphExecution[]
   AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
+
+  @@index([id])
+  @@index([email])
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).

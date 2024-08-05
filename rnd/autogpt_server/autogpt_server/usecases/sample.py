@@ -79,9 +79,13 @@ async def sample_agent():
         test_user = await create_test_user()
         test_graph = await create_graph(create_test_graph(), test_user.id)
         input_data = {"input_1": "Hello", "input_2": "World"}
-        response = await server.agent_server.execute_graph(test_graph.id, input_data)
+        response = await server.agent_server.execute_graph(
+            test_graph.id, input_data, test_user.id
+        )
         print(response)
-        result = await wait_execution(exec_man, test_graph.id, response["id"], 4, 10)
+        result = await wait_execution(
+            exec_man, test_user.id, test_graph.id, response["id"], 4, 10
+        )
         print(result)
 
 

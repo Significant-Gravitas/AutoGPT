@@ -1,9 +1,12 @@
 import asyncio
+import inspect
 from collections import defaultdict
 from contextlib import asynccontextmanager
+from functools import wraps
 from typing import Annotated, Any, Dict
 
 import uvicorn
+from autogpt_libs.auth.jwt_utils import parse_jwt_token
 from autogpt_libs.auth.middleware import auth_middleware
 from fastapi import (
     APIRouter,
@@ -59,6 +62,7 @@ class AgentServer(AppService):
     manager = ConnectionManager()
     mutex = KeyedMutex()
     use_db = False
+    _test_dependency_overrides = {}
 
     async def event_broadcaster(self):
         while True:
@@ -86,6 +90,9 @@ class AgentServer(AppService):
             version="0.1",
             lifespan=self.lifespan,
         )
+
+        if self._test_dependency_overrides:
+            app.dependency_overrides.update(self._test_dependency_overrides)
 
         app.add_middleware(
             CORSMiddleware,
@@ -222,6 +229,35 @@ class AgentServer(AppService):
 
         uvicorn.run(app, host="0.0.0.0", port=8000)
 
+    def set_test_dependency_overrides(self, overrides: dict):
+        self._test_dependency_overrides = overrides
+
+    def _apply_overrides_to_methods(self):
+        for attr_name in dir(self):
+            attr = getattr(self, attr_name)
+            if callable(attr) and hasattr(attr, "__annotations__"):
+                setattr(self, attr_name, self._override_method(attr))
+
+    # TODO: fix this with some proper refactoring of the server
+    def _override_method(self, method):
+        @wraps(method)
+        async def wrapper(*args, **kwargs):
+            sig = inspect.signature(method)
+            for param_name, param in sig.parameters.items():
+                if param.annotation is inspect.Parameter.empty:
+                    continue
+                if isinstance(param.annotation, Depends) or (  # type: ignore
+                    isinstance(param.annotation, type) and issubclass(param.annotation, Depends)  # type: ignore
+                ):
+                    dependency = param.annotation.dependency if isinstance(param.annotation, Depends) else param.annotation  # type: ignore
+                    if dependency in self._test_dependency_overrides:
+                        kwargs[param_name] = self._test_dependency_overrides[
+                            dependency
+                        ]()
+            return await method(*args, **kwargs)
+
+        return wrapper
+
     @property
     def execution_manager_client(self) -> ExecutionManager:
         return get_service_client(ExecutionManager)
@@ -240,7 +276,27 @@ class AgentServer(AppService):
             status_code=500,
         )
 
+    async def authenticate_websocket(self, websocket: WebSocket) -> str:
+        token = websocket.query_params.get("token")
+        if not token:
+            await websocket.close(code=4001, reason="Missing authentication token")
+            return ""
+
+        try:
+            payload = parse_jwt_token(token)
+            user_id = payload.get("sub")
+            if not user_id:
+                await websocket.close(code=4002, reason="Invalid token")
+                return ""
+            return user_id
+        except ValueError:
+            await websocket.close(code=4003, reason="Invalid token")
+            return ""
+
     async def websocket_router(self, websocket: WebSocket):
+        user_id = await self.authenticate_websocket(websocket)
+        if not user_id:
+            return
         await self.manager.connect(websocket)
         try:
             while True:
@@ -279,7 +335,7 @@ class AgentServer(AppService):
                         ).model_dump_json()
                     )
                 elif message.method == Methods.GET_GRAPHS:
-                    data = await self.get_graphs()
+                    data = await self.get_graphs(user_id=user_id)
                     await websocket.send_text(
                         WsMessage(
                             method=Methods.GET_GRAPHS,
@@ -290,7 +346,9 @@ class AgentServer(AppService):
                     print("Get graphs request received")
                 elif message.method == Methods.GET_GRAPH:
                     assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = await self.get_graph(message.data["graph_id"])
+                    data = await self.get_graph(
+                        message.data["graph_id"], user_id=user_id
+                    )
                     await websocket.send_text(
                         WsMessage(
                             method=Methods.GET_GRAPH,
@@ -302,7 +360,7 @@ class AgentServer(AppService):
                 elif message.method == Methods.CREATE_GRAPH:
                     assert isinstance(message.data, dict), "Data must be a dictionary"
                     create_graph = CreateGraph.model_validate(message.data)
-                    data = await self.create_new_graph(create_graph)
+                    data = await self.create_new_graph(create_graph, user_id=user_id)
                     await websocket.send_text(
                         WsMessage(
                             method=Methods.CREATE_GRAPH,
@@ -315,7 +373,7 @@ class AgentServer(AppService):
                 elif message.method == Methods.RUN_GRAPH:
                     assert isinstance(message.data, dict), "Data must be a dictionary"
                     data = await self.execute_graph(
-                        message.data["graph_id"], message.data["data"]
+                        message.data["graph_id"], message.data["data"], user_id=user_id
                     )
                     await websocket.send_text(
                         WsMessage(
@@ -328,7 +386,9 @@ class AgentServer(AppService):
                     print("Run graph request received")
                 elif message.method == Methods.GET_GRAPH_RUNS:
                     assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = await self.list_graph_runs(message.data["graph_id"])
+                    data = await self.list_graph_runs(
+                        message.data["graph_id"], user_id=user_id
+                    )
                     await websocket.send_text(
                         WsMessage(
                             method=Methods.GET_GRAPH_RUNS,
@@ -344,6 +404,7 @@ class AgentServer(AppService):
                         message.data["graph_id"],
                         message.data["cron"],
                         message.data["data"],
+                        user_id=user_id,
                     )
                     await websocket.send_text(
                         WsMessage(
@@ -356,7 +417,9 @@ class AgentServer(AppService):
                     print("Create scheduled run request received")
                 elif message.method == Methods.GET_SCHEDULED_RUNS:
                     assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = self.get_execution_schedules(message.data["graph_id"])
+                    data = self.get_execution_schedules(
+                        message.data["graph_id"], user_id=user_id
+                    )
                     await websocket.send_text(
                         WsMessage(
                             method=Methods.GET_SCHEDULED_RUNS,
@@ -368,7 +431,7 @@ class AgentServer(AppService):
                 elif message.method == Methods.UPDATE_SCHEDULED_RUN:
                     assert isinstance(message.data, dict), "Data must be a dictionary"
                     data = self.update_schedule(
-                        message.data["schedule_id"], message.data
+                        message.data["schedule_id"], message.data, user_id=user_id
                     )
                     await websocket.send_text(
                         WsMessage(
@@ -431,7 +494,7 @@ class AgentServer(AppService):
 
     @classmethod
     async def get_graphs(
-        cls, user_id: str = Depends(get_user_id)
+        cls, user_id: Annotated[str, Depends(get_user_id)]
     ) -> list[graph_db.GraphMeta]:
         return await graph_db.get_graphs_meta(filter_by="active", user_id=user_id)
 
@@ -443,8 +506,8 @@ class AgentServer(AppService):
     async def get_graph(
         cls,
         graph_id: str,
+        user_id: Annotated[str, Depends(get_user_id)],
         version: int | None = None,
-        user_id: str = Depends(get_user_id),
     ) -> graph_db.Graph:
         graph = await graph_db.get_graph(graph_id, version, user_id=user_id)
         if not graph:
@@ -464,7 +527,7 @@ class AgentServer(AppService):
 
     @classmethod
     async def get_graph_all_versions(
-        cls, graph_id: str, user_id: str = Depends(get_user_id)
+        cls, graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
     ) -> list[graph_db.Graph]:
         graphs = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
         if not graphs:
@@ -473,13 +536,13 @@ class AgentServer(AppService):
 
     @classmethod
     async def create_new_graph(
-        cls, create_graph: CreateGraph, user_id: str = Depends(get_user_id)
+        cls, create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
     ) -> graph_db.Graph:
         return await cls.create_graph(create_graph, is_template=False, user_id=user_id)
 
     @classmethod
     async def create_new_template(
-        cls, create_graph: CreateGraph, user_id: str = Depends(get_user_id)
+        cls, create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
     ) -> graph_db.Graph:
         return await cls.create_graph(create_graph, is_template=True, user_id=user_id)
 
@@ -515,7 +578,10 @@ class AgentServer(AppService):
 
     @classmethod
     async def update_graph(
-        cls, graph_id: str, graph: graph_db.Graph, user_id: str = Depends(get_user_id)
+        cls,
+        graph_id: str,
+        graph: graph_db.Graph,
+        user_id: Annotated[str, Depends(get_user_id)],
     ) -> graph_db.Graph:
         # Sanity check
         if graph.id and graph.id != graph_id:
@@ -555,7 +621,7 @@ class AgentServer(AppService):
         cls,
         graph_id: str,
         request_body: SetGraphActiveVersion,
-        user_id: str = Depends(get_user_id),
+        user_id: Annotated[str, Depends(get_user_id)],
     ):
         new_active_version = request_body.active_graph_version
         if not await graph_db.get_graph(graph_id, new_active_version, user_id=user_id):
@@ -572,7 +638,7 @@ class AgentServer(AppService):
         self,
         graph_id: str,
         node_input: dict[Any, Any],
-        user_id: str = Depends(get_user_id),
+        user_id: Annotated[str, Depends(get_user_id)],
     ) -> dict[Any, Any]:
         try:
             return self.execution_manager_client.add_execution(
@@ -586,8 +652,8 @@ class AgentServer(AppService):
     async def list_graph_runs(
         cls,
         graph_id: str,
+        user_id: Annotated[str, Depends(get_user_id)],
         graph_version: int | None = None,
-        user_id: str = Depends(get_user_id),
     ) -> list[str]:
         graph = await graph_db.get_graph(graph_id, graph_version, user_id=user_id)
         if not graph:
@@ -600,7 +666,7 @@ class AgentServer(AppService):
 
     @classmethod
     async def get_run_execution_results(
-        cls, graph_id: str, run_id: str, user_id: str = Depends(get_user_id)
+        cls, graph_id: str, run_id: str, user_id: Annotated[str, Depends(get_user_id)]
     ) -> list[ExecutionResult]:
         graph = await graph_db.get_graph(graph_id, user_id=user_id)
         if not graph:
@@ -613,7 +679,7 @@ class AgentServer(AppService):
         graph_id: str,
         cron: str,
         input_data: dict[Any, Any],
-        user_id: str = Depends(get_user_id),
+        user_id: Annotated[str, Depends(get_user_id)],
     ) -> dict[Any, Any]:
         graph = await graph_db.get_graph(graph_id, user_id=user_id)
         if not graph:
@@ -621,7 +687,7 @@ class AgentServer(AppService):
         execution_scheduler = self.execution_scheduler_client
         return {
             "id": execution_scheduler.add_execution_schedule(
-                graph_id, graph.version, cron, input_data
+                graph_id, graph.version, cron, input_data, user_id=user_id
             )
         }
 
@@ -629,7 +695,7 @@ class AgentServer(AppService):
         self,
         schedule_id: str,
         input_data: dict[Any, Any],
-        user_id: str = Depends(get_user_id),
+        user_id: Annotated[str, Depends(get_user_id)],
     ) -> dict[Any, Any]:
         execution_scheduler = self.execution_scheduler_client
         is_enabled = input_data.get("is_enabled", False)
@@ -637,7 +703,7 @@ class AgentServer(AppService):
         return {"id": schedule_id}
 
     def get_execution_schedules(
-        self, graph_id: str, user_id: str = Depends(get_user_id)
+        self, graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
     ) -> dict[str, str]:
         execution_scheduler = self.execution_scheduler_client
         return execution_scheduler.get_execution_schedules(graph_id, user_id)  # type: ignore

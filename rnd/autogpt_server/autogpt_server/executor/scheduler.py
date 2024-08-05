@@ -68,10 +68,16 @@ class ExecutionScheduler(AppService):
 
     @expose
     def add_execution_schedule(
-        self, graph_id: str, graph_version: int, cron: str, input_data: BlockInput
+        self,
+        graph_id: str,
+        graph_version: int,
+        cron: str,
+        input_data: BlockInput,
+        user_id: str,
     ) -> str:
         schedule = model.ExecutionSchedule(
             graph_id=graph_id,
+            user_id=user_id,
             graph_version=graph_version,
             schedule=cron,
             input_data=input_data,

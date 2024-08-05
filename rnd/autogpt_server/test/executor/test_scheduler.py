@@ -14,18 +14,19 @@ async def test_agent_schedule(server):
 
     scheduler = get_service_client(ExecutionScheduler)
 
-    schedules = scheduler.get_execution_schedules(test_graph.id)
+    schedules = scheduler.get_execution_schedules(test_graph.id, test_user.id)
     assert len(schedules) == 0
 
     schedule_id = scheduler.add_execution_schedule(
         graph_id=test_graph.id,
+        user_id=test_user.id,
         graph_version=1,
         cron="0 0 * * *",
         input_data={"input": "data"},
     )
     assert schedule_id
 
-    schedules = scheduler.get_execution_schedules(test_graph.id)
+    schedules = scheduler.get_execution_schedules(test_graph.id, test_user.id)
     assert len(schedules) == 1
     assert schedules[schedule_id] == "0 0 * * *"
 
