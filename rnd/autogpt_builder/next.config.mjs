@@ -7,7 +7,8 @@ dotenv.config();
 const nextConfig = {
   env: {
     NEXT_PUBLIC_AGPT_SERVER_URL: process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
-    NEXT_PUBLIC_AGPT_MARKETPLACE_URL: process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL,
+    NEXT_PUBLIC_AGPT_MARKETPLACE_URL:
+      process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL,
   },
   async redirects() {
     return [
