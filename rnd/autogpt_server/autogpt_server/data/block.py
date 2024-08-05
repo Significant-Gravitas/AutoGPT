@@ -22,6 +22,7 @@ class BlockCategory(Enum):
     TEXT = "Block that processes text data."
     SEARCH = "Block that searches or extracts information from the internet."
     BASIC = "Block that performs basic operations."
+    INPUT_OUTPUT = "Block that interacts with input/output of the graph."
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
