@@ -55,7 +55,7 @@ export const SaveControl= ({
             </PopoverTrigger>
             <PopoverContent side="right" sideOffset={15} align="start">
                 <Card className="border-none shadow-none">
-                    <CardContent>
+                    <CardContent className="p-4">
                         <div className="grid gap-3">
                             <Label htmlFor="name">
                                 Name
