@@ -1,7 +1,10 @@
 "use client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "./ui/button";
 import { useSupabase } from "./SupabaseProvider";
@@ -23,11 +26,15 @@ const ProfileDropdown = () => {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => router.push('profile')}>Profile</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => supabase?.auth.signOut()}>Log out</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => router.push("profile")}>
+          Profile
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => supabase?.auth.signOut()}>
+          Log out
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
-}
+  );
+};
 
 export default ProfileDropdown;

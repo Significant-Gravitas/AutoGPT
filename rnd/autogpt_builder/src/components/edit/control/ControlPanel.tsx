@@ -1,7 +1,11 @@
-import {Card, CardContent} from "@/components/ui/card";
-import {Tooltip, TooltipContent, TooltipTrigger} from "@/components/ui/tooltip";
-import {Button} from "@/components/ui/button";
-import {Separator} from "@/components/ui/separator";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import React from "react";
 
 /**
@@ -12,14 +16,14 @@ import React from "react";
  * @property {onclick} onClick - The function to be executed when the control is clicked.
  */
 export type Control = {
-    icon: React.ReactNode;
-    label: string;
-    onClick: () => void;
-}
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+};
 
 interface ControlPanelProps {
-    controls: Control[];
-    children?: React.ReactNode;
+  controls: Control[];
+  children?: React.ReactNode;
 }
 
 /**
@@ -29,33 +33,33 @@ interface ControlPanelProps {
  * @param {Array} ControlPanelProps.children - The child components of the control panel.
  * @returns The rendered control panel component.
  */
-export const ControlPanel= ( {controls, children}: ControlPanelProps) => {
-    return (
-        <aside className="hidden w-14 flex-col sm:flex">
-            <Card>
-                <CardContent className="p-0">
-                    <div className="flex flex-col items-center gap-4 px-2 sm:py-5 rounded-radius">
-                        {children}
-                        <Separator />
-                        {controls.map((control, index) => (
-                            <Tooltip key={index} delayDuration={500}>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => control.onClick()}
-                                    >
-                                        {control.icon}
-                                        <span className="sr-only">{control.label}</span>
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="right">{control.label}</TooltipContent>
-                            </Tooltip>
-                        ))}
-                    </div>
-                </CardContent>
-            </Card>
-        </aside>
-    );
-}
+export const ControlPanel = ({ controls, children }: ControlPanelProps) => {
+  return (
+    <aside className="hidden w-14 flex-col sm:flex">
+      <Card>
+        <CardContent className="p-0">
+          <div className="flex flex-col items-center gap-4 px-2 sm:py-5 rounded-radius">
+            {children}
+            <Separator />
+            {controls.map((control, index) => (
+              <Tooltip key={index} delayDuration={500}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => control.onClick()}
+                  >
+                    {control.icon}
+                    <span className="sr-only">{control.label}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">{control.label}</TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </aside>
+  );
+};
 export default ControlPanel;

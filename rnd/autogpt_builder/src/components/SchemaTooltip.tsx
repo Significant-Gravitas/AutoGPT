@@ -3,10 +3,10 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip"
+} from "@/components/ui/tooltip";
 import { BlockIOSchema } from "@/lib/autogpt-server-api/types";
-import { Info } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import { Info } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 const SchemaTooltip: React.FC<{ schema: BlockIOSchema }> = ({ schema }) => {
   if (!schema.description) return null;
@@ -18,13 +18,19 @@ const SchemaTooltip: React.FC<{ schema: BlockIOSchema }> = ({ schema }) => {
           <Info className="p-1 rounded-full hover:bg-gray-300" size={24} />
         </TooltipTrigger>
         <TooltipContent className="max-w-xs tooltip-content">
-          <ReactMarkdown components={{
-            a: ({ node, ...props }) => <a className="text-blue-400 underline" {...props} />,
-          }}>{schema.description}</ReactMarkdown>
+          <ReactMarkdown
+            components={{
+              a: ({ node, ...props }) => (
+                <a className="text-blue-400 underline" {...props} />
+              ),
+            }}
+          >
+            {schema.description}
+          </ReactMarkdown>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
-  )
-}
+  );
+};
 
 export default SchemaTooltip;
