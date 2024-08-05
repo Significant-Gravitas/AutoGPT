@@ -101,7 +101,7 @@ class BaseAgentConfiguration(SystemConfiguration):
             fast_llm = values["fast_llm"]
             assert all(
                 not any(s in name for s in {"-0301", "-0314"})
-                    for name in {smart_llm, fast_llm}
+                for name in {smart_llm, fast_llm}
             ), (
                 f"Model {smart_llm} does not support OpenAI Functions. "
                 "Please disable OPENAI_FUNCTIONS or choose a suitable model."
@@ -130,6 +130,7 @@ class BaseAgentSettings(SystemSettings):
 
 
 class AgentMeta(ABCMeta):
+
     def __call__(cls, *args, **kwargs):
         # Create instance of the class (Agent or BaseAgent)
         instance = super().__call__(*args, **kwargs)
@@ -180,24 +181,21 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
         return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
 
     @abstractmethod
-    async def propose_action(self) -> BaseAgentActionProposal:
-        ...
+    async def propose_action(self) -> BaseAgentActionProposal: ...
 
     @abstractmethod
     async def execute(
         self,
         proposal: BaseAgentActionProposal,
         user_feedback: str = "",
-    ) -> ActionResult:
-        ...
+    ) -> ActionResult: ...
 
     @abstractmethod
     async def do_not_execute(
         self,
         denied_proposal: BaseAgentActionProposal,
         user_feedback: str,
-    ) -> ActionResult:
-        ...
+    ) -> ActionResult: ...
 
     def reset_trace(self):
         self._trace = []
@@ -205,14 +203,12 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
     @overload
     async def run_pipeline(
         self, protocol_method: Callable[P, Iterator[T]], *args, retry_limit: int = 3
-    ) -> list[T]:
-        ...
+    ) -> list[T]: ...
 
     @overload
     async def run_pipeline(
         self, protocol_method: Callable[P, None], *args, retry_limit: int = 3
-    ) -> list[None]:
-        ...
+    ) -> list[None]: ...
 
     async def run_pipeline(
         self,
