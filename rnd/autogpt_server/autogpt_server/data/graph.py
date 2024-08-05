@@ -123,7 +123,7 @@ class Graph(GraphMeta):
         )
         return subgraph_map
 
-    def reassign_ids(self):
+    def reassign_ids(self, reassign_graph_id: bool = False):
         """
         Reassigns all IDs in the graph to new UUIDs.
         This method can be used before storing a new graph to the database.
@@ -131,12 +131,12 @@ class Graph(GraphMeta):
         self.validate_graph()
 
         id_map = {
-            self.id: str(uuid.uuid4()),
             **{node.id: str(uuid.uuid4()) for node in self.nodes},
             **{subgraph_id: str(uuid.uuid4()) for subgraph_id in self.subgraphs},
         }
 
-        self.id = id_map[self.id]
+        if reassign_graph_id:
+            self.id = str(uuid.uuid4())
 
         for node in self.nodes:
             node.id = id_map[node.id]
