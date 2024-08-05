@@ -39,6 +39,7 @@ ollama = "^0.3.0"
 feedparser = "^6.0.11"
 python-dotenv = "^1.0.1"
 expiringdict = "^1.2.2"
+discord-py = "^2.4.0"
 
 autogpt-libs = { path = "../autogpt_libs", develop = true }
 [tool.poetry.group.dev.dependencies]
