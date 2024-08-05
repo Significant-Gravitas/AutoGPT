@@ -452,6 +452,7 @@ class AgentServer(AppService):
         if create_graph.graph:
             graph = create_graph.graph
         elif create_graph.template_id:
+            # Create a new graph from a template
             graph = await graph_db.get_graph(
                 create_graph.template_id, create_graph.template_version, template=True
             )
@@ -467,7 +468,7 @@ class AgentServer(AppService):
 
         graph.is_template = is_template
         graph.is_active = not is_template
-        graph.reassign_ids()
+        graph.reassign_ids(reassign_graph_id=True)
 
         return await graph_db.create_graph(graph)
 
