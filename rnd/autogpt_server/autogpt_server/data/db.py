@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -21,6 +22,12 @@ async def connect():
 async def disconnect():
     if prisma.is_connected():
         await prisma.disconnect()
+
+
+@asynccontextmanager
+async def transaction():
+    async with prisma.tx() as tx:
+        yield tx
 
 
 class BaseDbModel(BaseModel):
