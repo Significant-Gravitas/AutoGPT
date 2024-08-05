@@ -41,7 +41,6 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-
   const { getNode, setNodes, getEdges, setEdges } = useReactFlow();
 
   const outputDataRef = useRef<HTMLDivElement>(null);
@@ -91,7 +90,6 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   const handleInputChange = (path: string, value: any) => {
     const keys = parseKeys(path);
-    console.log('keys', keys);
     const newValues = JSON.parse(JSON.stringify(data.hardcodedValues));
     let current = newValues;
 

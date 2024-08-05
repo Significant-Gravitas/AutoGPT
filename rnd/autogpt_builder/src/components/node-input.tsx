@@ -37,16 +37,16 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
   className,
   displayName,
 }) => {
-  object ??= ("default" in schema ? schema.default : null) ?? {};
+  // object ??= ("default" in schema ? schema.default : null) ?? {};
   return (
-    <div className={cn(className, 'flex-col')}>
-      {displayName && <strong>{displayName}:</strong>}
+    <div className={cn(className, 'flex-col w-full')}>
+      {displayName && <strong>{displayName}</strong>}
       {Object.entries(schema.properties).map(([propKey, propSchema]) => {
         const childKey = selfKey ? `${selfKey}.${propKey}` : propKey;
         
         return (
-          <div className="flex flex-row space-y-2 w-full">
-            <span className="mr-2 mt-3">{propKey}</span>
+          <div className="flex flex-row justify-between space-y-2 w-full">
+            <span className="mr-2 mt-3">{propSchema.title || beautifyString(propKey)}</span>
             <NodeGenericInputField
               key={propKey}
               propKey={childKey}
@@ -55,6 +55,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
               errors={errors}
               handleInputChange={handleInputChange}
               handleInputClick={handleInputClick}
+              displayName={propSchema.title || beautifyString(propKey)}
             />
           </div>
         )
@@ -264,8 +265,8 @@ const NodeKeyValueInput: FC<{
   }
 
   return (
-    <div className={className}>
-      {displayName && <strong>{displayName}:</strong>}
+    <div className={cn(className, 'flex flex-col')}>
+      {displayName && <strong>{displayName}</strong>}
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
           <div key={index}>

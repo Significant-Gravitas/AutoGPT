@@ -441,7 +441,7 @@ const FlowEditor: React.FC<{
     }) as Edge<CustomEdgeData>));
   }
 
-  const prepareNodeInputData = (node: Node<CustomNodeData>, allNodes: Node<CustomNodeData>[], allEdges: Edge<CustomEdgeData>[]) => {
+  const prepareNodeInputData = (node: Node<CustomNodeData>) => {
     console.log("Preparing input data for node:", node.id, node.data.blockType);
 
     const blockSchema = availableNodes.find(n => n.id === node.data.block_id)?.inputSchema;
