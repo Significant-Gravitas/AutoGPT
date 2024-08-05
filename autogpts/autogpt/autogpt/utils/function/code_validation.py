@@ -388,7 +388,7 @@ async def __execute_pyright(func: ValidationResponse) -> list[str]:
             rule: str = e.get("rule", "")
             severity: str = e.get("severity", "")
             excluded_rules = ["reportRedeclaration"]
-            if severity != "error" or any([rule.startswith(r) for r in excluded_rules]):
+            if severity != "error" or any(rule.startswith(r) for r in excluded_rules):
                 continue
 
             e = genererate_line_error(

@@ -100,10 +100,8 @@ class BaseAgentConfiguration(SystemConfiguration):
             smart_llm = values["smart_llm"]
             fast_llm = values["fast_llm"]
             assert all(
-                [
-                    not any(s in name for s in {"-0301", "-0314"})
+                not any(s in name for s in {"-0301", "-0314"})
                     for name in {smart_llm, fast_llm}
-                ]
             ), (
                 f"Model {smart_llm} does not support OpenAI Functions. "
                 "Please disable OPENAI_FUNCTIONS or choose a suitable model."

@@ -141,18 +141,14 @@ class FunctionVisitor(ast.NodeVisitor):
         If it is a Pydantic class, adds its name to the list of Pydantic classes.
         """
         is_pydantic = any(
-            [
-                (isinstance(base, ast.Name) and base.id == "BaseModel")
+            (isinstance(base, ast.Name) and base.id == "BaseModel")
                 or (isinstance(base, ast.Attribute) and base.attr == "BaseModel")
                 for base in node.bases
-            ]
         )
         is_enum = any(
-            [
-                (isinstance(base, ast.Name) and base.id.endswith("Enum"))
+            (isinstance(base, ast.Name) and base.id.endswith("Enum"))
                 or (isinstance(base, ast.Attribute) and base.attr.endswith("Enum"))
                 for base in node.bases
-            ]
         )
         is_implemented = not any(isinstance(v, ast.Pass) for v in node.body)
         doc_string = ""

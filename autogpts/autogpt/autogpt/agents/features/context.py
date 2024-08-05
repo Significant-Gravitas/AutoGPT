@@ -24,7 +24,7 @@ class AgentContext(BaseModel):
         return len(self.items) > 0
 
     def __contains__(self, item: ContextItem) -> bool:
-        return any([i.source == item.source for i in self.items])
+        return any(i.source == item.source for i in self.items)
 
     def add(self, item: ContextItem) -> None:
         self.items.append(item)

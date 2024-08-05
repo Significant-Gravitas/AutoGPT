@@ -111,11 +111,9 @@ def validate_matching_function(this: FunctionDef, that: FunctionDef):
     errors = []
 
     if any(
-        [
-            x[0] != y[0] or not is_type_equal(x[1], y[1]) and x[1] != "object"
+        x[0] != y[0] or not is_type_equal(x[1], y[1]) and x[1] != "object"
             # TODO: remove sorted and provide a stable order for one-to-many arg-types.
             for x, y in zip(sorted(expected_args), sorted(this.arg_types))
-        ]
     ):
         errors.append(
             f"Function {func_name} has different arguments than expected, "
