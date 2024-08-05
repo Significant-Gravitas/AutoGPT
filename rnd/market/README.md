@@ -20,9 +20,9 @@ Our vision is to empower users with customizable and free AI agents, fostering a
 To get started with the AutoGPT Agent Marketplace, follow these steps:
 
 - Copy `.env.example` to `.env` and fill in the required environment variables
-- Run `prisma migrate deploy`
-- Run `prisma generate`
-- Run `fastapi dev market/app.py`
+- Run `poetry run setup`
+- Run `poetry run populate`
+- Run `poetry run app`
 
 ## Poetry Run Commands
 
