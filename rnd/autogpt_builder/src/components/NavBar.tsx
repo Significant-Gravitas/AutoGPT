@@ -1,14 +1,15 @@
 import {
   DropdownMenu,
-  DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuTrigger
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
 import { CircleUser, Menu, SquareActivity, Workflow } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import React from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Pencil1Icon, TimerIcon } from "@radix-ui/react-icons";
+import { Pencil1Icon, TimerIcon, ArchiveIcon } from "@radix-ui/react-icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Image from "next/image";
 import getServerUser from "@/hooks/getServerUser";
@@ -16,12 +17,13 @@ import ProfileDropdown from "./ProfileDropdown";
 
 export async function NavBar() {
   const isAvailable = Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   );
   const { user } = await getServerUser();
-  
+
   return (
-    <header className="sticky top-0 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
+    <header className="sticky top-0 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6 z-50">
       <div className="flex items-center gap-4 flex-1">
         <Sheet>
           <SheetTrigger asChild>
@@ -48,6 +50,12 @@ export async function NavBar() {
               >
                 <Workflow className="size-6" /> Build
               </Link>
+              <Link
+                href="/marketplace"
+                className="text-muted-foreground hover:text-foreground flex flex-row gap-2"
+              >
+                <ArchiveIcon className="size-6" /> Marketplace
+              </Link>
             </nav>
           </SheetContent>
         </Sheet>
@@ -63,6 +71,12 @@ export async function NavBar() {
             className="text-muted-foreground hover:text-foreground flex flex-row gap-2 items-center"
           >
             <Workflow className="size-4" /> Build
+          </Link>
+          <Link
+            href="/marketplace"
+            className="text-muted-foreground hover:text-foreground flex flex-row gap-2 items-center"
+          >
+            <ArchiveIcon className="size-4" /> Marketplace
           </Link>
         </nav>
       </div>
@@ -84,13 +98,15 @@ export async function NavBar() {
         </a>
       </div>
       <div className="flex items-center gap-4 flex-1 justify-end">
-        {isAvailable && !user &&
+        {isAvailable && !user && (
           <Link
             href="/login"
             className="text-muted-foreground hover:text-foreground flex flex-row gap-2 items-center"
           >
-            Log In<CircleUser className="size-5" />
-          </Link>}
+            Log In
+            <CircleUser className="size-5" />
+          </Link>
+        )}
         {isAvailable && user && <ProfileDropdown />}
       </div>
     </header>

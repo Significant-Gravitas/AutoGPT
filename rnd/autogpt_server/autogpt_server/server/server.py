@@ -453,6 +453,7 @@ class AgentServer(AppService):
         if create_graph.graph:
             graph = create_graph.graph
         elif create_graph.template_id:
+            # Create a new graph from a template
             graph = await graph_db.get_graph(
                 create_graph.template_id, create_graph.template_version, template=True
             )
@@ -468,15 +469,7 @@ class AgentServer(AppService):
 
         graph.is_template = is_template
         graph.is_active = not is_template
-
-        id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
-
-        for node in graph.nodes:
-            node.id = id_map[node.id]
-
-        for link in graph.links:
-            link.source_id = id_map[link.source_id]
-            link.sink_id = id_map[link.sink_id]
+        graph.reassign_ids(reassign_graph_id=True)
 
         return await graph_db.create_graph(graph)
 
@@ -501,14 +494,7 @@ class AgentServer(AppService):
                 400, detail="Changing is_template on an existing graph is forbidden"
             )
         graph.is_active = not graph.is_template
-
-        # Assign new UUIDs to all nodes and links
-        id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
-        for node in graph.nodes:
-            node.id = id_map[node.id]
-        for link in graph.links:
-            link.source_id = id_map[link.source_id]
-            link.sink_id = id_map[link.sink_id]
+        graph.reassign_ids()
 
         new_graph_version = await graph_db.create_graph(graph)
 

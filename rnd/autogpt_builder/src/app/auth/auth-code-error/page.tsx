@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
 export default function AuthErrorPage() {
   const [errorType, setErrorType] = useState<string | null>(null);
@@ -9,13 +9,15 @@ export default function AuthErrorPage() {
 
   useEffect(() => {
     // This code only runs on the client side
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       const hash = window.location.hash.substring(1); // Remove the leading '#'
       const params = new URLSearchParams(hash);
-      
-      setErrorType(params.get('error'));
-      setErrorCode(params.get('error_code'));
-      setErrorDescription(params.get('error_description')?.replace(/\+/g, ' ') ?? null); // Replace '+' with space
+
+      setErrorType(params.get("error"));
+      setErrorCode(params.get("error_code"));
+      setErrorDescription(
+        params.get("error_description")?.replace(/\+/g, " ") ?? null,
+      ); // Replace '+' with space
     }
   }, []);
 
