@@ -28,37 +28,37 @@ async def execute_graph(
 async def assert_sample_graph_executions(
     agent_server: AgentServer, test_graph: graph.Graph, graph_exec_id: str
 ):
-    text = "Hello, World!"
+    input = {"input_1": "Hello", "input_2": "World"}
     executions = await agent_server.get_run_execution_results(
         test_graph.id, graph_exec_id
     )
 
-    # Executing ConstantBlock1
+    # Executing ValueBlock
     exec = executions[0]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data == {"output": ["Hello, World!"]}
-    assert exec.input_data == {"input": text}
+    assert exec.output_data == {"output": ["Hello"]}
+    assert exec.input_data == {"input": input, "key": "input_1"}
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
-    # Executing ConstantBlock2
+    # Executing ValueBlock
     exec = executions[1]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data == {"output": ["Hello, World!"]}
-    assert exec.input_data == {"input": text}
+    assert exec.output_data == {"output": ["World"]}
+    assert exec.input_data == {"input": input, "key": "input_2"}
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing TextFormatterBlock
     exec = executions[2]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data == {"output": ["Hello, World!,Hello, World!,!!!"]}
+    assert exec.output_data == {"output": ["Hello, World!!!"]}
     assert exec.input_data == {
-        "format": "{texts[0]},{texts[1]},{texts[2]}",
-        "texts": ["Hello, World!", "Hello, World!", "!!!"],
-        "texts_$_1": "Hello, World!",
-        "texts_$_2": "Hello, World!",
+        "format": "{texts[0]}, {texts[1]}{texts[2]}",
+        "texts": ["Hello", "World", "!!!"],
+        "texts_$_1": "Hello",
+        "texts_$_2": "World",
         "texts_$_3": "!!!",
     }
     assert exec.node_id == test_graph.nodes[2].id
@@ -68,7 +68,7 @@ async def assert_sample_graph_executions(
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
     assert exec.output_data == {"status": ["printed"]}
-    assert exec.input_data == {"text": "Hello, World!,Hello, World!,!!!"}
+    assert exec.input_data == {"text": "Hello, World!!!"}
     assert exec.node_id == test_graph.nodes[3].id
 
 
@@ -76,7 +76,7 @@ async def assert_sample_graph_executions(
 async def test_agent_execution(server):
     test_graph = create_test_graph()
     await graph.create_graph(test_graph)
-    data = {"input": "Hello, World!"}
+    data = {"input_1": "Hello", "input_2": "World"}
     graph_exec_id = await execute_graph(
         server.agent_server, server.exec_manager, test_graph, data, 4
     )

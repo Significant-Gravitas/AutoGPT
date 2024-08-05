@@ -5,9 +5,11 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Any, Dict
 
 import uvicorn
+from autogpt_libs.auth.middleware import auth_middleware
 from fastapi import (
     APIRouter,
     Body,
+    Depends,
     FastAPI,
     HTTPException,
     WebSocket,
@@ -15,7 +17,6 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 import autogpt_server.server.ws_api
 from autogpt_server.data import block, db
@@ -34,7 +35,6 @@ from autogpt_server.server.model import (
     SetGraphActiveVersion,
     WsMessage,
 )
-from autogpt_server.util.data import get_frontend_path
 from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
@@ -82,6 +82,8 @@ class AgentServer(AppService):
 
         # Define the API routes
         router = APIRouter(prefix="/api")
+        router.dependencies.append(Depends(auth_middleware))
+
         router.add_api_route(
             path="/blocks",
             endpoint=self.get_graph_blocks,  # type: ignore
@@ -190,12 +192,6 @@ class AgentServer(AppService):
         )
 
         app.add_exception_handler(500, self.handle_internal_error)  # type: ignore
-
-        app.mount(
-            path="/frontend",
-            app=StaticFiles(directory=get_frontend_path(), html=True),
-            name="example_files",
-        )
 
         app.include_router(router)
 
