@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import NodeHandle from './NodeHandle';
 import { Copy, Trash2 } from 'lucide-react';
 import { history } from './history';
-import { NodeGenericInputField } from './node-input';
+import { NodeGenericInputField } from './node-input-components';
 
 type ParsedKey = { key: string; index?: number };
 
