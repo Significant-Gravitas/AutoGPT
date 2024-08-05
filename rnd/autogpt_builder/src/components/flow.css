@@ -1,13 +1,13 @@
 /* flow.css or index.css */
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
     sans-serif;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
 }
 
@@ -25,7 +25,8 @@ button:hover {
   background-color: #666;
 }
 
-input, textarea {
+input,
+textarea {
   background-color: #ffffff;
   color: #000000;
   border: 1px solid #555;
@@ -35,7 +36,8 @@ input, textarea {
   box-sizing: border-box;
 }
 
-input::placeholder, textarea::placeholder {
+input::placeholder,
+textarea::placeholder {
   color: #aaa;
 }
 

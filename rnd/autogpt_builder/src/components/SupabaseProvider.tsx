@@ -1,9 +1,9 @@
 "use client";
 
-import { createClient } from '@/lib/supabase/client';
-import { SupabaseClient } from '@supabase/supabase-js';
-import { useRouter } from 'next/navigation';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createClient } from "@/lib/supabase/client";
+import { SupabaseClient } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
+import { createContext, useContext, useEffect, useState } from "react";
 
 type SupabaseContextType = {
   supabase: SupabaseClient | null;
@@ -13,9 +13,9 @@ type SupabaseContextType = {
 const Context = createContext<SupabaseContextType | undefined>(undefined);
 
 export default function SupabaseProvider({
-  children
+  children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -54,7 +54,7 @@ export default function SupabaseProvider({
 export const useSupabase = () => {
   const context = useContext(Context);
   if (context === undefined) {
-    throw new Error('useSupabase must be used inside SupabaseProvider');
+    throw new Error("useSupabase must be used inside SupabaseProvider");
   }
   return context;
 };
