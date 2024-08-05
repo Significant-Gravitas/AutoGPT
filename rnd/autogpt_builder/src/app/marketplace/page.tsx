@@ -159,7 +159,9 @@ const Pagination: React.FC<{
 
 // Main Component
 const Marketplace: React.FC = () => {
-  const apiUrl = process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL;
+  const apiUrl =
+    process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL ||
+    "http://localhost:8001/api/v1/market";
   const api = useMemo(() => new MarketplaceAPI(apiUrl), [apiUrl]);
 
   const [searchValue, setSearchValue] = useState("");
