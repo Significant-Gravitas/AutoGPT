@@ -1,4 +1,4 @@
-import { BlockSchema } from "@/lib/types";
+import { BlockIOSchema } from "@/lib/autogpt-server-api/types";
 import { beautifyString, getTypeBgColor, getTypeTextColor } from "@/lib/utils";
 import { FC } from "react";
 import { Handle, Position } from "reactflow";
@@ -6,7 +6,7 @@ import SchemaTooltip from "./SchemaTooltip";
 
 type HandleProps = {
   keyName: string,
-  schema: BlockSchema,
+  schema: BlockIOSchema,
   isConnected: boolean,
   isRequired?: boolean,
   side: 'left' | 'right'

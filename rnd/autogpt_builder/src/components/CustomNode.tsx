@@ -1,21 +1,23 @@
-import React, { useState, useEffect, FC, memo, useCallback } from 'react';
+import React, { useState, useEffect, FC, memo, useCallback, useRef } from 'react';
 import { NodeProps, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './customnode.css';
 import InputModalComponent from './InputModalComponent';
 import OutputModalComponent from './OutputModalComponent';
+import { BlockIORootSchema, NodeExecutionResult } from '@/lib/autogpt-server-api/types';
 import { BlockSchema } from '@/lib/types';
 import { beautifyString, setNestedProperty } from '@/lib/utils';
 import { Switch } from "@/components/ui/switch"
 import NodeHandle from './NodeHandle';
 import NodeInputField from './NodeInputField';
 import { Copy, Trash2 } from 'lucide-react';
+import { history } from './history';
 
 export type CustomNodeData = {
   blockType: string;
   title: string;
-  inputSchema: BlockSchema;
-  outputSchema: BlockSchema;
+  inputSchema: BlockIORootSchema;
+  outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
   setHardcodedValues: (values: { [key: string]: any }) => void;
   connections: Array<{ source: string; sourceHandle: string; target: string; targetHandle: string }>;
@@ -41,6 +43,8 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   const { getNode, setNodes, getEdges, setEdges } = useReactFlow();
 
+  const outputDataRef = useRef<HTMLDivElement>(null);
+  const isInitialSetup = useRef(true);
 
   useEffect(() => {
     if (data.output_data || data.status) {
@@ -56,6 +60,10 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     data.setIsAnyModalOpen?.(isModalOpen || isOutputModalOpen);
   }, [isModalOpen, isOutputModalOpen, data]);
 
+  useEffect(() => {
+    isInitialSetup.current = false;
+  }, []);
+
   const toggleOutput = (checked: boolean) => {
     setIsOutputOpen(checked);
   };
@@ -70,7 +78,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     });
   };
 
-  const generateOutputHandles = (schema: BlockSchema) => {
+  const generateOutputHandles = (schema: BlockIORootSchema) => {
     if (!schema?.properties) return null;
     const keys = Object.keys(schema.properties);
     return keys.map((key) => (
@@ -92,6 +100,16 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     current[keys[keys.length - 1]] = value;
 
     console.log(`Updating hardcoded values for node ${id}:`, newValues);
+
+    if (!isInitialSetup.current) {
+      history.push({
+        type: 'UPDATE_INPUT',
+        payload: { nodeId: id, oldValues: data.hardcodedValues, newValues },
+        undo: () => data.setHardcodedValues(data.hardcodedValues),
+        redo: () => data.setHardcodedValues(newValues),
+      });
+    }
+
     data.setHardcodedValues(newValues);
     const errors = data.errors || {};
     // Remove error with the same key
@@ -139,7 +157,9 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   const handleOutputClick = () => {
     setIsOutputModalOpen(true);
-    setModalValue(typeof data.output_data === 'object' ? JSON.stringify(data.output_data, null, 2) : data.output_data);
+    setModalValue(
+      data.output_data ? JSON.stringify(data.output_data, null, 2) : "[no output (yet)]"
+    );
   };
 
   const isTextTruncated = (element: HTMLElement | null): boolean => {
