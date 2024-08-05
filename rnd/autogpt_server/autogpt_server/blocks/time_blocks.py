@@ -4,6 +4,7 @@ from typing import Union
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 
+
 class CurrentTimeBlock(Block):
     class Input(BlockSchema):
         trigger: str
@@ -22,13 +23,13 @@ class CurrentTimeBlock(Block):
                 {"trigger": "Hello", "format": "{time}"},
             ],
             test_output=[
-                ("time", time.strftime("%H:%M:%S")), 
+                ("time", time.strftime("%H:%M:%S")),
             ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
         current_time = time.strftime("%H:%M:%S")
-        yield "time", current_time 
+        yield "time", current_time
 
 
 class CurrentDateBlock(Block):
@@ -37,7 +38,7 @@ class CurrentDateBlock(Block):
         offset: Union[int, str]
 
     class Output(BlockSchema):
-        date: str 
+        date: str
 
     def __init__(self):
         super().__init__(
@@ -50,7 +51,7 @@ class CurrentDateBlock(Block):
                 {"trigger": "Hello", "format": "{date}", "offset": "7"},
             ],
             test_output=[
-                ("date", (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")), 
+                ("date", (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")),
             ],
         )
 
@@ -61,7 +62,6 @@ class CurrentDateBlock(Block):
             offset = 0
         current_date = datetime.now() - timedelta(days=offset)
         yield "date", current_date.strftime("%Y-%m-%d")
-
 
 
 class CurrentDateAndTimeBlock(Block):
@@ -82,7 +82,7 @@ class CurrentDateAndTimeBlock(Block):
                 {"trigger": "Hello", "format": "{date_time}"},
             ],
             test_output=[
-                ("date_time", time.strftime("%Y-%m-%d %H:%M:%S")), 
+                ("date_time", time.strftime("%Y-%m-%d %H:%M:%S")),
             ],
         )
 
