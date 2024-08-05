@@ -1,0 +1,41 @@
+name: AutoGPT Server Docker
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'rnd/autogpt_server/**'
+
+defaults:
+  run:
+    shell: bash
+    working-directory: rnd/autogpt_server
+
+env:
+  PROJECT_ID: agpt-dev
+  IMAGE_NAME: agpt-server-dev
+  REGION: us-central1
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v0.2.1
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      - name: Build Docker image
+        run: docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+
+      - name: Push Docker image
+        run: docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
