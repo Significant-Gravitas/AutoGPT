@@ -1,5 +1,4 @@
 import asyncio
-import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from typing import Annotated, Any, Dict
@@ -41,6 +40,8 @@ from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
 
+settings = Settings()
+
 
 def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
     if not payload:
@@ -69,7 +70,7 @@ class AgentServer(AppService):
         await db.connect()
         await block.initialize_blocks()
         await graph_db.import_packaged_templates()
-        await user_db.create_default_user()
+        await user_db.create_default_user(settings.config.enable_auth)
         asyncio.create_task(self.event_broadcaster())
         yield
         await db.disconnect()
