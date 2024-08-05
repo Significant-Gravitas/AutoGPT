@@ -64,7 +64,7 @@ const FlowEditor: React.FC<{
   const [copiedEdges, setCopiedEdges] = useState<Edge<CustomEdgeData>[]>([]);
   const [isAnyModalOpen, setIsAnyModalOpen] = useState(false); // Track if any modal is open
 
-  const apiUrl = process.env.AGPT_SERVER_URL!;
+  const apiUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL!;
   const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
   const initialPositionRef = useRef<{
     [key: string]: { x: number; y: number };

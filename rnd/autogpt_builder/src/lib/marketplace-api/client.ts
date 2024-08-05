@@ -11,7 +11,7 @@ export default class MarketplaceAPI {
   private baseUrl: string;
 
   constructor(
-    baseUrl: string = process.env.AGPT_MARKETPLACE_URL ||
+    baseUrl: string = process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL ||
       "http://localhost:8001/api/v1/market",
   ) {
     this.baseUrl = baseUrl;
