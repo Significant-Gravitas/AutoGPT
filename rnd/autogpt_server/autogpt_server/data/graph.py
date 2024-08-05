@@ -382,17 +382,20 @@ async def get_graph_all_versions(
 
     return [Graph.from_db(graph) for graph in graph_versions]
 
-async def create_graph(graph: Graph, user_id: str) -> Graph:
+
+async def create_graph(graph: Graph, user_id: str | None) -> Graph:
     async with transaction() as tx:
         await __create_graph(tx, graph, user_id)
 
-    if created_graph := await get_graph(graph.id, graph.version, graph.is_template, user_id=user_id):
+    if created_graph := await get_graph(
+        graph.id, graph.version, graph.is_template, user_id=user_id
+    ):
         return created_graph
 
     raise ValueError(f"Created graph {graph.id} v{graph.version} is not in DB")
 
 
-async def __create_graph(tx, graph: Graph, user_id: str):
+async def __create_graph(tx, graph: Graph, user_id: str | None):
     await AgentGraph.prisma(tx).create(
         data={
             "id": graph.id,
@@ -416,6 +419,7 @@ async def __create_graph(tx, graph: Graph, user_id: str):
                     "description": f"Sub-Graph of {graph.id}",
                     "isTemplate": graph.is_template,
                     "isActive": graph.is_active,
+                    "userId": user_id,
                 }
             )
             for subgraph_id in graph.subgraphs
@@ -478,5 +482,5 @@ async def import_packaged_templates() -> None:
             exists := next((t for t in templates_in_db if t.id == template.id), None)
         ) and exists.version >= template.version:
             continue
-        await create_graph(template, "")
+        await create_graph(template, None)
         print(f"Loaded template '{template.name}' ({template.id})")

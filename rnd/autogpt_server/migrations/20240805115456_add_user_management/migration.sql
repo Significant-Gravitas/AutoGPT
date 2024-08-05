@@ -17,11 +17,13 @@ CREATE TABLE "new_AgentGraph" (
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "isTemplate" BOOLEAN NOT NULL DEFAULT false,
     "userId" TEXT,
+    "agentGraphParentId" TEXT,
 
     PRIMARY KEY ("id", "version"),
-    CONSTRAINT "AgentGraph_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    CONSTRAINT "AgentGraph_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "AgentGraph_agentGraphParentId_version_fkey" FOREIGN KEY ("agentGraphParentId", "version") REFERENCES "AgentGraph" ("id", "version") ON DELETE RESTRICT ON UPDATE CASCADE
 );
-INSERT INTO "new_AgentGraph" ("description", "id", "isActive", "isTemplate", "name", "version") SELECT "description", "id", "isActive", "isTemplate", "name", "version" FROM "AgentGraph";
+INSERT INTO "new_AgentGraph" ("agentGraphParentId", "description", "id", "isActive", "isTemplate", "name", "version") SELECT "agentGraphParentId", "description", "id", "isActive", "isTemplate", "name", "version" FROM "AgentGraph";
 DROP TABLE "AgentGraph";
 ALTER TABLE "new_AgentGraph" RENAME TO "AgentGraph";
 CREATE TABLE "new_AgentGraphExecution" (

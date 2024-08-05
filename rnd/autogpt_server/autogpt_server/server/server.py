@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 import autogpt_server.server.ws_api
 from autogpt_server.data import block, db
 from autogpt_server.data import graph as graph_db
+from autogpt_server.data import user as user_db
 from autogpt_server.data.block import BlockInput, CompletedBlockOutput
 from autogpt_server.data.execution import (
     ExecutionResult,
@@ -43,7 +44,7 @@ from autogpt_server.util.settings import Settings
 def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
     if not payload:
         # This handles the case when authentication is disabled
-        return "default_user_id"
+        return "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 
     user_id = payload.get("sub")
     if not user_id:
@@ -67,6 +68,7 @@ class AgentServer(AppService):
         await db.connect()
         await block.initialize_blocks()
         await graph_db.import_packaged_templates()
+        await user_db.create_default_user()
         asyncio.create_task(self.event_broadcaster())
         yield
         await db.disconnect()
