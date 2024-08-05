@@ -1,0 +1,80 @@
+version = 1
+
+[[analyzers]]
+name = "kotlin"
+
+  [analyzers.meta]
+  runtime_version = "1.8"
+  language_version = "1.7"
+
+[[analyzers]]
+name = "java"
+
+  [analyzers.meta]
+  runtime_version = "11"
+
+[[analyzers]]
+name = "javascript"
+
+  [analyzers.meta]
+  plugins = [
+    "react",
+    "vue",
+    "ember",
+    "meteor",
+    "angularjs",
+    "angular"
+  ]
+  environment = [
+    "nodejs",
+    "browser",
+    "jest",
+    "mocha",
+    "jasmine",
+    "jquery",
+    "mongo",
+    "cypress",
+    "vitest"
+  ]
+
+[[analyzers]]
+name = "terraform"
+
+[[analyzers]]
+name = "secrets"
+
+[[analyzers]]
+name = "shell"
+
+[[analyzers]]
+name = "python"
+
+  [analyzers.meta]
+  runtime_version = "3.x.x"
+
+[[transformers]]
+name = "ktlint"
+
+[[transformers]]
+name = "google-java-format"
+
+[[transformers]]
+name = "standardjs"
+
+[[transformers]]
+name = "prettier"
+
+[[transformers]]
+name = "ruff"
+
+[[transformers]]
+name = "autopep8"
+
+[[transformers]]
+name = "black"
+
+[[transformers]]
+name = "isort"
+
+[[transformers]]
+name = "yapf"
