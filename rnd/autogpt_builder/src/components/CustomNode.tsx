@@ -12,6 +12,8 @@ import { Copy, Trash2 } from 'lucide-react';
 import { history } from './history';
 import { NodeGenericInputField } from './node-input';
 
+type ParsedKey = { key: string; index?: number };
+
 export type CustomNodeData = {
   blockType: string;
   title: string;
@@ -87,16 +89,31 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     ));
   };
 
-  const handleInputChange = (key: string, value: any) => {
-    const keys = key.split('.');
+  const handleInputChange = (path: string, value: any) => {
+    const keys = parseKeys(path);
+    console.log('keys', keys);
     const newValues = JSON.parse(JSON.stringify(data.hardcodedValues));
     let current = newValues;
 
     for (let i = 0; i < keys.length - 1; i++) {
-      if (!current[keys[i]]) current[keys[i]] = {};
-      current = current[keys[i]];
+      const { key: currentKey, index } = keys[i];
+      if (index !== undefined) {
+        if (!current[currentKey]) current[currentKey] = [];
+        if (!current[currentKey][index]) current[currentKey][index] = {};
+        current = current[currentKey][index];
+      } else {
+        if (!current[currentKey]) current[currentKey] = {};
+        current = current[currentKey];
+      }
     }
-    current[keys[keys.length - 1]] = value;
+
+    const lastKey = keys[keys.length - 1];
+    if (lastKey.index !== undefined) {
+      if (!current[lastKey.key]) current[lastKey.key] = [];
+      current[lastKey.key][lastKey.index] = value;
+    } else {
+      current[lastKey.key] = value;
+    }
 
     console.log(`Updating hardcoded values for node ${id}:`, newValues);
 
@@ -112,13 +129,49 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     data.setHardcodedValues(newValues);
     const errors = data.errors || {};
     // Remove error with the same key
-    setNestedProperty(errors, key, null);
+    setNestedProperty(errors, path, null);
     data.setErrors({ ...errors });
   };
 
+  // Helper function to parse keys with array indices
+  const parseKeys = (key: string): ParsedKey[] => {
+    const regex = /(\w+)|\[(\d+)\]/g;
+    const keys: ParsedKey[] = [];
+    let match;
+    let currentKey: string | null = null;
+
+    while ((match = regex.exec(key)) !== null) {
+      if (match[1]) {
+        if (currentKey !== null) {
+          keys.push({ key: currentKey });
+        }
+        currentKey = match[1];
+      } else if (match[2]) {
+        if (currentKey !== null) {
+          keys.push({ key: currentKey, index: parseInt(match[2], 10) });
+          currentKey = null;
+        } else {
+          throw new Error('Invalid key format: array index without a key');
+        }
+      }
+    }
+
+    if (currentKey !== null) {
+      keys.push({ key: currentKey });
+    }
+
+    return keys;
+  };
+
   const getValue = (key: string) => {
-    const keys = key.split('.');
-    return keys.reduce((acc, k) => acc && acc[k] ? acc[k] : undefined, data.hardcodedValues);
+    const keys = parseKeys(key);
+    return keys.reduce((acc, k) => {
+      if (acc === undefined) return undefined;
+      if (k.index !== undefined) {
+        return Array.isArray(acc[k.key]) ? acc[k.key][k.index] : undefined;
+      }
+      return acc[k.key];
+    }, data.hardcodedValues as any);
   };
 
   const isHandleConnected = (key: string) => {
@@ -168,12 +221,10 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   const handleHovered = () => {
     setIsHovered(true);
-    console.log('isHovered', isHovered);
   }
 
   const handleMouseLeave = () => {
     setIsHovered(false);
-    console.log('isHovered', isHovered);
   }
 
   const deleteNode = useCallback(() => {
@@ -219,14 +270,14 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   }, [id]);
 
   return (
-    <div 
+    <div
       className={`custom-node dark-theme ${data.status?.toLowerCase() ?? ''}`}
       onMouseEnter={handleHovered}
       onMouseLeave={handleMouseLeave}
-     >
+    >
       <div className="mb-2">
         <div className="text-lg font-bold">{beautifyString(data.blockType?.replace(/Block$/, '') || data.title)}</div>
-        <div className="node-actions">
+        <div className="flex gap-[5px]">
           {isHovered && (
             <>
               <button

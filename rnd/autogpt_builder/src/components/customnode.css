@@ -9,13 +9,6 @@
   transition: border-color 0.3s ease-in-out;
 }
 
-.node-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1px;
-}
-
 .custom-node .mb-2 {
   display: flex;
   justify-content: space-between;
@@ -28,11 +21,6 @@
 .custom-node .mb-2 .text-lg {
   flex-grow: 1;
   margin-right: 10px;
-}
-
-.node-actions {
-  display: flex;
-  gap: 5px;
 }
 
 .node-action-button {
@@ -89,32 +77,8 @@
   transform: none;
 }
 
-.clickable-input {
-  padding: 5px;
-  width: 325px;
-  border-radius: 4px;
-  background: #ffffff;
-  border: 1px solid #d1d1d1;
-  color: #000000;
-  cursor: pointer;
-  word-break: break-all;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  position: relative;
-}
-
 .border-error {
   border: 1px solid #d9534f;
-}
-
-.clickable-input span {
-  display: inline-block;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: calc(100% - 100px);
-  vertical-align: middle;
 }
 
 .select-input {
@@ -215,4 +179,14 @@
 
 .custom-switch {
   padding-left: 2px;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield;
 }

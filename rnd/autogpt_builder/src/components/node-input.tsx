@@ -15,7 +15,6 @@ import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Input } from "./ui/input";
-import { Label } from "./ui/label";
 
 type NodeObjectInputTreeProps = {
   selfKey?: string;
@@ -158,6 +157,7 @@ export const NodeGenericInputField: FC<{
           error={errors[propKey]}
           className={className}
           displayName={displayName}
+          handleInputChange={handleInputChange}
           handleInputClick={handleInputClick}
         />
       );
@@ -225,6 +225,7 @@ export const NodeGenericInputField: FC<{
             error={errors[propKey]}
             className={className}
             displayName={displayName}
+            handleInputChange={handleInputChange}
             handleInputClick={handleInputClick}
           />
         );
@@ -343,7 +344,7 @@ const NodeArrayInput: FC<{
 }) => {
     entries ??= schema.default ?? [];
     return (
-      <div className={`input-container ${className ?? ""}`}>
+      <div className={cn(className, 'flex flex-col')}>
         {displayName && <strong>{displayName}</strong>}
         {entries.map((entry: string, index: number) => {
           const entryKey = `${selfKey}[${index}]`;
@@ -365,6 +366,7 @@ const NodeArrayInput: FC<{
                     value={entry}
                     error={errors[entryKey]}
                     displayName={displayName ?? "something"}
+                    handleInputChange={handleInputChange}
                     handleInputClick={handleInputClick}
                   />
                 }
@@ -409,16 +411,16 @@ const NodeStringInput: FC<{
   displayName,
 }) => {
     return (
-      <div className={`input-container ${className ?? ""}`}>
+      <div className={className}>
         {schema.enum ? (
           <Select
             defaultValue={value}
             onValueChange={newValue => handleInputChange(selfKey, newValue)}
           >
             <SelectTrigger>
-              <SelectValue placeholder={displayName || schema.placeholder || schema.title} />
+              <SelectValue placeholder={schema.placeholder || displayName} />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="nodrag">
               {schema.enum.map((option, index) => (
                 <SelectItem key={index} value={option}>
                   {beautifyString(option)}
@@ -427,16 +429,17 @@ const NodeStringInput: FC<{
             </SelectContent>
           </Select>
         ) : (
-          <div className="relative">
+          <div className="nodrag relative" onClick={schema.secret ? (() => handleInputClick(selfKey)) : undefined}>
             <Input
               type="text"
               id={selfKey}
-              value={value}
+              value={schema.secret && value ? '********' : value}
+              readOnly={schema.secret}
               placeholder={
                 schema?.placeholder || `Enter ${beautifyString(displayName)}`
               }
               onChange={e => handleInputChange(selfKey, e.target.value)}
-              className="pr-8"
+              className="pr-8 read-only:cursor-pointer read-only:text-gray-500"
             />
             <Button
               variant="ghost" size="icon"
@@ -463,15 +466,16 @@ const NodeNumberInput: FC<{
   displayName?: string;
 }> = ({ selfKey, schema, value, error, handleInputChange, className, displayName }) => {
   value ??= schema.default;
+  displayName ??= schema.title || beautifyString(selfKey);
   return (
-    <div className={`input-container ${className ?? ""}`}>
-      <div className="flex items-center justify-between space-x-3">
-        {displayName && <Label htmlFor={selfKey}>{displayName}</Label>}
+    <div className={className}>
+      <div className="flex items-center justify-between space-x-3 nodrag">
         <Input
           type="number"
           id={selfKey}
           value={value}
           onChange={(e) => handleInputChange(selfKey, parseFloat(e.target.value))}
+          placeholder={schema.placeholder || `Enter ${beautifyString(displayName)}`}
         />
       </div>
       {error && <span className="error-message">{error}</span>}
@@ -490,9 +494,9 @@ const NodeBooleanInput: FC<{
 }> = ({ selfKey, schema, value, error, handleInputChange, className, displayName }) => {
   value ??= schema.default ?? false;
   return (
-    <div className={`input-container ${className ?? ""}`}>
-      <div className="flex items-center">
-        <Switch checked={value} onCheckedChange={v => handleInputChange(selfKey, v)} />
+    <div className={className}>
+      <div className="flex items-center nodrag">
+        <Switch className='pl-[2px]' checked={value} onCheckedChange={v => handleInputChange(selfKey, v)} />
         <span className="ml-3">{displayName}</span>
       </div>
       {error && <span className="error-message">{error}</span>}
@@ -505,41 +509,21 @@ const NodeFallbackInput: FC<{
   schema?: BlockIOSubSchema;
   value: any;
   error?: string;
+  handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
   handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
   className?: string;
   displayName: string;
-}> = ({ selfKey, schema, value, error, handleInputClick, className, displayName }) => {
+}> = ({ selfKey, schema, value, error, handleInputChange, handleInputClick, className, displayName }) => {
   return (
-    <div className={`input-container ${className ?? ""}`}>
-      <ClickableInput
-        handleInputClick={() => handleInputClick(selfKey)}
+      <NodeStringInput
+        selfKey={selfKey}
+        schema={{ type: "string", ...schema } as BlockIOStringSubSchema}
         value={value}
-        placeholder={
-          schema?.placeholder || `Enter ${beautifyString(displayName)} (Complex)`
-        }
+        error={error}
+        handleInputChange={handleInputChange}
+        handleInputClick={handleInputClick}
+        className={className}
+        displayName={displayName}
       />
-      {error && <span className="error-message">{error}</span>}
-    </div>
   );
 };
-
-const ClickableInput: FC<{
-  handleInputClick: () => void;
-  value?: string;
-  secret?: boolean;
-  placeholder?: string;
-  className?: string;
-}> = ({
-  handleInputClick,
-  value = "",
-  placeholder = "",
-  secret = false,
-  className,
-}) => (
-    <div className={`clickable-input ${className}`} onClick={handleInputClick}>
-      {secret
-        ? <i className="text-gray-500">{value ? "********" : placeholder}</i>
-        : value || <i className="text-gray-500">{placeholder}</i>
-      }
-    </div>
-  );
