@@ -422,7 +422,7 @@ class ExecutionManager(AppService):
         graph: Graph | None = self.run_and_wait(get_graph(graph_id, user_id=user_id))
         if not graph:
             raise Exception(f"Graph #{graph_id} not found.")
-        graph.validate_graph()
+        graph.validate_graph(for_run=True)
 
         nodes_input = []
         for node in graph.starting_nodes:
