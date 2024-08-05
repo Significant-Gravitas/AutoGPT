@@ -4,7 +4,7 @@ const getServerUser = async () => {
   const supabase = createServerClient();
 
   if (!supabase) {
-    return { user: null, error: 'Failed to create Supabase client' };
+    return { user: null, error: "Failed to create Supabase client" };
   }
 
   try {

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { useSupabase } from '@/components/SupabaseProvider';
+import { useEffect, useState } from "react";
+import { User, Session } from "@supabase/supabase-js";
+import { useSupabase } from "@/components/SupabaseProvider";
 
 const useUser = () => {
   const { supabase, isLoading: isSupabaseLoading } = useSupabase();
@@ -19,12 +19,16 @@ const useUser = () => {
     const fetchUser = async () => {
       try {
         setIsLoading(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
         setUser(user);
         setSession(session);
       } catch (e) {
-        setError('Failed to fetch user data');
+        setError("Failed to fetch user data");
       } finally {
         setIsLoading(false);
       }
@@ -32,7 +36,9 @@ const useUser = () => {
 
     fetchUser();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       setIsLoading(false);

@@ -154,3 +154,33 @@ class TextFormatterBlock(Block):
             texts=input_data.texts,
             **input_data.named_texts,
         )
+
+
+class TextCombinerBlock(Block):
+    class Input(BlockSchema):
+        input1: str = Field(description="First text input", default="a")
+        input2: str = Field(description="Second text input", default="b")
+
+    class Output(BlockSchema):
+        output: str = Field(description="Combined text")
+
+    def __init__(self):
+        super().__init__(
+            id="e30a4d42-7b7d-4e6a-b36e-1f9b8e3b7d85",
+            description="This block combines multiple input texts into a single output text.",
+            categories={BlockCategory.TEXT},
+            input_schema=TextCombinerBlock.Input,
+            output_schema=TextCombinerBlock.Output,
+            test_input=[
+                {"input1": "Hello world I like ", "input2": "cake and to go for walks"},
+                {"input1": "This is a test. ", "input2": "Let's see how it works."},
+            ],
+            test_output=[
+                ("output", "Hello world I like cake and to go for walks"),
+                ("output", "This is a test. Let's see how it works."),
+            ],
+        )
+
+    def run(self, input_data: Input) -> BlockOutput:
+        combined_text = (input_data.input1 or "") + (input_data.input2 or "")
+        yield "output", combined_text

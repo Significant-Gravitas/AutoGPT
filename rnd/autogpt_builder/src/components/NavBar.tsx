@@ -1,7 +1,8 @@
 import {
   DropdownMenu,
-  DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuTrigger
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
 import { CircleUser, Menu, SquareActivity, Workflow } from "lucide-react";
@@ -16,10 +17,11 @@ import ProfileDropdown from "./ProfileDropdown";
 
 export async function NavBar() {
   const isAvailable = Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   );
   const { user } = await getServerUser();
-  
+
   return (
     <header className="sticky top-0 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
       <div className="flex items-center gap-4 flex-1">
@@ -84,13 +86,15 @@ export async function NavBar() {
         </a>
       </div>
       <div className="flex items-center gap-4 flex-1 justify-end">
-        {isAvailable && !user &&
+        {isAvailable && !user && (
           <Link
             href="/login"
             className="text-muted-foreground hover:text-foreground flex flex-row gap-2 items-center"
           >
-            Log In<CircleUser className="size-5" />
-          </Link>}
+            Log In
+            <CircleUser className="size-5" />
+          </Link>
+        )}
         {isAvailable && user && <ProfileDropdown />}
       </div>
     </header>
