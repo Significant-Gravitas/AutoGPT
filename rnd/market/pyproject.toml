@@ -2,16 +2,24 @@
 name = "market"
 version = "0.1.0"
 description = ""
-authors = ["SwiftyOS <craigswift13@gmail.com>"]
+authors = [
+  "SwiftyOS <craigswift13@gmail.com>",
+  "Nicholas Tindle <spam@ntindle.com>",
+]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-prisma = "^0.12.0"
+prisma = "^0.13.1"
 python-dotenv = "^1.0.1"
 uvicorn = "^0.30.3"
-fastapi = "^0.111.1"
-sentry-sdk = {extras = ["fastapi"], version = "^2.11.0"}
+fastapi = "^0.109.0"
+sentry-sdk = { extras = ["fastapi"], version = "^2.11.0" }
+fuzzywuzzy = "^0.18.0"
+python-levenshtein = "^0.25.1"
+# autogpt-server = { path = "../autogpt_server", develop = true }
+prometheus-fastapi-instrumentator = "^7.0.0"
+
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.1"
@@ -29,8 +37,11 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-format = "linter:format"
-lint = "linter:lint"
+format = "scripts:format"
+lint = "scripts:lint"
+app = "scripts:app"
+setup = "scripts:setup"
+populate = "scripts:populate_database"
 
 [tool.pytest-watcher]
 now = false
