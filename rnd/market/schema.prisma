@@ -4,75 +4,50 @@ datasource db {
 }
 
 generator client {
-  provider             = "prisma-client-py"
-  recursive_type_depth = 5
-  interface            = "asyncio"
+  provider               = "prisma-client-py"
+  recursive_type_depth   = 5
+  interface              = "asyncio"
+  previewFeatures        = ["fullTextSearch"]
+  partial_type_generator = "market/utils/partial_types.py"
 }
 
-// This model describes the Agent Graph/Flow (Multi Agent System).
-model AgentGraph {
-  id      String @default(uuid())
-  version Int    @default(1)
+model Agents {
+  id        String   @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  version Int @default(1)
 
   name        String?
   description String?
-  isActive    Boolean @default(true)
-  isTemplate  Boolean @default(false)
+  author      String?
 
-  AgentNodes AgentNode[]
+  keywords   String[]
+  categories String[]
+  search     Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
+
+  graph            Json
+  AnalyticsTracker AnalyticsTracker[]
+  FeaturedAgent    FeaturedAgent?
 
   @@id(name: "graphVersionId", [id, version])
 }
 
-// This model describes a single node in the Agent Graph/Flow (Multi Agent System).
-model AgentNode {
-  id String @id @default(uuid())
-
-  agentBlockId String
-  AgentBlock   AgentBlock @relation(fields: [agentBlockId], references: [id])
-
-  agentGraphId      String
-  agentGraphVersion Int        @default(1)
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
-
-  // List of consumed input, that the parent node should provide.
-  Input AgentNodeLink[] @relation("AgentNodeSink")
-
-  // List of produced output, that the child node should be executed.
-  Output AgentNodeLink[] @relation("AgentNodeSource")
-
-  // JSON serialized dict[str, str] containing predefined input values.
-  constantInput String @default("{}")
-
-  // JSON serialized dict[str, str] containing the node metadata.
-  metadata String @default("{}")
+model AnalyticsTracker {
+  id        String @id @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentId   String @unique @db.Uuid
+  agent     Agents @relation(fields: [agentId], references: [id])
+  views     Int
+  downloads Int
 }
 
-// This model describes the link between two AgentNodes.
-model AgentNodeLink {
-  id String @id @default(uuid())
+model FeaturedAgent {
+  id          String  @id @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentId     String  @unique @db.Uuid
+  agent       Agents  @relation(fields: [agentId], references: [id])
+  is_featured Boolean @default(false)
+  category    String  @default("featured")
 
-  // Output of a node is connected to the source of the link.
-  agentNodeSourceId String
-  AgentNodeSource   AgentNode @relation("AgentNodeSource", fields: [agentNodeSourceId], references: [id])
-  sourceName        String
-
-  // Input of a node is connected to the sink of the link.
-  agentNodeSinkId String
-  AgentNodeSink   AgentNode @relation("AgentNodeSink", fields: [agentNodeSinkId], references: [id])
-  sinkName        String
-}
-
-// This model describes a component that will be executed by the AgentNode.
-model AgentBlock {
-  id   String @id @default(uuid())
-  name String @unique
-
-  // We allow a block to have multiple types of input & output.
-  // Serialized object-typed `jsonschema` with top-level properties as input/output name.
-  inputSchema  String
-  outputSchema String
-
-  // Prisma requires explicit back-references.
-  ReferencedByAgentNode AgentNode[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
