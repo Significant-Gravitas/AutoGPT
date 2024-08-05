@@ -12,7 +12,7 @@ export default class MarketplaceAPI {
 
   constructor(
     baseUrl: string = process.env.AGPT_MARKETPLACE_URL ||
-      "http://localhost:8001/api/v1/market"
+      "http://localhost:8001/api/v1/market",
   ) {
     this.baseUrl = baseUrl;
   }
@@ -28,27 +28,28 @@ export default class MarketplaceAPI {
 
   async listAgents(params: ListAgentsParams = {}): Promise<AgentListResponse> {
     const queryParams = new URLSearchParams(
-      Object.entries(params).filter(([_, v]) => v != null) as [string, string][]
+      Object.entries(params).filter(([_, v]) => v != null) as [
+        string,
+        string,
+      ][],
     );
     return this._get(`/agents?${queryParams.toString()}`);
   }
 
   async getTopDownloadedAgents(
     page: number = 1,
-    pageSize: number = 10
+    pageSize: number = 10,
   ): Promise<AgentListResponse> {
     return this._get(
-      `/top-downloads/agents?page=${page}&page_size=${pageSize}`
+      `/top-downloads/agents?page=${page}&page_size=${pageSize}`,
     );
   }
 
   async getFeaturedAgents(
     page: number = 1,
-    pageSize: number = 10
+    pageSize: number = 10,
   ): Promise<AgentListResponse> {
-    return this._get(
-      `/featured/agents?page=${page}&page_size=${pageSize}`
-    );
+    return this._get(`/featured/agents?page=${page}&page_size=${pageSize}`);
   }
 
   async searchAgents(
@@ -58,7 +59,7 @@ export default class MarketplaceAPI {
     categories?: string[],
     descriptionThreshold: number = 60,
     sortBy: string = "rank",
-    sortOrder: "asc" | "desc" = "desc"
+    sortOrder: "asc" | "desc" = "desc",
   ): Promise<AgentWithRank[]> {
     const queryParams = new URLSearchParams({
       query,
@@ -71,7 +72,7 @@ export default class MarketplaceAPI {
 
     if (categories && categories.length > 0) {
       categories.forEach((category) =>
-        queryParams.append("categories", category)
+        queryParams.append("categories", category),
       );
     }
 
@@ -80,7 +81,7 @@ export default class MarketplaceAPI {
 
   async getAgentDetails(
     id: string,
-    version?: number
+    version?: number,
   ): Promise<AgentDetailResponse> {
     const queryParams = new URLSearchParams();
     if (version) queryParams.append("version", version.toString());
@@ -89,7 +90,7 @@ export default class MarketplaceAPI {
 
   async downloadAgent(
     id: string,
-    version?: number
+    version?: number,
   ): Promise<AgentDetailResponse> {
     const queryParams = new URLSearchParams();
     if (version) queryParams.append("version", version.toString());
@@ -100,7 +101,7 @@ export default class MarketplaceAPI {
     const queryParams = new URLSearchParams();
     if (version) queryParams.append("version", version.toString());
     return this._getBlob(
-      `/agents/${id}/download-file?${queryParams.toString()}`
+      `/agents/${id}/download-file?${queryParams.toString()}`,
     );
   }
 
@@ -123,7 +124,7 @@ export default class MarketplaceAPI {
       console.warn(
         `GET ${path} returned non-OK response:`,
         errorData.detail,
-        response
+        response,
       );
       throw new Error(`HTTP error ${response.status}! ${errorData.detail}`);
     }
@@ -133,7 +134,7 @@ export default class MarketplaceAPI {
   private async _request(
     method: "GET" | "POST" | "PUT" | "PATCH",
     path: string,
-    payload?: { [key: string]: any }
+    payload?: { [key: string]: any },
   ) {
     if (method != "GET") {
       console.debug(`${method} ${path} payload:`, payload);
@@ -149,7 +150,7 @@ export default class MarketplaceAPI {
             },
             body: JSON.stringify(payload),
           }
-        : undefined
+        : undefined,
     );
     const response_data = await response.json();
 
@@ -157,7 +158,7 @@ export default class MarketplaceAPI {
       console.warn(
         `${method} ${path} returned non-OK response:`,
         response_data.detail,
-        response
+        response,
       );
       throw new Error(`HTTP error ${response.status}! ${response_data.detail}`);
     }

@@ -1,33 +1,48 @@
 "use client";
 
-import { useMemo, useState } from 'react';
-import Link from 'next/link';
-import { ArrowLeft, Download, Calendar, Tag, ChevronDown, ChevronUp } from 'lucide-react';
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  ArrowLeft,
+  Download,
+  Calendar,
+  Tag,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AgentDetailResponse } from "@/lib/marketplace-api";
-import dynamic from 'next/dynamic';
-import { Node, Edge, NodeTypes, EdgeTypes } from 'reactflow';
+import dynamic from "next/dynamic";
+import { Node, Edge, NodeTypes, EdgeTypes } from "reactflow";
 import MarketplaceAPI from "@/lib/marketplace-api";
 import AutoGPTServerAPI, { GraphCreatable } from "@/lib/autogpt-server-api";
 
-const ReactFlow = dynamic(() => import('reactflow').then((mod) => mod.default), { ssr: false });
-const Controls = dynamic(() => import('reactflow').then((mod) => mod.Controls), { ssr: false });
-const Background = dynamic(() => import('reactflow').then((mod) => mod.Background), { ssr: false });
+const ReactFlow = dynamic(
+  () => import("reactflow").then((mod) => mod.default),
+  { ssr: false },
+);
+const Controls = dynamic(
+  () => import("reactflow").then((mod) => mod.Controls),
+  { ssr: false },
+);
+const Background = dynamic(
+  () => import("reactflow").then((mod) => mod.Background),
+  { ssr: false },
+);
 
-import 'reactflow/dist/style.css';
-import CustomNode from './CustomNode';
-import { CustomEdge } from './CustomEdge';
-import ConnectionLine from './ConnectionLine';
-import { beautifyString } from '@/lib/utils';
+import "reactflow/dist/style.css";
+import CustomNode from "./CustomNode";
+import { CustomEdge } from "./CustomEdge";
+import ConnectionLine from "./ConnectionLine";
+import { beautifyString } from "@/lib/utils";
 
-function convertGraphToReactFlow(graph: any): { nodes: Node[], edges: Edge[] } {
+function convertGraphToReactFlow(graph: any): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = graph.nodes.map((node: any) => {
-    let label = node.block_id || 'Unknown';
+    let label = node.block_id || "Unknown";
     try {
-
       label = beautifyString(label);
     } catch (error) {
-      console.error('Error beautifying node label:', error);
+      console.error("Error beautifying node label:", error);
     }
 
     return {
@@ -37,9 +52,9 @@ function convertGraphToReactFlow(graph: any): { nodes: Node[], edges: Edge[] } {
         label,
         blockId: node.block_id,
         inputDefault: node.input_default || {},
-        ...node // Include all other node data
+        ...node, // Include all other node data
       },
-      type: 'custom',
+      type: "custom",
     };
   });
 
@@ -49,14 +64,14 @@ function convertGraphToReactFlow(graph: any): { nodes: Node[], edges: Edge[] } {
     target: link.sink_id,
     sourceHandle: link.source_name,
     targetHandle: link.sink_name,
-    type: 'custom',
+    type: "custom",
     data: {
       sourceId: link.source_id,
       targetId: link.sink_id,
       sourceName: link.source_name,
       targetName: link.sink_name,
-      isStatic: link.is_static
-    }
+      isStatic: link.is_static,
+    },
   }));
 
   return { nodes, edges };
@@ -81,7 +96,7 @@ async function installGraph(id: string): Promise<void> {
       description: agent.description,
       nodes: agent.graph.nodes,
       links: agent.graph.links,
-    }
+    };
     await serverAPI.createTemplate(data);
     console.log(`Agent installed successfully`);
   } catch (error) {
@@ -100,12 +115,17 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
       <div className="flex justify-between items-center mb-4">
-        <Link href="/marketplace" className="inline-flex items-center text-indigo-600 hover:text-indigo-500">
+        <Link
+          href="/marketplace"
+          className="inline-flex items-center text-indigo-600 hover:text-indigo-500"
+        >
           <ArrowLeft className="mr-2" size={20} />
           Back to Marketplace
         </Link>
-        <Button onClick={() => installGraph(agent.id)}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+        <Button
+          onClick={() => installGraph(agent.id)}
+          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        >
           <Download className="mr-2" size={16} />
           Download Agent
         </Button>
@@ -113,7 +133,9 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
         <div className="px-4 py-5 sm:px-6">
           <h1 className="text-3xl font-bold text-gray-900">{agent.name}</h1>
-          <p className="mt-1 max-w-2xl text-sm text-gray-500">{agent.description}</p>
+          <p className="mt-1 max-w-2xl text-sm text-gray-500">
+            {agent.description}
+          </p>
         </div>
         <div className="border-t border-gray-200 px-4 py-5 sm:p-0">
           <dl className="sm:divide-y sm:divide-gray-200">
@@ -132,7 +154,7 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
                 Categories
               </dt>
               <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                {agent.categories.join(', ')}
+                {agent.categories.join(", ")}
               </dd>
             </div>
           </dl>
@@ -143,10 +165,14 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
             onClick={() => setIsGraphExpanded(!isGraphExpanded)}
           >
             <span>Agent Graph</span>
-            {isGraphExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            {isGraphExpanded ? (
+              <ChevronUp size={20} />
+            ) : (
+              <ChevronDown size={20} />
+            )}
           </button>
           {isGraphExpanded && (
-            <div className="mt-4" style={{ height: '600px' }}>
+            <div className="mt-4" style={{ height: "600px" }}>
               <ReactFlow
                 nodes={nodes}
                 edges={edges}

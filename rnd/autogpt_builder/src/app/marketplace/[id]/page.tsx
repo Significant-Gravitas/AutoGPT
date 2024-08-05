@@ -1,8 +1,8 @@
-import { Suspense } from 'react';
-import { notFound } from 'next/navigation';
+import { Suspense } from "react";
+import { notFound } from "next/navigation";
 import MarketplaceAPI from "@/lib/marketplace-api";
 import { AgentDetailResponse } from "@/lib/marketplace-api";
-import AgentDetailContent from '@/components/AgentDetailContent';
+import AgentDetailContent from "@/components/AgentDetailContent";
 
 async function getAgentDetails(id: string): Promise<AgentDetailResponse> {
   const apiUrl = process.env.AGPT_MARKETPLACE_URL;
@@ -18,7 +18,11 @@ async function getAgentDetails(id: string): Promise<AgentDetailResponse> {
   }
 }
 
-export default async function AgentDetailPage({ params }: { params: { id: string } }) {
+export default async function AgentDetailPage({
+  params,
+}: {
+  params: { id: string };
+}) {
   let agent: AgentDetailResponse;
 
   try {
