@@ -74,5 +74,5 @@ async def add_schedule(schedule: ExecutionSchedule) -> ExecutionSchedule:
 
 async def update_schedule(schedule_id: str, is_enabled: bool, user_id: str):
     await AgentGraphExecutionSchedule.prisma().update(
-        where={{"id": schedule_id}, {"userId": user_id}}, data={"isEnabled": is_enabled}
+        where={"id": schedule_id}, data={"isEnabled": is_enabled}
     )

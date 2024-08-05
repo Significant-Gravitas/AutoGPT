@@ -569,7 +569,7 @@ class AgentServer(AppService):
         user_id: str = Depends(get_user_id),
     ):
         new_active_version = request_body.active_graph_version
-        if not await graph_db.get_graph(graph_id, new_active_version):
+        if not await graph_db.get_graph(graph_id, new_active_version, user_id=user_id):
             raise HTTPException(
                 404, f"Graph #{graph_id} v{new_active_version} not found"
             )
@@ -580,19 +580,27 @@ class AgentServer(AppService):
         )
 
     async def execute_graph(
-        self, graph_id: str, node_input: dict[Any, Any]
+        self,
+        graph_id: str,
+        node_input: dict[Any, Any],
+        user_id: str = Depends(get_user_id),
     ) -> dict[Any, Any]:
         try:
-            return self.execution_manager_client.add_execution(graph_id, node_input)
+            return self.execution_manager_client.add_execution(
+                graph_id, node_input, user_id=user_id
+            )
         except Exception as e:
             msg = e.__str__().encode().decode("unicode_escape")
             raise HTTPException(status_code=400, detail=msg)
 
     @classmethod
     async def list_graph_runs(
-        cls, graph_id: str, graph_version: int | None = None
+        cls,
+        graph_id: str,
+        graph_version: int | None = None,
+        user_id: str = Depends(get_user_id),
     ) -> list[str]:
-        graph = await graph_db.get_graph(graph_id, graph_version)
+        graph = await graph_db.get_graph(graph_id, graph_version, user_id=user_id)
         if not graph:
             rev = "" if graph_version is None else f" v{graph_version}"
             raise HTTPException(

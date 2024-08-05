@@ -1,11 +1,14 @@
 from pathlib import Path
 
+from prisma.models import User
+
 from autogpt_server.blocks.basic import ValueBlock
 from autogpt_server.blocks.block import BlockInstallationBlock
 from autogpt_server.blocks.http import HttpRequestBlock
 from autogpt_server.blocks.llm import TextLlmCallBlock
 from autogpt_server.blocks.text import TextFormatterBlock, TextParserBlock
 from autogpt_server.data.graph import Graph, Link, Node, create_graph
+from autogpt_server.data.user import get_or_create_user
 from autogpt_server.util.test import SpinTestServer, wait_execution
 
 sample_block_modules = {
@@ -21,6 +24,16 @@ for module, description in sample_block_modules.items():
     with open(file_path, "r") as f:
         code = "\n".join(["```python", f.read(), "```"])
         sample_block_codes[module] = f"[Example: {description}]\n{code}"
+
+
+async def create_test_user() -> User:
+    test_user_data = {
+        "sub": "ef3b97d7-1161-4eb4-92b2-10c24fb154c1",
+        "email": "testuser@example.com",
+        "name": "Test User",
+    }
+    user = await get_or_create_user(test_user_data)
+    return user
 
 
 def create_test_graph() -> Graph:
@@ -237,7 +250,8 @@ Here are a couple of sample of the Block class implementation:
 async def block_autogen_agent():
     async with SpinTestServer() as server:
         test_manager = server.exec_manager
-        test_graph = await create_graph(create_test_graph())
+        test_user = await create_test_user()
+        test_graph = await create_graph(create_test_graph(), user_id=test_user.id)
         input_data = {"input": "Write me a block that writes a string into a file."}
         response = await server.agent_server.execute_graph(test_graph.id, input_data)
         print(response)
