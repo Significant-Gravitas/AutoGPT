@@ -33,7 +33,7 @@ orjson = "^3.8.10"
 pydantic = "^2.7.2"
 python-dotenv = "^1.0.0"
 requests = "*"
-sentry-sdk = "^2.11.0"
+sentry-sdk = "^1.40.4"
 
 # Benchmarking
 agbenchmark = { path = "../benchmark", optional = true }
