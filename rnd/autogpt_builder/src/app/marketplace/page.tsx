@@ -28,7 +28,7 @@ type Agent = AgentResponse | AgentWithRank;
 // Components
 const HeroSection: React.FC = () => (
   <div className="relative bg-indigo-600 py-6">
-    <div className="absolute inset-0">
+    <div className="absolute inset-0 z-0">
       <img
         className="w-full h-full object-cover opacity-20"
         src="https://images.unsplash.com/photo-1562408590-e32931084e23?auto=format&fit=crop&w=2070&q=80"
