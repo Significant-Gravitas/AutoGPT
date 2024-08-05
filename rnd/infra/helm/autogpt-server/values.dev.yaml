@@ -1,0 +1,83 @@
+# dev values, overwrite base values as needed.
+
+image:
+  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-server-dev/agpt-server-dev
+  pullPolicy: Always
+  tag: "latest"
+
+serviceAccount:
+  annotations:
+    iam.gke.io/gcp-service-account: "dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
+  name: "dev-agpt-server-sa"
+
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 8000
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+
+ingress:
+  enabled: true
+  className: "gce"
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: "agpt-dev-agpt-server-ip"
+    networking.gke.io/managed-certificates: "autogpt-server-cert"
+    kubernetes.io/ingress.allow-http: "true"
+  hosts:
+    - host: dev-server.agpt.co
+      paths:
+        - path: /
+          pathType: Prefix
+      backend:
+        service:
+          name: autogpt-server
+          port: 8000
+  defaultBackend:
+    service:
+      name: autogpt-server
+      port:
+        number: 8000
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+livenessProbe:
+  httpGet:
+    path: /docs
+    port: 8000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+readinessProbe:
+  httpGet:
+    path: /docs
+    port: 8000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+domain: "dev-server.agpt.co"
+
+cloudSqlProxy:
+  image:
+    repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
+    tag: 2.11.4
+  instanceConnectionName: "agpt-dev:us-central1:agpt-server-dev"
+  port: 5432
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "1"
+
+env:
+  APP_ENV: "dev"
+  PYRO_HOST: "0.0.0.0"

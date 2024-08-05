@@ -1,4 +1,4 @@
-import { BlockSchema } from "@/lib/types";
+import { BlockIOSchema } from "@/lib/autogpt-server-api/types";
 import { beautifyString, getTypeBgColor, getTypeTextColor } from "@/lib/utils";
 import { FC } from "react";
 import { Handle, Position } from "reactflow";
@@ -6,12 +6,13 @@ import SchemaTooltip from "./SchemaTooltip";
 
 type HandleProps = {
   keyName: string,
-  schema: BlockSchema,
+  schema: BlockIOSchema,
   isConnected: boolean,
+  isRequired?: boolean,
   side: 'left' | 'right'
 }
 
-const NodeHandle: FC<HandleProps> = ({ keyName, isConnected, schema, side }) => {
+const NodeHandle: FC<HandleProps> = ({ keyName, schema, isConnected, isRequired, side }) => {
 
   const typeName: Record<string, string> = {
     string: 'text',
@@ -26,7 +27,9 @@ const NodeHandle: FC<HandleProps> = ({ keyName, isConnected, schema, side }) => 
 
   const label = (
     <div className="flex flex-col flex-grow">
-      <span className="text-m text-gray-900 -mb-1 green">{schema.title || beautifyString(keyName)}</span>
+      <span className="text-m text-gray-900 -mb-1 green">
+        {schema.title || beautifyString(keyName)}{isRequired ? '*' : ''}
+      </span>
       <span className={typeClass}>{typeName[schema.type]}</span>
     </div>
   );

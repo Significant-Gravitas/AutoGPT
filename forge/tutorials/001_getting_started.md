@@ -1,6 +1,6 @@
 ## [AutoGPT Forge Part 1: A Comprehensive Guide to Your First Steps](https://aiedge.medium.com/autogpt-forge-a-comprehensive-guide-to-your-first-steps-a1dfdf46e3b4)
 
-![Header](../../../docs/content/imgs/quickstart/000_header_img.png)
+![Header](..%2F..%2F..%2Fdocs/content/imgs/quickstart/000_header_img.png)
 
 **Written by Craig Swift & [Ryan Brandt](https://github.com/paperMoose)**
 
@@ -15,22 +15,22 @@ The Forge serves as a comprehensive template for building your own AutoGPT agent
 
 To begin, you need to fork the [repository](https://github.com/Significant-Gravitas/AutoGPT) by navigating to the main page of the repository and clicking **Fork** in the top-right corner. 
 
-![The Github repository](../../../docs/content/imgs/quickstart/001_repo.png)
+![The Github repository](..%2F..%2F..%2Fdocs/content/imgs/quickstart/001_repo.png)
 
 Follow the on-screen instructions to complete the process. 
 
-![Create Fork Page](../../../docs/content/imgs/quickstart/002_fork.png)
+![Create Fork Page](..%2F..%2F..%2Fdocs/content/imgs/quickstart/002_fork.png)
 
 ### Cloning the Repository
 Next, clone your newly forked repository to your local system. Ensure you have Git installed to proceed with this step. You can download Git from [here](https://git-scm.com/downloads). Then clone the repo using the following command and the url for your repo. You can find the correct url by clicking on the green Code button on your repos main page.
-![img_1.png](../../../docs/content/imgs/quickstart/003A_clone.png)
+![img_1.png](..%2F..%2F..%2Fdocs/content/imgs/quickstart/003A_clone.png)
 
 ```bash
 # replace the url with the one for your forked repo
 git clone https://github.com/<YOUR REPO PATH HERE>
 ```
 
-![Clone the Repository](../../../docs/content/imgs/quickstart/003_clone.png)
+![Clone the Repository](..%2F..%2F..%2Fdocs/content/imgs/quickstart/003_clone.png)
 
 ### Setting up the Project
 
@@ -41,8 +41,8 @@ cd AutoGPT
 ```
 To set up the project, utilize the `./run setup` command in the terminal. Follow the instructions to install necessary dependencies and set up your GitHub access token.
 
-![Setup the Project](../../../docs/content/imgs/quickstart/005_setup.png)
-![Setup Complete](../../../docs/content/imgs/quickstart/006_setup_complete.png)
+![Setup the Project](..%2F..%2F..%2Fdocs/content/imgs/quickstart/005_setup.png)
+![Setup Complete](..%2F..%2F..%2Fdocs/content/imgs/quickstart/006_setup_complete.png)
 
 ## Section 3: Creating Your Agent
 
@@ -55,7 +55,7 @@ Create your agent template using the command:
  ```
  Replacing YOUR_AGENT_NAME with the name you chose in the previous step.
 
-![Create an Agent](../../../docs/content/imgs/quickstart/007_create_agent.png)
+![Create an Agent](..%2F..%2F..%2Fdocs/content/imgs/quickstart/007_create_agent.png)
 
 ## Section 4: Running Your Agent
 
@@ -66,13 +66,13 @@ Begin by starting your agent using the command:
 ```
 This will initiate the agent on `http://localhost:8000/`.
 
-![Start the Agent](../../../docs/content/imgs/quickstart/009_start_agent.png)
+![Start the Agent](..%2F..%2F..%2Fdocs/content/imgs/quickstart/009_start_agent.png)
 
 ### Logging in and Sending Tasks to Your Agent
 Access the frontend at `http://localhost:8000/` and log in using a Google or GitHub account. Once you're logged you'll see the agent tasking interface! However... the agent won't do anything yet. We'll implement the logic for our agent to run tasks in the upcoming tutorial chapters. 
 
-![Login](../../../docs/content/imgs/quickstart/010_login.png)
-![Home](../../../docs/content/imgs/quickstart/011_home.png)
+![Login](..%2F..%2F..%2Fdocs/content/imgs/quickstart/010_login.png)
+![Home](..%2F..%2F..%2Fdocs/content/imgs/quickstart/011_home.png)
 
 ### Stopping and Restarting Your Agent
 When needed, use Ctrl+C to end the session or use the stop command:
