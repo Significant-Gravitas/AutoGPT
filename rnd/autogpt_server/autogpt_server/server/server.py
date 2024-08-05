@@ -461,6 +461,7 @@ class AgentServer(AppService):
                     400, detail=f"Template #{create_graph.template_id} not found"
                 )
             graph.version = 1
+            graph.id = str(uuid.uuid4())
         else:
             raise HTTPException(
                 status_code=400, detail="Either graph or template_id must be provided."
