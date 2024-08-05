@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 if TYPE_CHECKING:
     from autogpt_server.server.server import AgentServer
 
+from autogpt_server.blocks.basic import InputBlock
 from autogpt_server.data import db
 from autogpt_server.data.block import Block, BlockData, BlockInput, get_block
 from autogpt_server.data.execution import (
@@ -419,10 +420,16 @@ class ExecutionManager(AppService):
         graph: Graph | None = self.run_and_wait(get_graph(graph_id))
         if not graph:
             raise Exception(f"Graph #{graph_id} not found.")
+        graph.validate_graph()
 
         nodes_input = []
         for node in graph.starting_nodes:
-            input_data, error = validate_exec(node, data)
+            if isinstance(get_block(node.block_id), InputBlock):
+                input_data = {"input": data}
+            else:
+                input_data = {}
+
+            input_data, error = validate_exec(node, input_data)
             if not input_data:
                 raise Exception(error)
             else:

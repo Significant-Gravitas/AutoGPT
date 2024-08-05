@@ -1,18 +1,27 @@
 import {
     DropdownMenu,
-    DropdownMenuContent, DropdownMenuItem,
-    DropdownMenuTrigger
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
-import { Menu } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { CircleUser, Menu, SquareActivity, Workflow } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import React from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Pencil1Icon, TimerIcon, ArchiveIcon } from "@radix-ui/react-icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Image from "next/image";
+import getServerUser from "@/hooks/getServerUser";
+import ProfileDropdown from "./ProfileDropdown";
 
-export function NavBar() {
+export async function NavBar() {
+    const isAvailable = Boolean(
+        process.env.NEXT_PUBLIC_SUPABASE_URL &&
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    );
+    const { user } = await getServerUser();
+
     return (
         <header className="sticky top-0 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
             <div className="flex items-center gap-4 flex-1">
@@ -33,13 +42,13 @@ export function NavBar() {
                                 href="/monitor"
                                 className="text-muted-foreground hover:text-foreground flex flex-row gap-2 "
                             >
-                                <TimerIcon className="size-6" /> Monitor
+                                <SquareActivity className="size-6" /> Monitor
                             </Link>
                             <Link
                                 href="/build"
                                 className="text-muted-foreground hover:text-foreground flex flex-row gap-2"
                             >
-                                <Pencil1Icon className="size-6" /> Build
+                                <Workflow className="size-6" /> Build
                             </Link>
                             <Link
                                 href="/marketplace"
@@ -55,13 +64,13 @@ export function NavBar() {
                         href="/monitor"
                         className="text-muted-foreground hover:text-foreground flex flex-row gap-2 items-center"
                     >
-                        <TimerIcon className="size-4" /> Monitor
+                        <SquareActivity className="size-4" /> Monitor
                     </Link>
                     <Link
                         href="/build"
                         className="text-muted-foreground hover:text-foreground flex flex-row gap-2 items-center"
                     >
-                        <Pencil1Icon className="size-4" /> Build
+                        <Workflow className="size-4" /> Build
                     </Link>
                     <Link
                         href="/marketplace"
@@ -89,22 +98,16 @@ export function NavBar() {
                 </a>
             </div>
             <div className="flex items-center gap-4 flex-1 justify-end">
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="size-8">
-                            <Avatar>
-                                <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
-                                <AvatarFallback>CN</AvatarFallback>
-                            </Avatar>
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuItem>Profile</DropdownMenuItem>
-                        <DropdownMenuItem>Settings</DropdownMenuItem>
-                        <DropdownMenuItem>Switch Workspace</DropdownMenuItem>
-                        <DropdownMenuItem>Log out</DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                {isAvailable && !user && (
+                    <Link
+                        href="/login"
+                        className="text-muted-foreground hover:text-foreground flex flex-row gap-2 items-center"
+                    >
+                        Log In
+                        <CircleUser className="size-5" />
+                    </Link>
+                )}
+                {isAvailable && user && <ProfileDropdown />}
             </div>
         </header>
     );

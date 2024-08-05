@@ -7,7 +7,8 @@ import prisma.types
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink
 from pydantic import PrivateAttr
 
-from autogpt_server.data.block import BlockInput
+from autogpt_server.blocks.basic import InputBlock, OutputBlock
+from autogpt_server.data.block import BlockInput, get_block
 from autogpt_server.data.db import BaseDbModel
 from autogpt_server.util import json
 
@@ -92,7 +93,68 @@ class Graph(GraphMeta):
     @property
     def starting_nodes(self) -> list[Node]:
         outbound_nodes = {link.sink_id for link in self.links}
-        return [node for node in self.nodes if node.id not in outbound_nodes]
+        input_nodes = {
+            v.id for v in self.nodes if isinstance(get_block(v.block_id), InputBlock)
+        }
+        return [
+            node
+            for node in self.nodes
+            if node.id not in outbound_nodes or node.id in input_nodes
+        ]
+
+    @property
+    def ending_nodes(self) -> list[Node]:
+        return [v for v in self.nodes if isinstance(get_block(v.block_id), OutputBlock)]
+
+    def validate_graph(self):
+
+        def sanitize(name):
+            return name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
+
+        # Check if all required fields are filled or connected, except for InputBlock.
+        for node in self.nodes:
+            block = get_block(node.block_id)
+            if block is None:
+                raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
+
+            provided_inputs = set(
+                [sanitize(name) for name in node.input_default]
+                + [sanitize(link.sink_name) for link in node.input_links]
+            )
+            for name in block.input_schema.get_required_fields():
+                if name not in provided_inputs and not isinstance(block, InputBlock):
+                    raise ValueError(
+                        f"Node {block.name} #{node.id} required input missing: `{name}`"
+                    )
+
+        # Check if all links are connected compatible pin data type.
+        for link in self.links:
+            source_id = link.source_id
+            sink_id = link.sink_id
+            suffix = f"Link {source_id}<->{sink_id}"
+
+            source_node = next((v for v in self.nodes if v.id == source_id), None)
+            if not source_node:
+                raise ValueError(f"{suffix}, {source_id} is invalid node.")
+            sink_node = next((v for v in self.nodes if v.id == sink_id), None)
+            if not sink_node:
+                raise ValueError(f"{suffix}, {sink_id} is invalid node.")
+
+            source_block = get_block(source_node.block_id)
+            if not source_block:
+                raise ValueError(f"{suffix}, {source_node.block_id} is invalid block.")
+            sink_block = get_block(sink_node.block_id)
+            if not sink_block:
+                raise ValueError(f"{suffix}, {sink_node.block_id} is invalid block.")
+
+            source_name = sanitize(link.source_name)
+            if source_name not in source_block.output_schema.get_fields():
+                raise ValueError(f"{suffix}, `{source_name}` is invalid output pin.")
+            sink_name = sanitize(link.sink_name)
+            if sink_name not in sink_block.input_schema.get_fields():
+                raise ValueError(f"{suffix}, `{sink_name}` is invalid input pin.")
+
+            # TODO: Add type compatibility check here.
 
     @staticmethod
     def from_db(graph: AgentGraph):
