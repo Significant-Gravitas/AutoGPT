@@ -446,7 +446,7 @@ const NodeStringInput: FC<{
             />
             <Button
               variant="ghost" size="icon"
-              className="absolute inset-1 left-auto h-7 w-8 rounded-[0.25rem]"
+              className="absolute inset-1 left-auto h-7 w-7 rounded-[0.25rem]"
               onClick={() => handleInputClick(selfKey)}
               title="Open a larger textbox input"
             >

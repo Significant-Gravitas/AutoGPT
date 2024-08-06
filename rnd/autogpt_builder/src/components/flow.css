@@ -11,10 +11,6 @@ code {
     monospace;
 }
 
-button:hover {
-  background-color: #666;
-}
-
 input,
 textarea {
   background-color: #ffffff;
