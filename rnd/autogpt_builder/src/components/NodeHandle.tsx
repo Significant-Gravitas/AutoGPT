@@ -51,7 +51,7 @@ const NodeHandle: FC<HandleProps> = ({
           type="target"
           position={Position.Left}
           id={keyName}
-          className="group -ml-[29px]"
+          className="group -ml-[26px]"
         >
           <div className="pointer-events-none flex items-center">
             {dot}
@@ -68,7 +68,7 @@ const NodeHandle: FC<HandleProps> = ({
           type="source"
           position={Position.Right}
           id={keyName}
-          className="group -mr-[29px]"
+          className="group -mr-[26px]"
         >
           <div className="pointer-events-none flex items-center">
             {label}
