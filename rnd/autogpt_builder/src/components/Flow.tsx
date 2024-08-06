@@ -513,7 +513,8 @@ const FlowEditor: React.FC<{
     }
 
     const getNestedData = (
-      schema: BlockIOSubSchema, values: { [key: string]: any }
+      schema: BlockIOSubSchema,
+      values: { [key: string]: any },
     ): { [key: string]: any } => {
       let inputData: { [key: string]: any } = {};
 
@@ -678,7 +679,10 @@ const FlowEditor: React.FC<{
         // Populate errors if validation fails
         validate.errors?.forEach((error) => {
           // Skip error if there's an edge connected
-          const path = 'dataPath' in error ? error.dataPath as string : error.instancePath;
+          const path =
+            "dataPath" in error
+              ? (error.dataPath as string)
+              : error.instancePath;
           const handle = path.split(/[\/.]/)[0];
           if (
             node.data.connections.some(

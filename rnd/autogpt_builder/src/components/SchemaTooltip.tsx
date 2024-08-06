@@ -3,7 +3,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip"
+} from "@/components/ui/tooltip";
 import { BlockIOSubSchema } from "@/lib/autogpt-server-api/types";
 import { Info } from "lucide-react";
 import ReactMarkdown from "react-markdown";

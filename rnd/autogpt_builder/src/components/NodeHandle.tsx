@@ -5,10 +5,10 @@ import { Handle, Position } from "reactflow";
 import SchemaTooltip from "./SchemaTooltip";
 
 type HandleProps = {
-  keyName: string,
-  schema: BlockIOSubSchema,
-  isConnected: boolean,
-  isRequired?: boolean,
+  keyName: string;
+  schema: BlockIOSubSchema;
+  isConnected: boolean;
+  isRequired?: boolean;
   side: "left" | "right";
 };
 
@@ -36,12 +36,14 @@ const NodeHandle: FC<HandleProps> = ({
         {schema.title || beautifyString(keyName)}
         {isRequired ? "*" : ""}
       </span>
-      <span className={typeClass}>{typeName[schema.type] || 'any'}</span>
+      <span className={typeClass}>{typeName[schema.type] || "any"}</span>
     </div>
   );
 
   const dot = (
-    <div className={`w-4 h-4 m-1 ${isConnected ? getTypeBgColor(schema.type || 'any') : 'bg-gray-600'} rounded-full transition-colors duration-100 group-hover:bg-gray-300`} />
+    <div
+      className={`w-4 h-4 m-1 ${isConnected ? getTypeBgColor(schema.type || "any") : "bg-gray-600"} rounded-full transition-colors duration-100 group-hover:bg-gray-300`}
+    />
   );
 
   if (side === "left") {

@@ -34,7 +34,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
 
   const onEdgeRemoveClick = () => {
     setEdges((edges) => edges.filter((edge) => edge.id !== id));
-  }
+  };
 
   const [path, labelX, labelY] = getBezierPath({
     sourceX: sourceX - 5,
@@ -103,7 +103,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
           <button
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
-            className={`edge-label-button ${isHovered ? 'visible' : ''}`}
+            className={`edge-label-button ${isHovered ? "visible" : ""}`}
             onClick={onEdgeRemoveClick}
           >
             <X className="size-4" />

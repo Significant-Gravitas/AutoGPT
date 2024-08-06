@@ -75,15 +75,20 @@ export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
 
 // At the time of writing, combined schemas only occur on the first nested level in a
 // block schema. It is typed this way to make the use of these objects less tedious.
-type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & ({
-  allOf: [BlockIOSimpleTypeSubSchema];
-} | {
-  anyOf: BlockIOSimpleTypeSubSchema[];
-  default?: string | number | boolean | null;
-} | {
-  oneOf: BlockIOSimpleTypeSubSchema[];
-  default?: string | number | boolean | null;
-});
+type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta &
+  (
+    | {
+        allOf: [BlockIOSimpleTypeSubSchema];
+      }
+    | {
+        anyOf: BlockIOSimpleTypeSubSchema[];
+        default?: string | number | boolean | null;
+      }
+    | {
+        oneOf: BlockIOSimpleTypeSubSchema[];
+        default?: string | number | boolean | null;
+      }
+  );
 
 /* Mirror of autogpt_server/data/graph.py:Node */
 export type Node = {

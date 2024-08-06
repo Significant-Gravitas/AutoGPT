@@ -36,7 +36,11 @@ interface ControlPanelProps {
  * @param {string} ControlPanelProps.className - Additional CSS class names for the control panel.
  * @returns The rendered control panel component.
  */
-export const ControlPanel = ({ controls, children, className }: ControlPanelProps) => {
+export const ControlPanel = ({
+  controls,
+  children,
+  className,
+}: ControlPanelProps) => {
   return (
     <aside className={cn("hidden w-14 flex-col sm:flex", className)}>
       <Card>

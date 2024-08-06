@@ -173,7 +173,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           keys.push({ key: currentKey, index: parseInt(match[2], 10) });
           currentKey = null;
         } else {
-          throw new Error('Invalid key format: array index without a key');
+          throw new Error("Invalid key format: array index without a key");
         }
       }
     }
@@ -257,11 +257,11 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   const handleHovered = () => {
     setIsHovered(true);
-  }
+  };
 
   const handleMouseLeave = () => {
     setIsHovered(false);
-  }
+  };
 
   const deleteNode = useCallback(() => {
     console.log("Deleting node:", id);
@@ -347,34 +347,38 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       <div className="flex justify-between items-start gap-2">
         <div>
           {data.inputSchema &&
-            Object.entries(data.inputSchema.properties).map(([propKey, propSchema]) => {
-              const isRequired = data.inputSchema.required?.includes(propKey);
-              return (
-                (isRequired || isAdvancedOpen) && (
-                  <div key={propKey} onMouseOver={() => { }}>
-                    <NodeHandle
-                      keyName={propKey}
-                      isConnected={isHandleConnected(propKey)}
-                      isRequired={isRequired}
-                      schema={propSchema}
-                      side="left"
-                    />
-                    {!isHandleConnected(propKey) &&
-                      <NodeGenericInputField
-                        className="mt-1 mb-2"
-                        propKey={propKey}
-                        propSchema={propSchema}
-                        currentValue={getValue(propKey)}
-                        handleInputChange={handleInputChange}
-                        handleInputClick={handleInputClick}
-                        errors={data.errors ?? {}}
-                        displayName={propSchema.title || beautifyString(propKey)}
+            Object.entries(data.inputSchema.properties).map(
+              ([propKey, propSchema]) => {
+                const isRequired = data.inputSchema.required?.includes(propKey);
+                return (
+                  (isRequired || isAdvancedOpen) && (
+                    <div key={propKey} onMouseOver={() => {}}>
+                      <NodeHandle
+                        keyName={propKey}
+                        isConnected={isHandleConnected(propKey)}
+                        isRequired={isRequired}
+                        schema={propSchema}
+                        side="left"
                       />
-                    }
-                  </div>
-                )
-              );
-            })}
+                      {!isHandleConnected(propKey) && (
+                        <NodeGenericInputField
+                          className="mt-1 mb-2"
+                          propKey={propKey}
+                          propSchema={propSchema}
+                          currentValue={getValue(propKey)}
+                          handleInputChange={handleInputChange}
+                          handleInputClick={handleInputClick}
+                          errors={data.errors ?? {}}
+                          displayName={
+                            propSchema.title || beautifyString(propKey)
+                          }
+                        />
+                      )}
+                    </div>
+                  )
+                );
+              },
+            )}
         </div>
         <div className="flex-none">
           {data.outputSchema && generateOutputHandles(data.outputSchema)}
@@ -407,11 +411,11 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       )}
       <div className="flex items-center mt-2.5">
         <Switch onCheckedChange={toggleOutput} />
-        <span className='m-1 mr-4'>Output</span>
+        <span className="m-1 mr-4">Output</span>
         {hasOptionalFields() && (
           <>
             <Switch onCheckedChange={toggleAdvancedSettings} />
-            <span className='m-1'>Advanced</span>
+            <span className="m-1">Advanced</span>
           </>
         )}
       </div>
