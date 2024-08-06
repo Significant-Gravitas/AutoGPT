@@ -7,8 +7,14 @@ import AutoGPTServerAPI, {
 } from "@/lib/autogpt-server-api";
 
 import { Card } from "@/components/ui/card";
-import {FlowRun} from "@/lib/types";
-import {AgentFlowList, FlowInfo, FlowRunInfo, FlowRunsList, FlowRunsStats} from "@/components/monitor";
+import { FlowRun } from "@/lib/types";
+import {
+  AgentFlowList,
+  FlowInfo,
+  FlowRunInfo,
+  FlowRunsList,
+  FlowRunsStats,
+} from "@/components/monitor";
 
 const Monitor = () => {
   const [flows, setFlows] = useState<GraphMeta[]>([]);
