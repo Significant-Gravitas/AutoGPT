@@ -1,38 +1,38 @@
-'use client';
-import React, { useEffect, useState } from 'react';
-import { Button } from './ui/button';
+"use client";
+import React, { useEffect, useState } from "react";
+import { Button } from "./ui/button";
 
 const TallyPopupSimple = () => {
   const [isFormVisible, setIsFormVisible] = useState(false);
 
   useEffect(() => {
     // Load Tally script
-    const script = document.createElement('script');
+    const script = document.createElement("script");
     script.src = "https://tally.so/widgets/embed.js";
     script.async = true;
     document.head.appendChild(script);
 
     // Setup event listeners for Tally events
     const handleTallyMessage = (event: MessageEvent) => {
-      if (typeof event.data === 'string') {
+      if (typeof event.data === "string") {
         try {
           const data = JSON.parse(event.data);
-          if (data.event === 'Tally.FormLoaded') {
+          if (data.event === "Tally.FormLoaded") {
             setIsFormVisible(true);
-          } else if (data.event === 'Tally.PopupClosed') {
+          } else if (data.event === "Tally.PopupClosed") {
             setIsFormVisible(false);
           }
         } catch (error) {
-          console.error('Error parsing Tally message:', error);
+          console.error("Error parsing Tally message:", error);
         }
       }
     };
 
-    window.addEventListener('message', handleTallyMessage);
+    window.addEventListener("message", handleTallyMessage);
 
     return () => {
       document.head.removeChild(script);
-      window.removeEventListener('message', handleTallyMessage);
+      window.removeEventListener("message", handleTallyMessage);
     };
   }, []);
 
