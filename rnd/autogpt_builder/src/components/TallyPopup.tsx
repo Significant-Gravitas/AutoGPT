@@ -1,8 +1,10 @@
 'use client';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from './ui/button';
 
 const TallyPopupSimple = () => {
+  const [isFormVisible, setIsFormVisible] = useState(false);
+
   useEffect(() => {
     // Load Tally script
     const script = document.createElement('script');
@@ -10,28 +12,45 @@ const TallyPopupSimple = () => {
     script.async = true;
     document.head.appendChild(script);
 
+    // Setup event listeners for Tally events
+    const handleTallyMessage = (event: MessageEvent) => {
+      if (typeof event.data === 'string') {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.event === 'Tally.FormLoaded') {
+            setIsFormVisible(true);
+          } else if (data.event === 'Tally.PopupClosed') {
+            setIsFormVisible(false);
+          }
+        } catch (error) {
+          console.error('Error parsing Tally message:', error);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleTallyMessage);
+
     return () => {
       document.head.removeChild(script);
+      window.removeEventListener('message', handleTallyMessage);
     };
   }, []);
 
+  if (isFormVisible) {
+    return null; // Hide the button when the form is visible
+  }
 
   return (
-    <>
-      <>
-      </>
-      <div className="fixed bottom-6 right-6 p-3 bg-primary text-primary-foreground shadow-lg transition-all duration-300 ease-in-out z-50">
-        <Button
-          data-tally-open="3yx2L0"
-          data-tally-emoji-text="👋"
-          data-tally-emoji-animation="wave"
-          data-tally-emoji-size="200"
-        >
-          Give Feedback
-        </Button>
-
-      </div>
-    </>
+    <div className="fixed bottom-6 right-6 p-3 bg-primary text-primary-foreground shadow-lg transition-all duration-300 ease-in-out z-50">
+      <Button
+        data-tally-open="3yx2L0"
+        data-tally-emoji-text="👋"
+        data-tally-emoji-animation="wave"
+        data-tally-emoji-size="200"
+      >
+        Give Feedback
+      </Button>
+    </div>
   );
 };
 
