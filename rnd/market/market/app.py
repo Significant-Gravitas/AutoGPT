@@ -12,6 +12,7 @@ import sentry_sdk.integrations.asyncio
 import sentry_sdk.integrations.fastapi
 import sentry_sdk.integrations.starlette
 
+import autogpt_libs.auth.middleware
 import market.routes.admin
 import market.routes.agents
 import market.routes.search
