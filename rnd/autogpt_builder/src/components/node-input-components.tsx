@@ -37,7 +37,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
   className,
   displayName,
 }) => {
-  // object ??= ("default" in schema ? schema.default : null) ?? {};
+  object ??= ("default" in schema ? schema.default : null) ?? {};
   return (
     <div className={cn(className, 'flex-col w-full')}>
       {displayName && <strong>{displayName}</strong>}
@@ -499,7 +499,7 @@ const NodeBooleanInput: FC<{
   return (
     <div className={className}>
       <div className="flex items-center nodrag">
-        <Switch className='pl-[2px]' checked={value} onCheckedChange={v => handleInputChange(selfKey, v)} />
+        <Switch checked={value} onCheckedChange={v => handleInputChange(selfKey, v)} />
         <span className="ml-3">{displayName}</span>
       </div>
       {error && <span className="error-message">{error}</span>}
