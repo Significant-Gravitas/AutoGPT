@@ -215,4 +215,10 @@ If you would like to implement one of these blocks, open a pull request and we w
 - Read / Get most read books in a given month, year, etc from GoodReads or Amazon Books, etc
 - Get dates for specific shows across all streaming services
   - Suggest/Recommend/Get most watched shows in a given month, year, etc across all streaming platforms
+- Data analysis from xlsx data set
+   - Gather via Excel or Google Sheets data > Sample the data randomly (sample block takes top X, bottom X, randomly, etc) > pass that to LLM Block to generate a script for analysis of the full data > Python block to run the script> making a loop back through LLM Fix Block on error > create chart/visualization (potentially in the code block?) > show the image as output (this may require frontend changes to show)
+- Tiktok video search and download
 
+### Marketing 
+
+- Portfolio site design and enhancements
