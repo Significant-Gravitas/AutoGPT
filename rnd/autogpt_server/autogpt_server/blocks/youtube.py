@@ -7,7 +7,7 @@ from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.data.model import SchemaField
 
 
-class YouTubeTranscriber(Block):
+class YouTubeTranscriberBlock(Block):
     class Input(BlockSchema):
         youtube_url: str = SchemaField(
             description="The URL of the YouTube video to transcribe",
@@ -24,8 +24,8 @@ class YouTubeTranscriber(Block):
     def __init__(self):
         super().__init__(
             id="f3a8f7e1-4b1d-4e5f-9f2a-7c3d5a2e6b4c",
-            input_schema=YouTubeTranscriber.Input,
-            output_schema=YouTubeTranscriber.Output,
+            input_schema=YouTubeTranscriberBlock.Input,
+            output_schema=YouTubeTranscriberBlock.Output,
             test_input={"youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
             test_output=[
                 ("video_id", "dQw4w9WgXcQ"),
