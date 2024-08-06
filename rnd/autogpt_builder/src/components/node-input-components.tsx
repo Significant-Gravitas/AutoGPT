@@ -303,7 +303,7 @@ const NodeKeyValueInput: FC<{
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
           <div key={index}>
-            <div className="flex items-center space-x-2 mb-2">
+            <div className="flex items-center space-x-2 mb-2 nodrag">
               <Input
                 type="text"
                 placeholder="Key"
