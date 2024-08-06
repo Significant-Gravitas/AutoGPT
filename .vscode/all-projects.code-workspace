@@ -29,12 +29,16 @@
       "path": "../rnd/autogpt_builder"
     },
     {
+      "name": "market",
+      "path": "../rnd/market"
+    },
+    {
       "name": "[root]",
       "path": ".."
     }
   ],
   "settings": {
-    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.typeCheckingMode": "basic"
   },
   "extensions": {
     "recommendations": [
