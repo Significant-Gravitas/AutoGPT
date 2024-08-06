@@ -40,7 +40,7 @@ jobs:
         uses: ikalnytskyi/action-setup-postgres@v6
         with:
           username: ${{ secrets.DB_USER || 'postgres' }}
-          password: ${{ secrets.DB_PASS || 'postgres' }}
+          password: ${{ secrets.DB_PASS || ' ' }}
           database: postgres
           port: 5432
         id: postgres
