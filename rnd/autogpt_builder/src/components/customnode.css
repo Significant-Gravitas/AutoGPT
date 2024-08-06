@@ -23,40 +23,6 @@
   margin-right: 10px;
 }
 
-.node-action-button {
-  width: 32px;
-  /* Increased size */
-  height: 32px;
-  /* Increased size */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: #f3f4f6;
-  /* Light gray background */
-  border: 1px solid #d1d5db;
-  /* Light border */
-  border-radius: 6px;
-  color: #4b5563;
-  transition: all 0.2s ease-in-out;
-  cursor: pointer;
-}
-
-.node-action-button:hover {
-  background-color: #e5e7eb;
-  color: #1f2937;
-}
-
-.node-action-button:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
-}
-
-.node-action-button svg {
-  width: 18px;
-  /* Increased icon size */
-  height: 18px;
-  /* Increased icon size */
-}
 /* Existing styles */
 .handle-container {
   display: flex;

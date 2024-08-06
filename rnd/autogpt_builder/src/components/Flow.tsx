@@ -838,17 +838,17 @@ const FlowEditor: React.FC<{
   const editorControls: Control[] = [
     {
       label: "Undo",
-      icon: <Undo2 />,
+      icon: <Undo2 size={18} />,
       onClick: handleUndo,
     },
     {
       label: "Redo",
-      icon: <Redo2 />,
+      icon: <Redo2 size={18} />,
       onClick: handleRedo,
     },
     {
       label: "Run",
-      icon: <Play />,
+      icon: <Play size={18} />,
       onClick: runAgent,
     },
   ];
@@ -876,17 +876,15 @@ const FlowEditor: React.FC<{
         onNodeDragStart={onNodesChangeStart}
         onNodeDragStop={onNodesChangeEnd}
       >
-        <div className={"flex flex-row absolute z-10 gap-2"}>
-          <ControlPanel controls={editorControls}>
-            <BlocksControl blocks={availableNodes} addBlock={addNode} />
-            <SaveControl
-              agentMeta={savedAgent}
-              onSave={saveAgent}
-              onDescriptionChange={setAgentDescription}
-              onNameChange={setAgentName}
-            />
-          </ControlPanel>
-        </div>
+        <ControlPanel className="absolute z-10" controls={editorControls}>
+          <BlocksControl blocks={availableNodes} addBlock={addNode} />
+          <SaveControl
+            agentMeta={savedAgent}
+            onSave={saveAgent}
+            onDescriptionChange={setAgentDescription}
+            onNameChange={setAgentName}
+          />
+        </ControlPanel>
       </ReactFlow>
     </div>
   );

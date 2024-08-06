@@ -16,6 +16,7 @@ import {
   NodeExecutionResult,
 } from "@/lib/autogpt-server-api/types";
 import { beautifyString, setNestedProperty } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Copy, Trash2 } from "lucide-react";
 import { history } from "./history";
@@ -323,20 +324,22 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         <div className="flex gap-[5px]">
           {isHovered && (
             <>
-              <button
-                className="node-action-button"
+              <Button
+                variant="outline"
+                size="icon"
                 onClick={copyNode}
                 title="Copy node"
               >
                 <Copy size={18} />
-              </button>
-              <button
-                className="node-action-button"
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
                 onClick={deleteNode}
                 title="Delete node"
               >
                 <Trash2 size={18} />
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -403,11 +406,11 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         </div>
       )}
       <div className="flex items-center mt-2.5">
-        <Switch className='pl-[2px]' onCheckedChange={toggleOutput} />
+        <Switch onCheckedChange={toggleOutput} />
         <span className='m-1 mr-4'>Output</span>
         {hasOptionalFields() && (
           <>
-            <Switch className='pl-[2px]' onCheckedChange={toggleAdvancedSettings} />
+            <Switch onCheckedChange={toggleAdvancedSettings} />
             <span className='m-1'>Advanced</span>
           </>
         )}
