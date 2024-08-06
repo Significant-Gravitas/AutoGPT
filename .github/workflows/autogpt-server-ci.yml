@@ -40,7 +40,7 @@ jobs:
         uses: ikalnytskyi/action-setup-postgres@v6
         with:
           username: ${{ secrets.DB_USER || 'postgres' }}
-          password: ${{ secrets.DB_PASS || ' ' }}
+          password: ${{ secrets.DB_PASS || 'postgres' }}
           database: postgres
           port: 5432
         id: postgres
@@ -146,7 +146,7 @@ jobs:
       PLAIN_OUTPUT: True
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       DB_USER: ${{ secrets.DB_USER || 'postgres' }}
-      DB_PASS: ${{ secrets.DB_PASS || ' ' }}
+      DB_PASS: ${{ secrets.DB_PASS || 'postgres' }}
       DB_NAME: postgres
       DB_PORT: 5432
       RUN_ENV: local
