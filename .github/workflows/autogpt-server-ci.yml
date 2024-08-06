@@ -39,8 +39,8 @@ jobs:
         if: matrix.db-platform == 'postgres'
         uses: ikalnytskyi/action-setup-postgres@v6
         with:
-          username: ${{ secrets.DB_USER || 'postgres' }}
-          password: ${{ secrets.DB_PASS || ' ' }}
+#          username: ${{ secrets.DB_USER || 'postgres' }}
+#          password: ${{ secrets.DB_PASS || ' ' }}
           database: postgres
           port: 5432
         id: postgres
