@@ -1,4 +1,4 @@
-import { BlockIOSchema } from "@/lib/autogpt-server-api/types";
+import { BlockIOSubSchema } from "@/lib/autogpt-server-api/types";
 import { beautifyString, getTypeBgColor, getTypeTextColor } from "@/lib/utils";
 import { FC } from "react";
 import { Handle, Position } from "reactflow";
@@ -6,7 +6,7 @@ import SchemaTooltip from "./SchemaTooltip";
 
 type HandleProps = {
   keyName: string;
-  schema: BlockIOSchema;
+  schema: BlockIOSubSchema;
   isConnected: boolean;
   isRequired?: boolean;
   side: "left" | "right";
@@ -28,7 +28,7 @@ const NodeHandle: FC<HandleProps> = ({
     null: "null",
   };
 
-  const typeClass = `text-sm ${getTypeTextColor(schema.type)} ${side === "left" ? "text-left" : "text-right"}`;
+  const typeClass = `text-sm ${getTypeTextColor(schema.type || "any")} ${side === "left" ? "text-left" : "text-right"}`;
 
   const label = (
     <div className="flex flex-col flex-grow">
@@ -36,13 +36,13 @@ const NodeHandle: FC<HandleProps> = ({
         {schema.title || beautifyString(keyName)}
         {isRequired ? "*" : ""}
       </span>
-      <span className={typeClass}>{typeName[schema.type]}</span>
+      <span className={typeClass}>{typeName[schema.type] || "any"}</span>
     </div>
   );
 
   const dot = (
     <div
-      className={`w-4 h-4 m-1 ${isConnected ? getTypeBgColor(schema.type) : "bg-gray-600"} rounded-full transition-colors duration-100 group-hover:bg-gray-300`}
+      className={`w-4 h-4 m-1 ${isConnected ? getTypeBgColor(schema.type || "any") : "bg-gray-600"} rounded-full transition-colors duration-100 group-hover:bg-gray-300`}
     />
   );
 
@@ -53,7 +53,7 @@ const NodeHandle: FC<HandleProps> = ({
           type="target"
           position={Position.Left}
           id={keyName}
-          className="group -ml-[29px]"
+          className="group -ml-[26px]"
         >
           <div className="pointer-events-none flex items-center">
             {dot}
@@ -70,7 +70,7 @@ const NodeHandle: FC<HandleProps> = ({
           type="source"
           position={Position.Right}
           id={keyName}
-          className="group -mr-[29px]"
+          className="group -mr-[26px]"
         >
           <div className="pointer-events-none flex items-center">
             {label}
