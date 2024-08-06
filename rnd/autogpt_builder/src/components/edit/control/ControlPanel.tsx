@@ -6,6 +6,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import React from "react";
 
 /**
@@ -24,6 +25,7 @@ export type Control = {
 interface ControlPanelProps {
   controls: Control[];
   children?: React.ReactNode;
+  className?: string;
 }
 
 /**
@@ -31,11 +33,16 @@ interface ControlPanelProps {
  * @param {Object} ControlPanelProps - The properties of the control panel component.
  * @param {Array} ControlPanelProps.controls - An array of control objects representing actions to be preformed.
  * @param {Array} ControlPanelProps.children - The child components of the control panel.
+ * @param {string} ControlPanelProps.className - Additional CSS class names for the control panel.
  * @returns The rendered control panel component.
  */
-export const ControlPanel = ({ controls, children }: ControlPanelProps) => {
+export const ControlPanel = ({
+  controls,
+  children,
+  className,
+}: ControlPanelProps) => {
   return (
-    <aside className="hidden w-14 flex-col sm:flex">
+    <aside className={cn("hidden w-14 flex-col sm:flex", className)}>
       <Card>
         <CardContent className="p-0">
           <div className="flex flex-col items-center gap-4 px-2 sm:py-5 rounded-radius">

@@ -23,7 +23,6 @@ import CustomNode, { CustomNodeData } from "./CustomNode";
 import "./flow.css";
 import AutoGPTServerAPI, {
   Block,
-  BlockIOSchema,
   Graph,
   NodeExecutionResult,
 } from "@/lib/autogpt-server-api";
@@ -458,7 +457,6 @@ const FlowEditor: React.FC<{
                 targetHandle: link.sink_name,
               })),
             isOutputOpen: false,
-            setIsAnyModalOpen: setIsAnyModalOpen, // Pass setIsAnyModalOpen function
             setErrors: (errors: { [key: string]: string | null }) => {
               setNodes((nds) =>
                 nds.map((node) =>
@@ -502,11 +500,7 @@ const FlowEditor: React.FC<{
     );
   }
 
-  const prepareNodeInputData = (
-    node: Node<CustomNodeData>,
-    allNodes: Node<CustomNodeData>[],
-    allEdges: Edge<CustomEdgeData>[],
-  ) => {
+  const prepareNodeInputData = (node: Node<CustomNodeData>) => {
     console.log("Preparing input data for node:", node.id, node.data.blockType);
 
     const blockSchema = availableNodes.find(
@@ -519,7 +513,7 @@ const FlowEditor: React.FC<{
     }
 
     const getNestedData = (
-      schema: BlockIOSchema,
+      schema: BlockIOSubSchema,
       values: { [key: string]: any },
     ): { [key: string]: any } => {
       let inputData: { [key: string]: any } = {};
@@ -580,7 +574,7 @@ const FlowEditor: React.FC<{
         const key = `${node.data.block_id}_${node.position.x}_${node.position.y}`;
         blockIdToNodeIdMap[key] = node.id;
       });
-      const inputDefault = prepareNodeInputData(node, nodes, edges);
+      const inputDefault = prepareNodeInputData(node);
       const inputNodes = edges
         .filter((edge) => edge.target === node.id)
         .map((edge) => ({
@@ -685,7 +679,10 @@ const FlowEditor: React.FC<{
         // Populate errors if validation fails
         validate.errors?.forEach((error) => {
           // Skip error if there's an edge connected
-          const path = error.instancePath || error.schemaPath;
+          const path =
+            "dataPath" in error
+              ? (error.dataPath as string)
+              : error.instancePath;
           const handle = path.split(/[\/.]/)[0];
           if (
             node.data.connections.some(
@@ -845,17 +842,17 @@ const FlowEditor: React.FC<{
   const editorControls: Control[] = [
     {
       label: "Undo",
-      icon: <Undo2 />,
+      icon: <Undo2 size={18} />,
       onClick: handleUndo,
     },
     {
       label: "Redo",
-      icon: <Redo2 />,
+      icon: <Redo2 size={18} />,
       onClick: handleRedo,
     },
     {
       label: "Run",
-      icon: <Play />,
+      icon: <Play size={18} />,
       onClick: runAgent,
     },
   ];
@@ -883,17 +880,15 @@ const FlowEditor: React.FC<{
         onNodeDragStart={onNodesChangeStart}
         onNodeDragStop={onNodesChangeEnd}
       >
-        <div className={"flex flex-row absolute z-10 gap-2"}>
-          <ControlPanel controls={editorControls}>
-            <BlocksControl blocks={availableNodes} addBlock={addNode} />
-            <SaveControl
-              agentMeta={savedAgent}
-              onSave={saveAgent}
-              onDescriptionChange={setAgentDescription}
-              onNameChange={setAgentName}
-            />
-          </ControlPanel>
-        </div>
+        <ControlPanel className="absolute z-10" controls={editorControls}>
+          <BlocksControl blocks={availableNodes} addBlock={addNode} />
+          <SaveControl
+            agentMeta={savedAgent}
+            onSave={saveAgent}
+            onDescriptionChange={setAgentDescription}
+            onNameChange={setAgentName}
+          />
+        </ControlPanel>
       </ReactFlow>
     </div>
   );
