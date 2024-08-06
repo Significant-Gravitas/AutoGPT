@@ -1,5 +1,5 @@
 import typing
-
+import datetime
 import fuzzywuzzy.fuzz
 import prisma.enums
 import prisma.errors
@@ -9,7 +9,6 @@ import pydantic
 
 import market.model
 import market.utils.extension_types
-
 
 
 class AgentQueryError(Exception):
@@ -63,6 +62,7 @@ async def create_agent_entry(
     keywords: typing.List[str],
     categories: typing.List[str],
     graph: prisma.Json,
+    submission_state: prisma.enums.SubmissionStatus = prisma.enums.SubmissionStatus.PENDING,
 ):
     """
     Create a new agent entry in the database.
@@ -91,6 +91,7 @@ async def create_agent_entry(
                 "categories": categories,
                 "graph": graph,
                 "AnalyticsTracker": {"create": {"downloads": 0, "views": 0}},
+                "submissionStatus": submission_state,
             }
         )
 
@@ -98,6 +99,39 @@ async def create_agent_entry(
 
     except prisma.errors.PrismaError as e:
         raise AgentQueryError(f"Database query failed: {str(e)}")
+    except Exception as e:
+        raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
+
+
+async def update_agent_entry(
+    agent_id: str,
+    version: int,
+    submission_state: prisma.enums.SubmissionStatus,
+    comments: str | None = None,
+):
+    """
+    Update an existing agent entry in the database.
+
+    Args:
+        agent_id (str): The ID of the agent.
+        version (int): The version of the agent.
+        submission_state (prisma.enums.SubmissionStatus): The submission state of the agent.
+    """
+
+    try:
+        agent = await prisma.models.Agents.prisma().update(
+            where={"id": agent_id},
+            data={
+                "version": version,
+                "submissionStatus": submission_state,
+                "submissionReviewDate": datetime.datetime.now(datetime.timezone.utc),
+                "submissionReviewComments": comments,
+            },
+        )
+
+        return agent
+    except prisma.errors.PrismaError as e:
+        raise AgentQueryError(f"Agent Update Failed Database query failed: {str(e)}")
     except Exception as e:
         raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
 
@@ -110,6 +144,7 @@ async def get_agents(
     category: str | None = None,
     description: str | None = None,
     description_threshold: int = 60,
+    submission_status: prisma.enums.SubmissionStatus = prisma.enums.SubmissionStatus.APPROVED,
     sort_by: str = "createdAt",
     sort_order: typing.Literal["desc"] | typing.Literal["asc"] = "desc",
 ):
@@ -141,6 +176,8 @@ async def get_agents(
             query["keywords"] = {"has": keyword}
         if category:
             query["categories"] = {"has": category}
+
+        query["submissionStatus"] = submission_status
 
         # Define sorting
         order = {sort_by: sort_order}

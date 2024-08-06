@@ -17,8 +17,8 @@ enum UserRole {
 }
 
 model User {
-  id    String  @id // This should match the Supabase user ID
-  role  UserRole    @default(USER)
+  id   String   @id // This should match the Supabase user ID
+  role UserRole @default(USER)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -27,12 +27,23 @@ model User {
   Agents Agents[]
 }
 
+enum SubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model Agents {
-  id        String   @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id      String @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  version Int    @default(1)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  version Int @default(1)
+  submissionDate           DateTime         @default(now())
+  submissionReviewDate     DateTime?
+  submissionStatus         SubmissionStatus @default(PENDING)
+  submissionReviewComments String?
 
   name        String?
   description String?

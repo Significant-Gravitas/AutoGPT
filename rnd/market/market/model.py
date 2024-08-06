@@ -1,6 +1,6 @@
 import datetime
 import typing
-
+import prisma.enums
 import pydantic
 
 
@@ -9,6 +9,13 @@ class AddAgentRequest(pydantic.BaseModel):
     author: str
     keywords: list[str]
     categories: list[str]
+
+
+class SubmissionReviewRequest(pydantic.BaseModel):
+    agent_id: str
+    version: int
+    status: prisma.enums.SubmissionStatus
+    comments: str | None
 
 
 class AgentResponse(pydantic.BaseModel):
@@ -36,6 +43,7 @@ class AgentResponse(pydantic.BaseModel):
     version: int
     createdAt: datetime.datetime
     updatedAt: datetime.datetime
+    submission_status: str
     views: int = 0
     downloads: int = 0
 
