@@ -344,10 +344,12 @@ const NodeArrayInput: FC<{
   displayName,
 }) => {
     entries ??= schema.default ?? [];
+    const isItemObject = "items" in schema && "properties" in schema.items!;
+    const error = typeof errors[selfKey] === "string" ? errors[selfKey] : undefined;
     return (
       <div className={cn(className, 'flex flex-col')}>
         {displayName && <strong>{displayName}</strong>}
-        {entries.map((entry: string, index: number) => {
+        {entries.map((entry: any, index: number) => {
           const entryKey = `${selfKey}[${index}]`;
           return (
             <div key={entryKey}>
@@ -366,7 +368,7 @@ const NodeArrayInput: FC<{
                     schema={schema.items}
                     value={entry}
                     error={errors[entryKey]}
-                    displayName={displayName ?? "something"}
+                    displayName={displayName || beautifyString(selfKey)}
                     handleInputChange={handleInputChange}
                     handleInputClick={handleInputClick}
                   />
@@ -378,16 +380,16 @@ const NodeArrayInput: FC<{
                   <Cross2Icon />
                 </Button>
               </div>
-              {errors[entryKey] &&
+              {errors[entryKey] && typeof errors[entryKey] === "string" &&
                 <span className="error-message">{errors[entryKey]}</span>
               }
             </div>
           )
         })}
-        <Button onClick={() => handleInputChange(selfKey, [...entries, ""])}>
+        <Button onClick={() => handleInputChange(selfKey, [...entries, isItemObject ? {} : ""])}>
           <PlusIcon className="mr-2" /> Add Item
         </Button>
-        {errors[selfKey] && <span className="error-message">{errors[selfKey]}</span>}
+        {error && <span className="error-message">{error}</span>}
       </div>
     );
   };
@@ -516,15 +518,15 @@ const NodeFallbackInput: FC<{
   displayName: string;
 }> = ({ selfKey, schema, value, error, handleInputChange, handleInputClick, className, displayName }) => {
   return (
-      <NodeStringInput
-        selfKey={selfKey}
-        schema={{ type: "string", ...schema } as BlockIOStringSubSchema}
-        value={value}
-        error={error}
-        handleInputChange={handleInputChange}
-        handleInputClick={handleInputClick}
-        className={className}
-        displayName={displayName}
-      />
+    <NodeStringInput
+      selfKey={selfKey}
+      schema={{ type: "string", ...schema } as BlockIOStringSubSchema}
+      value={value}
+      error={error}
+      handleInputChange={handleInputChange}
+      handleInputClick={handleInputClick}
+      className={className}
+      displayName={displayName}
+    />
   );
 };
