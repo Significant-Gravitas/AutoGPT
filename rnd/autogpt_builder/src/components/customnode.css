@@ -1,5 +1,5 @@
 .custom-node {
-  padding: 15px;
+  @apply p-3;
   border: 3px solid #4b5563;
   border-radius: 12px;
   background: #ffffff;
@@ -7,13 +7,6 @@
   width: 500px;
   box-sizing: border-box;
   transition: border-color 0.3s ease-in-out;
-}
-
-.node-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1px;
 }
 
 .custom-node .mb-2 {
@@ -30,45 +23,6 @@
   margin-right: 10px;
 }
 
-.node-actions {
-  display: flex;
-  gap: 5px;
-}
-
-.node-action-button {
-  width: 32px;
-  /* Increased size */
-  height: 32px;
-  /* Increased size */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: #f3f4f6;
-  /* Light gray background */
-  border: 1px solid #d1d5db;
-  /* Light border */
-  border-radius: 6px;
-  color: #4b5563;
-  transition: all 0.2s ease-in-out;
-  cursor: pointer;
-}
-
-.node-action-button:hover {
-  background-color: #e5e7eb;
-  color: #1f2937;
-}
-
-.node-action-button:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
-}
-
-.node-action-button svg {
-  width: 18px;
-  /* Increased icon size */
-  height: 18px;
-  /* Increased icon size */
-}
 /* Existing styles */
 .handle-container {
   display: flex;
@@ -89,36 +43,8 @@
   transform: none;
 }
 
-.input-container {
-  margin-bottom: 5px;
-}
-
-.clickable-input {
-  padding: 5px;
-  width: 325px;
-  border-radius: 4px;
-  background: #ffffff;
-  border: 1px solid #d1d1d1;
-  color: #000000;
-  cursor: pointer;
-  word-break: break-all;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  position: relative;
-}
-
 .border-error {
   border: 1px solid #d9534f;
-}
-
-.clickable-input span {
-  display: inline-block;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: calc(100% - 100px);
-  vertical-align: middle;
 }
 
 .select-input {
@@ -191,29 +117,9 @@
 
 .error-message {
   color: #d9534f;
-  font-size: 12px;
+  font-size: 13px;
   margin-top: 5px;
-}
-
-.object-input {
-  margin-left: 10px;
-  border-left: 1px solid #000; /* Border for nested inputs */
-  padding-left: 10px;
-}
-
-.nested-input {
-  margin-top: 5px;
-}
-
-.key-value-input {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  margin-bottom: 5px;
-}
-
-.key-value-input input {
-  flex-grow: 1;
+  margin-left: 5px;
 }
 
 /* Styles for node states */
@@ -239,4 +145,14 @@
 
 .custom-switch {
   padding-left: 2px;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
 }
