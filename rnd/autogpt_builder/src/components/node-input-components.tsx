@@ -43,9 +43,9 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
       {displayName && <strong>{displayName}</strong>}
       {Object.entries(schema.properties).map(([propKey, propSchema]) => {
         const childKey = selfKey ? `${selfKey}.${propKey}` : propKey;
-        
+
         return (
-          <div className="flex flex-row justify-between space-y-2 w-full">
+          <div key={propKey} className="flex flex-row justify-between space-y-2 w-full">
             <span className="mr-2 mt-3">{propSchema.title || beautifyString(propKey)}</span>
             <NodeGenericInputField
               key={propKey}
