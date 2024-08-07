@@ -10,6 +10,23 @@ generator client {
   interface            = "asyncio"
 }
 
+// User model to mirror Auth provider users
+model User {
+  id            String   @id // This should match the Supabase user ID
+  email         String   @unique
+  name          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  AgentGraphs                  AgentGraph[]
+  AgentGraphExecutions         AgentGraphExecution[]
+  AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
+
+  @@index([id])
+  @@index([email])
+}
+
 // This model describes the Agent Graph/Flow (Multi Agent System).
 model AgentGraph {
   id      String @default(uuid())
@@ -19,6 +36,10 @@ model AgentGraph {
   description String?
   isActive    Boolean @default(true)
   isTemplate  Boolean @default(false)
+
+  // Link to User model
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
 
   AgentNodes                  AgentNode[]
   AgentGraphExecution         AgentGraphExecution[]
@@ -99,6 +120,10 @@ model AgentGraphExecution {
   AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
 
   AgentNodeExecutions AgentNodeExecution[]
+
+  // Link to User model
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
 }
 
 // This model describes the execution of an AgentNode.
@@ -157,6 +182,10 @@ model AgentGraphExecutionSchedule {
 
   // default and set the value on each update, lastUpdated field has no time zone.
   lastUpdated DateTime @updatedAt
+
+  // Link to User model
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
 
   @@index([isEnabled])
 }

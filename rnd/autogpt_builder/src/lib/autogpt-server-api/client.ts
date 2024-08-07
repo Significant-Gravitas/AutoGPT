@@ -1,3 +1,4 @@
+import { createClient } from "../supabase/client";
 import {
   Block,
   Graph,
@@ -13,6 +14,7 @@ export default class AutoGPTServerAPI {
   private wsUrl: string;
   private socket: WebSocket | null = null;
   private messageHandlers: { [key: string]: (data: any) => void } = {};
+  private supabaseClient = createClient();
 
   constructor(
     baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
@@ -141,18 +143,23 @@ export default class AutoGPTServerAPI {
       console.debug(`${method} ${path} payload:`, payload);
     }
 
-    const response = await fetch(
-      this.baseUrl + path,
-      method != "GET"
-        ? {
-            method,
-            headers: {
+    const token =
+      (await this.supabaseClient?.auth.getSession())?.data.session
+        ?.access_token || "";
+
+    const response = await fetch(this.baseUrl + path, {
+      method,
+      headers:
+        method != "GET"
+          ? {
               "Content-Type": "application/json",
+              Authorization: token ? `Bearer ${token}` : "",
+            }
+          : {
+              Authorization: token ? `Bearer ${token}` : "",
             },
-            body: JSON.stringify(payload),
-          }
-        : undefined,
-    );
+      body: JSON.stringify(payload),
+    });
     const response_data = await response.json();
 
     if (!response.ok) {
