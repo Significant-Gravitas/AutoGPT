@@ -4,14 +4,14 @@ import prisma
 import prisma.enums
 import prisma.models
 
-import market.auth
+import autogpt_libs.auth
 import market.db
 import market.model
 
 router = fastapi.APIRouter()
 
 
-@market.auth.require_auth(admin_only=True)
+@autogpt_libs.auth.require_auth(admin_only=True)
 @router.post("/agent", response_model=market.model.AgentResponse)
 async def create_agent_entry(
     request: market.model.AddAgentRequest,
@@ -37,7 +37,7 @@ async def create_agent_entry(
         raise fastapi.HTTPException(status_code=500, detail=str(e))
 
 
-@market.auth.require_auth(admin_only=True)
+@autogpt_libs.auth.require_auth(admin_only=True)
 @router.post("/agent/featured/{agent_id}")
 async def set_agent_featured(
     agent_id: str,
@@ -57,7 +57,7 @@ async def set_agent_featured(
         raise fastapi.HTTPException(status_code=500, detail=str(e))
 
 
-@market.auth.require_auth(admin_only=True)
+@autogpt_libs.auth.require_auth(admin_only=True)
 @router.delete("/agent/featured/{agent_id}")
 async def unset_agent_featured(
     agent_id: str,

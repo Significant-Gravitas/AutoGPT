@@ -2,16 +2,15 @@ import functools
 import logging
 import typing
 
-import autogpt_libs.auth.middleware
+from .middleware import auth_middleware
 import fastapi
-import prisma.models
 
 logger = logging.getLogger("uvicorn.error")
 
 
 async def get_user(
-    payload: dict = fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware),
-) -> dict[str, prisma.models.User | str]:
+    payload: dict = fastapi.Depends(auth_middleware),
+) -> dict[str, str]:
     if not payload:
         # This handles the case when authentication is disabled
         user_id = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
