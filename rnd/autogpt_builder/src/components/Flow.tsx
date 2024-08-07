@@ -55,7 +55,6 @@ const MINIMUM_MOVE_BEFORE_LOG = 50;
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
-
 const FlowEditor: React.FC<{
   flowID?: string;
   template?: boolean;
@@ -238,14 +237,18 @@ const FlowEditor: React.FC<{
       _setNodes(applyNodeChanges(nodeChanges, getNodes()));
 
       // Remove all edges that were connected to deleted nodes
-      nodeChanges.filter(change => change.type == "remove").forEach(deletedNode => {
-        const nodeID = deletedNode.id;
+      nodeChanges
+        .filter((change) => change.type == "remove")
+        .forEach((deletedNode) => {
+          const nodeID = deletedNode.id;
 
-        const connectedEdges = getEdges().filter(
-          edge => [edge.source, edge.target].includes(nodeID),
-        );
-        deleteElements({ edges: connectedEdges.map(edge => ({ id: edge.id })) });
-      });
+          const connectedEdges = getEdges().filter((edge) =>
+            [edge.source, edge.target].includes(nodeID),
+          );
+          deleteElements({
+            edges: connectedEdges.map((edge) => ({ id: edge.id })),
+          });
+        });
     },
     [getNodes, getEdges, _setNodes, deleteElements],
   );
@@ -922,7 +925,6 @@ const WrappedFlowEditor: typeof FlowEditor = (props) => (
 );
 
 export default WrappedFlowEditor;
-
 
 function formatEdgeID(conn: Link | Connection): string {
   if ("sink_id" in conn) {
