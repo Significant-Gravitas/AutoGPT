@@ -1,7 +1,7 @@
 import logging
 
-from fastapi import Depends, HTTPException, Request
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import HTTPException, Request
+from fastapi.security import HTTPBearer
 
 from .config import settings
 from .jwt_utils import parse_jwt_token

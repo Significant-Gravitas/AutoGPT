@@ -1,8 +1,11 @@
+import logging
 from typing import Any, Dict
 
 import jwt
 
 from .config import settings
+
+log = logging.getLogger("uvicorn.errors")
 
 
 def parse_jwt_token(token: str) -> Dict[str, Any]:
@@ -14,6 +17,7 @@ def parse_jwt_token(token: str) -> Dict[str, Any]:
     :raises ValueError: If the token is invalid or expired
     """
     try:
+        log.info(f"Token: {token}")
         payload = jwt.decode(
             token,
             settings.JWT_SECRET_KEY,
