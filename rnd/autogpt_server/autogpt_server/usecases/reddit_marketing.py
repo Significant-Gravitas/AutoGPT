@@ -1,7 +1,10 @@
+from prisma.models import User
+
 from autogpt_server.blocks.llm import ObjectLlmCallBlock
 from autogpt_server.blocks.reddit import RedditGetPostsBlock, RedditPostCommentBlock
 from autogpt_server.blocks.text import TextFormatterBlock, TextMatcherBlock
 from autogpt_server.data.graph import Graph, Link, Node, create_graph
+from autogpt_server.data.user import get_or_create_user
 from autogpt_server.util.test import SpinTestServer, wait_execution
 
 
@@ -136,14 +139,29 @@ Make sure to only comment on a relevant post.
     return test_graph
 
 
+async def create_test_user() -> User:
+    test_user_data = {
+        "sub": "ef3b97d7-1161-4eb4-92b2-10c24fb154c1",
+        "email": "testuser@example.com",
+        "name": "Test User",
+    }
+    user = await get_or_create_user(test_user_data)
+    return user
+
+
 async def reddit_marketing_agent():
     async with SpinTestServer() as server:
         exec_man = server.exec_manager
-        test_graph = await create_graph(create_test_graph())
+        test_user = await create_test_user()
+        test_graph = await create_graph(create_test_graph(), user_id=test_user.id)
         input_data = {"subreddit": "AutoGPT"}
-        response = await server.agent_server.execute_graph(test_graph.id, input_data)
+        response = await server.agent_server.execute_graph(
+            test_graph.id, input_data, test_user.id
+        )
         print(response)
-        result = await wait_execution(exec_man, test_graph.id, response["id"], 13, 120)
+        result = await wait_execution(
+            exec_man, test_user.id, test_graph.id, response["id"], 13, 120
+        )
         print(result)
 
 
