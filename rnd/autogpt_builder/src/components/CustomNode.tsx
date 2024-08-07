@@ -33,6 +33,7 @@ export type CustomNodeData = {
   hardcodedValues: { [key: string]: any };
   setHardcodedValues: (values: { [key: string]: any }) => void;
   connections: Array<{
+    edge_id: string;
     source: string;
     sourceHandle: string;
     target: string;
