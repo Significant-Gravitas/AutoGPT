@@ -253,6 +253,5 @@ type GraphCreateRequestBody =
 
 type WebsocketMessageTypeMap = {
   subscribe: { graph_id: string };
-  run_graph: { graph_id: string; data: { [key: string]: any } };
   execution_event: NodeExecutionResult;
 };
