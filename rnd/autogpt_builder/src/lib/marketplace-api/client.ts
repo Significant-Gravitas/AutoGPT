@@ -142,20 +142,24 @@ export default class MarketplaceAPI {
       console.debug(`${method} ${path} payload:`, payload);
     }
 
-    const token = (((await this.supabaseClient?.auth.getSession())?.data.session?.access_token) || "");
+    const token =
+      (await this.supabaseClient?.auth.getSession())?.data.session
+        ?.access_token || "";
 
-    const response = await fetch(
-      this.baseUrl + path, {
+    const response = await fetch(this.baseUrl + path, {
       method,
-      headers: method != 'GET' ? {
-        'Content-Type': 'application/json',
-        'Authorization': (token ? `Bearer ${token}` : ''),
-      } : {
-        'Authorization': (token ? `Bearer ${token}` : ''),
-      },
+      headers:
+        method != "GET"
+          ? {
+              "Content-Type": "application/json",
+              Authorization: token ? `Bearer ${token}` : "",
+            }
+          : {
+              Authorization: token ? `Bearer ${token}` : "",
+            },
       body: JSON.stringify(payload),
     });
-    
+
     const response_data = await response.json();
 
     if (!response.ok) {
