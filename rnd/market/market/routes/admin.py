@@ -1,18 +1,18 @@
+import autogpt_libs.auth
 import fastapi
 import prisma
 import prisma.models
 
-import autogpt_libs.auth
 import market.db
 import market.model
 
 router = fastapi.APIRouter()
 
 
-@autogpt_libs.auth.require_auth(admin_only=True)
 @router.post("/agent", response_model=market.model.AgentResponse)
 async def create_agent_entry(
     request: market.model.AddAgentRequest,
+    user_dict: dict = fastapi.Depends(autogpt_libs.auth.requires_admin_user),
 ):
     """
     A basic endpoint to create a new agent entry in the database.
@@ -35,11 +35,11 @@ async def create_agent_entry(
         raise fastapi.HTTPException(status_code=500, detail=str(e))
 
 
-@autogpt_libs.auth.require_auth(admin_only=True)
 @router.post("/agent/featured/{agent_id}")
 async def set_agent_featured(
     agent_id: str,
     category: str = "featured",
+    user_dict: dict = fastapi.Depends(autogpt_libs.auth.requires_admin_user),
 ):
     """
     A basic endpoint to set an agent as featured in the database.
@@ -55,11 +55,11 @@ async def set_agent_featured(
         raise fastapi.HTTPException(status_code=500, detail=str(e))
 
 
-@autogpt_libs.auth.require_auth(admin_only=True)
 @router.delete("/agent/featured/{agent_id}")
 async def unset_agent_featured(
     agent_id: str,
     category: str = "featured",
+    user_dict: dict = fastapi.Depends(autogpt_libs.auth.requires_admin_user),
 ):
     """
     A basic endpoint to unset an agent as featured in the database.
