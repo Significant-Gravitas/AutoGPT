@@ -277,21 +277,24 @@ class AgentServer(AppService):
         )
 
     async def authenticate_websocket(self, websocket: WebSocket) -> str:
-        token = websocket.query_params.get("token")
-        if not token:
-            await websocket.close(code=4001, reason="Missing authentication token")
-            return ""
-
-        try:
-            payload = parse_jwt_token(token)
-            user_id = payload.get("sub")
-            if not user_id:
-                await websocket.close(code=4002, reason="Invalid token")
+        if settings.config.enable_auth.lower() == "true":
+            token = websocket.query_params.get("token")
+            if not token:
+                await websocket.close(code=4001, reason="Missing authentication token")
                 return ""
-            return user_id
-        except ValueError:
-            await websocket.close(code=4003, reason="Invalid token")
-            return ""
+
+            try:
+                payload = parse_jwt_token(token)
+                user_id = payload.get("sub")
+                if not user_id:
+                    await websocket.close(code=4002, reason="Invalid token")
+                    return ""
+                return user_id
+            except ValueError:
+                await websocket.close(code=4003, reason="Invalid token")
+                return ""
+        else:
+            return "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 
     async def websocket_router(self, websocket: WebSocket):
         user_id = await self.authenticate_websocket(websocket)
