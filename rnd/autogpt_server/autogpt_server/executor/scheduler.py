@@ -62,16 +62,22 @@ class ExecutionScheduler(AppService):
             logger.exception(f"Error executing graph {graph_id}: {e}")
 
     @expose
-    def update_schedule(self, schedule_id: str, is_enabled: bool) -> str:
-        self.run_and_wait(model.update_schedule(schedule_id, is_enabled))
+    def update_schedule(self, schedule_id: str, is_enabled: bool, user_id: str) -> str:
+        self.run_and_wait(model.update_schedule(schedule_id, is_enabled, user_id))
         return schedule_id
 
     @expose
     def add_execution_schedule(
-        self, graph_id: str, graph_version: int, cron: str, input_data: BlockInput
+        self,
+        graph_id: str,
+        graph_version: int,
+        cron: str,
+        input_data: BlockInput,
+        user_id: str,
     ) -> str:
         schedule = model.ExecutionSchedule(
             graph_id=graph_id,
+            user_id=user_id,
             graph_version=graph_version,
             schedule=cron,
             input_data=input_data,
@@ -79,7 +85,7 @@ class ExecutionScheduler(AppService):
         return self.run_and_wait(model.add_schedule(schedule)).id
 
     @expose
-    def get_execution_schedules(self, graph_id: str) -> dict[str, str]:
-        query = model.get_schedules(graph_id)
+    def get_execution_schedules(self, graph_id: str, user_id: str) -> dict[str, str]:
+        query = model.get_schedules(graph_id, user_id=user_id)
         schedules: list[model.ExecutionSchedule] = self.run_and_wait(query)
         return {v.id: v.schedule for v in schedules}

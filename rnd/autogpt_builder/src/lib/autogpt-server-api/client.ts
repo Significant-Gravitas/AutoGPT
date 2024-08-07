@@ -1,3 +1,4 @@
+import { createClient } from "../supabase/client";
 import {
   Block,
   Graph,
@@ -14,6 +15,7 @@ export default class AutoGPTServerAPI {
   private webSocket: WebSocket | null = null;
   private wsConnecting: Promise<void> | null = null;
   private wsMessageHandlers: { [key: string]: (data: any) => void } = {};
+  private supabaseClient = createClient();
 
   constructor(
     baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
@@ -142,18 +144,23 @@ export default class AutoGPTServerAPI {
       console.debug(`${method} ${path} payload:`, payload);
     }
 
-    const response = await fetch(
-      this.baseUrl + path,
-      method != "GET"
-        ? {
-            method,
-            headers: {
+    const token =
+      (await this.supabaseClient?.auth.getSession())?.data.session
+        ?.access_token || "";
+
+    const response = await fetch(this.baseUrl + path, {
+      method,
+      headers:
+        method != "GET"
+          ? {
               "Content-Type": "application/json",
+              Authorization: token ? `Bearer ${token}` : "",
+            }
+          : {
+              Authorization: token ? `Bearer ${token}` : "",
             },
-            body: JSON.stringify(payload),
-          }
-        : undefined,
-    );
+      body: JSON.stringify(payload),
+    });
     const response_data = await response.json();
 
     if (!response.ok) {
@@ -167,31 +174,41 @@ export default class AutoGPTServerAPI {
     return response_data;
   }
 
-  connectWebSocket(): Promise<void> {
-    this.wsConnecting ??= new Promise((resolve, reject) => {
-      this.webSocket = new WebSocket(this.wsUrl);
+  async connectWebSocket(): Promise<void> {
+    this.wsConnecting ??= new Promise(async (resolve, reject) => {
+      try {
+        const token =
+          (await this.supabaseClient?.auth.getSession())?.data.session
+            ?.access_token || "";
 
-      this.webSocket.onopen = () => {
-        console.log("WebSocket connection established");
-        resolve();
-        this.wsConnecting = null;
-      };
+        const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
+        this.webSocket = new WebSocket(wsUrlWithToken);
 
-      this.webSocket.onclose = (event) => {
-        console.log("WebSocket connection closed", event);
-        this.webSocket = null;
-      };
+        this.webSocket.onopen = () => {
+          console.log("WebSocket connection established");
+          resolve();
+        };
 
-      this.webSocket.onerror = (error) => {
-        console.error("WebSocket error:", error);
+        this.webSocket.onclose = (event) => {
+          console.log("WebSocket connection closed", event);
+          this.webSocket = null;
+        };
+
+        this.webSocket.onerror = (error) => {
+          console.error("WebSocket error:", error);
+          reject(error);
+        };
+
+        this.webSocket.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+          if (this.wsMessageHandlers[message.method]) {
+            this.wsMessageHandlers[message.method](message.data);
+          }
+        };
+      } catch (error) {
+        console.error("Error connecting to WebSocket:", error);
         reject(error);
-        this.wsConnecting = null;
-      };
-
-      this.webSocket.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        this.wsMessageHandlers[message.method]?.(message.data);
-      };
+      }
     });
     return this.wsConnecting;
   }
