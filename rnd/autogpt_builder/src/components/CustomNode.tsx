@@ -221,7 +221,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     setActiveKey(key);
     const value = getValue(key);
     setModalValue(
-      typeof value === "object" ? JSON.stringify(value, null, 2) : value
+      typeof value === "object" ? JSON.stringify(value, null, 2) : value,
     );
     setIsModalOpen(true);
   };
@@ -244,7 +244,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     setModalValue(
       data.output_data
         ? JSON.stringify(data.output_data, null, 2)
-        : "[no output (yet)]"
+        : "[no output (yet)]",
     );
   };
 
@@ -269,7 +269,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
     // Get all edges connected to this node
     const connectedEdges = getEdges().filter(
-      (edge) => edge.source === id || edge.target === id
+      (edge) => edge.source === id || edge.target === id,
     );
 
     // For each connected edge, update the connected node's state
@@ -283,7 +283,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
             if (node.id === connectedNodeId) {
               // Update the node's data to reflect the disconnection
               const updatedConnections = node.data.connections.filter(
-                (conn) => !(conn.source === id || conn.target === id)
+                (conn) => !(conn.source === id || conn.target === id),
               );
               return {
                 ...node,
@@ -294,7 +294,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
               };
             }
             return node;
-          })
+          }),
         );
       }
     });
@@ -302,7 +302,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     // Remove the node and its connected edges
     setNodes((nodes) => nodes.filter((node) => node.id !== id));
     setEdges((edges) =>
-      edges.filter((edge) => edge.source !== id && edge.target !== id)
+      edges.filter((edge) => edge.source !== id && edge.target !== id),
     );
   }, [id, setNodes, setEdges, getNode, getEdges]);
 
@@ -379,7 +379,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                     </div>
                   )
                 );
-              }
+              },
             )}
         </div>
         <div className="flex-none">
