@@ -173,31 +173,41 @@ export default class AutoGPTServerAPI {
     return response_data;
   }
 
-  connectWebSocket(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.socket = new WebSocket(this.wsUrl);
+  async connectWebSocket(): Promise<void> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const token =
+          (await this.supabaseClient?.auth.getSession())?.data.session
+            ?.access_token || "";
 
-      this.socket.onopen = () => {
-        console.log("WebSocket connection established");
-        resolve();
-      };
+        const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
+        this.socket = new WebSocket(wsUrlWithToken);
 
-      this.socket.onclose = (event) => {
-        console.log("WebSocket connection closed", event);
-        this.socket = null;
-      };
+        this.socket.onopen = () => {
+          console.log("WebSocket connection established");
+          resolve();
+        };
 
-      this.socket.onerror = (error) => {
-        console.error("WebSocket error:", error);
+        this.socket.onclose = (event) => {
+          console.log("WebSocket connection closed", event);
+          this.socket = null;
+        };
+
+        this.socket.onerror = (error) => {
+          console.error("WebSocket error:", error);
+          reject(error);
+        };
+
+        this.socket.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+          if (this.messageHandlers[message.method]) {
+            this.messageHandlers[message.method](message.data);
+          }
+        };
+      } catch (error) {
+        console.error("Error connecting to WebSocket:", error);
         reject(error);
-      };
-
-      this.socket.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        if (this.messageHandlers[message.method]) {
-          this.messageHandlers[message.method](message.data);
-        }
-      };
+      }
     });
   }
 
