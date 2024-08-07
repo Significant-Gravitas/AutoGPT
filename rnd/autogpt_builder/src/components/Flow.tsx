@@ -236,8 +236,18 @@ const FlowEditor: React.FC<{
     (nodeChanges: NodeChange[]) => {
       // Persist the changes
       _setNodes(applyNodeChanges(nodeChanges, getNodes()));
+
+      // Remove all edges that were connected to deleted nodes
+      nodeChanges.filter(change => change.type == "remove").forEach(deletedNode => {
+        const nodeID = deletedNode.id;
+
+        const connectedEdges = getEdges().filter(
+          edge => [edge.source, edge.target].includes(nodeID),
+        );
+        deleteElements({ edges: connectedEdges.map(edge => ({ id: edge.id })) });
+      });
     },
-    [getNodes, _setNodes],
+    [getNodes, getEdges, _setNodes, deleteElements],
   );
 
   const onConnect: OnConnect = useCallback(

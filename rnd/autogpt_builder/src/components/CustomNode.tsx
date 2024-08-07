@@ -58,7 +58,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  const { getNode, setNodes, getEdges, setEdges } = useReactFlow();
+  const { deleteElements } = useReactFlow();
 
   const outputDataRef = useRef<HTMLDivElement>(null);
   const isInitialSetup = useRef(true);
@@ -267,44 +267,9 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const deleteNode = useCallback(() => {
     console.log("Deleting node:", id);
 
-    // Get all edges connected to this node
-    const connectedEdges = getEdges().filter(
-      (edge) => edge.source === id || edge.target === id,
-    );
-
-    // For each connected edge, update the connected node's state
-    connectedEdges.forEach((edge) => {
-      const connectedNodeId = edge.source === id ? edge.target : edge.source;
-      const connectedNode = getNode(connectedNodeId);
-
-      if (connectedNode) {
-        setNodes((nodes) =>
-          nodes.map((node) => {
-            if (node.id === connectedNodeId) {
-              // Update the node's data to reflect the disconnection
-              const updatedConnections = node.data.connections.filter(
-                (conn) => !(conn.source === id || conn.target === id),
-              );
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  connections: updatedConnections,
-                },
-              };
-            }
-            return node;
-          }),
-        );
-      }
-    });
-
-    // Remove the node and its connected edges
-    setNodes((nodes) => nodes.filter((node) => node.id !== id));
-    setEdges((edges) =>
-      edges.filter((edge) => edge.source !== id && edge.target !== id),
-    );
-  }, [id, setNodes, setEdges, getNode, getEdges]);
+    // Remove the node
+    deleteElements({ nodes: [{ id }] });
+  }, [id, deleteElements]);
 
   const copyNode = useCallback(() => {
     // This is a placeholder function. The actual copy functionality
