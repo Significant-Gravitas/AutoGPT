@@ -57,6 +57,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="localhost",
         description="The default hostname of the Pyro server.",
     )
+    enable_auth: str = Field(
+        default="false",
+        description="If authentication is enabled or not",
+    )
     # Add more configuration fields as needed
 
     model_config = SettingsConfigDict(
