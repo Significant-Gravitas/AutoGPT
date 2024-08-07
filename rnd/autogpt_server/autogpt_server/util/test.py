@@ -5,6 +5,7 @@ from autogpt_server.data.block import Block, initialize_blocks
 from autogpt_server.data.execution import ExecutionStatus
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server import AgentServer
+from autogpt_server.server.server import get_user_id
 from autogpt_server.util.service import PyroNameServer
 
 log = print
@@ -17,14 +18,21 @@ class SpinTestServer:
         self.agent_server = AgentServer()
         self.scheduler = ExecutionScheduler()
 
+    @staticmethod
+    def test_get_user_id():
+        return "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+
     async def __aenter__(self):
+
         self.name_server.__enter__()
+        self.setup_dependency_overrides()
         self.agent_server.__enter__()
         self.exec_manager.__enter__()
         self.scheduler.__enter__()
 
         await db.connect()
         await initialize_blocks()
+
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -35,16 +43,25 @@ class SpinTestServer:
         self.exec_manager.__exit__(exc_type, exc_val, exc_tb)
         self.scheduler.__exit__(exc_type, exc_val, exc_tb)
 
+    def setup_dependency_overrides(self):
+        # Override get_user_id for testing
+        self.agent_server.set_test_dependency_overrides(
+            {get_user_id: self.test_get_user_id}
+        )
+
 
 async def wait_execution(
     exec_manager: ExecutionManager,
+    user_id: str,
     graph_id: str,
     graph_exec_id: str,
     num_execs: int,
     timeout: int = 20,
 ) -> list:
     async def is_execution_completed():
-        execs = await AgentServer().get_run_execution_results(graph_id, graph_exec_id)
+        execs = await AgentServer().get_run_execution_results(
+            graph_id, graph_exec_id, user_id
+        )
         return (
             exec_manager.queue.empty()
             and len(execs) == num_execs
@@ -58,7 +75,7 @@ async def wait_execution(
     for i in range(timeout):
         if await is_execution_completed():
             return await AgentServer().get_run_execution_results(
-                graph_id, graph_exec_id
+                graph_id, graph_exec_id, user_id
             )
         time.sleep(1)
 
