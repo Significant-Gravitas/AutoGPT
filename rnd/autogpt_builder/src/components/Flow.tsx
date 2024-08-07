@@ -726,7 +726,7 @@ const FlowEditor: React.FC<{
       }
 
       api.subscribeToExecution(newAgentId);
-      api.runGraph(newAgentId);
+      await api.executeGraph(newAgentId);
     } catch (error) {
       console.error("Error running agent:", error);
     }
