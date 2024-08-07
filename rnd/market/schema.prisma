@@ -11,22 +11,6 @@ generator client {
   partial_type_generator = "market/utils/partial_types.py"
 }
 
-enum UserRole {
-  USER
-  ADMIN
-}
-
-model User {
-  id    String  @id // This should match the Supabase user ID
-  role  UserRole    @default(USER)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  Agents Agents[]
-}
-
 model Agents {
   id        String   @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   createdAt DateTime @default(now())
@@ -45,8 +29,6 @@ model Agents {
   graph            Json
   AnalyticsTracker AnalyticsTracker[]
   FeaturedAgent    FeaturedAgent?
-  User             User?              @relation(fields: [userId], references: [id])
-  userId           String?
 
   @@id(name: "graphVersionId", [id, version])
 }
