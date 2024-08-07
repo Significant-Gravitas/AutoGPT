@@ -226,7 +226,9 @@ export default class AutoGPTServerAPI {
     if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
       this.webSocket.send(JSON.stringify({ method, data }));
     } else {
-      this.connectWebSocket().then(() => this.sendWebSocketMessage(method, data))
+      this.connectWebSocket().then(() =>
+        this.sendWebSocketMessage(method, data),
+      );
     }
   }
 
