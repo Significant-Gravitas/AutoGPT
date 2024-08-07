@@ -40,8 +40,10 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
 
   return (
     <Popover>
-      <PopoverTrigger className="hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-800 dark:hover:text-gray-50 dark:text-white">
-        <ToyBrick className="size-4" />
+      <PopoverTrigger asChild>
+        <Button size="icon" variant="ghost">
+          <ToyBrick size={18} />
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         side="right"

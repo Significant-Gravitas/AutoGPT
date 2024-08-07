@@ -6,6 +6,7 @@ import { NavBar } from "@/components/NavBar";
 import { cn } from "@/lib/utils";
 
 import "./globals.css";
+import TallyPopupSimple from "@/components/TallyPopup";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -32,6 +33,7 @@ export default function RootLayout({
           <div className="flex flex-col min-h-screen ">
             <NavBar />
             <main className="flex-1 p-4 overflow-hidden">{children}</main>
+            <TallyPopupSimple />
           </div>
         </Providers>
       </body>
