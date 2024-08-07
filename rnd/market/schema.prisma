@@ -11,22 +11,6 @@ generator client {
   partial_type_generator = "market/utils/partial_types.py"
 }
 
-enum UserRole {
-  USER
-  ADMIN
-}
-
-model User {
-  id   String   @id // This should match the Supabase user ID
-  role UserRole @default(USER)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  Agents Agents[]
-}
-
 enum SubmissionStatus {
   PENDING
   APPROVED

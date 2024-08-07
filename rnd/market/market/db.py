@@ -1,6 +1,8 @@
-import typing
 import datetime
+import typing
+
 import fuzzywuzzy.fuzz
+import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
@@ -476,36 +478,3 @@ async def get_featured_agents(
     except Exception as e:
         # Catch any other unexpected exceptions
         raise AgentQueryError(f"Unexpected error occurred: {str(e)}") from e
-
-
-async def get_or_create_user(user_id: str) -> prisma.models.User:
-    user = await prisma.models.User.prisma().find_unique(where={"id": user_id})
-    if not user:
-        user = await prisma.models.User.prisma().create(
-            data={
-                "id": user_id,
-                "role": prisma.enums.UserRole.USER,
-            }
-        )
-    return prisma.models.User.model_validate(user)
-
-
-async def get_user_by_id(user_id: str) -> typing.Optional[prisma.models.User]:
-    user = await prisma.models.User.prisma().find_unique(where={"id": user_id})
-    return prisma.models.User.model_validate(user) if user else None
-
-
-async def create_default_user(enable_auth: str) -> typing.Optional[prisma.models.User]:
-    if not enable_auth.lower() == "true":
-        user = await prisma.models.User.prisma().find_unique(
-            where={"id": "3e53486c-cf57-477e-ba2a-cb02dc828e1a"}
-        )
-        if not user:
-            user = await prisma.models.User.prisma().create(
-                data={
-                    "id": "3e53486c-cf57-477e-ba2a-cb02dc828e1a",
-                    "role": prisma.enums.UserRole.ADMIN,
-                }
-            )
-        return prisma.models.User.model_validate(user)
-    return None

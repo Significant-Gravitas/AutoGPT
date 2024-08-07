@@ -1,10 +1,11 @@
 import typing
+
+import autogpt_libs.auth
 import fastapi
 import prisma
 import prisma.enums
 import prisma.models
 
-import autogpt_libs.auth
 import market.db
 import market.model
 
@@ -77,6 +78,7 @@ async def unset_agent_featured(
         raise fastapi.HTTPException(status_code=500, detail=str(e))
 
 
+@autogpt_libs.auth.require_auth(admin_only=True)
 @router.get("/agent/submissions", response_model=market.model.AgentListResponse)
 async def get_agent_submissions(
     page: int = fastapi.Query(1, ge=1, description="Page number"),
@@ -102,11 +104,7 @@ async def get_agent_submissions(
     sort_order: typing.Literal["asc", "desc"] = fastapi.Query(
         "desc", description="Sort order (asc or desc)"
     ),
-    user: prisma.models.User = fastapi.Depends(market.auth.get_user),
 ):
-    if not user or user.role != "admin":
-        raise fastapi.HTTPException(status_code=401, detail="Unauthorized")
-
     try:
         result = await market.db.get_agents(
             page=page,
@@ -140,16 +138,15 @@ async def get_agent_submissions(
             status_code=500, detail=f"An unexpected error occurred: {e}"
         )
 
+
+@autogpt_libs.auth.require_auth(admin_only=True)
 @router.post("/agent/submissions/{agent_id}")
 async def review_submission(
     review_request: market.model.SubmissionReviewRequest,
-    user: prisma.models.User = fastapi.Depends(market.auth.get_user),
 ):
     """
     A basic endpoint to review a submission in the database.
     """
-    if not user or user.role != "admin":
-        raise fastapi.HTTPException(status_code=401, detail="Unauthorized")
 
     try:
         await market.db.update_agent_entry(
