@@ -1,7 +1,6 @@
 import typing
 import datetime
 import fuzzywuzzy.fuzz
-import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types

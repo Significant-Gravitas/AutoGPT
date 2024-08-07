@@ -56,8 +56,6 @@ model Agents {
   graph            Json
   AnalyticsTracker AnalyticsTracker[]
   FeaturedAgent    FeaturedAgent?
-  User             User?              @relation(fields: [userId], references: [id])
-  userId           String?
 
   @@id(name: "graphVersionId", [id, version])
 }
