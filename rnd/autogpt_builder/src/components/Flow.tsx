@@ -793,8 +793,10 @@ const FlowEditor: React.FC<{
         if (event.key === "v" || event.key === "V") {
           // Paste copied nodes
           if (copiedNodes.length > 0) {
-            const newNodes = copiedNodes.map((node, index) => {
+            const oldToNewNodeIDMap: Record<string, string> = {};
+            const pastedNodes = copiedNodes.map((node, index) => {
               const newNodeId = (nodeId + index).toString();
+              oldToNewNodeIDMap[node.id] = newNodeId;
               return {
                 ...node,
                 id: newNodeId,
@@ -825,16 +827,12 @@ const FlowEditor: React.FC<{
               // Deselect copied nodes
               existingNodes.map((node) => ({ ...node, selected: false })),
             );
-            addNodes(newNodes);
+            addNodes(pastedNodes);
             setNodeId((prevId) => prevId + copiedNodes.length);
 
-            const newEdges = copiedEdges.map((edge) => {
-              const newSourceId =
-                newNodes.find((n) => n.data.title === edge.source)?.id ||
-                edge.source;
-              const newTargetId =
-                newNodes.find((n) => n.data.title === edge.target)?.id ||
-                edge.target;
+            const pastedEdges = copiedEdges.map((edge) => {
+              const newSourceId = oldToNewNodeIDMap[edge.source] ?? edge.source;
+              const newTargetId = oldToNewNodeIDMap[edge.target] ?? edge.target;
               return {
                 ...edge,
                 id: `${newSourceId}_${edge.sourceHandle}_${newTargetId}_${edge.targetHandle}_${Date.now()}`,
@@ -842,7 +840,7 @@ const FlowEditor: React.FC<{
                 target: newTargetId,
               };
             });
-            addEdges(newEdges);
+            addEdges(pastedEdges);
           }
         }
       }
