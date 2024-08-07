@@ -11,8 +11,9 @@ import {
 export default class AutoGPTServerAPI {
   private baseUrl: string;
   private wsUrl: string;
-  private socket: WebSocket | null = null;
-  private messageHandlers: { [key: string]: (data: any) => void } = {};
+  private webSocket: WebSocket | null = null;
+  private wsConnecting: Promise<void> | null = null;
+  private wsMessageHandlers: { [key: string]: (data: any) => void } = {};
 
   constructor(
     baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
@@ -167,36 +168,37 @@ export default class AutoGPTServerAPI {
   }
 
   connectWebSocket(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.socket = new WebSocket(this.wsUrl);
+    this.wsConnecting ??= new Promise((resolve, reject) => {
+      this.webSocket = new WebSocket(this.wsUrl);
 
-      this.socket.onopen = () => {
+      this.webSocket.onopen = () => {
         console.log("WebSocket connection established");
         resolve();
+        this.wsConnecting = null;
       };
 
-      this.socket.onclose = (event) => {
+      this.webSocket.onclose = (event) => {
         console.log("WebSocket connection closed", event);
-        this.socket = null;
+        this.webSocket = null;
       };
 
-      this.socket.onerror = (error) => {
+      this.webSocket.onerror = (error) => {
         console.error("WebSocket error:", error);
         reject(error);
+        this.wsConnecting = null;
       };
 
-      this.socket.onmessage = (event) => {
+      this.webSocket.onmessage = (event) => {
         const message = JSON.parse(event.data);
-        if (this.messageHandlers[message.method]) {
-          this.messageHandlers[message.method](message.data);
-        }
+        this.wsMessageHandlers[message.method]?.(message.data);
       };
     });
+    return this.wsConnecting;
   }
 
   disconnectWebSocket() {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      this.socket.close();
+    if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
+      this.webSocket.close();
     }
   }
 
@@ -204,10 +206,10 @@ export default class AutoGPTServerAPI {
     method: M,
     data: WebsocketMessageTypeMap[M],
   ) {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify({ method, data }));
+    if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
+      this.webSocket.send(JSON.stringify({ method, data }));
     } else {
-      console.error("WebSocket is not connected");
+      this.connectWebSocket().then(() => this.sendWebSocketMessage(method, data))
     }
   }
 
@@ -215,7 +217,7 @@ export default class AutoGPTServerAPI {
     method: M,
     handler: (data: WebsocketMessageTypeMap[M]) => void,
   ) {
-    this.messageHandlers[method] = handler;
+    this.wsMessageHandlers[method] = handler;
   }
 
   subscribeToExecution(graphId: string) {
