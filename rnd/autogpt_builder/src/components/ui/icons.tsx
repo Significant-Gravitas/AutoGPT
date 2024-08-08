@@ -406,5 +406,41 @@ export const IconPlay = createIcon((props) => (
     </svg>
 ));
 
+/**
+ * Package2 icon component.
+ *
+ * @component IconPackage2
+ * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
+ * @returns {JSX.Element} - The package2 icon.
+ *
+ * @example
+ * // Default usage this is the standard usage
+ * <IconPackage2 />
+ *
+ * @example
+ * // With custom color and size these should be used sparingly and only when necessary
+ * <IconPackage2 className="text-primary" size="lg" />
+ *
+ * @example
+ * // With custom size and onClick handler
+ * <IconPackage2 size="sm" onClick={handleOnClick} />
+ */
+export const IconPackage2 = createIcon((props) => (
+    <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        {...props}
+    >
+        <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z"/>
+        <path d="m3 9 2.45-4.9A2 2 0 0 1 7.24 3h9.52a2 2 0 0 1 1.8 1.1L21 9"/>
+        <path d="M12 3v6"/>
+    </svg>
+));
+
 
 export { iconVariants, };
