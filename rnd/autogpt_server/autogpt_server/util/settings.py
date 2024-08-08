@@ -111,6 +111,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     discord_bot_token: str = Field(default="", description="Discord bot token")
 
+    smtp_server: str = Field(default="", description="SMTP server IP")
+    smtp_port: str = Field(default="", description="SMTP server port")
+    smtp_username: str = Field(default="", description="SMTP username")
+    smtp_password: str = Field(default="", description="SMTP password")
+
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(

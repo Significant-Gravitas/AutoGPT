@@ -21,6 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import { Copy, Trash2 } from "lucide-react";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
+import { CustomEdgeData } from "./CustomEdge";
 import { NodeGenericInputField } from "./node-input-components";
 
 type ParsedKey = { key: string; index?: number };
@@ -33,6 +34,7 @@ export type CustomNodeData = {
   hardcodedValues: { [key: string]: any };
   setHardcodedValues: (values: { [key: string]: any }) => void;
   connections: Array<{
+    edge_id: string;
     source: string;
     sourceHandle: string;
     target: string;
@@ -57,7 +59,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  const { getNode, setNodes, getEdges, setEdges } = useReactFlow();
+  const { deleteElements } = useReactFlow();
 
   const outputDataRef = useRef<HTMLDivElement>(null);
   const isInitialSetup = useRef(true);
@@ -88,14 +90,11 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     setIsAdvancedOpen(checked);
   };
 
-  const hasOptionalFields = () => {
-    return (
-      data.inputSchema &&
-      Object.keys(data.inputSchema.properties).some((key) => {
-        return !data.inputSchema.required?.includes(key);
-      })
-    );
-  };
+  const hasOptionalFields =
+    data.inputSchema &&
+    Object.keys(data.inputSchema.properties).some((key) => {
+      return !data.inputSchema.required?.includes(key);
+    });
 
   const generateOutputHandles = (schema: BlockIORootSchema) => {
     if (!schema?.properties) return null;
@@ -266,44 +265,9 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const deleteNode = useCallback(() => {
     console.log("Deleting node:", id);
 
-    // Get all edges connected to this node
-    const connectedEdges = getEdges().filter(
-      (edge) => edge.source === id || edge.target === id,
-    );
-
-    // For each connected edge, update the connected node's state
-    connectedEdges.forEach((edge) => {
-      const connectedNodeId = edge.source === id ? edge.target : edge.source;
-      const connectedNode = getNode(connectedNodeId);
-
-      if (connectedNode) {
-        setNodes((nodes) =>
-          nodes.map((node) => {
-            if (node.id === connectedNodeId) {
-              // Update the node's data to reflect the disconnection
-              const updatedConnections = node.data.connections.filter(
-                (conn) => !(conn.source === id || conn.target === id),
-              );
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  connections: updatedConnections,
-                },
-              };
-            }
-            return node;
-          }),
-        );
-      }
-    });
-
-    // Remove the node and its connected edges
-    setNodes((nodes) => nodes.filter((node) => node.id !== id));
-    setEdges((edges) =>
-      edges.filter((edge) => edge.source !== id && edge.target !== id),
-    );
-  }, [id, setNodes, setEdges, getNode, getEdges]);
+    // Remove the node
+    deleteElements({ nodes: [{ id }] });
+  }, [id, deleteElements]);
 
   const copyNode = useCallback(() => {
     // This is a placeholder function. The actual copy functionality
@@ -313,15 +277,15 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   return (
     <div
-      className={`custom-node dark-theme ${data.status?.toLowerCase() ?? ""}`}
+      className={`custom-node dark-theme border rounded-xl shandow-md bg-white/[.8] ${data.status?.toLowerCase() ?? ""}`}
       onMouseEnter={handleHovered}
       onMouseLeave={handleMouseLeave}
     >
-      <div className="mb-2">
-        <div className="text-lg font-bold">
+      <div className="mb-2 p-3 bg-gray-300 rounded-t-xl">
+        <div className="p-3 text-lg font-bold">
           {beautifyString(data.blockType?.replace(/Block$/, "") || data.title)}
         </div>
-        <div className="flex gap-[5px]">
+        <div className="flex gap-[5px] ">
           {isHovered && (
             <>
               <Button
@@ -344,23 +308,24 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           )}
         </div>
       </div>
-      <div className="flex justify-between items-start gap-2">
+      <div className="p-3 flex justify-between items-start gap-2">
         <div>
           {data.inputSchema &&
             Object.entries(data.inputSchema.properties).map(
               ([propKey, propSchema]) => {
                 const isRequired = data.inputSchema.required?.includes(propKey);
+                const isConnected = isHandleConnected(propKey);
                 return (
-                  (isRequired || isAdvancedOpen) && (
+                  (isRequired || isAdvancedOpen || isConnected) && (
                     <div key={propKey} onMouseOver={() => {}}>
                       <NodeHandle
                         keyName={propKey}
-                        isConnected={isHandleConnected(propKey)}
+                        isConnected={isConnected}
                         isRequired={isRequired}
                         schema={propSchema}
                         side="left"
                       />
-                      {!isHandleConnected(propKey) && (
+                      {!isConnected && (
                         <NodeGenericInputField
                           className="mt-1 mb-2"
                           propKey={propKey}
@@ -409,10 +374,10 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </p>
         </div>
       )}
-      <div className="flex items-center mt-2.5">
+      <div className="flex items-center pl-4 pb-4 mt-2.5">
         <Switch onCheckedChange={toggleOutput} />
         <span className="m-1 mr-4">Output</span>
-        {hasOptionalFields() && (
+        {hasOptionalFields && (
           <>
             <Switch onCheckedChange={toggleAdvancedSettings} />
             <span className="m-1">Advanced</span>

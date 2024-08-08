@@ -38,8 +38,8 @@ model AgentGraph {
   isTemplate  Boolean @default(false)
 
   // Link to User model
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   AgentNodes                  AgentNode[]
   AgentGraphExecution         AgentGraphExecution[]
@@ -122,8 +122,8 @@ model AgentGraphExecution {
   AgentNodeExecutions AgentNodeExecution[]
 
   // Link to User model
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 }
 
 // This model describes the execution of an AgentNode.
@@ -184,8 +184,8 @@ model AgentGraphExecutionSchedule {
   lastUpdated DateTime @updatedAt
 
   // Link to User model
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   @@index([isEnabled])
 }
