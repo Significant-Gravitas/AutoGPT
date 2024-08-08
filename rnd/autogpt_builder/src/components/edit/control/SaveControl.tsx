@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { GraphMeta } from "@/lib/autogpt-server-api";
 import { Label } from "@/components/ui/label";
-import { Save } from "lucide-react";
+import { IconSave } from "@/components/ui/icons";
 
 interface SaveControlProps {
   agentMeta: GraphMeta | null;
@@ -53,7 +53,7 @@ export const SaveControl = ({
     <Popover>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon">
-          <Save size={18} />
+          <IconSave />
         </Button>
       </PopoverTrigger>
       <PopoverContent side="right" sideOffset={15} align="start">

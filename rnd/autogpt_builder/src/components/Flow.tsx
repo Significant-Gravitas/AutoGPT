@@ -27,7 +27,6 @@ import AutoGPTServerAPI, {
   Graph,
   NodeExecutionResult,
 } from "@/lib/autogpt-server-api";
-import { Play, Undo2, Redo2 } from "lucide-react";
 import {
   deepEquals,
   getTypeColor,
@@ -41,6 +40,7 @@ import Ajv from "ajv";
 import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
+import { IconPlay, IconRedo2, IconUndo2 } from "@/components/ui/icons";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -843,17 +843,17 @@ const FlowEditor: React.FC<{
   const editorControls: Control[] = [
     {
       label: "Undo",
-      icon: <Undo2 size={18} />,
+      icon: <IconUndo2 />,
       onClick: handleUndo,
     },
     {
       label: "Redo",
-      icon: <Redo2 size={18} />,
+      icon: <IconRedo2 />,
       onClick: handleRedo,
     },
     {
       label: "Run",
-      icon: <Play size={18} />,
+      icon: <IconPlay />,
       onClick: runAgent,
     },
   ];
