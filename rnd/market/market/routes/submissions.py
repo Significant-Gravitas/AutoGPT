@@ -10,10 +10,10 @@ import market.utils.analytics
 router = fastapi.APIRouter()
 
 
-@autogpt_libs.auth.require_auth()
 @router.post("/agents/submit", response_model=market.model.AgentResponse)
 async def submit_agent(
     request: market.model.AddAgentRequest,
+    user: autogpt_libs.auth.User = fastapi.Depends(autogpt_libs.auth.requires_user),
 ):
     """
     A basic endpoint to create a new agent entry in the database.

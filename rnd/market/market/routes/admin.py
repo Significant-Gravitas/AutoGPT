@@ -1,17 +1,20 @@
+import logging
 import typing
 
 import autogpt_libs.auth
 import fastapi
 import prisma
+import prisma.enums
 import prisma.models
 
 import market.db
 import market.model
 
+logger = logging.getLogger("marketplace")
+
 router = fastapi.APIRouter()
 
 
-@autogpt_libs.auth.require_auth(admin_only=True)
 @router.post("/agent", response_model=market.model.AgentResponse)
 async def create_agent_entry(
     request: market.model.AddAgentRequest,
@@ -40,7 +43,6 @@ async def create_agent_entry(
         raise fastapi.HTTPException(status_code=500, detail=str(e))
 
 
-@autogpt_libs.auth.require_auth(admin_only=True)
 @router.post("/agent/featured/{agent_id}")
 async def set_agent_featured(
     agent_id: str,
@@ -63,7 +65,6 @@ async def set_agent_featured(
         raise fastapi.HTTPException(status_code=500, detail=str(e))
 
 
-@autogpt_libs.auth.require_auth(admin_only=True)
 @router.delete("/agent/featured/{agent_id}")
 async def unset_agent_featured(
     agent_id: str,
@@ -86,7 +87,6 @@ async def unset_agent_featured(
         raise fastapi.HTTPException(status_code=500, detail=str(e))
 
 
-@autogpt_libs.auth.require_auth(admin_only=True)
 @router.get("/agent/submissions", response_model=market.model.AgentListResponse)
 async def get_agent_submissions(
     page: int = fastapi.Query(1, ge=1, description="Page number"),
@@ -112,7 +112,11 @@ async def get_agent_submissions(
     sort_order: typing.Literal["asc", "desc"] = fastapi.Query(
         "desc", description="Sort order (asc or desc)"
     ),
+    user: autogpt_libs.auth.User = fastapi.Depends(
+        autogpt_libs.auth.requires_admin_user
+    ),
 ):
+    logger.info("Getting agent submissions")
     try:
         result = await market.db.get_agents(
             page=page,
@@ -140,29 +144,35 @@ async def get_agent_submissions(
         )
 
     except market.db.AgentQueryError as e:
+        logger.error(f"Error getting agent submissions: {e}")
         raise fastapi.HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.error(f"Error getting agent submissions: {e}")
         raise fastapi.HTTPException(
             status_code=500, detail=f"An unexpected error occurred: {e}"
         )
 
 
-@autogpt_libs.auth.require_auth(admin_only=True)
-@router.post("/agent/submissions/{agent_id}")
+@router.post("/agent/submissions")
 async def review_submission(
     review_request: market.model.SubmissionReviewRequest,
+    user: autogpt_libs.auth.User = fastapi.Depends(
+        autogpt_libs.auth.requires_admin_user
+    ),
 ):
     """
     A basic endpoint to review a submission in the database.
     """
-
+    logger.info(
+        f"Reviewing submission: {review_request.agent_id}, {review_request.version}"
+    )
     try:
-        await market.db.update_agent_entry(
-            agent_id=review_request.agent_id,
-            version=review_request.version,
-            submission_state=review_request.status,
-            comments=review_request.comments,
-        )
+        # await market.db.update_agent_entry(
+        #     agent_id=review_request.agent_id,
+        #     version=review_request.version,
+        #     submission_state=review_request.status,
+        #     comments=review_request.comments,
+        # )
         return fastapi.responses.Response(status_code=200)
     except market.db.AgentQueryError as e:
         raise fastapi.HTTPException(status_code=500, detail=str(e))

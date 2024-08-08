@@ -1,4 +1,5 @@
 import contextlib
+import logging.config
 import os
 
 import dotenv
@@ -12,11 +13,14 @@ import sentry_sdk.integrations.asyncio
 import sentry_sdk.integrations.fastapi
 import sentry_sdk.integrations.starlette
 
+import market.config
 import market.routes.admin
 import market.routes.agents
 import market.routes.search
 
 dotenv.load_dotenv()
+
+logging.config.dictConfig(market.config.LogConfig().model_dump())
 
 if os.environ.get("SENTRY_DSN"):
     sentry_sdk.init(
