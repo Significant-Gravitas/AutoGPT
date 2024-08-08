@@ -880,6 +880,8 @@ const FlowEditor: React.FC<{
         deleteKeyCode={["Backspace", "Delete"]}
         onNodeDragStart={onNodesChangeStart}
         onNodeDragStop={onNodesChangeEnd}
+        minZoom={0.2}
+        maxZoom={2}
       >
         <Controls />
         <ControlPanel className="absolute z-10" controls={editorControls}>
