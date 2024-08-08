@@ -53,7 +53,8 @@ class CurrentDateBlock(Block):
             test_output=[
                 (
                     "date",
-                    lambda _: (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d"),
+                    lambda t: abs(datetime.now() - datetime.strptime(t, "%Y-%m-%d"))
+                    < timedelta(days=8),  # 7 days difference + 1 day error margin.
                 ),
             ],
         )
