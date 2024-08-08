@@ -14,10 +14,10 @@ def requires_admin_user(
     return verify_user(payload, admin_only=True)
 
 
-def verify_user(payload: dict, admin_only: bool) -> User:
+def verify_user(payload: dict | None, admin_only: bool) -> User:
     if not payload:
         # This handles the case when authentication is disabled
-        user_id = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+        payload = {"sub": "3e53486c-cf57-477e-ba2a-cb02dc828e1a", "role": "admin"}
 
     user_id = payload.get("sub")
 
