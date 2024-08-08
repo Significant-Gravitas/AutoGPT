@@ -1,8 +1,21 @@
+from prisma.models import User
+
 from autogpt_server.blocks.basic import InputBlock, PrintingBlock
 from autogpt_server.blocks.text import TextFormatterBlock
 from autogpt_server.data import graph
 from autogpt_server.data.graph import create_graph
+from autogpt_server.data.user import get_or_create_user
 from autogpt_server.util.test import SpinTestServer, wait_execution
+
+
+async def create_test_user() -> User:
+    test_user_data = {
+        "sub": "ef3b97d7-1161-4eb4-92b2-10c24fb154c1",
+        "email": "testuser@example.com",
+        "name": "Test User",
+    }
+    user = await get_or_create_user(test_user_data)
+    return user
 
 
 def create_test_graph() -> graph.Graph:
@@ -63,11 +76,16 @@ def create_test_graph() -> graph.Graph:
 async def sample_agent():
     async with SpinTestServer() as server:
         exec_man = server.exec_manager
-        test_graph = await create_graph(create_test_graph())
+        test_user = await create_test_user()
+        test_graph = await create_graph(create_test_graph(), test_user.id)
         input_data = {"input_1": "Hello", "input_2": "World"}
-        response = await server.agent_server.execute_graph(test_graph.id, input_data)
+        response = await server.agent_server.execute_graph(
+            test_graph.id, input_data, test_user.id
+        )
         print(response)
-        result = await wait_execution(exec_man, test_graph.id, response["id"], 4, 10)
+        result = await wait_execution(
+            exec_man, test_user.id, test_graph.id, response["id"], 4, 10
+        )
         print(result)
 
 

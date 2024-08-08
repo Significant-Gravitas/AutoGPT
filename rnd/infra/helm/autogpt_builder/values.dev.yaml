@@ -1,0 +1,77 @@
+# dev values, overwrite base values as needed.
+
+image:
+  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-builder-dev/agpt-builder-dev
+  pullPolicy: Always
+  tag: "latest"
+
+serviceAccount:
+  annotations:
+    iam.gke.io/gcp-service-account: "dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com"
+  name: "dev-agpt-builder-sa"
+
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 3000
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+
+ingress:
+  enabled: true
+  className: "gce"
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: "agpt-dev-agpt-builder-ip"
+    networking.gke.io/managed-certificates: "autogpt-builder-cert"
+    kubernetes.io/ingress.allow-http: "true"
+  hosts:
+    - host: dev-builder.agpt.co
+      paths:
+        - path: /
+          pathType: Prefix
+      backend:
+        service:
+          name: autogpt-builder
+          port: 8000
+  defaultBackend:
+    service:
+      name: autogpt-builder
+      port:
+        number: 8000
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+livenessProbe:
+  httpGet:
+    path: /
+    port: 3000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+readinessProbe:
+  httpGet:
+    path: /
+    port: 3000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+domain: "dev-builder.agpt.co"
+
+
+env:
+  APP_ENV: "dev"
+  NEXT_PUBLIC_AGPT_SERVER_URL: "http://agpt-server:8000/api"
+  GOOGLE_CLIENT_ID: "638488734936-ka0bvq73ub3h4cb6013s3lftsl5l04nu.apps.googleusercontent.com"
+  GOOGLE_CLIENT_SECRET: ""
+  NEXT_PUBLIC_SUPABASE_URL: "https://adfjtextkuilwuhzdjpf.supabase.co"
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: ""

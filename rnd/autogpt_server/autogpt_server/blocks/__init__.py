@@ -1,6 +1,7 @@
 import glob
 import importlib
 import os
+import re
 from pathlib import Path
 
 from autogpt_server.data.block import Block
@@ -15,6 +16,11 @@ modules = [
     if os.path.isfile(f) and f.endswith(".py") and not f.endswith("__init__.py")
 ]
 for module in modules:
+    if not re.match("^[a-z_]+$", module):
+        raise ValueError(
+            f"Block module {module} error: module name must be lowercase, separated by underscores, and contain only alphabet characters"
+        )
+
     importlib.import_module(f".{module}", package=__name__)
     AVAILABLE_MODULES.append(module)
 
@@ -30,8 +36,15 @@ def all_subclasses(clz):
 
 
 for cls in all_subclasses(Block):
-    if not cls.__name__.endswith("Block"):
+    name = cls.__name__
+
+    if cls.__name__.endswith("Base"):
         continue
+
+    if not cls.__name__.endswith("Block"):
+        raise ValueError(
+            f"Block class {cls.__name__} does not end with 'Block', If you are creating an abstract class, please name the class with 'Base' at the end"
+        )
 
     block = cls()
 
