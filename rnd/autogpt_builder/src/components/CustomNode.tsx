@@ -314,15 +314,15 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   return (
     <div
-      className={`custom-node dark-theme ${data.status?.toLowerCase() ?? ""}`}
+      className={`custom-node overflow-hidden dark-theme border-4 rounded-xl ${data.status?.toLowerCase() ?? ""}`}
       onMouseEnter={handleHovered}
       onMouseLeave={handleMouseLeave}
     >
-      <div className="mb-2">
-        <div className="text-lg font-bold">
+      <div className="mb-2 p-3 bg-gray-300">
+        <div className="p-3 text-lg font-bold">
           {beautifyString(data.blockType?.replace(/Block$/, "") || data.title)}
         </div>
-        <div className="flex gap-[5px]">
+        <div className="flex gap-[5px] ">
           {isHovered && (
             <>
               <Button
@@ -345,7 +345,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           )}
         </div>
       </div>
-      <div className="flex justify-between items-start gap-2">
+      <div className="p-3 flex justify-between items-start gap-2">
         <div>
           {data.inputSchema &&
             Object.entries(data.inputSchema.properties).map(
