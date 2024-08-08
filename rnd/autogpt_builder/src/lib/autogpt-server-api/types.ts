@@ -10,7 +10,7 @@ export type Block = {
 export type BlockIORootSchema = {
   type: "object";
   properties: { [key: string]: BlockIOSubSchema };
-  required?: string[];
+  required?: (keyof BlockIORootSchema["properties"])[];
   additionalProperties?: { type: string };
 };
 
@@ -37,7 +37,7 @@ export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
   type: "object";
   properties: { [key: string]: BlockIOSubSchema };
   default?: { [key: keyof BlockIOObjectSubSchema["properties"]]: any };
-  required?: keyof BlockIOObjectSubSchema["properties"][];
+  required?: (keyof BlockIOObjectSubSchema["properties"])[];
 };
 
 export type BlockIOKVSubSchema = BlockIOSubSchemaMeta & {

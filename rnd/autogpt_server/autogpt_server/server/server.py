@@ -30,7 +30,7 @@ from autogpt_server.data.execution import (
     get_execution_results,
     list_executions,
 )
-from autogpt_server.data.user import get_or_create_user
+from autogpt_server.data.user import DEFAULT_USER_ID, get_or_create_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import (
@@ -49,7 +49,7 @@ settings = Settings()
 def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
     if not payload:
         # This handles the case when authentication is disabled
-        return "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+        return DEFAULT_USER_ID
 
     user_id = payload.get("sub")
     if not user_id:
@@ -73,8 +73,8 @@ class AgentServer(AppService):
     async def lifespan(self, _: FastAPI):
         await db.connect()
         await block.initialize_blocks()
-        await graph_db.import_packaged_templates()
-        await user_db.create_default_user(settings.config.enable_auth)
+        if await user_db.create_default_user(settings.config.enable_auth):
+            await graph_db.import_packaged_templates()
         asyncio.create_task(self.event_broadcaster())
         yield
         await db.disconnect()
@@ -294,7 +294,7 @@ class AgentServer(AppService):
                 await websocket.close(code=4003, reason="Invalid token")
                 return ""
         else:
-            return "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+            return user_db.DEFAULT_USER_ID
 
     async def websocket_router(self, websocket: WebSocket):
         user_id = await self.authenticate_websocket(websocket)
@@ -551,7 +551,12 @@ class AgentServer(AppService):
 
     @classmethod
     async def create_graph(
-        cls, create_graph: CreateGraph, is_template: bool, user_id: str
+        cls,
+        create_graph: CreateGraph,
+        is_template: bool,
+        # user_id doesn't have to be annotated like on other endpoints,
+        # because create_graph isn't used directly as an endpoint
+        user_id: str,
     ) -> graph_db.Graph:
         if create_graph.graph:
             graph = create_graph.graph
