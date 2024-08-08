@@ -442,5 +442,39 @@ export const IconPackage2 = createIcon((props) => (
     </svg>
 ));
 
+/**
+ * Megaphone icon component.
+ *
+ * @component IconMegaphone
+ * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
+ * @returns {JSX.Element} - The megaphone icon.
+ *
+ * @example
+ * // Default usage this is the standard usage
+ * <IconMegaphone />
+ *
+ * @example
+ * // With custom color and size these should be used sparingly and only when necessary
+ * <IconMegaphone className="text-primary" size="lg" />
+ *
+ * @example
+ * // With custom size and onClick handler
+ * <IconMegaphone size="sm" onClick={handleOnClick} />
+ */
+export const IconMegaphone = createIcon((props) => (
+    <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        {...props}
+    >
+        <path d="m3 11 18-5v12L3 14v-3z"/>
+        <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>
+    </svg>
+));
 
 export { iconVariants, };
