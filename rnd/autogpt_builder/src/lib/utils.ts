@@ -36,7 +36,7 @@ export function deepEquals(x: any, y: any): boolean {
 
 /** Get tailwind text color class from type name */
 export function getTypeTextColor(type: string | null): string {
-  if (type === null) return "bg-gray-500";
+  if (type === null) return "text-gray-500";
   return (
     {
       string: "text-green-500",
@@ -53,23 +53,23 @@ export function getTypeTextColor(type: string | null): string {
 
 /** Get tailwind bg color class from type name */
 export function getTypeBgColor(type: string | null): string {
-  if (type === null) return "bg-gray-500";
+  if (type === null) return "border-gray-500";
   return (
     {
-      string: "bg-green-500",
-      number: "bg-blue-500",
-      boolean: "bg-yellow-500",
-      object: "bg-purple-500",
-      array: "bg-indigo-500",
-      null: "bg-gray-500",
-      any: "bg-gray-500",
-      "": "bg-gray-500",
-    }[type] || "bg-gray-500"
+      string: "border-green-500",
+      number: "border-blue-500",
+      boolean: "border-yellow-500",
+      object: "border-purple-500",
+      array: "border-indigo-500",
+      null: "border-gray-500",
+      any: "border-gray-500",
+      "": "border-gray-500",
+    }[type] || "border-gray-500"
   );
 }
 
 export function getTypeColor(type: string | null): string {
-  if (type === null) return "bg-gray-500";
+  if (type === null) return "#6b7280";
   return (
     {
       string: "#22c55e",

@@ -1,8 +1,4 @@
 .custom-node {
-  @apply p-3;
-  border: 3px solid #4b5563;
-  border-radius: 12px;
-  background: #ffffff;
   color: #000000;
   width: 500px;
   box-sizing: border-box;
