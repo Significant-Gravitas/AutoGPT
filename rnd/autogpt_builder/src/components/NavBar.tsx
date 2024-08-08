@@ -37,7 +37,7 @@ export async function NavBar() {
           <SheetContent side="left">
             <nav className="grid gap-6 text-lg font-medium">
               <Link
-                href="/monitor"
+                href="/"
                 className="text-muted-foreground hover:text-foreground flex flex-row gap-2 "
               >
                 <IconSquareActivity /> Monitor
@@ -59,7 +59,7 @@ export async function NavBar() {
         </Sheet>
         <nav className="hidden md:flex md:flex-row md:items-center md:gap-5 lg:gap-6">
           <Link
-            href="/monitor"
+            href="/"
             className="text-muted-foreground hover:text-foreground flex flex-row gap-2 items-center"
           >
             <IconSquareActivity /> Monitor
