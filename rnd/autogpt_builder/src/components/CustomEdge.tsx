@@ -30,10 +30,10 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
   markerEnd,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
-  const { setEdges } = useReactFlow();
+  const { deleteElements } = useReactFlow<any, CustomEdgeData>();
 
   const onEdgeRemoveClick = () => {
-    setEdges((edges) => edges.filter((edge) => edge.id !== id));
+    deleteElements({ edges: [{ id }] });
   };
 
   const [path, labelX, labelY] = getBezierPath({
