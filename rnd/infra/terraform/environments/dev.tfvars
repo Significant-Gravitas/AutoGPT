@@ -58,6 +58,16 @@ role_bindings = {
   ],
   "roles/iam.serviceAccountUser" = [
     "serviceAccount:dev-agpt-gha-sa@agpt-dev.iam.gserviceaccount.com"
+  ],
+  "roles/container.developer" = [
+    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-gha-sa@agpt-dev.iam.gserviceaccount.com"
+  ],
+  "roles/storage.objectViewer" = [
+    "serviceAccount:dev-agpt-gha-sa@agpt-dev.iam.gserviceaccount.com"
+  ],
+  "roles/artifactregistry.writer" = [
+    "serviceAccount:dev-agpt-gha-sa@agpt-dev.iam.gserviceaccount.com"
   ]
 }
 
