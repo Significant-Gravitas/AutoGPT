@@ -151,7 +151,6 @@ class Graph(GraphMeta):
         }
 
     def validate_graph(self, for_run: bool = False):
-
         def sanitize(name):
             return name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
 
@@ -368,9 +367,7 @@ async def set_graph_active_version(graph_id: str, version: int, user_id: str) ->
     )
 
 
-async def get_graph_all_versions(
-    graph_id: str, user_id: str | None = None
-) -> list[Graph]:
+async def get_graph_all_versions(graph_id: str, user_id: str) -> list[Graph]:
     graph_versions = await AgentGraph.prisma().find_many(
         where={"id": graph_id, "userId": user_id},
         order={"version": "desc"},
@@ -383,7 +380,7 @@ async def get_graph_all_versions(
     return [Graph.from_db(graph) for graph in graph_versions]
 
 
-async def create_graph(graph: Graph, user_id: str | None) -> Graph:
+async def create_graph(graph: Graph, user_id: str) -> Graph:
     async with transaction() as tx:
         await __create_graph(tx, graph, user_id)
 
@@ -395,7 +392,7 @@ async def create_graph(graph: Graph, user_id: str | None) -> Graph:
     raise ValueError(f"Created graph {graph.id} v{graph.version} is not in DB")
 
 
-async def __create_graph(tx, graph: Graph, user_id: str | None):
+async def __create_graph(tx, graph: Graph, user_id: str):
     await AgentGraph.prisma(tx).create(
         data={
             "id": graph.id,
