@@ -242,13 +242,6 @@ export default class AutoGPTServerAPI {
   subscribeToExecution(graphId: string) {
     this.sendWebSocketMessage("subscribe", { graph_id: graphId });
   }
-
-  runGraph(
-    graphId: string,
-    data: WebsocketMessageTypeMap["run_graph"]["data"] = {},
-  ) {
-    this.sendWebSocketMessage("run_graph", { graph_id: graphId, data });
-  }
 }
 
 /* *** UTILITY TYPES *** */
@@ -264,6 +257,5 @@ type GraphCreateRequestBody =
 
 type WebsocketMessageTypeMap = {
   subscribe: { graph_id: string };
-  run_graph: { graph_id: string; data: { [key: string]: any } };
   execution_event: NodeExecutionResult;
 };
