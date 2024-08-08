@@ -416,8 +416,10 @@ class ExecutionManager(AppService):
         return get_agent_server_client()
 
     @expose
-    def add_execution(self, graph_id: str, data: BlockInput) -> dict[Any, Any]:
-        graph: Graph | None = self.run_and_wait(get_graph(graph_id))
+    def add_execution(
+        self, graph_id: str, data: BlockInput, user_id: str
+    ) -> dict[Any, Any]:
+        graph: Graph | None = self.run_and_wait(get_graph(graph_id, user_id=user_id))
         if not graph:
             raise Exception(f"Graph #{graph_id} not found.")
         graph.validate_graph(for_run=True)
