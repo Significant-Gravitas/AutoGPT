@@ -165,7 +165,6 @@ def _enqueue_next_nodes(
         # To avoid same execution to be enqueued multiple times,
         # Or the same input to be consumed multiple times.
         with synchronized(api_client, ("upsert_input", next_node_id, graph_exec_id)):
-
             # Add output data to the earliest incomplete execution, or create a new one.
             next_node_exec_id, next_node_input = wait(
                 upsert_execution_input(
@@ -442,6 +441,7 @@ class ExecutionManager(AppService):
                 graph_id=graph_id,
                 graph_version=graph.version,
                 nodes_input=nodes_input,
+                user_id=user_id,
             )
         )
 
