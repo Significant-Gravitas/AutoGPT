@@ -64,6 +64,7 @@ async def add_schedule(schedule: ExecutionSchedule) -> ExecutionSchedule:
     obj = await AgentGraphExecutionSchedule.prisma().create(
         data={
             "id": schedule.id,
+            "userId": schedule.user_id,
             "agentGraphId": schedule.graph_id,
             "agentGraphVersion": schedule.graph_version,
             "schedule": schedule.schedule,

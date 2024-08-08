@@ -6,7 +6,6 @@ from autogpt_server.usecases.sample import create_test_graph, create_test_user
 from autogpt_server.util.service import get_service_client
 
 
-@pytest.mark.skip(reason="flakey test, needs to be investigated")
 @pytest.mark.asyncio(scope="session")
 async def test_agent_schedule(server):
     await db.connect()
@@ -31,6 +30,6 @@ async def test_agent_schedule(server):
     assert len(schedules) == 1
     assert schedules[schedule_id] == "0 0 * * *"
 
-    scheduler.update_schedule(schedule_id, is_enabled=False)
-    schedules = scheduler.get_execution_schedules(test_graph.id)
+    scheduler.update_schedule(schedule_id, is_enabled=False, user_id=test_user.id)
+    schedules = scheduler.get_execution_schedules(test_graph.id, user_id=test_user.id)
     assert len(schedules) == 0
