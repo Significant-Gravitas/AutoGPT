@@ -17,6 +17,7 @@ import ReactFlow, {
   Connection,
   EdgeTypes,
   MarkerType,
+  Controls,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import CustomNode, { CustomNodeData } from "./CustomNode";
@@ -880,6 +881,7 @@ const FlowEditor: React.FC<{
         onNodeDragStart={onNodesChangeStart}
         onNodeDragStop={onNodesChangeEnd}
       >
+        <Controls />
         <ControlPanel className="absolute z-10" controls={editorControls}>
           <BlocksControl blocks={availableNodes} addBlock={addNode} />
           <SaveControl
