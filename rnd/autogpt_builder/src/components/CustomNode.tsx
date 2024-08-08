@@ -314,11 +314,11 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   return (
     <div
-      className={`custom-node overflow-hidden dark-theme border-4 rounded-xl ${data.status?.toLowerCase() ?? ""}`}
+      className={`custom-node dark-theme border rounded-xl shandow-md bg-white/[.8] ${data.status?.toLowerCase() ?? ""}`}
       onMouseEnter={handleHovered}
       onMouseLeave={handleMouseLeave}
     >
-      <div className="mb-2 p-3 bg-gray-300">
+      <div className="mb-2 p-3 bg-gray-300 rounded-t-xl">
         <div className="p-3 text-lg font-bold">
           {beautifyString(data.blockType?.replace(/Block$/, "") || data.title)}
         </div>
@@ -411,7 +411,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </p>
         </div>
       )}
-      <div className="flex items-center mt-2.5">
+      <div className="flex items-center pl-4 pb-4 mt-2.5">
         <Switch onCheckedChange={toggleOutput} />
         <span className="m-1 mr-4">Output</span>
         {hasOptionalFields && (
