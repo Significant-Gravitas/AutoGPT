@@ -107,7 +107,7 @@ export const AgentImportForm: React.FC<
                           ) {
                             throw new Error(
                               "Invalid agent object in file: " +
-                                JSON.stringify(obj, null, 2),
+                              JSON.stringify(obj, null, 2),
                             );
                           }
                           const agent = obj as Graph;
