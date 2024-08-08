@@ -1,6 +1,14 @@
 from .config import Settings
+from .depends import requires_admin_user, requires_user
 from .jwt_utils import parse_jwt_token
-from .decorator import require_auth, get_user
 from .middleware import auth_middleware
+from .models import User
 
-__all__ = ['Settings', 'parse_jwt_token', 'require_auth', 'get_user', 'auth_middleware']
+__all__ = [
+    "Settings",
+    "parse_jwt_token",
+    "requires_user",
+    "requires_admin_user",
+    "auth_middleware",
+    "User",
+]
