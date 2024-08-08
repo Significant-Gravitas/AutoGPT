@@ -6,7 +6,6 @@ from autogpt_server.usecases.sample import create_test_graph, create_test_user
 from autogpt_server.util.service import get_service_client
 
 
-# @pytest.mark.skip(reason="flakey test, needs to be investigated")
 @pytest.mark.asyncio(scope="session")
 async def test_agent_schedule(server):
     await db.connect()
