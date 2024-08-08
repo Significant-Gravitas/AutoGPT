@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { GraphMeta } from "@/lib/autogpt-server-api";
 import { Label } from "@/components/ui/label";
-import {IconSave} from "@/components/ui/icons";
+import { IconSave } from "@/components/ui/icons";
 
 interface SaveControlProps {
   agentMeta: GraphMeta | null;

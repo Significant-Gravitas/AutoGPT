@@ -5,7 +5,13 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import Image from "next/image";
 import getServerUser from "@/hooks/getServerUser";
 import ProfileDropdown from "./ProfileDropdown";
-import {IconCircleUser, IconMenu, IconPackage2, IconSquareActivity, IconWorkFlow} from "@/components/ui/icons";
+import {
+  IconCircleUser,
+  IconMenu,
+  IconPackage2,
+  IconSquareActivity,
+  IconWorkFlow,
+} from "@/components/ui/icons";
 
 export async function NavBar() {
   const isAvailable = Boolean(

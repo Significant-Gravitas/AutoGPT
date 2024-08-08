@@ -39,7 +39,7 @@ import Ajv from "ajv";
 import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
-import {IconPlay, IconRedo2, IconUndo2} from "@/components/ui/icons";
+import { IconPlay, IconRedo2, IconUndo2 } from "@/components/ui/icons";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block

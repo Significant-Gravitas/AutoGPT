@@ -42,29 +42,29 @@ export const ControlPanel = ({
   className,
 }: ControlPanelProps) => {
   return (
-      <Card className={cn("w-14", className)}>
-        <CardContent className="p-0">
-          <div className="flex flex-col items-center gap-8 px-2 sm:py-5 rounded-radius">
-            {children}
-            <Separator />
-            {controls.map((control, index) => (
-                <Tooltip key={index} delayDuration={500}>
-                  <TooltipTrigger asChild>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => control.onClick()}
-                    >
-                      {control.icon}
-                      <span className="sr-only">{control.label}</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{control.label}</TooltipContent>
-                </Tooltip>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+    <Card className={cn("w-14", className)}>
+      <CardContent className="p-0">
+        <div className="flex flex-col items-center gap-8 px-2 sm:py-5 rounded-radius">
+          {children}
+          <Separator />
+          {controls.map((control, index) => (
+            <Tooltip key={index} delayDuration={500}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => control.onClick()}
+                >
+                  {control.icon}
+                  <span className="sr-only">{control.label}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">{control.label}</TooltipContent>
+            </Tooltip>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 export default ControlPanel;

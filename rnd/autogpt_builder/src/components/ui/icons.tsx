@@ -1,24 +1,24 @@
-'use client'
+"use client";
 
-import * as React from 'react'
-import { cn } from '@/lib/utils'
+import * as React from "react";
+import { cn } from "@/lib/utils";
 
 /**
  * Represents different variants of an icon, based on its size.
  */
 const iconVariants = {
-    size: {
-        default: "size-4",
-        sm: "size-2",
-        lg: "size-6",
-    },
+  size: {
+    default: "size-4",
+    sm: "size-2",
+    lg: "size-6",
+  },
 } as const;
 
 /**
  * Props for the Icon component.
  */
 export interface IconProps extends React.SVGProps<SVGSVGElement> {
-    size?: keyof typeof iconVariants.size;
+  size?: keyof typeof iconVariants.size;
 }
 
 /**
@@ -31,23 +31,24 @@ export interface IconProps extends React.SVGProps<SVGSVGElement> {
  *
  */
 const createIcon = <P extends React.SVGProps<SVGSVGElement>>(
-    IconComponent: React.FC<P>
-): React.ForwardRefExoticComponent<IconProps & React.RefAttributes<SVGSVGElement>> => {
-    const Icon = React.forwardRef<SVGSVGElement, IconProps>(
-        ({ className, size = "default", ...props }, ref) => {
-            return (
-                <IconComponent
-                    className={cn(iconVariants.size[size], className)}
-                    ref={ref}
-                    {...props as P}
-                />
-            );
-        }
-    );
-    Icon.displayName = IconComponent.name || "Icon";
-    return Icon;
+  IconComponent: React.FC<P>,
+): React.ForwardRefExoticComponent<
+  IconProps & React.RefAttributes<SVGSVGElement>
+> => {
+  const Icon = React.forwardRef<SVGSVGElement, IconProps>(
+    ({ className, size = "default", ...props }, ref) => {
+      return (
+        <IconComponent
+          className={cn(iconVariants.size[size], className)}
+          ref={ref}
+          {...(props as P)}
+        />
+      );
+    },
+  );
+  Icon.displayName = IconComponent.name || "Icon";
+  return Icon;
 };
-
 
 /**
  * Save icon component.
@@ -69,20 +70,20 @@ const createIcon = <P extends React.SVGProps<SVGSVGElement>>(
  * <IconSave size="sm" onClick={handleOnClick} />
  */
 export const IconSave = createIcon((props) => (
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        {...props}
-    >
-        <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>
-        <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/>
-        <path d="M7 3v4a1 1 0 0 0 1 1h7"/>
-    </svg>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+    <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" />
+    <path d="M7 3v4a1 1 0 0 0 1 1h7" />
+  </svg>
 ));
 
 /**
@@ -105,19 +106,19 @@ export const IconSave = createIcon((props) => (
  * <IconUndo2 size="sm" onClick={handleOnClick} />
  */
 export const IconUndo2 = createIcon((props) => (
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        {...props}
-    >
-        <path d="M9 14 4 9l5-5"/>
-        <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>
-    </svg>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M9 14 4 9l5-5" />
+    <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" />
+  </svg>
 ));
 
 /**
@@ -140,19 +141,19 @@ export const IconUndo2 = createIcon((props) => (
  * <IconRedo2 size="sm" onClick={handleOnClick} />
  */
 export const IconRedo2 = createIcon((props) => (
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        {...props}
-    >
-        <path d="m15 14 5-5-5-5"/>
-        <path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"/>
-    </svg>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="m15 14 5-5-5-5" />
+    <path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13" />
+  </svg>
 ));
 
 /**
@@ -175,20 +176,20 @@ export const IconRedo2 = createIcon((props) => (
  * <IconToyBrick size="sm" onClick={handleOnClick} />
  */
 export const IconToyBrick = createIcon((props) => (
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        {...props}
-    >
-        <rect width="18" height="12" x="3" y="8" rx="1"/>
-        <path d="M10 8V5c0-.6-.4-1-1-1H6a1 1 0 0 0-1 1v3"/>
-        <path d="M19 8V5c0-.6-.4-1-1-1h-3a1 1 0 0 0-1 1v3"/>
-    </svg>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect width="18" height="12" x="3" y="8" rx="1" />
+    <path d="M10 8V5c0-.6-.4-1-1-1H6a1 1 0 0 0-1 1v3" />
+    <path d="M19 8V5c0-.6-.4-1-1-1h-3a1 1 0 0 0-1 1v3" />
+  </svg>
 ));
 
 /**
@@ -211,22 +212,21 @@ export const IconToyBrick = createIcon((props) => (
  * <IconCircleAlert size="sm" onClick={handleOnClick} />
  */
 export const IconCircleAlert = createIcon((props) => (
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        {...props}
-    >
-        <circle cx="12" cy="12" r="10"/>
-        <line x1="12" x2="12" y1="8" y2="12"/>
-        <line x1="12" x2="12.01" y1="16" y2="16"/>
-    </svg>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" x2="12" y1="8" y2="12" />
+    <line x1="12" x2="12.01" y1="16" y2="16" />
+  </svg>
 ));
-
 
 /**
  * Circle User icon component.
@@ -248,20 +248,20 @@ export const IconCircleAlert = createIcon((props) => (
  * <IconCircleUser size="sm" onClick={handleOnClick} />
  */
 export const IconCircleUser = createIcon((props) => (
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        {...props}
-    >
-        <circle cx="12" cy="12" r="10"/>
-        <circle cx="12" cy="10" r="3"/>
-        <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/>
-    </svg>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <circle cx="12" cy="12" r="10" />
+    <circle cx="12" cy="10" r="3" />
+    <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" />
+  </svg>
 ));
 
 /**
@@ -284,20 +284,20 @@ export const IconCircleUser = createIcon((props) => (
  * <IconMenu size="sm" onClick={handleOnClick} />
  */
 export const IconMenu = createIcon((props) => (
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        {...props}
-    >
-        <line x1="4" x2="20" y1="12" y2="12"/>
-        <line x1="4" x2="20" y1="6" y2="6"/>
-        <line x1="4" x2="20" y1="18" y2="18"/>
-    </svg>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <line x1="4" x2="20" y1="12" y2="12" />
+    <line x1="4" x2="20" y1="6" y2="6" />
+    <line x1="4" x2="20" y1="18" y2="18" />
+  </svg>
 ));
 
 /**
@@ -320,19 +320,19 @@ export const IconMenu = createIcon((props) => (
  * <IconSquareActivity size="sm" onClick={handleOnClick} />
  */
 export const IconSquareActivity = createIcon((props) => (
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        {...props}
-    >
-        <rect width="18" height="18" x="3" y="3" rx="2"/>
-        <path d="M17 12h-2l-2 5-2-10-2 5H7"/>
-    </svg>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="M17 12h-2l-2 5-2-10-2 5H7" />
+  </svg>
 ));
 
 /**
@@ -355,22 +355,21 @@ export const IconSquareActivity = createIcon((props) => (
  * <IconWorkFlow size="sm" onClick={handleOnClick} />
  */
 export const IconWorkFlow = createIcon((props) => (
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        {...props}
-    >
-        <rect width="8" height="8" x="3" y="3" rx="2"/>
-        <path d="M7 11v4a2 2 0 0 0 2 2h4"/>
-        <rect width="8" height="8" x="13" y="13" rx="2"/>
-    </svg>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect width="8" height="8" x="3" y="3" rx="2" />
+    <path d="M7 11v4a2 2 0 0 0 2 2h4" />
+    <rect width="8" height="8" x="13" y="13" rx="2" />
+  </svg>
 ));
-
 
 /**
  * Play icon component.
@@ -392,18 +391,18 @@ export const IconWorkFlow = createIcon((props) => (
  * <IconPlay size="sm" onClick={handleOnClick} />
  */
 export const IconPlay = createIcon((props) => (
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        {...props}
-    >
-        <polygon points="6 3 20 12 6 21 6 3"/>
-    </svg>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <polygon points="6 3 20 12 6 21 6 3" />
+  </svg>
 ));
 
 /**
@@ -426,20 +425,20 @@ export const IconPlay = createIcon((props) => (
  * <IconPackage2 size="sm" onClick={handleOnClick} />
  */
 export const IconPackage2 = createIcon((props) => (
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        {...props}
-    >
-        <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z"/>
-        <path d="m3 9 2.45-4.9A2 2 0 0 1 7.24 3h9.52a2 2 0 0 1 1.8 1.1L21 9"/>
-        <path d="M12 3v6"/>
-    </svg>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z" />
+    <path d="m3 9 2.45-4.9A2 2 0 0 1 7.24 3h9.52a2 2 0 0 1 1.8 1.1L21 9" />
+    <path d="M12 3v6" />
+  </svg>
 ));
 
 /**
@@ -462,19 +461,19 @@ export const IconPackage2 = createIcon((props) => (
  * <IconMegaphone size="sm" onClick={handleOnClick} />
  */
 export const IconMegaphone = createIcon((props) => (
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        {...props}
-    >
-        <path d="m3 11 18-5v12L3 14v-3z"/>
-        <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>
-    </svg>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="m3 11 18-5v12L3 14v-3z" />
+    <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+  </svg>
 ));
 
-export { iconVariants, };
+export { iconVariants };

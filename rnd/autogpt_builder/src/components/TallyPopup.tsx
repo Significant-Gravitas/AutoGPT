@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { Button } from "./ui/button";
-import {IconMegaphone} from "@/components/ui/icons";
+import { IconMegaphone } from "@/components/ui/icons";
 
 const TallyPopupSimple = () => {
   const [isFormVisible, setIsFormVisible] = useState(false);
