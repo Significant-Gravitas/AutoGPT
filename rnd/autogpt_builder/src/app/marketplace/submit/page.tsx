@@ -1,9 +1,15 @@
+'use client';
+
 import React, { useState } from 'react';
-import { useRouter } from 'next/router';
+import { useRouter } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
 import MarketplaceAPI from '@/lib/marketplace-api';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { MultiSelector } from '@/components/ui/multiselect';
 
 type FormData = {
   name: string;
@@ -43,7 +49,7 @@ const SubmitPage: React.FC = () => {
       };
 
       const api = new MarketplaceAPI();
-      await api.submitAgent(submission);
+      await api.createAgentEntry(submission);
 
       router.push('/marketplace?submission=success');
     } catch (error) {
@@ -81,12 +87,15 @@ const SubmitPage: React.FC = () => {
               control={control}
               rules={{ required: 'Name is required' }}
               render={({ field }) => (
-                <Input
-                  label="Agent Name"
-                  placeholder="Enter your agent's name"
-                  error={errors.name?.message}
-                  {...field}
-                />
+                <div>
+                  <label htmlFor={field.name} className="block text-sm font-medium text-gray-700">Agent Name</label>
+                  <Input
+                    id={field.name}
+                    placeholder="Enter your agent's name"
+                    {...field}
+                  />
+                  {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>}
+                </div>
               )}
             />
 
@@ -95,12 +104,15 @@ const SubmitPage: React.FC = () => {
               control={control}
               rules={{ required: 'Description is required' }}
               render={({ field }) => (
-                <TextArea
-                  label="Description"
-                  placeholder="Describe your agent"
-                  error={errors.description?.message}
-                  {...field}
-                />
+                <div>
+                  <label htmlFor={field.name} className="block text-sm font-medium text-gray-700">Description</label>
+                  <Textarea
+                    id={field.name}
+                    placeholder="Describe your agent"
+                    {...field}
+                  />
+                  {errors.description && <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>}
+                </div>
               )}
             />
 
@@ -109,12 +121,15 @@ const SubmitPage: React.FC = () => {
               control={control}
               rules={{ required: 'Author is required' }}
               render={({ field }) => (
-                <Input
-                  label="Author"
-                  placeholder="Your name or username"
-                  error={errors.author?.message}
-                  {...field}
-                />
+                <div>
+                  <label htmlFor={field.name} className="block text-sm font-medium text-gray-700">Author</label>
+                  <Input
+                    id={field.name}
+                    placeholder="Your name or username"
+                    {...field}
+                  />
+                  {errors.author && <p className="mt-1 text-sm text-red-600">{errors.author.message}</p>}
+                </div>
               )}
             />
 
@@ -123,12 +138,15 @@ const SubmitPage: React.FC = () => {
               control={control}
               rules={{ required: 'At least one keyword is required' }}
               render={({ field }) => (
-                <MultiSelect
-                  label="Keywords"
-                  placeholder="Add keywords"
-                  error={errors.keywords?.message}
-                  {...field}
-                />
+                <div>
+                  <label htmlFor={field.name} className="block text-sm font-medium text-gray-700">Keywords</label>
+                  <MultiSelector
+                    id={field.name}
+                    placeholder="Add keywords"
+                    {...field}
+                  />
+                  {errors.keywords && <p className="mt-1 text-sm text-red-600">{errors.keywords.message}</p>}
+                </div>
               )}
             />
 
@@ -137,13 +155,16 @@ const SubmitPage: React.FC = () => {
               control={control}
               rules={{ required: 'At least one category is required' }}
               render={({ field }) => (
-                <MultiSelect
-                  label="Categories"
-                  placeholder="Select categories"
-                  options={['Productivity', 'Entertainment', 'Education', 'Business', 'Other']}
-                  error={errors.categories?.message}
-                  {...field}
-                />
+                <div>
+                  <label htmlFor={field.name} className="block text-sm font-medium text-gray-700">Categories</label>
+                  <MultiSelector
+                    id={field.name}
+                    placeholder="Select categories"
+                    options={['Productivity', 'Entertainment', 'Education', 'Business', 'Other']}
+                    {...field}
+                  />
+                  {errors.categories && <p className="mt-1 text-sm text-red-600">{errors.categories.message}</p>}
+                </div>
               )}
             />
 
@@ -152,14 +173,17 @@ const SubmitPage: React.FC = () => {
               control={control}
               rules={{ required: 'Graph file is required' }}
               render={({ field: { onChange, value, ...field } }) => (
-                <Input
-                  type="file"
-                  label="Graph File (JSON)"
-                  accept=".json"
-                  error={errors.graphFile?.message}
-                  onChange={(e) => onChange(e.target.files?.[0] || null)}
-                  {...field}
-                />
+                <div>
+                  <label htmlFor={field.name} className="block text-sm font-medium text-gray-700">Graph File (JSON)</label>
+                  <Input
+                    id={field.name}
+                    type="file"
+                    accept=".json"
+                    onChange={(e) => onChange(e.target.files?.[0] || null)}
+                    {...field}
+                  />
+                  {errors.graphFile && <p className="mt-1 text-sm text-red-600">{errors.graphFile.message}</p>}
+                </div>
               )}
             />
 
