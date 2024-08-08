@@ -30,7 +30,7 @@ from autogpt_server.data.execution import (
     get_execution_results,
     list_executions,
 )
-from autogpt_server.data.user import get_or_create_user
+from autogpt_server.data.user import DEFAULT_USER_ID, get_or_create_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import (
@@ -49,7 +49,7 @@ settings = Settings()
 def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
     if not payload:
         # This handles the case when authentication is disabled
-        return "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+        return DEFAULT_USER_ID
 
     user_id = payload.get("sub")
     if not user_id:
@@ -294,7 +294,7 @@ class AgentServer(AppService):
                 await websocket.close(code=4003, reason="Invalid token")
                 return ""
         else:
-            return "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+            return user_db.DEFAULT_USER_ID
 
     async def websocket_router(self, websocket: WebSocket):
         user_id = await self.authenticate_websocket(websocket)
