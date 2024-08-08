@@ -551,7 +551,10 @@ class AgentServer(AppService):
 
     @classmethod
     async def create_graph(
-        cls, create_graph: CreateGraph, is_template: bool, user_id: str
+        cls,
+        create_graph: CreateGraph,
+        is_template: bool,
+        user_id: Annotated[str, Depends(get_user_id)],
     ) -> graph_db.Graph:
         if create_graph.graph:
             graph = create_graph.graph
