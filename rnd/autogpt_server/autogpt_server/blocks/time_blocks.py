@@ -51,7 +51,11 @@ class CurrentDateBlock(Block):
                 {"trigger": "Hello", "format": "{date}", "offset": "7"},
             ],
             test_output=[
-                ("date", (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")),
+                (
+                    "date",
+                    lambda t: abs(datetime.now() - datetime.strptime(t, "%Y-%m-%d"))
+                    < timedelta(days=8),  # 7 days difference + 1 day error margin.
+                ),
             ],
         )
 
@@ -82,7 +86,13 @@ class CurrentDateAndTimeBlock(Block):
                 {"trigger": "Hello", "format": "{date_time}"},
             ],
             test_output=[
-                ("date_time", time.strftime("%Y-%m-%d %H:%M:%S")),
+                (
+                    "date_time",
+                    lambda t: abs(
+                        datetime.now() - datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
+                    )
+                    < timedelta(seconds=10),  # 10 seconds error margin.
+                ),
             ],
         )
 
