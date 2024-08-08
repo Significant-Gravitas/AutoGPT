@@ -1,4 +1,4 @@
-name: AutoGPT Server Docker
+name: AutoGPT Server Docker Build and Deploy
 
 on:
   push:
@@ -6,18 +6,17 @@ on:
     paths:
       - 'rnd/autogpt_server/**'
 
-defaults:
-  run:
-    shell: bash
-    working-directory: rnd/autogpt_server
-
 env:
   PROJECT_ID: agpt-dev
   IMAGE_NAME: agpt-server-dev
   REGION: us-central1
+  GKE_CLUSTER: dev-gke-cluster
+  GKE_ZONE: us-central1-a
+  DEPLOYMENT_NAME: autogpt-server
+  HELM_CHART_PATH: rnd/infra/helm/autogpt-server
 
 jobs:
-  build-and-push:
+  build-push-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -35,7 +34,27 @@ jobs:
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
       - name: Build Docker image
+        working-directory: rnd/autogpt_server
         run: docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
 
       - name: Push Docker image
         run: docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v0.2.1
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_ZONE }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v1
+        with:
+          version: 'v3.4.0'
+
+      - name: Deploy to GKE
+        run: |
+          helm upgrade --install ${{ env.DEPLOYMENT_NAME }} ${{ env.HELM_CHART_PATH }} \
+            --set image.repository=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }} \
+            --set image.tag=${{ github.sha }} \
+            --namespace dev-agpt \
+            --create-namespace
