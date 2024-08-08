@@ -285,14 +285,7 @@ def validate_exec(
 
     # Convert non-matching data types to the expected input schema.
     for name, data_type in node_block.input_schema.__annotations__.items():
-        print(">>>>>> name: ", name, "data_type: ", data_type, " data: ", data)
-        value = data.get(name)
-        print(
-            ">>>>>> value: ", value, " type: ", type(value), " data_type: ", data_type
-        )
-        converted = convert(value, data_type)
-        print(">>>>>> converted: ", converted)
-        if value and (type(value) is not data_type):
+        if (value := data.get(name)) and (type(value) is not data_type):
             data[name] = convert(value, data_type)
 
     # Last validation: Validate the input values against the schema.
