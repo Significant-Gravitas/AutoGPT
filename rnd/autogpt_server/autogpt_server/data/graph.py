@@ -10,6 +10,7 @@ from pydantic import PrivateAttr
 from autogpt_server.blocks.basic import InputBlock, OutputBlock
 from autogpt_server.data.block import BlockInput, get_block
 from autogpt_server.data.db import BaseDbModel, transaction
+from autogpt_server.data.user import DEFAULT_USER_ID
 from autogpt_server.util import json
 
 
@@ -151,7 +152,6 @@ class Graph(GraphMeta):
         }
 
     def validate_graph(self, for_run: bool = False):
-
         def sanitize(name):
             return name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
 
@@ -368,9 +368,7 @@ async def set_graph_active_version(graph_id: str, version: int, user_id: str) ->
     )
 
 
-async def get_graph_all_versions(
-    graph_id: str, user_id: str | None = None
-) -> list[Graph]:
+async def get_graph_all_versions(graph_id: str, user_id: str) -> list[Graph]:
     graph_versions = await AgentGraph.prisma().find_many(
         where={"id": graph_id, "userId": user_id},
         order={"version": "desc"},
@@ -383,7 +381,7 @@ async def get_graph_all_versions(
     return [Graph.from_db(graph) for graph in graph_versions]
 
 
-async def create_graph(graph: Graph, user_id: str | None) -> Graph:
+async def create_graph(graph: Graph, user_id: str) -> Graph:
     async with transaction() as tx:
         await __create_graph(tx, graph, user_id)
 
@@ -395,7 +393,7 @@ async def create_graph(graph: Graph, user_id: str | None) -> Graph:
     raise ValueError(f"Created graph {graph.id} v{graph.version} is not in DB")
 
 
-async def __create_graph(tx, graph: Graph, user_id: str | None):
+async def __create_graph(tx, graph: Graph, user_id: str):
     await AgentGraph.prisma(tx).create(
         data={
             "id": graph.id,
@@ -482,5 +480,5 @@ async def import_packaged_templates() -> None:
             exists := next((t for t in templates_in_db if t.id == template.id), None)
         ) and exists.version >= template.version:
             continue
-        await create_graph(template, None)
+        await create_graph(template, DEFAULT_USER_ID)
         print(f"Loaded template '{template.name}' ({template.id})")
