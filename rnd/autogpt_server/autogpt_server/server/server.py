@@ -554,7 +554,9 @@ class AgentServer(AppService):
         cls,
         create_graph: CreateGraph,
         is_template: bool,
-        user_id: Annotated[str, Depends(get_user_id)],
+        # user_id doesn't have to be annotated like on other endpoints,
+        # because create_graph isn't used directly as an endpoint
+        user_id: str,
     ) -> graph_db.Graph:
         if create_graph.graph:
             graph = create_graph.graph
