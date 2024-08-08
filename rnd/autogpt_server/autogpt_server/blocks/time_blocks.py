@@ -85,7 +85,13 @@ class CurrentDateAndTimeBlock(Block):
                 {"trigger": "Hello", "format": "{date_time}"},
             ],
             test_output=[
-                ("date_time", str),
+                (
+                    "date_time",
+                    lambda t: abs(
+                        datetime.now() - datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
+                    )
+                    < timedelta(seconds=10),  # 10 seconds error margin.
+                ),
             ],
         )
 
