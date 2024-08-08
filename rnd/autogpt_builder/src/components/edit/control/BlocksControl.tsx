@@ -55,7 +55,12 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         <Card className="border-none shadow-md">
           <CardHeader className="flex px-2 flex-col p-3 gap-x-8 gap-y-2">
             <div className="justify-between items-center ">
-              <Label htmlFor="search-blocks" className="text-base 2xl:text-xl font-semibold whitespace-nowrap text-black border-b-2 border-violet-500" >Blocks</Label>
+              <Label
+                htmlFor="search-blocks"
+                className="text-base 2xl:text-xl font-semibold whitespace-nowrap text-black border-b-2 border-violet-500"
+              >
+                Blocks
+              </Label>
             </div>
             <Input
               id="search-blocks"
