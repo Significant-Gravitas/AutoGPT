@@ -1,11 +1,14 @@
 import logging
 
-from fastapi import Request, HTTPException, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from .jwt_utils import parse_jwt_token
+from fastapi import HTTPException, Request
+from fastapi.security import HTTPBearer
+
 from .config import settings
+from .jwt_utils import parse_jwt_token
 
 security = HTTPBearer()
+
+
 async def auth_middleware(request: Request):
     if not settings.ENABLE_AUTH:
         # If authentication is disabled, allow the request to proceed
