@@ -50,7 +50,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         side="right"
         sideOffset={22}
         align="start"
-        className="w-80 p-0"
+        className="w-96 p-0"
       >
         <Card className="border-none shadow-none">
           <CardHeader className="p-4">
