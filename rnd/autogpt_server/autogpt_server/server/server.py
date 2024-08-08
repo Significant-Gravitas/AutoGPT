@@ -73,9 +73,8 @@ class AgentServer(AppService):
     async def lifespan(self, _: FastAPI):
         await db.connect()
         await block.initialize_blocks()
-        if settings.config.enable_auth.lower() != "true":
+        if await user_db.create_default_user(settings.config.enable_auth):
             await graph_db.import_packaged_templates()
-        await user_db.create_default_user(settings.config.enable_auth)
         asyncio.create_task(self.event_broadcaster())
         yield
         await db.disconnect()
