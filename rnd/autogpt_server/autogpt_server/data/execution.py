@@ -117,7 +117,10 @@ EXECUTION_RESULT_INCLUDE = {
 
 
 async def create_graph_execution(
-    graph_id: str, graph_version: int, nodes_input: list[tuple[str, BlockInput]]
+    graph_id: str,
+    graph_version: int,
+    nodes_input: list[tuple[str, BlockInput]],
+    user_id: str,
 ) -> tuple[str, list[ExecutionResult]]:
     """
     Create a new AgentGraphExecution record.
@@ -143,6 +146,7 @@ async def create_graph_execution(
                     for node_id, node_input in nodes_input
                 ]
             },
+            "userId": user_id,
         },
         include={
             "AgentNodeExecutions": {"include": EXECUTION_RESULT_INCLUDE}  # type: ignore
