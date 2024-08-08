@@ -21,6 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import { Copy, Trash2 } from "lucide-react";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
+import { CustomEdgeData } from "./CustomEdge";
 import { NodeGenericInputField } from "./node-input-components";
 
 type ParsedKey = { key: string; index?: number };
@@ -57,7 +58,10 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  const { getNode, setNodes, getEdges, setEdges } = useReactFlow();
+  const { getNode, setNodes, getEdges, setEdges } = useReactFlow<
+    CustomNodeData,
+    CustomEdgeData
+  >();
 
   const outputDataRef = useRef<HTMLDivElement>(null);
   const isInitialSetup = useRef(true);
@@ -88,14 +92,11 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     setIsAdvancedOpen(checked);
   };
 
-  const hasOptionalFields = () => {
-    return (
-      data.inputSchema &&
-      Object.keys(data.inputSchema.properties).some((key) => {
-        return !data.inputSchema.required?.includes(key);
-      })
-    );
-  };
+  const hasOptionalFields =
+    data.inputSchema &&
+    Object.keys(data.inputSchema.properties).some((key) => {
+      return !data.inputSchema.required?.includes(key);
+    });
 
   const generateOutputHandles = (schema: BlockIORootSchema) => {
     if (!schema?.properties) return null;
@@ -313,15 +314,15 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   return (
     <div
-      className={`custom-node dark-theme ${data.status?.toLowerCase() ?? ""}`}
+      className={`custom-node overflow-hidden dark-theme border-4 rounded-xl ${data.status?.toLowerCase() ?? ""}`}
       onMouseEnter={handleHovered}
       onMouseLeave={handleMouseLeave}
     >
-      <div className="mb-2">
-        <div className="text-lg font-bold">
+      <div className="mb-2 p-3 bg-gray-300">
+        <div className="p-3 text-lg font-bold">
           {beautifyString(data.blockType?.replace(/Block$/, "") || data.title)}
         </div>
-        <div className="flex gap-[5px]">
+        <div className="flex gap-[5px] ">
           {isHovered && (
             <>
               <Button
@@ -344,23 +345,24 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           )}
         </div>
       </div>
-      <div className="flex justify-between items-start gap-2">
+      <div className="p-3 flex justify-between items-start gap-2">
         <div>
           {data.inputSchema &&
             Object.entries(data.inputSchema.properties).map(
               ([propKey, propSchema]) => {
                 const isRequired = data.inputSchema.required?.includes(propKey);
+                const isConnected = isHandleConnected(propKey);
                 return (
-                  (isRequired || isAdvancedOpen) && (
+                  (isRequired || isAdvancedOpen || isConnected) && (
                     <div key={propKey} onMouseOver={() => {}}>
                       <NodeHandle
                         keyName={propKey}
-                        isConnected={isHandleConnected(propKey)}
+                        isConnected={isConnected}
                         isRequired={isRequired}
                         schema={propSchema}
                         side="left"
                       />
-                      {!isHandleConnected(propKey) && (
+                      {!isConnected && (
                         <NodeGenericInputField
                           className="mt-1 mb-2"
                           propKey={propKey}
@@ -412,7 +414,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       <div className="flex items-center mt-2.5">
         <Switch onCheckedChange={toggleOutput} />
         <span className="m-1 mr-4">Output</span>
-        {hasOptionalFields() && (
+        {hasOptionalFields && (
           <>
             <Switch onCheckedChange={toggleAdvancedSettings} />
             <span className="m-1">Advanced</span>

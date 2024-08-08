@@ -113,10 +113,14 @@ def execute_block_test(block: Block):
             ex_output_name, ex_output_data = block.test_output[output_index]
 
             def compare(data, expected_data):
-                if isinstance(expected_data, type):
+                if data == expected_data:
+                    is_matching = True
+                elif isinstance(expected_data, type):
                     is_matching = isinstance(data, expected_data)
+                elif callable(expected_data):
+                    is_matching = expected_data(data)
                 else:
-                    is_matching = data == expected_data
+                    is_matching = False
 
                 mark = "✅" if is_matching else "❌"
                 log(f"{prefix} {mark} comparing `{data}` vs `{expected_data}`")
