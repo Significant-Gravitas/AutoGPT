@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/popover";
 import { Block } from "@/lib/autogpt-server-api";
 import { PlusIcon } from "@radix-ui/react-icons";
+import { IconToyBrick } from "@/components/ui/icons";
 
 interface BlocksControlProps {
   blocks: Block[];
@@ -41,20 +42,25 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button size="icon" variant="ghost">
-          <ToyBrick size={18} />
+        <Button variant="ghost" size="icon">
+          <IconToyBrick />
         </Button>
       </PopoverTrigger>
       <PopoverContent
         side="right"
-        sideOffset={15}
+        sideOffset={22}
         align="start"
-        className="w-80 p-0"
+        className="w-96 p-0"
       >
-        <Card className="border-none shadow-none">
-          <CardHeader className="p-4">
-            <div className="flex flex-row justify-between items-center">
-              <Label htmlFor="search-blocks">Blocks</Label>
+        <Card className="border-none shadow-md">
+          <CardHeader className="flex px-2 flex-col p-3 gap-x-8 gap-y-2">
+            <div className="justify-between items-center ">
+              <Label
+                htmlFor="search-blocks"
+                className="text-base 2xl:text-xl font-semibold whitespace-nowrap text-black border-b-2 border-violet-500"
+              >
+                Blocks
+              </Label>
             </div>
             <Input
               id="search-blocks"

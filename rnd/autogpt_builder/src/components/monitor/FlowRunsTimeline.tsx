@@ -135,6 +135,8 @@ export const FlowRunsTimeline = ({
   </ResponsiveContainer>
 );
 
+export default FlowRunsTimeline;
+
 const ScrollableLegend: React.FC<
   DefaultLegendContentProps & { className?: string }
 > = ({ payload, className }) => {

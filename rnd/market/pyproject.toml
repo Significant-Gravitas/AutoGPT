@@ -19,6 +19,7 @@ fuzzywuzzy = "^0.18.0"
 python-levenshtein = "^0.25.1"
 # autogpt-server = { path = "../autogpt_server", develop = true }
 prometheus-fastapi-instrumentator = "^7.0.0"
+autogpt-libs = {path = "../autogpt_libs"}
 
 
 [tool.poetry.group.dev.dependencies]
