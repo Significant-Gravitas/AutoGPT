@@ -905,6 +905,8 @@ const FlowEditor: React.FC<{
         onNodeDragStop={onNodeDragEnd}
         onNodeDragStart={onNodeDragStart}
         deleteKeyCode={["Backspace", "Delete"]}
+        minZoom={0.2}
+        maxZoom={2}
       >
         <Controls />
         <Background />
