@@ -30,7 +30,7 @@ from autogpt_server.data.execution import (
     get_execution_results,
     list_executions,
 )
-from autogpt_server.data.user import get_or_create_user
+from autogpt_server.data.user import DEFAULT_USER_ID, get_or_create_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import (
@@ -49,7 +49,7 @@ settings = Settings()
 def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
     if not payload:
         # This handles the case when authentication is disabled
-        return "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+        return DEFAULT_USER_ID
 
     user_id = payload.get("sub")
     if not user_id:
@@ -73,8 +73,8 @@ class AgentServer(AppService):
     async def lifespan(self, _: FastAPI):
         await db.connect()
         await block.initialize_blocks()
-        await graph_db.import_packaged_templates()
-        await user_db.create_default_user(settings.config.enable_auth)
+        if await user_db.create_default_user(settings.config.enable_auth):
+            await graph_db.import_packaged_templates()
         asyncio.create_task(self.event_broadcaster())
         yield
         await db.disconnect()
@@ -294,7 +294,7 @@ class AgentServer(AppService):
                 await websocket.close(code=4003, reason="Invalid token")
                 return ""
         else:
-            return "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+            return user_db.DEFAULT_USER_ID
 
     async def websocket_router(self, websocket: WebSocket):
         user_id = await self.authenticate_websocket(websocket)
@@ -314,153 +314,14 @@ class AgentServer(AppService):
                     await autogpt_server.server.ws_api.handle_unsubscribe(
                         websocket, self.manager, message
                     )
-                elif message.method == Methods.EXECUTION_EVENT:
-                    print("Execution event received")
-                elif message.method == Methods.GET_BLOCKS:
-                    data = self.get_graph_blocks()
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.GET_BLOCKS,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-                elif message.method == Methods.EXECUTE_BLOCK:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = self.execute_graph_block(
-                        message.data["block_id"], message.data["data"]
-                    )
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.EXECUTE_BLOCK,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-                elif message.method == Methods.GET_GRAPHS:
-                    data = await self.get_graphs(user_id=user_id)
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.GET_GRAPHS,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-                    print("Get graphs request received")
-                elif message.method == Methods.GET_GRAPH:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = await self.get_graph(
-                        message.data["graph_id"], user_id=user_id
-                    )
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.GET_GRAPH,
-                            success=True,
-                            data=data.model_dump(),
-                        ).model_dump_json()
-                    )
-                    print("Get graph request received")
-                elif message.method == Methods.CREATE_GRAPH:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    create_graph = CreateGraph.model_validate(message.data)
-                    data = await self.create_new_graph(create_graph, user_id=user_id)
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.CREATE_GRAPH,
-                            success=True,
-                            data=data.model_dump(),
-                        ).model_dump_json()
-                    )
 
-                    print("Create graph request received")
-                elif message.method == Methods.RUN_GRAPH:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = await self.execute_graph(
-                        message.data["graph_id"], message.data["data"], user_id=user_id
-                    )
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.RUN_GRAPH,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-
-                    print("Run graph request received")
-                elif message.method == Methods.GET_GRAPH_RUNS:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = await self.list_graph_runs(
-                        message.data["graph_id"], user_id=user_id
-                    )
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.GET_GRAPH_RUNS,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-
-                    print("Get graph runs request received")
-                elif message.method == Methods.CREATE_SCHEDULED_RUN:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = await self.create_schedule(
-                        message.data["graph_id"],
-                        message.data["cron"],
-                        message.data["data"],
-                        user_id=user_id,
-                    )
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.CREATE_SCHEDULED_RUN,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-
-                    print("Create scheduled run request received")
-                elif message.method == Methods.GET_SCHEDULED_RUNS:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = self.get_execution_schedules(
-                        message.data["graph_id"], user_id=user_id
-                    )
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.GET_SCHEDULED_RUNS,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-                    print("Get scheduled runs request received")
-                elif message.method == Methods.UPDATE_SCHEDULED_RUN:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = self.update_schedule(
-                        message.data["schedule_id"], message.data, user_id=user_id
-                    )
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.UPDATE_SCHEDULED_RUN,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-
-                    print("Update scheduled run request received")
-                elif message.method == Methods.UPDATE_CONFIG:
-                    assert isinstance(message.data, dict), "Data must be a dictionary"
-                    data = self.update_configuration(message.data)
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.UPDATE_CONFIG,
-                            success=True,
-                            data=data,
-                        ).model_dump_json()
-                    )
-
-                    print("Update config request received")
                 elif message.method == Methods.ERROR:
-                    print("Error message received")
+                    print("WebSocket Error message received:", message.data)
+
                 else:
-                    print("Message type is not processed by the server")
+                    print(
+                        f"Message type {message.method} is not processed by the server"
+                    )
                     await websocket.send_text(
                         WsMessage(
                             method=Methods.ERROR,
@@ -551,7 +412,12 @@ class AgentServer(AppService):
 
     @classmethod
     async def create_graph(
-        cls, create_graph: CreateGraph, is_template: bool, user_id: str
+        cls,
+        create_graph: CreateGraph,
+        is_template: bool,
+        # user_id doesn't have to be annotated like on other endpoints,
+        # because create_graph isn't used directly as an endpoint
+        user_id: str,
     ) -> graph_db.Graph:
         if create_graph.graph:
             graph = create_graph.graph
