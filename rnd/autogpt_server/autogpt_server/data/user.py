@@ -8,12 +8,12 @@ DEFAULT_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 
 
 async def get_or_create_user(user_data: dict) -> User:
-    user = await prisma.user.find_unique(where={"id": user_data["sub"]})
+    user = await prisma.user.find_unique(where={"id": user_data.get("sub")})
     if not user:
         user = await prisma.user.create(
             data={
-                "id": user_data["sub"],
-                "email": user_data["email"],
+                "id": user_data.get("sub"),
+                "email": user_data.get("email"),
                 "name": user_data.get("user_metadata", {}).get("name"),
             }
         )

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
+import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 
 type SupabaseContextType = {
   supabase: SupabaseClient | null;
@@ -25,13 +26,17 @@ export default function SupabaseProvider({
     const initializeSupabase = async () => {
       setIsLoading(true);
       const client = createClient();
+      const api = new AutoGPTServerAPI();
       setSupabase(client);
       setIsLoading(false);
 
       if (client) {
         const {
           data: { subscription },
-        } = client.auth.onAuthStateChange(() => {
+        } = client.auth.onAuthStateChange((event, session) => {
+          if (event === "SIGNED_IN") {
+            api.createUser();
+          }
           router.refresh();
         });
 
