@@ -9,7 +9,13 @@ import MarketplaceAPI, {
   AgentListResponse,
   AgentWithRank,
 } from "@/lib/marketplace-api";
-import { ChevronLeft, ChevronRight, PlusCircle, Search, Star } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  PlusCircle,
+  Search,
+  Star,
+} from "lucide-react";
 
 // Utility Functions
 function debounce<T extends (...args: any[]) => any>(
@@ -67,8 +73,6 @@ const HeroSection: React.FC = () => {
     </div>
   );
 };
-
-
 
 const SearchInput: React.FC<{
   value: string;

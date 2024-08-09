@@ -11,7 +11,7 @@ const nextConfig = {
       process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL,
   },
   images: {
-    domains: ['images.unsplash.com'],
+    domains: ["images.unsplash.com"],
   },
   async redirects() {
     return [

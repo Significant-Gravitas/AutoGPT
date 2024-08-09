@@ -47,7 +47,18 @@ const useMultiSelect = () => {
 };
 
 const MultiSelector = forwardRef<HTMLDivElement, MultiSelectorProps>(
-  ({ values: value, onValuesChange: onValueChange, loop = false, className, children, dir, ...props }, ref) => {
+  (
+    {
+      values: value,
+      onValuesChange: onValueChange,
+      loop = false,
+      className,
+      children,
+      dir,
+      ...props
+    },
+    ref,
+  ) => {
     const [inputValue, setInputValue] = useState("");
     const [open, setOpen] = useState<boolean>(false);
     const [activeIndex, setActiveIndex] = useState<number>(-1);
@@ -60,7 +71,7 @@ const MultiSelector = forwardRef<HTMLDivElement, MultiSelectorProps>(
           onValueChange([...value, val]);
         }
       },
-      [value, onValueChange]
+      [value, onValueChange],
     );
 
     const handleKeyDown = useCallback(
@@ -68,7 +79,7 @@ const MultiSelector = forwardRef<HTMLDivElement, MultiSelectorProps>(
         const moveNext = () => {
           const nextIndex = activeIndex + 1;
           setActiveIndex(
-            nextIndex > value.length - 1 ? (loop ? 0 : -1) : nextIndex
+            nextIndex > value.length - 1 ? (loop ? 0 : -1) : nextIndex,
           );
         };
 
@@ -80,12 +91,14 @@ const MultiSelector = forwardRef<HTMLDivElement, MultiSelectorProps>(
         if ((e.key === "Backspace" || e.key === "Delete") && value.length > 0) {
           if (inputValue.length === 0) {
             if (activeIndex !== -1 && activeIndex < value.length) {
-              onValueChange(value.filter((item) => item !== value[activeIndex]));
+              onValueChange(
+                value.filter((item) => item !== value[activeIndex]),
+              );
               const newIndex = activeIndex - 1 < 0 ? 0 : activeIndex - 1;
               setActiveIndex(newIndex);
             } else {
               onValueChange(
-                value.filter((item) => item !== value[value.length - 1])
+                value.filter((item) => item !== value[value.length - 1]),
               );
             }
           }
@@ -111,7 +124,7 @@ const MultiSelector = forwardRef<HTMLDivElement, MultiSelectorProps>(
           }
         }
       },
-      [value, inputValue, activeIndex, loop, onValueChange, dir]
+      [value, inputValue, activeIndex, loop, onValueChange, dir],
     );
 
     return (
@@ -132,7 +145,7 @@ const MultiSelector = forwardRef<HTMLDivElement, MultiSelectorProps>(
           onKeyDown={handleKeyDown}
           className={cn(
             "overflow-visible bg-transparent flex flex-col space-y-2",
-            className
+            className,
           )}
           dir={dir}
           {...props}
@@ -141,7 +154,7 @@ const MultiSelector = forwardRef<HTMLDivElement, MultiSelectorProps>(
         </Command>
       </MultiSelectContext.Provider>
     );
-  }
+  },
 );
 
 MultiSelector.displayName = "MultiSelector";
@@ -162,7 +175,7 @@ const MultiSelectorTrigger = forwardRef<
       ref={ref}
       className={cn(
         "flex flex-wrap gap-1 p-1 py-2 border border-muted rounded-lg bg-background",
-        className
+        className,
       )}
       {...props}
     >
@@ -171,7 +184,7 @@ const MultiSelectorTrigger = forwardRef<
           key={item}
           className={cn(
             "px-1 rounded-xl flex items-center gap-1",
-            activeIndex === index && "ring-2 ring-muted-foreground "
+            activeIndex === index && "ring-2 ring-muted-foreground ",
           )}
           variant={"secondary"}
         >
@@ -213,7 +226,7 @@ const MultiSelectorInput = forwardRef<
       className={cn(
         "ml-2 bg-transparent outline-none placeholder:text-muted-foreground flex-1",
         className,
-        activeIndex !== -1 && "caret-transparent"
+        activeIndex !== -1 && "caret-transparent",
       )}
     />
   );
@@ -244,7 +257,7 @@ const MultiSelectorList = forwardRef<
       ref={ref}
       className={cn(
         "p-2 flex flex-col gap-2 rounded-md scrollbar-thin scrollbar-track-transparent transition-colors scrollbar-thumb-muted-foreground dark:scrollbar-thumb-muted scrollbar-thumb-rounded-lg w-full absolute bg-background shadow-md z-10 border border-muted top-0",
-        className
+        className,
       )}
     >
       {children}
@@ -283,7 +296,7 @@ const MultiSelectorItem = forwardRef<
         "rounded-md cursor-pointer px-2 py-1 transition-colors flex justify-between ",
         className,
         isIncluded && "opacity-50 cursor-default",
-        props.disabled && "opacity-50 cursor-not-allowed"
+        props.disabled && "opacity-50 cursor-not-allowed",
       )}
       onMouseDown={mousePreventDefault}
     >
