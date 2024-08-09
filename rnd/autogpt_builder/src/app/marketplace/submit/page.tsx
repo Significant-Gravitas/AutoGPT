@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   MultiSelector,
   MultiSelectorContent,
@@ -34,6 +35,7 @@ type FormData = {
   author: string;
   keywords: string[];
   categories: string[];
+  agreeToTerms: boolean;
   selectedAgentId: string;
 };
 
@@ -53,6 +55,7 @@ const SubmitPage: React.FC = () => {
       author: "",
       keywords: [],
       categories: [],
+      agreeToTerms: false,
     },
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -98,6 +101,10 @@ const SubmitPage: React.FC = () => {
   const onSubmit = async (data: FormData) => {
     setIsSubmitting(true);
     setSubmitError(null);
+
+    if (!data.agreeToTerms) {
+      throw new Error("You must agree to the terms of service");
+    }
 
     try {
       if (!selectedAgentGraph) {
@@ -353,6 +360,33 @@ const SubmitPage: React.FC = () => {
                 </div>
               )}
             />
+
+            <Controller
+              name="agreeToTerms"
+              control={control}
+              rules={{ required: "You must agree to the terms of service" }}
+              render={({ field }) => (
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="agreeToTerms"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                  <label
+                    htmlFor="agreeToTerms"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    I agree to the{" "}
+                    <a href="/terms" className="text-blue-500 hover:underline">
+                      terms of service
+                    </a>
+                  </label>
+                </div>
+              )}
+            />
+            {errors.agreeToTerms && (
+              <p className="mt-1 text-sm text-red-600">{errors.agreeToTerms.message}</p>
+            )}
 
             {submitError && (
               <Alert variant="destructive">
