@@ -1,15 +1,19 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
+import ReactFlow, { Background, Controls } from 'reactflow';
+import 'reactflow/dist/style.css';
 import MarketplaceAPI from '@/lib/marketplace-api';
+import AutoGPTServerAPI from '@/lib/autogpt-server-api';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { MultiSelector } from '@/components/ui/multiselect';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type FormData = {
   name: string;
@@ -17,29 +21,57 @@ type FormData = {
   author: string;
   keywords: string[];
   categories: string[];
-  graphFile: File | null;
+  selectedAgentId: string;
 };
 
 const SubmitPage: React.FC = () => {
   const router = useRouter();
-  const { control, handleSubmit, formState: { errors } } = useForm<FormData>();
+  const { control, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [userAgents, setUserAgents] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedAgentGraph, setSelectedAgentGraph] = useState<any>(null);
+
+  const selectedAgentId = watch('selectedAgentId');
+
+  useEffect(() => {
+    const fetchUserAgents = async () => {
+      const api = new AutoGPTServerAPI();
+      const agents = await api.listGraphs();
+      console.log(agents);
+      setUserAgents(agents.map(agent => ({ id: agent.id, name: agent.name || `Agent (${agent.id})` })));
+    };
+
+    fetchUserAgents();
+  }, []);
+
+  useEffect(() => {
+    const fetchAgentGraph = async () => {
+      if (selectedAgentId) {
+        const api = new AutoGPTServerAPI();
+        const graph = await api.getGraph(selectedAgentId);
+        setSelectedAgentGraph(graph);
+        setValue('name', graph.name);
+        setValue('description', graph.description);
+      }
+    };
+
+    fetchAgentGraph();
+  }, [selectedAgentId, setValue]);
+
 
   const onSubmit = async (data: FormData) => {
     setIsSubmitting(true);
     setSubmitError(null);
 
     try {
-      if (!data.graphFile) {
-        throw new Error('Graph file is required');
+      if (!selectedAgentGraph) {
+        throw new Error('Please select an agent');
       }
-
-      const fileContent = await readFileAsJson(data.graphFile);
 
       const submission = {
         graph: {
-          ...fileContent,
+          ...selectedAgentGraph,
           name: data.name,
           description: data.description,
         },
@@ -60,28 +92,55 @@ const SubmitPage: React.FC = () => {
     }
   };
 
-  const readFileAsJson = (file: File): Promise<any> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const json = JSON.parse(event.target?.result as string);
-          resolve(json);
-        } catch (error) {
-          reject(new Error('Invalid JSON file'));
-        }
-      };
-      reader.onerror = (error) => reject(error);
-      reader.readAsText(file);
-    });
-  };
-
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">Submit Your Agent</h1>
       <Card className="p-6">
         <form onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-4">
+            <Controller
+              name="selectedAgentId"
+              control={control}
+              rules={{ required: 'Please select an agent' }}
+              render={({ field }) => (
+                <div>
+                  <label htmlFor={field.name} className="block text-sm font-medium text-gray-700">Select Agent</label>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select an agent" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {userAgents.map((agent) => (
+                        <SelectItem key={agent.id} value={agent.id}>
+                          {agent.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.selectedAgentId && <p className="mt-1 text-sm text-red-600">{errors.selectedAgentId.message}</p>}
+                </div>
+              )}
+            />
+
+            {/* {selectedAgentGraph && (
+              <div className="mt-4" style={{ height: "600px" }}>
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  fitView
+                  attributionPosition="bottom-left"
+                  nodesConnectable={false}
+                  nodesDraggable={false}
+                  zoomOnScroll={false}
+                  panOnScroll={false}
+                  elementsSelectable={false}
+                >
+                  <Controls showInteractive={false} />
+                  <Background />
+                </ReactFlow>
+              </div>
+            )} */}
+
             <Controller
               name="name"
               control={control}
@@ -164,25 +223,6 @@ const SubmitPage: React.FC = () => {
                     {...field}
                   />
                   {errors.categories && <p className="mt-1 text-sm text-red-600">{errors.categories.message}</p>}
-                </div>
-              )}
-            />
-
-            <Controller
-              name="graphFile"
-              control={control}
-              rules={{ required: 'Graph file is required' }}
-              render={({ field: { onChange, value, ...field } }) => (
-                <div>
-                  <label htmlFor={field.name} className="block text-sm font-medium text-gray-700">Graph File (JSON)</label>
-                  <Input
-                    id={field.name}
-                    type="file"
-                    accept=".json"
-                    onChange={(e) => onChange(e.target.files?.[0] || null)}
-                    {...field}
-                  />
-                  {errors.graphFile && <p className="mt-1 text-sm text-red-600">{errors.graphFile.message}</p>}
                 </div>
               )}
             />
