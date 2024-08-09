@@ -26,7 +26,7 @@ RUN yarn install --frozen-lockfile
 
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
-COPY --from=build /app/next.config.js ./next.config.js
+COPY --from=build /app/next.config.mjs ./next.config.mjs
 
 EXPOSE 3000
 CMD ["npm", "start"]
