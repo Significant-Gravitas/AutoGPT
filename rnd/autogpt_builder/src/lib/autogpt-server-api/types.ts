@@ -167,3 +167,8 @@ export type NodeExecutionResult = {
   start_time?: Date;
   end_time?: Date;
 };
+
+export type User = {
+  id: string;
+  email: string;
+};
