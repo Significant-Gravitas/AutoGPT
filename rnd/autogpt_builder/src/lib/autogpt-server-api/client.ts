@@ -7,6 +7,7 @@ import {
   GraphMeta,
   GraphExecuteResponse,
   NodeExecutionResult,
+  User,
 } from "./types";
 
 export default class AutoGPTServerAPI {
@@ -23,6 +24,10 @@ export default class AutoGPTServerAPI {
   ) {
     this.baseUrl = baseUrl;
     this.wsUrl = `ws://${new URL(this.baseUrl).host}/ws`;
+  }
+
+  async createUser(): Promise<User> {
+    return this._request("POST", "/auth/user", {});
   }
 
   async getBlocks(): Promise<Block[]> {
