@@ -99,3 +99,41 @@ class CurrentDateAndTimeBlock(Block):
     def run(self, input_data: Input) -> BlockOutput:
         current_date_time = time.strftime("%Y-%m-%d %H:%M:%S")
         yield "date_time", current_date_time
+
+
+class TimerBlock(Block):
+    class Input(BlockSchema):
+        seconds: Union[int, str] = 0
+        minutes: Union[int, str] = 0
+        hours: Union[int, str] = 0
+        days: Union[int, str] = 0
+
+    class Output(BlockSchema):
+        message: str
+
+    def __init__(self):
+        super().__init__(
+            id="d67a9c52-5e4e-11e2-bcfd-0800200c9a71",
+            description="This block triggers after a specified duration.",
+            categories={BlockCategory.TEXT},
+            input_schema=TimerBlock.Input,
+            output_schema=TimerBlock.Output,
+            test_input=[
+                {"seconds": 1},
+            ],
+            test_output=[
+                ("message", "timer finished"),
+            ],
+        )
+
+    def run(self, input_data: Input) -> BlockOutput:
+
+        seconds = int(input_data.seconds)
+        minutes = int(input_data.minutes)
+        hours = int(input_data.hours)
+        days = int(input_data.days)
+
+        total_seconds = seconds + minutes * 60 + hours * 3600 + days * 86400
+
+        time.sleep(total_seconds)
+        yield "message", "timer finished"

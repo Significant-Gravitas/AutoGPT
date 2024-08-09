@@ -11,12 +11,23 @@ generator client {
   partial_type_generator = "market/utils/partial_types.py"
 }
 
+enum SubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model Agents {
-  id        String   @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id      String @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  version Int    @default(1)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  version Int @default(1)
+  submissionDate           DateTime         @default(now())
+  submissionReviewDate     DateTime?
+  submissionStatus         SubmissionStatus @default(PENDING)
+  submissionReviewComments String?
 
   name        String?
   description String?
