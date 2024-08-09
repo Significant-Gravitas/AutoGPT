@@ -27,6 +27,7 @@ from autogpt_server.data.execution import (
 from autogpt_server.data.graph import Graph, Link, Node, get_graph, get_node
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Config
+from autogpt_server.util.type import convert
 
 logger = logging.getLogger(__name__)
 
@@ -280,6 +281,11 @@ def validate_exec(
     input_fields_from_schema = node_block.input_schema.get_required_fields()
     if not input_fields_from_schema.issubset(data):
         return None, f"{error_prefix} {input_fields_from_schema - set(data)}"
+
+    # Convert non-matching data types to the expected input schema.
+    for name, data_type in node_block.input_schema.__annotations__.items():
+        if (value := data.get(name)) and (type(value) is not data_type):
+            data[name] = convert(value, data_type)
 
     # Last validation: Validate the input values against the schema.
     if error := node_block.input_schema.validate_data(data):  # type: ignore
