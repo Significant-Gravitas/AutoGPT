@@ -19,7 +19,7 @@ const nextConfig = {
       },
     ];
   },
-    // TODO: Re-enable TypeScript checks once current issues are resolved
+  // TODO: Re-enable TypeScript checks once current issues are resolved
   typescript: {
     ignoreBuildErrors: true,
   },
