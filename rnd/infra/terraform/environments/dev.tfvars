@@ -16,6 +16,10 @@ service_accounts = {
   "dev-agpt-server-sa" = {
     display_name = "AutoGPT Dev Server Account"
     description  = "Service account for agpt dev server"
+  },
+  "dev-agpt-gha-sa" = {
+    display_name = "GitHub Actions Service Account"
+    description  = "Service account for GitHub Actions"
   }
 }
 
@@ -48,6 +52,12 @@ role_bindings = {
   ],
   "roles/container.hostServiceAgentUser" = [
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
+  ],
+  "roles/storage.admin" = [
+    "serviceAccount:dev-agpt-gha-sa@agpt-dev.iam.gserviceaccount.com"
+  ],
+  "roles/iam.serviceAccountUser" = [
+    "serviceAccount:dev-agpt-gha-sa@agpt-dev.iam.gserviceaccount.com"
   ]
 }
 
