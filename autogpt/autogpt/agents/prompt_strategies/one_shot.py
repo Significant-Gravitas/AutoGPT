@@ -6,6 +6,7 @@ import re
 from logging import Logger
 
 import distro
+from forge.command import Command
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.json.parsing import extract_dict_from_json
@@ -16,6 +17,7 @@ from forge.llm.providers.schema import (
     ChatMessage,
     CompletionModelFunction,
 )
+from forge.llm.providers.utils import function_specs_from_commands
 from forge.models.action import ActionProposal
 from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.models.json_schema import JSONSchema
@@ -27,13 +29,21 @@ _RESPONSE_INTERFACE_NAME = "AssistantResponse"
 
 
 class AssistantThoughts(ModelWithSummary):
+    past_action_summary: str = Field(
+        ...,
+        description="Summary of the last action you took, if there is none, "
+        "you can leave it empty",
+    )
     observations: str = Field(
-        description="Relevant observations from your last action (if any)"
+        description="Relevant observations from your last actions (if any)"
     )
     text: str = Field(description="Thoughts")
     reasoning: str = Field(description="Reasoning behind the thoughts")
     self_criticism: str = Field(description="Constructive self-criticism")
-    plan: list[str] = Field(description="Short list that conveys the long-term plan")
+    plan: list[str] = Field(
+        description="Short list that conveys the long-term plan, "
+        "considering the progress on your task so far",
+    )
     speak: str = Field(description="Summary of thoughts, to say to user")
 
     def summary(self) -> str:
@@ -101,7 +111,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
 
     @property
     def llm_classification(self) -> LanguageModelClassification:
-        return LanguageModelClassification.FAST_MODEL  # FIXME: dynamic switching
+        return LanguageModelClassification.SMART_MODEL  # FIXME: dynamic switching
 
     def build_prompt(
         self,
@@ -110,7 +120,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         task: str,
         ai_profile: AIProfile,
         ai_directives: AIDirectives,
-        commands: list[CompletionModelFunction],
+        commands: list[Command],
         include_os_info: bool,
         **extras,
     ) -> ChatPrompt:
@@ -118,10 +128,11 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         1. System prompt
         3. `cycle_instruction`
         """
+        functions = function_specs_from_commands(commands)
         system_prompt, response_prefill = self.build_system_prompt(
             ai_profile=ai_profile,
             ai_directives=ai_directives,
-            commands=commands,
+            functions=functions,
             include_os_info=include_os_info,
         )
 
@@ -135,14 +146,14 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 final_instruction_msg,
             ],
             prefill_response=response_prefill,
-            functions=commands if self.config.use_functions_api else [],
+            functions=functions if self.config.use_functions_api else [],
         )
 
     def build_system_prompt(
         self,
         ai_profile: AIProfile,
         ai_directives: AIDirectives,
-        commands: list[CompletionModelFunction],
+        functions: list[CompletionModelFunction],
         include_os_info: bool,
     ) -> tuple[str, str]:
         """
@@ -162,7 +173,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 self.config.body_template.format(
                     constraints=format_numbered_list(ai_directives.constraints),
                     resources=format_numbered_list(ai_directives.resources),
-                    commands=self._generate_commands_list(commands),
+                    commands=self._generate_commands_list(functions),
                     best_practices=format_numbered_list(ai_directives.best_practices),
                 )
             ]

@@ -30,9 +30,12 @@ gitpython = "^3.1.32"
 hypercorn = "^0.14.4"
 openai = "^1.7.2"
 orjson = "^3.8.10"
+ptyprocess = "^0.7.0"
 pydantic = "^2.7.2"
+pyright = "^1.1.364"
 python-dotenv = "^1.0.0"
 requests = "*"
+ruff = "^0.4.4"
 sentry-sdk = "^1.40.4"
 
 # Benchmarking
@@ -47,7 +50,6 @@ black = "^23.12.1"
 flake8 = "^7.0.0"
 isort = "^5.13.1"
 pre-commit = "*"
-pyright = "^1.1.364"
 
 # Type stubs
 types-colorama = "*"

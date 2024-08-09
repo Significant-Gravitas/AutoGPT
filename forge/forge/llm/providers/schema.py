@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import (
     TYPE_CHECKING,
     Any,
+    Awaitable,
     Callable,
     ClassVar,
     Generic,
@@ -135,6 +136,8 @@ class CompletionModelFunction(BaseModel):
     name: str
     description: str
     parameters: dict[str, "JSONSchema"]
+    return_type: str | None = None
+    is_async: bool = False
 
     def fmt_line(self) -> str:
         params = ", ".join(
@@ -142,6 +145,44 @@ class CompletionModelFunction(BaseModel):
             for name, p in self.parameters.items()
         )
         return f"{self.name}: {self.description}. Params: ({params})"
+
+    def fmt_function_stub(self, impl: str = "pass") -> str:
+        """
+        Formats and returns a function stub as a string with types and descriptions.
+
+        Returns:
+            str: The formatted function header.
+        """
+        from forge.llm.prompting.utils import indent
+
+        params = ", ".join(
+            f"{name}: {p.python_type}"
+            + (
+                f" = {str(p.default)}"
+                if p.default
+                else " = None"
+                if not p.required
+                else ""
+            )
+            for name, p in self.parameters.items()
+        )
+        _def = "async def" if self.is_async else "def"
+        _return = f" -> {self.return_type}" if self.return_type else ""
+        return f"{_def} {self.name}({params}){_return}:\n" + indent(
+            '"""\n'
+            f"{self.description}\n\n"
+            "Params:\n"
+            + indent(
+                "\n".join(
+                    f"{name}: {param.description}"
+                    for name, param in self.parameters.items()
+                    if param.description
+                )
+            )
+            + "\n"
+            '"""\n'
+            f"{impl}"
+        )
 
     def validate_call(
         self, function_call: AssistantFunctionCall
@@ -415,7 +456,10 @@ class BaseChatModelProvider(BaseModelProvider[_ModelName, _ModelProviderSettings
         self,
         model_prompt: list[ChatMessage],
         model_name: _ModelName,
-        completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
+        completion_parser: (
+            Callable[[AssistantChatMessage], Awaitable[_T]]
+            | Callable[[AssistantChatMessage], _T]
+        ) = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
         prefill_response: str = "",

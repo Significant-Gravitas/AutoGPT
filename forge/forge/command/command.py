@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import inspect
-from typing import Callable, Concatenate, Generic, ParamSpec, TypeVar, cast
-
-from forge.agent.protocols import CommandProvider
+from typing import Callable, Generic, ParamSpec, TypeVar
 
 from .parameter import CommandParameter
 
 P = ParamSpec("P")
 CO = TypeVar("CO")  # command output
-
-_CP = TypeVar("_CP", bound=CommandProvider)
 
 
 class Command(Generic[P, CO]):
@@ -26,37 +22,60 @@ class Command(Generic[P, CO]):
         self,
         names: list[str],
         description: str,
-        method: Callable[Concatenate[_CP, P], CO],
+        method: Callable[P, CO],
         parameters: list[CommandParameter],
     ):
-        # Check if all parameters are provided
-        if not self._parameters_match(method, parameters):
-            raise ValueError(
-                f"Command {names[0]} has different parameters than provided schema"
-            )
         self.names = names
         self.description = description
-        # Method technically has a `self` parameter, but we can ignore that
-        # since Python passes it internally.
-        self.method = cast(Callable[P, CO], method)
+        self.method = method
         self.parameters = parameters
+
+        # Check if all parameters are provided
+        if not self._parameters_match_signature():
+            raise ValueError(
+                f"Command {self.name} has different parameters than provided schema"
+            )
+
+    @property
+    def name(self) -> str:
+        return self.names[0]  # TODO: fallback to other name if first one is taken
 
     @property
     def is_async(self) -> bool:
         return inspect.iscoroutinefunction(self.method)
 
-    def _parameters_match(
-        self, func: Callable, parameters: list[CommandParameter]
-    ) -> bool:
+    @property
+    def return_type(self) -> str:
+        _type = inspect.signature(self.method).return_annotation
+        if _type == inspect.Signature.empty:
+            return "None"
+        return _type.__name__
+
+    @property
+    def header(self) -> str:
+        """Returns a function header representing the command's signature
+
+        Examples:
+        ```py
+        def execute_python_code(code: str) -> str:
+
+        async def extract_info_from_content(content: str, instruction: str, output_type: type[~T]) -> ~T:
+        """  # noqa
+        return (
+            f"{'async ' if self.is_async else ''}"
+            f"def {self.name}{inspect.signature(self.method)}:"
+        )
+
+    def _parameters_match_signature(self) -> bool:
         # Get the function's signature
-        signature = inspect.signature(func)
+        signature = inspect.signature(self.method)
         # Extract parameter names, ignoring 'self' for methods
         func_param_names = [
             param.name
             for param in signature.parameters.values()
             if param.name != "self"
         ]
-        names = [param.name for param in parameters]
+        names = [param.name for param in self.parameters]
         # Check if sorted lists of names/keys are equal
         return sorted(func_param_names) == sorted(names)
 
@@ -71,7 +90,7 @@ class Command(Generic[P, CO]):
             for param in self.parameters
         ]
         return (
-            f"{self.names[0]}: {self.description.rstrip('.')}. "
+            f"{self.name}: {self.description.rstrip('.')}. "
             f"Params: ({', '.join(params)})"
         )
 

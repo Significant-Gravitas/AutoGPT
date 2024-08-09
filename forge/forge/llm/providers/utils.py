@@ -80,7 +80,7 @@ def function_specs_from_commands(
     """Get LLM-consumable function specs for the agent's available commands."""
     return [
         CompletionModelFunction(
-            name=command.names[0],
+            name=command.name,
             description=command.description,
             parameters={param.name: param.spec for param in command.parameters},
         )

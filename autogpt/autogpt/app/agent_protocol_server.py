@@ -23,6 +23,7 @@ from forge.agent_protocol.models import (
     TaskRequestBody,
     TaskStepsListResponse,
 )
+from forge.components.code_flow_executor import CodeFlowExecutionComponent
 from forge.file_storage import FileStorage
 from forge.llm.providers import ModelProviderBudget, MultiProvider
 from forge.models.action import ActionErrorResult, ActionSuccessResult
@@ -298,11 +299,16 @@ class AgentProtocolServer:
             else ""
         )
         output += f"{assistant_response.thoughts.speak}\n\n"
-        output += (
-            f"Next Command: {next_tool_to_use}"
-            if next_tool_to_use.name != ASK_COMMAND
-            else next_tool_to_use.arguments["question"]
-        )
+        if next_tool_to_use.name == CodeFlowExecutionComponent.execute_code_flow.name:
+            code = next_tool_to_use.arguments["python_code"]
+            plan = next_tool_to_use.arguments["plan_text"]
+            output += f"Code for next step:\n```py\n# {plan}\n\n{code}\n```"
+        else:
+            output += (
+                f"Next Command: {next_tool_to_use}"
+                if next_tool_to_use.name != ASK_COMMAND
+                else next_tool_to_use.arguments["question"]
+            )
 
         additional_output = {
             **(

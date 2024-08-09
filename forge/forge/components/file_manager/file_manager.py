@@ -169,7 +169,8 @@ class FileManagerComponent(
         parameters={
             "folder": JSONSchema(
                 type=JSONSchema.Type.STRING,
-                description="The folder to list files in",
+                description="The folder to list files in. "
+                "Pass an empty string to list files in the workspace.",
                 required=True,
             )
         },

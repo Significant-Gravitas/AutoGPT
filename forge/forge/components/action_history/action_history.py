@@ -102,6 +102,8 @@ class ActionHistoryComponent(
 
     @staticmethod
     def _make_result_message(episode: Episode, result: ActionResult) -> ChatMessage:
+        from forge.components.code_flow_executor import CodeFlowExecutionComponent
+
         if result.status == "success":
             return (
                 ToolResultMessage(
@@ -110,11 +112,18 @@ class ActionHistoryComponent(
                 )
                 if episode.action.raw_message.tool_calls
                 else ChatMessage.user(
-                    f"{episode.action.use_tool.name} returned: "
+                    (
+                        "Execution result:"
+                        if (
+                            episode.action.use_tool.name
+                            == CodeFlowExecutionComponent.execute_code_flow.name
+                        )
+                        else f"{episode.action.use_tool.name} returned:"
+                    )
                     + (
-                        f"```\n{result.outputs}\n```"
+                        f"\n```\n{result.outputs}\n```"
                         if "\n" in str(result.outputs)
-                        else f"`{result.outputs}`"
+                        else f" `{result.outputs}`"
                     )
                 )
             )

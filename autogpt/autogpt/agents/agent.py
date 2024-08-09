@@ -23,6 +23,7 @@ from forge.components.code_executor.code_executor import (
     CodeExecutorComponent,
     CodeExecutorConfiguration,
 )
+from forge.components.code_flow_executor import CodeFlowExecutionComponent
 from forge.components.context.context import AgentContext, ContextComponent
 from forge.components.file_manager import FileManagerComponent
 from forge.components.git_operations import GitOperationsComponent
@@ -40,7 +41,6 @@ from forge.llm.providers import (
     ChatModelResponse,
     MultiProvider,
 )
-from forge.llm.providers.utils import function_specs_from_commands
 from forge.models.action import (
     ActionErrorResult,
     ActionInterruptedByHuman,
@@ -56,6 +56,7 @@ from forge.utils.exceptions import (
 )
 from pydantic import Field
 
+from .prompt_strategies.code_flow import CodeFlowAgentPromptStrategy
 from .prompt_strategies.one_shot import (
     OneShotAgentActionProposal,
     OneShotAgentPromptStrategy,
@@ -96,11 +97,14 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         llm_provider: MultiProvider,
         file_storage: FileStorage,
         app_config: AppConfig,
+        prompt_strategy_class: type[
+            OneShotAgentPromptStrategy | CodeFlowAgentPromptStrategy
+        ] = CodeFlowAgentPromptStrategy,
     ):
         super().__init__(settings)
 
         self.llm_provider = llm_provider
-        prompt_config = OneShotAgentPromptStrategy.default_configuration.model_copy(
+        prompt_config = prompt_strategy_class.default_configuration.model_copy(
             deep=True
         )
         prompt_config.use_functions_api = (
@@ -108,7 +112,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             # Anthropic currently doesn't support tools + prefilling :(
             and self.llm.provider_name != "anthropic"
         )
-        self.prompt_strategy = OneShotAgentPromptStrategy(prompt_config, logger)
+        self.prompt_strategy = prompt_strategy_class(prompt_config, logger)
         self.commands: list[Command] = []
 
         # Components
@@ -145,6 +149,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(
             ContextComponent
         )
+        self.code_flow_executor = CodeFlowExecutionComponent(lambda: self.commands)
 
         self.event_history = settings.history
         self.app_config = app_config
@@ -185,7 +190,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             task=self.state.task,
             ai_profile=self.state.ai_profile,
             ai_directives=directives,
-            commands=function_specs_from_commands(self.commands),
+            commands=self.commands,
             include_os_info=include_os_info,
         )
 
@@ -201,9 +206,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
-        response: ChatModelResponse[
-            OneShotAgentActionProposal
-        ] = await self.llm_provider.create_chat_completion(
+        response: ChatModelResponse = await self.llm_provider.create_chat_completion(
             prompt.messages,
             model_name=self.llm.name,
             completion_parser=self.prompt_strategy.parse_response_content,
@@ -281,7 +284,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         except AgentException:
             raise
         except Exception as e:
-            raise CommandExecutionError(str(e))
+            raise CommandExecutionError(str(e)) from e
 
     def _get_command(self, command_name: str) -> Command:
         for command in reversed(self.commands):
