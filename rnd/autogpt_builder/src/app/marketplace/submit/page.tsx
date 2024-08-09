@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { MultiSelector } from '@/components/ui/multiselect';
+import { MultiSelector, MultiSelectorContent, MultiSelectorInput, MultiSelectorItem, MultiSelectorList, MultiSelectorTrigger } from '@/components/ui/multiselect';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type FormData = {
@@ -26,7 +26,16 @@ type FormData = {
 
 const SubmitPage: React.FC = () => {
   const router = useRouter();
-  const { control, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>();
+  const { control, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
+    defaultValues: {
+      selectedAgentId: '', // Initialize with an empty string
+      name: '',
+      description: '',
+      author: '',
+      keywords: [],
+      categories: [],
+    }
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [userAgents, setUserAgents] = useState<Array<{ id: string; name: string }>>([]);
@@ -105,7 +114,7 @@ const SubmitPage: React.FC = () => {
               render={({ field }) => (
                 <div>
                   <label htmlFor={field.name} className="block text-sm font-medium text-gray-700">Select Agent</label>
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value || ''}>
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select an agent" />
                     </SelectTrigger>
@@ -199,11 +208,18 @@ const SubmitPage: React.FC = () => {
               render={({ field }) => (
                 <div>
                   <label htmlFor={field.name} className="block text-sm font-medium text-gray-700">Keywords</label>
-                  <MultiSelector
-                    id={field.name}
-                    placeholder="Add keywords"
-                    {...field}
-                  />
+                  <MultiSelector values={field.value || []} onValuesChange={field.onChange}>
+                    <MultiSelectorTrigger>
+                      <MultiSelectorInput placeholder="Add keywords" />
+                    </MultiSelectorTrigger>
+                    <MultiSelectorContent>
+                      <MultiSelectorList>
+                        <MultiSelectorItem value="keyword1">Keyword 1</MultiSelectorItem>
+                        <MultiSelectorItem value="keyword2">Keyword 2</MultiSelectorItem>
+                        {/* Add more predefined keywords as needed */}
+                      </MultiSelectorList>
+                    </MultiSelectorContent>
+                  </MultiSelector>
                   {errors.keywords && <p className="mt-1 text-sm text-red-600">{errors.keywords.message}</p>}
                 </div>
               )}
@@ -216,12 +232,20 @@ const SubmitPage: React.FC = () => {
               render={({ field }) => (
                 <div>
                   <label htmlFor={field.name} className="block text-sm font-medium text-gray-700">Categories</label>
-                  <MultiSelector
-                    id={field.name}
-                    placeholder="Select categories"
-                    options={['Productivity', 'Entertainment', 'Education', 'Business', 'Other']}
-                    {...field}
-                  />
+                  <MultiSelector values={field.value || []} onValuesChange={field.onChange}>
+                    <MultiSelectorTrigger>
+                      <MultiSelectorInput placeholder="Select categories" />
+                    </MultiSelectorTrigger>
+                    <MultiSelectorContent>
+                      <MultiSelectorList>
+                        <MultiSelectorItem value="productivity">Productivity</MultiSelectorItem>
+                        <MultiSelectorItem value="entertainment">Entertainment</MultiSelectorItem>
+                        <MultiSelectorItem value="education">Education</MultiSelectorItem>
+                        <MultiSelectorItem value="business">Business</MultiSelectorItem>
+                        <MultiSelectorItem value="other">Other</MultiSelectorItem>
+                      </MultiSelectorList>
+                    </MultiSelectorContent>
+                  </MultiSelector>
                   {errors.categories && <p className="mt-1 text-sm text-red-600">{errors.categories.message}</p>}
                 </div>
               )}
