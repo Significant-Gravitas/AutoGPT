@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import MarketplaceAPI, {
@@ -8,7 +9,13 @@ import MarketplaceAPI, {
   AgentListResponse,
   AgentWithRank,
 } from "@/lib/marketplace-api";
-import { ChevronLeft, ChevronRight, Search, Star } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  PlusCircle,
+  Search,
+  Star,
+} from "lucide-react";
 
 // Utility Functions
 function debounce<T extends (...args: any[]) => any>(
@@ -26,29 +33,46 @@ function debounce<T extends (...args: any[]) => any>(
 type Agent = AgentResponse | AgentWithRank;
 
 // Components
-const HeroSection: React.FC = () => (
-  <div className="relative bg-indigo-600 py-6">
-    <div className="absolute inset-0 z-0">
-      <img
-        className="w-full h-full object-cover opacity-20"
-        src="https://images.unsplash.com/photo-1562408590-e32931084e23?auto=format&fit=crop&w=2070&q=80"
-        alt="Marketplace background"
-      />
-      <div
-        className="absolute inset-0 bg-indigo-600 mix-blend-multiply"
-        aria-hidden="true"
-      ></div>
+const HeroSection: React.FC = () => {
+  const router = useRouter();
+
+  return (
+    <div className="relative bg-indigo-600 py-6">
+      <div className="absolute inset-0 z-0">
+        <Image
+          src="https://images.unsplash.com/photo-1562408590-e32931084e23?auto=format&fit=crop&w=2070&q=80"
+          alt="Marketplace background"
+          layout="fill"
+          objectFit="cover"
+          quality={75}
+          priority
+          className="opacity-20"
+        />
+        <div
+          className="absolute inset-0 bg-indigo-600 mix-blend-multiply"
+          aria-hidden="true"
+        ></div>
+      </div>
+      <div className="relative max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight text-white sm:text-3xl lg:text-4xl">
+            AutoGPT Marketplace
+          </h1>
+          <p className="mt-2 max-w-3xl text-sm sm:text-base text-indigo-100">
+            Discover and share proven AI Agents to supercharge your business.
+          </p>
+        </div>
+        <Button
+          onClick={() => router.push("/marketplace/submit")}
+          className="bg-white text-indigo-600 hover:bg-indigo-50 flex items-center"
+        >
+          <PlusCircle className="mr-2 h-4 w-4" />
+          Submit Agent
+        </Button>
+      </div>
     </div>
-    <div className="relative max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
-      <h1 className="text-2xl font-extrabold tracking-tight text-white sm:text-3xl lg:text-4xl">
-        AutoGPT Marketplace
-      </h1>
-      <p className="mt-2 max-w-3xl text-sm sm:text-base text-indigo-100">
-        Discover and share proven AI Agents to supercharge your business.
-      </p>
-    </div>
-  </div>
-);
+  );
+};
 
 const SearchInput: React.FC<{
   value: string;

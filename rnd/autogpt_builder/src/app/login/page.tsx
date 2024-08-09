@@ -20,10 +20,15 @@ import { FaGoogle, FaGithub, FaDiscord, FaSpinner } from "react-icons/fa";
 import { useState } from "react";
 import { useSupabase } from "@/components/SupabaseProvider";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const loginFormSchema = z.object({
   email: z.string().email().min(2).max(64),
   password: z.string().min(6).max(64),
+  agreeToTerms: z.boolean().refine((value) => value === true, {
+    message: "You must agree to the Terms of Service and Privacy Policy",
+  }),
 });
 
 export default function LoginPage() {
@@ -38,6 +43,7 @@ export default function LoginPage() {
     defaultValues: {
       email: "",
       password: "",
+      agreeToTerms: false,
     },
   });
 
@@ -71,11 +77,6 @@ export default function LoginPage() {
         redirectTo:
           process.env.AUTH_CALLBACK_URL ??
           `http://localhost:3000/auth/callback`,
-        // Get Google provider_refresh_token
-        // queryParams: {
-        //   access_type: 'offline',
-        //   prompt: 'consent',
-        // },
       },
     });
 
@@ -176,6 +177,36 @@ export default function LoginPage() {
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name="agreeToTerms"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0 mt-4">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel>
+                      I agree to the{" "}
+                      <Link href="/terms-of-service" className="underline">
+                        Terms of Service
+                      </Link>{" "}
+                      and{" "}
+                      <Link
+                        href="https://www.notion.so/auto-gpt/Privacy-Policy-ab11c9c20dbd4de1a15dcffe84d77984"
+                        className="underline"
+                      >
+                        Privacy Policy
+                      </Link>
+                    </FormLabel>
+                    <FormMessage />
+                  </div>
+                </FormItem>
+              )}
+            />
             <div className="flex w-full space-x-4 mt-6 mb-6">
               <Button
                 className="w-1/2 flex justify-center"
@@ -196,9 +227,6 @@ export default function LoginPage() {
             </div>
           </form>
           <p className="text-red-500 text-sm">{feedback}</p>
-          <p className="text-primary text-center text-sm">
-            By continuing you agree to everything
-          </p>
         </Form>
       </div>
     </div>

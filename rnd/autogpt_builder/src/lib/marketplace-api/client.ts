@@ -99,6 +99,20 @@ export default class MarketplaceAPI {
     return this._get(`/agents/${id}/download?${queryParams.toString()}`);
   }
 
+  async submitAgent(
+    graph: { [key: string]: any },
+    author: string,
+    keywords: string[],
+    categories: string[],
+  ): Promise<AgentResponse> {
+    return this._post("/agents/submit", {
+      graph,
+      author,
+      keywords,
+      categories,
+    });
+  }
+
   async downloadAgentFile(id: string, version?: number): Promise<Blob> {
     const queryParams = new URLSearchParams();
     if (version) queryParams.append("version", version.toString());
