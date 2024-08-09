@@ -385,7 +385,9 @@ const SubmitPage: React.FC = () => {
               )}
             />
             {errors.agreeToTerms && (
-              <p className="mt-1 text-sm text-red-600">{errors.agreeToTerms.message}</p>
+              <p className="mt-1 text-sm text-red-600">
+                {errors.agreeToTerms.message}
+              </p>
             )}
 
             {submitError && (

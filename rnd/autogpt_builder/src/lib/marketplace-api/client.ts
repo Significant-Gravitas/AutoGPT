@@ -99,7 +99,6 @@ export default class MarketplaceAPI {
     return this._get(`/agents/${id}/download?${queryParams.toString()}`);
   }
 
-
   async submitAgent(
     graph: { [key: string]: any },
     author: string,
