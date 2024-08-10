@@ -23,6 +23,7 @@ import { history } from "./history";
 import NodeHandle from "./NodeHandle";
 import { CustomEdgeData } from "./CustomEdge";
 import { NodeGenericInputField } from "./node-input-components";
+import ArtifactRenderer from './ArtifactRenderer';
 
 type ParsedKey = { key: string; index?: number };
 
@@ -275,6 +276,42 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     console.log("Copy node:", id);
   }, [id]);
 
+  const renderOutput = () => {
+    console.log("CustomNode renderOutput, full data:", data);
+    console.log("CustomNode renderOutput, output_data:", data.output_data);
+    
+    if (data.block_id === "7a8b9c0d-1e2f-3g4h-5i6j-7k8l9m0n1o2p" && data.output_data && data.output_data.artifact_data) {
+      console.log("Rendering artifact:", data.output_data.artifact_data);
+      return <ArtifactRenderer artifactData={data.output_data.artifact_data} />;
+    } else {
+      return (
+        <div className="node-output" onClick={handleOutputClick}>
+          <p>
+            <strong>Status:</strong>{" "}
+            {typeof data.status === "object"
+              ? JSON.stringify(data.status)
+              : data.status || "N/A"}
+          </p>
+          <p>
+            <strong>Output Data:</strong>{" "}
+            {(() => {
+              const outputText =
+                typeof data.output_data === "object"
+                  ? JSON.stringify(data.output_data)
+                  : data.output_data;
+
+              if (!outputText) return "No output data";
+
+              return outputText.length > 100
+                ? `${outputText.slice(0, 100)}... Press To Read More`
+                : outputText;
+            })()}
+          </p>
+        </div>
+      );
+    }
+  };
+
   return (
     <div
       className={`custom-node dark-theme border rounded-xl shandow-md bg-white/[.8] ${data.status?.toLowerCase() ?? ""}`}
@@ -349,31 +386,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           {data.outputSchema && generateOutputHandles(data.outputSchema)}
         </div>
       </div>
-      {isOutputOpen && (
-        <div className="node-output" onClick={handleOutputClick}>
-          <p>
-            <strong>Status:</strong>{" "}
-            {typeof data.status === "object"
-              ? JSON.stringify(data.status)
-              : data.status || "N/A"}
-          </p>
-          <p>
-            <strong>Output Data:</strong>{" "}
-            {(() => {
-              const outputText =
-                typeof data.output_data === "object"
-                  ? JSON.stringify(data.output_data)
-                  : data.output_data;
-
-              if (!outputText) return "No output data";
-
-              return outputText.length > 100
-                ? `${outputText.slice(0, 100)}... Press To Read More`
-                : outputText;
-            })()}
-          </p>
-        </div>
-      )}
+      {isOutputOpen && renderOutput()}
       <div className="flex items-center pl-4 pb-4 mt-2.5">
         <Switch onCheckedChange={toggleOutput} />
         <span className="m-1 mr-4">Output</span>
