@@ -151,7 +151,7 @@ const FlowEditor: React.FC<{
 
     const distanceMoved = Math.sqrt(
       Math.pow(newPosition.x - oldPosition.x, 2) +
-        Math.pow(newPosition.y - oldPosition.y, 2),
+      Math.pow(newPosition.y - oldPosition.y, 2),
     );
 
     if (distanceMoved > MINIMUM_MOVE_BEFORE_LOG) {
@@ -186,23 +186,23 @@ const FlowEditor: React.FC<{
           const connections =
             action === "add"
               ? [
-                  ...node.data.connections,
-                  {
-                    source: edge.source,
-                    sourceHandle: edge.sourceHandle!,
-                    target: edge.target,
-                    targetHandle: edge.targetHandle!,
-                  },
-                ]
+                ...node.data.connections,
+                {
+                  source: edge.source,
+                  sourceHandle: edge.sourceHandle!,
+                  target: edge.target,
+                  targetHandle: edge.targetHandle!,
+                },
+              ]
               : node.data.connections.filter(
-                  (conn) =>
-                    !(
-                      conn.source === edge.source &&
-                      conn.target === edge.target &&
-                      conn.sourceHandle === edge.sourceHandle &&
-                      conn.targetHandle === edge.targetHandle
-                    ),
-                );
+                (conn) =>
+                  !(
+                    conn.source === edge.source &&
+                    conn.target === edge.target &&
+                    conn.sourceHandle === edge.sourceHandle &&
+                    conn.targetHandle === edge.targetHandle
+                  ),
+              );
           return {
             ...node,
             data: {
@@ -235,7 +235,8 @@ const FlowEditor: React.FC<{
     return node.position;
   };
 
-  // Function to clear status, output, and close the output info dropdown of all nodes
+  // Function to clear status, output, close the output info dropdown of all nodes
+  // and reset data beads on edges
   const clearNodesStatusAndOutput = useCallback(() => {
     setNodes((nds) =>
       nds.map((node) => ({
@@ -248,6 +249,17 @@ const FlowEditor: React.FC<{
         },
       })),
     );
+    setEdges((edges) => {
+      return edges.map((edge) => ({
+        ...edge,
+        data: {
+          ...edge.data,
+          beadUp: 0,
+          beadDown: 0,
+          beadData: []
+        },
+      } as Edge<CustomEdgeData>));
+    })
   }, [setNodes]);
 
   const onConnect: OnConnect = useCallback(
@@ -441,9 +453,9 @@ const FlowEditor: React.FC<{
                 nds.map((node) =>
                   node.id === newNode.id
                     ? {
-                        ...node,
-                        data: { ...node.data, hardcodedValues: values },
-                      }
+                      ...node,
+                      data: { ...node.data, hardcodedValues: values },
+                    }
                     : node,
                 ),
               );
@@ -483,6 +495,9 @@ const FlowEditor: React.FC<{
                 getOutputType(link.source_id, link.source_name!),
               ),
               sourcePos: getNodePos(link.source_id),
+              beadUp: 0,
+              beadDown: 0,
+              beadData: []
             },
             markerEnd: {
               type: MarkerType.ArrowClosed,
@@ -565,9 +580,22 @@ const FlowEditor: React.FC<{
         },
       })),
     );
+    // Reset bead count
+    setEdges((edges) => {
+      return edges.map((edge) => ({
+        ...edge,
+        data: {
+          ...edge.data,
+          beadUp: 0,
+          beadDown: 0,
+          beadData: []
+        },
+      } as Edge<CustomEdgeData>));
+    })
+
     await new Promise((resolve) => setTimeout(resolve, 100));
     console.log("All nodes before formatting:", nodes);
-    const blockIdToNodeIdMap = {};
+    const blockIdToNodeIdMap: Record<string, string> = {};
 
     const formattedNodes = nodes.map((node) => {
       nodes.forEach((node) => {
@@ -633,11 +661,11 @@ const FlowEditor: React.FC<{
 
     const newSavedAgent = savedAgent
       ? await (savedAgent.is_template
-          ? api.updateTemplate(savedAgent.id, payload)
-          : api.updateGraph(savedAgent.id, payload))
+        ? api.updateTemplate(savedAgent.id, payload)
+        : api.updateGraph(savedAgent.id, payload))
       : await (asTemplate
-          ? api.createTemplate(payload)
-          : api.createGraph(payload));
+        ? api.createTemplate(payload)
+        : api.createGraph(payload));
     console.debug("Response from the API:", newSavedAgent);
     setSavedAgent(newSavedAgent);
 
@@ -650,13 +678,13 @@ const FlowEditor: React.FC<{
 
         return frontendNode
           ? {
-              ...frontendNode,
-              position: backendNode.metadata.position,
-              data: {
-                ...frontendNode.data,
-                backend_id: backendNode.id,
-              },
-            }
+            ...frontendNode,
+            position: backendNode.metadata.position,
+            data: {
+              ...frontendNode.data,
+              backend_id: backendNode.id,
+            },
+          }
           : null;
       })
       .filter((node) => node !== null);
@@ -732,28 +760,74 @@ const FlowEditor: React.FC<{
     }
   };
 
-  const updateNodesWithExecutionData = (
-    executionData: NodeExecutionResult[],
-  ) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        const nodeExecution = executionData.find(
-          (exec) => exec.node_id === node.data.backend_id,
-        );
-        if (nodeExecution) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              status: nodeExecution.status,
-              output_data: nodeExecution.output_data,
-              isOutputOpen: true,
-            },
-          };
+  function getFrontendId(nodeId: string, nodes: Node<CustomNodeData>[]) {
+    const node = nodes.find((node) => node.data.backend_id === nodeId);
+    return node?.id;
+  }
+
+  function updateEdges(executionData: NodeExecutionResult[], nodes: Node<CustomNodeData>[]) {
+    setEdges((edges) => {
+      const newEdges = JSON.parse(JSON.stringify(edges)) as Edge<CustomEdgeData>[];
+
+      executionData.forEach((exec) => {
+        if (exec.status === "COMPLETED") {
+          for (let key in exec.output_data) {
+
+            const outputEdges = newEdges.filter(
+              (edge) => edge.source === getFrontendId(exec.node_id, nodes) && edge.sourceHandle === key);
+            outputEdges.forEach((edge) => {
+              edge.data!.beadUp = (edge.data!.beadUp ?? 0) + 1;
+              //todo kcze this assumes output at key is always array with one element
+              edge.data!.beadData = [exec.output_data[key][0], ...edge.data!.beadData!];
+            });
+          }
+        } else if (exec.status === "RUNNING") {
+          for (let key in exec.input_data) {
+            const inputEdges = newEdges.filter(
+              (edge) => edge.target === getFrontendId(exec.node_id, nodes) && edge.targetHandle === key);
+
+            inputEdges.forEach((edge) => {
+              if (edge.data!.beadData![edge.data!.beadData!.length - 1] !== exec.input_data[key]) {
+                return
+              }
+              edge.data!.beadDown = (edge.data!.beadDown ?? 0) + 1;
+              edge.data!.beadData! = edge.data!.beadData!.slice(1)
+            });
+          }
         }
-        return node;
-      }),
-    );
+
+      })
+
+      return newEdges;
+    })
+  }
+
+  const updateNodesWithExecutionData = (executionData: NodeExecutionResult[]) => {
+    setNodes((nodes) => {
+      updateEdges(executionData, nodes);
+
+      const updatedNodes = nodes.map((node) => {
+        const nodeExecution = executionData.find(
+          (exec) => exec.node_id === node.data.backend_id
+        );
+
+        if (!nodeExecution || node.data.status === nodeExecution.status) {
+          return node;
+        }
+
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            status: nodeExecution.status,
+            output_data: nodeExecution.output_data,
+            isOutputOpen: true,
+          },
+        };
+      });
+
+      return updatedNodes;
+    });
   };
 
   const handleKeyDown = useCallback(
@@ -789,9 +863,9 @@ const FlowEditor: React.FC<{
                       nds.map((n) =>
                         n.id === newNodeId
                           ? {
-                              ...n,
-                              data: { ...n.data, hardcodedValues: values },
-                            }
+                            ...n,
+                            data: { ...n.data, hardcodedValues: values },
+                          }
                           : n,
                       ),
                     );
