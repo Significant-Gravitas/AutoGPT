@@ -1,13 +1,28 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { tomorrow } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 const ArtifactRenderer = ({ artifactData }) => {
   const iframeRef = useRef(null);
+  const [iframeHeight, setIframeHeight] = useState('300px');
 
   useEffect(() => {
-    console.log("ArtifactRenderer received props:", artifactData);
+    const data = Array.isArray(artifactData) && artifactData.length > 0 ? artifactData[0] : artifactData;
+    if (data && (data.type === 'image/svg+xml' || data.type === 'text/html')) {
+      const resizeIframe = () => {
+        if (iframeRef.current && iframeRef.current.contentWindow) {
+          const height = iframeRef.current.contentWindow.document.body.scrollHeight;
+          setIframeHeight(`${height + 20}px`); // Add a small buffer
+        }
+      };
+
+      // Resize on load and after a short delay (for any dynamic content)
+      if (iframeRef.current) {
+        iframeRef.current.onload = resizeIframe;
+        setTimeout(resizeIframe, 100);
+      }
+    }
   }, [artifactData]);
 
   if (!artifactData) {
@@ -15,10 +30,7 @@ const ArtifactRenderer = ({ artifactData }) => {
     return <div>No artifact data received</div>;
   }
 
-  // Handle the nested array structure
   const data = Array.isArray(artifactData) && artifactData.length > 0 ? artifactData[0] : artifactData;
-
-  console.log("ArtifactRenderer data:", data);
 
   if (!data || typeof data !== 'object') {
     console.error("Invalid artifact data structure:", artifactData);
@@ -26,8 +38,6 @@ const ArtifactRenderer = ({ artifactData }) => {
   }
 
   const { type, title, content, language } = data;
-
-  console.log("Extracted data:", { type, title, content, language });
 
   if (!type) {
     console.error("Artifact type is missing:", data);
@@ -49,6 +59,7 @@ const ArtifactRenderer = ({ artifactData }) => {
       case 'text/markdown':
         return <ReactMarkdown>{content}</ReactMarkdown>;
       case 'text/html':
+      case 'image/svg+xml':
         return (
           <iframe
             ref={iframeRef}
@@ -57,32 +68,27 @@ const ArtifactRenderer = ({ artifactData }) => {
                 <head>
                   <base target="_blank">
                   <style>
-                    body { 
-                      font-family: Arial, sans-serif; 
-                      margin: 0; 
-                      padding: 10px; 
-                      box-sizing: border-box; 
-                      width: 100%; 
-                      height: 100%;
+                    body {
+                      margin: 0;
+                      padding: 0;
+                      overflow: hidden;
+                    }
+                    svg, img {
+                      max-width: 100%;
+                      height: auto;
                     }
                   </style>
                 </head>
                 <body>${content}</body>
               </html>
             `}
-            style={{width: '100%', border: 'none'}}
-            onLoad={() => {
-              if (iframeRef.current) {
-                iframeRef.current.style.height = `${iframeRef.current.contentWindow.document.body.scrollHeight}px`;
-              }
+            style={{
+              width: '100%',
+              height: iframeHeight,
+              border: 'none',
+              overflow: 'hidden'
             }}
           />
-        );
-      case 'image/svg+xml':
-        return (
-          <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
-            <div dangerouslySetInnerHTML={{ __html: content }} />
-          </div>
         );
       default:
         return <p>Unsupported artifact type: {type}</p>;
