@@ -19,7 +19,7 @@ def __convert_list(value: Any) -> list:
             except json.JSONDecodeError:
                 return [value]
         else:
-            return value.split(",")
+            return [value]
     else:
         return [value]
 
