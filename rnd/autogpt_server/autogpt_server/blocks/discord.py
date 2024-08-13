@@ -78,6 +78,11 @@ class DiscordReaderBlock(Block):
         await client.start(token)
 
     def run(self, input_data: "DiscordReaderBlock.Input") -> BlockOutput:
+        while True:
+            for output_name, output_value in self.__run(input_data):
+                yield output_name, output_value
+
+    def __run(self, input_data: "DiscordReaderBlock.Input") -> BlockOutput:
         try:
             loop = asyncio.get_event_loop()
             future = self.run_bot(input_data.discord_bot_token.get_secret_value())
