@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Callable, ClassVar, Optional, TypeVar
 
 from pydantic import BaseModel, Field, GetCoreSchemaHandler
+from pydantic.config import JsonDict
 from pydantic_core import (
     CoreSchema,
     PydanticUndefined,
@@ -98,13 +99,15 @@ def SchemaField(
     placeholder: Optional[str] = None,
     secret: bool = False,
     exclude: bool = False,
+    json_schema_extra: Optional[JsonDict] = None,
     **kwargs,
 ) -> T:
-    json_extra: dict[str, Any] = {}
+    if json_schema_extra is None:
+        json_schema_extra = {}
     if placeholder:
-        json_extra["placeholder"] = placeholder
+        json_schema_extra["placeholder"] = placeholder
     if secret:
-        json_extra["secret"] = True
+        json_schema_extra["secret"] = True
 
     return Field(
         default,
@@ -113,7 +116,7 @@ def SchemaField(
         title=title,
         description=description,
         exclude=exclude,
-        json_schema_extra=json_extra,
+        json_schema_extra=json_schema_extra,
         **kwargs,
     )
 
