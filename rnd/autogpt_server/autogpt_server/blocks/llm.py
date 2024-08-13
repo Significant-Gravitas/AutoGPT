@@ -406,7 +406,9 @@ class TextSummarizerBlock(Block):
                     max_tokens=input_data.max_tokens,
                     chunk_overlap=input_data.chunk_overlap,
                 )
-            ).send(None)[1]  # Get the first yielded value
+            ).send(None)[
+                1
+            ]  # Get the first yielded value
 
 
 class MessageRole(str, Enum):
@@ -469,8 +471,7 @@ class AdvancedLlmCallBlock(Block):
                 "The 2020 World Series was played at Globe Life Field in Arlington, Texas.",
             ),
             test_mock={
-                "llm_call": lambda *args,
-                **kwargs: "The 2020 World Series was played at Globe Life Field in Arlington, Texas."
+                "llm_call": lambda *args, **kwargs: "The 2020 World Series was played at Globe Life Field in Arlington, Texas."
             },
         )
 
