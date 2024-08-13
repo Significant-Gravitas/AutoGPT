@@ -1,8 +1,8 @@
 {
   "id": "5f72e49b-ea7f-4877-8889-ecc8e92b013f",
   "version": 145,
-  "is_active": true,
-  "is_template": false,
+  "is_active": false,
+  "is_template": true,
   "name": "Discord Chatbot with History",
   "description": "A Discord chatbot that keeps every message it receives in it's history.",
   "nodes": [
