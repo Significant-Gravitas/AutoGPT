@@ -277,12 +277,12 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   return (
     <div
-      className={`custom-node dark-theme border rounded-xl shandow-md bg-white/[.8] ${data.status?.toLowerCase() ?? ""}`}
+      className={`custom-node dark-theme border rounded-xl shadow-md bg-white/[.9] ${data.status?.toLowerCase() ?? ""}`}
       onMouseEnter={handleHovered}
       onMouseLeave={handleMouseLeave}
     >
-      <div className="mb-2 p-3 bg-gray-300 rounded-t-xl">
-        <div className="p-3 text-lg font-bold">
+      <div className="mb-2 p-3 bg-gray-300/[.7] rounded-t-xl">
+        <div className="p-3 text-lg font-semibold font-roboto">
           {beautifyString(data.blockType?.replace(/Block$/, "") || data.title)}
         </div>
         <div className="flex gap-[5px] ">
