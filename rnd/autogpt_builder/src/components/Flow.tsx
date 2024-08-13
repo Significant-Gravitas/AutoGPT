@@ -216,7 +216,7 @@ const FlowEditor: React.FC<{
     );
   };
 
-  const getOutputType = (id: string, handleId: string) => {
+  const getOutputType = (nodes: Node<CustomNodeData>[], id: string, handleId: string) => {
     const node = nodes.find((node) => node.id === id);
     if (!node) return "unknown";
 
@@ -265,7 +265,7 @@ const FlowEditor: React.FC<{
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
       const edgeColor = getTypeColor(
-        getOutputType(connection.source!, connection.sourceHandle!),
+        getOutputType(nodes, connection.source!, connection.sourceHandle!),
       );
       const sourcePos = getNodePos(connection.source!);
       console.log("sourcePos", sourcePos);
@@ -428,8 +428,8 @@ const FlowEditor: React.FC<{
     setAgentName(graph.name);
     setAgentDescription(graph.description);
 
-    setNodes(
-      graph.nodes.map((node) => {
+    setNodes(() => {
+      const newNodes = graph.nodes.map((node) => {
         const block = availableNodes.find(
           (block) => block.id === node.block_id,
         )!;
@@ -481,38 +481,39 @@ const FlowEditor: React.FC<{
           },
         };
         return newNode;
-      }),
-    );
+      })
+      setEdges(
+        graph.links.map(
+          (link) =>
+            ({
+              id: `${link.source_id}_${link.source_name}_${link.sink_id}_${link.sink_name}`,
+              type: "custom",
+              data: {
+                edgeColor: getTypeColor(
+                  getOutputType(newNodes, link.source_id, link.source_name!),
+                ),
+                sourcePos: getNodePos(link.source_id),
+                beadUp: 0,
+                beadDown: 0,
+                beadData: []
+              },
+              markerEnd: {
+                type: MarkerType.ArrowClosed,
+                strokeWidth: 2,
+                color: getTypeColor(
+                  getOutputType(newNodes, link.source_id, link.source_name!),
+                ),
+              },
+              source: link.source_id,
+              target: link.sink_id,
+              sourceHandle: link.source_name || undefined,
+              targetHandle: link.sink_name || undefined,
+            }) as Edge<CustomEdgeData>,
+        ),
+      );
 
-    setEdges(
-      graph.links.map(
-        (link) =>
-          ({
-            id: `${link.source_id}_${link.source_name}_${link.sink_id}_${link.sink_name}`,
-            type: "custom",
-            data: {
-              edgeColor: getTypeColor(
-                getOutputType(link.source_id, link.source_name!),
-              ),
-              sourcePos: getNodePos(link.source_id),
-              beadUp: 0,
-              beadDown: 0,
-              beadData: []
-            },
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-              strokeWidth: 2,
-              color: getTypeColor(
-                getOutputType(link.source_id, link.source_name!),
-              ),
-            },
-            source: link.source_id,
-            target: link.sink_id,
-            sourceHandle: link.source_name || undefined,
-            targetHandle: link.sink_name || undefined,
-          }) as Edge<CustomEdgeData>,
-      ),
-    );
+      return newNodes
+    });
   }
 
   const prepareNodeInputData = (node: Node<CustomNodeData>) => {

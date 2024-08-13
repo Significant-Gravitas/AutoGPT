@@ -166,9 +166,10 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
           <span>{beads.beads.length}⚫️ {data?.beadUp! / 2}🔼 {data?.beadDown! / 2}🔽</span>
         </div>
       </EdgeLabelRenderer>
-      {beads.beads.map((bead) => {
+      {beads.beads.map((bead, index) => {
         const pos = getPointForT(bead.t);
         return (<circle
+          key={index}
           cx={pos.x}
           cy={pos.y}
           r={beadDiameter / 2} // Bead radius
