@@ -277,7 +277,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   return (
     <div
-      className={`custom-node dark-theme border rounded-xl shandow-md bg-white/[.9] ${data.status?.toLowerCase() ?? ""}`}
+      className={`custom-node dark-theme border rounded-xl shadow-md bg-white/[.9] ${data.status?.toLowerCase() ?? ""}`}
       onMouseEnter={handleHovered}
       onMouseLeave={handleMouseLeave}
     >
