@@ -8,6 +8,7 @@ class FileStorageBackendName(str, enum.Enum):
     LOCAL = "local"
     GCS = "gcs"
     S3 = "s3"
+    GOOGLE_DRIVE = "google_drive"
 
 
 def get_storage(
@@ -35,3 +36,12 @@ def get_storage(
             config = GCSFileStorageConfiguration.from_env()
             config.root = root_path
             return GCSFileStorage(config)
+        case FileStorageBackendName.GOOGLE_DRIVE:
+            from .google_drive import (
+                GoogleDriveFileStorage,
+                GoogleDriveFileStorageConfiguration,
+            )
+
+            config = GoogleDriveFileStorageConfiguration.from_env()
+            config.root = root_path
+            return GoogleDriveFileStorage(config)
