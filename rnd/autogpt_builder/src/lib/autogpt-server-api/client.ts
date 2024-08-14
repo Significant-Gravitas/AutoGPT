@@ -1,3 +1,4 @@
+import { createClient } from "../supabase/client";
 import {
   Block,
   Graph,
@@ -6,13 +7,16 @@ import {
   GraphMeta,
   GraphExecuteResponse,
   NodeExecutionResult,
+  User,
 } from "./types";
 
 export default class AutoGPTServerAPI {
   private baseUrl: string;
   private wsUrl: string;
-  private socket: WebSocket | null = null;
-  private messageHandlers: { [key: string]: (data: any) => void } = {};
+  private webSocket: WebSocket | null = null;
+  private wsConnecting: Promise<void> | null = null;
+  private wsMessageHandlers: { [key: string]: (data: any) => void } = {};
+  private supabaseClient = createClient();
 
   constructor(
     baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
@@ -20,6 +24,10 @@ export default class AutoGPTServerAPI {
   ) {
     this.baseUrl = baseUrl;
     this.wsUrl = `ws://${new URL(this.baseUrl).host}/ws`;
+  }
+
+  async createUser(): Promise<User> {
+    return this._request("POST", "/auth/user", {});
   }
 
   async getBlocks(): Promise<Block[]> {
@@ -141,18 +149,23 @@ export default class AutoGPTServerAPI {
       console.debug(`${method} ${path} payload:`, payload);
     }
 
-    const response = await fetch(
-      this.baseUrl + path,
-      method != "GET"
-        ? {
-            method,
-            headers: {
+    const token =
+      (await this.supabaseClient?.auth.getSession())?.data.session
+        ?.access_token || "";
+
+    const response = await fetch(this.baseUrl + path, {
+      method,
+      headers:
+        method != "GET"
+          ? {
               "Content-Type": "application/json",
+              Authorization: token ? `Bearer ${token}` : "",
+            }
+          : {
+              Authorization: token ? `Bearer ${token}` : "",
             },
-            body: JSON.stringify(payload),
-          }
-        : undefined,
-    );
+      body: JSON.stringify(payload),
+    });
     const response_data = await response.json();
 
     if (!response.ok) {
@@ -166,37 +179,48 @@ export default class AutoGPTServerAPI {
     return response_data;
   }
 
-  connectWebSocket(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.socket = new WebSocket(this.wsUrl);
+  async connectWebSocket(): Promise<void> {
+    this.wsConnecting ??= new Promise(async (resolve, reject) => {
+      try {
+        const token =
+          (await this.supabaseClient?.auth.getSession())?.data.session
+            ?.access_token || "";
 
-      this.socket.onopen = () => {
-        console.log("WebSocket connection established");
-        resolve();
-      };
+        const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
+        this.webSocket = new WebSocket(wsUrlWithToken);
 
-      this.socket.onclose = (event) => {
-        console.log("WebSocket connection closed", event);
-        this.socket = null;
-      };
+        this.webSocket.onopen = () => {
+          console.log("WebSocket connection established");
+          resolve();
+        };
 
-      this.socket.onerror = (error) => {
-        console.error("WebSocket error:", error);
+        this.webSocket.onclose = (event) => {
+          console.log("WebSocket connection closed", event);
+          this.webSocket = null;
+        };
+
+        this.webSocket.onerror = (error) => {
+          console.error("WebSocket error:", error);
+          reject(error);
+        };
+
+        this.webSocket.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+          if (this.wsMessageHandlers[message.method]) {
+            this.wsMessageHandlers[message.method](message.data);
+          }
+        };
+      } catch (error) {
+        console.error("Error connecting to WebSocket:", error);
         reject(error);
-      };
-
-      this.socket.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        if (this.messageHandlers[message.method]) {
-          this.messageHandlers[message.method](message.data);
-        }
-      };
+      }
     });
+    return this.wsConnecting;
   }
 
   disconnectWebSocket() {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      this.socket.close();
+    if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
+      this.webSocket.close();
     }
   }
 
@@ -204,10 +228,12 @@ export default class AutoGPTServerAPI {
     method: M,
     data: WebsocketMessageTypeMap[M],
   ) {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify({ method, data }));
+    if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
+      this.webSocket.send(JSON.stringify({ method, data }));
     } else {
-      console.error("WebSocket is not connected");
+      this.connectWebSocket().then(() =>
+        this.sendWebSocketMessage(method, data),
+      );
     }
   }
 
@@ -215,18 +241,11 @@ export default class AutoGPTServerAPI {
     method: M,
     handler: (data: WebsocketMessageTypeMap[M]) => void,
   ) {
-    this.messageHandlers[method] = handler;
+    this.wsMessageHandlers[method] = handler;
   }
 
   subscribeToExecution(graphId: string) {
     this.sendWebSocketMessage("subscribe", { graph_id: graphId });
-  }
-
-  runGraph(
-    graphId: string,
-    data: WebsocketMessageTypeMap["run_graph"]["data"] = {},
-  ) {
-    this.sendWebSocketMessage("run_graph", { graph_id: graphId, data });
   }
 }
 
@@ -243,6 +262,5 @@ type GraphCreateRequestBody =
 
 type WebsocketMessageTypeMap = {
   subscribe: { graph_id: string };
-  run_graph: { graph_id: string; data: { [key: string]: any } };
   execution_event: NodeExecutionResult;
 };

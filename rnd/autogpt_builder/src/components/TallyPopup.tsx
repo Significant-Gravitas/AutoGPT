@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { Button } from "./ui/button";
-import { Megaphone } from "lucide-react";
+import { IconMegaphone } from "@/components/ui/icons";
 
 const TallyPopupSimple = () => {
   const [isFormVisible, setIsFormVisible] = useState(false);
@@ -49,7 +49,7 @@ const TallyPopupSimple = () => {
         data-tally-emoji-text="👋"
         data-tally-emoji-animation="wave"
       >
-        <Megaphone />
+        <IconMegaphone size="lg" />
         <span className="sr-only">Reach Out</span>
       </Button>
     </div>

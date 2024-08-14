@@ -4,12 +4,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { BlockIOSubSchema } from "@/lib/autogpt-server-api/types";
 import { Info } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
-const SchemaTooltip: React.FC<{ schema: BlockIOSubSchema }> = ({ schema }) => {
-  if (!schema.description) return null;
+const SchemaTooltip: React.FC<{ description?: string }> = ({ description }) => {
+  if (!description) return null;
 
   return (
     <TooltipProvider delayDuration={400}>
@@ -25,7 +24,7 @@ const SchemaTooltip: React.FC<{ schema: BlockIOSubSchema }> = ({ schema }) => {
               ),
             }}
           >
-            {schema.description}
+            {description}
           </ReactMarkdown>
         </TooltipContent>
       </Tooltip>

@@ -13,7 +13,9 @@ import {
 } from "@/components/ui/popover";
 import { Block } from "@/lib/autogpt-server-api";
 import { PlusIcon } from "@radix-ui/react-icons";
-
+import { IconToyBrick } from "@/components/ui/icons";
+import SchemaTooltip from "@/components/SchemaTooltip";
+import { getPrimaryCategoryColor } from "@/lib/utils";
 interface BlocksControlProps {
   blocks: Block[];
   addBlock: (id: string, name: string) => void;
@@ -41,20 +43,25 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button size="icon" variant="ghost">
-          <ToyBrick size={18} />
+        <Button variant="ghost" size="icon">
+          <IconToyBrick />
         </Button>
       </PopoverTrigger>
       <PopoverContent
         side="right"
-        sideOffset={15}
+        sideOffset={22}
         align="start"
-        className="w-80 p-0"
+        className="w-96 p-0"
       >
-        <Card className="border-none shadow-none">
-          <CardHeader className="p-4">
-            <div className="flex flex-row justify-between items-center">
-              <Label htmlFor="search-blocks">Blocks</Label>
+        <Card className="border-none shadow-md">
+          <CardHeader className="flex px-2 flex-col p-3 gap-x-8 gap-y-2">
+            <div className="justify-between items-center ">
+              <Label
+                htmlFor="search-blocks"
+                className="text-base 2xl:text-xl font-semibold whitespace-nowrap text-black border-b-2 border-violet-500"
+              >
+                Blocks
+              </Label>
             </div>
             <Input
               id="search-blocks"
@@ -67,13 +74,17 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
           <CardContent className="p-1">
             <ScrollArea className="h-[60vh]">
               {filteredBlocks.map((block) => (
-                <Card key={block.id} className="m-2">
+                <Card
+                  key={block.id}
+                  className={`m-2 ${getPrimaryCategoryColor(block.categories)}`}
+                >
                   <div className="flex items-center justify-between m-3">
                     <div className="flex-1 min-w-0 mr-2">
                       <span className="font-medium truncate block">
                         {beautifyString(block.name)}
                       </span>
                     </div>
+                    <SchemaTooltip description={block.description} />
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <Button
                         variant="ghost"

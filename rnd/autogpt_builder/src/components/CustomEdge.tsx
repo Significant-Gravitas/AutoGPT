@@ -35,13 +35,13 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
   markerEnd,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
-  const { setEdges } = useReactFlow();
   const [beads, setBeads] = useState<{ beads: Bead[], created: number, destroyed: number }>({ beads: [], created: 0, destroyed: 0 });
   const { svgPath, length, getPointForT, getTForDistance } =
     useBezierPath(sourceX - 5, sourceY, targetX + 3, targetY);
+  const { deleteElements } = useReactFlow<any, CustomEdgeData>();
 
   const onEdgeRemoveClick = () => {
-    setEdges((edges) => edges.filter((edge) => edge.id !== id));
+    deleteElements({ edges: [{ id }] });
   };
 
   const animationDuration = 500; // Duration in milliseconds for bead to travel the curve
@@ -154,7 +154,6 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
           >
             <X className="size-4" />
           </button>
-          <span>{beads.beads.length}⚫️ {data?.beadUp!}🔼 {data?.beadDown!}🔽</span>
         </div>
       </EdgeLabelRenderer>
       {beads.beads.map((bead, index) => {

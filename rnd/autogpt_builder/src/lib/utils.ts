@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { Category } from "./autogpt-server-api/types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -36,7 +37,7 @@ export function deepEquals(x: any, y: any): boolean {
 
 /** Get tailwind text color class from type name */
 export function getTypeTextColor(type: string | null): string {
-  if (type === null) return "bg-gray-500";
+  if (type === null) return "text-gray-500";
   return (
     {
       string: "text-green-500",
@@ -53,23 +54,23 @@ export function getTypeTextColor(type: string | null): string {
 
 /** Get tailwind bg color class from type name */
 export function getTypeBgColor(type: string | null): string {
-  if (type === null) return "bg-gray-500";
+  if (type === null) return "border-gray-500";
   return (
     {
-      string: "bg-green-500",
-      number: "bg-blue-500",
-      boolean: "bg-yellow-500",
-      object: "bg-purple-500",
-      array: "bg-indigo-500",
-      null: "bg-gray-500",
-      any: "bg-gray-500",
-      "": "bg-gray-500",
-    }[type] || "bg-gray-500"
+      string: "border-green-500",
+      number: "border-blue-500",
+      boolean: "border-yellow-500",
+      object: "border-purple-500",
+      array: "border-indigo-500",
+      null: "border-gray-500",
+      any: "border-gray-500",
+      "": "border-gray-500",
+    }[type] || "border-gray-500"
   );
 }
 
 export function getTypeColor(type: string | null): string {
-  if (type === null) return "bg-gray-500";
+  if (type === null) return "#6b7280";
   return (
     {
       string: "#22c55e",
@@ -174,4 +175,22 @@ export function removeEmptyStringsAndNulls(obj: any): any {
     }
   }
   return obj;
+}
+
+export const categoryColorMap: Record<string, string> = {
+  AI: "bg-orange-300/[.7]",
+  SOCIAL: "bg-yellow-300/[.7]",
+  TEXT: "bg-green-300/[.7]",
+  SEARCH: "bg-blue-300/[.7]",
+  BASIC: "bg-purple-300/[.7]",
+  INPUT: "bg-cyan-300/[.7]",
+  OUTPUT: "bg-brown-300/[.7]",
+  LOGIC: "bg-teal-300/[.7]",
+};
+
+export function getPrimaryCategoryColor(categories: Category[]): string {
+  if (categories.length === 0) {
+    return "bg-gray-300/[.7]";
+  }
+  return categoryColorMap[categories[0].category] || "bg-gray-300/[.7]";
 }
