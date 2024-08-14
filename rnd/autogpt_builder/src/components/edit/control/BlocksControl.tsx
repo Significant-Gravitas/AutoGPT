@@ -14,6 +14,7 @@ import {
 import { Block } from "@/lib/autogpt-server-api";
 import { PlusIcon } from "@radix-ui/react-icons";
 import { IconToyBrick } from "@/components/ui/icons";
+import SchemaTooltip from "@/components/SchemaTooltip";
 
 interface BlocksControlProps {
   blocks: Block[];
@@ -80,6 +81,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                         {beautifyString(block.name)}
                       </span>
                     </div>
+                    <SchemaTooltip description={block.description} />
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <Button
                         variant="ghost"

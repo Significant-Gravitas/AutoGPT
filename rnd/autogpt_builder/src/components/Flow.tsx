@@ -380,6 +380,7 @@ const FlowEditor: React.FC<{
         data: {
           blockType: nodeType,
           title: `${nodeType} ${nodeId}`,
+          description: nodeSchema.description,
           inputSchema: nodeSchema.inputSchema,
           outputSchema: nodeSchema.outputSchema,
           hardcodedValues: {},
@@ -459,6 +460,7 @@ const FlowEditor: React.FC<{
           data: {
             block_id: block.id,
             blockType: block.name,
+            description: block.description,
             title: `${block.name} ${node.id}`,
             inputSchema: block.inputSchema,
             outputSchema: block.outputSchema,
