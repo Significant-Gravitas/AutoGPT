@@ -107,6 +107,7 @@ const exceptionMap: Record<string, string> = {
   Http: "HTTP",
   Json: "JSON",
   "Dall E": "Dall-E",
+  "You Tube": "YouTube",
 };
 
 const applyExceptions = (str: string): string => {
