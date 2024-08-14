@@ -13,6 +13,9 @@ class DiscordReaderBlock(Block):
         discord_bot_token: BlockSecret = SecretField(
             key="discord_bot_token", description="Discord bot token"
         )
+        continuous_read: bool = Field(
+            description="Whether to continuously read messages", default=True
+        )
 
     class Output(BlockSchema):
         message_content: str = Field(description="The content of the message received")
@@ -28,7 +31,7 @@ class DiscordReaderBlock(Block):
             id="d3f4g5h6-1i2j-3k4l-5m6n-7o8p9q0r1s2t",  # Unique ID for the node
             input_schema=DiscordReaderBlock.Input,  # Assign input schema
             output_schema=DiscordReaderBlock.Output,  # Assign output schema
-            test_input={"discord_bot_token": "test_token"},
+            test_input={"discord_bot_token": "test_token", "continuous_read": False},
             test_output=[
                 (
                     "message_content",
@@ -78,6 +81,13 @@ class DiscordReaderBlock(Block):
         await client.start(token)
 
     def run(self, input_data: "DiscordReaderBlock.Input") -> BlockOutput:
+        while True:
+            for output_name, output_value in self.__run(input_data):
+                yield output_name, output_value
+            if not input_data.continuous_read:
+                break
+
+    def __run(self, input_data: "DiscordReaderBlock.Input") -> BlockOutput:
         try:
             loop = asyncio.get_event_loop()
             future = self.run_bot(input_data.discord_bot_token.get_secret_value())
