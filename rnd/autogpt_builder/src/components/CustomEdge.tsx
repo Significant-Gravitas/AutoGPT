@@ -1,4 +1,4 @@
-import React, { FC, memo, useEffect, useState } from "react";
+import React, { FC, memo, useContext, useEffect, useState } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -9,6 +9,7 @@ import {
 import "./customedge.css";
 import { X } from "lucide-react";
 import { useBezierPath } from "@/hooks/useBezierPath";
+import { FlowContext } from "./Flow";
 
 export type CustomEdgeData = {
   edgeColor: string;
@@ -39,6 +40,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
   const { svgPath, length, getPointForT, getTForDistance } =
     useBezierPath(sourceX - 5, sourceY, targetX + 3, targetY);
   const { deleteElements } = useReactFlow<any, CustomEdgeData>();
+  const { visualizeBeads } = useContext(FlowContext) ?? { visualizeBeads: 'no' };
 
   const onEdgeRemoveClick = () => {
     deleteElements({ edges: [{ id }] });
@@ -57,6 +59,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
 
       return {
         ...bead,
+        t: visualizeBeads === 'animate' ? bead.t : t,
         targetT: t,
       } as Bead;
     });
@@ -80,6 +83,27 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
       return { beads: b, created: beadUp, destroyed };
     });
 
+    if (visualizeBeads !== 'animate') {
+      setBeads(({ beads, created, destroyed }) => {
+
+        let destroyedCount = 0;
+
+        const newBeads = beads.map((bead) => ({ ...bead })).filter((bead, index) => {
+          const beadDown = data?.beadDown!;
+
+          const removeCount = beadDown - destroyed
+          if (bead.t >= bead.targetT && index < removeCount) {
+            destroyedCount++;
+            return false;
+          }
+          return true;
+        })
+
+        return { beads: setTargetPositions(newBeads), created, destroyed: destroyed + destroyedCount };
+      })
+      return;
+    }
+
     const interval = setInterval(() => {
 
       setBeads(({ beads, created, destroyed }) => {
@@ -95,7 +119,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
             t,
           };
 
-        }).filter((bead, index, beads) => {
+        }).filter((bead, index) => {
           const beadDown = data?.beadDown!;
 
           const removeCount = beadDown - destroyed

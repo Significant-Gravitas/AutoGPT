@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useRef,
   MouseEvent,
+  createContext,
 } from "react";
 import { shallow } from "zustand/vanilla/shallow";
 import ReactFlow, {
@@ -57,6 +58,12 @@ const MINIMUM_MOVE_BEFORE_LOG = 50;
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
+type FlowContextType = {
+  visualizeBeads: 'no' | 'static' | 'animate'
+}
+
+export const FlowContext = createContext<FlowContextType | null>(null);
+
 const FlowEditor: React.FC<{
   flowID?: string;
   template?: boolean;
@@ -90,7 +97,7 @@ const FlowEditor: React.FC<{
   const [copiedNodes, setCopiedNodes] = useState<Node<CustomNodeData>[]>([]);
   const [copiedEdges, setCopiedEdges] = useState<Edge<CustomEdgeData>[]>([]);
   const [isAnyModalOpen, setIsAnyModalOpen] = useState(false); // Track if any modal is open
-  const [visualizeBeads, setVisualizeBeads] = useState(true);
+  const [visualizeBeads, setVisualizeBeads] = useState<'no' | 'static' | 'animate'>('animate');
 
   const apiUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL!;
   const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
@@ -343,7 +350,7 @@ const FlowEditor: React.FC<{
         // Reset node connections for all edges
         console.warn(
           "useReactFlow().setEdges was used to overwrite all edges. " +
-            "Use addEdges, deleteElements, or reconnectEdge for incremental changes.",
+          "Use addEdges, deleteElements, or reconnectEdge for incremental changes.",
           resetEdges,
         );
         setNodes((nds) =>
@@ -836,7 +843,7 @@ const FlowEditor: React.FC<{
   const updateNodesWithExecutionData = (executionData: NodeExecutionResult[]) => {
     console.log("Updating nodes with execution data:", executionData);
     setNodes((nodes) => {
-      if (visualizeBeads) {
+      if (visualizeBeads !== 'no') {
         updateEdges(executionData, nodes);
       }
 
@@ -976,34 +983,36 @@ const FlowEditor: React.FC<{
   ];
 
   return (
-    <div className={className}>
-      <ReactFlow
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        connectionLineComponent={ConnectionLine}
-        onConnect={onConnect}
-        onNodesChange={onNodesChange}
-        onNodesDelete={onNodesDelete}
-        onEdgesChange={onEdgesChange}
-        onNodeDragStop={onNodeDragEnd}
-        onNodeDragStart={onNodeDragStart}
-        deleteKeyCode={["Backspace", "Delete"]}
-        minZoom={0.2}
-        maxZoom={2}
-      >
-        <Controls />
-        <Background />
-        <ControlPanel className="absolute z-10" controls={editorControls}>
-          <BlocksControl blocks={availableNodes} addBlock={addNode} />
-          <SaveControl
-            agentMeta={savedAgent}
-            onSave={saveAgent}
-            onDescriptionChange={setAgentDescription}
-            onNameChange={setAgentName}
-          />
-        </ControlPanel>
-      </ReactFlow>
-    </div>
+    <FlowContext.Provider value={{ visualizeBeads }}>
+      <div className={className}>
+        <ReactFlow
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          connectionLineComponent={ConnectionLine}
+          onConnect={onConnect}
+          onNodesChange={onNodesChange}
+          onNodesDelete={onNodesDelete}
+          onEdgesChange={onEdgesChange}
+          onNodeDragStop={onNodeDragEnd}
+          onNodeDragStart={onNodeDragStart}
+          deleteKeyCode={["Backspace", "Delete"]}
+          minZoom={0.2}
+          maxZoom={2}
+        >
+          <Controls />
+          <Background />
+          <ControlPanel className="absolute z-10" controls={editorControls}>
+            <BlocksControl blocks={availableNodes} addBlock={addNode} />
+            <SaveControl
+              agentMeta={savedAgent}
+              onSave={saveAgent}
+              onDescriptionChange={setAgentDescription}
+              onNameChange={setAgentName}
+            />
+          </ControlPanel>
+        </ReactFlow>
+      </div>
+    </FlowContext.Provider>
   );
 };
 
