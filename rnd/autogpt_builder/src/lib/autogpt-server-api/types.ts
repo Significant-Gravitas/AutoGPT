@@ -1,8 +1,15 @@
 /* Mirror of autogpt_server/data/block.py:Block */
+
+export type Category = {
+  category: string;
+  description: string;
+};
+
 export type Block = {
   id: string;
   name: string;
   description: string;
+  categories: Category[];
   inputSchema: BlockIORootSchema;
   outputSchema: BlockIORootSchema;
 };
