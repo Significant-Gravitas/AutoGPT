@@ -21,6 +21,7 @@ class BlockCategory(Enum):
     SOCIAL = "Block that interacts with social media platforms."
     TEXT = "Block that processes text data."
     SEARCH = "Block that searches or extracts information from the internet."
+    IMAGE = "Block that processes images."
     BASIC = "Block that performs basic operations."
     INPUT = "Block that interacts with input of the graph."
     OUTPUT = "Block that interacts with output of the graph."
