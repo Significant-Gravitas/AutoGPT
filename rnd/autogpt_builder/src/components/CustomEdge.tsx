@@ -1,9 +1,8 @@
-import React, { FC, memo, useEffect, useMemo, useState } from "react";
+import React, { FC, memo, useEffect, useState } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
   EdgeProps,
-  Position,
   useReactFlow,
   XYPosition,
 } from "reactflow";
@@ -29,12 +28,8 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
   id,
   data,
   selected,
-  source,
-  sourcePosition,
   sourceX,
   sourceY,
-  target,
-  targetPosition,
   targetX,
   targetY,
   markerEnd,
@@ -42,22 +37,22 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
   const [isHovered, setIsHovered] = useState(false);
   const { setEdges } = useReactFlow();
   const [beads, setBeads] = useState<{ beads: Bead[], created: number, destroyed: number }>({ beads: [], created: 0, destroyed: 0 });
-  const { path, svgPath, length, getPointForT, getTForDistance, getPointAtDistance } = 
+  const { svgPath, length, getPointForT, getTForDistance } =
     useBezierPath(sourceX - 5, sourceY, targetX + 3, targetY);
 
   const onEdgeRemoveClick = () => {
     setEdges((edges) => edges.filter((edge) => edge.id !== id));
   };
 
-  const animation_duration = 500; // Duration in milliseconds for bead to travel the curve
-  const beadDiameter = 12;
-  const delta_time = 16;
+  const animationDuration = 500; // Duration in milliseconds for bead to travel the curve
+  const beadDiameter = 10;
+  const deltaTime = 16;
 
   function setTargetPositions(beads: Bead[]) {
     const distanceBetween = Math.min((length - beadDiameter) / (beads.length + 1), beadDiameter);
 
     return beads.map((bead, index) => {
-      const targetPosition = distanceBetween * (index + 1);
+      const targetPosition = distanceBetween * (index) + beadDiameter * 1.3;
       const t = getTForDistance(-targetPosition);
 
       return {
@@ -73,8 +68,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
       return
     }
 
-    //FIXME: This is a temporary fix, bead count is twice as many
-    const beadUp = data?.beadUp! / 2;
+    const beadUp = data?.beadUp!;
 
     setBeads(({ beads, created, destroyed }) => {
       const newBeads = [];
@@ -93,10 +87,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
         let destroyedCount = 0;
 
         const newBeads = beads.map((bead) => {
-          // const elapsed = Date.now() - bead.startTime;
-          // const progress = Math.min(elapsed / ANIMATION_DURATION, 1);
-          // const t = bead.t + (bead.targetT - bead.t) * progress;
-          const progressIncrement = delta_time / animation_duration;
+          const progressIncrement = deltaTime / animationDuration;
           const t = Math.min(bead.t + bead.targetT * progressIncrement, bead.targetT);
 
           return {
@@ -105,7 +96,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
           };
 
         }).filter((bead, index, beads) => {
-          const beadDown = data?.beadDown! / 2;
+          const beadDown = data?.beadDown!;
 
           const removeCount = beadDown - destroyed
           if (bead.t >= bead.targetT && index < removeCount) {
@@ -118,7 +109,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
         return { beads: setTargetPositions(newBeads), created, destroyed: destroyed + destroyedCount };
       })
 
-    }, delta_time); // 60fps animation
+    }, deltaTime);
 
     return () => clearInterval(interval);
   }, [data]);
@@ -163,7 +154,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
           >
             <X className="size-4" />
           </button>
-          <span>{beads.beads.length}⚫️ {data?.beadUp! / 2}🔼 {data?.beadDown! / 2}🔽</span>
+          <span>{beads.beads.length}⚫️ {data?.beadUp!}🔼 {data?.beadDown!}🔽</span>
         </div>
       </EdgeLabelRenderer>
       {beads.beads.map((bead, index) => {
