@@ -90,6 +90,7 @@ const FlowEditor: React.FC<{
   const [copiedNodes, setCopiedNodes] = useState<Node<CustomNodeData>[]>([]);
   const [copiedEdges, setCopiedEdges] = useState<Edge<CustomEdgeData>[]>([]);
   const [isAnyModalOpen, setIsAnyModalOpen] = useState(false); // Track if any modal is open
+  const [visualizeBeads, setVisualizeBeads] = useState(true);
 
   const apiUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL!;
   const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
@@ -805,7 +806,6 @@ const FlowEditor: React.FC<{
             const outputEdges = newEdges.filter(
               (edge) => edge.source === getFrontendId(exec.node_id, nodes) && edge.sourceHandle === key);
             outputEdges.forEach((edge) => {
-              console.log("completed output edge", edge)
               edge.data!.beadUp = (edge.data!.beadUp ?? 0) + 1;
               //todo kcze this assumes output at key is always array with one element
               edge.data!.beadData = [exec.output_data[key][0], ...edge.data!.beadData!];
@@ -821,7 +821,6 @@ const FlowEditor: React.FC<{
               if (edge.data!.beadData![edge.data!.beadData!.length - 1] !== exec.input_data[key]) {
                 return
               }
-              console.log("running input edge", edge)
               edge.data!.beadDown = (edge.data!.beadDown ?? 0) + 1;
               edge.data!.beadData! = edge.data!.beadData!.slice(0, -1)
             });
@@ -829,7 +828,6 @@ const FlowEditor: React.FC<{
         }
 
       })
-      console.log("edge data", newEdges[0]?.data?.beadData);
 
       return newEdges;
     })
@@ -838,8 +836,9 @@ const FlowEditor: React.FC<{
   const updateNodesWithExecutionData = (executionData: NodeExecutionResult[]) => {
     console.log("Updating nodes with execution data:", executionData);
     setNodes((nodes) => {
-      console.log("Setting nodes!!!");
-      updateEdges(executionData, nodes);
+      if (visualizeBeads) {
+        updateEdges(executionData, nodes);
+      }
 
       const updatedNodes = nodes.map((node) => {
         const nodeExecution = executionData.find(
