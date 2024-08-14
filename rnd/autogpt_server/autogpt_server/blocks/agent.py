@@ -108,7 +108,7 @@ class AutoGPTAgentBlock(Block):
         super().__init__(
             id="d2e2ecd2-9ae6-422d-8dfe-ceca500ce6a6",
             description="AutoGPT agent, it utilizes a Large Language Model and enabled components/tools to perform a task.",
-            categories={BlockCategory.LLM},
+            categories={BlockCategory.AI},
             input_schema=AutoGPTAgentBlock.Input,
             output_schema=AutoGPTAgentBlock.Output,
             test_input={

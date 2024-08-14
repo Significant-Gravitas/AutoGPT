@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { Category } from "./autogpt-server-api/types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -174,4 +175,22 @@ export function removeEmptyStringsAndNulls(obj: any): any {
     }
   }
   return obj;
+}
+
+export const categoryColorMap: Record<string, string> = {
+  AI: "bg-orange-300/[.7]",
+  SOCIAL: "bg-yellow-300/[.7]",
+  TEXT: "bg-green-300/[.7]",
+  SEARCH: "bg-blue-300/[.7]",
+  BASIC: "bg-purple-300/[.7]",
+  INPUT: "bg-cyan-300/[.7]",
+  OUTPUT: "bg-brown-300/[.7]",
+  LOGIC: "bg-teal-300/[.7]",
+};
+
+export function getPrimaryCategoryColor(categories: Category[]): string {
+  if (categories.length === 0) {
+    return "bg-gray-300/[.7]";
+  }
+  return categoryColorMap[categories[0].category] || "bg-gray-300/[.7]";
 }
