@@ -167,7 +167,7 @@ class ObjectLookupBlock(ObjectLookupBase[Any]):
 
 class InputBlock(ObjectLookupBase[Any]):
     def __init__(self):
-        super().__init__(categories={BlockCategory.BASIC, BlockCategory.INPUT})
+        super().__init__(categories={BlockCategory.INPUT, BlockCategory.BASIC})
 
     def block_id(self) -> str:
         return "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b"
@@ -175,7 +175,7 @@ class InputBlock(ObjectLookupBase[Any]):
 
 class OutputBlock(ObjectLookupBase[Any]):
     def __init__(self):
-        super().__init__(categories={BlockCategory.BASIC, BlockCategory.OUTPUT})
+        super().__init__(categories={ BlockCategory.OUTPUT, BlockCategory.BASIC})
 
     def block_id(self) -> str:
         return "363ae599-353e-4804-937e-b2ee3cef3da4"
