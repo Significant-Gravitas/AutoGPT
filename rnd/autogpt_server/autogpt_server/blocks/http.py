@@ -1,3 +1,4 @@
+import json
 from enum import Enum
 
 import requests
@@ -37,6 +38,9 @@ class HttpRequestBlock(Block):
         )
 
     def run(self, input_data: Input) -> BlockOutput:
+        if isinstance(input_data.body, str):
+            input_data.body = json.loads(input_data.body)
+
         response = requests.request(
             input_data.method.value,
             input_data.url,
