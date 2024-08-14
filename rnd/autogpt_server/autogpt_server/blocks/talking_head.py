@@ -53,7 +53,7 @@ class ClipsBlock(Block):
         super().__init__(
             id="98c6f503-8c47-4b1c-a96d-351fc7c87dab",
             description="This block integrates with D-ID to create video clips and retrieve their URLs.",
-            categories={BlockCategory.LLM},
+            categories={BlockCategory.AI},
             input_schema=ClipsBlock.Input,
             output_schema=ClipsBlock.Output,
             test_input={
