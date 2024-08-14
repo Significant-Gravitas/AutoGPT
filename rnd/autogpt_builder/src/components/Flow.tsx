@@ -342,7 +342,7 @@ const FlowEditor: React.FC<{
         // Reset node connections for all edges
         console.warn(
           "useReactFlow().setEdges was used to overwrite all edges. " +
-          "Use addEdges, deleteElements, or reconnectEdge for incremental changes.",
+            "Use addEdges, deleteElements, or reconnectEdge for incremental changes.",
           resetEdges,
         );
         setNodes((nds) =>
