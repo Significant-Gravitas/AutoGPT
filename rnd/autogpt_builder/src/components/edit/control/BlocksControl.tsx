@@ -14,7 +14,8 @@ import {
 import { Block } from "@/lib/autogpt-server-api";
 import { PlusIcon } from "@radix-ui/react-icons";
 import { IconToyBrick } from "@/components/ui/icons";
-
+import SchemaTooltip from "@/components/SchemaTooltip";
+import { getPrimaryCategoryColor } from "@/lib/utils";
 interface BlocksControlProps {
   blocks: Block[];
   addBlock: (id: string, name: string) => void;
@@ -73,13 +74,17 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
           <CardContent className="p-1">
             <ScrollArea className="h-[60vh]">
               {filteredBlocks.map((block) => (
-                <Card key={block.id} className="m-2">
+                <Card
+                  key={block.id}
+                  className={`m-2 ${getPrimaryCategoryColor(block.categories)}`}
+                >
                   <div className="flex items-center justify-between m-3">
                     <div className="flex-1 min-w-0 mr-2">
                       <span className="font-medium truncate block">
                         {beautifyString(block.name)}
                       </span>
                     </div>
+                    <SchemaTooltip description={block.description} />
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <Button
                         variant="ghost"
