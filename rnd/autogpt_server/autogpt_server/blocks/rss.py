@@ -112,4 +112,5 @@ class RSSReaderBlock(Block):
                         ),
                     )
 
-            time.sleep(input_data.polling_rate)
+            if keep_going:
+                time.sleep(input_data.polling_rate)
