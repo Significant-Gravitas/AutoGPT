@@ -1,10 +1,10 @@
-import json
 import re
 from typing import Any
 
 from pydantic import Field
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from autogpt_server.util import json
 
 
 class TextMatcherBlock(Block):
