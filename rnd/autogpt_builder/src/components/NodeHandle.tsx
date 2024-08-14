@@ -60,7 +60,7 @@ const NodeHandle: FC<HandleProps> = ({
             {label}
           </div>
         </Handle>
-        <SchemaTooltip schema={schema} />
+        <SchemaTooltip description={schema.description} />
       </div>
     );
   } else {
