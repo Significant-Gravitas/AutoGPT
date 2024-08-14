@@ -7,7 +7,7 @@ import prisma.types
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink
 from pydantic import PrivateAttr
 
-from autogpt_server.blocks.basic import InputBlock, OutputBlock
+from autogpt_server.blocks.basic import InputBlock, OutputBlock, ValueBlock
 from autogpt_server.data.block import BlockInput, get_block
 from autogpt_server.data.db import BaseDbModel, transaction
 from autogpt_server.data.user import DEFAULT_USER_ID
@@ -175,6 +175,11 @@ class Graph(GraphMeta):
                     )
         node_map = {v.id: v for v in self.nodes}
 
+        def is_value_block(nid: str) -> bool:
+            bid = node_map[nid].block_id
+            b = get_block(bid)
+            return isinstance(b, ValueBlock)
+
         def is_input_output_block(nid: str) -> bool:
             bid = node_map[nid].block_id
             b = get_block(bid)
@@ -216,6 +221,9 @@ class Graph(GraphMeta):
                 and not is_input_output_block(link.sink_id)
             ):
                 raise ValueError(f"{suffix}, Connecting nodes from different subgraph.")
+
+            if is_value_block(link.source_id):
+                link.is_static = True  # Each value block output should be static.
 
             # TODO: Add type compatibility check here.
 

@@ -115,8 +115,8 @@ class TextParserBlock(Block):
 
 class TextFormatterBlock(Block):
     class Input(BlockSchema):
-        texts: list[str] = Field(description="Texts (list) to format", default=[])
-        named_texts: dict[str, str] = Field(
+        texts: list[Any] = Field(description="Texts (list) to format", default=[])
+        named_texts: dict[str, Any] = Field(
             description="Texts (dict) to format", default={}
         )
         format: str = Field(
@@ -150,16 +150,24 @@ class TextFormatterBlock(Block):
         )
 
     def run(self, input_data: Input) -> BlockOutput:
-        yield "output", input_data.format.format(
-            texts=input_data.texts,
-            **input_data.named_texts,
-        )
+        texts = [
+            text if isinstance(text, str) else json.dumps(text)
+            for text in input_data.texts
+        ]
+        named_texts = {
+            key: value if isinstance(value, str) else json.dumps(value)
+            for key, value in input_data.named_texts.items()
+        }
+        yield "output", input_data.format.format(texts=texts, **named_texts)
 
 
 class TextCombinerBlock(Block):
     class Input(BlockSchema):
-        input1: str = Field(description="First text input", default="a")
-        input2: str = Field(description="Second text input", default="b")
+        input1: str = Field(description="First text input", default="")
+        input2: str = Field(description="Second text input", default="")
+        input3: str = Field(description="Second text input", default="")
+        input4: str = Field(description="Second text input", default="")
+        delimiter: str = Field(description="Delimiter to combine texts", default="")
 
     class Output(BlockSchema):
         output: str = Field(description="Combined text")
@@ -182,5 +190,14 @@ class TextCombinerBlock(Block):
         )
 
     def run(self, input_data: Input) -> BlockOutput:
-        combined_text = (input_data.input1 or "") + (input_data.input2 or "")
+        combined_text = input_data.delimiter.join(
+            text
+            for text in [
+                input_data.input1,
+                input_data.input2,
+                input_data.input3,
+                input_data.input4,
+            ]
+            if text
+        )
         yield "output", combined_text
