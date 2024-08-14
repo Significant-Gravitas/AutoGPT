@@ -93,7 +93,7 @@ class ObjectLlmCallBlock(Block):
         super().__init__(
             id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
             description="Call a Large Language Model (LLM) to generate formatted object based on the given prompt.",
-            categories={BlockCategory.LLM},
+            categories={BlockCategory.AI},
             input_schema=ObjectLlmCallBlock.Input,
             output_schema=ObjectLlmCallBlock.Output,
             test_input={
@@ -261,7 +261,7 @@ class TextLlmCallBlock(Block):
         super().__init__(
             id="1f292d4a-41a4-4977-9684-7c8d560b9f91",
             description="Call a Large Language Model (LLM) to generate a string based on the given prompt.",
-            categories={BlockCategory.LLM},
+            categories={BlockCategory.AI},
             input_schema=TextLlmCallBlock.Input,
             output_schema=TextLlmCallBlock.Output,
             test_input={"prompt": "User prompt"},
@@ -307,7 +307,7 @@ class TextSummarizerBlock(Block):
         super().__init__(
             id="c3d4e5f6-7g8h-9i0j-1k2l-m3n4o5p6q7r8",
             description="Utilize a Large Language Model (LLM) to summarize a long text.",
-            categories={BlockCategory.LLM, BlockCategory.TEXT},
+            categories={BlockCategory.AI, BlockCategory.TEXT},
             input_schema=TextSummarizerBlock.Input,
             output_schema=TextSummarizerBlock.Output,
             test_input={"text": "Lorem ipsum..." * 100},
@@ -450,7 +450,7 @@ class AdvancedLlmCallBlock(Block):
         super().__init__(
             id="c3d4e5f6-g7h8-i9j0-k1l2-m3n4o5p6q7r8",
             description="Advanced LLM call that takes a list of messages and sends them to the language model.",
-            categories={BlockCategory.LLM},
+            categories={BlockCategory.AI},
             input_schema=AdvancedLlmCallBlock.Input,
             output_schema=AdvancedLlmCallBlock.Output,
             test_input={
@@ -495,7 +495,9 @@ class AdvancedLlmCallBlock(Block):
         elif provider == "anthropic":
             client = anthropic.Anthropic(api_key=api_key)
             response = client.messages.create(
-                model=model.value, max_tokens=max_tokens or 4096, messages=messages  # type: ignore
+                model=model.value,
+                max_tokens=max_tokens or 4096,
+                messages=messages,  # type: ignore
             )
             return response.content[0].text if response.content else ""
         elif provider == "groq":
@@ -508,7 +510,9 @@ class AdvancedLlmCallBlock(Block):
             return response.choices[0].message.content or ""
         elif provider == "ollama":
             response = ollama.chat(
-                model=model.value, messages=messages, stream=False  # type: ignore
+                model=model.value,
+                messages=messages,
+                stream=False,  # type: ignore
             )
             return response["message"]["content"]
         else:

@@ -24,6 +24,7 @@ import NodeHandle from "./NodeHandle";
 import { CustomEdgeData } from "./CustomEdge";
 import { NodeGenericInputField } from "./node-input-components";
 import SchemaTooltip from "./SchemaTooltip";
+import { getPrimaryCategoryColor } from "@/lib/utils";
 
 type ParsedKey = { key: string; index?: number };
 
@@ -31,6 +32,7 @@ export type CustomNodeData = {
   blockType: string;
   title: string;
   description: string;
+  categories: string[];
   inputSchema: BlockIORootSchema;
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
@@ -283,7 +285,9 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       onMouseEnter={handleHovered}
       onMouseLeave={handleMouseLeave}
     >
-      <div className="mb-2 p-3 bg-gray-300/[.7] rounded-t-xl">
+      <div
+        className={`mb-2 p-3 ${getPrimaryCategoryColor(data.categories)} rounded-t-xl`}
+      >
         <div className="flex items-center justify-between">
           <div className="p-3 text-lg font-semibold font-roboto">
             {beautifyString(

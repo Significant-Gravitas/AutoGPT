@@ -17,12 +17,14 @@ CompletedBlockOutput = dict[str, list[Any]]  # Completed stream, collected as a 
 
 
 class BlockCategory(Enum):
-    LLM = "Block that leverages the Large Language Model to perform a task."
+    AI = "Block that leverages AI to perform a task."
     SOCIAL = "Block that interacts with social media platforms."
     TEXT = "Block that processes text data."
     SEARCH = "Block that searches or extracts information from the internet."
     BASIC = "Block that performs basic operations."
-    INPUT_OUTPUT = "Block that interacts with input/output of the graph."
+    INPUT = "Block that interacts with input of the graph."
+    OUTPUT = "Block that interacts with output of the graph."
+    LOGIC = "Programming logic to control the flow of your agent"
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
@@ -113,7 +115,6 @@ class EmptySchema(BlockSchema):
 
 
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
-
     def __init__(
         self,
         id: str = "",
