@@ -24,6 +24,7 @@ import NodeHandle from "./NodeHandle";
 import { CustomEdgeData } from "./CustomEdge";
 import { NodeGenericInputField } from "./node-input-components";
 import ArtifactRenderer from './ArtifactRenderer';
+import VideoRendererBlock from './VideoRendererBlock';
 
 type ParsedKey = { key: string; index?: number };
 
@@ -280,36 +281,38 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     console.log("CustomNode renderOutput, full data:", data);
     console.log("CustomNode renderOutput, output_data:", data.output_data);
     
-    if (data.block_id === "7a8b9c0d-1e2f-3g4h-5i6j-7k8l9m0n1o2p" && data.output_data && data.output_data.artifact_data) {
-      console.log("Rendering artifact:", data.output_data.artifact_data);
-      return <ArtifactRenderer artifactData={data.output_data.artifact_data} />;
-    } else {
-      return (
-        <div className="node-output" onClick={handleOutputClick}>
-          <p>
-            <strong>Status:</strong>{" "}
-            {typeof data.status === "object"
-              ? JSON.stringify(data.status)
-              : data.status || "N/A"}
-          </p>
-          <p>
-            <strong>Output Data:</strong>{" "}
-            {(() => {
-              const outputText =
-                typeof data.output_data === "object"
-                  ? JSON.stringify(data.output_data)
-                  : data.output_data;
+    switch (data.block_id) {
+      case "7a8b9c0d-1e2f-3g4h-5i6j-7k8l9m0n1o2p":
+        return <ArtifactRenderer artifactData={data.output_data.artifact_data} />;
+      case "a92a0017-2390-425f-b5a8-fb3c50c81400":
+        return <VideoRendererBlock data={data} />;
+      default:
+        return (
+          <div className="node-output" onClick={handleOutputClick}>
+            <p>
+              <strong>Status:</strong>{" "}
+              {typeof data.status === "object"
+                ? JSON.stringify(data.status)
+                : data.status || "N/A"}
+            </p>
+            <p>
+              <strong>Output Data:</strong>{" "}
+              {(() => {
+                const outputText =
+                  typeof data.output_data === "object"
+                    ? JSON.stringify(data.output_data)
+                    : data.output_data;
 
-              if (!outputText) return "No output data";
+                if (!outputText) return "No output data";
 
-              return outputText.length > 100
-                ? `${outputText.slice(0, 100)}... Press To Read More`
-                : outputText;
-            })()}
-          </p>
-        </div>
-      );
-    }
+                return outputText.length > 100
+                  ? `${outputText.slice(0, 100)}... Press To Read More`
+                  : outputText;
+              })()}
+            </p>
+          </div>
+        );
+      }
   };
 
   return (
