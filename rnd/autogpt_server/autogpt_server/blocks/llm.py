@@ -132,16 +132,33 @@ class ObjectLlmCallBlock(Block):
             )
             return response.choices[0].message.content or ""
         elif provider == "anthropic":
-            sysprompt = "".join([p["content"] for p in prompt if p["role"] == "system"])
-            usrprompt = [p for p in prompt if p["role"] == "user"]
+            system_messages = [p["content"] for p in prompt if p["role"] == "system"]
+            sysprompt = " ".join(system_messages)
+
+            messages = []
+            last_role = None
+            for p in prompt:
+                if p["role"] in ["user", "assistant"]:
+                    if p["role"] != last_role:
+                        messages.append({"role": p["role"], "content": p["content"]})
+                        last_role = p["role"]
+                    else:
+                        # If the role is the same as the last one, combine the content
+                        messages[-1]["content"] += "\n" + p["content"]
+
             client = anthropic.Anthropic(api_key=api_key)
-            response = client.messages.create(
-                model=model.value,
-                max_tokens=4096,
-                system=sysprompt,
-                messages=usrprompt,  # type: ignore
-            )
-            return response.content[0].text if response.content else ""
+            try:
+                response = client.messages.create(
+                    model=model.value,
+                    max_tokens=4096,
+                    system=sysprompt,
+                    messages=messages,
+                )
+                return response.content[0].text if response.content else ""
+            except anthropic.APIError as e:
+                error_message = f"Anthropic API error: {str(e)}"
+                logger.error(error_message)
+                raise ValueError(error_message)
         elif provider == "groq":
             client = Groq(api_key=api_key)
             response_format = {"type": "json_object"} if json_format else None
