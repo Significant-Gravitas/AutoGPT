@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useRef,
   MouseEvent,
+  createContext,
 } from "react";
 import { shallow } from "zustand/vanilla/shallow";
 import ReactFlow, {
@@ -57,6 +58,12 @@ const MINIMUM_MOVE_BEFORE_LOG = 50;
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
+type FlowContextType = {
+  visualizeBeads: "no" | "static" | "animate";
+};
+
+export const FlowContext = createContext<FlowContextType | null>(null);
+
 const FlowEditor: React.FC<{
   flowID?: string;
   template?: boolean;
@@ -90,6 +97,9 @@ const FlowEditor: React.FC<{
   const [copiedNodes, setCopiedNodes] = useState<Node<CustomNodeData>[]>([]);
   const [copiedEdges, setCopiedEdges] = useState<Edge<CustomEdgeData>[]>([]);
   const [isAnyModalOpen, setIsAnyModalOpen] = useState(false); // Track if any modal is open
+  const [visualizeBeads, setVisualizeBeads] = useState<
+    "no" | "static" | "animate"
+  >("animate");
 
   const apiUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL!;
   const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
@@ -219,9 +229,10 @@ const FlowEditor: React.FC<{
   };
 
   // Function to clear status, output, and close the output info dropdown of all nodes
+  // and reset data beads on edges
   const clearNodesStatusAndOutput = useCallback(() => {
-    setNodes((nds) =>
-      nds.map((node) => ({
+    setNodes((nds) => {
+      const newNodes = nds.map((node) => ({
         ...node,
         data: {
           ...node.data,
@@ -229,8 +240,10 @@ const FlowEditor: React.FC<{
           output_data: undefined,
           isOutputOpen: false, // Close the output info dropdown
         },
-      })),
-    );
+      }));
+
+      return newNodes;
+    });
   }, [setNodes]);
 
   const onNodesChange = useCallback(
@@ -446,8 +459,8 @@ const FlowEditor: React.FC<{
     setAgentName(graph.name);
     setAgentDescription(graph.description);
 
-    setNodes(
-      graph.nodes.map((node) => {
+    setNodes(() => {
+      const newNodes = graph.nodes.map((node) => {
         const block = availableNodes.find(
           (block) => block.id === node.block_id,
         )!;
@@ -502,30 +515,38 @@ const FlowEditor: React.FC<{
           },
         };
         return newNode;
-      }),
-    );
-
-    setEdges(
-      graph.links.map((link) => ({
-        id: formatEdgeID(link),
-        type: "custom",
-        data: {
-          edgeColor: getTypeColor(
-            getOutputType(link.source_id, link.source_name),
-          ),
-          sourcePos: getNode(link.source_id)?.position,
-        },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          strokeWidth: 2,
-          color: getTypeColor(getOutputType(link.source_id, link.source_name)),
-        },
-        source: link.source_id,
-        target: link.sink_id,
-        sourceHandle: link.source_name || undefined,
-        targetHandle: link.sink_name || undefined,
-      })),
-    );
+      });
+      setEdges(
+        graph.links.map(
+          (link) =>
+            ({
+              id: formatEdgeID(link),
+              type: "custom",
+              data: {
+                edgeColor: getTypeColor(
+                  getOutputType(link.source_id, link.source_name!),
+                ),
+                sourcePos: getNode(link.source_id)?.position,
+                beadUp: 0,
+                beadDown: 0,
+                beadData: [],
+              },
+              markerEnd: {
+                type: MarkerType.ArrowClosed,
+                strokeWidth: 2,
+                color: getTypeColor(
+                  getOutputType(link.source_id, link.source_name!),
+                ),
+              },
+              source: link.source_id,
+              target: link.sink_id,
+              sourceHandle: link.source_name || undefined,
+              targetHandle: link.sink_name || undefined,
+            }) as Edge<CustomEdgeData>,
+        ),
+      );
+      return newNodes;
+    });
   }
 
   const prepareNodeInputData = (node: Node<CustomNodeData>) => {
@@ -593,6 +614,22 @@ const FlowEditor: React.FC<{
         },
       })),
     );
+    // Reset bead count
+    setEdges((edges) => {
+      return edges.map(
+        (edge) =>
+          ({
+            ...edge,
+            data: {
+              ...edge.data,
+              beadUp: 0,
+              beadDown: 0,
+              beadData: [],
+            },
+          }) as Edge<CustomEdgeData>,
+      );
+    });
+
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     const nodes = getNodes();
@@ -763,28 +800,96 @@ const FlowEditor: React.FC<{
     }
   };
 
+  function getFrontendId(nodeId: string, nodes: Node<CustomNodeData>[]) {
+    const node = nodes.find((node) => node.data.backend_id === nodeId);
+    return node?.id;
+  }
+
+  function updateEdges(
+    executionData: NodeExecutionResult[],
+    nodes: Node<CustomNodeData>[],
+  ) {
+    setEdges((edges) => {
+      const newEdges = JSON.parse(
+        JSON.stringify(edges),
+      ) as Edge<CustomEdgeData>[];
+
+      executionData.forEach((exec) => {
+        if (exec.status === "COMPLETED") {
+          // Produce output beads
+          for (let key in exec.output_data) {
+            const outputEdges = newEdges.filter(
+              (edge) =>
+                edge.source === getFrontendId(exec.node_id, nodes) &&
+                edge.sourceHandle === key,
+            );
+            outputEdges.forEach((edge) => {
+              edge.data!.beadUp = (edge.data!.beadUp ?? 0) + 1;
+              //todo kcze this assumes output at key is always array with one element
+              edge.data!.beadData = [
+                exec.output_data[key][0],
+                ...edge.data!.beadData!,
+              ];
+            });
+          }
+        } else if (exec.status === "RUNNING") {
+          // Consume input beads
+          for (let key in exec.input_data) {
+            const inputEdges = newEdges.filter(
+              (edge) =>
+                edge.target === getFrontendId(exec.node_id, nodes) &&
+                edge.targetHandle === key,
+            );
+
+            inputEdges.forEach((edge) => {
+              if (
+                edge.data!.beadData![edge.data!.beadData!.length - 1] !==
+                exec.input_data[key]
+              ) {
+                return;
+              }
+              edge.data!.beadDown = (edge.data!.beadDown ?? 0) + 1;
+              edge.data!.beadData! = edge.data!.beadData!.slice(0, -1);
+            });
+          }
+        }
+      });
+
+      return newEdges;
+    });
+  }
+
   const updateNodesWithExecutionData = (
     executionData: NodeExecutionResult[],
   ) => {
-    setNodes((nds) =>
-      nds.map((node) => {
+    console.log("Updating nodes with execution data:", executionData);
+    setNodes((nodes) => {
+      if (visualizeBeads !== "no") {
+        updateEdges(executionData, nodes);
+      }
+
+      const updatedNodes = nodes.map((node) => {
         const nodeExecution = executionData.find(
           (exec) => exec.node_id === node.data.backend_id,
         );
-        if (nodeExecution) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              status: nodeExecution.status,
-              output_data: nodeExecution.output_data,
-              isOutputOpen: true,
-            },
-          };
+
+        if (!nodeExecution || node.data.status === nodeExecution.status) {
+          return node;
         }
-        return node;
-      }),
-    );
+
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            status: nodeExecution.status,
+            output_data: nodeExecution.output_data,
+            isOutputOpen: true,
+          },
+        };
+      });
+
+      return updatedNodes;
+    });
   };
 
   const handleKeyDown = useCallback(
@@ -897,34 +1002,36 @@ const FlowEditor: React.FC<{
   ];
 
   return (
-    <div className={className}>
-      <ReactFlow
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        connectionLineComponent={ConnectionLine}
-        onConnect={onConnect}
-        onNodesChange={onNodesChange}
-        onNodesDelete={onNodesDelete}
-        onEdgesChange={onEdgesChange}
-        onNodeDragStop={onNodeDragEnd}
-        onNodeDragStart={onNodeDragStart}
-        deleteKeyCode={["Backspace", "Delete"]}
-        minZoom={0.2}
-        maxZoom={2}
-      >
-        <Controls />
-        <Background />
-        <ControlPanel className="absolute z-10" controls={editorControls}>
-          <BlocksControl blocks={availableNodes} addBlock={addNode} />
-          <SaveControl
-            agentMeta={savedAgent}
-            onSave={saveAgent}
-            onDescriptionChange={setAgentDescription}
-            onNameChange={setAgentName}
-          />
-        </ControlPanel>
-      </ReactFlow>
-    </div>
+    <FlowContext.Provider value={{ visualizeBeads }}>
+      <div className={className}>
+        <ReactFlow
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          connectionLineComponent={ConnectionLine}
+          onConnect={onConnect}
+          onNodesChange={onNodesChange}
+          onNodesDelete={onNodesDelete}
+          onEdgesChange={onEdgesChange}
+          onNodeDragStop={onNodeDragEnd}
+          onNodeDragStart={onNodeDragStart}
+          deleteKeyCode={["Backspace", "Delete"]}
+          minZoom={0.2}
+          maxZoom={2}
+        >
+          <Controls />
+          <Background />
+          <ControlPanel className="absolute z-10" controls={editorControls}>
+            <BlocksControl blocks={availableNodes} addBlock={addNode} />
+            <SaveControl
+              agentMeta={savedAgent}
+              onSave={saveAgent}
+              onDescriptionChange={setAgentDescription}
+              onNameChange={setAgentName}
+            />
+          </ControlPanel>
+        </ReactFlow>
+      </div>
+    </FlowContext.Provider>
   );
 };
 
