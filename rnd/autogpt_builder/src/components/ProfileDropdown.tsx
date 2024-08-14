@@ -14,6 +14,11 @@ import useUser from "@/hooks/useUser";
 const ProfileDropdown = () => {
   const { supabase } = useSupabase();
   const router = useRouter();
+  const { user, role, isLoading } = useUser();
+
+  if (isLoading) {
+    return null; // Or a loading indicator if you prefer
+  }
 
   return (
     <DropdownMenu>
@@ -26,9 +31,14 @@ const ProfileDropdown = () => {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => router.push("profile")}>
+        <DropdownMenuItem onClick={() => router.push("/profile")}>
           Profile
         </DropdownMenuItem>
+        {role === 'admin' && (
+          <DropdownMenuItem onClick={() => router.push("/marketplace/admin/dashboard")}>
+            Admin Dashboard
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={() => supabase?.auth.signOut()}>
           Log out
         </DropdownMenuItem>
