@@ -201,12 +201,16 @@ class Graph(GraphMeta):
             for i, (node_id, name) in enumerate([source, sink]):
                 node = node_map.get(node_id)
                 if not node:
-                    raise ValueError(f"{suffix}, {node_id} is invalid node id, available nodes: {node_map.keys()}")
+                    raise ValueError(
+                        f"{suffix}, {node_id} is invalid node id, available nodes: {node_map.keys()}"
+                    )
 
                 block = get_block(node.block_id)
                 if not block:
                     blocks = {v.id: v.name for v in get_blocks().values()}
-                    raise ValueError(f"{suffix}, {node.block_id} is invalid block id, available blocks: {blocks}")
+                    raise ValueError(
+                        f"{suffix}, {node.block_id} is invalid block id, available blocks: {blocks}"
+                    )
 
                 sanitized_name = sanitize(name)
                 if i == 0:
