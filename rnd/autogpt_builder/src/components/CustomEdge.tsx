@@ -23,7 +23,7 @@ type Bead = {
   t: number;
   targetT: number;
   startTime: number;
-}
+};
 
 const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
   id,
@@ -36,11 +36,21 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
   markerEnd,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
-  const [beads, setBeads] = useState<{ beads: Bead[], created: number, destroyed: number }>({ beads: [], created: 0, destroyed: 0 });
-  const { svgPath, length, getPointForT, getTForDistance } =
-    useBezierPath(sourceX - 5, sourceY, targetX + 3, targetY);
+  const [beads, setBeads] = useState<{
+    beads: Bead[];
+    created: number;
+    destroyed: number;
+  }>({ beads: [], created: 0, destroyed: 0 });
+  const { svgPath, length, getPointForT, getTForDistance } = useBezierPath(
+    sourceX - 5,
+    sourceY,
+    targetX + 3,
+    targetY,
+  );
   const { deleteElements } = useReactFlow<any, CustomEdgeData>();
-  const { visualizeBeads } = useContext(FlowContext) ?? { visualizeBeads: 'no' };
+  const { visualizeBeads } = useContext(FlowContext) ?? {
+    visualizeBeads: "no",
+  };
 
   const onEdgeRemoveClick = () => {
     deleteElements({ edges: [{ id }] });
@@ -51,15 +61,18 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
   const deltaTime = 16;
 
   function setTargetPositions(beads: Bead[]) {
-    const distanceBetween = Math.min((length - beadDiameter) / (beads.length + 1), beadDiameter);
+    const distanceBetween = Math.min(
+      (length - beadDiameter) / (beads.length + 1),
+      beadDiameter,
+    );
 
     return beads.map((bead, index) => {
-      const targetPosition = distanceBetween * (index) + beadDiameter * 1.3;
+      const targetPosition = distanceBetween * index + beadDiameter * 1.3;
       const t = getTForDistance(-targetPosition);
 
       return {
         ...bead,
-        t: visualizeBeads === 'animate' ? bead.t : t,
+        t: visualizeBeads === "animate" ? bead.t : t,
         targetT: t,
       } as Bead;
     });
@@ -68,7 +81,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
   useEffect(() => {
     if (data?.beadUp === 0 && data?.beadDown === 0) {
       setBeads({ beads: [], created: 0, destroyed: 0 });
-      return
+      return;
     }
 
     const beadUp = data?.beadUp!;
@@ -79,60 +92,70 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
         newBeads.push({ t: 0, targetT: 0, startTime: Date.now() });
       }
 
-      const b = setTargetPositions([...beads, ...newBeads])
+      const b = setTargetPositions([...beads, ...newBeads]);
       return { beads: b, created: beadUp, destroyed };
     });
 
-    if (visualizeBeads !== 'animate') {
+    if (visualizeBeads !== "animate") {
       setBeads(({ beads, created, destroyed }) => {
-
         let destroyedCount = 0;
 
-        const newBeads = beads.map((bead) => ({ ...bead })).filter((bead, index) => {
-          const beadDown = data?.beadDown!;
+        const newBeads = beads
+          .map((bead) => ({ ...bead }))
+          .filter((bead, index) => {
+            const beadDown = data?.beadDown!;
 
-          const removeCount = beadDown - destroyed
-          if (bead.t >= bead.targetT && index < removeCount) {
-            destroyedCount++;
-            return false;
-          }
-          return true;
-        })
+            const removeCount = beadDown - destroyed;
+            if (bead.t >= bead.targetT && index < removeCount) {
+              destroyedCount++;
+              return false;
+            }
+            return true;
+          });
 
-        return { beads: setTargetPositions(newBeads), created, destroyed: destroyed + destroyedCount };
-      })
+        return {
+          beads: setTargetPositions(newBeads),
+          created,
+          destroyed: destroyed + destroyedCount,
+        };
+      });
       return;
     }
 
     const interval = setInterval(() => {
-
       setBeads(({ beads, created, destroyed }) => {
-
         let destroyedCount = 0;
 
-        const newBeads = beads.map((bead) => {
-          const progressIncrement = deltaTime / animationDuration;
-          const t = Math.min(bead.t + bead.targetT * progressIncrement, bead.targetT);
+        const newBeads = beads
+          .map((bead) => {
+            const progressIncrement = deltaTime / animationDuration;
+            const t = Math.min(
+              bead.t + bead.targetT * progressIncrement,
+              bead.targetT,
+            );
 
-          return {
-            ...bead,
-            t,
-          };
+            return {
+              ...bead,
+              t,
+            };
+          })
+          .filter((bead, index) => {
+            const beadDown = data?.beadDown!;
 
-        }).filter((bead, index) => {
-          const beadDown = data?.beadDown!;
+            const removeCount = beadDown - destroyed;
+            if (bead.t >= bead.targetT && index < removeCount) {
+              destroyedCount++;
+              return false;
+            }
+            return true;
+          });
 
-          const removeCount = beadDown - destroyed
-          if (bead.t >= bead.targetT && index < removeCount) {
-            destroyedCount++;
-            return false;
-          }
-          return true;
-        })
-
-        return { beads: setTargetPositions(newBeads), created, destroyed: destroyed + destroyedCount };
-      })
-
+        return {
+          beads: setTargetPositions(newBeads),
+          created,
+          destroyed: destroyed + destroyedCount,
+        };
+      });
     }, deltaTime);
 
     return () => clearInterval(interval);
@@ -182,13 +205,15 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
       </EdgeLabelRenderer>
       {beads.beads.map((bead, index) => {
         const pos = getPointForT(bead.t);
-        return (<circle
-          key={index}
-          cx={pos.x}
-          cy={pos.y}
-          r={beadDiameter / 2} // Bead radius
-          fill={data?.edgeColor ?? "#555555"}
-        />)
+        return (
+          <circle
+            key={index}
+            cx={pos.x}
+            cy={pos.y}
+            r={beadDiameter / 2} // Bead radius
+            fill={data?.edgeColor ?? "#555555"}
+          />
+        );
       })}
     </>
   );

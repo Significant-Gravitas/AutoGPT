@@ -59,8 +59,8 @@ const MINIMUM_MOVE_BEFORE_LOG = 50;
 const ajv = new Ajv({ strict: false, allErrors: true });
 
 type FlowContextType = {
-  visualizeBeads: 'no' | 'static' | 'animate'
-}
+  visualizeBeads: "no" | "static" | "animate";
+};
 
 export const FlowContext = createContext<FlowContextType | null>(null);
 
@@ -97,7 +97,9 @@ const FlowEditor: React.FC<{
   const [copiedNodes, setCopiedNodes] = useState<Node<CustomNodeData>[]>([]);
   const [copiedEdges, setCopiedEdges] = useState<Edge<CustomEdgeData>[]>([]);
   const [isAnyModalOpen, setIsAnyModalOpen] = useState(false); // Track if any modal is open
-  const [visualizeBeads, setVisualizeBeads] = useState<'no' | 'static' | 'animate'>('animate');
+  const [visualizeBeads, setVisualizeBeads] = useState<
+    "no" | "static" | "animate"
+  >("animate");
 
   const apiUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL!;
   const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
@@ -187,7 +189,7 @@ const FlowEditor: React.FC<{
 
     const distanceMoved = Math.sqrt(
       Math.pow(newPosition.x - oldPosition.x, 2) +
-      Math.pow(newPosition.y - oldPosition.y, 2),
+        Math.pow(newPosition.y - oldPosition.y, 2),
     );
 
     if (distanceMoved > MINIMUM_MOVE_BEFORE_LOG) {
@@ -238,7 +240,7 @@ const FlowEditor: React.FC<{
           output_data: undefined,
           isOutputOpen: false, // Close the output info dropdown
         },
-      }))
+      }));
 
       return newNodes;
     });
@@ -350,7 +352,7 @@ const FlowEditor: React.FC<{
         // Reset node connections for all edges
         console.warn(
           "useReactFlow().setEdges was used to overwrite all edges. " +
-          "Use addEdges, deleteElements, or reconnectEdge for incremental changes.",
+            "Use addEdges, deleteElements, or reconnectEdge for incremental changes.",
           resetEdges,
         );
         setNodes((nds) =>
@@ -483,9 +485,9 @@ const FlowEditor: React.FC<{
                 nds.map((node) =>
                   node.id === newNode.id
                     ? {
-                      ...node,
-                      data: { ...node.data, hardcodedValues: values },
-                    }
+                        ...node,
+                        data: { ...node.data, hardcodedValues: values },
+                      }
                     : node,
                 ),
               );
@@ -513,7 +515,7 @@ const FlowEditor: React.FC<{
           },
         };
         return newNode;
-      })
+      });
       setEdges(
         graph.links.map(
           (link) =>
@@ -527,7 +529,7 @@ const FlowEditor: React.FC<{
                 sourcePos: getNode(link.source_id)?.position,
                 beadUp: 0,
                 beadDown: 0,
-                beadData: []
+                beadData: [],
               },
               markerEnd: {
                 type: MarkerType.ArrowClosed,
@@ -544,8 +546,7 @@ const FlowEditor: React.FC<{
         ),
       );
       return newNodes;
-    })
-
+    });
   }
 
   const prepareNodeInputData = (node: Node<CustomNodeData>) => {
@@ -615,16 +616,19 @@ const FlowEditor: React.FC<{
     );
     // Reset bead count
     setEdges((edges) => {
-      return edges.map((edge) => ({
-        ...edge,
-        data: {
-          ...edge.data,
-          beadUp: 0,
-          beadDown: 0,
-          beadData: []
-        },
-      } as Edge<CustomEdgeData>));
-    })
+      return edges.map(
+        (edge) =>
+          ({
+            ...edge,
+            data: {
+              ...edge.data,
+              beadUp: 0,
+              beadDown: 0,
+              beadData: [],
+            },
+          }) as Edge<CustomEdgeData>,
+      );
+    });
 
     await new Promise((resolve) => setTimeout(resolve, 100));
 
@@ -697,11 +701,11 @@ const FlowEditor: React.FC<{
 
     const newSavedAgent = savedAgent
       ? await (savedAgent.is_template
-        ? api.updateTemplate(savedAgent.id, payload)
-        : api.updateGraph(savedAgent.id, payload))
+          ? api.updateTemplate(savedAgent.id, payload)
+          : api.updateGraph(savedAgent.id, payload))
       : await (asTemplate
-        ? api.createTemplate(payload)
-        : api.createGraph(payload));
+          ? api.createTemplate(payload)
+          : api.createGraph(payload));
     console.debug("Response from the API:", newSavedAgent);
     setSavedAgent(newSavedAgent);
 
@@ -714,13 +718,13 @@ const FlowEditor: React.FC<{
 
         return frontendNode
           ? {
-            ...frontendNode,
-            position: backendNode.metadata.position,
-            data: {
-              ...frontendNode.data,
-              backend_id: backendNode.id,
-            },
-          }
+              ...frontendNode,
+              position: backendNode.metadata.position,
+              data: {
+                ...frontendNode.data,
+                backend_id: backendNode.id,
+              },
+            }
           : null;
       })
       .filter((node) => node !== null);
@@ -801,55 +805,72 @@ const FlowEditor: React.FC<{
     return node?.id;
   }
 
-  function updateEdges(executionData: NodeExecutionResult[], nodes: Node<CustomNodeData>[]) {
+  function updateEdges(
+    executionData: NodeExecutionResult[],
+    nodes: Node<CustomNodeData>[],
+  ) {
     setEdges((edges) => {
-      const newEdges = JSON.parse(JSON.stringify(edges)) as Edge<CustomEdgeData>[];
+      const newEdges = JSON.parse(
+        JSON.stringify(edges),
+      ) as Edge<CustomEdgeData>[];
 
       executionData.forEach((exec) => {
         if (exec.status === "COMPLETED") {
           // Produce output beads
           for (let key in exec.output_data) {
-
             const outputEdges = newEdges.filter(
-              (edge) => edge.source === getFrontendId(exec.node_id, nodes) && edge.sourceHandle === key);
+              (edge) =>
+                edge.source === getFrontendId(exec.node_id, nodes) &&
+                edge.sourceHandle === key,
+            );
             outputEdges.forEach((edge) => {
               edge.data!.beadUp = (edge.data!.beadUp ?? 0) + 1;
               //todo kcze this assumes output at key is always array with one element
-              edge.data!.beadData = [exec.output_data[key][0], ...edge.data!.beadData!];
+              edge.data!.beadData = [
+                exec.output_data[key][0],
+                ...edge.data!.beadData!,
+              ];
             });
           }
         } else if (exec.status === "RUNNING") {
           // Consume input beads
           for (let key in exec.input_data) {
             const inputEdges = newEdges.filter(
-              (edge) => edge.target === getFrontendId(exec.node_id, nodes) && edge.targetHandle === key);
+              (edge) =>
+                edge.target === getFrontendId(exec.node_id, nodes) &&
+                edge.targetHandle === key,
+            );
 
             inputEdges.forEach((edge) => {
-              if (edge.data!.beadData![edge.data!.beadData!.length - 1] !== exec.input_data[key]) {
-                return
+              if (
+                edge.data!.beadData![edge.data!.beadData!.length - 1] !==
+                exec.input_data[key]
+              ) {
+                return;
               }
               edge.data!.beadDown = (edge.data!.beadDown ?? 0) + 1;
-              edge.data!.beadData! = edge.data!.beadData!.slice(0, -1)
+              edge.data!.beadData! = edge.data!.beadData!.slice(0, -1);
             });
           }
         }
-
-      })
+      });
 
       return newEdges;
-    })
+    });
   }
 
-  const updateNodesWithExecutionData = (executionData: NodeExecutionResult[]) => {
+  const updateNodesWithExecutionData = (
+    executionData: NodeExecutionResult[],
+  ) => {
     console.log("Updating nodes with execution data:", executionData);
     setNodes((nodes) => {
-      if (visualizeBeads !== 'no') {
+      if (visualizeBeads !== "no") {
         updateEdges(executionData, nodes);
       }
 
       const updatedNodes = nodes.map((node) => {
         const nodeExecution = executionData.find(
-          (exec) => exec.node_id === node.data.backend_id
+          (exec) => exec.node_id === node.data.backend_id,
         );
 
         if (!nodeExecution || node.data.status === nodeExecution.status) {
@@ -869,8 +890,6 @@ const FlowEditor: React.FC<{
 
       return updatedNodes;
     });
-
-
   };
 
   const handleKeyDown = useCallback(
@@ -908,9 +927,9 @@ const FlowEditor: React.FC<{
                       nds.map((n) =>
                         n.id === newNodeId
                           ? {
-                            ...n,
-                            data: { ...n.data, hardcodedValues: values },
-                          }
+                              ...n,
+                              data: { ...n.data, hardcodedValues: values },
+                            }
                           : n,
                       ),
                     );
