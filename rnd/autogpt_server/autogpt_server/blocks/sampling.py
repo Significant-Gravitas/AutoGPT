@@ -20,9 +20,9 @@ class SamplingMethod(str, Enum):
 
 class DataSamplingBlock(Block):
     class Input(BlockSchema):
-        data: List[Union[dict, List[Any]]] = SchemaField(
-            description="The dataset to sample from. Can be a list of dictionaries or a list of lists.",
-            placeholder="[{'id': 1, 'value': 'a'}, {'id': 2, 'value': 'b'}, ...]",
+        data: Union[Dict[str, Any], List[Union[dict, List[Any]]]] = SchemaField(
+            description="The dataset to sample from. Can be a single dictionary, a list of dictionaries, or a list of lists.",
+            placeholder="{'id': 1, 'value': 'a'} or [{'id': 1, 'value': 'a'}, {'id': 2, 'value': 'b'}, ...]",
         )
         sample_size: int = SchemaField(
             description="The number of samples to take from the dataset.",
@@ -32,6 +32,10 @@ class DataSamplingBlock(Block):
             description="The method to use for sampling.",
             default=SamplingMethod.RANDOM,
         )
+        accumulate: bool = SchemaField(
+            description="Whether to accumulate data before sampling.",
+            default=False,
+        )
         random_seed: Optional[int] = SchemaField(
             description="Seed for random number generator (optional).",
             default=None,
@@ -40,7 +44,7 @@ class DataSamplingBlock(Block):
             description="Key to use for stratified sampling (required for stratified sampling).",
             default=None,
         )
-        weight_key: Optional[str] = SchemaField(
+        weight_key: Optional[str]  = SchemaField(
             description="Key to use for weighted sampling (required for weighted sampling).",
             default=None,
         )
@@ -61,7 +65,7 @@ class DataSamplingBlock(Block):
         super().__init__(
             id="4a448883-71fa-49cf-91cf-70d793bd7d87",
             description="This block samples data from a given dataset using various sampling methods.",
-            categories={BlockCategory.BASIC},
+            categories={BlockCategory.LOGIC},
             input_schema=DataSamplingBlock.Input,
             output_schema=DataSamplingBlock.Output,
             test_input={
@@ -70,6 +74,7 @@ class DataSamplingBlock(Block):
                 ],
                 "sample_size": 3,
                 "sampling_method": SamplingMethod.STRATIFIED,
+                "accumulate": False,
                 "random_seed": 42,
                 "stratify_key": "group",
             },
@@ -85,12 +90,34 @@ class DataSamplingBlock(Block):
                 ("sample_indices", [2, 1, 3]),
             ],
         )
+        self.accumulated_data = []
 
     def run(self, input_data: Input) -> BlockOutput:
+        if input_data.accumulate:
+            if isinstance(input_data.data, dict):
+                self.accumulated_data.append(input_data.data)
+            elif isinstance(input_data.data, list):
+                self.accumulated_data.extend(input_data.data)
+            else:
+                raise ValueError(f"Unsupported data type: {type(input_data.data)}")
+
+            # If we don't have enough data yet, return without sampling
+            if len(self.accumulated_data) < input_data.sample_size:
+                return
+
+            data_to_sample = self.accumulated_data
+        else:
+            # If not accumulating, use the input data directly
+            data_to_sample = (
+                input_data.data
+                if isinstance(input_data.data, list)
+                else [input_data.data]
+            )
+
         if input_data.random_seed is not None:
             random.seed(input_data.random_seed)
 
-        data_size = len(input_data.data)
+        data_size = len(data_to_sample)
 
         if input_data.sample_size > data_size:
             raise ValueError(
@@ -115,7 +142,7 @@ class DataSamplingBlock(Block):
                     "Stratify key must be provided for stratified sampling."
                 )
             strata = defaultdict(list)
-            for i, item in enumerate(input_data.data):
+            for i, item in enumerate(data_to_sample):
                 strata[str(item[int(input_data.stratify_key)])].append(i)
 
             # Calculate the number of samples to take from each stratum
@@ -140,13 +167,33 @@ class DataSamplingBlock(Block):
         elif input_data.sampling_method == SamplingMethod.WEIGHTED:
             if not input_data.weight_key:
                 raise ValueError("Weight key must be provided for weighted sampling.")
-            weights = [
-                item[input_data.weight_key]
-                for item in input_data.data
-                if isinstance(item, dict) and input_data.weight_key in item
-            ]
+            weights = []
+            for item in data_to_sample:
+                if isinstance(item, dict):
+                    weight = item.get(input_data.weight_key)
+                elif hasattr(item, input_data.weight_key):
+                    weight = getattr(item, input_data.weight_key)
+                else:
+                    raise ValueError(
+                        f"Weight key '{input_data.weight_key}' not found in item {item}"
+                    )
+
+                if weight is None:
+                    raise ValueError(
+                        f"Weight value for key '{input_data.weight_key}' is None"
+                    )
+                try:
+                    weights.append(float(weight))
+                except ValueError:
+                    raise ValueError(
+                        f"Weight value '{weight}' cannot be converted to a number"
+                    )
+
             if not weights:
-                raise ValueError("Weight key not found in data items.")
+                raise ValueError(
+                    f"No valid weights found using key '{input_data.weight_key}'"
+                )
+
             indices = random.choices(
                 range(data_size), weights=weights, k=input_data.sample_size
             )
@@ -160,18 +207,16 @@ class DataSamplingBlock(Block):
             if not input_data.cluster_key:
                 raise ValueError("Cluster key must be provided for cluster sampling.")
             clusters = defaultdict(list)
-            for i, item in enumerate(input_data.data):
+            for i, item in enumerate(data_to_sample):
                 if isinstance(item, dict):
                     cluster_value = item.get(input_data.cluster_key)
-                elif isinstance(item, list):
-                    try:
-                        cluster_value = item[int(input_data.cluster_key)]
-                    except (IndexError, ValueError):
-                        raise ValueError(
-                            f"Invalid cluster_key '{input_data.cluster_key}' for list data."
-                        )
+                elif hasattr(item, input_data.cluster_key):
+                    cluster_value = getattr(item, input_data.cluster_key)
                 else:
-                    raise TypeError("Data items must be either dictionaries or lists.")
+                    raise TypeError(
+                        f"Item {item} does not have the cluster key '{input_data.cluster_key}'"
+                    )
+
                 clusters[str(cluster_value)].append(i)
 
             # Randomly select clusters until we have enough samples
@@ -194,7 +239,11 @@ class DataSamplingBlock(Block):
         else:
             raise ValueError(f"Unknown sampling method: {input_data.sampling_method}")
 
-        sampled_data = [input_data.data[i] for i in indices]
+        sampled_data = [data_to_sample[i] for i in indices]
+
+        # Clear accumulated data after sampling if accumulation is enabled
+        if input_data.accumulate:
+            self.accumulated_data = []
 
         yield "sampled_data", sampled_data
         yield "sample_indices", indices
