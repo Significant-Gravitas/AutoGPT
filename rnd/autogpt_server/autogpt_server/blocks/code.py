@@ -142,7 +142,9 @@ class FlexiblePythonExecutionBlock(Block):
 
     def run(self, input_data: Input) -> BlockOutput:
         try:
-            self.install_dependencies(input_data.dependencies)
+            # Ensure dependencies is a flat list of package names
+            dependencies = self.flatten_dependencies(input_data.dependencies)
+            self.install_dependencies(dependencies)
             result = self.execute_code(
                 input_data.code, input_data.args, input_data.timeout
             )
@@ -152,6 +154,29 @@ class FlexiblePythonExecutionBlock(Block):
 
     def create_venv(self):
         venv.create(self.venv_path, with_pip=True)
+
+    @staticmethod
+    def flatten_dependencies(dependencies):
+        if isinstance(dependencies, str):
+            # If it's a string, try to parse it as JSON
+            try:
+                dependencies = json.loads(dependencies)
+            except json.JSONDecodeError:
+                # If it's not valid JSON, treat it as a single package name
+                return [dependencies]
+
+        if isinstance(dependencies, list):
+            # Flatten the list and remove any nested lists
+            flat_deps = []
+            for dep in dependencies:
+                if isinstance(dep, list):
+                    flat_deps.extend(dep)
+                else:
+                    flat_deps.append(dep)
+            return flat_deps
+        else:
+            # If it's not a list or string, wrap it in a list
+            return [dependencies]
 
     def install_dependencies(self, dependencies: List[str]) -> None:
         pip_path = os.path.join(self.venv_path, "bin", "pip")
@@ -191,30 +216,63 @@ class FlexiblePythonExecutionBlock(Block):
 class UnifiedPythonExecutionBlock(Block):
     class Input(BlockSchema):
         code: str = SchemaField(
-            description="Python code to execute", placeholder="print(f'Hello, {name}!')"
+            description="""Python code to execute. This code will have access to an 'args' variable containing the data passed in the 'args' field.
+
+Example:
+```python
+import pandas as pd
+
+# Convert args to DataFrame
+df = pd.DataFrame(args)
+
+# Perform analysis
+result = df.describe()
+print(result)
+```""",
+            placeholder="# Your Python code here",
         )
-        args: Union[Dict[str, Any], List[Dict[str, Any]], str] = SchemaField(
-            description="Arguments to pass to the code. Can be a dictionary, list of dictionaries, or a JSON string.",
+        args: Any = SchemaField(
+            description="""Data to be passed to the Python code. This can be any JSON-serializable data structure (e.g., list, dictionary, nested structures).
+The data will be available in the code as the 'args' variable.
+
+Example:
+[
+    {"name": "Alice", "age": 30, "score": 85},
+    {"name": "Bob", "age": 25, "score": 92},
+    {"name": "Charlie", "age": 35, "score": 78}
+]""",
             default={},
-            placeholder='{"name": "World", "number": 42}',
-        )
-        timeout: float = SchemaField(
-            description="Execution timeout in seconds", default=30.0
+            placeholder="Enter your data here",
         )
         mode: ExecutionMode = SchemaField(
-            description="Execution mode: 'fast' or 'flexible'",
+            description="""Execution mode for the Python code:
+- 'fast': Quicker execution but with limited package availability.
+- 'flexible': Slower but allows installation of additional packages specified in 'dependencies'.""",
             default=ExecutionMode.FAST,
         )
         dependencies: List[str] = SchemaField(
-            description="List of Python packages to install (only for 'flexible' mode)",
+            description="""List of Python packages to install (only for 'flexible' mode).
+Specify each package name as you would in a requirements.txt file.
+
+Example: ["pandas==1.3.0", "numpy", "matplotlib"]""",
             default=[],
+        )
+        timeout: float = SchemaField(
+            description="Maximum execution time in seconds. The code will be terminated if it exceeds this limit.",
+            default=30.0,
         )
 
     class Output(BlockSchema):
-        result: str = SchemaField(description="Execution result or output")
-        error: str = SchemaField(description="Error message if execution failed")
-        execution_time: float = SchemaField(description="Execution time in seconds")
-        memory_usage: float = SchemaField(description="Peak memory usage in MB")
+        result: str = SchemaField(
+            description="Execution result or output of the Python code"
+        )
+        error: str = SchemaField(description="Error message if the execution failed")
+        execution_time: float = SchemaField(
+            description="Actual execution time in seconds"
+        )
+        memory_usage: float = SchemaField(
+            description="Peak memory usage during execution in MB"
+        )
 
     def __init__(self):
         super().__init__(
@@ -230,14 +288,28 @@ class UnifiedPythonExecutionBlock(Block):
     def run(self, input_data: Input) -> BlockOutput:
         start_time = time.time()
         try:
+            # Prepare the code to be executed
+            full_code = f"""
+import json
+import sys
+
+# Load arguments
+args = json.loads('''{json.dumps(input_data.args)}''')
+
+# User's code starts here
+{input_data.code}
+# User's code ends here
+"""
             if input_data.mode == ExecutionMode.FAST:
                 result = self.fast_executor.execute_code(
-                    input_data.code, input_data.args, input_data.timeout
+                    full_code, None, input_data.timeout
                 )
             elif input_data.mode == ExecutionMode.FLEXIBLE:
-                self.flexible_executor.install_dependencies(input_data.dependencies)
+                # Ensure dependencies is a flat list of package names
+                dependencies = self.flatten_dependencies(input_data.dependencies)
+                self.flexible_executor.install_dependencies(dependencies)
                 result = self.flexible_executor.execute_code(
-                    input_data.code, input_data.args, input_data.timeout
+                    full_code, None, input_data.timeout
                 )
             else:
                 raise ValueError(f"Invalid mode: {input_data.mode}")
@@ -256,3 +328,26 @@ class UnifiedPythonExecutionBlock(Block):
 
         process = psutil.Process(os.getpid())
         return process.memory_info().rss / (1024 * 1024)  # Convert to MB
+
+    @staticmethod
+    def flatten_dependencies(dependencies):
+        if isinstance(dependencies, str):
+            # If it's a string, try to parse it as JSON
+            try:
+                dependencies = json.loads(dependencies)
+            except json.JSONDecodeError:
+                # If it's not valid JSON, treat it as a single package name
+                return [dependencies]
+
+        if isinstance(dependencies, list):
+            # Flatten the list and remove any nested lists
+            flat_deps = []
+            for dep in dependencies:
+                if isinstance(dep, list):
+                    flat_deps.extend(dep)
+                else:
+                    flat_deps.append(dep)
+            return flat_deps
+        else:
+            # If it's not a list or string, wrap it in a list
+            return [dependencies]
