@@ -27,6 +27,7 @@ class DataSamplingBlock(Block):
         sample_size: int = SchemaField(
             description="The number of samples to take from the dataset.",
             placeholder="10",
+            default=10,
         )
         sampling_method: SamplingMethod = SchemaField(
             description="The method to use for sampling.",
@@ -44,7 +45,7 @@ class DataSamplingBlock(Block):
             description="Key to use for stratified sampling (required for stratified sampling).",
             default=None,
         )
-        weight_key: Optional[str]  = SchemaField(
+        weight_key: Optional[str] = SchemaField(
             description="Key to use for weighted sampling (required for weighted sampling).",
             default=None,
         )
