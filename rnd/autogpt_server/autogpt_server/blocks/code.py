@@ -8,6 +8,13 @@ from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSc
 from autogpt_server.data.model import SchemaField
 
 
+import subprocess
+import venv
+import os
+import tempfile
+import shutil
+
+
 class PythonExecutionBlock(Block):
     class Input(BlockSchema):
         code: str = SchemaField(
@@ -71,7 +78,10 @@ class PythonExecutionBlock(Block):
             sys.stdout = stdout
 
             # Prepare the execution environment with the provided args
-            exec_globals: Dict[str, Any] = {"json": json}  # Add json module to globals
+            exec_globals: Dict[str, Any] = {
+                "json": json,
+                "print": lambda *args, **kwargs: print(*args, **kwargs, file=stdout),
+            }
             if isinstance(args, dict):
                 exec_globals.update(args)
             elif isinstance(args, list):
@@ -91,7 +101,7 @@ class PythonExecutionBlock(Block):
                 result_queue.put(("result", str(last_expression)))
 
         except Exception as e:
-            result_queue.put(("error", str(e)))
+            result_queue.put(("error", f"Execution error: {str(e)}"))
 
         finally:
             # Reset stdout
@@ -126,3 +136,117 @@ class PythonExecutionBlock(Block):
         else:
             # If the process completed but we don't have a result, it's an error
             yield "error", "Execution completed but no result was returned."
+
+
+class AdvancedPythonExecutionBlock(Block):
+    class Input(BlockSchema):
+        code: str = SchemaField(
+            description="Python code to execute",
+            placeholder="import pandas as pd\nprint(pd.DataFrame({'A': [1, 2, 3]}))",
+        )
+        dependencies: List[str] = SchemaField(
+            description="List of Python packages to install",
+            default=[],
+            placeholder="['pandas', 'numpy']",
+        )
+        args: Union[Dict[str, Any], List[Dict[str, Any]], str] = SchemaField(
+            description="Arguments to pass to the code. Can be a dictionary, list of dictionaries, or a JSON string.",
+            default={},
+            placeholder='{"data": [{"A": 1, "B": 2}, {"A": 3, "B": 4}]}',
+        )
+        timeout: float = SchemaField(
+            description="Execution timeout in seconds", default=60.0
+        )
+
+    class Output(BlockSchema):
+        result: str = SchemaField(description="Execution result or output")
+        error: str = SchemaField(description="Error message if execution failed")
+
+    def __init__(self) -> None:
+        super().__init__(
+            id="b2c3d4e5-f6g7-h8i9-j0k1-l2m3n4o5p6q7",
+            description="This block executes Python code with dynamic dependencies, enforces a timeout, and returns the output or any error messages.",
+            categories={BlockCategory.BASIC},
+            input_schema=AdvancedPythonExecutionBlock.Input,
+            output_schema=AdvancedPythonExecutionBlock.Output,
+        )
+        self.allowed_packages = set(
+            [
+                "pandas",
+                "numpy",
+                "matplotlib",
+                "scipy",
+                "sklearn",
+                "requests",
+                "beautifulsoup4",
+                "lxml",
+                "pyyaml",
+                "jinja2",
+            ]
+        )
+        self.venv_path = tempfile.mkdtemp()
+        self.create_venv()
+
+    def create_venv(self):
+        venv.create(self.venv_path, with_pip=True)
+
+    def install_dependencies(self, dependencies: List[str]) -> str:
+        pip_path = os.path.join(self.venv_path, "bin", "pip")
+        for pkg in dependencies:
+            if pkg not in self.allowed_packages:
+                return f"Error: Package '{pkg}' is not in the allowed list."
+
+        try:
+            subprocess.run(
+                [pip_path, "install"] + dependencies, check=True, capture_output=True
+            )
+            return "Dependencies installed successfully."
+        except subprocess.CalledProcessError as e:
+            return f"Error installing dependencies: {e.stderr.decode()}"
+
+    def execute_code(
+        self, code: str, args: Union[Dict[str, Any], List[Dict[str, Any]], str]
+    ) -> str:
+        python_path = os.path.join(self.venv_path, "bin", "python")
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False
+        ) as temp_file:
+            temp_file.write(f"import sys\nimport json\n\n")
+            temp_file.write(f"args = json.loads('''{json.dumps(args)}''')\n\n")
+            temp_file.write(code)
+
+        try:
+            result = subprocess.run(
+                [python_path, temp_file.name],
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+            )
+            os.unlink(temp_file.name)
+            return (
+                result.stdout if result.returncode == 0 else f"Error: {result.stderr}"
+            )
+        except subprocess.TimeoutExpired:
+            os.unlink(temp_file.name)
+            return f"Error: Execution timed out after {self.timeout} seconds."
+
+    def run(self, input_data: Input) -> BlockOutput:
+        self.timeout = input_data.timeout
+
+        # Install dependencies
+        install_result = self.install_dependencies(input_data.dependencies)
+        if install_result.startswith("Error"):
+            yield "error", install_result
+            return
+
+        # Execute code
+        execution_result = self.execute_code(input_data.code, input_data.args)
+        if execution_result.startswith("Error"):
+            yield "error", execution_result
+        else:
+            yield "result", execution_result
+
+    def __del__(self):
+        # Clean up the virtual environment
+        shutil.rmtree(self.venv_path, ignore_errors=True)
