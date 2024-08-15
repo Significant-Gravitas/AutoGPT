@@ -527,6 +527,7 @@ const FlowEditor: React.FC<{
                   getOutputType(link.source_id, link.source_name!),
                 ),
                 sourcePos: getNode(link.source_id)?.position,
+                isStatic: link.is_static,
                 beadUp: 0,
                 beadDown: 0,
                 beadData: [],
