@@ -58,7 +58,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
   };
 
   const animationDuration = 500; // Duration in milliseconds for bead to travel the curve
-  const beadDiameter = 10;
+  const beadDiameter = 12;
   const deltaTime = 16;
 
   function setTargetPositions(beads: Bead[]) {
@@ -68,7 +68,8 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
     );
 
     return beads.map((bead, index) => {
-      const targetPosition = distanceBetween * index + beadDiameter * 1.3;
+      const distanceFromEnd = beadDiameter * 1.35;
+      const targetPosition = distanceBetween * index + distanceFromEnd;
       const t = getTForDistance(-targetPosition);
 
       return {
