@@ -5,7 +5,7 @@ from typing import Any
 import feedparser
 import pydantic
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import SchemaField
 
 
@@ -46,6 +46,7 @@ class RSSReaderBlock(Block):
             id="c6731acb-4105-4zp1-bc9b-03d0036h370g",
             input_schema=RSSReaderBlock.Input,
             output_schema=RSSReaderBlock.Output,
+            categories={BlockCategory.OUTPUT},
             test_input={
                 "rss_url": "https://example.com/rss",
                 "time_period": 10_000_000,
