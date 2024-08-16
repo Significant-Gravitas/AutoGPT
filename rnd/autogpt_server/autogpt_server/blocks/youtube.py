@@ -3,7 +3,7 @@ from urllib.parse import parse_qs, urlparse
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api.formatters import TextFormatter
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema, BlockCategory
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import SchemaField
 
 
@@ -27,7 +27,6 @@ class YouTubeTranscriberBlock(Block):
             input_schema=YouTubeTranscriberBlock.Input,
             output_schema=YouTubeTranscriberBlock.Output,
             categories={BlockCategory.SOCIAL},
-
             test_input={"youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
             test_output=[
                 ("video_id", "dQw4w9WgXcQ"),

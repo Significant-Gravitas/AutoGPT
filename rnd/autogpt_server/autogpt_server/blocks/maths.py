@@ -2,7 +2,7 @@ import operator
 from enum import Enum
 from typing import Any
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema, BlockCategory
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import SchemaField
 
 

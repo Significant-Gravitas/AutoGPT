@@ -175,7 +175,7 @@ class InputBlock(ObjectLookupBase[Any]):
 
 class OutputBlock(ObjectLookupBase[Any]):
     def __init__(self):
-        super().__init__(categories={ BlockCategory.OUTPUT, BlockCategory.BASIC})
+        super().__init__(categories={BlockCategory.OUTPUT, BlockCategory.BASIC})
 
     def block_id(self) -> str:
         return "363ae599-353e-4804-937e-b2ee3cef3da4"
