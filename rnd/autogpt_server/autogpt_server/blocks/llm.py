@@ -511,7 +511,7 @@ class AdvancedLlmCallBlock(Block):
         elif provider == "ollama":
             response = ollama.chat(
                 model=model.value,
-                messages=messages,
+                messages=messages,  # type: ignore
                 stream=False,  # type: ignore
             )
             return response["message"]["content"]
