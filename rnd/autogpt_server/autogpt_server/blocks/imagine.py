@@ -39,7 +39,7 @@ class ImagineWithDallEBlock(Block):
         )
 
     class Output(BlockSchema):
-        images: HttpUrl = SchemaField(
+        images: str = SchemaField(
             description="One or more URLs of generated images."
         )
         error: str = SchemaField(
@@ -93,7 +93,7 @@ class ImagineWithDallEBlock(Block):
                 quality=input_data.quality,
             )
             for url in image_urls:
-                yield "images", url
+                yield "images", str(url)
         except Exception as e:
             logger.error(f"Error generating DALL-E image: {e}")
             yield "error", f"Error generating DALL-E image: {str(e)}"
