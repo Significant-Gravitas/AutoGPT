@@ -1,0 +1,307 @@
+{
+  "id": "f362298f-6636-4b94-8b4d-2b79d0c45428",
+  "version": 39,
+  "is_active": true,
+  "is_template": false,
+  "name": "Meme Generator with Comemtry",
+  "description": "Generates Memes from the news",
+  "nodes": [
+    {
+      "id": "0a19f78b-0e7f-4647-9141-07e2c3acbfdd",
+      "block_id": "6f7b2dcb-4a78-4e3f-b0f1-88132e1b89df",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 4930.195978249109,
+          "y": 105.20275048645499
+        }
+      }
+    },
+    {
+      "id": "5c75c8ff-26ec-4056-a09e-d64cb105e158",
+      "block_id": "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+      "input_default": {
+        "key": "title",
+        "value": "title"
+      },
+      "metadata": {
+        "position": {
+          "x": 1418.935138220137,
+          "y": 42.55214291836248
+        }
+      }
+    },
+    {
+      "id": "35fecab8-27a4-4e83-8725-9a7f48fc428b",
+      "block_id": "b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+      "input_default": {
+        "key": "description"
+      },
+      "metadata": {
+        "position": {
+          "x": 694.853411307452,
+          "y": 497.9306050315936
+        }
+      }
+    },
+    {
+      "id": "0b2a63fe-1574-4bcd-8484-6a5f6acd4bf2",
+      "block_id": "b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+      "input_default": {
+        "key": "title"
+      },
+      "metadata": {
+        "position": {
+          "x": 610.7649785037777,
+          "y": -2.0286062852246687
+        }
+      }
+    },
+    {
+      "id": "dcd42d27-859a-48f5-96ac-b80d3326de05",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "/Users/swifty/dev/agpt/rnd/memes/{title}.mp3"
+      },
+      "metadata": {
+        "position": {
+          "x": 4190.605357982845,
+          "y": 1514.1680512375478
+        }
+      }
+    },
+    {
+      "id": "422ba03e-3f2a-4500-93f6-16db18612bbd",
+      "block_id": "7b6ce609-adac-4d27-81e9-6dd2f30d9977",
+      "input_default": {
+        "size": "1024x1024",
+        "quality": "standard"
+      },
+      "metadata": {
+        "position": {
+          "x": 3533.035030217305,
+          "y": 92.80142769284907
+        }
+      }
+    },
+    {
+      "id": "3b5a5a6a-510e-4b6f-9818-a6e8689d40d3",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-4o",
+        "sys_prompt": "Write a sarcastic commentary on the meme"
+      },
+      "metadata": {
+        "position": {
+          "x": 3501.7447339413593,
+          "y": 990.7894479350489
+        }
+      }
+    },
+    {
+      "id": "ec472b4c-8a47-4526-a723-94ad3e40d0e5",
+      "block_id": "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p",
+      "input_default": {
+        "output_path": "/Users/swifty/dev/agpt/rnd/meme.mp3"
+      },
+      "metadata": {
+        "position": {
+          "x": 5066.380304706531,
+          "y": 1084.7406735150867
+        }
+      }
+    },
+    {
+      "id": "bb1d905c-ff4d-4f4b-8800-9a92b93fc899",
+      "block_id": "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+      "input_default": {
+        "key": "description"
+      },
+      "metadata": {
+        "position": {
+          "x": 1433.4252367500378,
+          "y": 563.7670429532704
+        }
+      }
+    },
+    {
+      "id": "9b5ffa9f-8e70-4fbf-b60a-0cfb3c2235ab",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-4o",
+        "sys_prompt": "You are the world's best and funniest meme generator."
+      },
+      "metadata": {
+        "position": {
+          "x": 2755.051802984057,
+          "y": 294.9091570008079
+        }
+      }
+    },
+    {
+      "id": "c68951b5-3b0d-4336-9a4f-41f92ab9b538",
+      "block_id": "c6731acb-4105-4zp1-bc9b-03d0036h370g",
+      "input_default": {
+        "rss_url": "http://feeds.bbci.co.uk/news/world/europe/rss.xml",
+        "polling_rate": 0,
+        "run_continuously": false
+      },
+      "metadata": {
+        "position": {
+          "x": -34.91733516974466,
+          "y": 284.663331876495
+        }
+      }
+    },
+    {
+      "id": "083c57cb-4400-4fd6-b9ae-a7ac735841dd",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "/Users/swifty/dev/agpt/rnd/memes/{title}.txt"
+      },
+      "metadata": {
+        "position": {
+          "x": 4120.862846371426,
+          "y": 541.5138784374701
+        }
+      }
+    },
+    {
+      "id": "a3d3268d-9b02-4054-bbc7-6797c595c2fd",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "texts": [],
+        "format": "Generate an amazing meme image description for the following news story. It needs to be funny and sarcastic \n\n{title}\n----\n{description}"
+      },
+      "metadata": {
+        "position": {
+          "x": 2136.907585373278,
+          "y": 104.14179049299264
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": "3c82f7f5-e8a7-426b-8ceb-a8852028c7ec",
+      "source_id": "bb1d905c-ff4d-4f4b-8800-9a92b93fc899",
+      "sink_id": "a3d3268d-9b02-4054-bbc7-6797c595c2fd",
+      "source_name": "updated_dictionary",
+      "sink_name": "named_texts",
+      "is_static": false
+    },
+    {
+      "id": "71f95115-4748-4ddf-bd5c-a17cfe0814f5",
+      "source_id": "5c75c8ff-26ec-4056-a09e-d64cb105e158",
+      "sink_id": "bb1d905c-ff4d-4f4b-8800-9a92b93fc899",
+      "source_name": "updated_dictionary",
+      "sink_name": "dictionary",
+      "is_static": false
+    },
+    {
+      "id": "f55cb9e7-fe5d-44de-a3df-353894bea3f5",
+      "source_id": "0b2a63fe-1574-4bcd-8484-6a5f6acd4bf2",
+      "sink_id": "5c75c8ff-26ec-4056-a09e-d64cb105e158",
+      "source_name": "output",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "ad066c89-be41-4de1-b2ae-3d11b1e12862",
+      "source_id": "c68951b5-3b0d-4336-9a4f-41f92ab9b538",
+      "sink_id": "35fecab8-27a4-4e83-8725-9a7f48fc428b",
+      "source_name": "entry",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "ec7c608b-75e3-4cad-acd8-e7adc55d72d6",
+      "source_id": "c68951b5-3b0d-4336-9a4f-41f92ab9b538",
+      "sink_id": "0b2a63fe-1574-4bcd-8484-6a5f6acd4bf2",
+      "source_name": "entry",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "6a9a7ba9-772e-4293-8f08-ce491346cebc",
+      "source_id": "bb1d905c-ff4d-4f4b-8800-9a92b93fc899",
+      "sink_id": "dcd42d27-859a-48f5-96ac-b80d3326de05",
+      "source_name": "updated_dictionary",
+      "sink_name": "named_texts",
+      "is_static": false
+    },
+    {
+      "id": "e950b556-d8eb-4534-8995-c79ba8f7affc",
+      "source_id": "422ba03e-3f2a-4500-93f6-16db18612bbd",
+      "sink_id": "0a19f78b-0e7f-4647-9141-07e2c3acbfdd",
+      "source_name": "images",
+      "sink_name": "text",
+      "is_static": false
+    },
+    {
+      "id": "57306398-3899-4d12-946e-c62eb8de20ac",
+      "source_id": "dcd42d27-859a-48f5-96ac-b80d3326de05",
+      "sink_id": "ec472b4c-8a47-4526-a723-94ad3e40d0e5",
+      "source_name": "output",
+      "sink_name": "output_path",
+      "is_static": false
+    },
+    {
+      "id": "604869fc-45f3-49c4-b602-8fc2cdad06a8",
+      "source_id": "a3d3268d-9b02-4054-bbc7-6797c595c2fd",
+      "sink_id": "9b5ffa9f-8e70-4fbf-b60a-0cfb3c2235ab",
+      "source_name": "output",
+      "sink_name": "prompt",
+      "is_static": false
+    },
+    {
+      "id": "060d2f23-78f4-45a9-bc96-777442c07636",
+      "source_id": "083c57cb-4400-4fd6-b9ae-a7ac735841dd",
+      "sink_id": "0a19f78b-0e7f-4647-9141-07e2c3acbfdd",
+      "source_name": "output",
+      "sink_name": "output_path",
+      "is_static": false
+    },
+    {
+      "id": "8b799d63-3906-4aef-a6fc-9e1ca2652ff6",
+      "source_id": "35fecab8-27a4-4e83-8725-9a7f48fc428b",
+      "sink_id": "bb1d905c-ff4d-4f4b-8800-9a92b93fc899",
+      "source_name": "output",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "1eed6daa-4dab-47bb-8548-b5ff447a0864",
+      "source_id": "3b5a5a6a-510e-4b6f-9818-a6e8689d40d3",
+      "sink_id": "ec472b4c-8a47-4526-a723-94ad3e40d0e5",
+      "source_name": "response",
+      "sink_name": "text",
+      "is_static": false
+    },
+    {
+      "id": "d8f56be6-c984-4067-80b8-77cb3bcf811b",
+      "source_id": "9b5ffa9f-8e70-4fbf-b60a-0cfb3c2235ab",
+      "sink_id": "3b5a5a6a-510e-4b6f-9818-a6e8689d40d3",
+      "source_name": "response",
+      "sink_name": "prompt",
+      "is_static": false
+    },
+    {
+      "id": "49da13ea-4957-4ce1-8cf7-0f18323ce558",
+      "source_id": "bb1d905c-ff4d-4f4b-8800-9a92b93fc899",
+      "sink_id": "083c57cb-4400-4fd6-b9ae-a7ac735841dd",
+      "source_name": "updated_dictionary",
+      "sink_name": "named_texts",
+      "is_static": false
+    },
+    {
+      "id": "f39aacd3-690c-469c-9fc8-35d2d25f9ca6",
+      "source_id": "9b5ffa9f-8e70-4fbf-b60a-0cfb3c2235ab",
+      "sink_id": "422ba03e-3f2a-4500-93f6-16db18612bbd",
+      "source_name": "response",
+      "sink_name": "prompt",
+      "is_static": false
+    }
+  ],
+  "subgraphs": {}
+}
