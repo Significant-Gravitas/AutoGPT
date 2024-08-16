@@ -4,7 +4,7 @@ import aiohttp
 import discord
 from pydantic import Field
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema, BlockCategory
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SecretField
 
 

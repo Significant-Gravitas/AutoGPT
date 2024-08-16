@@ -2,7 +2,7 @@ from typing import List
 
 import requests
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema, BlockCategory
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
 
 

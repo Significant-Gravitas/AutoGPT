@@ -5,7 +5,7 @@ from typing import Any
 import feedparser
 import pydantic
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema, BlockCategory
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import SchemaField
 
 
