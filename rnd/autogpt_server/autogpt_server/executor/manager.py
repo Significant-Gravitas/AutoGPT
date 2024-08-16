@@ -86,7 +86,8 @@ def execute_node(
         return
 
     # Execute the node
-    logger.warning(f"{prefix} execute with input:\n`{exec_data}`")
+    exec_data_str = str(exec_data).encode("utf-8").decode("unicode_escape")
+    logger.warning(f"{prefix} execute with input:\n`{exec_data_str}`")
     update_execution(ExecutionStatus.RUNNING)
 
     try:
