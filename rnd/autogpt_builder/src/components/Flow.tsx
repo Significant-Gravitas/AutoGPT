@@ -527,6 +527,7 @@ const FlowEditor: React.FC<{
                   getOutputType(link.source_id, link.source_name!),
                 ),
                 sourcePos: getNode(link.source_id)?.position,
+                isStatic: link.is_static,
                 beadUp: 0,
                 beadDown: 0,
                 beadData: [],
@@ -825,6 +826,12 @@ const FlowEditor: React.FC<{
             );
             outputEdges.forEach((edge) => {
               edge.data!.beadUp = (edge.data!.beadUp ?? 0) + 1;
+              // For static edges beadDown is always one less than beadUp
+              // Because there's no queueing and one bead is always at the connection point
+              if (edge.data?.isStatic) {
+                edge.data!.beadDown = (edge.data!.beadUp ?? 0) - 1;
+                edge.data!.beadData! = edge.data!.beadData!.slice(0, -1);
+              }
               //todo kcze this assumes output at key is always array with one element
               edge.data!.beadData = [
                 exec.output_data[key][0],
@@ -842,9 +849,11 @@ const FlowEditor: React.FC<{
             );
 
             inputEdges.forEach((edge) => {
+              // Skip decreasing bead count if edge doesn't match or if it's static
               if (
                 edge.data!.beadData![edge.data!.beadData!.length - 1] !==
-                exec.input_data[key]
+                  exec.input_data[key] ||
+                edge.data?.isStatic
               ) {
                 return;
               }

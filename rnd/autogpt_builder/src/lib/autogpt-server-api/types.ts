@@ -117,6 +117,7 @@ export type Link = {
   sink_id: string;
   source_name: string;
   sink_name: string;
+  is_static: boolean;
 };
 
 export type LinkCreatable = Omit<Link, "id"> & {
