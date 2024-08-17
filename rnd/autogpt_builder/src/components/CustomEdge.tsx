@@ -14,6 +14,7 @@ import { FlowContext } from "./Flow";
 export type CustomEdgeData = {
   edgeColor: string;
   sourcePos?: XYPosition;
+  isStatic?: boolean;
   beadUp?: number;
   beadDown?: number;
   beadData?: any[];
@@ -57,7 +58,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
   };
 
   const animationDuration = 500; // Duration in milliseconds for bead to travel the curve
-  const beadDiameter = 10;
+  const beadDiameter = 12;
   const deltaTime = 16;
 
   function setTargetPositions(beads: Bead[]) {
@@ -67,7 +68,8 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
     );
 
     return beads.map((bead, index) => {
-      const targetPosition = distanceBetween * index + beadDiameter * 1.3;
+      const distanceFromEnd = beadDiameter * 1.35;
+      const targetPosition = distanceBetween * index + distanceFromEnd;
       const t = getTForDistance(-targetPosition);
 
       return {
@@ -86,6 +88,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
 
     const beadUp = data?.beadUp!;
 
+    // Add beads
     setBeads(({ beads, created, destroyed }) => {
       const newBeads = [];
       for (let i = 0; i < beadUp - created; i++) {
@@ -96,6 +99,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
       return { beads: b, created: beadUp, destroyed };
     });
 
+    // Remove beads if not animating
     if (visualizeBeads !== "animate") {
       setBeads(({ beads, created, destroyed }) => {
         let destroyedCount = 0;
@@ -105,7 +109,8 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
           .filter((bead, index) => {
             const beadDown = data?.beadDown!;
 
-            const removeCount = beadDown - destroyed;
+            // Remove always one less bead in case of static edge, so it stays at the connection point
+            const removeCount = beadDown - destroyed - (data?.isStatic ? 1 : 0);
             if (bead.t >= bead.targetT && index < removeCount) {
               destroyedCount++;
               return false;
@@ -122,6 +127,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
       return;
     }
 
+    // Animate and remove beads
     const interval = setInterval(() => {
       setBeads(({ beads, created, destroyed }) => {
         let destroyedCount = 0;
@@ -142,7 +148,8 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
           .filter((bead, index) => {
             const beadDown = data?.beadDown!;
 
-            const removeCount = beadDown - destroyed;
+            // Remove always one less bead in case of static edge, so it stays at the connection point
+            const removeCount = beadDown - destroyed - (data?.isStatic ? 1 : 0);
             if (bead.t >= bead.targetT && index < removeCount) {
               destroyedCount++;
               return false;
@@ -169,10 +176,11 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
         path={svgPath}
         markerEnd={markerEnd}
         style={{
-          strokeWidth: isHovered ? 3 : 2,
+          strokeWidth: (isHovered ? 3 : 2) + (data?.isStatic ? 0.5 : 0),
           stroke:
             (data?.edgeColor ?? "#555555") +
             (selected || isHovered ? "" : "80"),
+          strokeDasharray: data?.isStatic ? "5 3" : "0",
         }}
       />
       <path

@@ -7,8 +7,8 @@ import prisma.types
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink
 from pydantic import PrivateAttr
 
-from autogpt_server.blocks.basic import InputBlock, OutputBlock, ValueBlock
-from autogpt_server.data.block import BlockInput, get_block
+from autogpt_server.blocks.basic import InputBlock, OutputBlock
+from autogpt_server.data.block import BlockInput, get_block, get_blocks
 from autogpt_server.data.db import BaseDbModel, transaction
 from autogpt_server.data.user import DEFAULT_USER_ID
 from autogpt_server.util import json
@@ -175,10 +175,10 @@ class Graph(GraphMeta):
                     )
         node_map = {v.id: v for v in self.nodes}
 
-        def is_value_block(nid: str) -> bool:
+        def is_static_output_block(nid: str) -> bool:
             bid = node_map[nid].block_id
             b = get_block(bid)
-            return isinstance(b, ValueBlock)
+            return b.static_output if b else False
 
         def is_input_output_block(nid: str) -> bool:
             bid = node_map[nid].block_id
@@ -201,19 +201,24 @@ class Graph(GraphMeta):
             for i, (node_id, name) in enumerate([source, sink]):
                 node = node_map.get(node_id)
                 if not node:
-                    raise ValueError(f"{suffix}, {node_id} is invalid node.")
+                    raise ValueError(
+                        f"{suffix}, {node_id} is invalid node id, available nodes: {node_map.keys()}"
+                    )
 
                 block = get_block(node.block_id)
                 if not block:
-                    raise ValueError(f"{suffix}, {node.block_id} is invalid block.")
+                    blocks = {v.id: v.name for v in get_blocks().values()}
+                    raise ValueError(
+                        f"{suffix}, {node.block_id} is invalid block id, available blocks: {blocks}"
+                    )
 
                 sanitized_name = sanitize(name)
                 if i == 0:
-                    fields = block.output_schema.get_fields()
+                    fields = f"Valid output fields: {block.output_schema.get_fields()}"
                 else:
-                    fields = block.input_schema.get_fields()
+                    fields = f"Valid input fields: {block.input_schema.get_fields()}"
                 if sanitized_name not in fields:
-                    raise ValueError(f"{suffix}, `{name}` invalid, fields: {fields}")
+                    raise ValueError(f"{suffix}, `{name}` invalid, {fields}")
 
             if (
                 subgraph_map.get(link.source_id) != subgraph_map.get(link.sink_id)
@@ -222,7 +227,7 @@ class Graph(GraphMeta):
             ):
                 raise ValueError(f"{suffix}, Connecting nodes from different subgraph.")
 
-            if is_value_block(link.source_id):
+            if is_static_output_block(link.source_id):
                 link.is_static = True  # Each value block output should be static.
 
             # TODO: Add type compatibility check here.

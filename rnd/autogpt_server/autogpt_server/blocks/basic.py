@@ -12,20 +12,7 @@ class ValueBlock(Block):
     """
     This block allows you to provide a constant value as a block, in a stateless manner.
     The common use-case is simply pass the `input` data, it will `output` the same data.
-    But this will not retain the state, once it is executed, the output is consumed.
-
-    To retain the state, you can feed the `output` to the `data` input, so that the data
-    is retained in the block for the next execution. You can then trigger the block by
-    feeding the `input` pin with any data, and the block will produce value of `data`.
-
-    Ex:
-         <constant_data>  <any_trigger>
-                ||           ||
-       =====> `data`      `input`
-      ||        \\         //
-      ||          ValueBlock
-      ||             ||
-       ========= `output`
+    The block output will be static, the output can be consumed multiple times.
     """
 
     class Input(BlockSchema):
@@ -46,9 +33,7 @@ class ValueBlock(Block):
         super().__init__(
             id="1ff065e9-88e8-4358-9d82-8dc91f622ba9",
             description="This block forwards the `input` pin to `output` pin. "
-            "If the `data` is provided, it will prioritize forwarding `data` "
-            "over `input`. By connecting the `output` pin to `data` pin, "
-            "you can retain a constant value for the next executions.",
+            "This block output will be static, the output can be consumed many times.",
             categories={BlockCategory.BASIC},
             input_schema=ValueBlock.Input,
             output_schema=ValueBlock.Output,
@@ -60,6 +45,7 @@ class ValueBlock(Block):
                 ("output", "Hello, World!"),  # No data provided, so trigger is returned
                 ("output", "Existing Data"),  # Data is provided, so data is returned.
             ],
+            static_output=True,
         )
 
     def run(self, input_data: Input) -> BlockOutput:
@@ -167,7 +153,7 @@ class ObjectLookupBlock(ObjectLookupBase[Any]):
 
 class InputBlock(ObjectLookupBase[Any]):
     def __init__(self):
-        super().__init__(categories={BlockCategory.BASIC, BlockCategory.INPUT})
+        super().__init__(categories={BlockCategory.INPUT, BlockCategory.BASIC})
 
     def block_id(self) -> str:
         return "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b"
@@ -175,7 +161,7 @@ class InputBlock(ObjectLookupBase[Any]):
 
 class OutputBlock(ObjectLookupBase[Any]):
     def __init__(self):
-        super().__init__(categories={BlockCategory.BASIC, BlockCategory.OUTPUT})
+        super().__init__(categories={BlockCategory.OUTPUT, BlockCategory.BASIC})
 
     def block_id(self) -> str:
         return "363ae599-353e-4804-937e-b2ee3cef3da4"
