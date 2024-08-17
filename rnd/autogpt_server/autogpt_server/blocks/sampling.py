@@ -83,12 +83,12 @@ class DataSamplingBlock(Block):
                 (
                     "sampled_data",
                     [
-                        {"id": 2, "value": "c", "group": 2},
+                        {"id": 0, "value": "a", "group": 0},
                         {"id": 1, "value": "b", "group": 1},
-                        {"id": 3, "value": "d", "group": 0},
+                        {"id": 8, "value": "i", "group": 2},
                     ],
                 ),
-                ("sample_indices", [2, 1, 3]),
+                ("sample_indices", [0, 1, 8]),
             ],
         )
         self.accumulated_data = []
