@@ -1,5 +1,5 @@
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from autogpt_server.data.model import ContributorDetails, SchemaField
+from autogpt_server.data.model import ContributorDetails
 
 
 class ReadCsvBlock(Block):

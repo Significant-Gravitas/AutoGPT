@@ -1,7 +1,7 @@
-from typing import Any, List, Union, Dict, Optional
 import random
-from enum import Enum
 from collections import defaultdict
+from enum import Enum
+from typing import Any, Dict, List, Optional, Union
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import SchemaField

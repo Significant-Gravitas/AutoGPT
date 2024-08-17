@@ -1,6 +1,7 @@
 import logging
 from enum import Enum
-from typing import List, NamedTuple
+from json import JSONDecodeError
+from typing import Any, List, NamedTuple
 
 import anthropic
 import ollama
@@ -86,7 +87,7 @@ class ObjectLlmCallBlock(Block):
         retry: int = 3
 
     class Output(BlockSchema):
-        response: dict[str, str]
+        response: dict[str, Any]
         error: str
 
     def __init__(self):
@@ -204,14 +205,16 @@ class ObjectLlmCallBlock(Block):
 
         prompt.append({"role": "user", "content": input_data.prompt})
 
-        def parse_response(resp: str) -> tuple[dict[str, str], str | None]:
+        def parse_response(resp: str) -> tuple[dict[str, Any], str | None]:
             try:
                 parsed = json.loads(resp)
+                if not isinstance(parsed, dict):
+                    return {}, f"Expected a dictionary, but got {type(parsed)}"
                 miss_keys = set(input_data.expected_format.keys()) - set(parsed.keys())
                 if miss_keys:
                     return parsed, f"Missing keys: {miss_keys}"
                 return parsed, None
-            except Exception as e:
+            except JSONDecodeError as e:
                 return {}, f"JSON decode error: {e}"
 
         logger.warning(f"LLM request: {prompt}")
@@ -235,7 +238,16 @@ class ObjectLlmCallBlock(Block):
                 if input_data.expected_format:
                     parsed_dict, parsed_error = parse_response(response_text)
                     if not parsed_error:
-                        yield "response", {k: str(v) for k, v in parsed_dict.items()}
+                        yield "response", {
+                            k: (
+                                json.loads(v)
+                                if isinstance(v, str)
+                                and v.startswith("[")
+                                and v.endswith("]")
+                                else (", ".join(v) if isinstance(v, list) else v)
+                            )
+                            for k, v in parsed_dict.items()
+                        }
                         return
                 else:
                     yield "response", {"response": response_text}

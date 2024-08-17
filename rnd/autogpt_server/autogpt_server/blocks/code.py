@@ -1,15 +1,15 @@
 import enum
 import io
-import sys
 import json
 import multiprocessing
-import subprocess
-import venv
 import os
-import tempfile
 import shutil
+import subprocess
+import sys
+import tempfile
 import time
-from typing import Any, Union, Dict, List
+import venv
+from typing import Any, Dict, List, Union
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import SchemaField
@@ -45,6 +45,7 @@ class FastPythonExecutionBlock(Block):
             categories={BlockCategory.BASIC},
             input_schema=self.Input,
             output_schema=self.Output,
+            disabled=True,
         )
 
     def run(self, input_data: Input) -> BlockOutput:
@@ -122,6 +123,7 @@ class FlexiblePythonExecutionBlock(Block):
             categories={BlockCategory.BASIC},
             input_schema=self.Input,
             output_schema=self.Output,
+            disabled=True,
         )
         self.venv_path = tempfile.mkdtemp()
         self.create_venv()
