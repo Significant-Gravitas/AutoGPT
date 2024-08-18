@@ -5,7 +5,9 @@ import {
   EdgeProps,
   useReactFlow,
   XYPosition,
-} from "reactflow";
+  Edge,
+  Node,
+} from "@xyflow/react";
 import "./customedge.css";
 import { X } from "lucide-react";
 import { useBezierPath } from "@/hooks/useBezierPath";
@@ -25,7 +27,9 @@ type Bead = {
   startTime: number;
 };
 
-const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
+export type CustomEdge = Edge<CustomEdgeData, 'custom'>;
+
+export function CustomEdge({
   id,
   data,
   selected,
@@ -34,7 +38,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
   targetX,
   targetY,
   markerEnd,
-}) => {
+}: EdgeProps<CustomEdge>) {
   const [isHovered, setIsHovered] = useState(false);
   const [beads, setBeads] = useState<{
     beads: Bead[];
@@ -47,7 +51,7 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
     targetX + 3,
     targetY,
   );
-  const { deleteElements } = useReactFlow<any, CustomEdgeData>();
+  const { deleteElements } = useReactFlow<Node, CustomEdge>();
   const { visualizeBeads } = useContext(FlowContext) ?? {
     visualizeBeads: "no",
   };
@@ -218,5 +222,3 @@ const CustomEdgeFC: FC<EdgeProps<CustomEdgeData>> = ({
     </>
   );
 };
-
-export const CustomEdge = memo(CustomEdgeFC);

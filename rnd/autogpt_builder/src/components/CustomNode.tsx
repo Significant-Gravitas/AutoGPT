@@ -6,8 +6,8 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import { NodeProps, useReactFlow } from "reactflow";
-import "reactflow/dist/style.css";
+import { NodeProps, useReactFlow, Node, Edge, useConnection, useHandleConnections, useUpdateNodeInternals, useNodesData } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import "./customnode.css";
 import InputModalComponent from "./InputModalComponent";
 import OutputModalComponent from "./OutputModalComponent";
@@ -21,7 +21,6 @@ import { Switch } from "@/components/ui/switch";
 import { Copy, Trash2 } from "lucide-react";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
-import { CustomEdgeData } from "./CustomEdge";
 import { NodeGenericInputField } from "./node-input-components";
 import SchemaTooltip from "./SchemaTooltip";
 import { getPrimaryCategoryColor } from "@/lib/utils";
@@ -54,7 +53,9 @@ export type CustomNodeData = {
   setIsAnyModalOpen?: (isOpen: boolean) => void;
 };
 
-const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
+export type CustomNode = Node<CustomNodeData, 'custom'>;
+
+export function CustomNode({ data, id }: NodeProps<CustomNode>) {
   const [isOutputOpen, setIsOutputOpen] = useState(data.isOutputOpen || false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -63,7 +64,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  const { deleteElements } = useReactFlow();
+  const { deleteElements } = useReactFlow<CustomNode, Edge>();
 
   const outputDataRef = useRef<HTMLDivElement>(null);
   const isInitialSetup = useRef(true);
@@ -328,7 +329,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                 const isConnected = isHandleConnected(propKey);
                 return (
                   (isRequired || isAdvancedOpen || isConnected) && (
-                    <div key={propKey} onMouseOver={() => {}}>
+                    <div key={propKey} onMouseOver={() => { }}>
                       <NodeHandle
                         keyName={propKey}
                         isConnected={isConnected}
@@ -410,5 +411,3 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     </div>
   );
 };
-
-export default memo(CustomNode);
