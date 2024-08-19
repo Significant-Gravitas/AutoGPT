@@ -4,7 +4,7 @@ from .types import OAuthTokens, UserMetadata
 
 
 class SupabaseOAuthManager:
-    def __init__(self, url: str, key: str, default_providers: List[str] = None):
+    def __init__(self, url: str, key: str):
         self.supabase: Client = create_client(url, key)
 
     def update_user_oauth_tokens(self, user_id: str, provider: str, tokens: OAuthTokens) -> Optional[Dict]:
