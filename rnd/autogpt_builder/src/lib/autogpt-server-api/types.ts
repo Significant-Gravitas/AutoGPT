@@ -120,7 +120,7 @@ export type Link = {
   is_static: boolean;
 };
 
-export type LinkCreatable = Omit<Link, "id"> & {
+export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 

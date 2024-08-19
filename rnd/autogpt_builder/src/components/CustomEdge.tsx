@@ -1,4 +1,4 @@
-import React, { FC, memo, useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -213,6 +213,7 @@ export function CustomEdge({
           >
             <X className="size-4" />
           </button>
+          <span>{data?.beadUp}/{data?.beadDown}</span>
         </div>
       </EdgeLabelRenderer>
       {beads.beads.map((bead, index) => {

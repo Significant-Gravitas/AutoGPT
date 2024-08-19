@@ -8,29 +8,23 @@ import React, {
   MouseEvent,
   createContext,
 } from "react";
-import { shallow } from "zustand/vanilla/shallow";
 import {
   ReactFlow,
   ReactFlowProvider,
   Controls,
   Background,
   Node,
-  Edge,
   OnConnect,
-  NodeTypes,
   Connection,
-  EdgeTypes,
   MarkerType,
   NodeChange,
   EdgeChange,
-  useStore,
   useReactFlow,
   applyEdgeChanges,
   applyNodeChanges,
-  useUpdateNodeInternals,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { CustomNode, CustomNodeData } from "./CustomNode";
+import { CustomNode } from "./CustomNode";
 import "./flow.css";
 import AutoGPTServerAPI, {
   Block,
@@ -46,7 +40,7 @@ import {
   setNestedProperty,
 } from "@/lib/utils";
 import { history } from "./history";
-import { CustomEdge, CustomEdgeData } from "./CustomEdge";
+import { CustomEdge } from "./CustomEdge";
 import ConnectionLine from "./ConnectionLine";
 import Ajv from "ajv";
 import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
@@ -62,6 +56,7 @@ const ajv = new Ajv({ strict: false, allErrors: true });
 
 type FlowContextType = {
   visualizeBeads: "no" | "static" | "animate";
+  setIsAnyModalOpen: (isOpen: boolean) => void;
 };
 
 export const FlowContext = createContext<FlowContextType | null>(null);
@@ -71,24 +66,10 @@ const FlowEditor: React.FC<{
   template?: boolean;
   className?: string;
 }> = ({ flowID, template, className }) => {
-  // const { _setNodes, _setEdges } = useStore(
-  //   useCallback(
-  //     ({ setRootNodes, setRootEdges }) => ({
-  //       _setNodes: setRootNodes,
-  //       _setEdges: setRootEdges,
-  //     }),
-  //     [],
-  //   ),
-  //   shallow,
-  // );
   const {
     addNodes,
     addEdges,
     getNode,
-    getNodes,
-    getEdges,
-    // setRootNodes,
-    // setRootEdges,
     deleteElements,
     updateNode,
     updateEdge,
@@ -106,8 +87,8 @@ const FlowEditor: React.FC<{
   const [visualizeBeads, setVisualizeBeads] = useState<
     "no" | "static" | "animate"
   >("animate");
-  const [nodes, setRootNodes] = useState<CustomNode[]>([]);
-  const [edges, setRootEdges] = useState<CustomEdge[]>([]);
+  const [nodes, setNodes] = useState<CustomNode[]>([]);
+  const [edges, setEdges] = useState<CustomEdge[]>([]);
 
   const apiUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL!;
   const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
@@ -226,25 +207,25 @@ const FlowEditor: React.FC<{
   // Function to clear status, output, and close the output info dropdown of all nodes
   // and reset data beads on edges
   const clearNodesStatusAndOutput = useCallback(() => {
-    setRootNodes((nds) => {
+    setNodes((nds) => {
       const newNodes = nds.map((node) => ({
         ...node,
         data: {
           ...node.data,
           status: undefined,
           output_data: undefined,
-          isOutputOpen: false, // Close the output info dropdown
+          isOutputOpen: false,
         },
       }));
 
       return newNodes;
     });
-  }, [setRootNodes]);
+  }, [setNodes]);
 
   const onNodesChange = useCallback(
     (nodeChanges: NodeChange<CustomNode>[]) => {
       // Persist the changes
-      setRootNodes(prev => applyNodeChanges(nodeChanges, prev));
+      setNodes(prev => applyNodeChanges(nodeChanges, prev));
 
       // Remove all edges that were connected to deleted nodes
       nodeChanges
@@ -260,8 +241,7 @@ const FlowEditor: React.FC<{
           });
         });
     },
-    // [getNodes, getEdges, _setNodes, deleteElements],
-    [deleteElements],
+    [deleteElements, setNodes],
   );
 
   const onConnect: OnConnect = useCallback(
@@ -304,7 +284,7 @@ const FlowEditor: React.FC<{
   const onEdgesChange = useCallback(
     (edgeChanges: EdgeChange<CustomEdge>[]) => {
       // Persist the changes
-      setRootEdges(prev => applyEdgeChanges(edgeChanges, prev));
+      setEdges(prev => applyEdgeChanges(edgeChanges, prev));
 
       // Propagate edge changes to node data
       const addedEdges = edgeChanges.filter((change) => change.type === "add"),
@@ -313,7 +293,7 @@ const FlowEditor: React.FC<{
         selectedEdges = edgeChanges.filter((change) => change.type === "select");
 
       if (addedEdges.length > 0 || removedEdges.length > 0) {
-        setRootNodes((nds) => {
+        setNodes((nds) => {
           const newNodes = nds.map((node) => ({
             ...node,
             data: {
@@ -353,7 +333,7 @@ const FlowEditor: React.FC<{
           "Use addEdges, deleteElements, or reconnectEdge for incremental changes.",
           replaceEdges,
         );
-        setRootNodes((nds) =>
+        setNodes((nds) =>
           nds.map((node) => ({
             ...node,
             data: {
@@ -373,8 +353,7 @@ const FlowEditor: React.FC<{
         clearNodesStatusAndOutput();
       }
     },
-    // [getEdges, _setEdges, setRootNodes, clearNodesStatusAndOutput],
-    [setRootNodes, clearNodesStatusAndOutput],
+    [setNodes, clearNodesStatusAndOutput],
   );
 
   const addNode = useCallback(
@@ -397,16 +376,9 @@ const FlowEditor: React.FC<{
           inputSchema: nodeSchema.inputSchema,
           outputSchema: nodeSchema.outputSchema,
           hardcodedValues: {},
-          setHardcodedValues: (values) => {
-            updateNodeData(newNode.id, { hardcodedValues: values });
-          },
           connections: [],
           isOutputOpen: false,
           block_id: blockId,
-          setIsAnyModalOpen,
-          setErrors: (errors: { [key: string]: string | null }) => {
-            updateNodeData(newNode.id, { errors });
-          },
         },
       };
 
@@ -425,7 +397,7 @@ const FlowEditor: React.FC<{
       nodeId,
       availableNodes,
       addNodes,
-      setRootNodes,
+      setNodes,
       deleteElements,
       clearNodesStatusAndOutput,
     ],
@@ -444,7 +416,7 @@ const FlowEditor: React.FC<{
     setAgentName(graph.name);
     setAgentDescription(graph.description);
 
-    setRootNodes(() => {
+    setNodes(() => {
       const newNodes = graph.nodes.map((node) => {
         const block = availableNodes.find(
           (block) => block.id === node.block_id,
@@ -465,18 +437,6 @@ const FlowEditor: React.FC<{
             inputSchema: block.inputSchema,
             outputSchema: block.outputSchema,
             hardcodedValues: node.input_default,
-            setHardcodedValues: (values: { [key: string]: any }) => {
-              setRootNodes((nds) =>
-                nds.map((node) =>
-                  node.id === newNode.id
-                    ? {
-                      ...node,
-                      data: { ...node.data, hardcodedValues: values },
-                    }
-                    : node,
-                ),
-              );
-            },
             connections: graph.links
               .filter((l) => [l.source_id, l.sink_id].includes(node.id))
               .map((link) => ({
@@ -487,47 +447,37 @@ const FlowEditor: React.FC<{
                 targetHandle: link.sink_name,
               })),
             isOutputOpen: false,
-            setIsAnyModalOpen,
-            setErrors: (errors: { [key: string]: string | null }) => {
-              setRootNodes((nds) =>
-                nds.map((node) =>
-                  node.id === newNode.id
-                    ? { ...node, data: { ...node.data, errors } }
-                    : node,
-                ),
-              );
-            },
           },
         };
         return newNode;
       });
-      setRootEdges(
+      setEdges(
         graph.links.map(
           (link) =>
-            ({
-              id: formatEdgeID(link),
-              type: "custom",
-              data: {
-                edgeColor: getTypeColor(
-                  getOutputType(link.source_id, link.source_name!),
-                ),
-                sourcePos: getNode(link.source_id)?.position,
-                isStatic: link.is_static,
-                beadUp: 0,
-                beadDown: 0,
-                beadData: [],
-              },
-              markerEnd: {
-                type: MarkerType.ArrowClosed,
-                strokeWidth: 2,
-                color: getTypeColor(
-                  getOutputType(link.source_id, link.source_name!),
-                ),
-              },
-              source: link.source_id,
-              target: link.sink_id,
-              sourceHandle: link.source_name || undefined,
-              targetHandle: link.sink_name || undefined,
+          ({
+            id: formatEdgeID(link),
+            type: "custom",
+            data: {
+              edgeColor: getTypeColor(
+                getOutputType(link.source_id, link.source_name!),
+              ),
+              sourcePos: getNode(link.source_id)?.position,
+              isStatic: link.is_static,
+              beadUp: 0,
+              beadDown: 0,
+              beadData: [],
+            },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              strokeWidth: 2,
+              color: getTypeColor(
+                getOutputType(link.source_id, link.source_name!),
+              ),
+            },
+            source: link.source_id,
+            target: link.sink_id,
+            sourceHandle: link.source_name || undefined,
+            targetHandle: link.sink_name || undefined,
           }),
         ),
       );
@@ -588,7 +538,7 @@ const FlowEditor: React.FC<{
   };
 
   async function saveAgent(asTemplate: boolean = false) {
-    setRootNodes((nds) =>
+    setNodes((nds) =>
       nds.map((node) => ({
         ...node,
         data: {
@@ -601,13 +551,14 @@ const FlowEditor: React.FC<{
       })),
     );
     // Reset bead count
-    setRootEdges((edges) => {
+    setEdges((edges) => {
       return edges.map(
         (edge) =>
         ({
           ...edge,
           data: {
             ...edge.data,
+            edgeColor: edge.data?.edgeColor!,
             beadUp: 0,
             beadDown: 0,
             beadData: [],
@@ -618,12 +569,11 @@ const FlowEditor: React.FC<{
 
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    // const nodes = getNodes();
-    // const edges = getEdges();
     console.log("All nodes before formatting:", nodes);
     const blockIdToNodeIdMap: Record<string, string> = {};
 
     const formattedNodes = nodes.map((node) => {
+      //todo kcze move outside of map!!
       nodes.forEach((node) => {
         const key = `${node.data.block_id}_${node.position.x}_${node.position.y}`;
         blockIdToNodeIdMap[key] = node.id;
@@ -671,7 +621,7 @@ const FlowEditor: React.FC<{
       name: agentName || "Agent Name",
       description: agentDescription || "Agent Description",
       nodes: formattedNodes,
-      links: links, // Ensure this field is included
+      links: links,
     };
 
     if (savedAgent && deepEquals(payload, savedAgent)) {
@@ -693,19 +643,16 @@ const FlowEditor: React.FC<{
         ? api.createTemplate(payload)
         : api.createGraph(payload));
     console.debug("Response from the API:", newSavedAgent);
-    setSavedAgent(newSavedAgent);
 
     // Update the node IDs in the frontend
-    // const updatedNodes = 
+    setNodes((prev) => {
+      setSavedAgent(newSavedAgent);
 
-    setRootNodes((prev) => {
       return newSavedAgent.nodes
         .map((backendNode) => {
           const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
           const frontendNodeId = blockIdToNodeIdMap[key];
           const frontendNode = prev.find((node) => node.id === frontendNodeId);
-          console.log(">> Updating node", frontendNodeId, frontendNode);
-          console.log(">> Backend node", backendNode);
 
           return frontendNode
             ? {
@@ -721,6 +668,8 @@ const FlowEditor: React.FC<{
         .filter((node) => node !== null);
     });
 
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     return newSavedAgent.id;
   }
 
@@ -730,7 +679,7 @@ const FlowEditor: React.FC<{
 
     nodes.forEach((node) => {
       const validate = ajv.compile(node.data.inputSchema);
-      const errors = {} as { [key: string]: string | null };
+      const errors = {} as { [key: string]: string };
 
       // Validate values against schema using AJV
       const valid = validate(node.data.hardcodedValues);
@@ -767,7 +716,7 @@ const FlowEditor: React.FC<{
           }
         });
       }
-      node.data.setErrors(errors);
+      updateNodeData(node.id, { errors });
     });
 
     return isValid;
@@ -802,7 +751,8 @@ const FlowEditor: React.FC<{
     executionData: NodeExecutionResult[],
     nodes: CustomNode[],
   ) {
-    setRootEdges((edges) => {
+    setEdges((edges) => {
+      console.log("££ Updating edges with execution data", executionData);
       const newEdges = JSON.parse(
         JSON.stringify(edges),
       ) as CustomEdge[];
@@ -844,11 +794,13 @@ const FlowEditor: React.FC<{
               // Skip decreasing bead count if edge doesn't match or if it's static
               if (
                 edge.data!.beadData![edge.data!.beadData!.length - 1] !==
-                  exec.input_data[key] ||
+                exec.input_data[key] ||
                 edge.data?.isStatic
               ) {
                 return;
               }
+              console.log('edge id', edge.id)
+              console.log("Consuming beadDown:", edge.data!.beadDown);
               edge.data!.beadDown = (edge.data!.beadDown ?? 0) + 1;
               edge.data!.beadData! = edge.data!.beadData!.slice(0, -1);
             });
@@ -864,7 +816,7 @@ const FlowEditor: React.FC<{
     executionData: NodeExecutionResult[],
   ) => {
     console.log("Updating nodes with execution data:", executionData);
-    setRootNodes((nodes) => {
+    setNodes((nodes) => {
       if (visualizeBeads !== "no") {
         updateEdgeBeads(executionData, nodes);
       }
@@ -873,8 +825,6 @@ const FlowEditor: React.FC<{
 
         const nodeExecution = executionData.find(
           (exec) => {
-            // console.log('exec.node_id', exec.node_id)
-            // console.log('node.data.backend_id ', node.data.backend_id)
             return exec.node_id === node.data.backend_id
           }
         );
@@ -882,7 +832,6 @@ const FlowEditor: React.FC<{
         if (!nodeExecution || node.data.status === nodeExecution.status) {
           return node;
         }
-        console.log(">>> Updating node", node.id, nodeExecution);
 
         return {
           ...node,
@@ -929,22 +878,10 @@ const FlowEditor: React.FC<{
                   ...node.data,
                   status: undefined, // Reset status
                   output_data: undefined, // Clear output data
-                  setHardcodedValues: (values: { [key: string]: any }) => {
-                    setRootNodes((nds) =>
-                      nds.map((n) =>
-                        n.id === newNodeId
-                          ? {
-                            ...n,
-                            data: { ...n.data, hardcodedValues: values },
-                          }
-                          : n,
-                      ),
-                    );
-                  },
                 },
               };
             });
-            setRootNodes((existingNodes) =>
+            setNodes((existingNodes) =>
               // Deselect copied nodes
               existingNodes.map((node) => ({ ...node, selected: false })),
             );
@@ -969,9 +906,7 @@ const FlowEditor: React.FC<{
     [
       addNodes,
       addEdges,
-      // getNodes,
-      // getEdges,
-      setRootNodes,
+      setNodes,
       copiedNodes,
       copiedEdges,
       nodeId,
@@ -1009,7 +944,7 @@ const FlowEditor: React.FC<{
   ];
 
   return (
-    <FlowContext.Provider value={{ visualizeBeads }}>
+    <FlowContext.Provider value={{ visualizeBeads, setIsAnyModalOpen }}>
       <div className={className}>
         <ReactFlow
           nodes={nodes}
