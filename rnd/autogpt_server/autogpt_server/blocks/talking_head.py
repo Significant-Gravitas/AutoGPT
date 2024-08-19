@@ -45,7 +45,6 @@ class ClipsBlock(Block):
         )
 
     class Output(BlockSchema):
-        clip_id: str = SchemaField(description="The ID of the created clip")
         video_url: str = SchemaField(description="The URL of the created video")
         error: str = SchemaField(description="Error message if the request failed")
 
@@ -70,7 +69,6 @@ class ClipsBlock(Block):
                 "polling_interval": 1,
             },
             test_output=[
-                ("clip_id", "abcd1234-5678-efgh-ijkl-mnopqrstuvwx"),
                 (
                     "video_url",
                     "https://d-id.com/api/clips/abcd1234-5678-efgh-ijkl-mnopqrstuvwx/video",
