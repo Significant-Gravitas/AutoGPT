@@ -30,7 +30,7 @@ from autogpt_server.data.execution import (
     get_execution_results,
     list_executions,
 )
-from autogpt_server.data.user import DEFAULT_USER_ID, get_or_create_user
+from autogpt_server.data.user import get_or_create_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import (
@@ -43,18 +43,9 @@ from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
 
+from .utils import get_user_id
+
 settings = Settings()
-
-
-def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
-    if not payload:
-        # This handles the case when authentication is disabled
-        return DEFAULT_USER_ID
-
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="User ID not found in token")
-    return user_id
 
 
 class AgentServer(AppService):
