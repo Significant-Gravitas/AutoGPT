@@ -19,6 +19,7 @@ pytest = "^8.2.1"
 uvicorn = { extras = ["standard"], version = "^0.30.1" }
 fastapi = "^0.109.0"
 flake8 = "^7.0.0"
+google-auth-oauthlib = "^1.2.1"
 jsonschema = "^4.22.0"
 psutil = "^5.9.8"
 pyro5 = "^5.15"
