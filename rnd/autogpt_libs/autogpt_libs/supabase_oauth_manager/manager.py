@@ -63,7 +63,7 @@ class SupabaseOAuthManager:
         return response.user
 
     def _is_valid_provider(self, provider: str) -> bool:
-        valid_providers = ['google', 'facebook', 'twitter', 'github']  # Add more as needed
+        valid_providers = ['google', 'tiktok']  # Add more as needed
         return provider in valid_providers
 
     def _is_valid_token_data(self, tokens: OAuthTokens) -> bool:
