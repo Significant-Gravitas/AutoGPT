@@ -73,8 +73,6 @@ def main():
         "Accept": "application/vnd.github.v3+json",
     }
 
-    print("Checking status of all check runs...")
-
     while True:
         data = make_api_request(endpoint, headers)
 
