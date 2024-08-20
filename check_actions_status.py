@@ -73,6 +73,8 @@ def main():
         "Accept": "application/vnd.github.v3+json",
     }
 
+    print(f"Current run ID: {current_run_id}")
+
     while True:
         data = make_api_request(endpoint, headers)
 
@@ -92,9 +94,9 @@ def main():
             break
 
         print(
-            "Some check runs are still in progress. Waiting 5 seconds before checking again..."
+            "Some check runs are still in progress. Waiting 30 seconds before checking again..."
         )
-        time.sleep(5)
+        time.sleep(30)
 
     if all_others_passed:
         print("All other completed check runs have passed. This check passes.")
