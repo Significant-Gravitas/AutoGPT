@@ -58,6 +58,8 @@ def process_check_runs(check_runs: List[Dict]) -> Tuple[bool, bool]:
                 runs_in_progress = True
                 print(f"Check run {run['name']} (ID: {run['id']}) is still {status}.")
                 all_others_passed = False
+        else:
+            print(f"Skipping check run {run['name']} (ID: {run['id']}) as it is the current run.")
 
     return runs_in_progress, all_others_passed
 
