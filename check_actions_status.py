@@ -23,6 +23,7 @@ def get_environment_variables() -> Tuple[str, str, str, str, str]:
 def make_api_request(url: str, headers: Dict[str, str]) -> Dict:
     """Make an API request and return the JSON response."""
     try:
+        print("Making API request to:", url)
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         return response.json()
@@ -69,6 +70,10 @@ def main():
     while True:
         data = make_api_request(endpoint, headers)
         check_runs = data["check_runs"]
+
+        print("Processing check runs...")
+
+        print(check_runs)
 
         runs_in_progress, all_others_passed = process_check_runs(
             check_runs, current_run_id
