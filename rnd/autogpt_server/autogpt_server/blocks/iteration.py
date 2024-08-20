@@ -1,7 +1,7 @@
 from typing import Any, List, Tuple
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from autogpt_server.data.model import SchemaField
+from autogpt_server.data.model import Field, SchemaField
 
 
 class ForEachBlock(Block):
@@ -10,9 +10,13 @@ class ForEachBlock(Block):
             description="The list of items to iterate over",
             placeholder="[1, 2, 3, 4, 5]",
         )
+        return_index: bool = Field(
+            description="If it should just yield the item or the item and index",
+            default=True,
+        )
 
     class Output(BlockSchema):
-        item: Tuple[int, Any] = SchemaField(
+        item: Tuple[int, Any] | Any = SchemaField(
             description="A tuple with the index and current item in the iteration"
         )
 
@@ -33,4 +37,7 @@ class ForEachBlock(Block):
 
     def run(self, input_data: Input) -> BlockOutput:
         for index, item in enumerate(input_data.items):
-            yield "item", (index, item)
+            if input_data.return_index:
+                yield "item", (index, item)
+            else:
+                yield "item", item

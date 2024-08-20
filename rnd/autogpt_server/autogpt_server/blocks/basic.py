@@ -1,3 +1,4 @@
+import json
 from abc import ABC, abstractmethod
 from typing import Any, Generic, List, TypeVar
 
@@ -139,6 +140,10 @@ class ObjectLookupBase(Block, ABC, Generic[T]):
                 yield "output", [getattr(val, key) for val in obj if hasattr(val, key)]
         elif isinstance(obj, object) and isinstance(key, str) and hasattr(obj, key):
             yield "output", getattr(obj, key)
+        elif isinstance(obj, str):
+            data = json.loads(obj)
+            if isinstance(data, dict) and key in data:
+                yield "output", data[key]
         else:
             yield "missing", input_data.input
 
@@ -169,7 +174,7 @@ class OutputBlock(ObjectLookupBase[Any]):
 
 class DictionaryAddEntryBlock(Block):
     class Input(BlockSchema):
-        dictionary: dict | None = SchemaField(
+        dictionary: dict | None | str = SchemaField(
             default=None,
             description="The dictionary to add the entry to. If not provided, a new dictionary will be created.",
             placeholder='{"key1": "value1", "key2": "value2"}',
@@ -216,6 +221,8 @@ class DictionaryAddEntryBlock(Block):
             # If no dictionary is provided, create a new one
             if input_data.dictionary is None:
                 updated_dict = {}
+            elif isinstance(input_data.dictionary, str):
+                updated_dict = json.loads(input_data.dictionary)
             else:
                 # Create a copy of the input dictionary to avoid modifying the original
                 updated_dict = input_data.dictionary.copy()
@@ -300,3 +307,41 @@ class ListAddEntryBlock(Block):
             yield "updated_list", updated_list
         except Exception as e:
             yield "error", f"Failed to add entry to list: {str(e)}"
+
+
+class CreateListBlock(Block):
+    class Input(BlockSchema):
+        items: List[Any] = Field(
+            description="Items to be added to the list", default=[]
+        )
+
+    class Output(BlockSchema):
+        list: List[Any] = SchemaField(description="The list with the new entry added.")
+        error: str = SchemaField(description="Error message if the operation failed.")
+
+    def __init__(self):
+        super().__init__(
+            id="aeb08fc1-2fc1-4141-bc8e-f758f183a812",
+            description="Adds a new entry to a list. The entry can be of any type. If no list is provided, a new one is created.",
+            categories={BlockCategory.BASIC},
+            input_schema=CreateListBlock.Input,
+            output_schema=CreateListBlock.Output,
+            test_input=[
+                {
+                    "items": [1, "string", {"existing_key": "existing_value"}],
+                },
+            ],
+            test_output=[
+                (
+                    "list",
+                    [
+                        1,
+                        "string",
+                        {"existing_key": "existing_value"},
+                    ],
+                ),
+            ],
+        )
+
+    def run(self, input_data: Input) -> BlockOutput:
+        yield "list", input_data.items

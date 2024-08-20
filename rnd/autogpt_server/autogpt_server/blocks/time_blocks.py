@@ -1,6 +1,6 @@
 import time
 from datetime import datetime, timedelta
-from typing import Union
+from typing import Any, Union
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 
@@ -137,3 +137,41 @@ class TimerBlock(Block):
 
         time.sleep(total_seconds)
         yield "message", "timer finished"
+
+
+class WaitBlock(Block):
+    class Input(BlockSchema):
+        data: Any
+        seconds: Union[int, str] = 0
+        minutes: Union[int, str] = 0
+        hours: Union[int, str] = 0
+        days: Union[int, str] = 0
+
+    class Output(BlockSchema):
+        data: Any
+        message: str
+
+    def __init__(self):
+        super().__init__(
+            id="d67a9c52-5e4e-11e2-bcfd-0770200c9c61",
+            description="This block waits a given time period, then returns the input data",
+            categories={BlockCategory.TEXT},
+            input_schema=WaitBlock.Input,
+            output_schema=WaitBlock.Output,
+            test_input=[{"seconds": 1}, {"data": "something"}],
+            test_output=[
+                ("data", "something"),
+            ],
+        )
+
+    def run(self, input_data: Input) -> BlockOutput:
+
+        seconds = int(input_data.seconds)
+        minutes = int(input_data.minutes)
+        hours = int(input_data.hours)
+        days = int(input_data.days)
+
+        total_seconds = seconds + minutes * 60 + hours * 3600 + days * 86400
+
+        time.sleep(total_seconds)
+        yield "data", input_data.data
