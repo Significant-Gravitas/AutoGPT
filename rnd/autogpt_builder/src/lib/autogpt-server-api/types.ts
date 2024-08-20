@@ -34,7 +34,7 @@ type BlockIOSimpleTypeSubSchema =
   | BlockIOBooleanSubSchema
   | BlockIONullSubSchema;
 
-type BlockIOSubSchemaMeta = {
+export type BlockIOSubSchemaMeta = {
   title?: string;
   description?: string;
   placeholder?: string;
