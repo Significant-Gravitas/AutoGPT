@@ -38,15 +38,13 @@ def make_api_request(url: str, headers: Dict[str, str]) -> Dict:
         sys.exit(1)
 
 
-def process_check_runs(
-    check_runs: List[Dict], current_run_id: str
-) -> Tuple[bool, bool]:
+def process_check_runs(check_runs: List[Dict]) -> Tuple[bool, bool]:
     """Process check runs and return their status."""
     runs_in_progress = False
     all_others_passed = True
 
     for run in check_runs:
-        if str(run["id"]) != current_run_id:
+        if str(run["name"]) != "Check PR Status":
             status = run["status"]
             conclusion = run["conclusion"]
 
@@ -86,9 +84,7 @@ def main():
 
         print(check_runs)
 
-        runs_in_progress, all_others_passed = process_check_runs(
-            check_runs, current_run_id
-        )
+        runs_in_progress, all_others_passed = process_check_runs(check_runs)
 
         if not runs_in_progress:
             break
