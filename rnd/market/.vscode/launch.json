@@ -10,7 +10,8 @@
       "request": "launch",
       "module": "uvicorn",
       "args": ["market.app:app", "--reload", "--port", "8001"],
-      "jinja": true
+      "jinja": true,
+      "justMyCode": false
     }
   ]
 }
