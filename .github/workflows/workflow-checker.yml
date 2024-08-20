@@ -1,13 +1,11 @@
 name: PR Status Checker
 on:
-  workflow_run:
-    workflows: ["*"]
-    types:
-      - completed
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 jobs:
   status-check:
-    name: Check Actions Status
+    name: Check PR Status
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -41,7 +39,7 @@ jobs:
         echo $GITHUB_WORKSPACE
         echo "GitHub workspace contents:"
         ls -R $GITHUB_WORKSPACE
-    - name: Check Actions Status
+    - name: Check PR Status
       run: |
         echo "Current directory before running Python script:"
         pwd
