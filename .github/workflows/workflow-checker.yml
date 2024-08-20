@@ -46,6 +46,6 @@ jobs:
           echo "Current directory before running Python script:"
           pwd
           echo "Attempting to run Python script:"
-          python check_actions_status.py
+          python ./autogpt/check_actions_status.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
