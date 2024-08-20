@@ -38,34 +38,34 @@ def make_api_request(url: str, headers: Dict[str, str]) -> Dict:
         sys.exit(1)
 
 
-def process_check_runs(check_runs: List[Dict]) -> Tuple[bool, bool]:
+def process_check_runs(
+    check_runs: List[Dict], current_run_id: str
+) -> Tuple[bool, bool]:
     """Process check runs and return their status."""
     runs_in_progress = False
     all_others_passed = True
 
     for run in check_runs:
-        # Ignore the "Check PR Status" run
-        if run["name"] == "Check PR Status":
-            continue
+        if str(run["id"]) != current_run_id:
+            status = run["status"]
+            conclusion = run["conclusion"]
 
-        status = run["status"]
-        conclusion = run["conclusion"]
-
-        print(
-            f"Check run {run['name']} (ID: {run['id']}) status: {status}, conclusion: {conclusion}"
-        )
-
-        if status != "completed":
-            runs_in_progress = True
-            all_others_passed = False
-        elif conclusion not in ["success", "skipped", "neutral"]:
-            all_others_passed = False
+            if status == "completed":
+                if conclusion not in ["success", "skipped", "neutral"]:
+                    all_others_passed = False
+                    print(
+                        f"Check run {run['name']} (ID: {run['id']}) has conclusion: {conclusion}"
+                    )
+            else:
+                runs_in_progress = True
+                print(f"Check run {run['name']} (ID: {run['id']}) is still {status}.")
+                all_others_passed = False
 
     return runs_in_progress, all_others_passed
 
 
 def main():
-    api_url, repo, sha, github_token, _ = get_environment_variables()
+    api_url, repo, sha, github_token, current_run_id = get_environment_variables()
 
     endpoint = f"{api_url}/repos/{repo}/commits/{sha}/check-runs"
     headers = {
@@ -73,16 +73,22 @@ def main():
         "Accept": "application/vnd.github.v3+json",
     }
 
+    print(f"Current run ID: {current_run_id}")
+
     while True:
         data = make_api_request(endpoint, headers)
 
-        print(f"Total runs found: {data['total_count']}")
+        print(f"Data received from API: {data}")
 
         check_runs = data["check_runs"]
 
         print("Processing check runs...")
 
-        runs_in_progress, all_others_passed = process_check_runs(check_runs)
+        print(check_runs)
+
+        runs_in_progress, all_others_passed = process_check_runs(
+            check_runs, current_run_id
+        )
 
         if not runs_in_progress:
             break
