@@ -8,8 +8,8 @@ jobs:
     name: Check PR Status
     runs-on: ubuntu-latest
     steps:
-      - name: Wait some time for all actions to start
-        run: sleep 30
+      # - name: Wait some time for all actions to start
+      #   run: sleep 30
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
