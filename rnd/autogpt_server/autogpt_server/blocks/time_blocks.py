@@ -158,7 +158,7 @@ class WaitBlock(Block):
             categories={BlockCategory.TEXT},
             input_schema=WaitBlock.Input,
             output_schema=WaitBlock.Output,
-            test_input=[{"seconds": 1}, {"data": "something"}],
+            test_input=[{"seconds": 1, "data": "something"}],
             test_output=[
                 ("data", "something"),
             ],
