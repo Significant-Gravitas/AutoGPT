@@ -20,7 +20,7 @@ provider "google" {
 }
 
 module "static_ips" {
-  source = "./modules/static_ip"
+  source = "modules/static_ip"
 
   project_id = var.project_id
   ip_names   = var.static_ip_names
@@ -28,7 +28,7 @@ module "static_ips" {
 }
 
 module "networking" {
-  source = "./modules/networking"
+  source = "modules/networking"
 
   project_id             = var.project_id
   region                 = var.region
@@ -40,7 +40,7 @@ module "networking" {
 }
 
 module "gke_cluster" {
-  source = "./modules/gke_cluster"
+  source = "modules/gke_cluster"
 
   project_id       = var.project_id
   zone             = var.zone
@@ -55,7 +55,7 @@ module "gke_cluster" {
 }
 
 module "iam" {
-  source = "./modules/iam"
+  source = "modules/iam"
 
   project_id                 = var.project_id
   service_accounts           = var.service_accounts
