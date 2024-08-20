@@ -1,3 +1,4 @@
+import json
 import os
 import requests
 import sys
@@ -8,15 +9,20 @@ from typing import Dict, List, Tuple
 def get_environment_variables() -> Tuple[str, str, str, str, str]:
     """Retrieve and return necessary environment variables."""
     try:
+        with open(os.environ["GITHUB_EVENT_PATH"]) as f:
+            event = json.load(f)
+
+        sha = event["pull_request"]["head"]["sha"]
+
         return (
             os.environ["GITHUB_API_URL"],
             os.environ["GITHUB_REPOSITORY"],
-            os.environ["GITHUB_SHA"],
+            sha,
             os.environ["GITHUB_TOKEN"],
             os.environ["GITHUB_RUN_ID"],
         )
     except KeyError as e:
-        print(f"Error: Missing required environment variable: {e}")
+        print(f"Error: Missing required environment variable or event data: {e}")
         sys.exit(1)
 
 

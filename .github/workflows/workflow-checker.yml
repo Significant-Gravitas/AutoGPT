@@ -33,16 +33,6 @@ jobs:
           echo "Base ref: ${{ github.base_ref }}"
           echo "Event payload:"
           cat $GITHUB_EVENT_PATH
-      - name: Debug File Structure
-        run: |
-          echo "Current directory:"
-          pwd
-          echo "Directory contents:"
-          ls -R
-          echo "GitHub workspace:"
-          echo $GITHUB_WORKSPACE
-          echo "GitHub workspace contents:"
-          ls -R $GITHUB_WORKSPACE
       - name: Check PR Status
         run: |
           echo "Current directory before running Python script:"
