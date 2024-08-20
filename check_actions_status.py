@@ -71,9 +71,10 @@ def main():
 
     endpoint = f"{api_url}/repos/{repo}/commits/{sha}/check-runs"
     headers = {
-        "Authorization": f"token {github_token}",
         "Accept": "application/vnd.github.v3+json",
     }
+    if github_token:
+        headers["Authorization"] = f"token {github_token}"
 
     print(f"Current run ID: {current_run_id}")
 
@@ -92,9 +93,9 @@ def main():
             break
 
         print(
-            "Some check runs are still in progress. Waiting 30 seconds before checking again..."
+            "Some check runs are still in progress. Waiting 3 minutes before checking again..."
         )
-        time.sleep(30)
+        time.sleep(180)
 
     if all_others_passed:
         print("All other completed check runs have passed. This check passes.")
