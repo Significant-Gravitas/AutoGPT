@@ -8,6 +8,8 @@ jobs:
     name: Check PR Status
     runs-on: ubuntu-latest
     steps:
+      - name: Wait 10 seconds
+        run: sleep 10
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -46,6 +48,6 @@ jobs:
           echo "Current directory before running Python script:"
           pwd
           echo "Attempting to run Python script:"
-          python ./autogpt/check_actions_status.py
+          python check_actions_status.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
