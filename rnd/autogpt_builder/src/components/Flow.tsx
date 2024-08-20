@@ -26,6 +26,7 @@ import ReactFlow, {
   useReactFlow,
   applyEdgeChanges,
   applyNodeChanges,
+  useViewport,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import CustomNode, { CustomNodeData } from "./CustomNode";
@@ -378,6 +379,8 @@ const FlowEditor: React.FC<{
     [getEdges, _setEdges, setNodes, clearNodesStatusAndOutput],
   );
 
+  const { x, y, zoom } = useViewport();
+
   const addNode = useCallback(
     (blockId: string, nodeType: string) => {
       const nodeSchema = availableNodes.find((node) => node.id === blockId);
@@ -386,10 +389,16 @@ const FlowEditor: React.FC<{
         return;
       }
 
+      // Calculate the center of the viewport considering zoom
+      const viewportCenter = {
+        x: (window.innerWidth / 2 - x) / zoom,
+        y: (window.innerHeight / 2 - y) / zoom,
+      };
+
       const newNode: Node<CustomNodeData> = {
         id: nodeId.toString(),
         type: "custom",
-        position: { x: Math.random() * 400, y: Math.random() * 400 },
+        position: viewportCenter, // Set the position to the calculated viewport center
         data: {
           blockType: nodeType,
           title: `${nodeType} ${nodeId}`,
@@ -443,6 +452,9 @@ const FlowEditor: React.FC<{
       setNodes,
       deleteElements,
       clearNodesStatusAndOutput,
+      x,
+      y,
+      zoom,
     ],
   );
 
