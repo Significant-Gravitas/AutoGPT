@@ -31,7 +31,7 @@ const useUser = () => {
 
         setUser(userData.user);
         setSession(sessionData.session);
-        setRole(userData.user?.user_metadata?.role || null);
+        setRole(userData.user?.role || null);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to fetch user data");
         console.error("Error in useUser hook:", e);
@@ -47,7 +47,7 @@ const useUser = () => {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
-      setRole(session?.user?.user_metadata?.role || null);
+      setRole(session?.user?.role || null);
 
       setIsLoading(false);
     });

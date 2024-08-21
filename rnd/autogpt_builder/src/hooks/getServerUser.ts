@@ -19,7 +19,7 @@ const getServerUser = async () => {
     if (!user) {
       return { user: null, role: null, error: "No user found in the response" };
     }
-    const role = user.user_metadata?.role || null;
+    const role = user.role || null;
     return { user, role, error: null };
   } catch (error) {
     console.error("Unexpected error in getServerUser:", error);
