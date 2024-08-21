@@ -82,6 +82,13 @@ In order to setup the database, you need to run the following command, in the sa
 ```bash
 poetry run prisma migrate deploy
 ```
+After deploying the migration, to ensure that the database schema is correctly mapped to your codebase, allowing the application to interact with the database properly, you need to generate the Prisma database model:
+
+```bash
+poetry run prisma generate
+```
+
+Without running this command, the necessary Python modules (prisma.models) won't be available, leading to a `ModuleNotFoundError`.
 
 ### Running the server
 

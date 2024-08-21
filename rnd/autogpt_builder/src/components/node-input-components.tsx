@@ -45,7 +45,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
 }) => {
   object ??= ("default" in schema ? schema.default : null) ?? {};
   return (
-    <div className={cn(className, "flex-col w-full")}>
+    <div className={cn(className, "w-full flex-col")}>
       {displayName && <strong>{displayName}</strong>}
       {Object.entries(schema.properties).map(([propKey, propSchema]) => {
         const childKey = selfKey ? `${selfKey}.${propKey}` : propKey;
@@ -53,7 +53,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
         return (
           <div
             key={propKey}
-            className="flex flex-row justify-between space-y-2 w-full"
+            className="flex w-full flex-row justify-between space-y-2"
           >
             <span className="mr-2 mt-3">
               {propSchema.title || beautifyString(propKey)}
@@ -303,7 +303,7 @@ const NodeKeyValueInput: FC<{
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
           <div key={index}>
-            <div className="flex items-center space-x-2 mb-2 nodrag">
+            <div className="nodrag mb-2 flex items-center space-x-2">
               <Input
                 type="text"
                 placeholder="Key"
@@ -393,7 +393,7 @@ const NodeArrayInput: FC<{
         const entryKey = `${selfKey}[${index}]`;
         return (
           <div key={entryKey}>
-            <div className="flex items-center space-x-2 mb-2">
+            <div className="mb-2 flex items-center space-x-2">
               {schema.items ? (
                 <NodeGenericInputField
                   propKey={entryKey}
@@ -532,7 +532,7 @@ const NodeNumberInput: FC<{
   displayName ??= schema.title || beautifyString(selfKey);
   return (
     <div className={className}>
-      <div className="flex items-center justify-between space-x-3 nodrag">
+      <div className="nodrag flex items-center justify-between space-x-3">
         <Input
           type="number"
           id={selfKey}
@@ -570,7 +570,7 @@ const NodeBooleanInput: FC<{
   value ??= schema.default ?? false;
   return (
     <div className={className}>
-      <div className="flex items-center nodrag">
+      <div className="nodrag flex items-center">
         <Switch
           checked={value}
           onCheckedChange={(v) => handleInputChange(selfKey, v)}

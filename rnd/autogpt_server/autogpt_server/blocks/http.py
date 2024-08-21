@@ -1,3 +1,4 @@
+import json
 from enum import Enum
 
 import requests
@@ -31,12 +32,15 @@ class HttpRequestBlock(Block):
         super().__init__(
             id="6595ae1f-b924-42cb-9a41-551a0611c4b4",
             description="This block makes an HTTP request to the given URL.",
-            categories={BlockCategory.BASIC},
+            categories={BlockCategory.INPUT},
             input_schema=HttpRequestBlock.Input,
             output_schema=HttpRequestBlock.Output,
         )
 
     def run(self, input_data: Input) -> BlockOutput:
+        if isinstance(input_data.body, str):
+            input_data.body = json.loads(input_data.body)
+
         response = requests.request(
             input_data.method.value,
             input_data.url,

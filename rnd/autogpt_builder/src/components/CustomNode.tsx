@@ -23,12 +23,16 @@ import { history } from "./history";
 import NodeHandle from "./NodeHandle";
 import { CustomEdgeData } from "./CustomEdge";
 import { NodeGenericInputField } from "./node-input-components";
+import SchemaTooltip from "./SchemaTooltip";
+import { getPrimaryCategoryColor } from "@/lib/utils";
 
 type ParsedKey = { key: string; index?: number };
 
 export type CustomNodeData = {
   blockType: string;
   title: string;
+  description: string;
+  categories: string[];
   inputSchema: BlockIORootSchema;
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
@@ -48,6 +52,7 @@ export type CustomNodeData = {
   errors?: { [key: string]: string | null };
   setErrors: (errors: { [key: string]: string | null }) => void;
   setIsAnyModalOpen?: (isOpen: boolean) => void;
+  isOutputStatic?: boolean;
 };
 
 const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
@@ -277,15 +282,22 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   return (
     <div
-      className={`custom-node dark-theme border rounded-xl shandow-md bg-white/[.8] ${data.status?.toLowerCase() ?? ""}`}
+      className={`custom-node dark-theme rounded-xl border bg-white/[.9] shadow-md ${data.status?.toLowerCase() ?? ""}`}
       onMouseEnter={handleHovered}
       onMouseLeave={handleMouseLeave}
     >
-      <div className="mb-2 p-3 bg-gray-300 rounded-t-xl">
-        <div className="p-3 text-lg font-bold">
-          {beautifyString(data.blockType?.replace(/Block$/, "") || data.title)}
+      <div
+        className={`mb-2 p-3 ${getPrimaryCategoryColor(data.categories)} rounded-t-xl`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="font-roboto p-3 text-lg font-semibold">
+            {beautifyString(
+              data.blockType?.replace(/Block$/, "") || data.title,
+            )}
+          </div>
+          <SchemaTooltip description={data.description} />
         </div>
-        <div className="flex gap-[5px] ">
+        <div className="flex gap-[5px]">
           {isHovered && (
             <>
               <Button
@@ -308,7 +320,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           )}
         </div>
       </div>
-      <div className="p-3 flex justify-between items-start gap-2">
+      <div className="flex items-start justify-between gap-2 p-3">
         <div>
           {data.inputSchema &&
             Object.entries(data.inputSchema.properties).map(
@@ -327,7 +339,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                       />
                       {!isConnected && (
                         <NodeGenericInputField
-                          className="mt-1 mb-2"
+                          className="mb-2 mt-1"
                           propKey={propKey}
                           propSchema={propSchema}
                           currentValue={getValue(propKey)}
@@ -374,7 +386,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
           </p>
         </div>
       )}
-      <div className="flex items-center pl-4 pb-4 mt-2.5">
+      <div className="mt-2.5 flex items-center pb-4 pl-4">
         <Switch onCheckedChange={toggleOutput} />
         <span className="m-1 mr-4">Output</span>
         {hasOptionalFields && (

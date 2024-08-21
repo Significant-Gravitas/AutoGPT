@@ -81,19 +81,19 @@ def execute_node(
     # Sanity check: validate the execution input.
     prefix = get_log_prefix(graph_exec_id, node_exec_id, node_block.name)
     exec_data, error = validate_exec(node, data.data, resolve_input=False)
-    if not exec_data:
+    if exec_data is None:
         logger.error(f"{prefix} Skip execution, input validation error: {error}")
         return
 
     # Execute the node
-    logger.warning(f"{prefix} execute with input:\n`{exec_data}`")
+    exec_data_str = str(exec_data).encode("utf-8").decode("unicode_escape")
+    logger.warning(f"{prefix} execute with input:\n`{exec_data_str}`")
     update_execution(ExecutionStatus.RUNNING)
 
     try:
         for output_name, output_data in node_block.execute(exec_data):
             logger.warning(f"{prefix} Executed, output [{output_name}]:`{output_data}`")
             wait(upsert_execution_output(node_exec_id, output_name, output_data))
-            update_execution(ExecutionStatus.COMPLETED)
 
             for execution in _enqueue_next_nodes(
                 api_client=api_client,
@@ -104,6 +104,9 @@ def execute_node(
                 prefix=prefix,
             ):
                 yield execution
+
+        update_execution(ExecutionStatus.COMPLETED)
+
     except Exception as e:
         error_msg = f"{e.__class__.__name__}: {e}"
         logger.exception(f"{prefix} failed with error. `%s`", error_msg)
@@ -226,9 +229,9 @@ def _enqueue_next_nodes(
                 idata, msg = validate_exec(next_node, idata)
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
                 if not idata:
-                    logger.warning(f"{prefix} Re-enqueueing skipped: {suffix}")
+                    logger.warning(f"{prefix} Enqueueing static-link skipped: {suffix}")
                     continue
-                logger.warning(f"{prefix} Re-enqueued {suffix}")
+                logger.warning(f"{prefix} Enqueueing static-link execution {suffix}")
                 enqueued_executions.append(
                     add_enqueued_execution(iexec.node_exec_id, next_node_id, idata)
                 )
@@ -370,10 +373,11 @@ class Executor:
                 # Avoid parallel execution of the same node.
                 fut = futures.get(execution.node_id)
                 if fut and not fut.done():
-                    cls.wait_future(fut)
-                    logger.warning(f"{prefix} Re-enqueueing {execution.node_id}")
-                    queue.add(execution)
-                    continue
+                    # TODO (performance improvement):
+                    #   Wait for the completion of the same node execution is blocking.
+                    #   To improve this we need a separate queue for each node.
+                    #   Re-enqueueing the data back to the queue will disrupt the order.
+                    cls.wait_future(fut, timeout=None)
 
                 futures[execution.node_id] = cls.executor.submit(
                     cls.on_node_execution, queue, execution
@@ -392,9 +396,10 @@ class Executor:
             logger.exception(f"{prefix} Failed graph execution: {e}")
 
     @classmethod
-    def wait_future(cls, future: Future):
+    def wait_future(cls, future: Future, timeout: int | None = 3):
         try:
-            future.result(timeout=3)
+            if not future.done():
+                future.result(timeout=timeout)
         except TimeoutError:
             # Avoid being blocked by long-running node, by not waiting its completion.
             pass
@@ -437,7 +442,7 @@ class ExecutionManager(AppService):
                 input_data = {}
 
             input_data, error = validate_exec(node, input_data)
-            if not input_data:
+            if input_data is None:
                 raise Exception(error)
             else:
                 nodes_input.append((node.id, input_data))

@@ -3,7 +3,7 @@
 image:
   repository: us-east1-docker.pkg.dev/agpt-dev/agpt-builder-dev/agpt-builder-dev
   pullPolicy: Always
-  tag: "latest"
+  tag: "fe3d2a9"
 
 serviceAccount:
   annotations:
@@ -48,22 +48,8 @@ resources:
     cpu: 500m
     memory: 512Mi
 
-livenessProbe:
-  httpGet:
-    path: /
-    port: 3000
-  initialDelaySeconds: 30
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 6
-readinessProbe:
-  httpGet:
-    path: /
-    port: 3000
-  initialDelaySeconds: 30
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 6
+livenessProbe: null
+readinessProbe: null
 
 domain: "dev-builder.agpt.co"
 
@@ -71,7 +57,7 @@ domain: "dev-builder.agpt.co"
 env:
   APP_ENV: "dev"
   NEXT_PUBLIC_AGPT_SERVER_URL: "http://agpt-server:8000/api"
-  GOOGLE_CLIENT_ID: "638488734936-ka0bvq73ub3h4cb6013s3lftsl5l04nu.apps.googleusercontent.com"
+  GOOGLE_CLIENT_ID: ""
   GOOGLE_CLIENT_SECRET: ""
-  NEXT_PUBLIC_SUPABASE_URL: "https://adfjtextkuilwuhzdjpf.supabase.co"
+  NEXT_PUBLIC_SUPABASE_URL: ""
   NEXT_PUBLIC_SUPABASE_ANON_KEY: ""

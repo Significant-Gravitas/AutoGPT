@@ -1,6 +1,6 @@
 from typing import Any, List, Tuple
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import SchemaField
 
 
@@ -21,6 +21,7 @@ class ForEachBlock(Block):
             id="f8e7d6c5-b4a3-2c1d-0e9f-8g7h6i5j4k3l",
             input_schema=ForEachBlock.Input,
             output_schema=ForEachBlock.Output,
+            categories={BlockCategory.LOGIC},
             test_input={"items": [1, "two", {"three": 3}, [4, 5]]},
             test_output=[
                 ("item", (0, 1)),

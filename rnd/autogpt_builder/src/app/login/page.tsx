@@ -20,10 +20,15 @@ import { FaGoogle, FaGithub, FaDiscord, FaSpinner } from "react-icons/fa";
 import { useState } from "react";
 import { useSupabase } from "@/components/SupabaseProvider";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const loginFormSchema = z.object({
   email: z.string().email().min(2).max(64),
   password: z.string().min(6).max(64),
+  agreeToTerms: z.boolean().refine((value) => value === true, {
+    message: "You must agree to the Terms of Service and Privacy Policy",
+  }),
 });
 
 export default function LoginPage() {
@@ -38,6 +43,7 @@ export default function LoginPage() {
     defaultValues: {
       email: "",
       password: "",
+      agreeToTerms: false,
     },
   });
 
@@ -48,7 +54,7 @@ export default function LoginPage() {
 
   if (isUserLoading || isSupabaseLoading || user) {
     return (
-      <div className="flex justify-center items-center h-[80vh]">
+      <div className="flex h-[80vh] items-center justify-center">
         <FaSpinner className="mr-2 h-16 w-16 animate-spin" />
       </div>
     );
@@ -71,11 +77,6 @@ export default function LoginPage() {
         redirectTo:
           process.env.AUTH_CALLBACK_URL ??
           `http://localhost:3000/auth/callback`,
-        // Get Google provider_refresh_token
-        // queryParams: {
-        //   access_type: 'offline',
-        //   prompt: 'consent',
-        // },
       },
     });
 
@@ -111,8 +112,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex items-center justify-center h-[80vh]">
-      <div className="w-full max-w-md p-8 rounded-lg shadow-md space-y-6">
+    <div className="flex h-[80vh] items-center justify-center">
+      <div className="w-full max-w-md space-y-6 rounded-lg p-8 shadow-md">
         <div className="mb-6 space-y-2">
           <Button
             className="w-full"
@@ -176,16 +177,46 @@ export default function LoginPage() {
                 </FormItem>
               )}
             />
-            <div className="flex w-full space-x-4 mt-6 mb-6">
+            <FormField
+              control={form.control}
+              name="agreeToTerms"
+              render={({ field }) => (
+                <FormItem className="mt-4 flex flex-row items-start space-x-3 space-y-0">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel>
+                      I agree to the{" "}
+                      <Link href="/terms-of-service" className="underline">
+                        Terms of Service
+                      </Link>{" "}
+                      and{" "}
+                      <Link
+                        href="https://www.notion.so/auto-gpt/Privacy-Policy-ab11c9c20dbd4de1a15dcffe84d77984"
+                        className="underline"
+                      >
+                        Privacy Policy
+                      </Link>
+                    </FormLabel>
+                    <FormMessage />
+                  </div>
+                </FormItem>
+              )}
+            />
+            <div className="mb-6 mt-6 flex w-full space-x-4">
               <Button
-                className="w-1/2 flex justify-center"
+                className="flex w-1/2 justify-center"
                 type="submit"
                 disabled={isLoading}
               >
                 Log in
               </Button>
               <Button
-                className="w-1/2 flex justify-center"
+                className="flex w-1/2 justify-center"
                 variant="outline"
                 type="button"
                 onClick={form.handleSubmit(onSignup)}
@@ -195,10 +226,7 @@ export default function LoginPage() {
               </Button>
             </div>
           </form>
-          <p className="text-red-500 text-sm">{feedback}</p>
-          <p className="text-primary text-center text-sm">
-            By continuing you agree to everything
-          </p>
+          <p className="text-sm text-red-500">{feedback}</p>
         </Form>
       </div>
     </div>
