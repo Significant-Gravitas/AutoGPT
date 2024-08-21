@@ -229,9 +229,9 @@ def _enqueue_next_nodes(
                 idata, msg = validate_exec(next_node, idata)
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
                 if not idata:
-                    logger.warning(f"{prefix} enqueueing static exec skipped: {suffix}")
+                    logger.warning(f"{prefix} Enqueueing static-link skipped: {suffix}")
                     continue
-                logger.warning(f"{prefix} Enqueueing static exec {suffix}")
+                logger.warning(f"{prefix} Enqueueing static-link execution {suffix}")
                 enqueued_executions.append(
                     add_enqueued_execution(iexec.node_exec_id, next_node_id, idata)
                 )
