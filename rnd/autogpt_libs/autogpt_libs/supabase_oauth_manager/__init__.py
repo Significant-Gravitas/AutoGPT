@@ -1,4 +1,9 @@
-from .manager import SupabaseOAuthManager
-from .types import OAuthTokens, UserMetadata, UserOAuthConnections
+from .manager import SupabaseProviderCredentialsManager
+from .types import OAuth2Credentials, APIKeyCredentials, PasswordCredentials
 
-__all__ = ['SupabaseOAuthManager', 'OAuthTokens', 'UserMetadata', 'UserOAuthConnections']
+__all__ = [
+    "SupabaseProviderCredentialsManager",
+    "OAuth2Credentials",
+    "APIKeyCredentials",
+    "PasswordCredentials",
+]
