@@ -13,7 +13,7 @@ export default function PrivatePage() {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-[80vh]">
+      <div className="flex h-[80vh] items-center justify-center">
         <FaSpinner className="mr-2 h-16 w-16 animate-spin" />
       </div>
     );

@@ -2,7 +2,7 @@ import operator
 from enum import Enum
 from typing import Any
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import SchemaField
 
 
@@ -39,6 +39,7 @@ class MathsBlock(Block):
             id="b1ab9b19-67a6-406d-abf5-2dba76d00c79",
             input_schema=MathsBlock.Input,
             output_schema=MathsBlock.Output,
+            categories={BlockCategory.LOGIC},
             test_input={
                 "operation": Operation.ADD.value,
                 "a": 10.0,
@@ -97,6 +98,7 @@ class CounterBlock(Block):
             id="3c9c2f42-b0c3-435f-ba35-05f7a25c772a",
             input_schema=CounterBlock.Input,
             output_schema=CounterBlock.Output,
+            categories={BlockCategory.LOGIC},
             test_input={"collection": [1, 2, 3, 4, 5]},
             test_output=[
                 ("count", 5),

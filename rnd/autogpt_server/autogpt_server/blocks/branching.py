@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import SchemaField
 
 
@@ -56,6 +56,7 @@ class ConditionBlock(Block):
             input_schema=ConditionBlock.Input,
             output_schema=ConditionBlock.Output,
             description="Handles conditional logic based on comparison operators",
+            categories={BlockCategory.LOGIC},
             test_input={
                 "value1": 10,
                 "operator": ComparisonOperator.GREATER_THAN.value,

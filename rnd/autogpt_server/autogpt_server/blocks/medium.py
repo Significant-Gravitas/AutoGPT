@@ -2,7 +2,7 @@ from typing import List
 
 import requests
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
 
 
@@ -70,6 +70,7 @@ class CreateMediumPostBlock(Block):
             id="3f7b2dcb-4a78-4e3f-b0f1-88132e1b89df",
             input_schema=CreateMediumPostBlock.Input,
             output_schema=CreateMediumPostBlock.Output,
+            categories={BlockCategory.SOCIAL},
             test_input={
                 "author_id": "1234567890abcdef",
                 "title": "Test Post",

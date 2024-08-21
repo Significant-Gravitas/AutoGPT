@@ -17,6 +17,7 @@ import market.config
 import market.routes.admin
 import market.routes.agents
 import market.routes.search
+import market.routes.submissions
 
 dotenv.load_dotenv()
 
@@ -71,6 +72,7 @@ app.add_middleware(
 )
 app.include_router(market.routes.agents.router, tags=["agents"])
 app.include_router(market.routes.search.router, tags=["search"])
+app.include_router(market.routes.submissions.router, tags=["submissions"])
 app.include_router(market.routes.admin.router, prefix="/admin", tags=["admin"])
 
 
