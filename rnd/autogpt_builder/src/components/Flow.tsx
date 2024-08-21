@@ -51,6 +51,7 @@ import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
 import { IconPlay, IconRedo2, IconUndo2 } from "@/components/ui/icons";
+import { startTutorial } from './tutorial';
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -107,6 +108,16 @@ const FlowEditor: React.FC<{
     [key: string]: { x: number; y: number };
   }>({});
   const isDragging = useRef(false);
+
+  const [tutorialStarted, setTutorialStarted] = useState(false); // State to control if tutorial has started
+  const [pinBlocks, setPinBlocks] = useState(false); // State to control if blocks menu should be pinned open
+
+  useEffect(() => {
+    if (!tutorialStarted && availableNodes.length > 0) {
+      startTutorial(setPinBlocks); // Pass the setPinBlocks function to the tutorial
+      setTutorialStarted(true); // Set state to avoid restarting the tutorial
+    }
+  }, [availableNodes, tutorialStarted]);
 
   useEffect(() => {
     api
@@ -1030,7 +1041,11 @@ const FlowEditor: React.FC<{
           <Controls />
           <Background />
           <ControlPanel className="absolute z-10" controls={editorControls}>
-            <BlocksControl blocks={availableNodes} addBlock={addNode} />
+            <BlocksControl
+              pinBlocks={pinBlocks} // Pass the state to BlocksControl
+              blocks={availableNodes}
+              addBlock={addNode}
+            />
             <SaveControl
               agentMeta={savedAgent}
               onSave={saveAgent}
