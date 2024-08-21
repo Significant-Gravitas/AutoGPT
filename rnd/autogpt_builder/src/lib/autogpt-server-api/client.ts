@@ -235,9 +235,12 @@ export default class AutoGPTServerAPI {
       this.connectWebSocket().then(() => {
         callCount == 0
           ? this.sendWebSocketMessage(method, data, callCount + 1)
-          : setTimeout(() => {
-              this.sendWebSocketMessage(method, data, callCount + 1);
-            }, 2 ** (callCount - 1) * 1000);
+          : setTimeout(
+              () => {
+                this.sendWebSocketMessage(method, data, callCount + 1);
+              },
+              2 ** (callCount - 1) * 1000,
+            );
       });
     }
   }
