@@ -274,8 +274,7 @@ const FlowEditor: React.FC<{
       const edgeColor = getTypeColor(
         getOutputType(connection.source!, connection.sourceHandle!),
       );
-      const sourcePos = getNode(connection.source!)?.position;
-      console.log("sourcePos", sourcePos);
+      const sourceNode = getNode(connection.source!);
       const newEdge: Edge<CustomEdgeData> = {
         id: formatEdgeID(connection),
         type: "custom",
@@ -284,7 +283,11 @@ const FlowEditor: React.FC<{
           strokeWidth: 2,
           color: edgeColor,
         },
-        data: { edgeColor, sourcePos },
+        data: {
+          edgeColor,
+          sourcePos: sourceNode!.position,
+          isStatic: sourceNode!.data.isOutputStatic,
+        },
         ...connection,
         source: connection.source!,
         target: connection.target!,
@@ -431,6 +434,7 @@ const FlowEditor: React.FC<{
               ),
             );
           },
+          isOutputStatic: nodeSchema.staticOutput,
         },
       };
 
