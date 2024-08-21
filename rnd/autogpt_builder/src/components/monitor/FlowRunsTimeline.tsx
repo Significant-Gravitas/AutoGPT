@@ -143,7 +143,7 @@ const ScrollableLegend: React.FC<
   return (
     <div
       className={cn(
-        "whitespace-nowrap px-4 text-sm overflow-x-auto space-x-3",
+        "space-x-3 overflow-x-auto whitespace-nowrap px-4 text-sm",
         className,
       )}
       style={{ scrollbarWidth: "none" }}
@@ -153,7 +153,7 @@ const ScrollableLegend: React.FC<
         return (
           <span key={`item-${index}`} className="inline-flex items-center">
             <span
-              className="size-2.5 inline-block mr-1 rounded-full"
+              className="mr-1 inline-block size-2.5 rounded-full"
               style={{ backgroundColor: entry.color }}
             />
             <span>{entry.value}</span>
