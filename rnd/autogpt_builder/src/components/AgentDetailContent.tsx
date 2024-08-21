@@ -115,8 +115,8 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
   const edgeTypes: EdgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-      <div className="flex justify-between items-center mb-4">
+    <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+      <div className="mb-4 flex items-center justify-between">
         <Link
           href="/marketplace"
           className="inline-flex items-center text-indigo-600 hover:text-indigo-500"
@@ -126,13 +126,13 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
         </Link>
         <Button
           onClick={() => installGraph(agent.id)}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          className="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
         >
           <Download className="mr-2" size={16} />
           Download Agent
         </Button>
       </div>
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+      <div className="overflow-hidden bg-white shadow sm:rounded-lg">
         <div className="px-4 py-5 sm:px-6">
           <h1 className="text-3xl font-bold text-gray-900">{agent.name}</h1>
           <p className="mt-1 max-w-2xl text-sm text-gray-500">
@@ -141,21 +141,21 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
         </div>
         <div className="border-t border-gray-200 px-4 py-5 sm:p-0">
           <dl className="sm:divide-y sm:divide-gray-200">
-            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt className="text-sm font-medium text-gray-500 flex items-center">
+            <div className="py-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6 sm:py-5">
+              <dt className="flex items-center text-sm font-medium text-gray-500">
                 <Calendar className="mr-2" size={16} />
                 Last Updated
               </dt>
-              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+              <dd className="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">
                 {new Date(agent.updatedAt).toLocaleDateString()}
               </dd>
             </div>
-            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt className="text-sm font-medium text-gray-500 flex items-center">
+            <div className="py-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6 sm:py-5">
+              <dt className="flex items-center text-sm font-medium text-gray-500">
                 <Tag className="mr-2" size={16} />
                 Categories
               </dt>
-              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+              <dd className="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">
                 {agent.categories.join(", ")}
               </dd>
             </div>
@@ -163,7 +163,7 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
         </div>
         <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
           <button
-            className="flex items-center justify-between w-full text-left text-sm font-medium text-indigo-600 hover:text-indigo-500"
+            className="flex w-full items-center justify-between text-left text-sm font-medium text-indigo-600 hover:text-indigo-500"
             onClick={() => setIsGraphExpanded(!isGraphExpanded)}
           >
             <span>Agent Graph</span>

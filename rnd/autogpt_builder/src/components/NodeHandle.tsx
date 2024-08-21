@@ -31,8 +31,8 @@ const NodeHandle: FC<HandleProps> = ({
   const typeClass = `text-sm ${getTypeTextColor(schema.type || "any")} ${side === "left" ? "text-left" : "text-right"}`;
 
   const label = (
-    <div className="flex flex-col flex-grow">
-      <span className="text-m text-gray-900 -mb-1 green">
+    <div className="flex flex-grow flex-col">
+      <span className="text-m green -mb-1 text-gray-900">
         {schema.title || beautifyString(keyName)}
         {isRequired ? "*" : ""}
       </span>
@@ -42,7 +42,7 @@ const NodeHandle: FC<HandleProps> = ({
 
   const dot = (
     <div
-      className={`w-4 h-4 m-1 border-2 bg-white ${isConnected ? getTypeBgColor(schema.type || "any") : "border-gray-300"} rounded-full transition-colors duration-100 group-hover:bg-gray-300`}
+      className={`m-1 h-4 w-4 border-2 bg-white ${isConnected ? getTypeBgColor(schema.type || "any") : "border-gray-300"} rounded-full transition-colors duration-100 group-hover:bg-gray-300`}
     />
   );
 
@@ -53,7 +53,7 @@ const NodeHandle: FC<HandleProps> = ({
           type="target"
           position={Position.Left}
           id={keyName}
-          className="group -ml-[26px] background-color: white; border: 2px solid black; width: 15px; height: 15px; border-radius: 50%; bottom: -7px; left: 20%;"
+          className="background-color: white; border: 2px solid black; width: 15px; height: 15px; border-radius: 50%; bottom: -7px; left: 20%; group -ml-[26px]"
         >
           <div className="pointer-events-none flex items-center">
             {dot}
