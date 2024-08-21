@@ -124,8 +124,10 @@ class ObjectLookupBase(Block, ABC, Generic[T]):
         )
 
     def run(self, input_data: ObjectLookupBaseInput[T]) -> BlockOutput:
-        obj = input_data.input
         key = input_data.key
+        obj = input_data.input
+        if isinstance(obj, str):
+            obj = json.loads(obj)
 
         if isinstance(obj, dict) and key in obj:
             yield "output", obj[key]
@@ -140,10 +142,6 @@ class ObjectLookupBase(Block, ABC, Generic[T]):
                 yield "output", [getattr(val, key) for val in obj if hasattr(val, key)]
         elif isinstance(obj, object) and isinstance(key, str) and hasattr(obj, key):
             yield "output", getattr(obj, key)
-        elif isinstance(obj, str):
-            data = json.loads(obj)
-            if isinstance(data, dict) and key in data:
-                yield "output", data[key]
         else:
             yield "missing", input_data.input
 
