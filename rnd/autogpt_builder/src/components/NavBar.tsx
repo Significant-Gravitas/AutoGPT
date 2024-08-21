@@ -21,8 +21,8 @@ export async function NavBar() {
   const { user } = await getServerUser();
 
   return (
-    <header className="sticky top-0 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6 z-50">
-      <div className="flex items-center gap-4 flex-1">
+    <header className="sticky top-0 z-50 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
+      <div className="flex flex-1 items-center gap-4">
         <Sheet>
           <SheetTrigger asChild>
             <Button
@@ -38,19 +38,19 @@ export async function NavBar() {
             <nav className="grid gap-6 text-lg font-medium">
               <Link
                 href="/"
-                className="text-muted-foreground hover:text-foreground flex flex-row gap-2 "
+                className="flex flex-row gap-2 text-muted-foreground hover:text-foreground"
               >
                 <IconSquareActivity /> Monitor
               </Link>
               <Link
                 href="/build"
-                className="text-muted-foreground hover:text-foreground flex flex-row gap-2"
+                className="flex flex-row gap-2 text-muted-foreground hover:text-foreground"
               >
                 <IconWorkFlow /> Build
               </Link>
               <Link
                 href="/marketplace"
-                className="text-muted-foreground hover:text-foreground flex flex-row gap-2"
+                className="flex flex-row gap-2 text-muted-foreground hover:text-foreground"
               >
                 <IconPackage2 /> Marketplace
               </Link>
@@ -60,25 +60,25 @@ export async function NavBar() {
         <nav className="hidden md:flex md:flex-row md:items-center md:gap-5 lg:gap-6">
           <Link
             href="/"
-            className="text-muted-foreground hover:text-foreground flex flex-row gap-2 items-center"
+            className="flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground"
           >
             <IconSquareActivity /> Monitor
           </Link>
           <Link
             href="/build"
-            className="text-muted-foreground hover:text-foreground flex flex-row gap-2 items-center"
+            className="flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground"
           >
             <IconWorkFlow /> Build
           </Link>
           <Link
             href="/marketplace"
-            className="text-muted-foreground hover:text-foreground flex flex-row gap-2 items-center"
+            className="flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground"
           >
             <IconPackage2 /> Marketplace
           </Link>
         </nav>
       </div>
-      <div className="flex-1 flex justify-center relative">
+      <div className="relative flex flex-1 justify-center">
         <a
           className="pointer-events-auto flex place-items-center gap-2"
           href="https://news.agpt.co/"
@@ -95,11 +95,11 @@ export async function NavBar() {
           />
         </a>
       </div>
-      <div className="flex items-center gap-4 flex-1 justify-end">
+      <div className="flex flex-1 items-center justify-end gap-4">
         {isAvailable && !user && (
           <Link
             href="/login"
-            className="text-muted-foreground hover:text-foreground flex flex-row gap-2 items-center"
+            className="flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground"
           >
             Log In
             <IconCircleUser />
