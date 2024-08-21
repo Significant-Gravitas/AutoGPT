@@ -22,7 +22,7 @@ class BlockSecret:
         if value is not None:
             trimmed_value = value.strip()
             if value != trimmed_value:
-                logger.debug(f"Trimming value from '{value}' to '{trimmed_value}'")
+                logger.debug(BlockSecret.TRIMMING_VALUE_MSG)
             self._value = trimmed_value
             return
 
@@ -31,9 +31,10 @@ class BlockSecret:
             raise ValueError(f"Secret {key} not found.")
         trimmed_value = self._value.strip()
         if self._value != trimmed_value:
-            logger.debug(f"Trimming value from '{self._value}' to '{trimmed_value}'")
+            logger.debug(BlockSecret.TRIMMING_VALUE_MSG)
         self._value = trimmed_value
 
+    TRIMMING_VALUE_MSG: ClassVar[str] = "Provided secret value got trimmed."
     STR: ClassVar[str] = "<secret>"
     SECRETS: ClassVar[Secrets] = Secrets()
 
@@ -52,7 +53,7 @@ class BlockSecret:
     def get_secret_value(self):
         trimmed_value = str(self._value).strip()
         if self._value != trimmed_value:
-            logger.info(f"Trimming value from '{self._value}' to '{trimmed_value}'")
+            logger.info(BlockSecret.TRIMMING_VALUE_MSG)
         return trimmed_value
 
     @classmethod
