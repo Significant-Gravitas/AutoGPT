@@ -1,6 +1,6 @@
 kind: FrontendConfig
 metadata:
-  name: {{ include "autogpt-server.fullname" . }}
+  name: {{ include "autogpt-server.fullname" . }}-frontend-config
 spec:
   redirectToHttps:
     enabled: true
