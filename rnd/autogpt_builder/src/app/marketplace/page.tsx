@@ -53,18 +53,18 @@ const HeroSection: React.FC = () => {
           aria-hidden="true"
         ></div>
       </div>
-      <div className="relative max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+      <div className="relative mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-white sm:text-3xl lg:text-4xl">
             AutoGPT Marketplace
           </h1>
-          <p className="mt-2 max-w-3xl text-sm sm:text-base text-indigo-100">
+          <p className="mt-2 max-w-3xl text-sm text-indigo-100 sm:text-base">
             Discover and share proven AI Agents to supercharge your business.
           </p>
         </div>
         <Button
           onClick={() => router.push("/marketplace/submit")}
-          className="bg-white text-indigo-600 hover:bg-indigo-50 flex items-center"
+          className="flex items-center bg-white text-indigo-600 hover:bg-indigo-50"
         >
           <PlusCircle className="mr-2 h-4 w-4" />
           Submit Agent
@@ -78,16 +78,16 @@ const SearchInput: React.FC<{
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }> = ({ value, onChange }) => (
-  <div className="mb-8 relative">
+  <div className="relative mb-8">
     <Input
       placeholder="Search agents..."
       type="text"
-      className="w-full pl-10 pr-4 py-2 rounded-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+      className="w-full rounded-full border-gray-300 py-2 pl-10 pr-4 focus:border-indigo-500 focus:ring-indigo-500"
       value={value}
       onChange={onChange}
     />
     <Search
-      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+      className="absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400"
       size={20}
     />
   </div>
@@ -105,24 +105,24 @@ const AgentCard: React.FC<{ agent: Agent; featured?: boolean }> = ({
 
   return (
     <div
-      className={`flex flex-col justify-between p-6 cursor-pointer hover:bg-gray-50 transition-colors duration-200 rounded-lg border ${featured ? "border-indigo-500 shadow-md" : "border-gray-200"}`}
+      className={`flex cursor-pointer flex-col justify-between rounded-lg border p-6 transition-colors duration-200 hover:bg-gray-50 ${featured ? "border-indigo-500 shadow-md" : "border-gray-200"}`}
       onClick={handleClick}
     >
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-lg font-semibold text-gray-900 truncate">
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="truncate text-lg font-semibold text-gray-900">
             {agent.name}
           </h3>
           {featured && <Star className="text-indigo-500" size={20} />}
         </div>
-        <p className="text-sm text-gray-500 line-clamp-2 mb-4">
+        <p className="mb-4 line-clamp-2 text-sm text-gray-500">
           {agent.description}
         </p>
-        <div className="text-xs text-gray-400 mb-2">
+        <div className="mb-2 text-xs text-gray-400">
           Categories: {agent.categories.join(", ")}
         </div>
       </div>
-      <div className="flex justify-between items-end">
+      <div className="flex items-end justify-between">
         <div className="text-xs text-gray-400">
           Updated {new Date(agent.updatedAt).toLocaleDateString()}
         </div>
@@ -143,8 +143,8 @@ const AgentGrid: React.FC<{
   featured?: boolean;
 }> = ({ agents, title, featured = false }) => (
   <div className="mb-12">
-    <h2 className="text-2xl font-bold text-gray-900 mb-4">{title}</h2>
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <h2 className="mb-4 text-2xl font-bold text-gray-900">{title}</h2>
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
       {agents.map((agent) => (
         <AgentCard agent={agent} key={agent.id} featured={featured} />
       ))}
@@ -158,11 +158,11 @@ const Pagination: React.FC<{
   onPrevPage: () => void;
   onNextPage: () => void;
 }> = ({ page, totalPages, onPrevPage, onNextPage }) => (
-  <div className="flex justify-between items-center mt-8">
+  <div className="mt-8 flex items-center justify-between">
     <Button
       onClick={onPrevPage}
       disabled={page === 1}
-      className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+      className="flex items-center space-x-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
     >
       <ChevronLeft size={16} />
       <span>Previous</span>
@@ -173,7 +173,7 @@ const Pagination: React.FC<{
     <Button
       onClick={onNextPage}
       disabled={page === totalPages}
-      className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+      className="flex items-center space-x-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
     >
       <span>Next</span>
       <ChevronRight size={16} />
@@ -272,20 +272,20 @@ const Marketplace: React.FC = () => {
   };
 
   return (
-    <div className="bg-gray-50 min-h-screen">
+    <div className="min-h-screen bg-gray-50">
       <HeroSection />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <SearchInput value={searchValue} onChange={handleInputChange} />
         {isLoading ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+          <div className="py-12 text-center">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-b-2 border-gray-900"></div>
             <p className="mt-2 text-gray-600">Loading agents...</p>
           </div>
         ) : searchValue ? (
           searchResults.length > 0 ? (
             <AgentGrid agents={searchResults} title="Search Results" />
           ) : (
-            <div className="text-center py-12">
+            <div className="py-12 text-center">
               <p className="text-gray-600">
                 No agents found matching your search criteria.
               </p>

@@ -1,0 +1,7 @@
+kind: FrontendConfig
+metadata:
+  name: {{ include "autogpt-server.fullname" . }}-frontend-config
+spec:
+  redirectToHttps:
+    enabled: true
+    responseCodeName: MOVED_PERMANENTLY_DEFAULT

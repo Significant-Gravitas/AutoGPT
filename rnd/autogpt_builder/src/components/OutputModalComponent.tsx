@@ -27,17 +27,17 @@ const OutputModalComponent: FC<OutputModalProps> = ({
   }
 
   return createPortal(
-    <div className="fixed inset-0 bg-white bg-opacity-60 flex justify-center items-center z-50">
-      <div className="bg-white p-5 rounded-lg w-[1000px] max-w-[100%]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-white bg-opacity-60">
+      <div className="w-[1000px] max-w-[100%] rounded-lg bg-white p-5">
         <center>
           <h1 style={{ color: "black" }}>Full Output</h1>
         </center>
         <Textarea
-          className="w-full h-[400px] p-2.5 rounded border border-[#dfdfdf] text-black bg-[#dfdfdf]"
+          className="h-[400px] w-full rounded border border-[#dfdfdf] bg-[#dfdfdf] p-2.5 text-black"
           value={tempValue}
           readOnly
         />
-        <div className="flex justify-end gap-2.5 mt-2.5">
+        <div className="mt-2.5 flex justify-end gap-2.5">
           <Button onClick={onClose}>Close</Button>
         </div>
       </div>
