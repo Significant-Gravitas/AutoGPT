@@ -26,7 +26,7 @@ class OAuth2Credentials(_BaseCredentials):
 
 
 class APIKeyCredentials(_BaseCredentials):
-    type: Literal["simple_token"] = "simple_token"
+    type: Literal["api_key"] = "api_key"
     api_key: SecretStr
     expires_at: Optional[int]
 
