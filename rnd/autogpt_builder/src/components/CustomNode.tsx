@@ -52,6 +52,7 @@ export type CustomNodeData = {
   errors?: { [key: string]: string | null };
   setErrors: (errors: { [key: string]: string | null }) => void;
   setIsAnyModalOpen?: (isOpen: boolean) => void;
+  isOutputStatic?: boolean;
 };
 
 const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
