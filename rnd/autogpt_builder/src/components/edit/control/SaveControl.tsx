@@ -78,7 +78,7 @@ export const SaveControl = ({
               />
             </div>
           </CardContent>
-          <CardFooter className="flex flex-col items-stretch gap-2 ">
+          <CardFooter className="flex flex-col items-stretch gap-2">
             <Button className="w-full" onClick={handleSave}>
               Save {getType()}
             </Button>
