@@ -44,8 +44,8 @@ Credentials = Annotated[
 
 
 class UserMetadata(BaseModel):
-    provider_credentials: list[Credentials] = Field(default_factory=list)
+    integration_credentials: list[Credentials] = Field(default_factory=list)
 
 
 class UserMetadataRaw(TypedDict, total=False):
-    provider_credentials: list[dict]
+    integration_credentials: list[dict]

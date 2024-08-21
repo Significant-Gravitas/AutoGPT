@@ -5,7 +5,7 @@ from supabase import create_client, Client
 from .types import Credentials, OAuth2Credentials, UserMetadata, UserMetadataRaw
 
 
-class SupabaseProviderCredentialsManager:
+class SupabaseIntegrationCredentialsStore:
     def __init__(self, url: str, key: str):
         self.supabase: Client = create_client(url, key)
 
@@ -15,13 +15,13 @@ class SupabaseProviderCredentialsManager:
                 f"Can not re-create existing credentials with ID {credentials.id} "
                 f"for user with ID {user_id}"
             )
-        self._set_user_provider_creds(
+        self._set_user_integration_creds(
             user_id, [*self.get_all_creds(user_id), credentials]
         )
 
     def get_all_creds(self, user_id: str) -> list[Credentials]:
         user_metadata = self._get_user_metadata(user_id)
-        return UserMetadata.model_validate(user_metadata).provider_credentials
+        return UserMetadata.model_validate(user_metadata).integration_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
         credentials = self.get_all_creds(user_id)
@@ -65,20 +65,20 @@ class SupabaseProviderCredentialsManager:
         updated_credentials_list = [
             updated if c.id == updated.id else c for c in self.get_all_creds(user_id)
         ]
-        self._set_user_provider_creds(user_id, updated_credentials_list)
+        self._set_user_integration_creds(user_id, updated_credentials_list)
 
     def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
         filtered_credentials = [
             c for c in self.get_all_creds(user_id) if c.id != credentials_id
         ]
-        self._set_user_provider_creds(user_id, filtered_credentials)
+        self._set_user_integration_creds(user_id, filtered_credentials)
 
-    def _set_user_provider_creds(
+    def _set_user_integration_creds(
         self, user_id: str, credentials: list[Credentials]
     ) -> None:
         raw_metadata = self._get_user_metadata(user_id)
         raw_metadata.update(
-            {"provider_credentials": [c.model_dump() for c in credentials]}
+            {"integration_credentials": [c.model_dump() for c in credentials]}
         )
         self.supabase.auth.admin.update_user_by_id(
             user_id, {"user_metadata": raw_metadata}
