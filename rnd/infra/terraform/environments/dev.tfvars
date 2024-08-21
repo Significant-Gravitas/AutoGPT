@@ -16,6 +16,10 @@ service_accounts = {
   "dev-agpt-server-sa" = {
     display_name = "AutoGPT Dev Server Account"
     description  = "Service account for agpt dev server"
+  },
+  "dev-agpt-builder-sa" = {
+    display_name = "AutoGPT Dev Builder Account"
+    description  = "Service account for agpt dev builder"
   }
 }
 
@@ -24,30 +28,42 @@ workload_identity_bindings = {
     service_account_name = "dev-agpt-server-sa"
     namespace            = "dev-agpt"
     ksa_name             = "dev-agpt-server-sa"
+  },
+  "dev-agpt-builder-workload-identity" = {
+    service_account_name = "dev-agpt-builder-sa"
+    namespace            = "dev-agpt"
+    ksa_name             = "dev-agpt-builder-sa"
   }
 }
 
 role_bindings = {
   "roles/container.developer" = [
-    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com"
   ],
   "roles/cloudsql.client" = [
-    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com"
   ],
   "roles/cloudsql.editor" = [
-    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com"
   ],
   "roles/cloudsql.instanceUser" = [
-    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com"
   ],
   "roles/iam.workloadIdentityUser" = [
-    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com"
   ]
   "roles/compute.networkUser" = [
-    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com"
   ],
   "roles/container.hostServiceAgentUser" = [
-    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com"
   ]
 }
 
