@@ -23,6 +23,7 @@ class OAuth2Credentials(_BaseCredentials):
     refresh_token: Optional[SecretStr]
     refresh_token_expires_at: Optional[int]  # seconds
     scopes: list[str]
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class APIKeyCredentials(_BaseCredentials):
