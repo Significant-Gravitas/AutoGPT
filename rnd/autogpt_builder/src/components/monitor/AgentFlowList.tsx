@@ -51,7 +51,7 @@ export const AgentFlowList = ({
 
   return (
     <Card className={className}>
-      <CardHeader className="flex-row justify-between items-center space-x-3 space-y-0">
+      <CardHeader className="flex-row items-center justify-between space-x-3 space-y-0">
         <CardTitle>Agents</CardTitle>
 
         <div className="flex items-center">

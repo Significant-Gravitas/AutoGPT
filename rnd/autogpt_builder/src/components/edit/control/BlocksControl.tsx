@@ -54,11 +54,11 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         className="w-96 p-0"
       >
         <Card className="border-none shadow-md">
-          <CardHeader className="flex px-2 flex-col p-3 gap-x-8 gap-y-2">
-            <div className="justify-between items-center ">
+          <CardHeader className="flex flex-col gap-x-8 gap-y-2 p-3 px-2">
+            <div className="items-center justify-between">
               <Label
                 htmlFor="search-blocks"
-                className="text-base 2xl:text-xl font-semibold whitespace-nowrap text-black border-b-2 border-violet-500"
+                className="whitespace-nowrap border-b-2 border-violet-500 text-base font-semibold text-black 2xl:text-xl"
               >
                 Blocks
               </Label>
@@ -78,14 +78,14 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                   key={block.id}
                   className={`m-2 ${getPrimaryCategoryColor(block.categories)}`}
                 >
-                  <div className="flex items-center justify-between m-3">
-                    <div className="flex-1 min-w-0 mr-2">
-                      <span className="font-medium truncate block">
+                  <div className="m-3 flex items-center justify-between">
+                    <div className="mr-2 min-w-0 flex-1">
+                      <span className="block truncate font-medium">
                         {beautifyString(block.name)}
                       </span>
                     </div>
                     <SchemaTooltip description={block.description} />
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                    <div className="flex flex-shrink-0 items-center gap-1">
                       <Button
                         variant="ghost"
                         size="icon"
