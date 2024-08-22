@@ -10,8 +10,10 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
         },
     });
 
+    // CSS classes for disabling and highlighting blocks
     const disableClass = 'disable-blocks';
     const highlightClass = 'highlight-block';
+    let isConnecting = false;
 
     // Helper function to disable all blocks except the target block
     const disableOtherBlocks = (targetBlockSelector: string) => {
@@ -58,6 +60,60 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
             checkElement();
         });
     };
+
+    // Function to detect the correct connection and advance the tour
+    const detectConnection = () => {
+        const checkForConnection = () => {
+            const correctConnection = document.querySelector('[data-testid="rf__edge-1_result_2_a"]');
+            if (correctConnection) {
+                tour.show('press-run-again');
+            } else {
+                setTimeout(checkForConnection, 100);
+            }
+        };
+
+        checkForConnection();
+    };
+
+    // Define state management functions to handle connection state
+    function startConnecting() {
+        isConnecting = true;
+    }
+
+    function stopConnecting() {
+        isConnecting = false;
+    }
+
+    // Reset connection state when revisiting the step
+    function resetConnectionState() {
+        stopConnecting();
+    }
+
+    // Event handlers for mouse down and up to manage connection state
+    function handleMouseDown() {
+        startConnecting();
+        setTimeout(() => {
+            if (isConnecting) {
+                tour.next();
+            }
+        }, 100);
+    }
+    // Event handler for mouse up to check if the connection was successful
+    function handleMouseUp(event: { target: any; }) {
+        const target = event.target;
+        const validConnectionPoint = document.querySelector('[data-id="2-a-target"]');
+    
+        if (validConnectionPoint && !validConnectionPoint.contains(target)) {
+            setTimeout(() => {
+                if (!document.querySelector('[data-testid="rf__edge-1_result_2_a"]')) {
+                    stopConnecting();
+                    tour.show('connect-blocks-output');
+                }
+            }, 200);
+        } else {
+            stopConnecting();
+        }
+    }
 
     injectStyles();
 
@@ -277,23 +333,57 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
     });
 
     tour.addStep({
-        id: 'connect-blocks',
-        title: 'Connect the Blocks',
+        id: 'connect-blocks-output',
+        title: 'Connect the Blocks: Output',
         text: 'Now, let’s connect the output of the first Math Block to the input of the second Math Block. Drag from the output pin of the first block to the input pin (A) of the second block.',
-        attachTo: { element: '[data-id="custom-node-1"] [data-handlepos="right"]', on: 'bottom' },
+        attachTo: { element: '[data-id="1-result-source"]', on: 'bottom' },
         buttons: [
             {
                 text: 'Back',
                 action: tour.back,
             },
-            {
-                text: 'Next',
-                action: tour.next,
-            },
         ],
+        beforeShowPromise: () => {
+            return waitForElement('[data-id="1-result-source"]');
+        },
         when: {
-            show: () => tour.modal.hide(),
-            hide: () => tour.modal.show(),
+            show: () => {
+                resetConnectionState();  // Reset state when revisiting this step
+                tour.modal.show();
+                const outputPin = document.querySelector('[data-id="1-result-source"]');
+                if (outputPin) {
+                    outputPin.addEventListener('mousedown', handleMouseDown);
+                }
+            },
+            hide: () => {
+                const outputPin = document.querySelector('[data-id="1-result-source"]');
+                if (outputPin) {
+                    outputPin.removeEventListener('mousedown', handleMouseDown);
+                }
+            },
+        },
+    });
+    
+    tour.addStep({
+        id: 'connect-blocks-input',
+        title: 'Connect the Blocks: Input',
+        text: 'Now, connect the output to the input pin of the second block (A).',
+        attachTo: { element: '[data-id="2-a-target"]', on: 'top' },
+        buttons: [],
+        beforeShowPromise: () => {
+            return waitForElement('[data-id="2-a-target"]').then(() => {
+                detectConnection();
+            });
+        },
+        when: {
+            show: () => {
+                tour.modal.show();
+                document.addEventListener('mouseup', handleMouseUp, true);
+            },
+            hide: () => {
+                tour.modal.hide();
+                document.removeEventListener('mouseup', handleMouseUp, true);
+            },
         },
     });
 
@@ -303,12 +393,7 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
         text: 'Now, press the Run button again to execute the flow with the new Math Block added!',
         attachTo: { element: '[data-id="control-button-2"]', on: 'right' },
         advanceOn: { selector: '[data-id="control-button-2"]', event: 'click' },
-        buttons: [
-            {
-                text: 'Back',
-                action: tour.back,
-            },
-        ],
+        buttons: [],
     });
 
     tour.addStep({
