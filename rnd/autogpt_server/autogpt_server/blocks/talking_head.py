@@ -19,7 +19,7 @@ class CreateTalkingAvatarClipBlock(Block):
             description="The voice provider to use", default="microsoft"
         )
         voice_id: str = SchemaField(
-            description="The voice ID to use", default="en-US-JennyNeural"
+            description="The voice ID to use, get list of voices [here](https://docs.agpt.co/server/d_id)", default="en-US-JennyNeural"
         )
         presenter_id: str = SchemaField(
             description="The presenter ID to use", default="amy-Aq6OmGZnMt"
