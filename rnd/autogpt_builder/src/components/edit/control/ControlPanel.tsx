@@ -54,7 +54,7 @@ export const ControlPanel = ({
                   variant="ghost"
                   size="icon"
                   onClick={() => control.onClick()}
-                  data-id={`control-button-${index}`}  // Unique data-id for each button
+                  data-id={`control-button-${index}`} // Unique data-id for each button
                 >
                   {control.icon}
                   <span className="sr-only">{control.label}</span>

@@ -52,7 +52,7 @@ import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
 import { IconPlay, IconRedo2, IconUndo2 } from "@/components/ui/icons";
-import { startTutorial } from './tutorial';
+import { startTutorial } from "./tutorial";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -115,12 +115,12 @@ const FlowEditor: React.FC<{
 
   useEffect(() => {
     // Check local storage to see if the tutorial has already been started
-    const shouldStartTutorial = !localStorage.getItem('shepherd-tour');
+    const shouldStartTutorial = !localStorage.getItem("shepherd-tour");
 
     if (shouldStartTutorial && availableNodes.length > 0) {
       startTutorial(setPinBlocks); // Pass the setPinBlocks function to the tutorial
       setTutorialStarted(true); // Set state to avoid restarting the tutorial
-      localStorage.setItem('shepherd-tour', 'yes'); // Set a flag in local storage indicating the tutorial has been started
+      localStorage.setItem("shepherd-tour", "yes"); // Set a flag in local storage indicating the tutorial has been started
     }
   }, [availableNodes, tutorialStarted]);
 

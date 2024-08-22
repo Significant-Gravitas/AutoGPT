@@ -40,11 +40,13 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredBlocks = blocks.filter((block: Block) =>
-    block.name.toLowerCase().includes(searchQuery.toLowerCase())
+    block.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   return (
-    <Popover open={pinBlocks ? true : undefined}> {/* Control popover open state */}
+    <Popover open={pinBlocks ? true : undefined}>
+      {" "}
+      {/* Control popover open state */}
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -94,14 +96,18 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                 >
                   <div className="m-3 flex items-center justify-between">
                     <div className="mr-2 min-w-0 flex-1">
-                      <span className="block truncate font-medium"
-                        data-id={`block-name-${block.id}`}>
+                      <span
+                        className="block truncate font-medium"
+                        data-id={`block-name-${block.id}`}
+                      >
                         {beautifyString(block.name)}
                       </span>
                     </div>
                     <SchemaTooltip description={block.description} />
-                    <div className="flex flex-shrink-0 items-center gap-1
-                      "data-id={`block-tooltip-${block.id}`}>
+                    <div
+                      className="flex flex-shrink-0 items-center gap-1"
+                      data-id={`block-tooltip-${block.id}`}
+                    >
                       <Button
                         variant="ghost"
                         size="icon"
