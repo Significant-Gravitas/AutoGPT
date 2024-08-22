@@ -413,8 +413,14 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
     });
 
     // Unpin blocks when the tour is completed or canceled
-    tour.on('complete', () => setPinBlocks(false));
-    tour.on('cancel', () => setPinBlocks(false));
-
+    tour.on('complete', () => {
+        setPinBlocks(false);
+        localStorage.setItem('shepherd-tour', 'completed'); // Optionally mark the tutorial as completed
+      });
+    
+      tour.on('cancel', () => {
+        setPinBlocks(false);
+        localStorage.setItem('shepherd-tour', 'canceled'); // Optionally mark the tutorial as canceled
+      });
     tour.start();
 };

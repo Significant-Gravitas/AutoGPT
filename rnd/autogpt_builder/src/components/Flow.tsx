@@ -114,9 +114,13 @@ const FlowEditor: React.FC<{
   const [pinBlocks, setPinBlocks] = useState(false); // State to control if blocks menu should be pinned open
 
   useEffect(() => {
-    if (!tutorialStarted && availableNodes.length > 0) {
+    // Check local storage to see if the tutorial has already been started
+    const shouldStartTutorial = !localStorage.getItem('shepherd-tour');
+
+    if (shouldStartTutorial && availableNodes.length > 0) {
       startTutorial(setPinBlocks); // Pass the setPinBlocks function to the tutorial
       setTutorialStarted(true); // Set state to avoid restarting the tutorial
+      localStorage.setItem('shepherd-tour', 'yes'); // Set a flag in local storage indicating the tutorial has been started
     }
   }, [availableNodes, tutorialStarted]);
 
