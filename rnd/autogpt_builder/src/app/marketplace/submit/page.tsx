@@ -136,7 +136,7 @@ const SubmitPage: React.FC = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-6">Submit Your Agent</h1>
+      <h1 className="mb-6 text-3xl font-bold">Submit Your Agent</h1>
       <Card className="p-6">
         <form onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-4">

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable, ClassVar, Optional, TypeVar
 
 from pydantic import BaseModel, Field, GetCoreSchemaHandler
@@ -13,18 +14,27 @@ from pydantic_core import (
 from autogpt_server.util.settings import Secrets
 
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 class BlockSecret:
     def __init__(self, key: Optional[str] = None, value: Optional[str] = None):
         if value is not None:
-            self._value = value
+            trimmed_value = value.strip()
+            if value != trimmed_value:
+                logger.debug(BlockSecret.TRIMMING_VALUE_MSG)
+            self._value = trimmed_value
             return
 
         self._value = self.__get_secret(key)
         if self._value is None:
             raise ValueError(f"Secret {key} not found.")
+        trimmed_value = self._value.strip()
+        if self._value != trimmed_value:
+            logger.debug(BlockSecret.TRIMMING_VALUE_MSG)
+        self._value = trimmed_value
 
+    TRIMMING_VALUE_MSG: ClassVar[str] = "Provided secret value got trimmed."
     STR: ClassVar[str] = "<secret>"
     SECRETS: ClassVar[Secrets] = Secrets()
 
@@ -41,7 +51,10 @@ class BlockSecret:
         return getattr(BlockSecret.SECRETS, key)
 
     def get_secret_value(self):
-        return str(self._value)
+        trimmed_value = str(self._value).strip()
+        if self._value != trimmed_value:
+            logger.info(BlockSecret.TRIMMING_VALUE_MSG)
+        return trimmed_value
 
     @classmethod
     def parse_value(cls, value: Any) -> BlockSecret:

@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
+    "@next/third-parties": "^14.2.5",
     "@radix-ui/react-avatar": "^1.1.0",
     "@radix-ui/react-checkbox": "^1.1.1",
     "@radix-ui/react-collapsible": "^1.1.0",
@@ -59,6 +60,7 @@
     "eslint-config-next": "14.2.4",
     "postcss": "^8",
     "prettier": "^3.3.3",
+    "prettier-plugin-tailwindcss": "^0.6.6",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
   }

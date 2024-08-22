@@ -205,6 +205,13 @@
   resolved "https://registry.yarnpkg.com/@next/swc-win32-x64-msvc/-/swc-win32-x64-msvc-14.2.4.tgz#e65a1c6539a671f97bb86d5183d6e3a1733c29c7"
   integrity sha512-tkLrjBzqFTP8DVrAAQmZelEahfR9OxWpFR++vAI9FBhCiIxtwHwBHC23SBHCTURBtwB4kc/x44imVOnkKGNVGg==
 
+"@next/third-parties@^14.2.5":
+  version "14.2.5"
+  resolved "https://registry.yarnpkg.com/@next/third-parties/-/third-parties-14.2.5.tgz#7161d266547cabfb61b8af9721f83f8b5463a572"
+  integrity sha512-PDRJm8RZ3rnGNporHKjcdCeZqoW8iJ5uP0clo1Z08TqJiQzuntJ66zrGYCJyqTakx62UJNOp73YsQCFo6kbYYg==
+  dependencies:
+    third-party-capital "1.0.20"
+
 "@nodelib/fs.scandir@2.1.5":
   version "2.1.5"
   resolved "https://registry.npmjs.org/@nodelib/fs.scandir/-/fs.scandir-2.1.5.tgz"
@@ -3781,6 +3788,11 @@ prelude-ls@^1.2.1:
   resolved "https://registry.npmjs.org/prelude-ls/-/prelude-ls-1.2.1.tgz"
   integrity sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==
 
+prettier-plugin-tailwindcss@^0.6.6:
+  version "0.6.6"
+  resolved "https://registry.yarnpkg.com/prettier-plugin-tailwindcss/-/prettier-plugin-tailwindcss-0.6.6.tgz#93e524d3c30f3fb45dc9e99de985b2a584ff063f"
+  integrity sha512-OPva5S7WAsPLEsOuOWXATi13QrCKACCiIonFgIR6V4lYv4QLp++UXVhZSzRbZxXGimkQtQT86CC6fQqTOybGng==
+
 prettier@^3.3.3:
   version "3.3.3"
   resolved "https://registry.npmjs.org/prettier/-/prettier-3.3.3.tgz"
@@ -4195,6 +4207,7 @@ streamsearch@^1.1.0:
   integrity sha512-Mcc5wHehp9aXz1ax6bZUyY5afg9u2rv5cqQI3mRrYkGC8rW2hM02jWuwjtL++LS5qinSyhj2QfLyNsuc+VsExg==
 
 "string-width-cjs@npm:string-width@^4.2.0", string-width@^4.1.0:
+  name string-width-cjs
   version "4.2.3"
   resolved "https://registry.npmjs.org/string-width/-/string-width-4.2.3.tgz"
   integrity sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==
@@ -4408,6 +4421,11 @@ thenify-all@^1.0.0:
   integrity sha512-RVZSIV5IG10Hk3enotrhvz0T9em6cyHBLkH/YAZuKqd8hRkKhSfCGIcP2KUY0EPxndzANBmNllzWPwak+bheSw==
   dependencies:
     any-promise "^1.0.0"
+
+third-party-capital@1.0.20:
+  version "1.0.20"
+  resolved "https://registry.yarnpkg.com/third-party-capital/-/third-party-capital-1.0.20.tgz#e218a929a35bf4d2245da9addb8ab978d2f41685"
+  integrity sha512-oB7yIimd8SuGptespDAZnNkzIz+NWaJCu2RMsbs4Wmp9zSDUM8Nhi3s2OOcqYuv3mN4hitXc8DVx+LyUmbUDiA==
 
 tiny-invariant@^1.3.1:
   version "1.3.3"
