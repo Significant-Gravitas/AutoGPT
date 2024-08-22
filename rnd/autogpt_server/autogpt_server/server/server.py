@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from functools import wraps
 from typing import Annotated, Any, Dict
 
+import aiohttp
 import uvicorn
 from autogpt_libs.auth.jwt_utils import parse_jwt_token
 from autogpt_libs.auth.middleware import auth_middleware
@@ -67,6 +68,7 @@ class AgentServer(AppService):
     def __init__(self):
         super().__init__()
         self.websocket_url = settings.config.websocket_url
+        self.session = None
 
     async def event_broadcaster(self):
         while True:
@@ -94,6 +96,8 @@ class AgentServer(AppService):
             version="0.1",
             lifespan=self.lifespan,
         )
+
+        self.session = aiohttp.ClientSession()
 
         if self._test_dependency_overrides:
             app.dependency_overrides.update(self._test_dependency_overrides)
@@ -296,44 +300,6 @@ class AgentServer(AppService):
                 return ""
         else:
             return user_db.DEFAULT_USER_ID
-
-    async def websocket_router(self, websocket: WebSocket):
-        user_id = await self.authenticate_websocket(websocket)
-        if not user_id:
-            return
-        await self.manager.connect(websocket)
-        try:
-            while True:
-                data = await websocket.receive_text()
-                message = WsMessage.model_validate_json(data)
-                if message.method == Methods.SUBSCRIBE:
-                    await autogpt_server.server.ws_api.handle_subscribe(
-                        websocket, self.manager, message
-                    )
-
-                elif message.method == Methods.UNSUBSCRIBE:
-                    await autogpt_server.server.ws_api.handle_unsubscribe(
-                        websocket, self.manager, message
-                    )
-
-                elif message.method == Methods.ERROR:
-                    print("WebSocket Error message received:", message.data)
-
-                else:
-                    print(
-                        f"Message type {message.method} is not processed by the server"
-                    )
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.ERROR,
-                            success=False,
-                            error="Message type is not processed by the server",
-                        ).model_dump_json()
-                    )
-
-        except WebSocketDisconnect:
-            self.manager.disconnect(websocket)
-            print("Client Disconnected")
 
     @classmethod
     async def get_or_create_user_route(cls, user_data: dict = Depends(auth_middleware)):
@@ -579,9 +545,24 @@ class AgentServer(AppService):
         return execution_scheduler.get_execution_schedules(graph_id, user_id)  # type: ignore
 
     @expose
-    def send_execution_update(self, execution_result_dict: dict[Any, Any]):
-        execution_result = ExecutionResult(**execution_result_dict)
-        self.run_and_wait(self.event_queue.put(execution_result))
+    async def send_execution_update(self, execution_result_dict: dict[Any, Any]):
+        if not self.session:
+            await self.startup()
+
+        try:
+            async with self.session.post(
+                    f"{self.websocket_url}/update",
+                    json=execution_result_dict,
+                    timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                if response.status >= 400:
+                    text = await response.text()
+                    raise HTTPException(status_code=500,
+                                        detail=f"Failed to send update to WebSocket server. Status: {response.status}, Response: {text}")
+                return await response.json()
+        except aiohttp.ClientError as e:
+            raise HTTPException(status_code=500,
+                                detail=f"Network error when sending update to WebSocket server: {str(e)}")
 
     @expose
     def acquire_lock(self, key: Any):

@@ -1,7 +1,7 @@
 import asyncio
 
 from autogpt_libs.auth.jwt_utils import parse_jwt_token
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 import autogpt_server.server.ws_api as ws_api
@@ -11,14 +11,25 @@ from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import Methods, WsMessage
 from autogpt_server.util.settings import Settings
 
+from queue_interface import QueueInterface
+
 settings = Settings()
 
+class AsyncioQueue(QueueInterface):
+    def __init__(self):
+        self.queue = asyncio.Queue()
+
+    async def put(self, item):
+        await self.queue.put(item)
+
+    async def get(self):
+        return await self.queue.get()
 
 class WebSocketServer:
     def __init__(self):
         self.app = FastAPI()
         self.manager = ConnectionManager()
-        self.event_queue = asyncio.Queue()
+        self.event_queue = AsyncioQueue()
 
         self.app.add_middleware(
             CORSMiddleware,
@@ -31,6 +42,12 @@ class WebSocketServer:
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
             await self.websocket_router(websocket)
+
+        @self.app.post("/update")
+        async def receive_update(update: dict):
+            execution_result = ExecutionResult(**update)
+            await self.event_queue.put(execution_result)
+            return {"status": "received"}
 
     async def authenticate_websocket(self, websocket: WebSocket) -> str:
         if settings.config.enable_auth.lower() == "true":
@@ -86,9 +103,6 @@ class WebSocketServer:
         while True:
             event = await self.event_queue.get()
             await self.manager.send_execution_result(event)
-
-    async def add_execution_update(self, execution_result: ExecutionResult):
-        await self.event_queue.put(execution_result)
 
     def run(self, host: str = "0.0.0.0", port: int = 8001):
         import uvicorn
