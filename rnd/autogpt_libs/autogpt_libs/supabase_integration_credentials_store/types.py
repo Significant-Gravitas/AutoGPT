@@ -19,16 +19,16 @@ class _BaseCredentials(BaseModel):
 class OAuth2Credentials(_BaseCredentials):
     type: Literal["oauth2"] = "oauth2"
     access_token: SecretStr
-    access_token_expires_at: int
-    refresh_token: SecretStr
-    refresh_token_expires_at: Optional[int]
+    access_token_expires_at: Optional[int]  # seconds
+    refresh_token: Optional[SecretStr]
+    refresh_token_expires_at: Optional[int]  # seconds
     scopes: list[str]
 
 
 class APIKeyCredentials(_BaseCredentials):
     type: Literal["api_key"] = "api_key"
     api_key: SecretStr
-    expires_at: Optional[int]
+    expires_at: Optional[int]  # seconds
 
 
 class PasswordCredentials(_BaseCredentials):
