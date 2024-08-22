@@ -36,9 +36,7 @@ from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import (
     CreateGraph,
-    Methods,
     SetGraphActiveVersion,
-    WsMessage,
 )
 from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
