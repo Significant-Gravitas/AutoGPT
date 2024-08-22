@@ -137,6 +137,14 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
     text: "This is the AutoGPT builder!",
     buttons: [
       {
+        text: "Skip Tutorial",
+        action: () => {
+          tour.cancel(); // Ends the tour
+          localStorage.setItem("shepherd-tour", "skipped"); // Set the tutorial as skipped in local storage
+        },
+        classes: "shepherd-button-secondary", // Optionally add a class for styling the skip button differently
+      },
+      {
         text: "Next",
         action: tour.next,
       },
