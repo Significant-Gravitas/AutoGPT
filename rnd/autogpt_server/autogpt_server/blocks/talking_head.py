@@ -38,10 +38,10 @@ class CreateTalkingAvatarClipBlock(Block):
         )
         ssml: bool = SchemaField(description="Whether the input is SSML", default=False)
         max_polling_attempts: int = SchemaField(
-            description="Maximum number of polling attempts", default=30
+            description="Maximum number of polling attempts", default=30, ge=5
         )
         polling_interval: int = SchemaField(
-            description="Interval between polling attempts in seconds", default=10
+            description="Interval between polling attempts in seconds", default=10, ge=5
         )
 
     class Output(BlockSchema):
@@ -65,8 +65,8 @@ class CreateTalkingAvatarClipBlock(Block):
                 "crop_type": "wide",
                 "subtitles": False,
                 "ssml": False,
-                "max_polling_attempts": 3,
-                "polling_interval": 1,
+                "max_polling_attempts": 5,
+                "polling_interval": 5,
             },
             test_output=[
                 (
