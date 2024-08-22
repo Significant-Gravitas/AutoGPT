@@ -298,7 +298,7 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
     tour.addStep({
         id: 'copy-paste-block',
         title: 'Copy and Paste the Block',
-        text: 'Let’s duplicate this block. Click and hold the block with your mouse, then press Ctrl+C to copy and Ctrl+V to paste.',
+        text: 'Let’s duplicate this block. Click and hold the block with your mouse, then press Ctrl+C (Cmd+C on Mac) to copy and Ctrl+V (Cmd+V on Mac) to paste.'
         attachTo: { element: `[data-id="custom-node-1"]`, on: 'top' },
         buttons: [
             {
