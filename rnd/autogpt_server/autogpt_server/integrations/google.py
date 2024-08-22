@@ -8,12 +8,17 @@ from .oauth import BaseOAuthHandler
 
 
 class GoogleOAuthHandler(BaseOAuthHandler):
+    """
+    Based on the documentation at https://developers.google.com/identity/protocols/oauth2/web-server
+    """  # noqa
+
     PROVIDER_NAME = "google"
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
+        self.token_uri = "https://oauth2.googleapis.com/token"
 
     def get_login_url(self, scopes: list[str], state: str) -> str:
         flow = self._setup_oauth_flow(scopes)
@@ -46,7 +51,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         google_creds = Credentials(
             token=credentials.access_token.get_secret_value(),
             refresh_token=credentials.refresh_token.get_secret_value(),
-            token_uri="https://oauth2.googleapis.com/token",
+            token_uri=self.token_uri,
             client_id=self.client_id,
             client_secret=self.client_secret,
             scopes=credentials.scopes,
@@ -72,7 +77,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
                     "client_id": self.client_id,
                     "client_secret": self.client_secret,
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "token_uri": self.token_uri,
                 }
             },
             scopes=scopes,

@@ -8,6 +8,19 @@ from autogpt_server.integrations.oauth import BaseOAuthHandler
 
 
 class GitHubOAuthHandler(BaseOAuthHandler):
+    """
+    Based on the documentation at:
+    - [Authorizing OAuth apps - GitHub Docs](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps)
+    - [Refreshing user access tokens - GitHub Docs](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens)
+
+    Notes:
+    - By default, token expiration is disabled on GitHub Apps. This means the access
+      token doesn't expire and no refresh token is returned by the authorization flow.
+    - When token expiration gets enabled, any existing tokens will remain non-expiring.
+    - When token expiration gets disabled, token refreshes will return a non-expiring
+      access token *with no refresh token*.
+    """  # noqa
+
     PROVIDER_NAME = "github"
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
@@ -60,6 +73,8 @@ class GitHubOAuthHandler(BaseOAuthHandler):
             provider=self.PROVIDER_NAME,
             title=current_credentials.title if current_credentials else "GitHub",
             access_token=token_data["access_token"],
+            # Token refresh responses have an empty `scope` property (see docs),
+            # so we have to get the scope from the existing credentials object.
             scopes=(
                 token_data.get("scope", "").split(",")
                 or (current_credentials.scopes if current_credentials else [])
