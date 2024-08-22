@@ -121,7 +121,6 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
     const keys = parseKeys(path);
     const newValues = JSON.parse(JSON.stringify(data.hardcodedValues));
     let current = newValues;
-    // current[path] = value; # TODO: revive this
 
     for (let i = 0; i < keys.length - 1; i++) {
       const { key: currentKey, index } = keys[i];
