@@ -22,6 +22,11 @@ class BaseOAuthHandler(ABC):
         """Exchanges the acquired authorization code from login for a set of tokens"""
         ...
 
+    @abstractmethod
+    def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
+        """Implements the token refresh mechanism"""
+        ...
+
     def refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
         if credentials.provider != self.PROVIDER_NAME:
             raise ValueError(
@@ -29,11 +34,6 @@ class BaseOAuthHandler(ABC):
                 f"for other provider '{credentials.provider}'"
             )
         return self._refresh_tokens(credentials)
-
-    @abstractmethod
-    def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
-        """Implements the token refresh mechanism"""
-        ...
 
     def get_access_token(self, credentials: OAuth2Credentials) -> str:
         """Returns a valid access token, refreshing it first if needed"""
