@@ -1,13 +1,13 @@
 from typing import cast
 
-from supabase import create_client, Client
+from supabase import Client
 
 from .types import Credentials, OAuth2Credentials, UserMetadata, UserMetadataRaw
 
 
 class SupabaseIntegrationCredentialsStore:
-    def __init__(self, url: str, key: str):
-        self.supabase: Client = create_client(url, key)
+    def __init__(self, supabase: Client):
+        self.supabase = supabase
 
     def add_creds(self, user_id: str, credentials: Credentials) -> None:
         if self.get_creds_by_id(user_id, credentials.id):
