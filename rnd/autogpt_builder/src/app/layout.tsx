@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 
 import "./globals.css";
 import TallyPopupSimple from "@/components/TallyPopup";
+import { GoogleAnalytics } from "@next/third-parties/google";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -37,6 +38,10 @@ export default function RootLayout({
           </div>
         </Providers>
       </body>
+
+      <GoogleAnalytics
+        gaId={process.env.GA_MEASUREMENT_ID || "G-FH2XK2W4GN"} // This is the measurement Id for the Google Analytics dev project
+      />
     </html>
   );
 }
