@@ -111,7 +111,7 @@ const FlowEditor: React.FC<{
   const isDragging = useRef(false);
 
   const [tutorialStarted, setTutorialStarted] = useState(false); // State to control if tutorial has started
-  const [pinBlocks, setPinBlocks] = useState(false); // State to control if blocks menu should be pinned open
+  const [pinBlocksPopover, setPinBlocks] = useState(false); // State to control if blocks menu should be pinned open
 
   useEffect(() => {
     // Check local storage to see if the tutorial has already been started
@@ -1062,7 +1062,7 @@ const FlowEditor: React.FC<{
           <Background />
           <ControlPanel className="absolute z-10" controls={editorControls}>
             <BlocksControl
-              pinBlocks={pinBlocks} // Pass the state to BlocksControl
+              pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
               blocks={availableNodes}
               addBlock={addNode}
             />

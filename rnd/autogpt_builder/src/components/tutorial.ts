@@ -18,7 +18,7 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
   // Helper function to disable all blocks except the target block
   const disableOtherBlocks = (targetBlockSelector: string) => {
     document
-      .querySelectorAll('[data-id^="add-block-button"]')
+      .querySelectorAll('[dataId^="add-block-button"]')
       .forEach((block) => {
         block.classList.toggle(
           disableClass,
@@ -34,7 +34,7 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
   // Helper function to enable all blocks
   const enableAllBlocks = () => {
     document
-      .querySelectorAll('[data-id^="add-block-button"]')
+      .querySelectorAll('[dataId^="add-block-button"]')
       .forEach((block) => {
         block.classList.remove(disableClass, highlightClass);
       });
@@ -114,7 +114,7 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
   function handleMouseUp(event: { target: any }) {
     const target = event.target;
     const validConnectionPoint = document.querySelector(
-      '[data-id="2-a-target"]',
+      '[dataId="2-a-target"]',
     );
 
     if (validConnectionPoint && !validConnectionPoint.contains(target)) {
@@ -156,11 +156,11 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
     title: "Open Blocks Menu",
     text: "Please click the block button to open the blocks menu.",
     attachTo: {
-      element: '[data-id="blocks-control-popover-trigger"]',
+      element: '[dataId="blocks-control-popover-trigger"]',
       on: "bottom",
     },
     advanceOn: {
-      selector: '[data-id="blocks-control-popover-trigger"]',
+      selector: '[dataId="blocks-control-popover-trigger"]',
       event: "click",
     },
     buttons: [],
@@ -171,19 +171,19 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
     title: "Scroll Down or Search",
     text: 'Scroll down or search in the blocks menu for the "Math Block" and press the "+" to add the block.',
     attachTo: {
-      element: '[data-id="blocks-control-popover-content"]',
+      element: '[dataId="blocks-control-popover-content"]',
       on: "bottom",
     },
     buttons: [],
     beforeShowPromise: () =>
-      waitForElement('[data-id="blocks-control-popover-content"]').then(() => {
+      waitForElement('[dataId="blocks-control-popover-content"]').then(() => {
         disableOtherBlocks(
-          '[data-id="add-block-button-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
+          '[dataId="add-block-button-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
         );
       }),
     advanceOn: {
       selector:
-        '[data-id="add-block-button-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
+        '[dataId="add-block-button-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
       event: "click",
     },
     when: {
@@ -196,8 +196,8 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
     id: "focus-new-block",
     title: "New Block",
     text: "This is a Math Block. Let’s go over how it works.",
-    attachTo: { element: `[data-id="custom-node-1"]`, on: "top" },
-    beforeShowPromise: () => waitForElement('[data-id="custom-node-1"]'),
+    attachTo: { element: `[dataId="custom-node-1"]`, on: "top" },
+    beforeShowPromise: () => waitForElement('[dataId="custom-node-1"]'),
     buttons: [
       {
         text: "Next",
@@ -302,8 +302,8 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
     id: "press-run",
     title: "Press Run",
     text: "Start your first flow by pressing the Run button!",
-    attachTo: { element: '[data-id="control-button-2"]', on: "right" },
-    advanceOn: { selector: '[data-id="control-button-2"]', event: "click" },
+    attachTo: { element: '[dataId="control-button-2"]', on: "right" },
+    advanceOn: { selector: '[dataId="control-button-2"]', event: "click" },
     buttons: [
       {
         text: "Back",
@@ -334,7 +334,7 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
     id: "copy-paste-block",
     title: "Copy and Paste the Block",
     text: "Let’s duplicate this block. Click and hold the block with your mouse, then press Ctrl+C (Cmd+C on Mac) to copy and Ctrl+V (Cmd+V on Mac) to paste.",
-    attachTo: { element: `[data-id="custom-node-1"]`, on: "top" },
+    attachTo: { element: `[dataId="custom-node-1"]`, on: "top" },
     buttons: [
       {
         text: "Back",
@@ -357,8 +357,8 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
     id: "focus-second-block",
     title: "Focus on the New Block",
     text: "This is your copied Math Block. Now, let’s move it to the side of the first block.",
-    attachTo: { element: `[data-id="custom-node-2"]`, on: "top" },
-    beforeShowPromise: () => waitForElement('[data-id="custom-node-2"]'),
+    attachTo: { element: `[dataId="custom-node-2"]`, on: "top" },
+    beforeShowPromise: () => waitForElement('[dataId="custom-node-2"]'),
     buttons: [
       {
         text: "Next",
@@ -426,8 +426,8 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
     id: "press-run-again",
     title: "Press Run Again",
     text: "Now, press the Run button again to execute the flow with the new Math Block added!",
-    attachTo: { element: '[data-id="control-button-2"]', on: "right" },
-    advanceOn: { selector: '[data-id="control-button-2"]', event: "click" },
+    attachTo: { element: '[dataId="control-button-2"]', on: "right" },
+    advanceOn: { selector: '[dataId="control-button-2"]', event: "click" },
     buttons: [],
   });
 

@@ -285,7 +285,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       className={`custom-node dark-theme rounded-xl border bg-white/[.9] shadow-md ${data.status?.toLowerCase() ?? ""}`}
       onMouseEnter={handleHovered}
       onMouseLeave={handleMouseLeave}
-      data-id={`custom-node-${id}`}
+      dataId={`custom-node-${id}`}
     >
       <div
         className={`mb-2 p-3 ${getPrimaryCategoryColor(data.categories)} rounded-t-xl`}
