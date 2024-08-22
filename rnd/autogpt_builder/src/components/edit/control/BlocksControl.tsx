@@ -51,7 +51,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         <Button
           variant="ghost"
           size="icon"
-          dataId="blocks-control-popover-trigger"
+          data-id="blocks-control-popover-trigger"
         >
           <IconToyBrick />
         </Button>
@@ -61,7 +61,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         sideOffset={22}
         align="start"
         className="w-96 p-0"
-        dataId="blocks-control-popover-content"
+        data-id="blocks-control-popover-content"
       >
         <Card className="border-none shadow-md">
           <CardHeader className="flex flex-col gap-x-8 gap-y-2 p-3 px-2">
@@ -69,7 +69,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               <Label
                 htmlFor="search-blocks"
                 className="whitespace-nowrap border-b-2 border-violet-500 text-base font-semibold text-black 2xl:text-xl"
-                dataId="blocks-control-label"
+                data-id="blocks-control-label"
               >
                 Blocks
               </Label>
@@ -80,25 +80,25 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               placeholder="Search blocks..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              dataId="blocks-control-search-input"
+              data-id="blocks-control-search-input"
             />
           </CardHeader>
           <CardContent className="p-1">
             <ScrollArea
               className="h-[60vh]"
-              dataId="blocks-control-scroll-area"
+              data-id="blocks-control-scroll-area"
             >
               {filteredBlocks.map((block) => (
                 <Card
                   key={block.id}
                   className={`m-2 ${getPrimaryCategoryColor(block.categories)}`}
-                  dataId={`block-card-${block.id}`}
+                  data-id={`block-card-${block.id}`}
                 >
                   <div className="m-3 flex items-center justify-between">
                     <div className="mr-2 min-w-0 flex-1">
                       <span
                         className="block truncate font-medium"
-                        dataId={`block-name-${block.id}`}
+                        data-id={`block-name-${block.id}`}
                       >
                         {beautifyString(block.name)}
                       </span>
@@ -106,14 +106,14 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                     <SchemaTooltip description={block.description} />
                     <div
                       className="flex flex-shrink-0 items-center gap-1"
-                      dataId={`block-tooltip-${block.id}`}
+                      data-id={`block-tooltip-${block.id}`}
                     >
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => addBlock(block.id, block.name)}
                         aria-label="Add block"
-                        dataId={`add-block-button-${block.id}`}
+                        data-id={`add-block-button-${block.id}`}
                       >
                         <PlusIcon />
                       </Button>
