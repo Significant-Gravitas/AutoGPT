@@ -64,6 +64,10 @@ class AgentServer(AppService):
     use_db = False
     _test_dependency_overrides = {}
 
+    def __init__(self):
+        super().__init__()
+        self.websocket_url = settings.config.websocket_url
+
     async def event_broadcaster(self):
         while True:
             event: ExecutionResult = await self.event_queue.get()
@@ -223,9 +227,6 @@ class AgentServer(AppService):
 
         app.include_router(router)
 
-        @app.websocket("/ws")
-        async def websocket_endpoint(websocket: WebSocket):  # type: ignore
-            await self.websocket_router(websocket)
 
         uvicorn.run(app, host="0.0.0.0", port=8000)
 
