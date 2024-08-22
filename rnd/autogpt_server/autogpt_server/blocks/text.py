@@ -115,13 +115,8 @@ class TextParserBlock(Block):
 
 class TextFormatterBlock(Block):
     class Input(BlockSchema):
-        texts: list[Any] = Field(description="Texts (list) to format", default=[])
-        named_texts: dict[str, Any] = Field(
-            description="Texts (dict) to format", default={}
-        )
-        format: str = Field(
-            description="Template to format the text using `texts` and `named_texts`",
-        )
+        values: dict[str, Any] = Field(description="Values (dict) to be used in format")
+        format: str = Field(description="Template to format the text using `values`")
 
     class Output(BlockSchema):
         output: str
@@ -134,31 +129,22 @@ class TextFormatterBlock(Block):
             input_schema=TextFormatterBlock.Input,
             output_schema=TextFormatterBlock.Output,
             test_input=[
-                {"texts": ["Hello"], "format": "{texts[0]}"},
                 {
-                    "texts": ["Hello", "World!"],
-                    "named_texts": {"name": "Alice"},
-                    "format": "{texts[0]} {texts[1]} {name}",
+                    "values": {"name": "Alice", "hello": "Hello", "world": "World!"},
+                    "format": "{hello}, {world} {name}",
                 },
-                {"format": "Hello, World!"},
             ],
             test_output=[
-                ("output", "Hello"),
-                ("output", "Hello World! Alice"),
-                ("output", "Hello, World!"),
+                ("output", "Hello, World! Alice"),
             ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
-        texts = [
-            text if isinstance(text, str) else json.dumps(text)
-            for text in input_data.texts
-        ]
-        named_texts = {
+        values = {
             key: value if isinstance(value, str) else json.dumps(value)
-            for key, value in input_data.named_texts.items()
+            for key, value in input_data.values.items()
         }
-        yield "output", input_data.format.format(texts=texts, **named_texts)
+        yield "output", input_data.format.format(**values)
 
 
 class TextCombinerBlock(Block):

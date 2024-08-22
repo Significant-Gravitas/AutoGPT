@@ -23,7 +23,7 @@ const NodeHandle: FC<HandleProps> = ({
     string: "text",
     number: "number",
     boolean: "true/false",
-    object: "complex",
+    object: "object",
     array: "list",
     null: "null",
   };

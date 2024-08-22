@@ -21,11 +21,14 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Input } from "./ui/input";
+import NodeHandle from "./NodeHandle";
+import { ConnectionData } from "./CustomNode";
 
 type NodeObjectInputTreeProps = {
   selfKey?: string;
   schema: BlockIORootSchema | BlockIOObjectSubSchema;
   object?: { [key: string]: any };
+  connections: ConnectionData;
   handleInputClick: (key: string) => void;
   handleInputChange: (key: string, value: any) => void;
   errors: { [key: string]: string | undefined };
@@ -37,6 +40,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
   selfKey = "",
   schema,
   object,
+  connections,
   handleInputClick,
   handleInputChange,
   errors,
@@ -64,6 +68,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
               propSchema={propSchema}
               currentValue={object ? object[propKey] : undefined}
               errors={errors}
+              connections={connections}
               handleInputChange={handleInputChange}
               handleInputClick={handleInputClick}
               displayName={propSchema.title || beautifyString(propKey)}
@@ -82,6 +87,7 @@ export const NodeGenericInputField: FC<{
   propSchema: BlockIOSubSchema;
   currentValue?: any;
   errors: NodeObjectInputTreeProps["errors"];
+  connections: NodeObjectInputTreeProps["connections"];
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
   handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
   className?: string;
@@ -91,6 +97,7 @@ export const NodeGenericInputField: FC<{
   propSchema,
   currentValue,
   errors,
+  connections,
   handleInputChange,
   handleInputClick,
   className,
@@ -116,6 +123,7 @@ export const NodeGenericInputField: FC<{
         errors={errors}
         className={cn("border-l border-gray-500 pl-2", className)} // visual indent
         displayName={displayName}
+        connections={connections}
         handleInputClick={handleInputClick}
         handleInputChange={handleInputChange}
       />
@@ -131,6 +139,7 @@ export const NodeGenericInputField: FC<{
         errors={errors}
         className={className}
         displayName={displayName}
+        connections={connections}
         handleInputChange={handleInputChange}
       />
     );
@@ -230,8 +239,22 @@ export const NodeGenericInputField: FC<{
           errors={errors}
           className={className}
           displayName={displayName}
+          connections={connections}
           handleInputChange={handleInputChange}
           handleInputClick={handleInputClick}
+        />
+      );
+    case "object":
+      return (
+        <NodeKeyValueInput
+          selfKey={propKey}
+          schema={propSchema}
+          entries={currentValue}
+          errors={errors}
+          className={className}
+          displayName={displayName}
+          connections={connections}
+          handleInputChange={handleInputChange}
         />
       );
     default:
@@ -259,6 +282,7 @@ const NodeKeyValueInput: FC<{
   schema: BlockIOKVSubSchema;
   entries?: { [key: string]: string } | { [key: string]: number };
   errors: { [key: string]: string | undefined };
+  connections: NodeObjectInputTreeProps["connections"];
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
   className?: string;
   displayName?: string;
@@ -266,22 +290,29 @@ const NodeKeyValueInput: FC<{
   selfKey,
   entries,
   schema,
+  connections,
   handleInputChange,
   errors,
   className,
   displayName,
 }) => {
+  let defaultEntries = new Map<string, any>();
+  connections
+    .filter((c) => c.targetHandle.startsWith(`${selfKey}_`))
+    .forEach((c) => {
+      const key = c.targetHandle.slice(`${selfKey}_#_`.length);
+      defaultEntries.set(key, "");
+    });
+  Object.entries(entries ?? schema.default ?? {}).forEach(([key, value]) => {
+    defaultEntries.set(key, value);
+  });
+
   const [keyValuePairs, setKeyValuePairs] = useState<
     {
       key: string;
       value: string | number | null;
     }[]
-  >(
-    Object.entries(entries ?? schema.default ?? {}).map(([key, value]) => ({
-      key,
-      value: value,
-    })),
-  );
+  >(Array.from(defaultEntries, ([key, value]) => ({ key, value })));
 
   function updateKeyValuePairs(newPairs: typeof keyValuePairs) {
     setKeyValuePairs(newPairs);
@@ -292,9 +323,20 @@ const NodeKeyValueInput: FC<{
   }
 
   function convertValueType(value: string): string | number | null {
-    if (schema.additionalProperties.type == "string") return value;
+    if (
+      !schema.additionalProperties ||
+      schema.additionalProperties.type == "string"
+    )
+      return value;
     if (!value) return null;
     return Number(value);
+  }
+
+  function getEntryKey(key: string): string {
+    return `${selfKey}_#_${key}`;
+  }
+  function isConnected(key: string): boolean {
+    return connections.some((c) => c.targetHandle === getEntryKey(key));
   }
 
   return (
@@ -303,43 +345,54 @@ const NodeKeyValueInput: FC<{
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
           <div key={index}>
-            <div className="nodrag mb-2 flex items-center space-x-2">
-              <Input
-                type="text"
-                placeholder="Key"
-                value={key}
-                onChange={(e) =>
-                  updateKeyValuePairs(
-                    keyValuePairs.toSpliced(index, 1, {
-                      key: e.target.value,
-                      value: value,
-                    }),
-                  )
-                }
+            {key && (
+              <NodeHandle
+                keyName={getEntryKey(key)}
+                schema={{ type: "string" }}
+                isConnected={isConnected(key)}
+                isRequired={false}
+                side="left"
               />
-              <Input
-                type="text"
-                placeholder="Value"
-                value={value ?? ""}
-                onChange={(e) =>
-                  updateKeyValuePairs(
-                    keyValuePairs.toSpliced(index, 1, {
-                      key: key,
-                      value: convertValueType(e.target.value),
-                    }),
-                  )
-                }
-              />
-              <Button
-                variant="ghost"
-                className="px-2"
-                onClick={() =>
-                  updateKeyValuePairs(keyValuePairs.toSpliced(index, 1))
-                }
-              >
-                <Cross2Icon />
-              </Button>
-            </div>
+            )}
+            {!isConnected(key) && (
+              <div className="nodrag mb-2 flex items-center space-x-2">
+                <Input
+                  type="text"
+                  placeholder="Key"
+                  value={key}
+                  onChange={(e) =>
+                    updateKeyValuePairs(
+                      keyValuePairs.toSpliced(index, 1, {
+                        key: e.target.value,
+                        value: value,
+                      }),
+                    )
+                  }
+                />
+                <Input
+                  type="text"
+                  placeholder="Value"
+                  value={value ?? ""}
+                  onChange={(e) =>
+                    updateKeyValuePairs(
+                      keyValuePairs.toSpliced(index, 1, {
+                        key: key,
+                        value: convertValueType(e.target.value),
+                      }),
+                    )
+                  }
+                />
+                <Button
+                  variant="ghost"
+                  className="px-2"
+                  onClick={() =>
+                    updateKeyValuePairs(keyValuePairs.toSpliced(index, 1))
+                  }
+                >
+                  <Cross2Icon />
+                </Button>
+              </div>
+            )}
             {errors[`${selfKey}.${key}`] && (
               <span className="error-message">
                 {errors[`${selfKey}.${key}`]}
@@ -368,6 +421,7 @@ const NodeArrayInput: FC<{
   schema: BlockIOArraySubSchema;
   entries?: string[];
   errors: { [key: string]: string | undefined };
+  connections: NodeObjectInputTreeProps["connections"];
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
   handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
   className?: string;
@@ -377,6 +431,7 @@ const NodeArrayInput: FC<{
   schema,
   entries,
   errors,
+  connections,
   handleInputChange,
   handleInputClick,
   className,
@@ -390,39 +445,52 @@ const NodeArrayInput: FC<{
     <div className={cn(className, "flex flex-col")}>
       {displayName && <strong>{displayName}</strong>}
       {entries.map((entry: any, index: number) => {
-        const entryKey = `${selfKey}[${index}]`;
+        const entryKey = `${selfKey}_$_${index}`;
+        const isConnected =
+          connections && connections.some((c) => c.targetHandle === entryKey);
         return (
-          <div key={entryKey}>
-            <div className="mb-2 flex items-center space-x-2">
-              {schema.items ? (
-                <NodeGenericInputField
-                  propKey={entryKey}
-                  propSchema={schema.items}
-                  currentValue={entry}
-                  errors={errors}
-                  handleInputChange={handleInputChange}
-                  handleInputClick={handleInputClick}
-                />
-              ) : (
-                <NodeFallbackInput
-                  selfKey={entryKey}
-                  schema={schema.items}
-                  value={entry}
-                  error={errors[entryKey]}
-                  displayName={displayName || beautifyString(selfKey)}
-                  handleInputChange={handleInputChange}
-                  handleInputClick={handleInputClick}
-                />
+          <div key={entryKey} className="self-start">
+            <div className="mb-2 flex space-x-2">
+              <NodeHandle
+                keyName={entryKey}
+                schema={schema.items!}
+                isConnected={isConnected}
+                isRequired={false}
+                side="left"
+              />
+              {!isConnected &&
+                (schema.items ? (
+                  <NodeGenericInputField
+                    propKey={entryKey}
+                    propSchema={schema.items}
+                    currentValue={entry}
+                    errors={errors}
+                    connections={connections}
+                    handleInputChange={handleInputChange}
+                    handleInputClick={handleInputClick}
+                  />
+                ) : (
+                  <NodeFallbackInput
+                    selfKey={entryKey}
+                    schema={schema.items}
+                    value={entry}
+                    error={errors[entryKey]}
+                    displayName={displayName || beautifyString(selfKey)}
+                    handleInputChange={handleInputChange}
+                    handleInputClick={handleInputClick}
+                  />
+                ))}
+              {!isConnected && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() =>
+                    handleInputChange(selfKey, entries.toSpliced(index, 1))
+                  }
+                >
+                  <Cross2Icon />
+                </Button>
               )}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() =>
-                  handleInputChange(selfKey, entries.toSpliced(index, 1))
-                }
-              >
-                <Cross2Icon />
-              </Button>
             </div>
             {errors[entryKey] && typeof errors[entryKey] === "string" && (
               <span className="error-message">{errors[entryKey]}</span>
