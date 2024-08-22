@@ -15,7 +15,3 @@
     - Select any voice from the voice list: https://docs.aws.amazon.com/polly/latest/dg/available-voices.html
     - Copy the voice name / ID
     - Use it as string in the voice_id field in the CreateTalkingAvatarClip Block
-    
-    
-    
-
