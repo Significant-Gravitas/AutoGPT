@@ -4,7 +4,7 @@ from google_auth_oauthlib.flow import Flow
 
 from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
 
-from .oauth import BaseOAuthHandler
+from .base import BaseOAuthHandler
 
 
 class GoogleOAuthHandler(BaseOAuthHandler):

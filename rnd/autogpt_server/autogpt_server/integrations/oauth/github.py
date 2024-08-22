@@ -4,7 +4,8 @@ from typing import Optional
 from urllib.parse import urlencode
 
 from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
-from autogpt_server.integrations.oauth import BaseOAuthHandler
+
+from .base import BaseOAuthHandler
 
 
 class GitHubOAuthHandler(BaseOAuthHandler):

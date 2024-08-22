@@ -3,7 +3,8 @@ from base64 import b64encode
 from urllib.parse import urlencode
 
 from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
-from autogpt_server.integrations.oauth import BaseOAuthHandler
+
+from .base import BaseOAuthHandler
 
 
 class NotionOAuthHandler(BaseOAuthHandler):
