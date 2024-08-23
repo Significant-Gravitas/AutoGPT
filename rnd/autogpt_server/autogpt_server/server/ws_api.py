@@ -10,7 +10,7 @@ from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import ExecutionSubscription, Methods, WsMessage
 from autogpt_server.server.queue import AsyncRabbitMQEventQueue
 from autogpt_server.util.settings import Settings
-from rnd.autogpt_libs.autogpt_libs.auth import auth_middleware, parse_jwt_token
+from autogpt_libs.auth import auth_middleware, parse_jwt_token
 
 settings = Settings()
 
