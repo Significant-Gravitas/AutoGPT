@@ -20,7 +20,11 @@ const SchemaTooltip: React.FC<{ description?: string }> = ({ description }) => {
           <ReactMarkdown
             components={{
               a: ({ node, ...props }) => (
-                <a className="text-blue-400 underline" {...props} />
+                <a
+                  target="_blank"
+                  className="text-blue-400 underline"
+                  {...props}
+                />
               ),
             }}
           >
