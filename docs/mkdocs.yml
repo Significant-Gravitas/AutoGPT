@@ -10,6 +10,7 @@ nav:
     - Setup: server/setup.md
     - Advanced Setup: server/advanced_setup.md
     - Using Ollama: server/ollama.md
+    - Using D-ID: serveer/d_id.md
 
   - AutoGPT Agent:
       - Introduction: AutoGPT/index.md
