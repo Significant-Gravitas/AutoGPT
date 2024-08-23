@@ -31,14 +31,8 @@ class APIKeyCredentials(_BaseCredentials):
     expires_at: Optional[int]
 
 
-class PasswordCredentials(_BaseCredentials):
-    type: Literal["uname_password"] = "uname_password"
-    username: SecretStr
-    password: SecretStr
-
-
 Credentials = Annotated[
-    OAuth2Credentials | APIKeyCredentials | PasswordCredentials,
+    OAuth2Credentials | APIKeyCredentials,
     Field(discriminator="type"),
 ]
 
