@@ -149,10 +149,7 @@ class TextFormatterBlock(Block):
 
 class TextCombinerBlock(Block):
     class Input(BlockSchema):
-        input1: str = Field(description="First text input", default="")
-        input2: str = Field(description="Second text input", default="")
-        input3: str = Field(description="Second text input", default="")
-        input4: str = Field(description="Second text input", default="")
+        input: list[str] = Field(description="text input to combine")
         delimiter: str = Field(description="Delimiter to combine texts", default="")
 
     class Output(BlockSchema):
@@ -166,24 +163,15 @@ class TextCombinerBlock(Block):
             input_schema=TextCombinerBlock.Input,
             output_schema=TextCombinerBlock.Output,
             test_input=[
-                {"input1": "Hello world I like ", "input2": "cake and to go for walks"},
-                {"input1": "This is a test. ", "input2": "Let's see how it works."},
+                {"input": ["Hello world I like ", "cake and to go for walks"]},
+                {"input": ["This is a test", "Hi!"], "delimiter": "! "},
             ],
             test_output=[
                 ("output", "Hello world I like cake and to go for walks"),
-                ("output", "This is a test. Let's see how it works."),
+                ("output", "This is a test! Hi!"),
             ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
-        combined_text = input_data.delimiter.join(
-            text
-            for text in [
-                input_data.input1,
-                input_data.input2,
-                input_data.input3,
-                input_data.input4,
-            ]
-            if text
-        )
+        combined_text = input_data.delimiter.join(input_data.input)
         yield "output", combined_text
