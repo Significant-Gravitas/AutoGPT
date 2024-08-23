@@ -1,6 +1,6 @@
 from typing import cast
 
-from supabase import create_client, Client
+from supabase import Client, create_client
 
 from .types import Credentials, OAuth2Credentials, UserMetadata, UserMetadataRaw
 
