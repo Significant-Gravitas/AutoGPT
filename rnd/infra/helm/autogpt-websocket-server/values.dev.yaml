@@ -1,0 +1,34 @@
+replicaCount: 1 # not scaling websocket server for now
+
+image:
+  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-ws-server-dev/agpt-ws-server-dev
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 8001
+
+ingress:
+  enabled: false # no outside access needed
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+
+env:
+  - name: RABBITMQ_HOST
+    value: rabbitmq-service
+  - name: RABBITMQ_PORT
+    value: "5672"
+  - name: RABBITMQ_USER
+    value: user
+  - name: RABBITMQ_PASSWORD
+    value: password
