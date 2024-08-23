@@ -162,7 +162,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   // Helper function to parse keys with array indices
   const parseKeys = (key: string): ParsedKey[] => {
-    const splits = key.split(/_@_|_#_|_\$_/);
+    const splits = key.split(/_@_|_#_|_\$_|\./);
     const keys: ParsedKey[] = [];
     let currentKey: string | null = null;
 
