@@ -26,6 +26,7 @@ ENV POETRY_VERSION=1.8.3 \
 RUN pip3 install poetry
 
 COPY rnd/autogpt_server /app/rnd/autogpt_server
+COPY rnd/autogpt_libs /app/rnd/autogpt_libs
 COPY autogpt /app/autogpt
 COPY forge /app/forge
 
