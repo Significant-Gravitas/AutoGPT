@@ -56,7 +56,7 @@ for cls in all_subclasses(Block):
 
     for field in block.input_schema.__fields__.values():
         if field.annotation is bool and field.default not in (True, False):
-            raise ValueError(f"Block ID {block.name} has a boolean field with no default value")
+            raise ValueError(f"{block.name} has a boolean field with no default value")
 
     if block.disabled:
         continue
