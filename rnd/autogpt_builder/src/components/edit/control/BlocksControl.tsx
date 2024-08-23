@@ -37,7 +37,8 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredBlocks = blocks.filter((block: Block) =>
-    block.name.toLowerCase().includes(searchQuery.toLowerCase()),
+    block.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    beautifyString(block.name).toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
