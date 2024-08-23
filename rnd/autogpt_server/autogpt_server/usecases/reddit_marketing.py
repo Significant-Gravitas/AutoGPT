@@ -95,7 +95,7 @@ Make sure to only comment on a relevant post.
             source_id=reddit_get_post_node.id,
             sink_id=text_formatter_node.id,
             source_name="post",
-            sink_name="named_texts",
+            sink_name="values",
         ),
         Link(
             source_id=text_formatter_node.id,
