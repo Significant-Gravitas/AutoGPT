@@ -110,19 +110,28 @@ const FlowEditor: React.FC<{
   }>({});
   const isDragging = useRef(false);
 
-  const [tutorialStarted, setTutorialStarted] = useState(false); // State to control if tutorial has started
-  const [pinBlocksPopover, setPinBlocks] = useState(false); // State to control if blocks menu should be pinned open
+  // State to control if tutorial has started
+  const [tutorialStarted, setTutorialStarted] = useState(false);
+  // State to control if blocks menu should be pinned open
+  const [pinBlocksPopover, setPinBlocks] = useState(false);
 
   useEffect(() => {
-    // Check local storage to see if the tutorial has already been started
-    const shouldStartTutorial = !localStorage.getItem("shepherd-tour");
-
-    if (shouldStartTutorial && availableNodes.length > 0) {
-      startTutorial(setPinBlocks); // Pass the setPinBlocks function to the tutorial
-      setTutorialStarted(true); // Set state to avoid restarting the tutorial
-      localStorage.setItem("shepherd-tour", "yes"); // Set a flag in local storage indicating the tutorial has been started
+    const params = new URLSearchParams(window.location.search);
+  
+    // If resetting tutorial
+    if (params.get("resetTutorial") === "true") {
+      localStorage.removeItem("shepherd-tour"); // Clear tutorial flag
+      window.location.href = window.location.pathname; // Redirect to clear URL parameters
+    } else {
+      // Otherwise, start tutorial if conditions are met
+      const shouldStartTutorial = !localStorage.getItem("shepherd-tour");
+      if (shouldStartTutorial && availableNodes.length > 0 && !tutorialStarted) {
+        startTutorial(setPinBlocks);
+        setTutorialStarted(true);
+        localStorage.setItem("shepherd-tour", "yes");
+      }
     }
-  }, [availableNodes, tutorialStarted]);
+  }, [availableNodes, tutorialStarted]); 
 
   useEffect(() => {
     api
