@@ -1,5 +1,5 @@
-from uuid import uuid4
 from typing import Annotated, Any, Literal, Optional, TypedDict
+from uuid import uuid4
 
 from pydantic import BaseModel, Field, SecretStr, field_serializer
 
@@ -32,14 +32,8 @@ class APIKeyCredentials(_BaseCredentials):
     expires_at: Optional[int]  # seconds
 
 
-class PasswordCredentials(_BaseCredentials):
-    type: Literal["uname_password"] = "uname_password"
-    username: SecretStr
-    password: SecretStr
-
-
 Credentials = Annotated[
-    OAuth2Credentials | APIKeyCredentials | PasswordCredentials,
+    OAuth2Credentials | APIKeyCredentials,
     Field(discriminator="type"),
 ]
 

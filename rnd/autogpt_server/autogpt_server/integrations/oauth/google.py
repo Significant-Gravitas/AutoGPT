@@ -1,8 +1,8 @@
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import Flow
-
 from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
+from pydantic import SecretStr
 
 from .base import BaseOAuthHandler
 
@@ -36,18 +36,26 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         flow.redirect_uri = self.redirect_uri
         flow.fetch_token(code=code)
 
-        credentials = flow.credentials
+        google_creds = flow.credentials
+        # Google's OAuth library is poorly typed so we need some of these:
+        assert google_creds.token
+        assert google_creds.refresh_token
+        assert google_creds.expiry
+        assert google_creds.scopes
         return OAuth2Credentials(
             provider=self.PROVIDER_NAME,
             title="Google",
-            access_token=credentials.token,
-            refresh_token=credentials.refresh_token,
-            access_token_expires_at=int(credentials.expiry.timestamp()),
+            access_token=SecretStr(google_creds.token),
+            refresh_token=SecretStr(google_creds.refresh_token),
+            access_token_expires_at=int(google_creds.expiry.timestamp()),
             refresh_token_expires_at=None,
-            scopes=credentials.scopes,
+            scopes=google_creds.scopes,
         )
 
     def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
+        # Google credentials should ALWAYS have a refresh token
+        assert credentials.refresh_token
+
         google_creds = Credentials(
             token=credentials.access_token.get_secret_value(),
             refresh_token=credentials.refresh_token.get_secret_value(),
@@ -56,15 +64,19 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             client_secret=self.client_secret,
             scopes=credentials.scopes,
         )
+        # Google's OAuth library is poorly typed so we need some of these:
+        assert google_creds.refresh_token
+        assert google_creds.scopes
 
         google_creds.refresh(Request())
+        assert google_creds.expiry
 
         return OAuth2Credentials(
             id=credentials.id,
             provider=self.PROVIDER_NAME,
             title=credentials.title,
-            access_token=google_creds.token,
-            refresh_token=google_creds.refresh_token,
+            access_token=SecretStr(google_creds.token),
+            refresh_token=SecretStr(google_creds.refresh_token),
             access_token_expires_at=int(google_creds.expiry.timestamp()),
             refresh_token_expires_at=None,
             scopes=google_creds.scopes,

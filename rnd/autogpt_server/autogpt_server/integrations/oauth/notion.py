@@ -1,7 +1,7 @@
-import requests
 from base64 import b64encode
 from urllib.parse import urlencode
 
+import requests
 from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
 
 from .base import BaseOAuthHandler
