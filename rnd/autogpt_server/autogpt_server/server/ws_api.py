@@ -1,34 +1,78 @@
-from fastapi import WebSocket, WebSocketDisconnect
+import asyncio
+import logging
+from http.client import HTTPException
 
+import fastapi
+from fastapi import WebSocket, WebSocketDisconnect, Depends, FastAPI
+
+from autogpt_server.data.user import DEFAULT_USER_ID
 from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import ExecutionSubscription, Methods, WsMessage
+from autogpt_server.server.queue import AsyncRabbitMQEventQueue
+from autogpt_server.util.settings import Settings
+from rnd.autogpt_libs.autogpt_libs.auth import auth_middleware, parse_jwt_token
 
+settings = Settings()
 
-async def websocket_router(websocket: WebSocket, manager: ConnectionManager):
-    await manager.connect(websocket)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            message = WsMessage.model_validate_json(data)
-            if message.method == Methods.SUBSCRIBE:
-                await handle_subscribe(websocket, manager, message)
+app = FastAPI()
+manager = ConnectionManager()
+event_queue = AsyncRabbitMQEventQueue()
 
-            elif message.method == Methods.UNSUBSCRIBE:
-                await handle_unsubscribe(websocket, manager, message)
-            else:
-                print("Message type is not processed by the server")
-                await websocket.send_text(
-                    WsMessage(
-                        method=Methods.ERROR,
-                        success=False,
-                        error="Message type is not processed by the server",
-                    ).model_dump_json()
-                )
+app.add_middleware(
+    middleware_class=fastapi.middleware.cors.CORSMiddleware,
+    allow_origins=[
+        "*",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
-        print("Client Disconnected")
+@app.on_event("startup")
+async def startup_event():
+    global manager
+    manager = ConnectionManager()
+    await event_queue.connect()
+    asyncio.create_task(event_broadcaster())
 
+@app.on_event("shutdown")
+async def shutdown_event():
+    await event_queue.close()
+
+async def event_broadcaster():
+    while True:
+        event = await event_queue.get_execution_result()
+        await manager.send_execution_result(event)
+
+def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
+    if not payload:
+        # This handles the case when authentication is disabled
+        return DEFAULT_USER_ID
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User ID not found in token")
+    return user_id
+
+async def authenticate_websocket(websocket: WebSocket) -> str:
+    if settings.config.enable_auth.lower() == "true":
+        token = websocket.query_params.get("token")
+        if not token:
+            await websocket.close(code=4001, reason="Missing authentication token")
+            return ""
+
+        try:
+            payload = parse_jwt_token(token)
+            user_id = payload.get("sub")
+            if not user_id:
+                await websocket.close(code=4002, reason="Invalid token")
+                return ""
+            return user_id
+        except ValueError:
+            await websocket.close(code=4003, reason="Invalid token")
+            return ""
+    else:
+        return DEFAULT_USER_ID
 
 async def handle_subscribe(
     websocket: WebSocket, manager: ConnectionManager, message: WsMessage
@@ -76,3 +120,42 @@ async def handle_unsubscribe(
                 channel=ex_sub.graph_id,
             ).model_dump_json()
         )
+
+@app.websocket("/ws")
+async def websocket_router(websocket: WebSocket):
+    user_id = await authenticate_websocket(websocket)
+    if not user_id:
+        return
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            message = WsMessage.model_validate_json(data)
+            if message.method == Methods.SUBSCRIBE:
+                await handle_subscribe(
+                    websocket, manager, message
+                )
+
+            elif message.method == Methods.UNSUBSCRIBE:
+                await handle_unsubscribe(
+                    websocket, manager, message
+                )
+
+            elif message.method == Methods.ERROR:
+                logging.error("WebSocket Error message received:", message.data)
+
+            else:
+                logging.info(
+                    f"Message type {message.method} is not processed by the server"
+                )
+                await websocket.send_text(
+                    WsMessage(
+                        method=Methods.ERROR,
+                        success=False,
+                        error="Message type is not processed by the server",
+                    ).model_dump_json()
+                )
+
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        logging.info("Client Disconnected")

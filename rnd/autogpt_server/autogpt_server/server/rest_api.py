@@ -1,13 +1,11 @@
-import asyncio
 import inspect
+import logging
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from functools import wraps
 from typing import Annotated, Any, Dict
 
-import aiohttp
 import uvicorn
-from autogpt_libs.auth.jwt_utils import parse_jwt_token
 from autogpt_libs.auth.middleware import auth_middleware
 from fastapi import (
     APIRouter,
@@ -15,13 +13,10 @@ from fastapi import (
     Depends,
     FastAPI,
     HTTPException,
-    WebSocket,
-    WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-import autogpt_server.server.ws_api
 from autogpt_server.data import block, db
 from autogpt_server.data import graph as graph_db
 from autogpt_server.data import user as user_db
@@ -33,11 +28,11 @@ from autogpt_server.data.execution import (
 )
 from autogpt_server.data.user import DEFAULT_USER_ID, get_or_create_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
-from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import (
     CreateGraph,
     SetGraphActiveVersion,
 )
+from autogpt_server.server.queue import AsyncRabbitMQEventQueue, AsyncEventQueue
 from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
@@ -57,30 +52,30 @@ def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
 
 
 class AgentServer(AppService):
-    event_queue: asyncio.Queue[ExecutionResult] = asyncio.Queue()
-    manager = ConnectionManager()
+    event_queue: AsyncEventQueue = AsyncRabbitMQEventQueue()
     mutex = KeyedMutex()
     use_db = False
     _test_dependency_overrides = {}
 
-    def __init__(self):
-        super().__init__()
-        self.websocket_url = settings.config.websocket_url
-        self.session = None
+    async def startup(self):
+        logging.info("Connecting to event queue...")
+        await self.event_queue.connect()
+        logging.info("Connected to event queue.")
 
-    async def event_broadcaster(self):
-        while True:
-            event: ExecutionResult = await self.event_queue.get()
-            await self.manager.send_execution_result(event)
+    async def shutdown(self):
+        logging.info("Closing event queue connection...")
+        await self.event_queue.close()
+        logging.info("Event queue connection closed.")
 
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
+        await self.event_queue.connect()
         await db.connect()
         await block.initialize_blocks()
         if await user_db.create_default_user(settings.config.enable_auth):
             await graph_db.import_packaged_templates()
-        asyncio.create_task(self.event_broadcaster())
         yield
+        await self.event_queue.close()
         await db.disconnect()
 
     def run_service(self):
@@ -94,8 +89,6 @@ class AgentServer(AppService):
             version="0.1",
             lifespan=self.lifespan,
         )
-
-        self.session = aiohttp.ClientSession()
 
         if self._test_dependency_overrides:
             app.dependency_overrides.update(self._test_dependency_overrides)
@@ -229,7 +222,6 @@ class AgentServer(AppService):
 
         app.include_router(router)
 
-
         uvicorn.run(app, host="0.0.0.0", port=8000)
 
     def set_test_dependency_overrides(self, overrides: dict):
@@ -279,25 +271,6 @@ class AgentServer(AppService):
             status_code=500,
         )
 
-    async def authenticate_websocket(self, websocket: WebSocket) -> str:
-        if settings.config.enable_auth.lower() == "true":
-            token = websocket.query_params.get("token")
-            if not token:
-                await websocket.close(code=4001, reason="Missing authentication token")
-                return ""
-
-            try:
-                payload = parse_jwt_token(token)
-                user_id = payload.get("sub")
-                if not user_id:
-                    await websocket.close(code=4002, reason="Invalid token")
-                    return ""
-                return user_id
-            except ValueError:
-                await websocket.close(code=4003, reason="Invalid token")
-                return ""
-        else:
-            return user_db.DEFAULT_USER_ID
 
     @classmethod
     async def get_or_create_user_route(cls, user_data: dict = Depends(auth_middleware)):
@@ -543,24 +516,9 @@ class AgentServer(AppService):
         return execution_scheduler.get_execution_schedules(graph_id, user_id)  # type: ignore
 
     @expose
-    async def send_execution_update(self, execution_result_dict: dict[Any, Any]):
-        if not self.session:
-            await self.startup()
-
-        try:
-            async with self.session.post(
-                    f"{self.websocket_url}/update",
-                    json=execution_result_dict,
-                    timeout=aiohttp.ClientTimeout(total=10)
-            ) as response:
-                if response.status >= 400:
-                    text = await response.text()
-                    raise HTTPException(status_code=500,
-                                        detail=f"Failed to send update to WebSocket server. Status: {response.status}, Response: {text}")
-                return await response.json()
-        except aiohttp.ClientError as e:
-            raise HTTPException(status_code=500,
-                                detail=f"Network error when sending update to WebSocket server: {str(e)}")
+    def send_execution_update(self, execution_result_dict: dict[Any, Any]):
+        execution_result = ExecutionResult(**execution_result_dict)
+        self.run_and_wait(self.event_queue.publish_execution_result(execution_result))
 
     @expose
     def acquire_lock(self, key: Any):
