@@ -117,7 +117,7 @@ const FlowEditor: React.FC<{
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-  
+
     // If resetting tutorial
     if (params.get("resetTutorial") === "true") {
       localStorage.removeItem("shepherd-tour"); // Clear tutorial flag
@@ -125,13 +125,17 @@ const FlowEditor: React.FC<{
     } else {
       // Otherwise, start tutorial if conditions are met
       const shouldStartTutorial = !localStorage.getItem("shepherd-tour");
-      if (shouldStartTutorial && availableNodes.length > 0 && !tutorialStarted) {
+      if (
+        shouldStartTutorial &&
+        availableNodes.length > 0 &&
+        !tutorialStarted
+      ) {
         startTutorial(setPinBlocks);
         setTutorialStarted(true);
         localStorage.setItem("shepherd-tour", "yes");
       }
     }
-  }, [availableNodes, tutorialStarted]); 
+  }, [availableNodes, tutorialStarted]);
 
   useEffect(() => {
     api
