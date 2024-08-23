@@ -45,14 +45,9 @@ const TallyPopupSimple = () => {
     window.location.href = "http://localhost:3000/build?resetTutorial=true";
   };
 
-
   return (
-    <div className="fixed bottom-6 right-6 z-50 p-3 flex items-center gap-4 transition-all duration-300 ease-in-out">
-      <Button
-        variant="default"
-        onClick={resetTutorial}
-        className="mb-0"
-      >
+    <div className="fixed bottom-6 right-6 z-50 flex items-center gap-4 p-3 transition-all duration-300 ease-in-out">
+      <Button variant="default" onClick={resetTutorial} className="mb-0">
         Tutorial
       </Button>
       <Button
