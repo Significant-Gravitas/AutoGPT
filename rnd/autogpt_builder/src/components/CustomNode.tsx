@@ -21,12 +21,19 @@ import { Switch } from "@/components/ui/switch";
 import { Copy, Trash2 } from "lucide-react";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
-import { CustomEdgeData } from "./CustomEdge";
 import { NodeGenericInputField } from "./node-input-components";
 import SchemaTooltip from "./SchemaTooltip";
 import { getPrimaryCategoryColor } from "@/lib/utils";
 
 type ParsedKey = { key: string; index?: number };
+
+export type ConnectionData = Array<{
+  edge_id: string;
+  source: string;
+  sourceHandle: string;
+  target: string;
+  targetHandle: string;
+}>;
 
 export type CustomNodeData = {
   blockType: string;
@@ -37,13 +44,7 @@ export type CustomNodeData = {
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
   setHardcodedValues: (values: { [key: string]: any }) => void;
-  connections: Array<{
-    edge_id: string;
-    source: string;
-    sourceHandle: string;
-    target: string;
-    targetHandle: string;
-  }>;
+  connections: ConnectionData;
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
   output_data?: NodeExecutionResult["output_data"];
@@ -161,26 +162,26 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
 
   // Helper function to parse keys with array indices
   const parseKeys = (key: string): ParsedKey[] => {
-    const regex = /(\w+)|\[(\d+)\]/g;
+    const splits = key.split(/_@_|_#_|_\$_|\./);
     const keys: ParsedKey[] = [];
-    let match;
     let currentKey: string | null = null;
 
-    while ((match = regex.exec(key)) !== null) {
-      if (match[1]) {
+    splits.forEach((split) => {
+      const isInteger = /^\d+$/.test(split);
+      if (!isInteger) {
         if (currentKey !== null) {
           keys.push({ key: currentKey });
         }
-        currentKey = match[1];
-      } else if (match[2]) {
+        currentKey = split;
+      } else {
         if (currentKey !== null) {
-          keys.push({ key: currentKey, index: parseInt(match[2], 10) });
+          keys.push({ key: currentKey, index: parseInt(split, 10) });
           currentKey = null;
         } else {
           throw new Error("Invalid key format: array index without a key");
         }
       }
-    }
+    });
 
     if (currentKey !== null) {
       keys.push({ key: currentKey });
@@ -343,6 +344,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                           propKey={propKey}
                           propSchema={propSchema}
                           currentValue={getValue(propKey)}
+                          connections={data.connections}
                           handleInputChange={handleInputChange}
                           handleInputClick={handleInputClick}
                           errors={data.errors ?? {}}
