@@ -1,8 +1,7 @@
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import Flow
-
 from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
 
 from .oauth import BaseOAuthHandler
 

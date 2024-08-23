@@ -9,8 +9,7 @@ class BaseOAuthHandler(ABC):
     PROVIDER_NAME: ClassVar[str]
 
     @abstractmethod
-    def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
-        ...
+    def __init__(self, client_id: str, client_secret: str, redirect_uri: str): ...
 
     @abstractmethod
     def get_login_url(self, scopes: list[str], state: str) -> str:
