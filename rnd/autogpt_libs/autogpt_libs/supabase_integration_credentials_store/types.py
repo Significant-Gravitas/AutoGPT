@@ -1,5 +1,5 @@
-from uuid import uuid4
 from typing import Annotated, Any, Literal, Optional, TypedDict
+from uuid import uuid4
 
 from pydantic import BaseModel, Field, SecretStr, field_serializer
 

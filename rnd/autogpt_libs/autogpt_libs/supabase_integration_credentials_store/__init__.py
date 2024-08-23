@@ -1,8 +1,8 @@
 from .store import SupabaseIntegrationCredentialsStore
-from .types import OAuth2Credentials, APIKeyCredentials
+from .types import APIKeyCredentials, OAuth2Credentials
 
 __all__ = [
     "SupabaseIntegrationCredentialsStore",
-    "OAuth2Credentials",
     "APIKeyCredentials",
+    "OAuth2Credentials",
 ]
