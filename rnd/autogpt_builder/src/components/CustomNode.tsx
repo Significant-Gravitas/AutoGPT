@@ -51,7 +51,7 @@ export type CustomNodeData = {
   errors?: { [key: string]: string };
 };
 
-export type CustomNode = Node<CustomNodeData, 'custom'>;
+export type CustomNode = Node<CustomNodeData, "custom">;
 
 export function CustomNode({ data, id }: NodeProps<CustomNode>) {
   const [isOutputOpen, setIsOutputOpen] = useState(data.isOutputOpen || false);
@@ -91,11 +91,11 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
 
   const setHardcodedValues = (values: any) => {
     updateNodeData(id, { hardcodedValues: values });
-  }
+  };
 
   const setErrors = (errors: { [key: string]: string }) => {
     updateNodeData(id, { errors });
-  }
+  };
 
   const toggleOutput = (checked: boolean) => {
     setIsOutputOpen(checked);
@@ -332,7 +332,7 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
                 const isConnected = isHandleConnected(propKey);
                 return (
                   (isRequired || isAdvancedOpen || isConnected) && (
-                    <div key={propKey} onMouseOver={() => { }}>
+                    <div key={propKey} onMouseOver={() => {}}>
                       <NodeHandle
                         keyName={propKey}
                         isConnected={isConnected}
@@ -413,4 +413,4 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
       />
     </div>
   );
-};
+}

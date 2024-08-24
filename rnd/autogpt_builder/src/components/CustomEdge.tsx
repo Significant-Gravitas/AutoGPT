@@ -28,7 +28,7 @@ type Bead = {
   startTime: number;
 };
 
-export type CustomEdge = Edge<CustomEdgeData, 'custom'>;
+export type CustomEdge = Edge<CustomEdgeData, "custom">;
 
 export function CustomEdge({
   id,
@@ -213,7 +213,6 @@ export function CustomEdge({
           >
             <X className="size-4" />
           </button>
-          <span>{data?.beadUp}/{data?.beadDown}</span>
         </div>
       </EdgeLabelRenderer>
       {beads.beads.map((bead, index) => {
@@ -230,4 +229,4 @@ export function CustomEdge({
       })}
     </>
   );
-};
+}

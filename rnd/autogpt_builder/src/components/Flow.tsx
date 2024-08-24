@@ -25,13 +25,8 @@ import {
 import "@xyflow/react/dist/style.css";
 import { CustomNode } from "./CustomNode";
 import "./flow.css";
-import {
-  Link,
-} from "@/lib/autogpt-server-api";
-import {
-  getTypeColor,
-  setNestedProperty,
-} from "@/lib/utils";
+import { Link } from "@/lib/autogpt-server-api";
+import { getTypeColor, setNestedProperty } from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
 import ConnectionLine from "./ConnectionLine";
@@ -46,8 +41,6 @@ import useAgentGraph from "@/hooks/useAgentGraph";
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
 const MINIMUM_MOVE_BEFORE_LOG = 50;
 
-const ajv = new Ajv({ strict: false, allErrors: true });
-
 type FlowContextType = {
   visualizeBeads: "no" | "static" | "animate";
   setIsAnyModalOpen: (isOpen: boolean) => void;
@@ -60,18 +53,12 @@ const FlowEditor: React.FC<{
   template?: boolean;
   className?: string;
 }> = ({ flowID, template, className }) => {
-  const {
-    addNodes,
-    addEdges,
-    getNode,
-    deleteElements,
-    updateNode,
-    updateNodeData,
-  } = useReactFlow<CustomNode, CustomEdge>();
+  const { addNodes, addEdges, getNode, deleteElements, updateNode } =
+    useReactFlow<CustomNode, CustomEdge>();
   const [nodeId, setNodeId] = useState<number>(1);
   const [copiedNodes, setCopiedNodes] = useState<CustomNode[]>([]);
   const [copiedEdges, setCopiedEdges] = useState<CustomEdge[]>([]);
-  const [isAnyModalOpen, setIsAnyModalOpen] = useState(false); // Track if any modal is open
+  const [isAnyModalOpen, setIsAnyModalOpen] = useState(false);
   const [visualizeBeads, setVisualizeBeads] = useState<
     "no" | "static" | "animate"
   >("animate");
@@ -89,7 +76,7 @@ const FlowEditor: React.FC<{
     setNodes,
     edges,
     setEdges,
-  } = useAgentGraph(flowID, template);
+  } = useAgentGraph(flowID, template, visualizeBeads !== "no");
 
   const initialPositionRef = useRef<{
     [key: string]: { x: number; y: number };
@@ -140,7 +127,7 @@ const FlowEditor: React.FC<{
 
     const distanceMoved = Math.sqrt(
       Math.pow(newPosition.x - oldPosition.x, 2) +
-      Math.pow(newPosition.y - oldPosition.y, 2),
+        Math.pow(newPosition.y - oldPosition.y, 2),
     );
 
     if (distanceMoved > MINIMUM_MOVE_BEFORE_LOG) {
@@ -148,10 +135,8 @@ const FlowEditor: React.FC<{
       history.push({
         type: "UPDATE_NODE_POSITION",
         payload: { nodeId: node.id, oldPosition, newPosition },
-        undo: () =>
-          updateNode(node.id, { position: oldPosition }),
-        redo: () =>
-          updateNode(node.id, { position: newPosition }),
+        undo: () => updateNode(node.id, { position: oldPosition }),
+        redo: () => updateNode(node.id, { position: newPosition }),
       });
     }
     delete initialPositionRef.current[node.id];
@@ -178,7 +163,7 @@ const FlowEditor: React.FC<{
   const onNodesChange = useCallback(
     (nodeChanges: NodeChange<CustomNode>[]) => {
       // Persist the changes
-      setNodes(prev => applyNodeChanges(nodeChanges, prev));
+      setNodes((prev) => applyNodeChanges(nodeChanges, prev));
 
       // Remove all edges that were connected to deleted nodes
       nodeChanges
@@ -197,13 +182,13 @@ const FlowEditor: React.FC<{
     [deleteElements, setNodes],
   );
 
-  function formatEdgeID(conn: Link | Connection): string {
+  const formatEdgeID = useCallback((conn: Link | Connection): string => {
     if ("sink_id" in conn) {
       return `${conn.source_id}_${conn.source_name}_${conn.sink_id}_${conn.sink_name}`;
     } else {
       return `${conn.source}_${conn.sourceHandle}_${conn.target}_${conn.targetHandle}`;
     }
-  }
+  }, []);
 
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
@@ -245,13 +230,17 @@ const FlowEditor: React.FC<{
   const onEdgesChange = useCallback(
     (edgeChanges: EdgeChange<CustomEdge>[]) => {
       // Persist the changes
-      setEdges(prev => applyEdgeChanges(edgeChanges, prev));
+      setEdges((prev) => applyEdgeChanges(edgeChanges, prev));
 
       // Propagate edge changes to node data
       const addedEdges = edgeChanges.filter((change) => change.type === "add"),
-        replaceEdges = edgeChanges.filter((change) => change.type === "replace"),
+        replaceEdges = edgeChanges.filter(
+          (change) => change.type === "replace",
+        ),
         removedEdges = edgeChanges.filter((change) => change.type === "remove"),
-        selectedEdges = edgeChanges.filter((change) => change.type === "select");
+        selectedEdges = edgeChanges.filter(
+          (change) => change.type === "select",
+        );
 
       if (addedEdges.length > 0 || removedEdges.length > 0) {
         setNodes((nds) => {
@@ -277,7 +266,7 @@ const FlowEditor: React.FC<{
                 })),
               ],
             },
-          }))
+          }));
 
           return newNodes;
         });
@@ -291,7 +280,7 @@ const FlowEditor: React.FC<{
         // Reset node connections for all edges
         console.warn(
           "useReactFlow().setRootEdges was used to overwrite all edges. " +
-          "Use addEdges, deleteElements, or reconnectEdge for incremental changes.",
+            "Use addEdges, deleteElements, or reconnectEdge for incremental changes.",
           replaceEdges,
         );
         setNodes((nds) =>
@@ -370,55 +359,6 @@ const FlowEditor: React.FC<{
 
   const handleRedo = () => {
     history.redo();
-  };
-
-  const validateNodes = (): boolean => {
-    console.log("Validating nodes");
-    let isValid = true;
-
-    nodes.forEach((node) => {
-      const validate = ajv.compile(node.data.inputSchema);
-      const errors = {} as { [key: string]: string };
-
-      // Validate values against schema using AJV
-      const valid = validate(node.data.hardcodedValues);
-      if (!valid) {
-        // Populate errors if validation fails
-        validate.errors?.forEach((error) => {
-          // Skip error if there's an edge connected
-          const path =
-            "dataPath" in error
-              ? (error.dataPath as string)
-              : error.instancePath;
-          const handle = path.split(/[\/.]/)[0];
-          if (
-            node.data.connections.some(
-              (conn) => conn.target === node.id || conn.targetHandle === handle,
-            )
-          ) {
-            console.log("Skipping error for connected edge");
-            return;
-          }
-          console.warn("Error", error);
-          isValid = false;
-          if (path && error.message) {
-            const key = path.slice(1);
-            console.log("Error", key, error.message);
-            setNestedProperty(
-              errors,
-              key,
-              error.message[0].toUpperCase() + error.message.slice(1),
-            );
-          } else if (error.keyword === "required") {
-            const key = error.params.missingProperty;
-            setNestedProperty(errors, key, "This field is required");
-          }
-        });
-      }
-      updateNodeData(node.id, { errors });
-    });
-
-    return isValid;
   };
 
   const handleKeyDown = useCallback(
