@@ -97,7 +97,7 @@ Here is the information I get to write a Python code for that:
 Here is your previous attempt:
 {previous_attempt}
 """,
-            "named_texts_#_previous_attempt": "No previous attempt found.",
+            "values_#_previous_attempt": "No previous attempt found.",
         },
     )
     code_gen_llm_call = Node(
@@ -162,7 +162,7 @@ Here are a couple of sample of the Block class implementation:
             source_id=input_data.id,
             sink_id=input_text_formatter.id,
             source_name="output",
-            sink_name="named_texts_#_query",
+            sink_name="values_#_query",
         ),
         Link(
             source_id=input_query_constant.id,
@@ -192,13 +192,13 @@ Here are a couple of sample of the Block class implementation:
             source_id=search_result_constant.id,
             sink_id=prompt_text_formatter.id,
             source_name="output",
-            sink_name="named_texts_#_search_result",
+            sink_name="values_#_search_result",
         ),
         Link(
             source_id=input_query_constant.id,
             sink_id=prompt_text_formatter.id,
             source_name="output",
-            sink_name="named_texts_#_query",
+            sink_name="values_#_query",
         ),
         Link(
             source_id=prompt_text_formatter.id,
@@ -222,7 +222,7 @@ Here are a couple of sample of the Block class implementation:
             source_id=block_installation.id,
             sink_id=prompt_text_formatter.id,
             source_name="error",
-            sink_name="named_texts_#_previous_attempt",
+            sink_name="values_#_previous_attempt",
         ),
         Link(  # Re-trigger search result.
             source_id=block_installation.id,
