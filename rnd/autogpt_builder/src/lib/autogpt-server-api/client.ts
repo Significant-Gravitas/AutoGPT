@@ -190,12 +190,12 @@ export default class AutoGPTServerAPI {
         this.webSocket = new WebSocket(wsUrlWithToken);
 
         this.webSocket.onopen = () => {
-          console.log("WebSocket connection established");
+          console.debug("WebSocket connection established");
           resolve();
         };
 
         this.webSocket.onclose = (event) => {
-          console.log("WebSocket connection closed", event);
+          console.debug("WebSocket connection closed", event);
           this.webSocket = null;
         };
 

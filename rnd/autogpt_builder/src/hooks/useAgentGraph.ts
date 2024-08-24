@@ -3,47 +3,51 @@ import { CustomNode } from "@/components/CustomNode";
 import AutoGPTServerAPI, { Block, BlockIOSubSchema, Graph, Link, NodeExecutionResult } from "@/lib/autogpt-server-api";
 import { deepEquals, getTypeColor, removeEmptyStringsAndNulls } from "@/lib/utils";
 import { Connection, MarkerType } from "@xyflow/react";
-import { use, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function useAgentGraph(flowID?: string, template?: boolean) {
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
+  const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
+  const processedUpdates = useRef<NodeExecutionResult[]>([]);
+  /**
+   * User `request` to save or save&run the agent
+   * `state` is used to track the request status:
+   * - none: no request
+   * - saving: request was sent to save the agent
+   *   and nodes are pending sync to update their backend ids
+   * - running: request was sent to run the agent
+   *   and frontend is enqueueing execution results
+   * - error: request failed
+   * 
+   * As of now, state will be stuck at 'running' (if run requested)
+   * because there's no way to know when the execution is done
+   */
   const [saveRunRequest, setSaveRunRequest] = useState<{
     request: 'none' | 'save' | 'run'
     state: 'none' | 'saving' | 'running' | 'error'
-    prevAgentVersion: number | null
   }>({
     request: 'none',
     state: 'none',
-    prevAgentVersion: null
   });
+  // Determines if nodes backend ids are synced with saved agent (actual ids on the backend)
   const [nodesSyncedWithSavedAgent, setNodesSyncedWithSavedAgent] = useState(false);
-  // const [timestamps, setTimestamps] = useState<{
-
-  // }>({});
   const [nodes, setNodes] = useState<CustomNode[]>([]);
   const [edges, setEdges] = useState<CustomEdge[]>([]);
-
-  // const [state, setState] = useState<{
-  //   agent: Graph | null,
-  //   nodes: CustomNode[],
-  //   edges: CustomEdge[],
-  // }>({ agent: null, nodes: [], edges: [] });
-
-  // const { agent: savedAgent, nodes, edges } = state;
 
   const apiUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL!;
   const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
 
+  // Connect to WebSocket
   useEffect(() => {
     api
       .connectWebSocket()
       .then(() => {
-        console.log("WebSocket connected");
+        console.debug("WebSocket connected");
         api.onWebSocketMessage("execution_event", (data) => {
-          updateNodesWithExecutionData([data]);
+          setUpdateQueue((prev) => [...prev, data]);
         });
       })
       .catch((error) => {
@@ -55,6 +59,7 @@ export default function useAgentGraph(flowID?: string, template?: boolean) {
     };
   }, [api]);
 
+  // Load available blocks
   useEffect(() => {
     api
       .getBlocks()
@@ -71,6 +76,30 @@ export default function useAgentGraph(flowID?: string, template?: boolean) {
     );
   }, [flowID, template, availableNodes]);
 
+  // Update nodes with execution data
+  useEffect(() => {
+    if (updateQueue.length === 0 || !nodesSyncedWithSavedAgent) {
+      return;
+    }
+    setUpdateQueue((prev) => {
+      prev.forEach((data) => {
+        // Skip already processed updates by checking 
+        // if the data is in the processedUpdates array by reference
+        // This is not to process twice in react dev mode
+        // because it'll add double the beads
+        if (processedUpdates.current.includes(data)) {
+          return;
+        }
+        updateNodesWithExecutionData(data);
+        processedUpdates.current.push(data);
+        processedUpdates.current = processedUpdates.current.slice(-100);
+      });
+      return [];
+    })
+
+  }, [updateQueue, nodesSyncedWithSavedAgent]);
+
+  // Handle user requests
   useEffect(() => {
     // Ignore none request
     if (saveRunRequest.request === 'none') {
@@ -88,13 +117,11 @@ export default function useAgentGraph(flowID?: string, template?: boolean) {
         ...prev,
         request: 'none',
         state: 'none',
-        // prevAgentVersion: null
       }));
       return;
     }
     // When saving request is done
     if (saveRunRequest.state === 'saving' && savedAgent && nodesSyncedWithSavedAgent) {
-      console.log("### Agent saved & synced with frontend id:", savedAgent.id);
 
       // Reset request if only save was requested
       if (saveRunRequest.request === 'save') {
@@ -102,7 +129,6 @@ export default function useAgentGraph(flowID?: string, template?: boolean) {
           ...prev,
           request: 'none',
           state: 'none',
-          // prevAgentVersion: null
         }));
         // If run was requested, run the agent
       } else if (saveRunRequest.request === 'run') {
@@ -115,7 +141,6 @@ export default function useAgentGraph(flowID?: string, template?: boolean) {
         //   });
         //   return;
         // }
-        setNodesSyncedWithSavedAgent(false);
         api.subscribeToExecution(savedAgent.id);
         api.executeGraph(savedAgent.id);
 
@@ -123,175 +148,133 @@ export default function useAgentGraph(flowID?: string, template?: boolean) {
           ...prev,
           request: 'run',
           state: 'running',
-          // prevAgentVersion: savedAgent.version
         }));
       }
     }
 
   }, [saveRunRequest, savedAgent, nodes, nodesSyncedWithSavedAgent]);
 
-  // function isNodesSyncedWithSavedAgent() {
-  //   if (!savedAgent || nodes?.length === 0) {
-  //     return false;
-  //   }
-  //   if (savedAgent.id === saveRunRequest.prevAgentId) {
-  //     return false;
-  //   }
-  //   // return nodes.every(node => savedAgent.nodes.some(backendNode => backendNode.id === node.data.backend_id));
-  //   //todo kcze this should be enough but check
-  //   return savedAgent.nodes.some(backendNode => backendNode.id === nodes[0].data.backend_id);
-  // }
-
-
+  // Check if nodes are synced with saved agent
   useEffect(() => {
     // Check if all node ids are synced with saved agent (frontend and backend)
     if (!savedAgent || nodes?.length === 0) {
       setNodesSyncedWithSavedAgent(false);
-      console.log("NO agent or NO nodes");
       return;
     }
-    // if (savedAgent.version === saveRunRequest.prevAgentVersion) {
-    //   setNodesSyncedWithSavedAgent(false);
-    //   console.log("Agent version is the same as previous request");
-    //   return;
-    // }
-    // Find at least one node that has backend_id existing on any saved agent node
-    // const allNodesSynced = nodes.every(node => savedAgent.nodes.some(backendNode => backendNode.id === node.data.backend_id));
-    //todo kcze this should be enough but check
+    // Find at least one node that has backend id existing on any saved agent node
+    // This will works as long as ALL ids are replaced each time the graph is run
     const oneNodeSynced = savedAgent.nodes.some(backendNode => backendNode.id === nodes[0].data.backend_id);
     setNodesSyncedWithSavedAgent(oneNodeSynced);
-    console.log("±±±±± Nodes synced with saved agent:", oneNodeSynced);
-    // console.log(`node 0 id: ${nodes[0].data.backend_id}`)
-    // console.log(`node 1 id: ${nodes[1].data.backend_id}`)
   }, [savedAgent, nodes]);
 
-  // function setNodes(setter: (nodes: CustomNode[]) => CustomNode[]) {
-  //   setState((prev) => ({
-  //     agent: prev.agent,
-  //     nodes: setter(prev.nodes),
-  //     edges: prev.edges,
-  //   }));
-  // }
+  // Update edges with execution data from the queue
+  useEffect(() => {
+    if (updateQueue.length === 0 || !nodesSyncedWithSavedAgent) {
+      return;
+    }
+    setUpdateQueue((prev) => {
+      prev.forEach((data) => {
+        updateNodesWithExecutionData(data);
+      });
+      return [];
+    })
 
-  // function setEdges(setter: (edges: CustomEdge[]) => CustomEdge[]) {
-  //   setState((prev) => ({
-  //     agent: prev.agent,
-  //     nodes: prev.nodes,
-  //     edges: setter(prev.edges),
-  //   }));
-  // }
+  }, [updateQueue, nodesSyncedWithSavedAgent]);
 
   function getFrontendId(backendId: string, nodes: CustomNode[]) {
     const node = nodes.find((node) => node.data.backend_id === backendId);
     return node?.id;
   }
 
-  function updateEdgeBeads(
-    executionData: NodeExecutionResult[],
-    nodes: CustomNode[],
-  ) {
+  const updateEdgeBeads = useCallback((
+    executionData: NodeExecutionResult,
+  ) => {
     setEdges((edges) => {
-      // console.log("££ Updating edges with execution data", executionData);
-      const newEdges = JSON.parse(
-        JSON.stringify(edges),
-      ) as CustomEdge[];
+      return edges.map(e => {
+        const edge = { ...e, data: { ...e.data } } as CustomEdge;
 
-      executionData.forEach((exec) => {
-        if (exec.status === "COMPLETED") {
+        if (executionData.status === "COMPLETED") {
           // Produce output beads
-          for (let key in exec.output_data) {
-            const outputEdges = newEdges.filter(
-              (edge) =>
-                edge.source === getFrontendId(exec.node_id, nodes) &&
-                edge.sourceHandle === key,
-            );
-            outputEdges.forEach((edge) => {
-              edge.data!.beadUp = (edge.data!.beadUp ?? 0) + 1;
-              // For static edges beadDown is always one less than beadUp
-              // Because there's no queueing and one bead is always at the connection point
-              if (edge.data?.isStatic) {
-                edge.data!.beadDown = (edge.data!.beadUp ?? 0) - 1;
-                edge.data!.beadData! = edge.data!.beadData!.slice(0, -1);
-              }
-              //todo kcze this assumes output at key is always array with one element
-              edge.data!.beadData = [
-                exec.output_data[key][0],
-                ...edge.data!.beadData!,
-              ];
-            });
+          for (let key in executionData.output_data) {
+            if (
+              edge.source !== getFrontendId(executionData.node_id, nodes) ||
+              edge.sourceHandle !== key
+            ) {
+              return edge;
+            }
+            edge.data!.beadUp = (edge.data!.beadUp ?? 0) + 1;
+            // For static edges beadDown is always one less than beadUp
+            // Because there's no queueing and one bead is always at the connection point
+            if (edge.data?.isStatic) {
+              edge.data!.beadDown = (edge.data!.beadUp ?? 0) - 1;
+              edge.data!.beadData = edge.data!.beadData!.slice(0, -1);
+              return edge;
+            }
+            //todo kcze this assumes output at key is always array with one element
+            edge.data!.beadData = [
+              executionData.output_data[key][0],
+              ...edge.data!.beadData!,
+            ];
           }
-        } else if (exec.status === "RUNNING") {
+        } else if (executionData.status === "RUNNING") {
           // Consume input beads
-          for (let key in exec.input_data) {
-            const inputEdges = newEdges.filter(
-              (edge) =>
-                edge.target === getFrontendId(exec.node_id, nodes) &&
-                edge.targetHandle === key,
-            );
-
-            inputEdges.forEach((edge) => {
-              // Skip decreasing bead count if edge doesn't match or if it's static
-              if (
-                edge.data!.beadData![edge.data!.beadData!.length - 1] !==
-                exec.input_data[key] ||
-                edge.data?.isStatic
-              ) {
-                return;
-              }
-              console.log('edge id', edge.id)
-              console.log("Consuming beadDown:", edge.data!.beadDown);
-              edge.data!.beadDown = (edge.data!.beadDown ?? 0) + 1;
-              edge.data!.beadData! = edge.data!.beadData!.slice(0, -1);
-            });
+          for (let key in executionData.input_data) {
+            if (
+              edge.target !== getFrontendId(executionData.node_id, nodes) ||
+              edge.targetHandle !== key
+            ) {
+              console.log('target and key doesn\'t match', edge.id)
+              return edge;
+            }
+            // Skip decreasing bead count if edge doesn't match or if it's static
+            if (
+              edge.data!.beadData![edge.data!.beadData!.length - 1] !==
+              executionData.input_data[key] ||
+              edge.data?.isStatic
+            ) {
+              console.log('data and input data doesn\'t match', edge.id)
+              return edge;
+            }
+            console.log('edge id', edge.id)
+            console.log("Consuming beadDown:", edge.data!.beadDown);
+            edge.data!.beadDown = (edge.data!.beadDown ?? 0) + 1;
+            edge.data!.beadData = edge.data!.beadData!.slice(0, -1);
           }
         }
-      });
-
-      return newEdges;
-    });
-  }
-
-  const updateNodesWithExecutionData = (
-    executionData: NodeExecutionResult[],
-  ) => {
-    console.log("Updating nodes with execution data:", executionData);
-    console.table({
-      // graph_id: executionData[0].graph_id,
-      node_id: executionData[0].node_id,
+        return edge
+      })
     })
+  }, [edges]);
+
+  const updateNodesWithExecutionData = useCallback((
+    executionData: NodeExecutionResult,
+  ) => {
     //todo kcze turning off beads
     // if (visualizeBeads !== "no") {
-    // updateEdgeBeads(executionData, nodes);
+    updateEdgeBeads(executionData);
     // }
     setNodes((nodes) => {
-      // console.log('NoDeS on execution update', nodes)
-      const updatedNodes = nodes.map((node) => {
-
-        const nodeExecution = executionData.find(
-          (exec) => {
-            return exec.node_id === node.data.backend_id
-          }
-        );
-        // console.log('exec.node_id', executionData[0].node_id, 'nodeExecution', nodeExecution)
-
-        if (!nodeExecution || node.data.status === nodeExecution.status) {
-          return node;
-        }
-
-        return {
+      const nodeId = nodes.find(
+        (node) => node.data.backend_id === executionData.node_id,
+      )?.id;
+      if (!nodeId) {
+        console.error("Node not found for execution data:", executionData,
+          "This shouldn't happen and means that the frontend and backend are out of sync.");
+        return nodes;
+      }
+      return nodes.map((node) => (
+        node.id === nodeId ? {
           ...node,
           data: {
             ...node.data,
-            status: nodeExecution.status,
-            output_data: nodeExecution.output_data,
+            status: executionData.status,
+            output_data: executionData.output_data,
             isOutputOpen: true,
-          },
-        };
-      });
-
-      return updatedNodes;
+          }
+        } : node
+      ))
     });
-  };
+  }, [nodes]);
 
   //kcze to utils? repeated in Flow
   function formatEdgeID(conn: Link | Connection): string {
@@ -316,12 +299,6 @@ export default function useAgentGraph(flowID?: string, template?: boolean) {
 
   function loadGraph(graph: Graph) {
     setSavedAgent(graph);
-    //todo kcze pack all three into setState
-    // setState((prev) => ({
-    //   agent: graph,
-    //   nodes: prev.nodes,
-    //   edges: prev.edges,
-    // }));
     setAgentName(graph.name);
     setAgentDescription(graph.description);
 
@@ -447,30 +424,16 @@ export default function useAgentGraph(flowID?: string, template?: boolean) {
   };
 
   const saveAgent = async (asTemplate: boolean = false) => {
-    // setNodes((nds) =>
-    //   nds.map((node) => ({
-    //     ...node,
-    //     data: {
-    //       ...node.data,
-    //       hardcodedValues: removeEmptyStringsAndNulls(
-    //         node.data.hardcodedValues,
-    //       ),
-    //       status: undefined,
-    //       // backend_id: undefined
-    //     },
-    //   })),
-    // );
-    
-    //todo kcze frontend ids should be returned from the server
+    //FIXME frontend ids should be returned from the server
     // currently this relays on block_id and position
     const blockIdToNodeIdMap: Record<string, string> = {};
 
+    nodes.forEach((node) => {
+      const key = `${node.data.block_id}_${node.position.x}_${node.position.y}`;
+      blockIdToNodeIdMap[key] = node.id;
+    });
+
     const formattedNodes = nodes.map((node) => {
-      //todo kcze move outside of map!!
-      nodes.forEach((node) => {
-        const key = `${node.data.block_id}_${node.position.x}_${node.position.y}`;
-        blockIdToNodeIdMap[key] = node.id;
-      });
       const inputDefault = prepareNodeInputData(node);
       const inputNodes = edges
         .filter((edge) => edge.target === node.id)
@@ -517,19 +480,18 @@ export default function useAgentGraph(flowID?: string, template?: boolean) {
       links: links,
     };
 
-    // if (savedAgent && deepEquals(payload, savedAgent)) {
-    //   console.debug("No need to save: Graph is the same as version on server");
-    //   // Trigger state change
-    //   setSavedAgent(savedAgent);
-    //   // setState((prev) => prev);
-    //   return;
-    // } else {
-    //   console.debug(
-    //     "Saving new Graph version; old vs new:",
-    //     savedAgent,
-    //     payload,
-    //   );
-    // }
+    if (savedAgent && deepEquals(payload, savedAgent)) {
+      console.debug("No need to save: Graph is the same as version on server");
+      // Trigger state change
+      setSavedAgent(savedAgent);
+      return;
+    } else {
+      console.debug(
+        "Saving new Graph version; old vs new:",
+        savedAgent,
+        payload,
+      );
+    }
 
     setNodesSyncedWithSavedAgent(false);
 
@@ -541,35 +503,7 @@ export default function useAgentGraph(flowID?: string, template?: boolean) {
         ? api.createTemplate(payload)
         : api.createGraph(payload));
     console.debug("Response from the API:", newSavedAgent);
-    console.table({
-      // graph_id: newSavedAgent.id,
-      node_0_id: newSavedAgent.nodes[0].id,
-      node_1_id: newSavedAgent.nodes[1].id,
-    })
 
-    
-    // setState((prev) => ({
-    //   agent: newSavedAgent,
-    //   nodes: newSavedAgent.nodes
-    //     .map((backendNode) => {
-    //       const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
-    //       const frontendNodeId = blockIdToNodeIdMap[key];
-    //       const frontendNode = prev.nodes.find((node) => node.id === frontendNodeId);
-
-    //       return frontendNode
-    //         ? {
-    //           ...frontendNode,
-    //           position: backendNode.metadata.position,
-    //           data: {
-    //             ...frontendNode.data,
-    //             backend_id: backendNode.id,
-    //           },
-    //         }
-    //         : null;
-    //     })
-    //     .filter((node) => node !== null),
-    //   edges: prev.edges,
-    // }));
     // Update the node IDs on the frontend
     setSavedAgent(newSavedAgent);
     setNodes((prev) => {
@@ -617,31 +551,17 @@ export default function useAgentGraph(flowID?: string, template?: boolean) {
 
   const requestSave = (asTemplate: boolean) => {
     saveAgent(asTemplate);
-    setSaveRunRequest((prev) => {
-      // if (prev.request !== 'none') {
-      //   return prev;
-      // }
-
-      return {
-        request: 'save',
-        state: 'saving',
-        prevAgentVersion: savedAgent?.version ?? null,
-      }
+    setSaveRunRequest({
+      request: 'save',
+      state: 'saving',
     })
   }
 
   const requestSaveRun = () => {
     saveAgent();
-    setSaveRunRequest((prev) => {
-      // if (prev.request !== 'none') {
-      //   return prev;
-      // }
-
-      return {
-        request: 'run',
-        state: 'saving',
-        prevAgentVersion: savedAgent?.version ?? null,
-      }
+    setSaveRunRequest({
+      request: 'run',
+      state: 'saving',
     })
   }
 
@@ -660,5 +580,4 @@ export default function useAgentGraph(flowID?: string, template?: boolean) {
     edges,
     setEdges,
   }
-
 }

@@ -3,7 +3,6 @@ import React, {
   useState,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   MouseEvent,
   createContext,
@@ -26,17 +25,11 @@ import {
 import "@xyflow/react/dist/style.css";
 import { CustomNode } from "./CustomNode";
 import "./flow.css";
-import AutoGPTServerAPI, {
-  Block,
-  BlockIOSubSchema,
-  Graph,
+import {
   Link,
-  NodeExecutionResult,
 } from "@/lib/autogpt-server-api";
 import {
-  deepEquals,
   getTypeColor,
-  removeEmptyStringsAndNulls,
   setNestedProperty,
 } from "@/lib/utils";
 import { history } from "./history";
@@ -73,9 +66,7 @@ const FlowEditor: React.FC<{
     getNode,
     deleteElements,
     updateNode,
-    updateEdge,
     updateNodeData,
-    updateEdgeData,
   } = useReactFlow<CustomNode, CustomEdge>();
   const [nodeId, setNodeId] = useState<number>(1);
   const [copiedNodes, setCopiedNodes] = useState<CustomNode[]>([]);
@@ -381,72 +372,6 @@ const FlowEditor: React.FC<{
     history.redo();
   };
 
-  
-
-  // async function saveAgent(asTemplate: boolean = false) {
-  //   setNodes((nds) =>
-  //     nds.map((node) => ({
-  //       ...node,
-  //       data: {
-  //         ...node.data,
-  //         hardcodedValues: removeEmptyStringsAndNulls(
-  //           node.data.hardcodedValues,
-  //         ),
-  //         status: undefined,
-  //       },
-  //     })),
-  //   );
-  //   // Reset bead count
-  //   setEdges((edges) => {
-  //     return edges.map(
-  //       (edge) =>
-  //       ({
-  //         ...edge,
-  //         data: {
-  //           ...edge.data,
-  //           edgeColor: edge.data?.edgeColor!,
-  //           beadUp: 0,
-  //           beadDown: 0,
-  //           beadData: [],
-  //         },
-  //       }),
-  //     );
-  //   });
-
-  //   await new Promise((resolve) => setTimeout(resolve, 100));
-
-  //   console.log("All nodes before formatting:", nodes);
-    
-  //   // SAVING
-
-  //   // Update the node IDs in the frontend
-  //   setNodes((prev) => {
-
-  //     return newSavedAgent.nodes
-  //       .map((backendNode) => {
-  //         const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
-  //         const frontendNodeId = blockIdToNodeIdMap[key];
-  //         const frontendNode = prev.find((node) => node.id === frontendNodeId);
-
-  //         return frontendNode
-  //           ? {
-  //             ...frontendNode,
-  //             position: backendNode.metadata.position,
-  //             data: {
-  //               ...frontendNode.data,
-  //               backend_id: backendNode.id,
-  //             },
-  //           }
-  //           : null;
-  //       })
-  //       .filter((node) => node !== null);
-  //   });
-
-  //   await new Promise((resolve) => setTimeout(resolve, 100));
-
-  //   return newSavedAgent.id;
-  // }
-
   const validateNodes = (): boolean => {
     console.log("Validating nodes");
     let isValid = true;
@@ -495,26 +420,6 @@ const FlowEditor: React.FC<{
 
     return isValid;
   };
-
-  // const runAgent = async () => {
-  //   try {
-  //     const newAgentId = await saveAgent();
-  //     if (!newAgentId) {
-  //       console.error("Error saving agent; aborting run");
-  //       return;
-  //     }
-
-  //     if (!validateNodes()) {
-  //       console.error("Validation failed; aborting run");
-  //       return;
-  //     }
-
-  //     api.subscribeToExecution(newAgentId);
-  //     await api.executeGraph(newAgentId);
-  //   } catch (error) {
-  //     console.error("Error running agent:", error);
-  //   }
-  // };
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -654,5 +559,3 @@ const WrappedFlowEditor: typeof FlowEditor = (props) => (
 );
 
 export default WrappedFlowEditor;
-
-
