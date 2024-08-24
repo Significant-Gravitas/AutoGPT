@@ -8,8 +8,8 @@ spec:
   type: {{ .Values.service.type }}
   ports:
     - port: {{ .Values.service.port }}
-      targetPort: http
+      targetPort: 8001
       protocol: TCP
-      name: http
+      name: ws
   selector:
     {{- include "autogpt-websocket-server.selectorLabels" . | nindent 4 }}

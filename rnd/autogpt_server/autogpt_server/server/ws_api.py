@@ -1,25 +1,24 @@
 import asyncio
 import logging
-from http.client import HTTPException
 
-import fastapi
-from fastapi import WebSocket, WebSocketDisconnect, Depends, FastAPI
+from autogpt_libs.auth import auth_middleware, parse_jwt_token
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 
+from autogpt_server.data.queue import AsyncRedisEventQueue
 from autogpt_server.data.user import DEFAULT_USER_ID
 from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import ExecutionSubscription, Methods, WsMessage
-from autogpt_server.server.queue import AsyncRabbitMQEventQueue
 from autogpt_server.util.settings import Settings
-from autogpt_libs.auth import auth_middleware, parse_jwt_token
 
 settings = Settings()
 
 app = FastAPI()
 manager = ConnectionManager()
-event_queue = AsyncRabbitMQEventQueue()
+event_queue = AsyncRedisEventQueue()
 
 app.add_middleware(
-    middleware_class=fastapi.middleware.cors.CORSMiddleware,
+    CORSMiddleware,
     allow_origins=[
         "*",
     ],
@@ -28,6 +27,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.on_event("startup")
 async def startup_event():
     global manager
@@ -35,14 +35,18 @@ async def startup_event():
     await event_queue.connect()
     asyncio.create_task(event_broadcaster())
 
+
 @app.on_event("shutdown")
 async def shutdown_event():
     await event_queue.close()
 
+
 async def event_broadcaster():
     while True:
-        event = await event_queue.get_execution_result()
-        await manager.send_execution_result(event)
+        event = await event_queue.get()
+        if event is not None:
+            await manager.send_execution_result(event)
+
 
 def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
     if not payload:
@@ -53,6 +57,7 @@ def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
     if not user_id:
         raise HTTPException(status_code=401, detail="User ID not found in token")
     return user_id
+
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
     if settings.config.enable_auth.lower() == "true":
@@ -73,6 +78,7 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
             return ""
     else:
         return DEFAULT_USER_ID
+
 
 async def handle_subscribe(
     websocket: WebSocket, manager: ConnectionManager, message: WsMessage
@@ -121,6 +127,12 @@ async def handle_unsubscribe(
             ).model_dump_json()
         )
 
+
+@app.get("/")
+async def health():
+    return {"status": "healthy"}
+
+
 @app.websocket("/ws")
 async def websocket_router(websocket: WebSocket):
     user_id = await authenticate_websocket(websocket)
@@ -132,14 +144,10 @@ async def websocket_router(websocket: WebSocket):
             data = await websocket.receive_text()
             message = WsMessage.model_validate_json(data)
             if message.method == Methods.SUBSCRIBE:
-                await handle_subscribe(
-                    websocket, manager, message
-                )
+                await handle_subscribe(websocket, manager, message)
 
             elif message.method == Methods.UNSUBSCRIBE:
-                await handle_unsubscribe(
-                    websocket, manager, message
-                )
+                await handle_unsubscribe(websocket, manager, message)
 
             elif message.method == Methods.ERROR:
                 logging.error("WebSocket Error message received:", message.data)

@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 
 if TYPE_CHECKING:
-    from autogpt_server.server.api_server import AgentServer
+    from autogpt_server.server.rest_api import AgentServer
 
 from autogpt_server.blocks.basic import InputBlock
 from autogpt_server.data import db
@@ -300,7 +300,7 @@ def validate_exec(
 
 
 def get_agent_server_client() -> "AgentServer":
-    from autogpt_server.server.api_server import AgentServer
+    from autogpt_server.server.rest_api import AgentServer
 
     return get_service_client(AgentServer)
 

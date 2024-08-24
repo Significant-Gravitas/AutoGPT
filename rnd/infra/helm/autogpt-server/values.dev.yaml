@@ -42,11 +42,11 @@ ingress:
 
 resources:
   requests:
-    cpu: 100m
-    memory: 128Mi
+    cpu: 200m
+    memory: 256Mi
   limits:
-    cpu: 500m
-    memory: 512Mi
+    cpu: 2
+    memory: 2Gi
 
 livenessProbe:
   httpGet:
@@ -83,3 +83,5 @@ env:
   PYRO_HOST: "0.0.0.0"
   NUM_GRAPH_WORKERS: 100
   NUM_NODE_WORKERS: 100
+  REDIS_HOST: "redis-dev-master.redis-dev.svc.cluster.local"
+  REDIS_PORT: "6379"

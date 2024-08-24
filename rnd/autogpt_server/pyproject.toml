@@ -43,6 +43,7 @@ discord-py = "^2.4.0"
 
 autogpt-libs = {path = "../autogpt_libs"}
 aio-pika = "^9.4.3"
+redis = "^5.0.8"
 [tool.poetry.group.dev.dependencies]
 cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main", develop = true }
 poethepoet = "^0.26.1"

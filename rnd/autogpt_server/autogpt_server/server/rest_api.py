@@ -1,5 +1,4 @@
 import inspect
-import logging
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from functools import wraps
@@ -7,13 +6,7 @@ from typing import Annotated, Any, Dict
 
 import uvicorn
 from autogpt_libs.auth.middleware import auth_middleware
-from fastapi import (
-    APIRouter,
-    Body,
-    Depends,
-    FastAPI,
-    HTTPException,
-)
+from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -26,13 +19,10 @@ from autogpt_server.data.execution import (
     get_execution_results,
     list_executions,
 )
+from autogpt_server.data.queue import AsyncEventQueue, AsyncRedisEventQueue
 from autogpt_server.data.user import DEFAULT_USER_ID, get_or_create_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
-from autogpt_server.server.model import (
-    CreateGraph,
-    SetGraphActiveVersion,
-)
-from autogpt_server.server.queue import AsyncRabbitMQEventQueue, AsyncEventQueue
+from autogpt_server.server.model import CreateGraph, SetGraphActiveVersion
 from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
@@ -52,30 +42,20 @@ def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
 
 
 class AgentServer(AppService):
-    event_queue: AsyncEventQueue = AsyncRabbitMQEventQueue()
+    event_queue: AsyncEventQueue = AsyncRedisEventQueue()
     mutex = KeyedMutex()
     use_db = False
     _test_dependency_overrides = {}
 
-    async def startup(self):
-        logging.info("Connecting to event queue...")
-        await self.event_queue.connect()
-        logging.info("Connected to event queue.")
-
-    async def shutdown(self):
-        logging.info("Closing event queue connection...")
-        await self.event_queue.close()
-        logging.info("Event queue connection closed.")
-
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
-        await self.event_queue.connect()
+        self.run_and_wait(self.event_queue.connect())
         await db.connect()
         await block.initialize_blocks()
         if await user_db.create_default_user(settings.config.enable_auth):
             await graph_db.import_packaged_templates()
         yield
-        await self.event_queue.close()
+        self.run_and_wait(self.event_queue.close())
         await db.disconnect()
 
     def run_service(self):
@@ -270,7 +250,6 @@ class AgentServer(AppService):
             },
             status_code=500,
         )
-
 
     @classmethod
     async def get_or_create_user_route(cls, user_data: dict = Depends(auth_middleware)):
@@ -518,7 +497,7 @@ class AgentServer(AppService):
     @expose
     def send_execution_update(self, execution_result_dict: dict[Any, Any]):
         execution_result = ExecutionResult(**execution_result_dict)
-        self.run_and_wait(self.event_queue.publish_execution_result(execution_result))
+        self.run_and_wait(self.event_queue.put(execution_result))
 
     @expose
     def acquire_lock(self, key: Any):

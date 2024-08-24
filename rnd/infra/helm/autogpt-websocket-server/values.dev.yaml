@@ -10,12 +10,33 @@ service:
   port: 8001
 
 ingress:
-  enabled: false # no outside access needed
+  enabled: true
+  className: "gce"
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: "agpt-dev-agpt-ws-server-ip"
+    networking.gke.io/managed-certificates: "autogpt-websocket-server-cert"
+  hosts:
+    - host: dev-ws-server.agpt.co
+      paths:
+        - path: /
+          pathType: Prefix
+      backend:
+        service:
+          name: autogpt-websocket-server
+          port: 8001
+  defaultBackend:
+    service:
+      name: autogpt-websocket-server
+      port:
+        number: 8001
+
+domain: "dev-ws-server.agpt.co"
 
 resources:
   limits:
-    cpu: 100m
-    memory: 128Mi
+    cpu: 200m
+    memory: 256Mi
   requests:
     cpu: 100m
     memory: 128Mi
@@ -23,12 +44,20 @@ resources:
 autoscaling:
   enabled: false
 
+readinessProbe:
+  httpGet:
+    path: /
+    port: 8001
+  initialDelaySeconds: 10
+  periodSeconds: 5
+livenessProbe:
+  httpGet:
+    path: /
+    port: 8001
+  initialDelaySeconds: 15
+  periodSeconds: 10
+
 env:
-  - name: RABBITMQ_HOST
-    value: rabbitmq-service
-  - name: RABBITMQ_PORT
-    value: "5672"
-  - name: RABBITMQ_USER
-    value: user
-  - name: RABBITMQ_PASSWORD
-    value: password
+  REDIS_HOST: "redis-dev-master.redis-dev.svc.cluster.local"
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: "password"
