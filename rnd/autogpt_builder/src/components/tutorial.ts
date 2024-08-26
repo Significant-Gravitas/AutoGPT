@@ -1,7 +1,9 @@
 import Shepherd from "shepherd.js";
 import "shepherd.js/dist/css/shepherd.css";
 
-export const startTutorial = (setPinBlocksPopover: (value: boolean) => void) => {
+export const startTutorial = (
+  setPinBlocksPopover: (value: boolean) => void,
+) => {
   const tour = new Shepherd.Tour({
     useModalOverlay: true,
     defaultStepOptions: {
