@@ -28,6 +28,14 @@ import { FlowContext } from "./Flow";
 
 type ParsedKey = { key: string; index?: number };
 
+export type ConnectionData = Array<{
+  edge_id: string;
+  source: string;
+  sourceHandle: string;
+  target: string;
+  targetHandle: string;
+}>;
+
 export type CustomNodeData = {
   blockType: string;
   title: string;
@@ -36,19 +44,14 @@ export type CustomNodeData = {
   inputSchema: BlockIORootSchema;
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
-  connections: Array<{
-    edge_id: string;
-    source: string;
-    sourceHandle: string;
-    target: string;
-    targetHandle: string;
-  }>;
+  connections: ConnectionData;
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
   output_data?: NodeExecutionResult["output_data"];
   block_id: string;
   backend_id?: string;
   errors?: { [key: string]: string };
+  isOutputStatic?: boolean;
 };
 
 export type CustomNode = Node<CustomNodeData, "custom">;
@@ -172,26 +175,26 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
   // Helper function to parse keys with array indices
   //TODO move to utils
   const parseKeys = (key: string): ParsedKey[] => {
-    const regex = /(\w+)|\[(\d+)\]/g;
+    const splits = key.split(/_@_|_#_|_\$_|\./);
     const keys: ParsedKey[] = [];
-    let match;
     let currentKey: string | null = null;
 
-    while ((match = regex.exec(key)) !== null) {
-      if (match[1]) {
+    splits.forEach((split) => {
+      const isInteger = /^\d+$/.test(split);
+      if (!isInteger) {
         if (currentKey !== null) {
           keys.push({ key: currentKey });
         }
-        currentKey = match[1];
-      } else if (match[2]) {
+        currentKey = split;
+      } else {
         if (currentKey !== null) {
-          keys.push({ key: currentKey, index: parseInt(match[2], 10) });
+          keys.push({ key: currentKey, index: parseInt(split, 10) });
           currentKey = null;
         } else {
           throw new Error("Invalid key format: array index without a key");
         }
       }
-    }
+    });
 
     if (currentKey !== null) {
       keys.push({ key: currentKey });
@@ -285,7 +288,7 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
 
   return (
     <div
-      className={`custom-node dark-theme border rounded-xl shadow-md bg-white/[.9] ${data.status?.toLowerCase() ?? ""}`}
+      className={`custom-node dark-theme rounded-xl border bg-white/[.9] shadow-md ${data.status?.toLowerCase() ?? ""}`}
       onMouseEnter={handleHovered}
       onMouseLeave={handleMouseLeave}
     >
@@ -293,14 +296,14 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
         className={`mb-2 p-3 ${getPrimaryCategoryColor(data.categories)} rounded-t-xl`}
       >
         <div className="flex items-center justify-between">
-          <div className="p-3 text-lg font-semibold font-roboto">
+          <div className="font-roboto p-3 text-lg font-semibold">
             {beautifyString(
               data.blockType?.replace(/Block$/, "") || data.title,
             )}
           </div>
           <SchemaTooltip description={data.description} />
         </div>
-        <div className="flex gap-[5px] ">
+        <div className="flex gap-[5px]">
           {isHovered && (
             <>
               <Button
@@ -323,7 +326,7 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
           )}
         </div>
       </div>
-      <div className="p-3 flex justify-between items-start gap-2">
+      <div className="flex items-start justify-between gap-2 p-3">
         <div>
           {data.inputSchema &&
             Object.entries(data.inputSchema.properties).map(
@@ -342,10 +345,11 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
                       />
                       {!isConnected && (
                         <NodeGenericInputField
-                          className="mt-1 mb-2"
+                          className="mb-2 mt-1"
                           propKey={propKey}
                           propSchema={propSchema}
                           currentValue={getValue(propKey)}
+                          connections={data.connections}
                           handleInputChange={handleInputChange}
                           handleInputClick={handleInputClick}
                           errors={data.errors ?? {}}
@@ -389,7 +393,7 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
           </p>
         </div>
       )}
-      <div className="flex items-center pl-4 pb-4 mt-2.5">
+      <div className="mt-2.5 flex items-center pb-4 pl-4">
         <Switch onCheckedChange={toggleOutput} />
         <span className="m-1 mr-4">Output</span>
         {hasOptionalFields && (

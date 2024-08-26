@@ -12,6 +12,7 @@ export type Block = {
   categories: Category[];
   inputSchema: BlockIORootSchema;
   outputSchema: BlockIORootSchema;
+  staticOutput: boolean;
 };
 
 export type BlockIORootSchema = {

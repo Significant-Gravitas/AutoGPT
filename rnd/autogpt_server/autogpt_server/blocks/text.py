@@ -115,13 +115,8 @@ class TextParserBlock(Block):
 
 class TextFormatterBlock(Block):
     class Input(BlockSchema):
-        texts: list[Any] = Field(description="Texts (list) to format", default=[])
-        named_texts: dict[str, Any] = Field(
-            description="Texts (dict) to format", default={}
-        )
-        format: str = Field(
-            description="Template to format the text using `texts` and `named_texts`",
-        )
+        values: dict[str, Any] = Field(description="Values (dict) to be used in format")
+        format: str = Field(description="Template to format the text using `values`")
 
     class Output(BlockSchema):
         output: str
@@ -134,39 +129,27 @@ class TextFormatterBlock(Block):
             input_schema=TextFormatterBlock.Input,
             output_schema=TextFormatterBlock.Output,
             test_input=[
-                {"texts": ["Hello"], "format": "{texts[0]}"},
                 {
-                    "texts": ["Hello", "World!"],
-                    "named_texts": {"name": "Alice"},
-                    "format": "{texts[0]} {texts[1]} {name}",
+                    "values": {"name": "Alice", "hello": "Hello", "world": "World!"},
+                    "format": "{hello}, {world} {name}",
                 },
-                {"format": "Hello, World!"},
             ],
             test_output=[
-                ("output", "Hello"),
-                ("output", "Hello World! Alice"),
-                ("output", "Hello, World!"),
+                ("output", "Hello, World! Alice"),
             ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
-        texts = [
-            text if isinstance(text, str) else json.dumps(text)
-            for text in input_data.texts
-        ]
-        named_texts = {
+        values = {
             key: value if isinstance(value, str) else json.dumps(value)
-            for key, value in input_data.named_texts.items()
+            for key, value in input_data.values.items()
         }
-        yield "output", input_data.format.format(texts=texts, **named_texts)
+        yield "output", input_data.format.format(**values)
 
 
 class TextCombinerBlock(Block):
     class Input(BlockSchema):
-        input1: str = Field(description="First text input", default="")
-        input2: str = Field(description="Second text input", default="")
-        input3: str = Field(description="Second text input", default="")
-        input4: str = Field(description="Second text input", default="")
+        input: list[str] = Field(description="text input to combine")
         delimiter: str = Field(description="Delimiter to combine texts", default="")
 
     class Output(BlockSchema):
@@ -180,24 +163,15 @@ class TextCombinerBlock(Block):
             input_schema=TextCombinerBlock.Input,
             output_schema=TextCombinerBlock.Output,
             test_input=[
-                {"input1": "Hello world I like ", "input2": "cake and to go for walks"},
-                {"input1": "This is a test. ", "input2": "Let's see how it works."},
+                {"input": ["Hello world I like ", "cake and to go for walks"]},
+                {"input": ["This is a test", "Hi!"], "delimiter": "! "},
             ],
             test_output=[
                 ("output", "Hello world I like cake and to go for walks"),
-                ("output", "This is a test. Let's see how it works."),
+                ("output", "This is a test! Hi!"),
             ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
-        combined_text = input_data.delimiter.join(
-            text
-            for text in [
-                input_data.input1,
-                input_data.input2,
-                input_data.input3,
-                input_data.input4,
-            ]
-            if text
-        )
+        combined_text = input_data.delimiter.join(input_data.input)
         yield "output", combined_text

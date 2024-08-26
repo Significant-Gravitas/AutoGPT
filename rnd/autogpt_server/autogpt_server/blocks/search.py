@@ -135,7 +135,7 @@ class GetOpenWeatherMapBlock(Block, GetRequest):
     class Input(BlockSchema):
         location: str
         api_key: BlockSecret = SecretField(key="openweathermap_api_key")
-        use_celsius: bool
+        use_celsius: bool = True
 
     class Output(BlockSchema):
         temperature: str

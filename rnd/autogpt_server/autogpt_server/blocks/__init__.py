@@ -54,6 +54,10 @@ for cls in all_subclasses(Block):
     if block.id in AVAILABLE_BLOCKS:
         raise ValueError(f"Block ID {block.name} error: {block.id} is already in use")
 
+    for field in block.input_schema.__fields__.values():
+        if field.annotation is bool and field.default not in (True, False):
+            raise ValueError(f"{block.name} has a boolean field with no default value")
+
     if block.disabled:
         continue
 

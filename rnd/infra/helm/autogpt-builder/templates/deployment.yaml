@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "autogpt_builder.fullname" . }}
+  name: {{ include "autogpt-builder.fullname" . }}
   labels:
-    {{- include "autogpt_builder.labels" . | nindent 4 }}
+    {{- include "autogpt-builder.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "autogpt_builder.selectorLabels" . | nindent 6 }}
+      {{- include "autogpt-builder.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -18,7 +18,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "autogpt_builder.labels" . | nindent 8 }}
+        {{- include "autogpt-builder.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -27,7 +27,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "autogpt_builder.serviceAccountName" . }}
+      serviceAccountName: {{ include "autogpt-builder.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
