@@ -1,5 +1,5 @@
 // app/marketplace/admin/dashboard/page.tsx
-import { withRoleAccess } from '@/lib/withRoleAccess';
+import { withRoleAccess } from "@/lib/withRoleAccess";
 
 async function AdminDashboard() {
   // You can fetch data here directly if needed
@@ -13,4 +13,4 @@ async function AdminDashboard() {
   );
 }
 
-export default withRoleAccess(['admin'])(AdminDashboard);
+export default withRoleAccess(["admin"])(AdminDashboard);
