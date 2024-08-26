@@ -371,12 +371,16 @@ class Executor:
         prefix = get_log_prefix(graph_data.graph_exec_id, "*")
         logger.warning(f"{prefix} Start graph execution")
 
-        def terminate():
+        def cancelled() -> bool:
+            if status.value != cls.STATUS_CANCELLED:
+                return False
+
             cls.executor.terminate()
             logger.info(
                 f"{prefix} Terminated graph execution {exec_data.graph_exec_id}"
             )
             cls._init_node_executor_pool()
+            return True
 
         try:
             queue = ExecutionQueue[NodeExecution]()
@@ -385,36 +389,36 @@ class Executor:
 
             running_executions: dict[str, AsyncResult] = {}
             while not queue.empty():
-                if status.value == cls.STATUS_CANCELLED:
-                    terminate()
+                if cancelled():
                     return
 
                 exec_data = queue.get()
 
                 # Avoid parallel execution of the same node.
-                exec = running_executions.get(exec_data.node_id)
-                if exec and not exec.ready():
+                execution = running_executions.get(exec_data.node_id)
+                if execution and not execution.ready():
                     # TODO (performance improvement):
                     #   Wait for the completion of the same node execution is blocking.
                     #   To improve this we need a separate queue for each node.
                     #   Re-enqueueing the data back to the queue will disrupt the order.
-                    exec.wait()
+                    execution.wait()
 
                 running_executions[exec_data.node_id] = cls.executor.apply_async(
-                    cls.on_node_execution, (queue, exec_data)
+                    cls.on_node_execution,
+                    (queue, exec_data),
+                    callback=lambda _: running_executions.pop(exec_data.node_id),
                 )
 
                 # Avoid terminating graph execution when some nodes are still running.
                 while queue.empty() and running_executions:
-                    for node_id, execution in list(running_executions.items()):
-                        if status.value == cls.STATUS_CANCELLED:
-                            terminate()
+                    for execution in list(running_executions.values()):
+                        if cancelled():
                             return
 
-                        if execution.ready():
-                            del running_executions[node_id]
-                        elif queue.empty():
-                            execution.wait(3)
+                        if not queue.empty():
+                            break  # yield to parent loop to execute new queue items
+
+                        execution.wait(3)
 
             logger.warning(f"{prefix} Finished graph execution")
         except Exception as e:
