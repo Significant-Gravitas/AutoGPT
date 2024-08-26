@@ -12,6 +12,7 @@ export type Block = {
   categories: Category[];
   inputSchema: BlockIORootSchema;
   outputSchema: BlockIORootSchema;
+  staticOutput: boolean;
 };
 
 export type BlockIORootSchema = {
@@ -34,7 +35,7 @@ type BlockIOSimpleTypeSubSchema =
   | BlockIOBooleanSubSchema
   | BlockIONullSubSchema;
 
-type BlockIOSubSchemaMeta = {
+export type BlockIOSubSchemaMeta = {
   title?: string;
   description?: string;
   placeholder?: string;
@@ -120,7 +121,7 @@ export type Link = {
   is_static: boolean;
 };
 
-export type LinkCreatable = Omit<Link, "id"> & {
+export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 

@@ -190,12 +190,12 @@ export default class AutoGPTServerAPI {
         this.webSocket = new WebSocket(wsUrlWithToken);
 
         this.webSocket.onopen = () => {
-          console.log("WebSocket connection established");
+          console.debug("WebSocket connection established");
           resolve();
         };
 
         this.webSocket.onclose = (event) => {
-          console.log("WebSocket connection closed", event);
+          console.debug("WebSocket connection closed", event);
           this.webSocket = null;
         };
 
@@ -227,13 +227,21 @@ export default class AutoGPTServerAPI {
   sendWebSocketMessage<M extends keyof WebsocketMessageTypeMap>(
     method: M,
     data: WebsocketMessageTypeMap[M],
+    callCount = 0,
   ) {
     if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
       this.webSocket.send(JSON.stringify({ method, data }));
     } else {
-      this.connectWebSocket().then(() =>
-        this.sendWebSocketMessage(method, data),
-      );
+      this.connectWebSocket().then(() => {
+        callCount == 0
+          ? this.sendWebSocketMessage(method, data, callCount + 1)
+          : setTimeout(
+              () => {
+                this.sendWebSocketMessage(method, data, callCount + 1);
+              },
+              2 ** (callCount - 1) * 1000,
+            );
+      });
     }
   }
 
