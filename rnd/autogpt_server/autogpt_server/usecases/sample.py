@@ -11,7 +11,7 @@ from autogpt_server.util.test import SpinTestServer, wait_execution
 async def create_test_user() -> User:
     test_user_data = {
         "sub": "ef3b97d7-1161-4eb4-92b2-10c24fb154c1",
-        "email": "testuser@example.com",
+        "email": "testuser#example.com",
         "name": "Test User",
     }
     user = await get_or_create_user(test_user_data)
@@ -38,8 +38,8 @@ def create_test_graph() -> graph.Graph:
         graph.Node(
             block_id=TextFormatterBlock().id,
             input_default={
-                "format": "{texts[0]}, {texts[1]}{texts[2]}",
-                "texts_$_3": "!!!",
+                "format": "{a}, {b}{c}",
+                "values_#_c": "!!!",
             },
         ),
         graph.Node(block_id=PrintingBlock().id),
@@ -49,13 +49,13 @@ def create_test_graph() -> graph.Graph:
             source_id=nodes[0].id,
             sink_id=nodes[2].id,
             source_name="output",
-            sink_name="texts_$_1",
+            sink_name="values_#_a",
         ),
         graph.Link(
             source_id=nodes[1].id,
             sink_id=nodes[2].id,
             source_name="output",
-            sink_name="texts_$_2",
+            sink_name="values_#_b",
         ),
         graph.Link(
             source_id=nodes[2].id,

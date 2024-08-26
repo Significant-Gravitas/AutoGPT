@@ -1,10 +1,18 @@
 /* Mirror of autogpt_server/data/block.py:Block */
+
+export type Category = {
+  category: string;
+  description: string;
+};
+
 export type Block = {
   id: string;
   name: string;
   description: string;
+  categories: Category[];
   inputSchema: BlockIORootSchema;
   outputSchema: BlockIORootSchema;
+  staticOutput: boolean;
 };
 
 export type BlockIORootSchema = {
@@ -27,7 +35,7 @@ type BlockIOSimpleTypeSubSchema =
   | BlockIOBooleanSubSchema
   | BlockIONullSubSchema;
 
-type BlockIOSubSchemaMeta = {
+export type BlockIOSubSchemaMeta = {
   title?: string;
   description?: string;
   placeholder?: string;
@@ -110,9 +118,10 @@ export type Link = {
   sink_id: string;
   source_name: string;
   sink_name: string;
+  is_static: boolean;
 };
 
-export type LinkCreatable = Omit<Link, "id"> & {
+export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 

@@ -4,7 +4,7 @@ import aiohttp
 import discord
 from pydantic import Field
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
+from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import BlockSecret, SecretField
 
 
@@ -12,6 +12,9 @@ class DiscordReaderBlock(Block):
     class Input(BlockSchema):
         discord_bot_token: BlockSecret = SecretField(
             key="discord_bot_token", description="Discord bot token"
+        )
+        continuous_read: bool = Field(
+            description="Whether to continuously read messages", default=True
         )
 
     class Output(BlockSchema):
@@ -28,7 +31,8 @@ class DiscordReaderBlock(Block):
             id="d3f4g5h6-1i2j-3k4l-5m6n-7o8p9q0r1s2t",  # Unique ID for the node
             input_schema=DiscordReaderBlock.Input,  # Assign input schema
             output_schema=DiscordReaderBlock.Output,  # Assign output schema
-            test_input={"discord_bot_token": "test_token"},
+            categories={BlockCategory.SOCIAL},
+            test_input={"discord_bot_token": "test_token", "continuous_read": False},
             test_output=[
                 (
                     "message_content",
@@ -81,6 +85,8 @@ class DiscordReaderBlock(Block):
         while True:
             for output_name, output_value in self.__run(input_data):
                 yield output_name, output_value
+            if not input_data.continuous_read:
+                break
 
     def __run(self, input_data: "DiscordReaderBlock.Input") -> BlockOutput:
         try:
@@ -142,6 +148,7 @@ class DiscordMessageSenderBlock(Block):
             id="h1i2j3k4-5l6m-7n8o-9p0q-r1s2t3u4v5w6",  # Unique ID for the node
             input_schema=DiscordMessageSenderBlock.Input,  # Assign input schema
             output_schema=DiscordMessageSenderBlock.Output,  # Assign output schema
+            categories={BlockCategory.SOCIAL},
             test_input={
                 "discord_bot_token": "YOUR_DISCORD_BOT_TOKEN",
                 "channel_name": "general",

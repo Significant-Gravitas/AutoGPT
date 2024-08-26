@@ -1,10 +1,10 @@
-import json
 import re
 from typing import Any
 
 from pydantic import Field
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from autogpt_server.util import json
 
 
 class TextMatcherBlock(Block):
@@ -115,13 +115,8 @@ class TextParserBlock(Block):
 
 class TextFormatterBlock(Block):
     class Input(BlockSchema):
-        texts: list[str] = Field(description="Texts (list) to format", default=[])
-        named_texts: dict[str, str] = Field(
-            description="Texts (dict) to format", default={}
-        )
-        format: str = Field(
-            description="Template to format the text using `texts` and `named_texts`",
-        )
+        values: dict[str, Any] = Field(description="Values (dict) to be used in format")
+        format: str = Field(description="Template to format the text using `values`")
 
     class Output(BlockSchema):
         output: str
@@ -134,32 +129,28 @@ class TextFormatterBlock(Block):
             input_schema=TextFormatterBlock.Input,
             output_schema=TextFormatterBlock.Output,
             test_input=[
-                {"texts": ["Hello"], "format": "{texts[0]}"},
                 {
-                    "texts": ["Hello", "World!"],
-                    "named_texts": {"name": "Alice"},
-                    "format": "{texts[0]} {texts[1]} {name}",
+                    "values": {"name": "Alice", "hello": "Hello", "world": "World!"},
+                    "format": "{hello}, {world} {name}",
                 },
-                {"format": "Hello, World!"},
             ],
             test_output=[
-                ("output", "Hello"),
-                ("output", "Hello World! Alice"),
-                ("output", "Hello, World!"),
+                ("output", "Hello, World! Alice"),
             ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
-        yield "output", input_data.format.format(
-            texts=input_data.texts,
-            **input_data.named_texts,
-        )
+        values = {
+            key: value if isinstance(value, str) else json.dumps(value)
+            for key, value in input_data.values.items()
+        }
+        yield "output", input_data.format.format(**values)
 
 
 class TextCombinerBlock(Block):
     class Input(BlockSchema):
-        input1: str = Field(description="First text input", default="a")
-        input2: str = Field(description="Second text input", default="b")
+        input: list[str] = Field(description="text input to combine")
+        delimiter: str = Field(description="Delimiter to combine texts", default="")
 
     class Output(BlockSchema):
         output: str = Field(description="Combined text")
@@ -172,15 +163,15 @@ class TextCombinerBlock(Block):
             input_schema=TextCombinerBlock.Input,
             output_schema=TextCombinerBlock.Output,
             test_input=[
-                {"input1": "Hello world I like ", "input2": "cake and to go for walks"},
-                {"input1": "This is a test. ", "input2": "Let's see how it works."},
+                {"input": ["Hello world I like ", "cake and to go for walks"]},
+                {"input": ["This is a test", "Hi!"], "delimiter": "! "},
             ],
             test_output=[
                 ("output", "Hello world I like cake and to go for walks"),
-                ("output", "This is a test. Let's see how it works."),
+                ("output", "This is a test! Hi!"),
             ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
-        combined_text = (input_data.input1 or "") + (input_data.input2 or "")
+        combined_text = input_data.delimiter.join(input_data.input)
         yield "output", combined_text

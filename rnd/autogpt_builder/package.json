@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
+    "@next/third-parties": "^14.2.5",
     "@radix-ui/react-avatar": "^1.1.0",
     "@radix-ui/react-checkbox": "^1.1.1",
     "@radix-ui/react-collapsible": "^1.1.0",
@@ -27,6 +28,7 @@
     "@radix-ui/react-tooltip": "^1.1.2",
     "@supabase/ssr": "^0.4.0",
     "@supabase/supabase-js": "^2.45.0",
+    "@xyflow/react": "^12.1.0",
     "ajv": "^8.17.1",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
@@ -44,7 +46,6 @@
     "react-icons": "^5.2.1",
     "react-markdown": "^9.0.1",
     "react-modal": "^3.16.1",
-    "reactflow": "^11.11.4",
     "recharts": "^2.12.7",
     "tailwind-merge": "^2.3.0",
     "tailwindcss-animate": "^1.0.7",
@@ -59,6 +60,7 @@
     "eslint-config-next": "14.2.4",
     "postcss": "^8",
     "prettier": "^3.3.3",
+    "prettier-plugin-tailwindcss": "^0.6.6",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
   }

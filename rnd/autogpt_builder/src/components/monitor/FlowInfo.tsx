@@ -45,7 +45,7 @@ export const FlowInfo: React.FC<
 
   return (
     <Card {...props}>
-      <CardHeader className="flex-row justify-between space-y-0 space-x-3">
+      <CardHeader className="flex-row justify-between space-x-3 space-y-0">
         <div>
           <CardTitle>
             {flow.name} <span className="font-light">v{flow.version}</span>

@@ -54,7 +54,7 @@ export default function LoginPage() {
 
   if (isUserLoading || isSupabaseLoading || user) {
     return (
-      <div className="flex justify-center items-center h-[80vh]">
+      <div className="flex h-[80vh] items-center justify-center">
         <FaSpinner className="mr-2 h-16 w-16 animate-spin" />
       </div>
     );
@@ -112,8 +112,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex items-center justify-center h-[80vh]">
-      <div className="w-full max-w-md p-8 rounded-lg shadow-md space-y-6">
+    <div className="flex h-[80vh] items-center justify-center">
+      <div className="w-full max-w-md space-y-6 rounded-lg p-8 shadow-md">
         <div className="mb-6 space-y-2">
           <Button
             className="w-full"
@@ -181,7 +181,7 @@ export default function LoginPage() {
               control={form.control}
               name="agreeToTerms"
               render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 mt-4">
+                <FormItem className="mt-4 flex flex-row items-start space-x-3 space-y-0">
                   <FormControl>
                     <Checkbox
                       checked={field.value}
@@ -207,16 +207,16 @@ export default function LoginPage() {
                 </FormItem>
               )}
             />
-            <div className="flex w-full space-x-4 mt-6 mb-6">
+            <div className="mb-6 mt-6 flex w-full space-x-4">
               <Button
-                className="w-1/2 flex justify-center"
+                className="flex w-1/2 justify-center"
                 type="submit"
                 disabled={isLoading}
               >
                 Log in
               </Button>
               <Button
-                className="w-1/2 flex justify-center"
+                className="flex w-1/2 justify-center"
                 variant="outline"
                 type="button"
                 onClick={form.handleSubmit(onSignup)}
@@ -226,7 +226,7 @@ export default function LoginPage() {
               </Button>
             </div>
           </form>
-          <p className="text-red-500 text-sm">{feedback}</p>
+          <p className="text-sm text-red-500">{feedback}</p>
         </Form>
       </div>
     </div>
