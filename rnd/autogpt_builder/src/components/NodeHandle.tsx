@@ -1,7 +1,7 @@
 import { BlockIOSubSchema } from "@/lib/autogpt-server-api/types";
 import { beautifyString, getTypeBgColor, getTypeTextColor } from "@/lib/utils";
 import { FC } from "react";
-import { Handle, Position } from "reactflow";
+import { Handle, Position } from "@xyflow/react";
 import SchemaTooltip from "./SchemaTooltip";
 
 type HandleProps = {
@@ -23,7 +23,7 @@ const NodeHandle: FC<HandleProps> = ({
     string: "text",
     number: "number",
     boolean: "true/false",
-    object: "complex",
+    object: "object",
     array: "list",
     null: "null",
   };
