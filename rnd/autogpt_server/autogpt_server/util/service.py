@@ -16,11 +16,12 @@ from autogpt_server.util.settings import Config
 logger = logging.getLogger(__name__)
 conn_retry = retry(stop=stop_after_delay(5), wait=wait_exponential(multiplier=0.1))
 T = TypeVar("T")
+C = TypeVar("C", bound=Callable)
 
 pyro_host = Config().pyro_host
 
 
-def expose(func: Callable) -> Callable:
+def expose(func: C) -> C:
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
@@ -29,7 +30,7 @@ def expose(func: Callable) -> Callable:
             logger.exception(msg)
             raise Exception(msg, e)
 
-    return pyro.expose(wrapper)
+    return pyro.expose(wrapper)  # type: ignore
 
 
 class PyroNameServer(AppProcess):

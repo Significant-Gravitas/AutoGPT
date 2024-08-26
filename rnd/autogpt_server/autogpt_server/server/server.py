@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 
 import autogpt_server.server.ws_api
 from autogpt_server.data import block, db
+from autogpt_server.data import execution as execution_db
 from autogpt_server.data import graph as graph_db
 from autogpt_server.data import user as user_db
 from autogpt_server.data.block import BlockInput, CompletedBlockOutput
@@ -196,6 +197,11 @@ class AgentServer(AppService):
             path="/graphs/{graph_id}/executions/{run_id}",
             endpoint=self.get_run_execution_results,
             methods=["GET"],
+        )
+        router.add_api_route(
+            path="/graphs/{graph_id}/executions/{graph_exec_id}/stop",
+            endpoint=self.stop_graph_execution,
+            methods=["POST"],
         )
         router.add_api_route(
             path="/graphs/{graph_id}/schedules",
@@ -508,14 +514,31 @@ class AgentServer(AppService):
         graph_id: str,
         node_input: dict[Any, Any],
         user_id: Annotated[str, Depends(get_user_id)],
-    ) -> dict[Any, Any]:
+    ) -> dict[Any, Any]:  # FIXME: add proper return type
         try:
-            return self.execution_manager_client.add_execution(
+            graph_exec = self.execution_manager_client.add_execution(
                 graph_id, node_input, user_id=user_id
             )
+            return {"id": graph_exec.graph_exec_id}
         except Exception as e:
             msg = e.__str__().encode().decode("unicode_escape")
             raise HTTPException(status_code=400, detail=msg)
+
+    async def stop_graph_execution(
+        self, graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
+    ) -> execution_db.AgentGraphExecution:
+        graph_exec = await execution_db.get_graph_execution(graph_exec_id, user_id)
+        if not graph_exec:
+            raise HTTPException(
+                404, detail=f"Agent execution #{graph_exec_id} not found"
+            )
+
+        self.execution_manager_client.cancel_execution(graph_exec_id)
+
+        # Retrieve & return canceled graph execution in its final state
+        graph_exec = await execution_db.get_graph_execution(graph_exec_id, user_id)
+        assert graph_exec
+        return graph_exec
 
     @classmethod
     async def list_graph_runs(
