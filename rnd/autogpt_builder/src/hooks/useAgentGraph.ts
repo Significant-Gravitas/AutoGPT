@@ -111,7 +111,6 @@ export default function useAgentGraph(
         }
         updateNodesWithExecutionData(data);
         processedUpdates.current.push(data);
-        processedUpdates.current = processedUpdates.current.slice(-1000);
       });
       return [];
     });
@@ -163,6 +162,7 @@ export default function useAgentGraph(
         }
         api.subscribeToExecution(savedAgent.id);
         api.executeGraph(savedAgent.id);
+        processedUpdates.current = processedUpdates.current = [];
 
         setSaveRunRequest((prev) => ({
           ...prev,
