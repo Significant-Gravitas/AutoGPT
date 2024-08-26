@@ -36,7 +36,7 @@ const ProfileDropdown = () => {
         </DropdownMenuItem>
         {role === "admin" && (
           <DropdownMenuItem
-            onClick={() => router.push("/marketplace/admin/dashboard")}
+            onClick={() => router.push("/admin/dashboard")}
           >
             Admin Dashboard
           </DropdownMenuItem>
