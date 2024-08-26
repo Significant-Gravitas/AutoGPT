@@ -1,7 +1,7 @@
 import Shepherd from "shepherd.js";
 import "shepherd.js/dist/css/shepherd.css";
 
-export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
+export const startTutorial = (setPinBlocksPopover: (value: boolean) => void) => {
   const tour = new Shepherd.Tour({
     useModalOverlay: true,
     defaultStepOptions: {
@@ -187,7 +187,7 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
       event: "click",
     },
     when: {
-      show: () => setPinBlocks(true),
+      show: () => setPinBlocksPopover(true),
       hide: enableAllBlocks,
     },
   });
@@ -205,7 +205,7 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
       },
     ],
     when: {
-      show: () => setPinBlocks(false),
+      show: () => setPinBlocksPopover(false),
     },
   });
 
@@ -450,12 +450,12 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
 
   // Unpin blocks when the tour is completed or canceled
   tour.on("complete", () => {
-    setPinBlocks(false);
+    setPinBlocksPopover(false);
     localStorage.setItem("shepherd-tour", "completed"); // Optionally mark the tutorial as completed
   });
 
   tour.on("cancel", () => {
-    setPinBlocks(false);
+    setPinBlocksPopover(false);
     localStorage.setItem("shepherd-tour", "canceled"); // Optionally mark the tutorial as canceled
   });
   tour.start();

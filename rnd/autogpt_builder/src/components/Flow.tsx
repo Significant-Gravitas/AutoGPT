@@ -87,7 +87,7 @@ const FlowEditor: React.FC<{
   // State to control if tutorial has started
   const [tutorialStarted, setTutorialStarted] = useState(false);
   // State to control if blocks menu should be pinned open
-  const [setPinBlocksPopover, setPinBlocks] = useState(false);
+  const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -104,7 +104,7 @@ const FlowEditor: React.FC<{
         availableNodes.length > 0 &&
         !tutorialStarted
       ) {
-        startTutorial(setPinBlocks);
+        startTutorial(setPinBlocksPopover);
         setTutorialStarted(true);
         localStorage.setItem("shepherd-tour", "yes");
       }
@@ -522,7 +522,7 @@ const FlowEditor: React.FC<{
           <Background />
           <ControlPanel className="absolute z-10" controls={editorControls}>
             <BlocksControl
-              setPinBlocksPopover={setPinBlocksPopover} // Pass the state to BlocksControl
+              pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
               blocks={availableNodes}
               addBlock={addNode}
             />
