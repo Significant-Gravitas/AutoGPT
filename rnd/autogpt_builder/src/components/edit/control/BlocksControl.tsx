@@ -20,7 +20,7 @@ import { getPrimaryCategoryColor } from "@/lib/utils";
 interface BlocksControlProps {
   blocks: Block[];
   addBlock: (id: string, name: string) => void;
-  pinBlocksPopover: boolean;
+  setPinBlocksPopover: boolean;
 }
 
 /**
@@ -35,7 +35,7 @@ interface BlocksControlProps {
 export const BlocksControl: React.FC<BlocksControlProps> = ({
   blocks,
   addBlock,
-  pinBlocksPopover,
+  setPinBlocksPopover,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -44,7 +44,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   );
 
   return (
-    <Popover open={pinBlocksPopover ? true : undefined}>
+    <Popover open={setPinBlocksPopover ? true : undefined}>
       {" "}
       {/* Control popover open state */}
       <PopoverTrigger asChild>
