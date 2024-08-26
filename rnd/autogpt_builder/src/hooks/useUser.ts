@@ -55,9 +55,6 @@ const useUser = () => {
     return () => subscription.unsubscribe();
   }, [supabase, isSupabaseLoading]);
 
-  console.log("User in useUser hook:", user);
-  console.log("Session in useUser hook:", session);
-  console.log("Role in useUser hook:", role);
   return {
     user,
     session,
