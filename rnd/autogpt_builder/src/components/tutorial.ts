@@ -342,16 +342,13 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
       },
     ],
     when: {
-      show: () => document.addEventListener("keydown", handleCtrlV),
-      hide: () => document.removeEventListener("keydown", handleCtrlV),
+      show: () => {
+        waitForElement('[data-id="custom-node-2"]').then(() => {
+          tour.next();
+        });
+      },
     },
   });
-
-  const handleCtrlV = (event: KeyboardEvent) => {
-    if (event.ctrlKey && event.key === "v") {
-      tour.next();
-    }
-  };
 
   tour.addStep({
     id: "focus-second-block",
@@ -371,7 +368,7 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
     id: "connect-blocks-output",
     title: "Connect the Blocks: Output",
     text: "Now, let’s connect the output of the first Math Block to the input of the second Math Block. Drag from the output pin of the first block to the input pin (A) of the second block.",
-    attachTo: { element: '[data-id="1-result-source"]', on: "bottom" },
+    attachTo: { element: '[data-id="1-1-result-source"]', on: "bottom" },
     buttons: [
       {
         text: "Back",
@@ -379,19 +376,23 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
       },
     ],
     beforeShowPromise: () => {
-      return waitForElement('[data-id="1-result-source"]');
+      return waitForElement('[data-id="1-1-result-source"]');
     },
     when: {
       show: () => {
         resetConnectionState(); // Reset state when revisiting this step
         tour.modal.show();
-        const outputPin = document.querySelector('[data-id="1-result-source"]');
+        const outputPin = document.querySelector(
+          '[data-id="1-1-result-source"]',
+        );
         if (outputPin) {
           outputPin.addEventListener("mousedown", handleMouseDown);
         }
       },
       hide: () => {
-        const outputPin = document.querySelector('[data-id="1-result-source"]');
+        const outputPin = document.querySelector(
+          '[data-id="1-1-result-source"]',
+        );
         if (outputPin) {
           outputPin.removeEventListener("mousedown", handleMouseDown);
         }
@@ -403,10 +404,10 @@ export const startTutorial = (setPinBlocks: (value: boolean) => void) => {
     id: "connect-blocks-input",
     title: "Connect the Blocks: Input",
     text: "Now, connect the output to the input pin of the second block (A).",
-    attachTo: { element: '[data-id="2-a-target"]', on: "top" },
+    attachTo: { element: '[data-id="1-2-a-target"]', on: "top" },
     buttons: [],
     beforeShowPromise: () => {
-      return waitForElement('[data-id="2-a-target"]').then(() => {
+      return waitForElement('[data-id="1-2-a-target"]').then(() => {
         detectConnection();
       });
     },
