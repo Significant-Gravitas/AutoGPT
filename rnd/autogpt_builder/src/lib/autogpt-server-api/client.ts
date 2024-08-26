@@ -126,14 +126,17 @@ export default class AutoGPTServerAPI {
     runID: string,
   ): Promise<NodeExecutionResult[]> {
     return (await this._get(`/graphs/${graphID}/executions/${runID}`)).map(
-      (result: any) => ({
-        ...result,
-        add_time: new Date(result.add_time),
-        queue_time: result.queue_time ? new Date(result.queue_time) : undefined,
-        start_time: result.start_time ? new Date(result.start_time) : undefined,
-        end_time: result.end_time ? new Date(result.end_time) : undefined,
-      }),
+      parseNodeExecutionResultTimestamps,
     );
+  }
+
+  async stopGraphExecution(
+    graphID: string,
+    runID: string,
+  ): Promise<NodeExecutionResult[]> {
+    return (
+      await this._request("POST", `/graphs/${graphID}/executions/${runID}/stop`)
+    ).map(parseNodeExecutionResultTimestamps);
   }
 
   private async _get(path: string) {
@@ -272,3 +275,15 @@ type WebsocketMessageTypeMap = {
   subscribe: { graph_id: string };
   execution_event: NodeExecutionResult;
 };
+
+/* *** HELPER FUNCTIONS *** */
+
+function parseNodeExecutionResultTimestamps(result: any): NodeExecutionResult {
+  return {
+    ...result,
+    add_time: new Date(result.add_time),
+    queue_time: result.queue_time ? new Date(result.queue_time) : undefined,
+    start_time: result.start_time ? new Date(result.start_time) : undefined,
+    end_time: result.end_time ? new Date(result.end_time) : undefined,
+  };
+}
