@@ -457,7 +457,7 @@ class ExecutionManager(AppService):
     @expose
     def add_execution(
         self, graph_id: str, data: BlockInput, user_id: str
-    ) -> GraphExecution:
+    ) -> dict[str, Any]:
         graph: Graph | None = self.run_and_wait(get_graph(graph_id, user_id=user_id))
         if not graph:
             raise Exception(f"Graph #{graph_id} not found.")
@@ -508,7 +508,7 @@ class ExecutionManager(AppService):
         )
         self.queue.add(graph_exec)
 
-        return graph_exec
+        return graph_exec.model_dump()
 
     @expose
     def cancel_execution(self, graph_exec_id: str) -> None:

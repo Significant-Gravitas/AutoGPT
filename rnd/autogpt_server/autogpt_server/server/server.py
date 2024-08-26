@@ -514,7 +514,7 @@ class AgentServer(AppService):
             graph_exec = self.execution_manager_client.add_execution(
                 graph_id, node_input, user_id=user_id
             )
-            return {"id": graph_exec.graph_exec_id}
+            return {"id": graph_exec["graph_exec_id"]}
         except Exception as e:
             msg = e.__str__().encode().decode("unicode_escape")
             raise HTTPException(status_code=400, detail=msg)
