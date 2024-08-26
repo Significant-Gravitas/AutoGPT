@@ -42,7 +42,8 @@ const TallyPopupSimple = () => {
   }
 
   const resetTutorial = () => {
-    window.location.href = "http://localhost:3000/build?resetTutorial=true";
+    const url = `${window.location.origin}${window.location.pathname}?resetTutorial=true`;
+    window.location.href = url;
   };
 
   return (
