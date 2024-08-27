@@ -15,7 +15,7 @@ export default class AutoGPTServerAPI {
   private wsUrl: string;
   private webSocket: WebSocket | null = null;
   private wsConnecting: Promise<void> | null = null;
-  private wsMessageHandlers: { [key: string]: (data: any) => void } = {};
+  private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
   private supabaseClient = createClient();
 
   constructor(
@@ -209,9 +209,9 @@ export default class AutoGPTServerAPI {
 
         this.webSocket.onmessage = (event) => {
           const message = JSON.parse(event.data);
-          if (this.wsMessageHandlers[message.method]) {
-            this.wsMessageHandlers[message.method](message.data);
-          }
+          this.wsMessageHandlers[message.method]?.forEach((handler) =>
+            handler(message.data),
+          );
         };
       } catch (error) {
         console.error("Error connecting to WebSocket:", error);
@@ -251,8 +251,12 @@ export default class AutoGPTServerAPI {
   onWebSocketMessage<M extends keyof WebsocketMessageTypeMap>(
     method: M,
     handler: (data: WebsocketMessageTypeMap[M]) => void,
-  ) {
-    this.wsMessageHandlers[method] = handler;
+  ): () => void {
+    this.wsMessageHandlers[method] ??= new Set();
+    this.wsMessageHandlers[method].add(handler);
+
+    // Return detacher
+    return () => this.wsMessageHandlers[method].delete(handler);
   }
 
   subscribeToExecution(graphId: string) {
