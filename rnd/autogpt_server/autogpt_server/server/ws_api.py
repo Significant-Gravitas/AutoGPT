@@ -15,6 +15,7 @@ settings = Settings()
 
 app = FastAPI()
 event_queue = AsyncRedisEventQueue()
+_connection_manager = None
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,13 +28,16 @@ app.add_middleware(
 )
 
 def get_connection_manager():
-    manager = ConnectionManager()
-    return manager
+    global _connection_manager
+    if _connection_manager is None:
+        _connection_manager = ConnectionManager()
+    return _connection_manager
 
 @app.on_event("startup")
 async def startup_event():
     await event_queue.connect()
-    asyncio.create_task(event_broadcaster())
+    manager = get_connection_manager()
+    asyncio.create_task(event_broadcaster(manager))
 
 
 @app.on_event("shutdown")
@@ -41,7 +45,7 @@ async def shutdown_event():
     await event_queue.close()
 
 
-async def event_broadcaster():
+async def event_broadcaster(manager: ConnectionManager):
     while True:
         event = await event_queue.get()
         if event is not None:
