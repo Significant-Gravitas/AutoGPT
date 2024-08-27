@@ -9,7 +9,7 @@ node_count      = 3
 node_pool_name  = "dev-main-pool"
 machine_type    = "e2-medium"
 disk_size_gb    = 100
-static_ip_names = ["agpt-server-ip", "agpt-builder-ip", "auth-ip"]
+static_ip_names = ["agpt-server-ip", "agpt-builder-ip", "auth-ip", "agpt-market-ip"]
 
 
 service_accounts = {
@@ -49,34 +49,41 @@ role_bindings = {
   "roles/container.developer" = [
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
     "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com",
-    "serviceAccount:dev-agpt-ws-server-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-ws-server-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com"
   ],
   "roles/cloudsql.client" = [
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
     "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com"
   ],
   "roles/cloudsql.editor" = [
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
-    "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com"
   ],
   "roles/cloudsql.instanceUser" = [
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
-    "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com"
   ],
   "roles/iam.workloadIdentityUser" = [
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
     "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com",
-    "serviceAccount:dev-agpt-ws-server-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-ws-server-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com"
   ]
   "roles/compute.networkUser" = [
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
     "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com",
-    "serviceAccount:dev-agpt-ws-server-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-ws-server-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com"
   ],
   "roles/container.hostServiceAgentUser" = [
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
     "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com",
-    "serviceAccount:dev-agpt-ws-server-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-ws-server-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com"
   ]
 }
 
