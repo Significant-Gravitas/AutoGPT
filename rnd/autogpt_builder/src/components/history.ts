@@ -1,7 +1,7 @@
 // history.ts
 import { CustomNodeData } from "./CustomNode";
 import { CustomEdgeData } from "./CustomEdge";
-import { Edge } from "reactflow";
+import { Edge } from "@xyflow/react";
 
 type ActionType =
   | "ADD_NODE"
