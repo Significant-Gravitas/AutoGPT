@@ -444,7 +444,6 @@ class ExecutionManager(AppService):
             max_workers=self.pool_size,
             initializer=Executor.on_graph_executor_start,
         ) as executor:
-            sync_manager = multiprocessing.Manager()
             logger.info(
                 f"Execution manager started with max-{self.pool_size} graph workers."
             )
