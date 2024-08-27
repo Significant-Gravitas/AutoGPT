@@ -1,10 +1,13 @@
 import re
 from typing import Any
 
+from jinja2 import BaseLoader, Environment
 from pydantic import Field
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.util import json
+
+jinja = Environment(loader=BaseLoader())
 
 
 class TextMatcherBlock(Block):
@@ -131,20 +134,25 @@ class TextFormatterBlock(Block):
             test_input=[
                 {
                     "values": {"name": "Alice", "hello": "Hello", "world": "World!"},
-                    "format": "{hello}, {world} {name}",
+                    "format": "{hello}, {world} {{name}}",
+                },
+                {
+                    "values": {"list": ["Hello", " World!"]},
+                    "format": "{% for item in list %}{{ item }}{% endfor %}",
                 },
             ],
             test_output=[
                 ("output", "Hello, World! Alice"),
+                ("output", "Hello World!"),
             ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
-        values = {
-            key: value if isinstance(value, str) else json.dumps(value)
-            for key, value in input_data.values.items()
-        }
-        yield "output", input_data.format.format(**values)
+        # For python.format compatibility: replace all {...} with {{..}}.
+        # But avoid replacing {{...}} to {{{...}}}.
+        fmt = re.sub(r"(?<!{){[ a-zA-Z0-9_]+}", r"{\g<0>}", input_data.format)
+        template = jinja.from_string(fmt)
+        yield "output", template.render(**input_data.values)
 
 
 class TextCombinerBlock(Block):
