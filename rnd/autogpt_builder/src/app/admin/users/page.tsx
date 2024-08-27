@@ -1,5 +1,5 @@
 import { withRoleAccess } from "@/lib/withRoleAccess";
-import React from 'react';
+import React from "react";
 
 function AdminUsers() {
   return (
@@ -10,9 +10,8 @@ function AdminUsers() {
   );
 }
 
-
 export default async function AdminUsersPage() {
-  'use server';
+  "use server";
   const withAdminAccess = await withRoleAccess(["admin"]);
   const ProtectedAdminUsers = await withAdminAccess(AdminUsers);
   return <ProtectedAdminUsers />;

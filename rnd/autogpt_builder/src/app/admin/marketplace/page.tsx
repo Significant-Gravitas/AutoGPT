@@ -1,5 +1,5 @@
 import { withRoleAccess } from "@/lib/withRoleAccess";
-import React from 'react';
+import React from "react";
 
 function AdminMarketplace() {
   return (
@@ -10,10 +10,10 @@ function AdminMarketplace() {
   );
 }
 
-
 export default async function AdminDashboardPage() {
-  'use server';
+  "use server";
   const withAdminAccess = await withRoleAccess(["admin"]);
-  const ProtectedAdminMarketplace = await withAdminAccess(AdminMarketplace);ß
+  const ProtectedAdminMarketplace = await withAdminAccess(AdminMarketplace);
+  ß;
   return <ProtectedAdminMarketplace />;
 }

@@ -1,5 +1,5 @@
 import { withRoleAccess } from "@/lib/withRoleAccess";
-import React from 'react';
+import React from "react";
 
 function AdminDashboard() {
   return (
@@ -10,9 +10,8 @@ function AdminDashboard() {
   );
 }
 
-
 export default async function AdminDashboardPage() {
-  'use server';
+  "use server";
   const withAdminAccess = await withRoleAccess(["admin"]);
   const ProtectedAdminDashboard = await withAdminAccess(AdminDashboard);
   return <ProtectedAdminDashboard />;
