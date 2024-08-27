@@ -34,7 +34,12 @@ import ConnectionLine from "./ConnectionLine";
 import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
-import { IconPlay, IconRedo2, IconUndo2 } from "@/components/ui/icons";
+import {
+  IconPlay,
+  IconRedo2,
+  IconSquare,
+  IconUndo2,
+} from "@/components/ui/icons";
 import useAgentGraph from "@/hooks/useAgentGraph";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
@@ -71,7 +76,9 @@ const FlowEditor: React.FC<{
     availableNodes,
     getOutputType,
     requestSave,
-    requestSaveRun,
+    requestSaveAndRun,
+    requestStopRun,
+    isRunning,
     nodes,
     setNodes,
     edges,
@@ -465,9 +472,9 @@ const FlowEditor: React.FC<{
       onClick: handleRedo,
     },
     {
-      label: "Run",
-      icon: <IconPlay />,
-      onClick: requestSaveRun,
+      label: !isRunning ? "Run" : "Stop",
+      icon: !isRunning ? <IconPlay /> : <IconSquare />,
+      onClick: !isRunning ? requestSaveAndRun : requestStopRun,
     },
   ];
 
