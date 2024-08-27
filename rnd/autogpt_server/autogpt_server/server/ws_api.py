@@ -14,7 +14,6 @@ from autogpt_server.util.settings import Settings
 settings = Settings()
 
 app = FastAPI()
-manager = ConnectionManager()
 event_queue = AsyncRedisEventQueue()
 
 app.add_middleware(
@@ -27,11 +26,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def get_connection_manager():
+    manager = ConnectionManager()
+    return manager
 
 @app.on_event("startup")
 async def startup_event():
-    global manager
-    manager = ConnectionManager()
     await event_queue.connect()
     asyncio.create_task(event_broadcaster())
 
@@ -134,7 +134,7 @@ async def health():
 
 
 @app.websocket("/ws")
-async def websocket_router(websocket: WebSocket):
+async def websocket_router(websocket: WebSocket, manager: ConnectionManager = Depends(get_connection_manager)):
     user_id = await authenticate_websocket(websocket)
     if not user_id:
         return
