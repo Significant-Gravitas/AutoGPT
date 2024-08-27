@@ -1,10 +1,10 @@
 import asyncio
 import logging
-import multiprocessing
 import threading
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
+from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 
 if TYPE_CHECKING:
@@ -365,7 +365,7 @@ class Executor:
         )
 
     @classmethod
-    def on_graph_execution(cls, graph_data: GraphExecution, cancel: threading.Event):
+    def on_graph_execution(cls, graph_data: GraphExecution, cancel: Event):
         prefix = get_log_prefix(graph_data.graph_exec_id, "*")
         logger.warning(f"{prefix} Start graph execution")
 
@@ -437,7 +437,7 @@ class ExecutionManager(AppService):
     def __init__(self):
         self.pool_size = Config().num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
-        self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
+        self.active_graph_runs: dict[str, tuple[Future, Event]] = {}
 
     def run_service(self):
         with ProcessPoolExecutor(
@@ -451,7 +451,7 @@ class ExecutionManager(AppService):
             while True:
                 graph_exec_data = self.queue.get()
                 graph_exec_id = graph_exec_data.graph_exec_id
-                cancel_event = sync_manager.Event()
+                cancel_event = executor._mp_context.Event()
                 future = executor.submit(
                     Executor.on_graph_execution, graph_exec_data, cancel_event
                 )
