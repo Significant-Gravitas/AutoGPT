@@ -1,10 +1,11 @@
 import asyncio
 import logging
+import multiprocessing
+import threading
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
-from multiprocessing.sharedctypes import Array, SynchronizedString
-from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 
 if TYPE_CHECKING:
     from autogpt_server.server.server import AgentServer
@@ -333,9 +334,6 @@ class Executor:
         9. Node executor enqueues the next executed nodes to the node execution queue.
     """
 
-    STATUS_RUNNING = b"running"
-    STATUS_CANCELLED = b"cancelled"
-
     @classmethod
     def on_node_executor_start(cls):
         cls.loop = asyncio.new_event_loop()
@@ -367,20 +365,25 @@ class Executor:
         )
 
     @classmethod
-    def on_graph_execution(cls, graph_data: GraphExecution, status: SynchronizedString):
+    def on_graph_execution(cls, graph_data: GraphExecution, cancel: threading.Event):
         prefix = get_log_prefix(graph_data.graph_exec_id, "*")
         logger.warning(f"{prefix} Start graph execution")
 
-        def cancelled() -> bool:
-            if status.value != cls.STATUS_CANCELLED:
-                return False
+        finished = False
 
+        def cancel_handler():
+            while not cancel.is_set():
+                cancel.wait(1)
+            if finished:
+                return
             cls.executor.terminate()
             logger.info(
-                f"{prefix} Terminated graph execution {exec_data.graph_exec_id}"
+                f"{prefix} Terminated graph execution {graph_data.graph_exec_id}"
             )
             cls._init_node_executor_pool()
-            return True
+
+        cancel_thread = threading.Thread(target=cancel_handler)
+        cancel_thread.start()
 
         try:
             queue = ExecutionQueue[NodeExecution]()
@@ -389,7 +392,7 @@ class Executor:
 
             running_executions: dict[str, AsyncResult] = {}
             while not queue.empty():
-                if cancelled():
+                if cancel.is_set():
                     return
 
                 exec_data = queue.get()
@@ -412,7 +415,7 @@ class Executor:
                 # Avoid terminating graph execution when some nodes are still running.
                 while queue.empty() and running_executions:
                     for execution in list(running_executions.values()):
-                        if cancelled():
+                        if cancel.is_set():
                             return
 
                         if not queue.empty():
@@ -423,31 +426,38 @@ class Executor:
             logger.warning(f"{prefix} Finished graph execution")
         except Exception as e:
             logger.exception(f"{prefix} Failed graph execution: {e}")
+        finally:
+            if not cancel.is_set():
+                finished = True
+                cancel.set()
+            cancel_thread.join()
 
 
 class ExecutionManager(AppService):
     def __init__(self):
         self.pool_size = Config().num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
-        self.active_graph_runs: dict[str, tuple[Future, SynchronizedString]] = {}
+        self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
 
     def run_service(self):
         with ProcessPoolExecutor(
             max_workers=self.pool_size,
             initializer=Executor.on_graph_executor_start,
         ) as executor:
-            logger.warning(
+            sync_manager = multiprocessing.Manager()
+            logger.info(
                 f"Execution manager started with max-{self.pool_size} graph workers."
             )
             while True:
                 graph_exec_data = self.queue.get()
-                status = cast(SynchronizedString, Array("c", Executor.STATUS_RUNNING))
+                graph_exec_id = graph_exec_data.graph_exec_id
+                cancel_event = sync_manager.Event()
                 future = executor.submit(
-                    Executor.on_graph_execution, graph_exec_data, status
+                    Executor.on_graph_execution, graph_exec_data, cancel_event
                 )
-                self.active_graph_runs[graph_exec_data.graph_exec_id] = (future, status)
+                self.active_graph_runs[graph_exec_id] = (future, cancel_event)
                 future.add_done_callback(
-                    lambda _: self.active_graph_runs.pop(graph_exec_data.graph_exec_id)
+                    lambda _: self.active_graph_runs.pop(graph_exec_id)
                 )
 
     @property
@@ -514,10 +524,9 @@ class ExecutionManager(AppService):
     def cancel_execution(self, graph_exec_id: str) -> None:
         """
         Mechanism:
-        1. Set shared memory `status` to `"cancelled"`
-        2. Graph executor checks `status`.
-           If `"cancelled"`: terminates its workers, reinitializes its worker pool,
-           and returns.
+        1. Set the cancel event
+        2. Graph executor's cancel handler thread detects the event, terminates workers,
+           reinitializes worker pool, and returns.
         3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
         """
         if graph_exec_id not in self.active_graph_runs:
@@ -526,15 +535,12 @@ class ExecutionManager(AppService):
                 "possibly already completed/cancelled."
             )
 
-        future, status = self.active_graph_runs[graph_exec_id]
-        if status.value == Executor.STATUS_CANCELLED:
+        future, cancel_event = self.active_graph_runs[graph_exec_id]
+        if cancel_event.is_set():
             return
 
-        if future.cancel():
-            del self.active_graph_runs[graph_exec_id]
-        else:
-            status.value = Executor.STATUS_CANCELLED
-            future.result()
+        cancel_event.set()
+        future.result()
 
         # Update the status of the unfinished node executions
         node_execs = self.run_and_wait(get_execution_results(graph_exec_id))

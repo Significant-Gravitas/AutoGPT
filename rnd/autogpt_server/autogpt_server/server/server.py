@@ -509,7 +509,7 @@ class AgentServer(AppService):
         graph_id: str,
         node_input: dict[Any, Any],
         user_id: Annotated[str, Depends(get_user_id)],
-    ) -> dict[Any, Any]:  # FIXME: add proper return type
+    ) -> dict[str, Any]:  # FIXME: add proper return type
         try:
             graph_exec = self.execution_manager_client.add_execution(
                 graph_id, node_input, user_id=user_id
