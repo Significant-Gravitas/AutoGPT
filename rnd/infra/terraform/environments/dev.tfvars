@@ -9,7 +9,7 @@ node_count      = 3
 node_pool_name  = "dev-main-pool"
 machine_type    = "e2-medium"
 disk_size_gb    = 100
-static_ip_names = ["agpt-server-ip", "agpt-builder-ip", "auth-ip"]
+static_ip_names = ["agpt-server-ip", "agpt-builder-ip", "agpt-ws-server-ip"]
 
 
 service_accounts = {
