@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { BinaryIcon, XIcon } from "lucide-react";
 
 const tabs = [
   { name: "Dashboard", href: "/admin/dashboard" },
@@ -16,17 +17,18 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const [activeTab, setActiveTab] = useState(tabs[0].name);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-gray-100">
       <nav className="bg-white shadow-sm">
         <div className="max-w-10xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 justify-between">
-            <div className="flex">
-              <div className="flex flex-shrink-0 items-center">
+          <div className="flex h-16 items-center justify-between">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
                 <h1 className="text-xl font-bold">Admin Panel</h1>
               </div>
-              <div className="hidden sm:-my-px sm:ml-6 sm:flex sm:space-x-8">
+              <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
                 {tabs.map((tab) => (
                   <Link
                     key={tab.name}
@@ -43,12 +45,50 @@ export default function AdminLayout({
                 ))}
               </div>
             </div>
+            <div className="sm:hidden">
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-md p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              >
+                <span className="sr-only">Open main menu</span>
+                {mobileMenuOpen ? (
+                  <XIcon className="block h-6 w-6" aria-hidden="true" />
+                ) : (
+                  <BinaryIcon className="block h-6 w-6" aria-hidden="true" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
+
+        {mobileMenuOpen && (
+          <div className="sm:hidden">
+            <div className="space-y-1 pb-3 pt-2">
+              {tabs.map((tab) => (
+                <Link
+                  key={tab.name}
+                  href={tab.href}
+                  className={`${
+                    activeTab === tab.name
+                      ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                      : "border-transparent text-gray-600 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-800"
+                  } block border-l-4 py-2 pl-3 pr-4 text-base font-medium`}
+                  onClick={() => {
+                    setActiveTab(tab.name);
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  {tab.name}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </nav>
 
       <main className="py-10">
-        <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">{children}</div>
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">{children}</div>
       </main>
     </div>
   );
