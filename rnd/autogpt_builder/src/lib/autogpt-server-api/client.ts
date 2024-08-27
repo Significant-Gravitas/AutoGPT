@@ -208,7 +208,10 @@ export default class AutoGPTServerAPI {
         };
 
         this.webSocket.onmessage = (event) => {
-          const message = JSON.parse(event.data);
+          const message: WebsocketMessage = JSON.parse(event.data);
+          if (message.method == "execution_event") {
+            message.data = parseNodeExecutionResultTimestamps(message.data);
+          }
           this.wsMessageHandlers[message.method]?.forEach((handler) =>
             handler(message.data),
           );
@@ -279,6 +282,13 @@ type WebsocketMessageTypeMap = {
   subscribe: { graph_id: string };
   execution_event: NodeExecutionResult;
 };
+
+type WebsocketMessage = {
+  [M in keyof WebsocketMessageTypeMap]: {
+    method: M;
+    data: WebsocketMessageTypeMap[M];
+  };
+}[keyof WebsocketMessageTypeMap];
 
 /* *** HELPER FUNCTIONS *** */
 
