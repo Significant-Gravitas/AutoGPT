@@ -14,6 +14,5 @@ export default async function AdminDashboardPage() {
   "use server";
   const withAdminAccess = await withRoleAccess(["admin"]);
   const ProtectedAdminMarketplace = await withAdminAccess(AdminMarketplace);
-  ß;
   return <ProtectedAdminMarketplace />;
 }
