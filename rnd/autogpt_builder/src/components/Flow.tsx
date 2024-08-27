@@ -378,7 +378,14 @@ const FlowEditor: React.FC<{
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      if (isAnyModalOpen) return; // Prevent copy/paste if any modal is open
+      // Prevent copy/paste if any modal is open or if the focus is on an input element
+      const activeElement = document.activeElement;
+      const isInputField =
+        activeElement?.tagName === "INPUT" ||
+        activeElement?.tagName === "TEXTAREA" ||
+        activeElement?.getAttribute("contenteditable") === "true";
+
+      if (isAnyModalOpen || isInputField) return;
 
       if (event.ctrlKey || event.metaKey) {
         if (event.key === "c" || event.key === "C") {
@@ -432,13 +439,15 @@ const FlowEditor: React.FC<{
       }
     },
     [
-      addNodes,
-      addEdges,
-      setNodes,
-      copiedNodes,
-      copiedEdges,
-      nodeId,
       isAnyModalOpen,
+      nodes,
+      edges,
+      copiedNodes,
+      setNodes,
+      addNodes,
+      copiedEdges,
+      addEdges,
+      nodeId,
     ],
   );
 
