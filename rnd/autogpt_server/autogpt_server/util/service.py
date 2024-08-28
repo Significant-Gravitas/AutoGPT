@@ -22,6 +22,15 @@ pyro_host = Config().pyro_host
 
 
 def expose(func: C) -> C:
+    """
+    Decorator to mark a method or class to be exposed for remote calls.
+
+    ## ⚠️ Gotcha
+    The types on the exposed function signature are respected **as long as they are
+    fully picklable**. This is not the case for Pydantic models, so if you really need
+    to pass a model, try dumping the model and passing the resulting dict instead.
+    """
+
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
