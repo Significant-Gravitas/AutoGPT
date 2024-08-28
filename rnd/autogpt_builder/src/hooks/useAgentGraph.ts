@@ -31,17 +31,15 @@ export default function useAgentGraph(
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
   const processedUpdates = useRef<NodeExecutionResult[]>([]);
   /**
-   * User `request` to save or save&run the agent
+   * User `request` to save or save&run the agent, or to stop the active run.
    * `state` is used to track the request status:
    * - none: no request
    * - saving: request was sent to save the agent
    *   and nodes are pending sync to update their backend ids
    * - running: request was sent to run the agent
    *   and frontend is enqueueing execution results
+   * - stopping: a request to stop the active run has been sent; response is pending
    * - error: request failed
-   *
-   * As of now, state will be stuck at 'running' (if run requested)
-   * because there's no way to know when the execution is done
    */
   const [saveRunRequest, setSaveRunRequest] = useState<
     | {
