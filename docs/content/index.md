@@ -4,12 +4,25 @@ Welcome to the AutoGPT Documentation.
 
 The AutoGPT project consists of four main components:
 
-* The [Agent](#agent) &ndash; also known as just "AutoGPT"
-* The [Benchmark](#benchmark) &ndash; AKA `agbenchmark`
-* The [Forge](#forge)
-* The [Frontend](#frontend)
+- The [Server](#server) &ndash; known as the "AutoGPT Platform"
+- The [Agent](#agent) &ndash; also known as just "AutoGPT"
+- The [Benchmark](#benchmark) &ndash; AKA `agbenchmark`
+- The [Forge](#forge)
+- The [Frontend](#frontend)
 
 To tie these together, we also have a [CLI] at the root of the project.
+
+## 🌐 Server
+
+<!-- Setup, then Advanced, then New Blocks -->
+
+**[📖 Setup](server/setup.md)**
+&ensp;|&ensp;
+**[📖 Advanced Setup](server/advanced_setup.md)**
+&ensp;|&ensp;
+**[📖 Making New Blocks](server/new_blocks.md)**
+
+The server is the backbone of the New AutoGPT project. It provides the infrastructure for the agents to run, and the UI for you to interact with them. It integrates with the Forge, Agent, and a bespoke UI to provide a seamless experience.
 
 ---
 

@@ -9,6 +9,23 @@ generator client {
   interface            = "asyncio"
 }
 
+// User model to mirror Auth provider users
+model User {
+  id            String   @id // This should match the Supabase user ID
+  email         String   @unique
+  name          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  AgentGraphs                  AgentGraph[]
+  AgentGraphExecutions         AgentGraphExecution[]
+  AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
+
+  @@index([id])
+  @@index([email])
+}
+
 // This model describes the Agent Graph/Flow (Multi Agent System).
 model AgentGraph {
   id      String @default(uuid())
@@ -19,9 +36,18 @@ model AgentGraph {
   isActive    Boolean @default(true)
   isTemplate  Boolean @default(false)
 
+  // Link to User model
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
   AgentNodes                  AgentNode[]
   AgentGraphExecution         AgentGraphExecution[]
   AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
+
+  // All sub-graphs are defined within this 1-level depth list (even if it's a nested graph).
+  AgentSubGraphs     AgentGraph[] @relation("AgentSubGraph")
+  agentGraphParentId String?
+  AgentGraphParent   AgentGraph?  @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version])
 
   @@id(name: "graphVersionId", [id, version])
 }
@@ -65,7 +91,7 @@ model AgentNodeLink {
   agentNodeSinkId String
   AgentNodeSink   AgentNode @relation("AgentNodeSink", fields: [agentNodeSinkId], references: [id])
   sinkName        String
-  
+
   // Default: the data coming from the source can only be consumed by the sink once, Static: input data will be reused.
   isStatic Boolean @default(false)
 }
@@ -93,6 +119,10 @@ model AgentGraphExecution {
   AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
 
   AgentNodeExecutions AgentNodeExecution[]
+
+  // Link to User model
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 }
 
 // This model describes the execution of an AgentNode.
@@ -151,6 +181,10 @@ model AgentGraphExecutionSchedule {
 
   // default and set the value on each update, lastUpdated field has no time zone.
   lastUpdated DateTime @updatedAt
+
+  // Link to User model
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   @@index([isEnabled])
 }

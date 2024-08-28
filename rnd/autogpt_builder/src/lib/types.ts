@@ -1,14 +1,13 @@
-export type BlockSchema = {
-  type: string;
-  properties: { [key: string]: any };
-  required?: string[];
-  enum?: string[];
-  items?: BlockSchema;
-  additionalProperties?: { type: string };
-  title?: string;
-  description?: string;
-  placeholder?: string;
-  allOf?: any[];
-  anyOf?: any[];
-  oneOf?: any[];
+import { NodeExecutionResult } from "@/lib/autogpt-server-api";
+
+export type FlowRun = {
+  id: string;
+  graphID: string;
+  graphVersion: number;
+  status: "running" | "waiting" | "success" | "failed";
+  startTime: number; // unix timestamp (ms)
+  endTime: number; // unix timestamp (ms)
+  duration: number; // seconds
+  totalRunTime: number; // seconds
+  nodeExecutionResults: NodeExecutionResult[];
 };

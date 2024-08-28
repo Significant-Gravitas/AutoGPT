@@ -3,7 +3,6 @@ import re
 from typing import Type
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from autogpt_server.util.test import execute_block_test
 
 
 class BlockInstallationBlock(Block):
@@ -57,6 +56,9 @@ class BlockInstallationBlock(Block):
             module = __import__(module_name, fromlist=[class_name])
             block_class: Type[Block] = getattr(module, class_name)
             block = block_class()
+
+            from autogpt_server.util.test import execute_block_test
+
             execute_block_test(block)
             yield "success", "Block installed successfully."
         except Exception as e:

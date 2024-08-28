@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 if TYPE_CHECKING:
     from autogpt_server.server.server import AgentServer
 
+from autogpt_server.blocks.basic import InputBlock
 from autogpt_server.data import db
 from autogpt_server.data.block import Block, BlockData, BlockInput, get_block
 from autogpt_server.data.execution import (
@@ -26,6 +27,7 @@ from autogpt_server.data.execution import (
 from autogpt_server.data.graph import Graph, Link, Node, get_graph, get_node
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Config
+from autogpt_server.util.type import convert
 
 logger = logging.getLogger(__name__)
 
@@ -79,19 +81,19 @@ def execute_node(
     # Sanity check: validate the execution input.
     prefix = get_log_prefix(graph_exec_id, node_exec_id, node_block.name)
     exec_data, error = validate_exec(node, data.data, resolve_input=False)
-    if not exec_data:
+    if exec_data is None:
         logger.error(f"{prefix} Skip execution, input validation error: {error}")
         return
 
     # Execute the node
-    logger.warning(f"{prefix} execute with input:\n`{exec_data}`")
+    exec_data_str = str(exec_data).encode("utf-8").decode("unicode_escape")
+    logger.warning(f"{prefix} execute with input:\n`{exec_data_str}`")
     update_execution(ExecutionStatus.RUNNING)
 
     try:
         for output_name, output_data in node_block.execute(exec_data):
             logger.warning(f"{prefix} Executed, output [{output_name}]:`{output_data}`")
             wait(upsert_execution_output(node_exec_id, output_name, output_data))
-            update_execution(ExecutionStatus.COMPLETED)
 
             for execution in _enqueue_next_nodes(
                 api_client=api_client,
@@ -102,6 +104,9 @@ def execute_node(
                 prefix=prefix,
             ):
                 yield execution
+
+        update_execution(ExecutionStatus.COMPLETED)
+
     except Exception as e:
         error_msg = f"{e.__class__.__name__}: {e}"
         logger.exception(f"{prefix} failed with error. `%s`", error_msg)
@@ -160,10 +165,11 @@ def _enqueue_next_nodes(
             logger.error(f"{prefix} Error, next node {next_node_id} not found.")
             return enqueued_executions
 
-        # Upserting execution input includes reading the existing input pins in the node
-        # which then either updating the existing execution input or creating a new one.
-        # While reading, we should avoid any other process to add input to the same node.
+        # Multiple node can register the same next node, we need this to be atomic
+        # To avoid same execution to be enqueued multiple times,
+        # Or the same input to be consumed multiple times.
         with synchronized(api_client, ("upsert_input", next_node_id, graph_exec_id)):
+            # Add output data to the earliest incomplete execution, or create a new one.
             next_node_exec_id, next_node_input = wait(
                 upsert_execution_input(
                     node_id=next_node_id,
@@ -173,40 +179,41 @@ def _enqueue_next_nodes(
                 )
             )
 
-        # Complete missing static input pins data using the last execution input.
-        static_link_names = {
-            link.sink_name
-            for link in next_node.input_links
-            if link.is_static and link.sink_name not in next_node_input
-        }
-        if static_link_names and (
-            latest_execution := wait(get_latest_execution(next_node_id, graph_exec_id))
-        ):
-            for name in static_link_names:
-                next_node_input[name] = latest_execution.input_data.get(name)
+            # Complete missing static input pins data using the last execution input.
+            static_link_names = {
+                link.sink_name
+                for link in next_node.input_links
+                if link.is_static and link.sink_name not in next_node_input
+            }
+            if static_link_names and (
+                latest_execution := wait(
+                    get_latest_execution(next_node_id, graph_exec_id)
+                )
+            ):
+                for name in static_link_names:
+                    next_node_input[name] = latest_execution.input_data.get(name)
 
-        next_node_input, validation_msg = validate_exec(next_node, next_node_input)
-        suffix = (
-            f"{next_output_name}>{next_input_name}~{next_node_exec_id}:{validation_msg}"
-        )
+            # Validate the input data for the next node.
+            next_node_input, validation_msg = validate_exec(next_node, next_node_input)
+            suffix = f"{next_output_name}>{next_input_name}~{next_node_exec_id}:{validation_msg}"
 
-        if not next_node_input:
-            logger.warning(f"{prefix} Skipped queueing {suffix}")
-            return enqueued_executions
+            # Incomplete input data, skip queueing the execution.
+            if not next_node_input:
+                logger.warning(f"{prefix} Skipped queueing {suffix}")
+                return enqueued_executions
 
-        # Input is complete, enqueue the execution.
-        logger.warning(f"{prefix} Enqueued {suffix}")
-        enqueued_executions.append(
-            add_enqueued_execution(next_node_exec_id, next_node_id, next_node_input)
-        )
+            # Input is complete, enqueue the execution.
+            logger.warning(f"{prefix} Enqueued {suffix}")
+            enqueued_executions.append(
+                add_enqueued_execution(next_node_exec_id, next_node_id, next_node_input)
+            )
 
-        if not node_link.is_static:
-            return enqueued_executions
+            # Next execution stops here if the link is not static.
+            if not node_link.is_static:
+                return enqueued_executions
 
-        # If link is static, there could be some incomplete executions waiting for it.
-        # Load and complete the input missing input data, and try to re-enqueue them.
-        # While reading, we should avoid any other process to re-enqueue the same node.
-        with synchronized(api_client, ("upsert_input", next_node_id, graph_exec_id)):
+            # If link is static, there could be some incomplete executions waiting for it.
+            # Load and complete the input missing input data, and try to re-enqueue them.
             for iexec in wait(get_incomplete_executions(next_node_id, graph_exec_id)):
                 idata = iexec.input_data
                 ineid = iexec.node_exec_id
@@ -222,9 +229,9 @@ def _enqueue_next_nodes(
                 idata, msg = validate_exec(next_node, idata)
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
                 if not idata:
-                    logger.warning(f"{prefix} Re-enqueueing skipped: {suffix}")
+                    logger.warning(f"{prefix} Enqueueing static-link skipped: {suffix}")
                     continue
-                logger.warning(f"{prefix} Re-enqueued {suffix}")
+                logger.warning(f"{prefix} Enqueueing static-link execution {suffix}")
                 enqueued_executions.append(
                     add_enqueued_execution(iexec.node_exec_id, next_node_id, idata)
                 )
@@ -277,6 +284,11 @@ def validate_exec(
     input_fields_from_schema = node_block.input_schema.get_required_fields()
     if not input_fields_from_schema.issubset(data):
         return None, f"{error_prefix} {input_fields_from_schema - set(data)}"
+
+    # Convert non-matching data types to the expected input schema.
+    for name, data_type in node_block.input_schema.__annotations__.items():
+        if (value := data.get(name)) and (type(value) is not data_type):
+            data[name] = convert(value, data_type)
 
     # Last validation: Validate the input values against the schema.
     if error := node_block.input_schema.validate_data(data):  # type: ignore
@@ -361,10 +373,11 @@ class Executor:
                 # Avoid parallel execution of the same node.
                 fut = futures.get(execution.node_id)
                 if fut and not fut.done():
-                    cls.wait_future(fut)
-                    logger.warning(f"{prefix} Re-enqueueing {execution.node_id}")
-                    queue.add(execution)
-                    continue
+                    # TODO (performance improvement):
+                    #   Wait for the completion of the same node execution is blocking.
+                    #   To improve this we need a separate queue for each node.
+                    #   Re-enqueueing the data back to the queue will disrupt the order.
+                    cls.wait_future(fut, timeout=None)
 
                 futures[execution.node_id] = cls.executor.submit(
                     cls.on_node_execution, queue, execution
@@ -383,9 +396,10 @@ class Executor:
             logger.exception(f"{prefix} Failed graph execution: {e}")
 
     @classmethod
-    def wait_future(cls, future: Future):
+    def wait_future(cls, future: Future, timeout: int | None = 3):
         try:
-            future.result(timeout=3)
+            if not future.done():
+                future.result(timeout=timeout)
         except TimeoutError:
             # Avoid being blocked by long-running node, by not waiting its completion.
             pass
@@ -412,15 +426,23 @@ class ExecutionManager(AppService):
         return get_agent_server_client()
 
     @expose
-    def add_execution(self, graph_id: str, data: BlockInput) -> dict[Any, Any]:
-        graph: Graph | None = self.run_and_wait(get_graph(graph_id))
+    def add_execution(
+        self, graph_id: str, data: BlockInput, user_id: str
+    ) -> dict[Any, Any]:
+        graph: Graph | None = self.run_and_wait(get_graph(graph_id, user_id=user_id))
         if not graph:
             raise Exception(f"Graph #{graph_id} not found.")
+        graph.validate_graph(for_run=True)
 
         nodes_input = []
         for node in graph.starting_nodes:
-            input_data, error = validate_exec(node, data)
-            if not input_data:
+            if isinstance(get_block(node.block_id), InputBlock):
+                input_data = {"input": data}
+            else:
+                input_data = {}
+
+            input_data, error = validate_exec(node, input_data)
+            if input_data is None:
                 raise Exception(error)
             else:
                 nodes_input.append((node.id, input_data))
@@ -430,6 +452,7 @@ class ExecutionManager(AppService):
                 graph_id=graph_id,
                 graph_version=graph.version,
                 nodes_input=nodes_input,
+                user_id=user_id,
             )
         )
 

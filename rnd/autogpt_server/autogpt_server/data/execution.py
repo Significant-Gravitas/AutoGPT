@@ -13,7 +13,7 @@ from prisma.types import AgentGraphExecutionWhereInput
 from pydantic import BaseModel
 
 from autogpt_server.data.block import BlockData, BlockInput, CompletedBlockOutput
-from autogpt_server.util import json
+from autogpt_server.util import json, mock
 
 
 class GraphExecution(BaseModel):
@@ -117,7 +117,10 @@ EXECUTION_RESULT_INCLUDE = {
 
 
 async def create_graph_execution(
-    graph_id: str, graph_version: int, nodes_input: list[tuple[str, BlockInput]]
+    graph_id: str,
+    graph_version: int,
+    nodes_input: list[tuple[str, BlockInput]],
+    user_id: str,
 ) -> tuple[str, list[ExecutionResult]]:
     """
     Create a new AgentGraphExecution record.
@@ -143,6 +146,7 @@ async def create_graph_execution(
                     for node_id, node_input in nodes_input
                 ]
             },
+            "userId": user_id,
         },
         include={
             "AgentNodeExecutions": {"include": EXECUTION_RESULT_INCLUDE}  # type: ignore
@@ -359,8 +363,8 @@ def merge_execution_input(data: BlockInput) -> BlockInput:
         if OBJC_SPLIT not in key:
             continue
         name, index = key.split(OBJC_SPLIT)
-        if not isinstance(data[name], object):
-            data[name] = type("Object", (object,), data[name])()
+        if name not in data or not isinstance(data[name], object):
+            data[name] = mock.MockObject()
         setattr(data[name], index, value)
 
     return data

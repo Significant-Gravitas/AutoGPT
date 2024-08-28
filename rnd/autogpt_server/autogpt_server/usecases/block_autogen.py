@@ -1,11 +1,14 @@
 from pathlib import Path
 
+from prisma.models import User
+
 from autogpt_server.blocks.basic import ValueBlock
 from autogpt_server.blocks.block import BlockInstallationBlock
 from autogpt_server.blocks.http import HttpRequestBlock
 from autogpt_server.blocks.llm import TextLlmCallBlock
 from autogpt_server.blocks.text import TextFormatterBlock, TextParserBlock
 from autogpt_server.data.graph import Graph, Link, Node, create_graph
+from autogpt_server.data.user import get_or_create_user
 from autogpt_server.util.test import SpinTestServer, wait_execution
 
 sample_block_modules = {
@@ -21,6 +24,16 @@ for module, description in sample_block_modules.items():
     with open(file_path, "r") as f:
         code = "\n".join(["```python", f.read(), "```"])
         sample_block_codes[module] = f"[Example: {description}]\n{code}"
+
+
+async def create_test_user() -> User:
+    test_user_data = {
+        "sub": "ef3b97d7-1161-4eb4-92b2-10c24fb154c1",
+        "email": "testuser@example.com",
+        "name": "Test User",
+    }
+    user = await get_or_create_user(test_user_data)
+    return user
 
 
 def create_test_graph() -> Graph:
@@ -84,7 +97,7 @@ Here is the information I get to write a Python code for that:
 Here is your previous attempt:
 {previous_attempt}
 """,
-            "named_texts_#_previous_attempt": "No previous attempt found.",
+            "values_#_previous_attempt": "No previous attempt found.",
         },
     )
     code_gen_llm_call = Node(
@@ -149,7 +162,7 @@ Here are a couple of sample of the Block class implementation:
             source_id=input_data.id,
             sink_id=input_text_formatter.id,
             source_name="output",
-            sink_name="named_texts_#_query",
+            sink_name="values_#_query",
         ),
         Link(
             source_id=input_query_constant.id,
@@ -179,13 +192,13 @@ Here are a couple of sample of the Block class implementation:
             source_id=search_result_constant.id,
             sink_id=prompt_text_formatter.id,
             source_name="output",
-            sink_name="named_texts_#_search_result",
+            sink_name="values_#_search_result",
         ),
         Link(
             source_id=input_query_constant.id,
             sink_id=prompt_text_formatter.id,
             source_name="output",
-            sink_name="named_texts_#_query",
+            sink_name="values_#_query",
         ),
         Link(
             source_id=prompt_text_formatter.id,
@@ -209,7 +222,7 @@ Here are a couple of sample of the Block class implementation:
             source_id=block_installation.id,
             sink_id=prompt_text_formatter.id,
             source_name="error",
-            sink_name="named_texts_#_previous_attempt",
+            sink_name="values_#_previous_attempt",
         ),
         Link(  # Re-trigger search result.
             source_id=block_installation.id,
@@ -237,9 +250,12 @@ Here are a couple of sample of the Block class implementation:
 async def block_autogen_agent():
     async with SpinTestServer() as server:
         test_manager = server.exec_manager
-        test_graph = await create_graph(create_test_graph())
+        test_user = await create_test_user()
+        test_graph = await create_graph(create_test_graph(), user_id=test_user.id)
         input_data = {"input": "Write me a block that writes a string into a file."}
-        response = await server.agent_server.execute_graph(test_graph.id, input_data)
+        response = await server.agent_server.execute_graph(
+            test_graph.id, input_data, test_user.id
+        )
         print(response)
         result = await wait_execution(
             exec_manager=test_manager,
@@ -247,6 +263,7 @@ async def block_autogen_agent():
             graph_exec_id=response["id"],
             num_execs=10,
             timeout=1200,
+            user_id=test_user.id,
         )
         print(result)
 

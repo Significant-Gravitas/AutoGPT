@@ -1,6 +1,6 @@
-import React, { FC, useEffect, useRef } from 'react';
-import { Button } from './ui/button';
-import { Textarea } from './ui/textarea';
+import React, { FC, useEffect, useRef } from "react";
+import { Button } from "./ui/button";
+import { Textarea } from "./ui/textarea";
 
 interface ModalProps {
   isOpen: boolean;
@@ -9,7 +9,12 @@ interface ModalProps {
   value: string;
 }
 
-const InputModalComponent: FC<ModalProps> = ({ isOpen, onClose, onSave, value }) => {
+const InputModalComponent: FC<ModalProps> = ({
+  isOpen,
+  onClose,
+  onSave,
+  value,
+}) => {
   const [tempValue, setTempValue] = React.useState(value);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -32,16 +37,18 @@ const InputModalComponent: FC<ModalProps> = ({ isOpen, onClose, onSave, value })
   }
 
   return (
-    <div className="nodrag fixed inset-0 bg-white bg-opacity-60 flex justify-center items-center">
-      <div className="bg-white p-5 rounded-lg w-[500px] max-w-[90%]">
-        <center><h1>Enter input text</h1></center>
+    <div className="nodrag fixed inset-0 flex items-center justify-center bg-white bg-opacity-60">
+      <div className="w-[500px] max-w-[90%] rounded-lg bg-white p-5">
+        <center>
+          <h1>Enter input text</h1>
+        </center>
         <Textarea
           ref={textAreaRef}
-          className="w-full h-[200px] p-2.5 rounded border border-[#dfdfdf] text-black bg-[#dfdfdf]"
+          className="h-[200px] w-full rounded border border-[#dfdfdf] bg-[#dfdfdf] p-2.5 text-black"
           value={tempValue}
           onChange={(e) => setTempValue(e.target.value)}
         />
-        <div className="flex justify-end gap-2.5 mt-2.5">
+        <div className="mt-2.5 flex justify-end gap-2.5">
           <Button onClick={onClose}>Cancel</Button>
           <Button onClick={handleSave}>Save</Button>
         </div>

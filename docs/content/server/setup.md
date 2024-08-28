@@ -9,7 +9,7 @@ This guide will help you setup the server and builder for the project.
 
 <!-- The video is listed in the root Readme.md of the repo -->
 
-We also offer this in video format. You can check it out [here](https://github.com/Significant-Gravitas/AutoGPT#how-to-get-started)
+We also offer this in video format. You can check it out [here](https://github.com/Significant-Gravitas/AutoGPT#how-to-get-started).
 
 !!! warning
     **DO NOT FOLLOW ANY OUTSIDE TUTORIALS AS THEY WILL LIKELY BE OUT OF DATE**
@@ -82,6 +82,13 @@ In order to setup the database, you need to run the following command, in the sa
 ```bash
 poetry run prisma migrate deploy
 ```
+After deploying the migration, to ensure that the database schema is correctly mapped to your codebase, allowing the application to interact with the database properly, you need to generate the Prisma database model:
+
+```bash
+poetry run prisma generate
+```
+
+Without running this command, the necessary Python modules (prisma.models) won't be available, leading to a `ModuleNotFoundError`.
 
 ### Running the server
 

@@ -17,6 +17,7 @@ defaults:
     working-directory: rnd/autogpt_builder
 
 jobs:
+
   lint:
     runs-on: ubuntu-latest
 
@@ -30,6 +31,10 @@ jobs:
     - name: Install dependencies
       run: |
         npm install
+
+    - name: Check formatting with Prettier
+      run: |
+        npx prettier --check .
 
     - name: Run lint
       run: |

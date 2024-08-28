@@ -1,10 +1,13 @@
-import json
 import re
 from typing import Any
 
+from jinja2 import BaseLoader, Environment
 from pydantic import Field
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from autogpt_server.util import json
+
+jinja = Environment(loader=BaseLoader())
 
 
 class TextMatcherBlock(Block):
@@ -115,13 +118,8 @@ class TextParserBlock(Block):
 
 class TextFormatterBlock(Block):
     class Input(BlockSchema):
-        texts: list[str] = Field(description="Texts (list) to format", default=[])
-        named_texts: dict[str, str] = Field(
-            description="Texts (dict) to format", default={}
-        )
-        format: str = Field(
-            description="Template to format the text using `texts` and `named_texts`",
-        )
+        values: dict[str, Any] = Field(description="Values (dict) to be used in format")
+        format: str = Field(description="Template to format the text using `values`")
 
     class Output(BlockSchema):
         output: str
@@ -134,23 +132,54 @@ class TextFormatterBlock(Block):
             input_schema=TextFormatterBlock.Input,
             output_schema=TextFormatterBlock.Output,
             test_input=[
-                {"texts": ["Hello"], "format": "{texts[0]}"},
                 {
-                    "texts": ["Hello", "World!"],
-                    "named_texts": {"name": "Alice"},
-                    "format": "{texts[0]} {texts[1]} {name}",
+                    "values": {"name": "Alice", "hello": "Hello", "world": "World!"},
+                    "format": "{hello}, {world} {{name}}",
                 },
-                {"format": "Hello, World!"},
+                {
+                    "values": {"list": ["Hello", " World!"]},
+                    "format": "{% for item in list %}{{ item }}{% endfor %}",
+                },
             ],
             test_output=[
-                ("output", "Hello"),
-                ("output", "Hello World! Alice"),
-                ("output", "Hello, World!"),
+                ("output", "Hello, World! Alice"),
+                ("output", "Hello World!"),
             ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
-        yield "output", input_data.format.format(
-            texts=input_data.texts,
-            **input_data.named_texts,
+        # For python.format compatibility: replace all {...} with {{..}}.
+        # But avoid replacing {{...}} to {{{...}}}.
+        fmt = re.sub(r"(?<!{){[ a-zA-Z0-9_]+}", r"{\g<0>}", input_data.format)
+        template = jinja.from_string(fmt)
+        yield "output", template.render(**input_data.values)
+
+
+class TextCombinerBlock(Block):
+    class Input(BlockSchema):
+        input: list[str] = Field(description="text input to combine")
+        delimiter: str = Field(description="Delimiter to combine texts", default="")
+
+    class Output(BlockSchema):
+        output: str = Field(description="Combined text")
+
+    def __init__(self):
+        super().__init__(
+            id="e30a4d42-7b7d-4e6a-b36e-1f9b8e3b7d85",
+            description="This block combines multiple input texts into a single output text.",
+            categories={BlockCategory.TEXT},
+            input_schema=TextCombinerBlock.Input,
+            output_schema=TextCombinerBlock.Output,
+            test_input=[
+                {"input": ["Hello world I like ", "cake and to go for walks"]},
+                {"input": ["This is a test", "Hi!"], "delimiter": "! "},
+            ],
+            test_output=[
+                ("output", "Hello world I like cake and to go for walks"),
+                ("output", "This is a test! Hi!"),
+            ],
         )
+
+    def run(self, input_data: Input) -> BlockOutput:
+        combined_text = input_data.delimiter.join(input_data.input)
+        yield "output", combined_text

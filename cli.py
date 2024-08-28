@@ -69,6 +69,8 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
                 bold=True,
             )
         )
+    else:
+        click.echo(click.style("🎉 Setup completed!\n", fg="green"))
 
 
 @cli.group()

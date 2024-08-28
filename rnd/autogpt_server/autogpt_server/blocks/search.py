@@ -131,11 +131,11 @@ class WebScraperBlock(Block, GetRequest):
             yield "error", f"Request to Jina-ai Reader failed: {e}"
 
 
-class GetOpenWeatherMapWeather(Block, GetRequest):
+class GetOpenWeatherMapBlock(Block, GetRequest):
     class Input(BlockSchema):
         location: str
         api_key: BlockSecret = SecretField(key="openweathermap_api_key")
-        use_celsius: bool
+        use_celsius: bool = True
 
     class Output(BlockSchema):
         temperature: str
@@ -146,8 +146,8 @@ class GetOpenWeatherMapWeather(Block, GetRequest):
     def __init__(self):
         super().__init__(
             id="f7a8b2c3-6d4e-5f8b-9e7f-6d4e5f8b9e7f",
-            input_schema=GetOpenWeatherMapWeather.Input,
-            output_schema=GetOpenWeatherMapWeather.Output,
+            input_schema=GetOpenWeatherMapBlock.Input,
+            output_schema=GetOpenWeatherMapBlock.Output,
             test_input={
                 "location": "New York",
                 "api_key": "YOUR_API_KEY",

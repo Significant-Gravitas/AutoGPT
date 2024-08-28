@@ -11,10 +11,13 @@ from tenacity import retry, stop_after_delay, wait_exponential
 
 from autogpt_server.data import db
 from autogpt_server.util.process import AppProcess
+from autogpt_server.util.settings import Config
 
 logger = logging.getLogger(__name__)
 conn_retry = retry(stop=stop_after_delay(5), wait=wait_exponential(multiplier=0.1))
 T = TypeVar("T")
+
+pyro_host = Config().pyro_host
 
 
 def expose(func: Callable) -> Callable:
@@ -33,13 +36,14 @@ class PyroNameServer(AppProcess):
     def run(self):
         try:
             print("Starting NameServer loop")
-            nameserver.start_ns_loop()
+            nameserver.start_ns_loop(host=pyro_host, port=9090)
         except KeyboardInterrupt:
             print("Shutting down NameServer")
 
 
 class AppService(AppProcess):
     shared_event_loop: asyncio.AbstractEventLoop
+    use_db: bool = True
 
     @classmethod
     @property
@@ -60,7 +64,8 @@ class AppService(AppProcess):
 
     def run(self):
         self.shared_event_loop = asyncio.get_event_loop()
-        self.shared_event_loop.run_until_complete(db.connect())
+        if self.use_db:
+            self.shared_event_loop.run_until_complete(db.connect())
 
         # Initialize the async loop.
         async_thread = threading.Thread(target=self.__start_async_loop)
@@ -77,8 +82,8 @@ class AppService(AppProcess):
 
     @conn_retry
     def __start_pyro(self):
-        daemon = pyro.Daemon()
-        ns = pyro.locate_ns()
+        daemon = pyro.Daemon(host=pyro_host)
+        ns = pyro.locate_ns(host=pyro_host, port=9090)
         uri = daemon.register(self)
         ns.register(self.service_name, uri)
         logger.warning(f"Service [{self.service_name}] Ready. Object URI = {uri}")

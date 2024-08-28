@@ -10,21 +10,35 @@ else
     if ! command -v python3 &> /dev/null
     then
         echo "python3 could not be found"
-        echo "Installing python3 using pyenv..."
-        if ! command -v pyenv &> /dev/null
-        then
-            echo "pyenv could not be found"
-            echo "Installing pyenv..."
-            curl https://pyenv.run | bash
+        echo "Install python3 using pyenv ([y]/n)?"
+        read response
+        if [[ "$response" == "y" || -z "$response" ]]; then
+            echo "Installing python3..."
+            if ! command -v pyenv &> /dev/null
+            then
+                echo "pyenv could not be found"
+                echo "Installing pyenv..."
+                curl https://pyenv.run | bash
+            fi
+            pyenv install 3.11.5
+            pyenv global 3.11.5
+        else
+            echo "Aborting setup"
+            exit 1
         fi
-        pyenv install 3.11.5
-        pyenv global 3.11.5
     fi
 
     if ! command -v poetry &> /dev/null
     then
         echo "poetry could not be found"
-        echo "Installing poetry..."
-        curl -sSL https://install.python-poetry.org | python3 -
+        echo "Install poetry using official installer ([y]/n)?"
+        read response
+        if [[ "$response" == "y" || -z "$response" ]]; then
+            echo "Installing poetry..."
+            curl -sSL https://install.python-poetry.org | python3 -
+        else
+            echo "Aborting setup"
+            exit 1
+        fi
     fi
 fi
