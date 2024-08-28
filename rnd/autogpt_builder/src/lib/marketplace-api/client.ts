@@ -121,6 +121,10 @@ export default class MarketplaceAPI {
     );
   }
 
+  async getAgentSubmissions(): Promise<AgentListResponse> {
+    return this._get("/admin/agent/submissions");
+  }
+
   async createAgentEntry(request: AddAgentRequest): Promise<AgentResponse> {
     return this._post("/admin/agent", request);
   }
