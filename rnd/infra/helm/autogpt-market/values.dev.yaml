@@ -51,7 +51,7 @@ resources:
 
 livenessProbe:
   httpGet:
-    path: /docs
+    path: /health
     port: 8000
   initialDelaySeconds: 60
   periodSeconds: 20
@@ -59,7 +59,7 @@ livenessProbe:
   failureThreshold: 12
 readinessProbe:
   httpGet:
-    path: /docs
+    path: /health
     port: 8000
   initialDelaySeconds: 60
   periodSeconds: 20
