@@ -6,7 +6,15 @@ export interface InputProps
   extends React.InputHTMLAttributes<HTMLInputElement> {}
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, ...props }, ref) => {
+  ({ className, type, value, ...props }, ref) => {
+    // track the change of `value` and if it's different from the current value, manually set the value to the new value
+    ref = ref || React.createRef<HTMLInputElement>();
+    React.useEffect(() => {
+      if (ref?.current?.value !== value) {
+        console.log("Value changed from", ref?.current?.value, "to", value);
+        ref.current.value = value;
+      }
+    }, [value]);
     return (
       <input
         type={type}
@@ -16,6 +24,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           className,
         )}
         ref={ref}
+        defaultValue={value}
         {...props}
       />
     );
