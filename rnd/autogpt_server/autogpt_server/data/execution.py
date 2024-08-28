@@ -120,7 +120,7 @@ async def create_graph_execution(
     graph_id: str,
     graph_version: int,
     nodes_input: list[tuple[str, BlockInput]],
-    user_id: str,
+    user_id: str | None = None,
 ) -> tuple[str, list[ExecutionResult]]:
     """
     Create a new AgentGraphExecution record.
@@ -148,7 +148,7 @@ async def create_graph_execution(
             },
             "userId": user_id,
         },
-        include={"AgentNodeExecutions": {"include": EXECUTION_RESULT_INCLUDE}},
+        include={"AgentNodeExecutions": {"include": EXECUTION_RESULT_INCLUDE}},  # type: ignore
     )
 
     return result.id, [
@@ -284,7 +284,7 @@ async def get_graph_execution(
     """
     execution = await AgentGraphExecution.prisma().find_first(
         where={"id": graph_exec_id, "userId": user_id},
-        include={"AgentNodeExecutions": {"include": EXECUTION_RESULT_INCLUDE}},
+        include={"AgentNodeExecutions": {"include": EXECUTION_RESULT_INCLUDE}},  # type: ignore
     )
     return execution
 

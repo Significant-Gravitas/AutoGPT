@@ -294,6 +294,7 @@ async def get_graphs_meta(
 
     Args:
         filter_by: An optional filter to either select templates or active graphs.
+        user_id: An optional user ID to filter the graphs by.
 
     Returns:
         list[GraphMeta]: A list of objects representing the retrieved graph metadata.

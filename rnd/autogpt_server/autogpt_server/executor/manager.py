@@ -466,7 +466,7 @@ class ExecutionManager(AppService):
 
     @expose
     def add_execution(
-        self, graph_id: str, data: BlockInput, user_id: str
+        self, graph_id: str, data: BlockInput, user_id: str | None = None
     ) -> dict[str, Any]:
         graph: Graph | None = self.run_and_wait(get_graph(graph_id, user_id=user_id))
         if not graph:
