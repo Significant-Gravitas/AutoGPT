@@ -48,6 +48,7 @@ class AppService(AppProcess):
     shared_event_loop: asyncio.AbstractEventLoop
     event_queue: AsyncEventQueue = AsyncRedisEventQueue()
     use_db: bool = True
+    use_redis: bool = True
 
     @classmethod
     @property
@@ -70,7 +71,8 @@ class AppService(AppProcess):
         self.shared_event_loop = asyncio.get_event_loop()
         if self.use_db:
             self.shared_event_loop.run_until_complete(db.connect())
-        self.shared_event_loop.run_until_complete(self.event_queue.connect())
+        if self.use_redis:
+            self.shared_event_loop.run_until_complete(self.event_queue.connect())
 
         # Initialize the async loop.
         async_thread = threading.Thread(target=self.__start_async_loop)

@@ -22,7 +22,7 @@ export default class AutoGPTServerAPI {
     baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
       "http://localhost:8000/api",
     wsUrl: string = process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL ||
-      "http://localhost:8000/api",
+      "ws://localhost:8001/ws",
   ) {
     this.baseUrl = baseUrl;
     this.wsUrl = wsUrl;
