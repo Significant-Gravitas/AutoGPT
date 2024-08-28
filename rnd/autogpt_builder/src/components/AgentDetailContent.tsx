@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -13,27 +13,24 @@ import {
 import { Button } from "@/components/ui/button";
 import { AgentDetailResponse } from "@/lib/marketplace-api";
 import dynamic from "next/dynamic";
-import { Node, Edge, NodeTypes, EdgeTypes } from "reactflow";
+import { Node, Edge } from "@xyflow/react";
 import MarketplaceAPI from "@/lib/marketplace-api";
 import AutoGPTServerAPI, { GraphCreatable } from "@/lib/autogpt-server-api";
 
 const ReactFlow = dynamic(
-  () => import("reactflow").then((mod) => mod.default),
+  () => import("@xyflow/react").then((mod) => mod.ReactFlow),
   { ssr: false },
 );
 const Controls = dynamic(
-  () => import("reactflow").then((mod) => mod.Controls),
+  () => import("@xyflow/react").then((mod) => mod.Controls),
   { ssr: false },
 );
 const Background = dynamic(
-  () => import("reactflow").then((mod) => mod.Background),
+  () => import("@xyflow/react").then((mod) => mod.Background),
   { ssr: false },
 );
 
-import "reactflow/dist/style.css";
-import CustomNode from "./CustomNode";
-import { CustomEdge } from "./CustomEdge";
-import ConnectionLine from "./ConnectionLine";
+import "@xyflow/react/dist/style.css";
 import { beautifyString } from "@/lib/utils";
 
 function convertGraphToReactFlow(graph: any): { nodes: Node[]; edges: Edge[] } {
@@ -110,9 +107,6 @@ async function installGraph(id: string): Promise<void> {
 function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
   const [isGraphExpanded, setIsGraphExpanded] = useState(false);
   const { nodes, edges } = convertGraphToReactFlow(agent.graph);
-
-  const nodeTypes: NodeTypes = useMemo(() => ({ custom: CustomNode }), []);
-  const edgeTypes: EdgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">

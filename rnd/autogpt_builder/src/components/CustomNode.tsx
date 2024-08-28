@@ -1,18 +1,18 @@
 import React, {
   useState,
   useEffect,
-  FC,
-  memo,
   useCallback,
   useRef,
+  useContext,
 } from "react";
-import { NodeProps, useReactFlow } from "reactflow";
-import "reactflow/dist/style.css";
+import { NodeProps, useReactFlow, Node, Edge } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import "./customnode.css";
 import InputModalComponent from "./InputModalComponent";
 import OutputModalComponent from "./OutputModalComponent";
 import {
   BlockIORootSchema,
+  Category,
   NodeExecutionResult,
 } from "@/lib/autogpt-server-api/types";
 import { beautifyString, setNestedProperty } from "@/lib/utils";
@@ -21,41 +21,42 @@ import { Switch } from "@/components/ui/switch";
 import { Copy, Trash2 } from "lucide-react";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
-import { CustomEdgeData } from "./CustomEdge";
 import { NodeGenericInputField } from "./node-input-components";
 import SchemaTooltip from "./SchemaTooltip";
 import { getPrimaryCategoryColor } from "@/lib/utils";
+import { FlowContext } from "./Flow";
 
 type ParsedKey = { key: string; index?: number };
+
+export type ConnectionData = Array<{
+  edge_id: string;
+  source: string;
+  sourceHandle: string;
+  target: string;
+  targetHandle: string;
+}>;
 
 export type CustomNodeData = {
   blockType: string;
   title: string;
   description: string;
-  categories: string[];
+  categories: Category[];
   inputSchema: BlockIORootSchema;
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
-  setHardcodedValues: (values: { [key: string]: any }) => void;
-  connections: Array<{
-    edge_id: string;
-    source: string;
-    sourceHandle: string;
-    target: string;
-    targetHandle: string;
-  }>;
+  connections: ConnectionData;
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
   output_data?: NodeExecutionResult["output_data"];
   block_id: string;
   backend_id?: string;
-  errors?: { [key: string]: string | null };
-  setErrors: (errors: { [key: string]: string | null }) => void;
-  setIsAnyModalOpen?: (isOpen: boolean) => void;
+  errors?: { [key: string]: string };
   isOutputStatic?: boolean;
 };
 
-const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
+export type CustomNode = Node<CustomNodeData, "custom">;
+
+export function CustomNode({ data, id }: NodeProps<CustomNode>) {
   const [isOutputOpen, setIsOutputOpen] = useState(data.isOutputOpen || false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -63,11 +64,15 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   const [modalValue, setModalValue] = useState<string>("");
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-
-  const { deleteElements } = useReactFlow();
-
-  const outputDataRef = useRef<HTMLDivElement>(null);
+  const { updateNodeData, deleteElements } = useReactFlow<CustomNode, Edge>();
   const isInitialSetup = useRef(true);
+  const flowContext = useContext(FlowContext);
+
+  if (!flowContext) {
+    throw new Error("FlowContext consumer must be inside FlowEditor component");
+  }
+
+  const { setIsAnyModalOpen } = flowContext;
 
   useEffect(() => {
     if (data.output_data || data.status) {
@@ -80,12 +85,20 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
   }, [data.isOutputOpen]);
 
   useEffect(() => {
-    data.setIsAnyModalOpen?.(isModalOpen || isOutputModalOpen);
+    setIsAnyModalOpen?.(isModalOpen || isOutputModalOpen);
   }, [isModalOpen, isOutputModalOpen, data]);
 
   useEffect(() => {
     isInitialSetup.current = false;
   }, []);
+
+  const setHardcodedValues = (values: any) => {
+    updateNodeData(id, { hardcodedValues: values });
+  };
+
+  const setErrors = (errors: { [key: string]: string }) => {
+    updateNodeData(id, { errors });
+  };
 
   const toggleOutput = (checked: boolean) => {
     setIsOutputOpen(checked);
@@ -147,40 +160,41 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       history.push({
         type: "UPDATE_INPUT",
         payload: { nodeId: id, oldValues: data.hardcodedValues, newValues },
-        undo: () => data.setHardcodedValues(data.hardcodedValues),
-        redo: () => data.setHardcodedValues(newValues),
+        undo: () => setHardcodedValues(data.hardcodedValues),
+        redo: () => setHardcodedValues(newValues),
       });
     }
 
-    data.setHardcodedValues(newValues);
+    setHardcodedValues(newValues);
     const errors = data.errors || {};
     // Remove error with the same key
     setNestedProperty(errors, path, null);
-    data.setErrors({ ...errors });
+    setErrors({ ...errors });
   };
 
   // Helper function to parse keys with array indices
+  //TODO move to utils
   const parseKeys = (key: string): ParsedKey[] => {
-    const regex = /(\w+)|\[(\d+)\]/g;
+    const splits = key.split(/_@_|_#_|_\$_|\./);
     const keys: ParsedKey[] = [];
-    let match;
     let currentKey: string | null = null;
 
-    while ((match = regex.exec(key)) !== null) {
-      if (match[1]) {
+    splits.forEach((split) => {
+      const isInteger = /^\d+$/.test(split);
+      if (!isInteger) {
         if (currentKey !== null) {
           keys.push({ key: currentKey });
         }
-        currentKey = match[1];
-      } else if (match[2]) {
+        currentKey = split;
+      } else {
         if (currentKey !== null) {
-          keys.push({ key: currentKey, index: parseInt(match[2], 10) });
+          keys.push({ key: currentKey, index: parseInt(split, 10) });
           currentKey = null;
         } else {
           throw new Error("Invalid key format: array index without a key");
         }
       }
-    }
+    });
 
     if (currentKey !== null) {
       keys.push({ key: currentKey });
@@ -248,14 +262,6 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       data.output_data
         ? JSON.stringify(data.output_data, null, 2)
         : "[no output (yet)]",
-    );
-  };
-
-  const isTextTruncated = (element: HTMLElement | null): boolean => {
-    if (!element) return false;
-    return (
-      element.scrollHeight > element.clientHeight ||
-      element.scrollWidth > element.clientWidth
     );
   };
 
@@ -343,6 +349,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
                           propKey={propKey}
                           propSchema={propSchema}
                           currentValue={getValue(propKey)}
+                          connections={data.connections}
                           handleInputChange={handleInputChange}
                           handleInputClick={handleInputClick}
                           errors={data.errors ?? {}}
@@ -362,7 +369,7 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
         </div>
       </div>
       {isOutputOpen && (
-        <div className="node-output" onClick={handleOutputClick}>
+        <div className="node-output break-words" onClick={handleOutputClick}>
           <p>
             <strong>Status:</strong>{" "}
             {typeof data.status === "object"
@@ -410,6 +417,4 @@ const CustomNode: FC<NodeProps<CustomNodeData>> = ({ data, id }) => {
       />
     </div>
   );
-};
-
-export default memo(CustomNode);
+}
