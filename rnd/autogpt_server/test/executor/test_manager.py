@@ -150,7 +150,7 @@ async def test_input_pin_always_waited(server):
         server.agent_server, server.exec_manager, test_graph, test_user, {}, 3
     )
 
-    executions = await server.agent_server.get_graph_run_node_execution_results(
+    executions = await server.agent_server.get_run_execution_results(
         test_graph.id, graph_exec_id, test_user.id
     )
     assert len(executions) == 3
@@ -230,7 +230,7 @@ async def test_static_input_link_on_graph(server):
     graph_exec_id = await execute_graph(
         server.agent_server, server.exec_manager, test_graph, test_user, {}, 8
     )
-    executions = await server.agent_server.get_graph_run_node_execution_results(
+    executions = await server.agent_server.get_run_execution_results(
         test_graph.id, graph_exec_id, test_user.id
     )
     assert len(executions) == 8

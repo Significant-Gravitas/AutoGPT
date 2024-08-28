@@ -441,7 +441,7 @@ class ExecutionManager(AppService):
                 name = node.input_default.get("name")
                 if name and name in data:
                     input_data = {"value": data[name]}
-                
+
             input_data, error = validate_exec(node, input_data)
             if input_data is None:
                 raise Exception(error)
