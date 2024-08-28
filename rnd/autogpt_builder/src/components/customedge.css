@@ -39,6 +39,6 @@
   cursor: pointer;
 }
 
-.react-flow__edges>svg:has(> g.selected) {
+.react-flow__edges > svg:has(> g.selected) {
   z-index: 10 !important;
 }
