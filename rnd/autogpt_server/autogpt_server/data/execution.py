@@ -9,7 +9,11 @@ from prisma.models import (
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
 )
-from prisma.types import AgentGraphExecutionWhereInput, AgentNodeExecutionInclude
+from prisma.types import (
+    AgentGraphExecutionInclude,
+    AgentGraphExecutionWhereInput,
+    AgentNodeExecutionInclude,
+)
 from pydantic import BaseModel
 
 from autogpt_server.data.block import BlockData, BlockInput, CompletedBlockOutput
@@ -115,6 +119,17 @@ EXECUTION_RESULT_INCLUDE: AgentNodeExecutionInclude = {
     "AgentGraphExecution": True,
 }
 
+GRAPH_EXECUTION_INCLUDE: AgentGraphExecutionInclude = {
+    "AgentNodeExecutions": {
+        "include": {
+            "Input": True,
+            "Output": True,
+            "AgentNode": True,
+            "AgentGraphExecution": True,
+        }
+    }
+}
+
 
 async def create_graph_execution(
     graph_id: str,
@@ -148,7 +163,7 @@ async def create_graph_execution(
             },
             "userId": user_id,
         },
-        include={"AgentNodeExecutions": {"include": EXECUTION_RESULT_INCLUDE}},
+        include=GRAPH_EXECUTION_INCLUDE,
     )
 
     return result.id, [
@@ -284,7 +299,7 @@ async def get_graph_execution(
     """
     execution = await AgentGraphExecution.prisma().find_first(
         where={"id": graph_exec_id, "userId": user_id},
-        include={"AgentNodeExecutions": {"include": EXECUTION_RESULT_INCLUDE}},
+        include=GRAPH_EXECUTION_INCLUDE,
     )
     return execution
 
