@@ -7,7 +7,7 @@ subnet_cidr     = "10.0.0.0/24"
 cluster_name    = "dev-gke-cluster"
 node_count      = 3
 node_pool_name  = "dev-main-pool"
-machine_type    = "e2-medium"
+machine_type    = "e2-highmem-4"
 disk_size_gb    = 100
 static_ip_names = ["agpt-server-ip", "agpt-builder-ip", "agpt-ws-server-ip", "agpt-market-ip"]
 
@@ -24,6 +24,10 @@ service_accounts = {
    "dev-agpt-ws-server-sa" = {
     display_name = "AutoGPT Dev WebSocket Server Account"
     description  = "Service account for agpt dev websocket server"
+  },
+   "dev-agpt-market-sa" = {
+    display_name = "AutoGPT Dev Market Server Account"
+    description  = "Service account for agpt dev market server"
   }
 }
 
@@ -42,6 +46,11 @@ workload_identity_bindings = {
     service_account_name = "dev-agpt-ws-server-sa"
     namespace            = "dev-agpt"
     ksa_name             = "dev-agpt-ws-server-sa"
+  },
+  "dev-agpt-market-workload-identity" = {
+    service_account_name = "dev-agpt-market-sa"
+    namespace            = "dev-agpt"
+    ksa_name             = "dev-agpt-market-sa"
   }
 }
 

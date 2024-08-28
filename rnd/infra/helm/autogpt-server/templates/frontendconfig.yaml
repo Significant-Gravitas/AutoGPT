@@ -1,4 +1,5 @@
 apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
 metadata:
   name: {{ include "autogpt-server.fullname" . }}-frontend-config
 spec:

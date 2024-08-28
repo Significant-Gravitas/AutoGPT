@@ -16,7 +16,7 @@ service:
   targetPort: 8000
   annotations:
     cloud.google.com/neg: '{"ingress": true}'
-    beta.cloud.google.com/backend-config: '{"default": "autogpt-server"}'
+    beta.cloud.google.com/backend-config: '{"default": "autogpt-market"}'
 
 ingress:
   enabled: true
@@ -72,7 +72,7 @@ cloudSqlProxy:
   image:
     repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
     tag: 2.11.4
-  instanceConnectionName: "agpt-dev:us-central1:agpt-market-dev"
+  instanceConnectionName: "agpt-dev:us-central1:agpt-server-dev"
   port: 5432
   resources:
     requests:
@@ -97,3 +97,6 @@ env:
   APP_ENV: "dev"
   ENABLE_AUTH: "true"
   SUPABASE_JWT_SECRET: ""
+  SUPABASE_ANON_KEY: ""
+  SUPABASE_URL: ""
+  DATABASE_URL: ""
