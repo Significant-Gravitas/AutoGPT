@@ -76,7 +76,7 @@ class PrintingBlock(Block):
 
 
 class ObjectLookupBlock(Block):
-    
+
     class Input(BlockSchema):
         input: Any = Field(description="Dictionary to lookup from")
         key: str | int = Field(description="Key to lookup in the dictionary")
@@ -84,7 +84,7 @@ class ObjectLookupBlock(Block):
     class Output(BlockSchema):
         output: Any = Field(description="Value found for the given key")
         missing: Any = Field(description="Value of the input that missing the key")
-    
+
     def __init__(self):
         super().__init__(
             id="b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
@@ -107,7 +107,7 @@ class ObjectLookupBlock(Block):
                 ("output", "key"),
                 ("output", ["v1", "v3"]),
             ],
-            categories={BlockCategory.BASIC}
+            categories={BlockCategory.BASIC},
         )
 
     def run(self, input_data: Input) -> BlockOutput:
