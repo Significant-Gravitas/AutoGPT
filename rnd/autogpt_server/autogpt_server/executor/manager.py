@@ -549,14 +549,14 @@ class ExecutionManager(AppService):
                 ExecutionStatus.COMPLETED,
                 ExecutionStatus.FAILED,
             ):
-                exec_update = self.run_and_wait(
-                    update_execution_status(
-                        node_exec.node_exec_id, ExecutionStatus.FAILED
-                    )
-                )
                 self.run_and_wait(
                     upsert_execution_output(
                         node_exec.node_exec_id, "error", "TERMINATED"
+                    )
+                )
+                exec_update = self.run_and_wait(
+                    update_execution_status(
+                        node_exec.node_exec_id, ExecutionStatus.FAILED
                     )
                 )
                 self.agent_server_client.send_execution_update(exec_update.model_dump())
