@@ -86,7 +86,7 @@ class AppService(AppProcess):
         ns = pyro.locate_ns(host=pyro_host, port=9090)
         uri = daemon.register(self)
         ns.register(self.service_name, uri)
-        logger.warning(f"Service [{self.service_name}] Ready. Object URI = {uri}")
+        logger.info(f"Service [{self.service_name}] Ready. Object URI = {uri}")
         daemon.requestLoop()
 
     def __start_async_loop(self):
@@ -100,7 +100,6 @@ def get_service_client(service_type: Type[AS]) -> AS:
     service_name = service_type.service_name
 
     class DynamicClient:
-
         @conn_retry
         def __init__(self):
             ns = pyro.locate_ns()
