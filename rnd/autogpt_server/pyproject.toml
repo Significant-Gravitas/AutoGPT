@@ -42,6 +42,7 @@ expiringdict = "^1.2.2"
 discord-py = "^2.4.0"
 
 autogpt-libs = {path = "../autogpt_libs"}
+jinja2 = "^3.1.4"
 [tool.poetry.group.dev.dependencies]
 cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main", develop = true }
 poethepoet = "^0.26.1"
