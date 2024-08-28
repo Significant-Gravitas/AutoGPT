@@ -44,7 +44,7 @@ class AgentResponse(pydantic.BaseModel):
     version: int
     createdAt: datetime.datetime
     updatedAt: datetime.datetime
-    submission_status: str
+    submissionStatus: str
     views: int = 0
     downloads: int = 0
 
