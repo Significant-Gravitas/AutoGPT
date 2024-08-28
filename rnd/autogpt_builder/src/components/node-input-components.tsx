@@ -522,7 +522,7 @@ const NodeStringInput: FC<{
 }> = ({
   selfKey,
   schema,
-  value,
+  value = "",
   error,
   handleInputChange,
   handleInputClick,
