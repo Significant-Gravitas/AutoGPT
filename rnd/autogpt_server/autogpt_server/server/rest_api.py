@@ -42,10 +42,12 @@ def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
 
 
 class AgentServer(AppService):
-    event_queue: AsyncEventQueue = AsyncRedisEventQueue()
     mutex = KeyedMutex()
     use_db = False
     _test_dependency_overrides = {}
+
+    def __init__(self, event_queue: AsyncEventQueue | None = None):
+        self.event_queue = event_queue or AsyncRedisEventQueue()
 
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):

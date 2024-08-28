@@ -27,11 +27,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 def get_connection_manager():
     global _connection_manager
     if _connection_manager is None:
         _connection_manager = ConnectionManager()
     return _connection_manager
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -138,7 +140,9 @@ async def health():
 
 
 @app.websocket("/ws")
-async def websocket_router(websocket: WebSocket, manager: ConnectionManager = Depends(get_connection_manager)):
+async def websocket_router(
+    websocket: WebSocket, manager: ConnectionManager = Depends(get_connection_manager)
+):
     user_id = await authenticate_websocket(websocket)
     if not user_id:
         return

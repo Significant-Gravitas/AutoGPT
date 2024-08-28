@@ -13,10 +13,10 @@ logging.basicConfig(level=logging.INFO)
 
 
 class DateTimeEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        return super().default(obj)
+    def default(self, o):
+        if isinstance(o, datetime):
+            return o.isoformat()
+        return super().default(o)
 
 
 class AsyncEventQueue(ABC):
@@ -61,12 +61,12 @@ class AsyncRedisEventQueue(AsyncEventQueue):
         if self.connection:
             message = json.dumps(execution_result.model_dump(), cls=DateTimeEncoder)
             logging.info(f"Put {message}")
-            await self.connection.lpush(self.queue_name, message)
+            await self.connection.lpush(self.queue_name, message)  # type: ignore
 
     async def get(self) -> ExecutionResult | None:
         if self.connection:
-            message = await self.connection.rpop(self.queue_name)
-            if message is not None:
+            message = await self.connection.rpop(self.queue_name)  # type: ignore
+            if message is not None and isinstance(message, (str, bytes, bytearray)):
                 data = json.loads(message)
                 logging.info(f"Get {data}")
                 return ExecutionResult(**data)

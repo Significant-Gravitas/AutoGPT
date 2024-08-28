@@ -409,6 +409,7 @@ class ExecutionManager(AppService):
     def __init__(self):
         self.pool_size = Config().num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
+        self.use_redis = False
 
     def run_service(self):
         with ProcessPoolExecutor(
@@ -433,7 +434,6 @@ class ExecutionManager(AppService):
         if not graph:
             raise Exception(f"Graph #{graph_id} not found.")
         graph.validate_graph(for_run=True)
-
         nodes_input = []
         for node in graph.starting_nodes:
             if isinstance(get_block(node.block_id), InputBlock):
