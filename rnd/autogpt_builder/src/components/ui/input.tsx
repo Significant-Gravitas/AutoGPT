@@ -7,7 +7,8 @@ export interface InputProps
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type, value, ...props }, ref) => {
-    // track the change of `value` and if it's different from the current value, manually set the value to the new value
+    // This ref allows the `Input` component to be both controlled and uncontrolled.
+    // The HTMLvalue will only be updated if the value prop changes, but the user can still type in the input.
     ref = ref || React.createRef<HTMLInputElement>();
     React.useEffect(() => {
       if (ref?.current?.value !== value) {
