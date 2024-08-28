@@ -369,7 +369,7 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
         </div>
       </div>
       {isOutputOpen && (
-        <div className="node-output" onClick={handleOutputClick}>
+        <div className="node-output break-words" onClick={handleOutputClick}>
           <p>
             <strong>Status:</strong>{" "}
             {typeof data.status === "object"
