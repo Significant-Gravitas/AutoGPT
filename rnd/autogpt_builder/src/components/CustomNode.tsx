@@ -154,7 +154,7 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
       current[lastKey.key] = value;
     }
 
-    console.log(`Updating hardcoded values for node ${id}:`, newValues);
+    // console.log(`Updating hardcoded values for node ${id}:`, newValues);
 
     if (!isInitialSetup.current) {
       history.push({
