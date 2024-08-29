@@ -286,33 +286,56 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
     console.log("Copy node:", id);
   }, [id]);
 
-  const hasConfigErrors = data.errors && Object.entries(data.errors).some(([_, value]) => value !== null);
+  const hasConfigErrors =
+    data.errors &&
+    Object.entries(data.errors).some(([_, value]) => value !== null);
   const outputData = data.output_data;
-  const hasOutputError = typeof outputData === 'object' && outputData !== null && 'error' in outputData;
+  const hasOutputError =
+    typeof outputData === "object" &&
+    outputData !== null &&
+    "error" in outputData;
 
   useEffect(() => {
     if (hasConfigErrors) {
       const filteredErrors = Object.fromEntries(
-        Object.entries(data.errors || {}).filter(([_, value]) => value !== null)
+        Object.entries(data.errors || {}).filter(
+          ([_, value]) => value !== null,
+        ),
       );
-      console.error('Block configuration errors for', data.title, ':', filteredErrors);
+      console.error(
+        "Block configuration errors for",
+        data.title,
+        ":",
+        filteredErrors,
+      );
     }
     if (hasOutputError) {
-      console.error('Block output contains error for', data.title, ':', outputData.error);
+      console.error(
+        "Block output contains error for",
+        data.title,
+        ":",
+        outputData.error,
+      );
     }
   }, [hasConfigErrors, hasOutputError, data.errors, outputData, data.title]);
 
   const blockClasses = [
-    'custom-node',
-    'dark-theme',
-    'rounded-xl',
-    'border',
-    'bg-white/[.9]',
-    'shadow-md',
-  ].filter(Boolean).join(' ');
+    "custom-node",
+    "dark-theme",
+    "rounded-xl",
+    "border",
+    "bg-white/[.9]",
+    "shadow-md",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-  const errorClass = (hasConfigErrors || hasOutputError) ? 'border-red-500 border-2' : '';
-  const statusClass = (hasConfigErrors || hasOutputError) ? 'failed' : data.status?.toLowerCase() ?? '';
+  const errorClass =
+    hasConfigErrors || hasOutputError ? "border-red-500 border-2" : "";
+  const statusClass =
+    hasConfigErrors || hasOutputError
+      ? "failed"
+      : (data.status?.toLowerCase() ?? "");
 
   return (
     <div
