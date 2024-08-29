@@ -436,10 +436,11 @@ class ExecutionManager(AppService):
 
         nodes_input = []
         for node in graph.starting_nodes:
+            input_data = {}
             if isinstance(get_block(node.block_id), InputBlock):
-                input_data = {"input": data}
-            else:
-                input_data = {}
+                name = node.input_default.get("name")
+                if name and name in data:
+                    input_data = {"value": data[name]}
 
             input_data, error = validate_exec(node, input_data)
             if input_data is None:

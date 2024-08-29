@@ -75,33 +75,22 @@ class PrintingBlock(Block):
         yield "status", "printed"
 
 
-T = TypeVar("T")
+class ObjectLookupBlock(Block):
 
+    class Input(BlockSchema):
+        input: Any = Field(description="Dictionary to lookup from")
+        key: str | int = Field(description="Key to lookup in the dictionary")
 
-class ObjectLookupBaseInput(BlockSchema, Generic[T]):
-    input: T = Field(description="Dictionary to lookup from")
-    key: str | int = Field(description="Key to lookup in the dictionary")
+    class Output(BlockSchema):
+        output: Any = Field(description="Value found for the given key")
+        missing: Any = Field(description="Value of the input that missing the key")
 
-
-class ObjectLookupBaseOutput(BlockSchema, Generic[T]):
-    output: T = Field(description="Value found for the given key")
-    missing: T = Field(description="Value of the input that missing the key")
-
-
-class ObjectLookupBase(Block, ABC, Generic[T]):
-    @abstractmethod
-    def block_id(self) -> str:
-        pass
-
-    def __init__(self, *args, **kwargs):
-        input_schema = ObjectLookupBaseInput[T]
-        output_schema = ObjectLookupBaseOutput[T]
-
+    def __init__(self):
         super().__init__(
-            id=self.block_id(),
+            id="b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
             description="Lookup the given key in the input dictionary/object/list and return the value.",
-            input_schema=input_schema,
-            output_schema=output_schema,
+            input_schema=ObjectLookupBlock.Input,
+            output_schema=ObjectLookupBlock.Output,
             test_input=[
                 {"input": {"apple": 1, "banana": 2, "cherry": 3}, "key": "banana"},
                 {"input": {"x": 10, "y": 20, "z": 30}, "key": "w"},
@@ -118,11 +107,10 @@ class ObjectLookupBase(Block, ABC, Generic[T]):
                 ("output", "key"),
                 ("output", ["v1", "v3"]),
             ],
-            *args,
-            **kwargs,
+            categories={BlockCategory.BASIC},
         )
 
-    def run(self, input_data: ObjectLookupBaseInput[T]) -> BlockOutput:
+    def run(self, input_data: Input) -> BlockOutput:
         obj = input_data.input
         key = input_data.key
 
@@ -143,15 +131,50 @@ class ObjectLookupBase(Block, ABC, Generic[T]):
             yield "missing", input_data.input
 
 
-class ObjectLookupBlock(ObjectLookupBase[Any]):
-    def __init__(self):
-        super().__init__(categories={BlockCategory.BASIC})
+T = TypeVar("T")
 
+
+class InputOutputBlockInput(BlockSchema, Generic[T]):
+    value: T = Field(description="The value to be passed as input/output.")
+    name: str = Field(description="The name of the input/output.")
+
+
+class InputOutputBlockOutput(BlockSchema, Generic[T]):
+    value: T = Field(description="The value passed as input/output.")
+
+
+class InputOutputBlockBase(Block, ABC, Generic[T]):
+    @abstractmethod
     def block_id(self) -> str:
-        return "b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6"
+        pass
+
+    def __init__(self, *args, **kwargs):
+        input_schema = InputOutputBlockInput[T]
+        output_schema = InputOutputBlockOutput[T]
+
+        super().__init__(
+            id=self.block_id(),
+            description="This block is used to define the input & output of a graph.",
+            input_schema=input_schema,
+            output_schema=output_schema,
+            test_input=[
+                {"value": {"apple": 1, "banana": 2, "cherry": 3}, "name": "input_1"},
+                {"value": MockObject(value="!!", key="key"), "name": "input_2"},
+            ],
+            test_output=[
+                ("value", {"apple": 1, "banana": 2, "cherry": 3}),
+                ("value", MockObject(value="!!", key="key")),
+            ],
+            static_output=True,
+            *args,
+            **kwargs,
+        )
+
+    def run(self, input_data: InputOutputBlockInput[T]) -> BlockOutput:
+        yield "value", input_data.value
 
 
-class InputBlock(ObjectLookupBase[Any]):
+class InputBlock(InputOutputBlockBase[Any]):
     def __init__(self):
         super().__init__(categories={BlockCategory.INPUT, BlockCategory.BASIC})
 
@@ -159,7 +182,7 @@ class InputBlock(ObjectLookupBase[Any]):
         return "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b"
 
 
-class OutputBlock(ObjectLookupBase[Any]):
+class OutputBlock(InputOutputBlockBase[Any]):
     def __init__(self):
         super().__init__(categories={BlockCategory.OUTPUT, BlockCategory.BASIC})
 
