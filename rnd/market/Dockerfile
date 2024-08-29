@@ -26,6 +26,7 @@ ENV POETRY_VERSION=1.8.3 \
 RUN pip3 install poetry
 
 COPY rnd/market /app/rnd/market
+COPY rnd/autogpt_libs /app/rnd/autogpt_libs
 
 WORKDIR /app/rnd/market
 

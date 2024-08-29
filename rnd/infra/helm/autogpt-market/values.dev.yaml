@@ -1,0 +1,102 @@
+# dev values, overwrite base values as needed.
+
+image:
+  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-market-dev/agpt-market-dev
+  pullPolicy: Always
+  tag: "latest"
+
+serviceAccount:
+  annotations:
+    iam.gke.io/gcp-service-account: "dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com"
+  name: "dev-agpt-market-sa"
+
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 8000
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    beta.cloud.google.com/backend-config: '{"default": "autogpt-market"}'
+
+ingress:
+  enabled: true
+  className: "gce"
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: "agpt-dev-agpt-market-ip"
+    networking.gke.io/managed-certificates: "autogpt-market-cert"
+    kubernetes.io/ingress.allow-http: "false"
+  hosts:
+    - host: dev-market.agpt.co
+      paths:
+        - path: /
+          pathType: Prefix
+      backend:
+        service:
+          name: autogpt-market
+          port: 8000
+  defaultBackend:
+    service:
+      name: autogpt-market
+      port:
+        number: 8000
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 1Gi
+  limits:
+    cpu: 2
+    memory: 2Gi
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 60
+  periodSeconds: 20
+  timeoutSeconds: 10
+  failureThreshold: 12
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 60
+  periodSeconds: 20
+  timeoutSeconds: 10
+  failureThreshold: 12
+
+domain: "dev-market.agpt.co"
+
+cloudSqlProxy:
+  image:
+    repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
+    tag: 2.11.4
+  instanceConnectionName: "agpt-dev:us-central1:agpt-server-dev"
+  port: 5432
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "1"
+
+cors:
+  allowOrigin: "https://dev-builder.agpt.co"
+  allowMethods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowHeaders:
+    - "Content-Type"
+    - "Authorization"
+  maxAge: 3600
+  allowCredentials: true
+
+env:
+  APP_ENV: "dev"
+  ENABLE_AUTH: "true"
+  SUPABASE_JWT_SECRET: ""
+  SUPABASE_ANON_KEY: ""
+  SUPABASE_URL: ""
+  DATABASE_URL: ""
