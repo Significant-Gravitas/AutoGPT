@@ -167,19 +167,29 @@ const FlowEditor: React.FC<{
 
       // Remove all edges that were connected to deleted nodes
       nodeChanges
-        .filter((change) => change.type == "remove")
+        .filter((change) => change.type === "remove")
         .forEach((deletedNode) => {
           const nodeID = deletedNode.id;
+          const deletedNodeData = nodes.find((node) => node.id === nodeID);
+
+          if (deletedNodeData) {
+            history.push({
+              type: "DELETE_NODE",
+              payload: { node: deletedNodeData },
+              undo: () => addNodes(deletedNodeData),
+              redo: () => deleteElements({ nodes: [{ id: nodeID }] }),
+            });
+          }
 
           const connectedEdges = edges.filter((edge) =>
-            [edge.source, edge.target].includes(nodeID),
+            [edge.source, edge.target].includes(nodeID)
           );
           deleteElements({
             edges: connectedEdges.map((edge) => ({ id: edge.id })),
           });
         });
     },
-    [deleteElements, setNodes],
+    [deleteElements, setNodes, nodes, edges, addNodes]
   );
 
   const formatEdgeID = useCallback((conn: Link | Connection): string => {
