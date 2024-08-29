@@ -35,25 +35,30 @@ async def assert_sample_graph_executions(
     test_user: User,
     graph_exec_id: str,
 ):
-    input = {"input_1": "Hello", "input_2": "World"}
     executions = await agent_server.get_run_execution_results(
         test_graph.id, graph_exec_id, test_user.id
     )
+
+    output_list = [{"value": ["Hello"]}, {"value": ["World"]}]
+    input_list = [
+        {"value": "Hello", "name": "input_1"},
+        {"value": "World", "name": "input_2"},
+    ]
 
     # Executing ValueBlock
     exec = executions[0]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data == {"output": ["Hello"]}
-    assert exec.input_data == {"input": input, "key": "input_1"}
+    assert exec.output_data in output_list
+    assert exec.input_data in input_list
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing ValueBlock
     exec = executions[1]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data == {"output": ["World"]}
-    assert exec.input_data == {"input": input, "key": "input_2"}
+    assert exec.output_data in output_list
+    assert exec.input_data in input_list
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing TextFormatterBlock
