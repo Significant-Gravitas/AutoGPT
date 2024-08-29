@@ -7,7 +7,7 @@ from autogpt_server.data import execution, graph
 from autogpt_server.executor import ExecutionManager
 from autogpt_server.server import AgentServer
 from autogpt_server.usecases.sample import create_test_graph, create_test_user
-from autogpt_server.util.test import wait_execution
+from autogpt_server.util.test import SpinTestServer, wait_execution
 
 
 async def execute_graph(
@@ -35,25 +35,30 @@ async def assert_sample_graph_executions(
     test_user: User,
     graph_exec_id: str,
 ):
-    input = {"input_1": "Hello", "input_2": "World"}
     executions = await agent_server.get_run_execution_results(
         test_graph.id, graph_exec_id, test_user.id
     )
+
+    output_list = [{"value": ["Hello"]}, {"value": ["World"]}]
+    input_list = [
+        {"value": "Hello", "name": "input_1"},
+        {"value": "World", "name": "input_2"},
+    ]
 
     # Executing ValueBlock
     exec = executions[0]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data == {"output": ["Hello"]}
-    assert exec.input_data == {"input": input, "key": "input_1"}
+    assert exec.output_data in output_list
+    assert exec.input_data in input_list
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing ValueBlock
     exec = executions[1]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data == {"output": ["World"]}
-    assert exec.input_data == {"input": input, "key": "input_2"}
+    assert exec.output_data in output_list
+    assert exec.input_data in input_list
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing TextFormatterBlock
@@ -80,7 +85,7 @@ async def assert_sample_graph_executions(
 
 
 @pytest.mark.asyncio(scope="session")
-async def test_agent_execution(server):
+async def test_agent_execution(server: SpinTestServer):
     test_graph = create_test_graph()
     test_user = await create_test_user()
     await graph.create_graph(test_graph, user_id=test_user.id)
@@ -99,7 +104,7 @@ async def test_agent_execution(server):
 
 
 @pytest.mark.asyncio(scope="session")
-async def test_input_pin_always_waited(server):
+async def test_input_pin_always_waited(server: SpinTestServer):
     """
     This test is asserting that the input pin should always be waited for the execution,
     even when default value on that pin is defined, the value has to be ignored.
@@ -162,7 +167,7 @@ async def test_input_pin_always_waited(server):
 
 
 @pytest.mark.asyncio(scope="session")
-async def test_static_input_link_on_graph(server):
+async def test_static_input_link_on_graph(server: SpinTestServer):
     """
     This test is asserting the behaviour of static input link, e.g: reusable input link.
 

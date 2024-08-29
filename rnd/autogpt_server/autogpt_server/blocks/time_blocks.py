@@ -1,6 +1,6 @@
 import time
 from datetime import datetime, timedelta
-from typing import Union
+from typing import Any, Union
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 
@@ -103,6 +103,7 @@ class CurrentDateAndTimeBlock(Block):
 
 class TimerBlock(Block):
     class Input(BlockSchema):
+        message: Any = "timer finished"
         seconds: Union[int, str] = 0
         minutes: Union[int, str] = 0
         hours: Union[int, str] = 0
@@ -120,9 +121,11 @@ class TimerBlock(Block):
             output_schema=TimerBlock.Output,
             test_input=[
                 {"seconds": 1},
+                {"message": "Custom message"},
             ],
             test_output=[
                 ("message", "timer finished"),
+                ("message", "Custom message"),
             ],
         )
 
@@ -136,4 +139,4 @@ class TimerBlock(Block):
         total_seconds = seconds + minutes * 60 + hours * 3600 + days * 86400
 
         time.sleep(total_seconds)
-        yield "message", "timer finished"
+        yield "message", input_data.message
