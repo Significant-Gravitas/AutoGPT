@@ -5,10 +5,11 @@ import pytest
 from autogpt_server.blocks.basic import InputBlock, ValueBlock
 from autogpt_server.data.graph import Graph, Link, Node
 from autogpt_server.server.model import CreateGraph
+from autogpt_server.util.test import SpinTestServer
 
 
 @pytest.mark.asyncio(scope="session")
-async def test_graph_creation(server):
+async def test_graph_creation(server: SpinTestServer):
     value_block = ValueBlock().id
     input_block = InputBlock().id
 
