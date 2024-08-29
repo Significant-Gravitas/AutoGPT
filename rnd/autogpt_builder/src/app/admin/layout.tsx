@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { BinaryIcon, XIcon } from "lucide-react";
+import { usePathname } from "next/navigation"; // Add this import
 
 const tabs = [
   { name: "Dashboard", href: "/admin/dashboard" },
@@ -16,7 +17,11 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [activeTab, setActiveTab] = useState(tabs[0].name);
+  const pathname = usePathname(); // Get the current pathname
+  const [activeTab, setActiveTab] = useState(() => {
+    // Set active tab based on the current route
+    return tabs.find(tab => tab.href === pathname)?.name || tabs[0].name;
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
