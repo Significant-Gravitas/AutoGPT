@@ -59,10 +59,28 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
 
 ### Starting the server directly
 
-Run the following command:
+Run the following command to build the dockerfiles:
 
 ```sh
-poetry run app
+docker compose build
+```
+
+Run the following command to run the app:
+
+```sh
+docker compose up
+```
+
+Run the following command to shut down:
+
+```sh
+docker compose down
+```
+
+If you run into issues with dangling orphans, try:
+
+```sh
+docker-compose down --volumes --remove-orphans && docker-compose up --force-recreate --renew-anon-volumes --remove-orphans  
 ```
 
 ## Testing
