@@ -46,7 +46,7 @@ def get_praw(creds: RedditCredentials) -> praw.Reddit:
     return client
 
 
-class RedditGetPostsBlock(Block):
+class GetRedditPostsBlock(Block):
     class Input(BlockSchema):
         subreddit: str = Field(description="Subreddit name")
         creds: RedditCredentials = Field(
@@ -73,8 +73,8 @@ class RedditGetPostsBlock(Block):
             id="c6731acb-4285-4ee1-bc9b-03d0766c370f",
             description="This block fetches Reddit posts from a defined subreddit name.",
             categories={BlockCategory.SOCIAL},
-            input_schema=RedditGetPostsBlock.Input,
-            output_schema=RedditGetPostsBlock.Output,
+            input_schema=GetRedditPostsBlock.Input,
+            output_schema=GetRedditPostsBlock.Output,
             test_input={
                 "creds": {
                     "client_id": "client_id",
@@ -138,7 +138,7 @@ class RedditGetPostsBlock(Block):
             )
 
 
-class RedditPostCommentBlock(Block):
+class PostRedditCommentBlock(Block):
     class Input(BlockSchema):
         creds: RedditCredentials = Field(
             description="Reddit credentials", default=RedditCredentials()
@@ -153,8 +153,8 @@ class RedditPostCommentBlock(Block):
             id="4a92261b-701e-4ffb-8970-675fd28e261f",
             description="This block posts a Reddit comment on a specified Reddit post.",
             categories={BlockCategory.SOCIAL},
-            input_schema=RedditPostCommentBlock.Input,
-            output_schema=RedditPostCommentBlock.Output,
+            input_schema=PostRedditCommentBlock.Input,
+            output_schema=PostRedditCommentBlock.Output,
             test_input={"data": {"post_id": "id", "comment": "comment"}},
             test_output=[("comment_id", "dummy_comment_id")],
             test_mock={"reply_post": lambda creds, comment: "dummy_comment_id"},
