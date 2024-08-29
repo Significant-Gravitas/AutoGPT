@@ -1,17 +1,31 @@
 from uuid import UUID
 
 import pytest
+from prisma.models import User
 
 from autogpt_server.blocks.basic import InputBlock, ValueBlock
 from autogpt_server.data.graph import Graph, Link, Node
+from autogpt_server.data.user import get_or_create_user
 from autogpt_server.server.model import CreateGraph
 from autogpt_server.util.test import SpinTestServer
+
+
+async def create_test_user() -> User:
+    test_user_data = {
+        "sub": "ef3b97d7-1161-4eb4-92b2-10c24fb154c1",
+        "email": "testuser#example.com",
+        "name": "Test User",
+    }
+    user = await get_or_create_user(test_user_data)
+    return user
 
 
 @pytest.mark.asyncio(scope="session")
 async def test_graph_creation(server: SpinTestServer):
     value_block = ValueBlock().id
     input_block = InputBlock().id
+
+    test_user = await create_test_user()
 
     graph = Graph(
         id="test_graph",
@@ -35,14 +49,18 @@ async def test_graph_creation(server: SpinTestServer):
     create_graph = CreateGraph(graph=graph)
 
     try:
-        await server.agent_server.create_graph(create_graph, False)
+        await server.agent_server.create_graph(
+            create_graph, False, user_id=test_user.id
+        )
         assert False, "Should not be able to connect nodes from different subgraphs"
     except ValueError as e:
         assert "different subgraph" in str(e)
 
     # Change node_1 <-> node_3 link to node_1 <-> node_2 (input for subgraph_1)
     graph.links[0].sink_id = "node_2"
-    created_graph = await server.agent_server.create_graph(create_graph, False)
+    created_graph = await server.agent_server.create_graph(
+        create_graph, False, user_id=test_user.id
+    )
 
     assert UUID(created_graph.id)
     assert created_graph.name == "TestGraph"
