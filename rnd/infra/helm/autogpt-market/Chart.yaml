@@ -1,0 +1,9 @@
+apiVersion: v2
+name: autogpt-market
+description: A Helm chart for Market
+
+type: application
+
+version: 0.1.0
+
+appVersion: "1.0.0"
