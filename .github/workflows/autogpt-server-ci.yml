@@ -134,13 +134,15 @@ jobs:
         if: matrix.db-platform == 'sqlite'
         run: poetry run prisma migrate dev --name updates
 
-      - name: Run Linter
+      - id: lint
+        name: Run Linter
         run: poetry run lint
 
       - name: Run pytest with coverage
         run: |
           poetry run pytest -vv \
             test
+        if: success() || (failure() && steps.lint.outcome == 'failure')
     env:
       CI: true
       PLAIN_OUTPUT: True
