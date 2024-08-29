@@ -7,7 +7,7 @@ from autogpt_server.data import execution, graph
 from autogpt_server.executor import ExecutionManager
 from autogpt_server.server import AgentServer
 from autogpt_server.usecases.sample import create_test_graph, create_test_user
-from autogpt_server.util.test import wait_execution
+from autogpt_server.util.test import SpinTestServer, wait_execution
 
 
 async def execute_graph(
@@ -85,7 +85,7 @@ async def assert_sample_graph_executions(
 
 
 @pytest.mark.asyncio(scope="session")
-async def test_agent_execution(server):
+async def test_agent_execution(server: SpinTestServer):
     test_graph = create_test_graph()
     test_user = await create_test_user()
     await graph.create_graph(test_graph, user_id=test_user.id)
@@ -104,7 +104,7 @@ async def test_agent_execution(server):
 
 
 @pytest.mark.asyncio(scope="session")
-async def test_input_pin_always_waited(server):
+async def test_input_pin_always_waited(server: SpinTestServer):
     """
     This test is asserting that the input pin should always be waited for the execution,
     even when default value on that pin is defined, the value has to be ignored.
@@ -167,7 +167,7 @@ async def test_input_pin_always_waited(server):
 
 
 @pytest.mark.asyncio(scope="session")
-async def test_static_input_link_on_graph(server):
+async def test_static_input_link_on_graph(server: SpinTestServer):
     """
     This test is asserting the behaviour of static input link, e.g: reusable input link.
 
