@@ -28,12 +28,19 @@ RUN pip3 install poetry
 COPY autogpt /app/autogpt
 COPY forge /app/forge
 COPY rnd/autogpt_libs /app/rnd/autogpt_libs
-COPY rnd/autogpt_server /app/rnd/autogpt_server
 
 WORKDIR /app/rnd/autogpt_server
 
-# Install dependencies
+COPY rnd/autogpt_server/pyproject.toml rnd/autogpt_server/poetry.lock ./
+
 RUN poetry install --no-interaction --no-ansi
+
+COPY rnd/autogpt_server/postgres/schema.prisma app/rnd/autogpt_server/schema.prisma
+RUN poetry run prisma generate
+
+COPY rnd/autogpt_server /app/rnd/autogpt_server
+
+WORKDIR /app/rnd/autogpt_server
 
 RUN poetry run prisma generate
 
