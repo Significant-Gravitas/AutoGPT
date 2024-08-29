@@ -109,7 +109,7 @@ async def update_agent_entry(
     version: int,
     submission_state: prisma.enums.SubmissionStatus,
     comments: str | None = None,
-):
+) -> prisma.models.Agents | None:
     """
     Update an existing agent entry in the database.
 

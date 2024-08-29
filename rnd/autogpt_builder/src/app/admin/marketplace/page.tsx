@@ -2,13 +2,7 @@ import { withRoleAccess } from "@/lib/withRoleAccess";
 import MarketplaceAPI from "@/lib/marketplace-api";
 import { Agent } from "@/lib/marketplace-api/";
 import React from "react";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -26,8 +20,8 @@ async function AdminMarketplace() {
 }
 
 async function AdminMarketplaceCard({ agent }: { agent: Agent }) {
-  const approveAgentWithId = approveAgent.bind(null, agent.id);
-  const rejectAgentWithId = rejectAgent.bind(null, agent.id);
+  const approveAgentWithId = approveAgent.bind(null, agent.id, agent.version);
+  const rejectAgentWithId = rejectAgent.bind(null, agent.id, agent.version);
 
   return (
     <Card key={agent.id} className="m-3 flex h-[300px] flex-col p-4">
@@ -80,13 +74,17 @@ async function AdminMarketplaceCard({ agent }: { agent: Agent }) {
   );
 }
 
-async function approveAgent(agentId: string) {
+async function approveAgent(agentId: string, version: number) {
   "use server";
+  const api = new MarketplaceAPI();
+  await api.approveAgentSubmission(agentId, version);
   console.log(`Approving agent ${agentId}`);
 }
 
-async function rejectAgent(agentId: string) {
+async function rejectAgent(agentId: string, version: number) {
   "use server";
+  const api = new MarketplaceAPI();
+  await api.rejectAgentSubmission(agentId, version);
   console.log(`Rejecting agent ${agentId}`);
 }
 

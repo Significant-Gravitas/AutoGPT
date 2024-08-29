@@ -20,7 +20,7 @@ export default function AdminLayout({
   const pathname = usePathname(); // Get the current pathname
   const [activeTab, setActiveTab] = useState(() => {
     // Set active tab based on the current route
-    return tabs.find(tab => tab.href === pathname)?.name || tabs[0].name;
+    return tabs.find((tab) => tab.href === pathname)?.name || tabs[0].name;
   });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 

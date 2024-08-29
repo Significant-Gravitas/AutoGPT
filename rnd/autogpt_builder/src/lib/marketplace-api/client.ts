@@ -129,6 +129,32 @@ export default class MarketplaceAPI {
     return this._post("/admin/agent", request);
   }
 
+  async approveAgentSubmission(
+    agentId: string,
+    version: number,
+    comments: string = "",
+  ): Promise<AgentResponse> {
+    return this._post("/admin/agent/submissions", {
+      agent_id: agentId,
+      version: version,
+      status: "APPROVED",
+      comments: comments,
+    });
+  }
+
+  async rejectAgentSubmission(
+    agentId: string,
+    version: number,
+    comments: string = "",
+  ): Promise<AgentResponse> {
+    return this._post("/admin/agent/submissions", {
+      agent_id: agentId,
+      version: version,
+      status: "REJECTED",
+      comments: comments,
+    });
+  }
+
   private async _get(path: string) {
     return this._request("GET", path);
   }
