@@ -29,11 +29,11 @@ def create_test_graph() -> graph.Graph:
     nodes = [
         graph.Node(
             block_id=InputBlock().id,
-            input_default={"key": "input_1"},
+            input_default={"name": "input_1"},
         ),
         graph.Node(
             block_id=InputBlock().id,
-            input_default={"key": "input_2"},
+            input_default={"name": "input_2"},
         ),
         graph.Node(
             block_id=TextFormatterBlock().id,
@@ -48,13 +48,13 @@ def create_test_graph() -> graph.Graph:
         graph.Link(
             source_id=nodes[0].id,
             sink_id=nodes[2].id,
-            source_name="output",
+            source_name="value",
             sink_name="values_#_a",
         ),
         graph.Link(
             source_id=nodes[1].id,
             sink_id=nodes[2].id,
-            source_name="output",
+            source_name="value",
             sink_name="values_#_b",
         ),
         graph.Link(
