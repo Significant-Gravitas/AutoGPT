@@ -296,7 +296,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
 
     const newNode: CustomNode = {
       id: newId,
-      type: "custom",
+      type: currentNode.type,
       position: {
         x: currentNode.position.x,
         y: currentNode.position.y - verticalOffset - 20,
