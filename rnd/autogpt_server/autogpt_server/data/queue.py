@@ -9,7 +9,6 @@ from redis.asyncio import Redis
 from autogpt_server.data.execution import ExecutionResult
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 
 class DateTimeEncoder(json.JSONEncoder):
@@ -55,12 +54,12 @@ class AsyncRedisEventQueue(AsyncEventQueue):
                 decode_responses=True,
             )
             await self.connection.ping()
-            logging.info(f"Connected to Redis on {self.host}:{self.port}")
+            logger.info(f"Connected to Redis on {self.host}:{self.port}")
 
     async def put(self, execution_result: ExecutionResult):
         if self.connection:
             message = json.dumps(execution_result.model_dump(), cls=DateTimeEncoder)
-            logging.info(f"Put {message}")
+            logger.info(f"Put {message}")
             await self.connection.lpush(self.queue_name, message)  # type: ignore
 
     async def get(self) -> ExecutionResult | None:
@@ -68,7 +67,7 @@ class AsyncRedisEventQueue(AsyncEventQueue):
             message = await self.connection.rpop(self.queue_name)  # type: ignore
             if message is not None and isinstance(message, (str, bytes, bytearray)):
                 data = json.loads(message)
-                logging.info(f"Get {data}")
+                logger.info(f"Get {data}")
                 return ExecutionResult(**data)
         return None
 
@@ -76,4 +75,4 @@ class AsyncRedisEventQueue(AsyncEventQueue):
         if self.connection:
             await self.connection.close()
             self.connection = None
-            logging.info("Closed connection to Redis")
+            logger.info("Closed connection to Redis")

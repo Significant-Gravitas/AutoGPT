@@ -1,8 +1,8 @@
 import asyncio
 import logging
 
-from autogpt_libs.auth import auth_middleware, parse_jwt_token
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from autogpt_libs.auth import parse_jwt_token
+from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from autogpt_server.data.queue import AsyncRedisEventQueue
@@ -20,7 +20,9 @@ _connection_manager = None
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "*",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://dev-builder.agpt.co",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -52,17 +54,6 @@ async def event_broadcaster(manager: ConnectionManager):
         event = await event_queue.get()
         if event is not None:
             await manager.send_execution_result(event)
-
-
-def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
-    if not payload:
-        # This handles the case when authentication is disabled
-        return DEFAULT_USER_ID
-
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="User ID not found in token")
-    return user_id
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:

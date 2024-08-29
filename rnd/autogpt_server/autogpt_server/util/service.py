@@ -48,7 +48,7 @@ class AppService(AppProcess):
     shared_event_loop: asyncio.AbstractEventLoop
     event_queue: AsyncEventQueue = AsyncRedisEventQueue()
     use_db: bool = True
-    use_redis: bool = True
+    use_redis: bool = False
 
     @classmethod
     @property

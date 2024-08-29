@@ -20,9 +20,10 @@ from autogpt_server.data.execution import (
     list_executions,
 )
 from autogpt_server.data.queue import AsyncEventQueue, AsyncRedisEventQueue
-from autogpt_server.data.user import DEFAULT_USER_ID, get_or_create_user
+from autogpt_server.data.user import get_or_create_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.model import CreateGraph, SetGraphActiveVersion
+from autogpt_server.util.auth import get_user_id
 from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
@@ -30,20 +31,10 @@ from autogpt_server.util.settings import Settings
 settings = Settings()
 
 
-def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
-    if not payload:
-        # This handles the case when authentication is disabled
-        return DEFAULT_USER_ID
-
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="User ID not found in token")
-    return user_id
-
-
 class AgentServer(AppService):
     mutex = KeyedMutex()
     use_db = False
+    use_redis = True
     _test_dependency_overrides = {}
 
     def __init__(self, event_queue: AsyncEventQueue | None = None):
@@ -51,13 +42,12 @@ class AgentServer(AppService):
 
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
-        self.run_and_wait(self.event_queue.connect())
         await db.connect()
         await block.initialize_blocks()
         if await user_db.create_default_user(settings.config.enable_auth):
             await graph_db.import_packaged_templates()
         yield
-        self.run_and_wait(self.event_queue.close())
+        await self.event_queue.close()
         await db.disconnect()
 
     def run_service(self):
