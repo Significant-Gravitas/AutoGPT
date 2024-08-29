@@ -64,7 +64,7 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
   const [modalValue, setModalValue] = useState<string>("");
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const { updateNodeData, deleteElements } = useReactFlow<CustomNode, Edge>();
+  const { updateNodeData, deleteElements, addNodes, getNode } = useReactFlow<CustomNode, Edge>();
   const isInitialSetup = useRef(true);
   const flowContext = useContext(FlowContext);
 
@@ -281,10 +281,47 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
   }, [id, deleteElements]);
 
   const copyNode = useCallback(() => {
-    // This is a placeholder function. The actual copy functionality
-    // will be implemented by another team member.
-    console.log("Copy node:", id);
-  }, [id]);
+    const newId = Date.now().toString();
+    const currentNode = getNode(id);
+    
+    if (!currentNode) {
+      console.error("Cannot copy node: current node not found");
+      return;
+    }
+  
+    // Get the dimensions of the node
+    const nodeElement = document.querySelector(`[data-id="${id}"]`) as HTMLElement;
+    const nodeHeight = nodeElement ? nodeElement.offsetHeight : 0;
+    const nodeWidth = nodeElement ? nodeElement.offsetWidth : 0;
+  
+    // Calculate new position with smart offset
+    const verticalOffset = nodeHeight + 20
+  
+    const newNode: CustomNode = {
+      id: newId,
+      type: 'custom',
+      position: {
+        x: currentNode.position.x,
+        y: currentNode.position.y - verticalOffset
+      },
+      data: {
+        ...data,
+        title: `${data.title} (Copy)`,
+        block_id: newId,
+        connections: [],
+        isOutputOpen: false,
+      },
+    };
+  
+    addNodes(newNode);
+  
+    history.push({
+      type: "ADD_NODE",
+      payload: { node: newNode },
+      undo: () => deleteElements({ nodes: [{ id: newId }] }),
+      redo: () => addNodes(newNode),
+    });
+  }, [id, data, addNodes, deleteElements, getNode]);
 
   return (
     <div
