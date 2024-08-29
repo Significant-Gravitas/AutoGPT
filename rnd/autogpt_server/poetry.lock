@@ -25,7 +25,7 @@ requests = "*"
 sentry-sdk = "^1.40.4"
 
 [package.extras]
-benchmark = ["agbenchmark @ file:///Users/majdyz/Code/AutoGPT/benchmark"]
+benchmark = ["agbenchmark"]
 
 [package.source]
 type = "directory"
@@ -356,7 +356,7 @@ watchdog = "4.0.0"
 webdriver-manager = "^4.0.1"
 
 [package.extras]
-benchmark = ["agbenchmark @ file:///Users/majdyz/Code/AutoGPT/benchmark"]
+benchmark = ["agbenchmark"]
 
 [package.source]
 type = "directory"
@@ -1605,6 +1605,24 @@ files = [
 [package.dependencies]
 google-auth = "*"
 httplib2 = ">=0.19.0"
+
+[[package]]
+name = "google-auth-oauthlib"
+version = "1.2.1"
+description = "Google Authentication Library"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "google_auth_oauthlib-1.2.1-py2.py3-none-any.whl", hash = "sha256:2d58a27262d55aa1b87678c3ba7142a080098cbc2024f903c62355deb235d91f"},
+    {file = "google_auth_oauthlib-1.2.1.tar.gz", hash = "sha256:afd0cad092a2eaa53cd8e8298557d6de1034c6cb4a740500b5357b648af97263"},
+]
+
+[package.dependencies]
+google-auth = ">=2.15.0"
+requests-oauthlib = ">=0.7.0"
+
+[package.extras]
+tool = ["click (>=6.0.0)"]
 
 [[package]]
 name = "google-cloud-appengine-logging"
@@ -6644,4 +6662,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "cd891465378f91d1141723cda0229dcea4a230f426942bb578d767a9e956b14a"
+content-hash = "c61b384425319c7c9d51344d351ecba735481ef5dc4582701c13cbd027d0690a"
