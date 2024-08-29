@@ -56,7 +56,7 @@ export type CustomNodeData = {
 
 export type CustomNode = Node<CustomNodeData, "custom">;
 
-export function CustomNode({ data, id }: NodeProps<CustomNode>) {
+export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   const [isOutputOpen, setIsOutputOpen] = useState(data.isOutputOpen || false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -292,27 +292,19 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
       return;
     }
 
-    // Get the dimensions of the node
-    const nodeElement = document.querySelector(
-      `[data-id="${id}"]`,
-    ) as HTMLElement;
-    const nodeHeight = nodeElement ? nodeElement.offsetHeight : 0;
-    const nodeWidth = nodeElement ? nodeElement.offsetWidth : 0;
-
-    // Calculate new position with smart offset
-    const verticalOffset = nodeHeight + 20;
+    const verticalOffset = height ?? 100;
 
     const newNode: CustomNode = {
       id: newId,
       type: "custom",
       position: {
         x: currentNode.position.x,
-        y: currentNode.position.y - verticalOffset,
+        y: currentNode.position.y - verticalOffset - 20,
       },
       data: {
         ...data,
         title: `${data.title} (Copy)`,
-        block_id: newId,
+        block_id: data.block_id,
         connections: [],
         isOutputOpen: false,
       },
@@ -326,7 +318,7 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
       undo: () => deleteElements({ nodes: [{ id: newId }] }),
       redo: () => addNodes(newNode),
     });
-  }, [id, data, addNodes, deleteElements, getNode]);
+  }, [id, data, height, addNodes, deleteElements, getNode]);
 
   return (
     <div
