@@ -24,6 +24,11 @@ services:
     build:
       context: ../
       dockerfile: rnd/autogpt_server/Dockerfile
+    develop:
+      watch:
+        - path: ./
+          target: rnd/autogpt_server/
+          action: rebuild
     depends_on:
       - postgres
       - redis
@@ -40,6 +45,11 @@ services:
     build:
       context: ../
       dockerfile: rnd/autogpt_server/Dockerfile.ws
+    develop:
+      watch:
+        - path: ./
+          target: rnd/autogpt_server/
+          action: rebuild
     depends_on:
       - postgres
       - redis

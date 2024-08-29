@@ -72,6 +72,12 @@ Run the following command to run the app:
 docker compose up
 ```
 
+Run the following to automatically rebuild when code changes, in another terminal:
+
+```sh
+docker compose watch
+```
+
 Run the following command to shut down:
 
 ```sh
