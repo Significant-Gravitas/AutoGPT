@@ -182,14 +182,14 @@ const FlowEditor: React.FC<{
           }
 
           const connectedEdges = edges.filter((edge) =>
-            [edge.source, edge.target].includes(nodeID)
+            [edge.source, edge.target].includes(nodeID),
           );
           deleteElements({
             edges: connectedEdges.map((edge) => ({ id: edge.id })),
           });
         });
     },
-    [deleteElements, setNodes, nodes, edges, addNodes]
+    [deleteElements, setNodes, nodes, edges, addNodes],
   );
 
   const formatEdgeID = useCallback((conn: Link | Connection): string => {
