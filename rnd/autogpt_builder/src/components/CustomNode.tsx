@@ -75,7 +75,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     throw new Error("FlowContext consumer must be inside FlowEditor component");
   }
 
-  const { setIsAnyModalOpen } = flowContext;
+  const { setIsAnyModalOpen, getNextNodeId } = flowContext;
 
   useEffect(() => {
     if (data.output_data || data.status) {
@@ -284,7 +284,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   }, [id, deleteElements]);
 
   const copyNode = useCallback(() => {
-    const newId = Date.now().toString();
+    const newId = getNextNodeId();
     const currentNode = getNode(id);
 
     if (!currentNode) {
@@ -318,7 +318,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       undo: () => deleteElements({ nodes: [{ id: newId }] }),
       redo: () => addNodes(newNode),
     });
-  }, [id, data, height, addNodes, deleteElements, getNode]);
+  }, [id, data, height, addNodes, deleteElements, getNode, getNextNodeId]);
 
   return (
     <div
