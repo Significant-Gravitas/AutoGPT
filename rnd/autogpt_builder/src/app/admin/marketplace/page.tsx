@@ -2,15 +2,18 @@ import { withRoleAccess } from "@/lib/withRoleAccess";
 
 import React from "react";
 import { getReviewableAgents } from "@/components/admin/marketplace/actions";
-import AdminMarketplaceCard from "@/components/admin/marketplace/AdminMarketplaceCard";
 import AdminMarketplaceAgentList from "@/components/admin/marketplace/AdminMarketplaceAgentList";
+import AdminFeaturedAgentsControl from "@/components/admin/marketplace/AdminFeaturedAgentsControl";
+import { Separator } from "@/components/ui/separator";
 async function AdminMarketplace() {
-  const agents = await getReviewableAgents();
+  const reviewableAgents = await getReviewableAgents();
+
   return (
-    <div>
-      <h3>Agents to review</h3>
-      <AdminMarketplaceAgentList agents={agents.agents} />
-    </div>
+    <>
+      <AdminMarketplaceAgentList agents={reviewableAgents.agents} />
+      <Separator className="my-4" />
+      <AdminFeaturedAgentsControl className="mt-4" />
+    </>
   );
 }
 
