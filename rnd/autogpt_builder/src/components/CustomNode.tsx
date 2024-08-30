@@ -507,7 +507,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           setIsOutputModalOpen(false);
         }}
         onClose={() => setIsOutputModalOpen(false)}
-        output_data={data.output_data || []}
+        output_data={data.output_data?.toReversed() || []}
       />
     </div>
   );
