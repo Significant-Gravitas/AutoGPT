@@ -56,7 +56,7 @@ export type CustomNodeData = {
 
 export type CustomNode = Node<CustomNodeData, "custom">;
 
-export function CustomNode({ data, id }: NodeProps<CustomNode>) {
+export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   const [isOutputOpen, setIsOutputOpen] = useState(data.isOutputOpen || false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -64,7 +64,10 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
   const [modalValue, setModalValue] = useState<string>("");
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const { updateNodeData, deleteElements } = useReactFlow<CustomNode, Edge>();
+  const { updateNodeData, deleteElements, addNodes, getNode } = useReactFlow<
+    CustomNode,
+    Edge
+  >();
   const isInitialSetup = useRef(true);
   const flowContext = useContext(FlowContext);
 
@@ -72,7 +75,7 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
     throw new Error("FlowContext consumer must be inside FlowEditor component");
   }
 
-  const { setIsAnyModalOpen } = flowContext;
+  const { setIsAnyModalOpen, getNextNodeId } = flowContext;
 
   useEffect(() => {
     if (data.output_data || data.status) {
@@ -154,7 +157,7 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
       current[lastKey.key] = value;
     }
 
-    console.log(`Updating hardcoded values for node ${id}:`, newValues);
+    // console.log(`Updating hardcoded values for node ${id}:`, newValues);
 
     if (!isInitialSetup.current) {
       history.push({
@@ -281,10 +284,41 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
   }, [id, deleteElements]);
 
   const copyNode = useCallback(() => {
-    // This is a placeholder function. The actual copy functionality
-    // will be implemented by another team member.
-    console.log("Copy node:", id);
-  }, [id]);
+    const newId = getNextNodeId();
+    const currentNode = getNode(id);
+
+    if (!currentNode) {
+      console.error("Cannot copy node: current node not found");
+      return;
+    }
+
+    const verticalOffset = height ?? 100;
+
+    const newNode: CustomNode = {
+      id: newId,
+      type: currentNode.type,
+      position: {
+        x: currentNode.position.x,
+        y: currentNode.position.y - verticalOffset - 20,
+      },
+      data: {
+        ...data,
+        title: `${data.title} (Copy)`,
+        block_id: data.block_id,
+        connections: [],
+        isOutputOpen: false,
+      },
+    };
+
+    addNodes(newNode);
+
+    history.push({
+      type: "ADD_NODE",
+      payload: { node: newNode },
+      undo: () => deleteElements({ nodes: [{ id: newId }] }),
+      redo: () => addNodes(newNode),
+    });
+  }, [id, data, height, addNodes, deleteElements, getNode, getNextNodeId]);
 
   const hasConfigErrors =
     data.errors &&
@@ -342,6 +376,7 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
       className={`${blockClasses} ${errorClass} ${statusClass}`}
       onMouseEnter={handleHovered}
       onMouseLeave={handleMouseLeave}
+      data-id={`custom-node-${id}`}
     >
       <div
         className={`mb-2 p-3 ${getPrimaryCategoryColor(data.categories)} rounded-t-xl`}
