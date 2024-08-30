@@ -18,7 +18,7 @@ class RSSEntry(pydantic.BaseModel):
     categories: list[str]
 
 
-class RSSReaderBlock(Block):
+class ReadRSSFeedBlock(Block):
     class Input(BlockSchema):
         rss_url: str = SchemaField(
             description="The URL of the RSS feed to read",
@@ -44,8 +44,8 @@ class RSSReaderBlock(Block):
     def __init__(self):
         super().__init__(
             id="c6731acb-4105-4zp1-bc9b-03d0036h370g",
-            input_schema=RSSReaderBlock.Input,
-            output_schema=RSSReaderBlock.Output,
+            input_schema=ReadRSSFeedBlock.Input,
+            output_schema=ReadRSSFeedBlock.Output,
             categories={BlockCategory.OUTPUT},
             test_input={
                 "rss_url": "https://example.com/rss",
