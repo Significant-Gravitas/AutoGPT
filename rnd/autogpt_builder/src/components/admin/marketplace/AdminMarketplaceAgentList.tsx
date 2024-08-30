@@ -1,6 +1,6 @@
 import { Agent } from "@/lib/marketplace-api";
 import AdminMarketplaceCard from "./AdminMarketplaceCard";
-import { ClipboardX } from "lucide-react"; // Import the ClipboardX icon from lucide-react
+import { ClipboardX } from "lucide-react";
 
 export default function AdminMarketplaceAgentList({
   agents,

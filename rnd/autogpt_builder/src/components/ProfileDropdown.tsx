@@ -27,7 +27,7 @@ const ProfileDropdown = () => {
           <Avatar>
             <AvatarImage
               src={user?.user_metadata["avatar_url"]}
-              alt="@shadcn"
+              alt="User Avatar"
             />
             <AvatarFallback>CN</AvatarFallback>
           </Avatar>

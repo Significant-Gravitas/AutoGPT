@@ -8,7 +8,7 @@ export async function approveAgent(
 ) {
   const api = new MarketplaceAPI();
   await api.approveAgentSubmission(agentId, version, comment);
-  console.log(`Approving agent ${agentId}`);
+  console.debug(`Approving agent ${agentId}`);
 }
 
 export async function rejectAgent(
@@ -18,7 +18,7 @@ export async function rejectAgent(
 ) {
   const api = new MarketplaceAPI();
   await api.rejectAgentSubmission(agentId, version, comment);
-  console.log(`Rejecting agent ${agentId}`);
+  console.debug(`Rejecting agent ${agentId}`);
 }
 
 export async function getReviewableAgents() {
