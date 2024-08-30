@@ -25,7 +25,7 @@ class ExecutionScheduler(AppService):
         self.use_redis = False
 
     @property
-    def execution_manager_client(self):
+    def execution_manager_client(self) -> ExecutionManager:
         return get_service_client(ExecutionManager)
 
     def run_service(self):
@@ -50,15 +50,15 @@ class ExecutionScheduler(AppService):
                 self.__execute_graph,
                 CronTrigger.from_crontab(schedule.schedule),
                 id=schedule.id,
-                args=[schedule.graph_id, schedule.input_data],
+                args=[schedule.graph_id, schedule.input_data, schedule.user_id],
                 replace_existing=True,
             )
 
-    def __execute_graph(self, graph_id: str, input_data: dict):
+    def __execute_graph(self, graph_id: str, input_data: dict, user_id: str):
         try:
             log(f"Executing recurring job for graph #{graph_id}")
             execution_manager = self.execution_manager_client
-            execution_manager.add_execution(graph_id, input_data)
+            execution_manager.add_execution(graph_id, input_data, user_id)
         except Exception as e:
             logger.exception(f"Error executing graph {graph_id}: {e}")
 
