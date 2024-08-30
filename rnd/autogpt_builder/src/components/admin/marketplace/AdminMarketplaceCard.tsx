@@ -1,4 +1,4 @@
-'use client';
+"use client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { approveAgent, rejectAgent } from "./actions";
 import { Agent } from "@/lib/marketplace-api";
 import Link from "next/link";
-import { useState } from 'react';
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 
 function AdminMarketplaceCard({ agent }: { agent: Agent }) {
@@ -14,8 +14,18 @@ function AdminMarketplaceCard({ agent }: { agent: Agent }) {
   const [isRejected, setIsRejected] = useState(false);
   const [comment, setComment] = useState("");
 
-  const approveAgentWithId = approveAgent.bind(null, agent.id, agent.version, comment);
-  const rejectAgentWithId = rejectAgent.bind(null, agent.id, agent.version, comment);
+  const approveAgentWithId = approveAgent.bind(
+    null,
+    agent.id,
+    agent.version,
+    comment,
+  );
+  const rejectAgentWithId = rejectAgent.bind(
+    null,
+    agent.id,
+    agent.version,
+    comment,
+  );
 
   const handleApprove = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,8 +71,12 @@ function AdminMarketplaceCard({ agent }: { agent: Agent }) {
             </div>
           </ScrollArea>
           <div className="mb-2 flex justify-between text-xs text-gray-500">
-            <span>Created: {new Date(agent.createdAt).toLocaleDateString()}</span>
-            <span>Updated: {new Date(agent.updatedAt).toLocaleDateString()}</span>
+            <span>
+              Created: {new Date(agent.createdAt).toLocaleDateString()}
+            </span>
+            <span>
+              Updated: {new Date(agent.updatedAt).toLocaleDateString()}
+            </span>
           </div>
           <div className="mb-4 flex justify-between text-sm">
             <span>👁 {agent.views}</span>
