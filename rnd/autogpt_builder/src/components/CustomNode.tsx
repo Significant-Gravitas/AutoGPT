@@ -15,7 +15,7 @@ import {
   Category,
   NodeExecutionResult,
 } from "@/lib/autogpt-server-api/types";
-import { beautifyString, setNestedProperty } from "@/lib/utils";
+import { beautifyString, cn, setNestedProperty } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Copy, Trash2 } from "lucide-react";
@@ -25,6 +25,8 @@ import { NodeGenericInputField } from "./node-input-components";
 import SchemaTooltip from "./SchemaTooltip";
 import { getPrimaryCategoryColor } from "@/lib/utils";
 import { FlowContext } from "./Flow";
+import { Badge } from "./ui/badge";
+import DataTable from "./DataTable";
 
 type ParsedKey = { key: string; index?: number };
 
@@ -47,7 +49,9 @@ export type CustomNodeData = {
   connections: ConnectionData;
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
-  output_data?: NodeExecutionResult["output_data"];
+  /** output_data contains outputs across multiple executions
+   * with the last element being the most recent output */
+  output_data?: NodeExecutionResult["output_data"][];
   block_id: string;
   backend_id?: string;
   errors?: { [key: string]: string };
@@ -61,7 +65,7 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
-  const [modalValue, setModalValue] = useState<string>("");
+  const [inputModalValue, setInputModalValue] = useState<string>("");
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const { updateNodeData, deleteElements } = useReactFlow<CustomNode, Edge>();
@@ -237,7 +241,7 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
     console.log(`Opening modal for key: ${key}`);
     setActiveKey(key);
     const value = getValue(key);
-    setModalValue(
+    setInputModalValue(
       typeof value === "object" ? JSON.stringify(value, null, 2) : value,
     );
     setIsModalOpen(true);
@@ -258,11 +262,6 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
 
   const handleOutputClick = () => {
     setIsOutputModalOpen(true);
-    setModalValue(
-      data.output_data
-        ? JSON.stringify(data.output_data, null, 2)
-        : "[no output (yet)]",
-    );
   };
 
   const handleHovered = () => {
@@ -369,32 +368,29 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
         </div>
       </div>
       {isOutputOpen && (
-        <div className="node-output break-words" onClick={handleOutputClick}>
-          <p>
-            <strong>Status:</strong>{" "}
-            {typeof data.status === "object"
-              ? JSON.stringify(data.status)
-              : data.status || "N/A"}
-          </p>
-          <p>
-            <strong>Output Data:</strong>{" "}
-            {(() => {
-              const outputText =
-                typeof data.output_data === "object"
-                  ? JSON.stringify(data.output_data)
-                  : data.output_data;
-
-              if (!outputText) return "No output data";
-
-              return outputText.length > 100
-                ? `${outputText.slice(0, 100)}... Press To Read More`
-                : outputText;
-            })()}
-          </p>
+        <div className="nodrag m-3 break-words rounded-md border-[1.5px] p-2">
+          {data.output_data ? (
+            <>
+              <DataTable
+                title="Latest Output"
+                truncateLongData
+                data={data.output_data.at(-1) || {}}
+              />
+              <Button
+                variant="ghost"
+                className="mt-2"
+                onClick={handleOutputClick}
+              >
+                View More
+              </Button>
+            </>
+          ) : (
+            <span>No outputs yet</span>
+          )}
         </div>
       )}
       <div className="mt-2.5 flex items-center pb-4 pl-4">
-        <Switch onCheckedChange={toggleOutput} />
+        <Switch checked={isOutputOpen} onCheckedChange={toggleOutput} />
         <span className="m-1 mr-4">Output</span>
         {hasOptionalFields && (
           <>
@@ -402,18 +398,30 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
             <span className="m-1">Advanced</span>
           </>
         )}
+        {data.status && (
+          <Badge
+            variant="outline"
+            className={cn(data.status.toLowerCase(), "ml-auto mr-5")}
+          >
+            {data.status}
+          </Badge>
+        )}
       </div>
       <InputModalComponent
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={handleModalSave}
-        value={modalValue}
+        value={inputModalValue}
         key={activeKey}
       />
       <OutputModalComponent
         isOpen={isOutputModalOpen}
+        onClear={() => {
+          updateNodeData(id, { output_data: [] });
+          setIsOutputModalOpen(false);
+        }}
         onClose={() => setIsOutputModalOpen(false)}
-        value={modalValue}
+        output_data={data.output_data || []}
       />
     </div>
   );

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import "./globals.css";
 import TallyPopupSimple from "@/components/TallyPopup";
 import { GoogleAnalytics } from "@next/third-parties/google";
+import { Toaster } from "@/components/ui/toaster";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -36,6 +37,7 @@ export default function RootLayout({
             <main className="flex-1 overflow-hidden p-4">{children}</main>
             <TallyPopupSimple />
           </div>
+          <Toaster />
         </Providers>
       </body>
 

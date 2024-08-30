@@ -151,7 +151,6 @@ const FlowEditor: React.FC<{
         data: {
           ...node.data,
           status: undefined,
-          output_data: undefined,
           isOutputOpen: false,
         },
       }));
