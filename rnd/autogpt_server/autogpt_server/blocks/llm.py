@@ -76,7 +76,7 @@ MODEL_METADATA = {
 }
 
 
-class ObjectLlmCallBlock(Block):
+class AIStructuredResponseGeneratorBlock(Block):
     class Input(BlockSchema):
         prompt: str
         expected_format: dict[str, str]
@@ -94,8 +94,8 @@ class ObjectLlmCallBlock(Block):
             id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
             description="Call a Large Language Model (LLM) to generate formatted object based on the given prompt.",
             categories={BlockCategory.AI},
-            input_schema=ObjectLlmCallBlock.Input,
-            output_schema=ObjectLlmCallBlock.Output,
+            input_schema=AIStructuredResponseGeneratorBlock.Input,
+            output_schema=AIStructuredResponseGeneratorBlock.Output,
             test_input={
                 "model": LlmModel.GPT4_TURBO,
                 "api_key": "fake-api",
@@ -245,7 +245,7 @@ class ObjectLlmCallBlock(Block):
         yield "error", retry_prompt
 
 
-class TextLlmCallBlock(Block):
+class AITextGeneratorBlock(Block):
     class Input(BlockSchema):
         prompt: str
         model: LlmModel = LlmModel.GPT4_TURBO
@@ -262,16 +262,16 @@ class TextLlmCallBlock(Block):
             id="1f292d4a-41a4-4977-9684-7c8d560b9f91",
             description="Call a Large Language Model (LLM) to generate a string based on the given prompt.",
             categories={BlockCategory.AI},
-            input_schema=TextLlmCallBlock.Input,
-            output_schema=TextLlmCallBlock.Output,
+            input_schema=AITextGeneratorBlock.Input,
+            output_schema=AITextGeneratorBlock.Output,
             test_input={"prompt": "User prompt"},
             test_output=("response", "Response text"),
             test_mock={"llm_call": lambda *args, **kwargs: "Response text"},
         )
 
     @staticmethod
-    def llm_call(input_data: ObjectLlmCallBlock.Input) -> str:
-        object_block = ObjectLlmCallBlock()
+    def llm_call(input_data: AIStructuredResponseGeneratorBlock.Input) -> str:
+        object_block = AIStructuredResponseGeneratorBlock()
         for output_name, output_data in object_block.run(input_data):
             if output_name == "response":
                 return output_data["response"]
@@ -281,7 +281,7 @@ class TextLlmCallBlock(Block):
 
     def run(self, input_data: Input) -> BlockOutput:
         try:
-            object_input_data = ObjectLlmCallBlock.Input(
+            object_input_data = AIStructuredResponseGeneratorBlock.Input(
                 **{attr: getattr(input_data, attr) for attr in input_data.model_fields},
                 expected_format={},
             )
@@ -354,8 +354,10 @@ class TextSummarizerBlock(Block):
         return chunks
 
     @staticmethod
-    def llm_call(input_data: ObjectLlmCallBlock.Input) -> dict[str, str]:
-        llm_block = ObjectLlmCallBlock()
+    def llm_call(
+        input_data: AIStructuredResponseGeneratorBlock.Input,
+    ) -> dict[str, str]:
+        llm_block = AIStructuredResponseGeneratorBlock()
         for output_name, output_data in llm_block.run(input_data):
             if output_name == "response":
                 return output_data
@@ -365,7 +367,7 @@ class TextSummarizerBlock(Block):
         prompt = f"Summarize the following text concisely:\n\n{chunk}"
 
         llm_response = self.llm_call(
-            ObjectLlmCallBlock.Input(
+            AIStructuredResponseGeneratorBlock.Input(
                 prompt=prompt,
                 api_key=input_data.api_key,
                 model=input_data.model,
@@ -385,7 +387,7 @@ class TextSummarizerBlock(Block):
             )
 
             llm_response = self.llm_call(
-                ObjectLlmCallBlock.Input(
+                AIStructuredResponseGeneratorBlock.Input(
                     prompt=prompt,
                     api_key=input_data.api_key,
                     model=input_data.model,
@@ -422,7 +424,7 @@ class Message(BlockSchema):
     content: str
 
 
-class AdvancedLlmCallBlock(Block):
+class AIConversationBlock(Block):
     class Input(BlockSchema):
         messages: List[Message] = SchemaField(
             description="List of messages in the conversation.", min_items=1
@@ -451,8 +453,8 @@ class AdvancedLlmCallBlock(Block):
             id="c3d4e5f6-g7h8-i9j0-k1l2-m3n4o5p6q7r8",
             description="Advanced LLM call that takes a list of messages and sends them to the language model.",
             categories={BlockCategory.AI},
-            input_schema=AdvancedLlmCallBlock.Input,
-            output_schema=AdvancedLlmCallBlock.Output,
+            input_schema=AIConversationBlock.Input,
+            output_schema=AIConversationBlock.Output,
             test_input={
                 "messages": [
                     {"role": "system", "content": "You are a helpful assistant."},

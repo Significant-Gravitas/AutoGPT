@@ -14,7 +14,7 @@ class Operation(Enum):
     POWER = "Power"
 
 
-class MathsBlock(Block):
+class CalculatorBlock(Block):
     class Input(BlockSchema):
         operation: Operation = SchemaField(
             description="Choose the math operation you want to perform",
@@ -37,8 +37,8 @@ class MathsBlock(Block):
     def __init__(self):
         super().__init__(
             id="b1ab9b19-67a6-406d-abf5-2dba76d00c79",
-            input_schema=MathsBlock.Input,
-            output_schema=MathsBlock.Output,
+            input_schema=CalculatorBlock.Input,
+            output_schema=CalculatorBlock.Output,
             categories={BlockCategory.LOGIC},
             test_input={
                 "operation": Operation.ADD.value,
@@ -83,7 +83,7 @@ class MathsBlock(Block):
             yield "result", float("nan")  # Return NaN for other errors
 
 
-class CounterBlock(Block):
+class CountItemsBlock(Block):
     class Input(BlockSchema):
         collection: Any = SchemaField(
             description="Enter the collection you want to count. This can be a list, dictionary, string, or any other iterable.",
@@ -96,8 +96,8 @@ class CounterBlock(Block):
     def __init__(self):
         super().__init__(
             id="3c9c2f42-b0c3-435f-ba35-05f7a25c772a",
-            input_schema=CounterBlock.Input,
-            output_schema=CounterBlock.Output,
+            input_schema=CountItemsBlock.Input,
+            output_schema=CountItemsBlock.Output,
             categories={BlockCategory.LOGIC},
             test_input={"collection": [1, 2, 3, 4, 5]},
             test_output=[
