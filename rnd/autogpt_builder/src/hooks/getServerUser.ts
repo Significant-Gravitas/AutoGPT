@@ -8,13 +8,26 @@ const getServerUser = async () => {
   }
 
   try {
-    const { data, error } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
     if (error) {
-      return { user: null, error: error.message };
+      console.error("Supabase auth error:", error);
+      return { user: null, role: null, error: `Auth error: ${error.message}` };
     }
-    return { user: data.user, error: null };
+    if (!user) {
+      return { user: null, role: null, error: "No user found in the response" };
+    }
+    const role = user.role || null;
+    return { user, role, error: null };
   } catch (error) {
-    return { user: null, error: (error as Error).message };
+    console.error("Unexpected error in getServerUser:", error);
+    return {
+      user: null,
+      role: null,
+      error: `Unexpected error: ${(error as Error).message}`,
+    };
   }
 };
 

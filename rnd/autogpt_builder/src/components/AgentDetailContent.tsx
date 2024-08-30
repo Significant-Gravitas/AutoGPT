@@ -155,40 +155,6 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
             </div>
           </dl>
         </div>
-        <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
-          <button
-            className="flex w-full items-center justify-between text-left text-sm font-medium text-indigo-600 hover:text-indigo-500"
-            onClick={() => setIsGraphExpanded(!isGraphExpanded)}
-          >
-            <span>Agent Graph</span>
-            {isGraphExpanded ? (
-              <ChevronUp size={20} />
-            ) : (
-              <ChevronDown size={20} />
-            )}
-          </button>
-          {isGraphExpanded && (
-            <div className="mt-4" style={{ height: "600px" }}>
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                // nodeTypes={nodeTypes}
-                // edgeTypes={edgeTypes}
-                // connectionLineComponent={ConnectionLine}
-                fitView
-                attributionPosition="bottom-left"
-                nodesConnectable={false}
-                nodesDraggable={false}
-                zoomOnScroll={false}
-                panOnScroll={false}
-                elementsSelectable={false}
-              >
-                <Controls showInteractive={false} />
-                <Background />
-              </ReactFlow>
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );
