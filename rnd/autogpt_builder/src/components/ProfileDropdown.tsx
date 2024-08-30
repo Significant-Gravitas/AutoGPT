@@ -17,7 +17,7 @@ const ProfileDropdown = () => {
   const { user, role, isLoading } = useUser();
 
   if (isLoading) {
-    return null; // Or a loading indicator if you prefer
+    return null;
   }
 
   return (
