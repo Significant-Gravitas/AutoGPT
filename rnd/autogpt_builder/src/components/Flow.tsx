@@ -232,6 +232,20 @@ const FlowEditor: React.FC<{
 
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
+      // Check if this exact connection already exists
+      const existingConnection = edges.find(
+        (edge) =>
+          edge.source === connection.source &&
+          edge.target === connection.target &&
+          edge.sourceHandle === connection.sourceHandle &&
+          edge.targetHandle === connection.targetHandle,
+      );
+
+      if (existingConnection) {
+        console.warn("This exact connection already exists.");
+        return;
+      }
+
       const edgeColor = getTypeColor(
         getOutputType(connection.source!, connection.sourceHandle!),
       );
@@ -267,7 +281,15 @@ const FlowEditor: React.FC<{
       });
       clearNodesStatusAndOutput(); // Clear status and output on connection change
     },
-    [getNode, addEdges, history, deleteElements, clearNodesStatusAndOutput],
+    [
+      getNode,
+      addEdges,
+      deleteElements,
+      clearNodesStatusAndOutput,
+      edges,
+      formatEdgeID,
+      getOutputType,
+    ],
   );
 
   const onEdgesChange = useCallback(
