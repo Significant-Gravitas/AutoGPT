@@ -33,6 +33,14 @@
       "path": "../rnd/market"
     },
     {
+      "name": "lib",
+      "path": "../rnd/autogpt_libs"
+    },
+    {
+      "name": "infra",
+      "path": "../rnd/infra"
+    },
+    {
       "name": "[root]",
       "path": ".."
     }
