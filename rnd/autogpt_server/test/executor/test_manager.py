@@ -1,8 +1,8 @@
 import pytest
 from prisma.models import User
 
-from autogpt_server.blocks.basic import ObjectLookupBlock, ValueBlock
-from autogpt_server.blocks.maths import MathsBlock, Operation
+from autogpt_server.blocks.basic import FindInDictionaryBlock, StoreValueBlock
+from autogpt_server.blocks.maths import CalculatorBlock, Operation
 from autogpt_server.data import execution, graph
 from autogpt_server.executor import ExecutionManager
 from autogpt_server.server import AgentServer
@@ -45,7 +45,7 @@ async def assert_sample_graph_executions(
         {"value": "World", "name": "input_2"},
     ]
 
-    # Executing ValueBlock
+    # Executing StoreValueBlock
     exec = executions[0]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
@@ -53,7 +53,7 @@ async def assert_sample_graph_executions(
     assert exec.input_data in input_list
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
-    # Executing ValueBlock
+    # Executing StoreValueBlock
     exec = executions[1]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
@@ -61,7 +61,7 @@ async def assert_sample_graph_executions(
     assert exec.input_data in input_list
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
-    # Executing TextFormatterBlock
+    # Executing FillTextTemplateBlock
     exec = executions[2]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
@@ -75,7 +75,7 @@ async def assert_sample_graph_executions(
     }
     assert exec.node_id == test_graph.nodes[2].id
 
-    # Executing PrintingBlock
+    # Executing PrintToConsoleBlock
     exec = executions[3]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
@@ -110,23 +110,23 @@ async def test_input_pin_always_waited(server: SpinTestServer):
     even when default value on that pin is defined, the value has to be ignored.
 
     Test scenario:
-    ValueBlock1
+    StoreValueBlock1
                 \\ input
-                     >------- ObjectLookupBlock | input_default: key: "", input: {}
+                     >------- FindInDictionaryBlock | input_default: key: "", input: {}
                 // key
-    ValueBlock2
+    StoreValueBlock2
     """
     nodes = [
         graph.Node(
-            block_id=ValueBlock().id,
+            block_id=StoreValueBlock().id,
             input_default={"input": {"key1": "value1", "key2": "value2"}},
         ),
         graph.Node(
-            block_id=ValueBlock().id,
+            block_id=StoreValueBlock().id,
             input_default={"input": "key2"},
         ),
         graph.Node(
-            block_id=ObjectLookupBlock().id,
+            block_id=FindInDictionaryBlock().id,
             input_default={"key": "", "input": {}},
         ),
     ]
@@ -160,7 +160,7 @@ async def test_input_pin_always_waited(server: SpinTestServer):
         test_graph.id, graph_exec_id, test_user.id
     )
     assert len(executions) == 3
-    # ObjectLookupBlock should wait for the input pin to be provided,
+    # FindInDictionaryBlock should wait for the input pin to be provided,
     # Hence executing extraction of "key" from {"key1": "value1", "key2": "value2"}
     assert executions[2].status == execution.ExecutionStatus.COMPLETED
     assert executions[2].output_data == {"output": ["value2"]}
@@ -172,23 +172,23 @@ async def test_static_input_link_on_graph(server: SpinTestServer):
     This test is asserting the behaviour of static input link, e.g: reusable input link.
 
     Test scenario:
-    *ValueBlock1*===a=========\\
-    *ValueBlock2*===a=====\\  ||
-    *ValueBlock3*===a===*MathBlock*====b / static====*ValueBlock5*
-    *ValueBlock4*=========================================//
+    *StoreValueBlock1*===a=========\\
+    *StoreValueBlock2*===a=====\\  ||
+    *StoreValueBlock3*===a===*MathBlock*====b / static====*StoreValueBlock5*
+    *StoreValueBlock4*=========================================//
 
     In this test, there will be three input waiting in the MathBlock input pin `a`.
     And later, another output is produced on input pin `b`, which is a static link,
     this input will complete the input of those three incomplete executions.
     """
     nodes = [
-        graph.Node(block_id=ValueBlock().id, input_default={"input": 4}),  # a
-        graph.Node(block_id=ValueBlock().id, input_default={"input": 4}),  # a
-        graph.Node(block_id=ValueBlock().id, input_default={"input": 4}),  # a
-        graph.Node(block_id=ValueBlock().id, input_default={"input": 5}),  # b
-        graph.Node(block_id=ValueBlock().id),
+        graph.Node(block_id=StoreValueBlock().id, input_default={"input": 4}),  # a
+        graph.Node(block_id=StoreValueBlock().id, input_default={"input": 4}),  # a
+        graph.Node(block_id=StoreValueBlock().id, input_default={"input": 4}),  # a
+        graph.Node(block_id=StoreValueBlock().id, input_default={"input": 5}),  # b
+        graph.Node(block_id=StoreValueBlock().id),
         graph.Node(
-            block_id=MathsBlock().id,
+            block_id=CalculatorBlock().id,
             input_default={"operation": Operation.ADD.value},
         ),
     ]

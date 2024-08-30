@@ -6,7 +6,7 @@ from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSc
 from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
 
 
-class CreateMediumPostBlock(Block):
+class PublishToMediumBlock(Block):
     class Input(BlockSchema):
         author_id: BlockSecret = SecretField(
             key="medium_author_id",
@@ -68,8 +68,8 @@ class CreateMediumPostBlock(Block):
     def __init__(self):
         super().__init__(
             id="3f7b2dcb-4a78-4e3f-b0f1-88132e1b89df",
-            input_schema=CreateMediumPostBlock.Input,
-            output_schema=CreateMediumPostBlock.Output,
+            input_schema=PublishToMediumBlock.Input,
+            output_schema=PublishToMediumBlock.Output,
             categories={BlockCategory.SOCIAL},
             test_input={
                 "author_id": "1234567890abcdef",

@@ -7,7 +7,7 @@ from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSc
 from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
 
 
-class CreateTalkingAvatarClipBlock(Block):
+class CreateTalkingAvatarVideoBlock(Block):
     class Input(BlockSchema):
         api_key: BlockSecret = SecretField(
             key="did_api_key", description="D-ID API Key"
@@ -54,8 +54,8 @@ class CreateTalkingAvatarClipBlock(Block):
             id="98c6f503-8c47-4b1c-a96d-351fc7c87dab",
             description="This block integrates with D-ID to create video clips and retrieve their URLs.",
             categories={BlockCategory.AI},
-            input_schema=CreateTalkingAvatarClipBlock.Input,
-            output_schema=CreateTalkingAvatarClipBlock.Output,
+            input_schema=CreateTalkingAvatarVideoBlock.Input,
+            output_schema=CreateTalkingAvatarVideoBlock.Output,
             test_input={
                 "api_key": "your_test_api_key",
                 "script_input": "Welcome to AutoGPT",
