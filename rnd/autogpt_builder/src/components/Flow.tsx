@@ -37,6 +37,7 @@ import { BlocksControl } from "@/components/edit/control/BlocksControl";
 import { IconPlay, IconRedo2, IconUndo2 } from "@/components/ui/icons";
 import { startTutorial } from "./tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
+import { v4 as uuidv4 } from "uuid";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -45,6 +46,7 @@ const MINIMUM_MOVE_BEFORE_LOG = 50;
 type FlowContextType = {
   visualizeBeads: "no" | "static" | "animate";
   setIsAnyModalOpen: (isOpen: boolean) => void;
+  getNextNodeId: () => string;
 };
 
 export const FlowContext = createContext<FlowContextType | null>(null);
@@ -195,9 +197,19 @@ const FlowEditor: React.FC<{
 
       // Remove all edges that were connected to deleted nodes
       nodeChanges
-        .filter((change) => change.type == "remove")
+        .filter((change) => change.type === "remove")
         .forEach((deletedNode) => {
           const nodeID = deletedNode.id;
+          const deletedNodeData = nodes.find((node) => node.id === nodeID);
+
+          if (deletedNodeData) {
+            history.push({
+              type: "DELETE_NODE",
+              payload: { node: deletedNodeData },
+              undo: () => addNodes(deletedNodeData),
+              redo: () => deleteElements({ nodes: [{ id: nodeID }] }),
+            });
+          }
 
           const connectedEdges = edges.filter((edge) =>
             [edge.source, edge.target].includes(nodeID),
@@ -207,7 +219,7 @@ const FlowEditor: React.FC<{
           });
         });
     },
-    [deleteElements, setNodes],
+    [deleteElements, setNodes, nodes, edges, addNodes],
   );
 
   const formatEdgeID = useCallback((conn: Link | Connection): string => {
@@ -358,6 +370,10 @@ const FlowEditor: React.FC<{
     },
     [setNodes, clearNodesStatusAndOutput],
   );
+
+  const getNextNodeId = useCallback(() => {
+    return uuidv4();
+  }, []);
 
   const { x, y, zoom } = useViewport();
 
@@ -531,7 +547,9 @@ const FlowEditor: React.FC<{
   ];
 
   return (
-    <FlowContext.Provider value={{ visualizeBeads, setIsAnyModalOpen }}>
+    <FlowContext.Provider
+      value={{ visualizeBeads, setIsAnyModalOpen, getNextNodeId }}
+    >
       <div className={className}>
         <ReactFlow
           nodes={nodes}

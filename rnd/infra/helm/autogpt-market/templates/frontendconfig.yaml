@@ -1,7 +1,7 @@
 apiVersion: networking.gke.io/v1beta1
 kind: FrontendConfig
 metadata:
-  name: {{ include "autogpt-server.fullname" . }}-frontend-config
+  name: {{ include "autogpt-market.fullname" . }}-frontend-config
 spec:
   redirectToHttps:
     enabled: true

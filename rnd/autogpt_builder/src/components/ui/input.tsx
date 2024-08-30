@@ -11,8 +11,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     // The HTMLvalue will only be updated if the value prop changes, but the user can still type in the input.
     ref = ref || React.createRef<HTMLInputElement>();
     React.useEffect(() => {
-      if (ref?.current?.value !== value) {
-        console.log("Value changed from", ref?.current?.value, "to", value);
+      if (ref && ref.current && ref.current.value !== value) {
         ref.current.value = value;
       }
     }, [value]);
