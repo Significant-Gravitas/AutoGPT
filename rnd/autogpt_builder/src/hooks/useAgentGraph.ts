@@ -56,6 +56,7 @@ export default function useAgentGraph(
   const [nodes, setNodes] = useState<CustomNode[]>([]);
   const [edges, setEdges] = useState<CustomEdge[]>([]);
 
+  const maxOutputHistoryCount = 20;
   const apiUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL!;
   const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
 
@@ -338,13 +339,14 @@ export default function useAgentGraph(
                 data: {
                   ...node.data,
                   status: executionData.status,
-                  output_data:
-                    Object.keys(executionData.output_data).length > 0
-                      ? [
-                          ...(node.data.output_data || []),
-                          executionData.output_data,
-                        ]
-                      : node.data.output_data,
+                  output_data: (Object.keys(executionData.output_data).length >
+                  0
+                    ? [
+                        ...(node.data.output_data || []),
+                        executionData.output_data,
+                      ]
+                    : node.data.output_data
+                  )?.slice(-maxOutputHistoryCount),
                   isOutputOpen: true,
                 },
               }

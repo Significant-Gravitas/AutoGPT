@@ -369,12 +369,12 @@ export function CustomNode({ data, id }: NodeProps<CustomNode>) {
       </div>
       {isOutputOpen && (
         <div className="nodrag m-3 break-words rounded-md border-[1.5px] p-2">
-          {data.output_data ? (
+          {(data.output_data?.length ?? 0) > 0 ? (
             <>
               <DataTable
                 title="Latest Output"
                 truncateLongData
-                data={data.output_data.at(-1) || {}}
+                data={data.output_data!.at(-1) || {}}
               />
               <Button
                 variant="ghost"

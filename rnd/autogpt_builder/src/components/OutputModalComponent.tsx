@@ -1,7 +1,8 @@
-import React, { FC, useEffect } from "react";
+import React, { FC } from "react";
 import { Button } from "./ui/button";
 import { NodeExecutionResult } from "@/lib/autogpt-server-api/types";
 import DataTable from "./DataTable";
+import { Separator } from "@/components/ui/separator";
 
 interface OutputModalProps {
   isOpen: boolean;
@@ -26,7 +27,10 @@ const OutputModalComponent: FC<OutputModalProps> = ({
         <strong>Output Data History</strong>
         <div className="my-2 max-h-[384px] flex-grow overflow-y-auto rounded-md border-[1.5px] p-2">
           {output_data.map((data, i) => (
-            <DataTable key={i} title="Execution" data={data} />
+            <>
+              <DataTable key={i} title="Execution" data={data} />
+              <Separator />
+            </>
           ))}
         </div>
         <div className="mt-2.5 flex justify-end gap-2.5">
