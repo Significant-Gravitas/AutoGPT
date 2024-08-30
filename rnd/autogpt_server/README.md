@@ -32,8 +32,14 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
    ```sh
    poetry install
    ```
+
+4. Copy .env.example to .env
+
+   ```sh
+   cp .env.example .env
+   ```
    
-4. Generate the Prisma client
+5. Generate the Prisma client
 
    ```sh
    poetry run prisma generate
@@ -49,7 +55,7 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
    > Then run the generation again. The path *should* look something like this:  
    > `<some path>/pypoetry/virtualenvs/autogpt-server-TQIRSwR6-py3.12/bin/prisma`
 
-5. Migrate the database. Be careful because this deletes current data in the database.
+6. Migrate the database. Be careful because this deletes current data in the database.
 
    ```sh
    docker compose up postgres -d
