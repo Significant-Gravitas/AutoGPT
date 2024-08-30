@@ -8,7 +8,7 @@ from autogpt_server.data.model import SchemaField
 from autogpt_server.util.mock import MockObject
 
 
-class ValueBlock(Block):
+class StoreValueBlock(Block):
     """
     This block allows you to provide a constant value as a block, in a stateless manner.
     The common use-case is simply pass the `input` data, it will `output` the same data.
@@ -35,8 +35,8 @@ class ValueBlock(Block):
             description="This block forwards the `input` pin to `output` pin. "
             "This block output will be static, the output can be consumed many times.",
             categories={BlockCategory.BASIC},
-            input_schema=ValueBlock.Input,
-            output_schema=ValueBlock.Output,
+            input_schema=StoreValueBlock.Input,
+            output_schema=StoreValueBlock.Output,
             test_input=[
                 {"input": "Hello, World!"},
                 {"input": "Hello, World!", "data": "Existing Data"},
@@ -52,7 +52,7 @@ class ValueBlock(Block):
         yield "output", input_data.data or input_data.input
 
 
-class PrintingBlock(Block):
+class PrintToConsoleBlock(Block):
     class Input(BlockSchema):
         text: str
 
@@ -64,8 +64,8 @@ class PrintingBlock(Block):
             id="f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c",
             description="Print the given text to the console, this is used for a debugging purpose.",
             categories={BlockCategory.BASIC},
-            input_schema=PrintingBlock.Input,
-            output_schema=PrintingBlock.Output,
+            input_schema=PrintToConsoleBlock.Input,
+            output_schema=PrintToConsoleBlock.Output,
             test_input={"text": "Hello, World!"},
             test_output=("status", "printed"),
         )
@@ -75,7 +75,7 @@ class PrintingBlock(Block):
         yield "status", "printed"
 
 
-class ObjectLookupBlock(Block):
+class FindInDictionaryBlock(Block):
 
     class Input(BlockSchema):
         input: Any = Field(description="Dictionary to lookup from")
@@ -89,8 +89,8 @@ class ObjectLookupBlock(Block):
         super().__init__(
             id="b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
             description="Lookup the given key in the input dictionary/object/list and return the value.",
-            input_schema=ObjectLookupBlock.Input,
-            output_schema=ObjectLookupBlock.Output,
+            input_schema=FindInDictionaryBlock.Input,
+            output_schema=FindInDictionaryBlock.Output,
             test_input=[
                 {"input": {"apple": 1, "banana": 2, "cherry": 3}, "key": "banana"},
                 {"input": {"x": 10, "y": 20, "z": 30}, "key": "w"},
@@ -190,7 +190,7 @@ class OutputBlock(InputOutputBlockBase[Any]):
         return "363ae599-353e-4804-937e-b2ee3cef3da4"
 
 
-class DictionaryAddEntryBlock(Block):
+class AddToDictionaryBlock(Block):
     class Input(BlockSchema):
         dictionary: dict | None = SchemaField(
             default=None,
@@ -215,8 +215,8 @@ class DictionaryAddEntryBlock(Block):
             id="31d1064e-7446-4693-a7d4-65e5ca1180d1",
             description="Adds a new key-value pair to a dictionary. If no dictionary is provided, a new one is created.",
             categories={BlockCategory.BASIC},
-            input_schema=DictionaryAddEntryBlock.Input,
-            output_schema=DictionaryAddEntryBlock.Output,
+            input_schema=AddToDictionaryBlock.Input,
+            output_schema=AddToDictionaryBlock.Output,
             test_input=[
                 {
                     "dictionary": {"existing_key": "existing_value"},
@@ -251,7 +251,7 @@ class DictionaryAddEntryBlock(Block):
             yield "error", f"Failed to add entry to dictionary: {str(e)}"
 
 
-class ListAddEntryBlock(Block):
+class AddToListBlock(Block):
     class Input(BlockSchema):
         list: List[Any] | None = SchemaField(
             default=None,
@@ -279,8 +279,8 @@ class ListAddEntryBlock(Block):
             id="aeb08fc1-2fc1-4141-bc8e-f758f183a822",
             description="Adds a new entry to a list. The entry can be of any type. If no list is provided, a new one is created.",
             categories={BlockCategory.BASIC},
-            input_schema=ListAddEntryBlock.Input,
-            output_schema=ListAddEntryBlock.Output,
+            input_schema=AddToListBlock.Input,
+            output_schema=AddToListBlock.Output,
             test_input=[
                 {
                     "list": [1, "string", {"existing_key": "existing_value"}],

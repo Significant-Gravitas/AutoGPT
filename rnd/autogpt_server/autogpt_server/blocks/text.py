@@ -10,7 +10,7 @@ from autogpt_server.util import json
 jinja = Environment(loader=BaseLoader())
 
 
-class TextMatcherBlock(Block):
+class MatchTextPatternBlock(Block):
     class Input(BlockSchema):
         text: Any = Field(description="Text to match")
         match: str = Field(description="Pattern (Regex) to match")
@@ -29,8 +29,8 @@ class TextMatcherBlock(Block):
             " forwards the provided data to positive (if matching) or"
             " negative (if not matching) output.",
             categories={BlockCategory.TEXT},
-            input_schema=TextMatcherBlock.Input,
-            output_schema=TextMatcherBlock.Output,
+            input_schema=MatchTextPatternBlock.Input,
+            output_schema=MatchTextPatternBlock.Output,
             test_input=[
                 {"text": "ABC", "match": "ab", "data": "X", "case_sensitive": False},
                 {"text": "ABC", "match": "ab", "data": "Y", "case_sensitive": True},
@@ -64,7 +64,7 @@ class TextMatcherBlock(Block):
             yield "negative", output
 
 
-class TextParserBlock(Block):
+class ExtractTextInformationBlock(Block):
     class Input(BlockSchema):
         text: Any = Field(description="Text to parse")
         pattern: str = Field(description="Pattern (Regex) to parse")
@@ -81,8 +81,8 @@ class TextParserBlock(Block):
             id="3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
             description="This block extracts the text from the given text using the pattern (regex).",
             categories={BlockCategory.TEXT},
-            input_schema=TextParserBlock.Input,
-            output_schema=TextParserBlock.Output,
+            input_schema=ExtractTextInformationBlock.Input,
+            output_schema=ExtractTextInformationBlock.Output,
             test_input=[
                 {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 1},
                 {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 0},
@@ -116,7 +116,7 @@ class TextParserBlock(Block):
             yield "negative", text
 
 
-class TextFormatterBlock(Block):
+class FillTextTemplateBlock(Block):
     class Input(BlockSchema):
         values: dict[str, Any] = Field(description="Values (dict) to be used in format")
         format: str = Field(description="Template to format the text using `values`")
@@ -129,8 +129,8 @@ class TextFormatterBlock(Block):
             id="db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
             description="This block formats the given texts using the format template.",
             categories={BlockCategory.TEXT},
-            input_schema=TextFormatterBlock.Input,
-            output_schema=TextFormatterBlock.Output,
+            input_schema=FillTextTemplateBlock.Input,
+            output_schema=FillTextTemplateBlock.Output,
             test_input=[
                 {
                     "values": {"name": "Alice", "hello": "Hello", "world": "World!"},
@@ -155,7 +155,7 @@ class TextFormatterBlock(Block):
         yield "output", template.render(**input_data.values)
 
 
-class TextCombinerBlock(Block):
+class CombineTextsBlock(Block):
     class Input(BlockSchema):
         input: list[str] = Field(description="text input to combine")
         delimiter: str = Field(description="Delimiter to combine texts", default="")
@@ -168,8 +168,8 @@ class TextCombinerBlock(Block):
             id="e30a4d42-7b7d-4e6a-b36e-1f9b8e3b7d85",
             description="This block combines multiple input texts into a single output text.",
             categories={BlockCategory.TEXT},
-            input_schema=TextCombinerBlock.Input,
-            output_schema=TextCombinerBlock.Output,
+            input_schema=CombineTextsBlock.Input,
+            output_schema=CombineTextsBlock.Output,
             test_input=[
                 {"input": ["Hello world I like ", "cake and to go for walks"]},
                 {"input": ["This is a test", "Hi!"], "delimiter": "! "},

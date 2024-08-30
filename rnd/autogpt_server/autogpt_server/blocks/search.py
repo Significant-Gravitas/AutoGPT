@@ -15,7 +15,7 @@ class GetRequest:
         return response.json() if json else response.text
 
 
-class WikipediaSummaryBlock(Block, GetRequest):
+class GetWikipediaSummaryBlock(Block, GetRequest):
     class Input(BlockSchema):
         topic: str
 
@@ -28,8 +28,8 @@ class WikipediaSummaryBlock(Block, GetRequest):
             id="h5e7f8g9-1b2c-3d4e-5f6g-7h8i9j0k1l2m",
             description="This block fetches the summary of a given topic from Wikipedia.",
             categories={BlockCategory.SEARCH},
-            input_schema=WikipediaSummaryBlock.Input,
-            output_schema=WikipediaSummaryBlock.Output,
+            input_schema=GetWikipediaSummaryBlock.Input,
+            output_schema=GetWikipediaSummaryBlock.Output,
             test_input={"topic": "Artificial Intelligence"},
             test_output=("summary", "summary content"),
             test_mock={"get_request": lambda url, json: {"extract": "summary content"}},
@@ -52,7 +52,7 @@ class WikipediaSummaryBlock(Block, GetRequest):
             yield "error", f"Error parsing Wikipedia response: {e}"
 
 
-class WebSearchBlock(Block, GetRequest):
+class SearchTheWebBlock(Block, GetRequest):
     class Input(BlockSchema):
         query: str  # The search query
 
@@ -65,8 +65,8 @@ class WebSearchBlock(Block, GetRequest):
             id="b2c3d4e5-6f7g-8h9i-0j1k-l2m3n4o5p6q7",
             description="This block searches the internet for the given search query.",
             categories={BlockCategory.SEARCH},
-            input_schema=WebSearchBlock.Input,
-            output_schema=WebSearchBlock.Output,
+            input_schema=SearchTheWebBlock.Input,
+            output_schema=SearchTheWebBlock.Output,
             test_input={"query": "Artificial Intelligence"},
             test_output=("results", "search content"),
             test_mock={"get_request": lambda url, json: "search content"},
@@ -93,7 +93,7 @@ class WebSearchBlock(Block, GetRequest):
             yield "error", f"Request to Jina Search failed: {e}"
 
 
-class WebScraperBlock(Block, GetRequest):
+class ExtractWebsiteContentBlock(Block, GetRequest):
     class Input(BlockSchema):
         url: str  # The URL to scrape
 
@@ -106,8 +106,8 @@ class WebScraperBlock(Block, GetRequest):
             id="a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",  # Unique ID for the block
             description="This block scrapes the content from the given web URL.",
             categories={BlockCategory.SEARCH},
-            input_schema=WebScraperBlock.Input,
-            output_schema=WebScraperBlock.Output,
+            input_schema=ExtractWebsiteContentBlock.Input,
+            output_schema=ExtractWebsiteContentBlock.Output,
             test_input={"url": "https://en.wikipedia.org/wiki/Artificial_intelligence"},
             test_output=("content", "scraped content"),
             test_mock={"get_request": lambda url, json: "scraped content"},
@@ -131,7 +131,7 @@ class WebScraperBlock(Block, GetRequest):
             yield "error", f"Request to Jina-ai Reader failed: {e}"
 
 
-class GetOpenWeatherMapBlock(Block, GetRequest):
+class GetWeatherInformationBlock(Block, GetRequest):
     class Input(BlockSchema):
         location: str
         api_key: BlockSecret = SecretField(key="openweathermap_api_key")
@@ -146,8 +146,8 @@ class GetOpenWeatherMapBlock(Block, GetRequest):
     def __init__(self):
         super().__init__(
             id="f7a8b2c3-6d4e-5f8b-9e7f-6d4e5f8b9e7f",
-            input_schema=GetOpenWeatherMapBlock.Input,
-            output_schema=GetOpenWeatherMapBlock.Output,
+            input_schema=GetWeatherInformationBlock.Input,
+            output_schema=GetWeatherInformationBlock.Output,
             test_input={
                 "location": "New York",
                 "api_key": "YOUR_API_KEY",

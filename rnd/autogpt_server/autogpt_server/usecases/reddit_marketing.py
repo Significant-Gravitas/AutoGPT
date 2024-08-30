@@ -1,8 +1,8 @@
 from prisma.models import User
 
-from autogpt_server.blocks.llm import ObjectLlmCallBlock
-from autogpt_server.blocks.reddit import RedditGetPostsBlock, RedditPostCommentBlock
-from autogpt_server.blocks.text import TextFormatterBlock, TextMatcherBlock
+from autogpt_server.blocks.llm import AIStructuredResponseGeneratorBlock
+from autogpt_server.blocks.reddit import GetRedditPostsBlock, PostRedditCommentBlock
+from autogpt_server.blocks.text import FillTextTemplateBlock, MatchTextPatternBlock
 from autogpt_server.data.graph import Graph, Link, Node, create_graph
 from autogpt_server.data.user import get_or_create_user
 from autogpt_server.util.test import SpinTestServer, wait_execution
@@ -13,25 +13,25 @@ def create_test_graph() -> Graph:
                     subreddit
                        ||
                         v
-        RedditGetPostsBlock (post_id, post_title, post_body)
+        GetRedditPostsBlock (post_id, post_title, post_body)
                   //     ||     \\
               post_id  post_title  post_body
                  ||       ||        ||
                  v        v         v
-              TextFormatterBlock (format)
+              FillTextTemplateBlock (format)
                       ||
                       v
-            ObjectLlmCallBlock / TextRelevancy
+            AIStructuredResponseBlock / TextRelevancy
                  ||       ||       ||
             post_id  is_relevant  marketing_text
                ||       ||        ||
                v        v         v
-                 TextMatcherBlock
+                 MatchTextPatternBlock
                  ||       ||
               positive  negative
                 ||
                 v
-        RedditPostCommentBlock
+        PostRedditCommentBlock
     """
     # Hardcoded inputs
     reddit_get_post_input = {
@@ -64,20 +64,22 @@ Make sure to only comment on a relevant post.
 
     # Nodes
     reddit_get_post_node = Node(
-        block_id=RedditGetPostsBlock().id,
+        block_id=GetRedditPostsBlock().id,
         input_default=reddit_get_post_input,
     )
     text_formatter_node = Node(
-        block_id=TextFormatterBlock().id,
+        block_id=FillTextTemplateBlock().id,
         input_default=text_formatter_input,
     )
-    llm_call_node = Node(block_id=ObjectLlmCallBlock().id, input_default=llm_call_input)
+    llm_call_node = Node(
+        block_id=AIStructuredResponseGeneratorBlock().id, input_default=llm_call_input
+    )
     text_matcher_node = Node(
-        block_id=TextMatcherBlock().id,
+        block_id=MatchTextPatternBlock().id,
         input_default=text_matcher_input,
     )
     reddit_comment_node = Node(
-        block_id=RedditPostCommentBlock().id,
+        block_id=PostRedditCommentBlock().id,
         input_default=reddit_comment_input,
     )
 
