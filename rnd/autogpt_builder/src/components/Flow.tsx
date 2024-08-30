@@ -35,6 +35,7 @@ import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
 import { IconPlay, IconRedo2, IconUndo2 } from "@/components/ui/icons";
+import { startTutorial } from "./tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
@@ -82,6 +83,33 @@ const FlowEditor: React.FC<{
     [key: string]: { x: number; y: number };
   }>({});
   const isDragging = useRef(false);
+
+  // State to control if tutorial has started
+  const [tutorialStarted, setTutorialStarted] = useState(false);
+  // State to control if blocks menu should be pinned open
+  const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    // If resetting tutorial
+    if (params.get("resetTutorial") === "true") {
+      localStorage.removeItem("shepherd-tour"); // Clear tutorial flag
+      window.location.href = window.location.pathname; // Redirect to clear URL parameters
+    } else {
+      // Otherwise, start tutorial if conditions are met
+      const shouldStartTutorial = !localStorage.getItem("shepherd-tour");
+      if (
+        shouldStartTutorial &&
+        availableNodes.length > 0 &&
+        !tutorialStarted
+      ) {
+        startTutorial(setPinBlocksPopover);
+        setTutorialStarted(true);
+        localStorage.setItem("shepherd-tour", "yes");
+      }
+    }
+  }, [availableNodes, tutorialStarted]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -167,9 +195,19 @@ const FlowEditor: React.FC<{
 
       // Remove all edges that were connected to deleted nodes
       nodeChanges
-        .filter((change) => change.type == "remove")
+        .filter((change) => change.type === "remove")
         .forEach((deletedNode) => {
           const nodeID = deletedNode.id;
+          const deletedNodeData = nodes.find((node) => node.id === nodeID);
+
+          if (deletedNodeData) {
+            history.push({
+              type: "DELETE_NODE",
+              payload: { node: deletedNodeData },
+              undo: () => addNodes(deletedNodeData),
+              redo: () => deleteElements({ nodes: [{ id: nodeID }] }),
+            });
+          }
 
           const connectedEdges = edges.filter((edge) =>
             [edge.source, edge.target].includes(nodeID),
@@ -179,7 +217,7 @@ const FlowEditor: React.FC<{
           });
         });
     },
-    [deleteElements, setNodes],
+    [deleteElements, setNodes, nodes, edges, addNodes],
   );
 
   const formatEdgeID = useCallback((conn: Link | Connection): string => {
@@ -502,7 +540,11 @@ const FlowEditor: React.FC<{
           <Controls />
           <Background />
           <ControlPanel className="absolute z-10" controls={editorControls}>
-            <BlocksControl blocks={availableNodes} addBlock={addNode} />
+            <BlocksControl
+              pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
+              blocks={availableNodes}
+              addBlock={addNode}
+            />
             <SaveControl
               agentMeta={savedAgent}
               onSave={(isTemplate) => requestSave(isTemplate ?? false)}

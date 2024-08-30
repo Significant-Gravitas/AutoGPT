@@ -62,9 +62,10 @@ app.add_middleware(fastapi.middleware.gzip.GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     middleware_class=fastapi.middleware.cors.CORSMiddleware,
     allow_origins=[
-        # Currently, we allow only next.js dev server
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://127.0.0.1:3000",
+        "https://dev-builder.agpt.co"
     ],
     allow_credentials=True,
     allow_methods=["*"],
