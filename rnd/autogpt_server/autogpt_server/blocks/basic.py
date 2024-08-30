@@ -8,7 +8,7 @@ from autogpt_server.data.model import SchemaField
 from autogpt_server.util.mock import MockObject
 
 
-class ValueBlock(Block):
+class StoreValueBlock(Block):
     """
     This block allows you to provide a constant value as a block, in a stateless manner.
     The common use-case is simply pass the `input` data, it will `output` the same data.
@@ -35,8 +35,8 @@ class ValueBlock(Block):
             description="This block forwards the `input` pin to `output` pin. "
             "This block output will be static, the output can be consumed many times.",
             categories={BlockCategory.BASIC},
-            input_schema=ValueBlock.Input,
-            output_schema=ValueBlock.Output,
+            input_schema=StoreValueBlock.Input,
+            output_schema=StoreValueBlock.Output,
             test_input=[
                 {"input": "Hello, World!"},
                 {"input": "Hello, World!", "data": "Existing Data"},
@@ -52,7 +52,7 @@ class ValueBlock(Block):
         yield "output", input_data.data or input_data.input
 
 
-class PrintingBlock(Block):
+class PrintToConsoleBlock(Block):
     class Input(BlockSchema):
         text: str
 
@@ -64,8 +64,8 @@ class PrintingBlock(Block):
             id="f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c",
             description="Print the given text to the console, this is used for a debugging purpose.",
             categories={BlockCategory.BASIC},
-            input_schema=PrintingBlock.Input,
-            output_schema=PrintingBlock.Output,
+            input_schema=PrintToConsoleBlock.Input,
+            output_schema=PrintToConsoleBlock.Output,
             test_input={"text": "Hello, World!"},
             test_output=("status", "printed"),
         )
@@ -75,33 +75,22 @@ class PrintingBlock(Block):
         yield "status", "printed"
 
 
-T = TypeVar("T")
+class FindInDictionaryBlock(Block):
 
+    class Input(BlockSchema):
+        input: Any = Field(description="Dictionary to lookup from")
+        key: str | int = Field(description="Key to lookup in the dictionary")
 
-class ObjectLookupBaseInput(BlockSchema, Generic[T]):
-    input: T = Field(description="Dictionary to lookup from")
-    key: str | int = Field(description="Key to lookup in the dictionary")
+    class Output(BlockSchema):
+        output: Any = Field(description="Value found for the given key")
+        missing: Any = Field(description="Value of the input that missing the key")
 
-
-class ObjectLookupBaseOutput(BlockSchema, Generic[T]):
-    output: T = Field(description="Value found for the given key")
-    missing: T = Field(description="Value of the input that missing the key")
-
-
-class ObjectLookupBase(Block, ABC, Generic[T]):
-    @abstractmethod
-    def block_id(self) -> str:
-        pass
-
-    def __init__(self, *args, **kwargs):
-        input_schema = ObjectLookupBaseInput[T]
-        output_schema = ObjectLookupBaseOutput[T]
-
+    def __init__(self):
         super().__init__(
-            id=self.block_id(),
+            id="b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
             description="Lookup the given key in the input dictionary/object/list and return the value.",
-            input_schema=input_schema,
-            output_schema=output_schema,
+            input_schema=FindInDictionaryBlock.Input,
+            output_schema=FindInDictionaryBlock.Output,
             test_input=[
                 {"input": {"apple": 1, "banana": 2, "cherry": 3}, "key": "banana"},
                 {"input": {"x": 10, "y": 20, "z": 30}, "key": "w"},
@@ -118,11 +107,10 @@ class ObjectLookupBase(Block, ABC, Generic[T]):
                 ("output", "key"),
                 ("output", ["v1", "v3"]),
             ],
-            *args,
-            **kwargs,
+            categories={BlockCategory.BASIC},
         )
 
-    def run(self, input_data: ObjectLookupBaseInput[T]) -> BlockOutput:
+    def run(self, input_data: Input) -> BlockOutput:
         obj = input_data.input
         key = input_data.key
 
@@ -143,15 +131,50 @@ class ObjectLookupBase(Block, ABC, Generic[T]):
             yield "missing", input_data.input
 
 
-class ObjectLookupBlock(ObjectLookupBase[Any]):
-    def __init__(self):
-        super().__init__(categories={BlockCategory.BASIC})
+T = TypeVar("T")
 
+
+class InputOutputBlockInput(BlockSchema, Generic[T]):
+    value: T = Field(description="The value to be passed as input/output.")
+    name: str = Field(description="The name of the input/output.")
+
+
+class InputOutputBlockOutput(BlockSchema, Generic[T]):
+    value: T = Field(description="The value passed as input/output.")
+
+
+class InputOutputBlockBase(Block, ABC, Generic[T]):
+    @abstractmethod
     def block_id(self) -> str:
-        return "b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6"
+        pass
+
+    def __init__(self, *args, **kwargs):
+        input_schema = InputOutputBlockInput[T]
+        output_schema = InputOutputBlockOutput[T]
+
+        super().__init__(
+            id=self.block_id(),
+            description="This block is used to define the input & output of a graph.",
+            input_schema=input_schema,
+            output_schema=output_schema,
+            test_input=[
+                {"value": {"apple": 1, "banana": 2, "cherry": 3}, "name": "input_1"},
+                {"value": MockObject(value="!!", key="key"), "name": "input_2"},
+            ],
+            test_output=[
+                ("value", {"apple": 1, "banana": 2, "cherry": 3}),
+                ("value", MockObject(value="!!", key="key")),
+            ],
+            static_output=True,
+            *args,
+            **kwargs,
+        )
+
+    def run(self, input_data: InputOutputBlockInput[T]) -> BlockOutput:
+        yield "value", input_data.value
 
 
-class InputBlock(ObjectLookupBase[Any]):
+class InputBlock(InputOutputBlockBase[Any]):
     def __init__(self):
         super().__init__(categories={BlockCategory.INPUT, BlockCategory.BASIC})
 
@@ -159,7 +182,7 @@ class InputBlock(ObjectLookupBase[Any]):
         return "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b"
 
 
-class OutputBlock(ObjectLookupBase[Any]):
+class OutputBlock(InputOutputBlockBase[Any]):
     def __init__(self):
         super().__init__(categories={BlockCategory.OUTPUT, BlockCategory.BASIC})
 
@@ -167,7 +190,7 @@ class OutputBlock(ObjectLookupBase[Any]):
         return "363ae599-353e-4804-937e-b2ee3cef3da4"
 
 
-class DictionaryAddEntryBlock(Block):
+class AddToDictionaryBlock(Block):
     class Input(BlockSchema):
         dictionary: dict | None = SchemaField(
             default=None,
@@ -192,8 +215,8 @@ class DictionaryAddEntryBlock(Block):
             id="31d1064e-7446-4693-a7d4-65e5ca1180d1",
             description="Adds a new key-value pair to a dictionary. If no dictionary is provided, a new one is created.",
             categories={BlockCategory.BASIC},
-            input_schema=DictionaryAddEntryBlock.Input,
-            output_schema=DictionaryAddEntryBlock.Output,
+            input_schema=AddToDictionaryBlock.Input,
+            output_schema=AddToDictionaryBlock.Output,
             test_input=[
                 {
                     "dictionary": {"existing_key": "existing_value"},
@@ -228,7 +251,7 @@ class DictionaryAddEntryBlock(Block):
             yield "error", f"Failed to add entry to dictionary: {str(e)}"
 
 
-class ListAddEntryBlock(Block):
+class AddToListBlock(Block):
     class Input(BlockSchema):
         list: List[Any] | None = SchemaField(
             default=None,
@@ -256,8 +279,8 @@ class ListAddEntryBlock(Block):
             id="aeb08fc1-2fc1-4141-bc8e-f758f183a822",
             description="Adds a new entry to a list. The entry can be of any type. If no list is provided, a new one is created.",
             categories={BlockCategory.BASIC},
-            input_schema=ListAddEntryBlock.Input,
-            output_schema=ListAddEntryBlock.Output,
+            input_schema=AddToListBlock.Input,
+            output_schema=AddToListBlock.Output,
             test_input=[
                 {
                     "list": [1, "string", {"existing_key": "existing_value"}],
