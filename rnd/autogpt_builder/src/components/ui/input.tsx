@@ -2,24 +2,11 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-import { useEffect, useRef } from "react";
-
 export interface InputProps
   extends React.InputHTMLAttributes<HTMLInputElement> {}
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type, ...props }, ref) => {
-    // This ref allows the `Input` component to be both controlled and uncontrolled.
-    // The HTMLvalue will only be updated if the value prop changes, but the user can still type in the input.
-    const inputRef = useRef<HTMLInputElement>(null);
-    const resolvedRef = (ref as any) || inputRef;
-
-    useEffect(() => {
-      if (resolvedRef.current && props.value !== undefined) {
-        resolvedRef.current.value = props.value;
-      }
-    }, [props.value, resolvedRef]);
-
     return (
       <input
         type={type}
@@ -28,13 +15,12 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           type == "file" ? "pb-0.5 pt-1.5" : "", // fix alignment
           className,
         )}
-        ref={resolvedRef}
+        ref={ref}
         {...props}
       />
     );
   },
 );
-
 Input.displayName = "Input";
 
 export { Input };
