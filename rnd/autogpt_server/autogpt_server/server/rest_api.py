@@ -43,6 +43,7 @@ class AgentServer(AppService):
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
         await db.connect()
+        self.run_and_wait(self.event_queue.connect())
         await block.initialize_blocks()
         if await user_db.create_default_user(settings.config.enable_auth):
             await graph_db.import_packaged_templates()
