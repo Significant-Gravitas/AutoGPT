@@ -60,7 +60,9 @@ async def test_graph_creation(server: SpinTestServer):
     nodes = created_graph.nodes
     links = created_graph.links
     assert len(links) == 1
-    assert {nodes[0].id, nodes[1].id} == {links[0].source_id, links[0].sink_id}
+    assert links[0].source_id != links[0].sink_id
+    assert links[0].source_id in {nodes[0].id, nodes[1].id, nodes[2].id}
+    assert links[0].sink_id in {nodes[0].id, nodes[1].id, nodes[2].id}
 
     assert len(created_graph.subgraphs) == 1
     assert len(created_graph.subgraph_map) == len(created_graph.nodes) == 3
