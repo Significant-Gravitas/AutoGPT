@@ -61,6 +61,14 @@ export const columns: ColumnDef<Agent>[] = [
     accessorKey: "downloads",
   },
   {
+    header: "Author",
+    accessorKey: "author",
+  },
+  {
+    header: "Version",
+    accessorKey: "version",
+  },
+  {
     header: "actions",
     cell: ({ row }) => {
       const handleRemove = async () => {

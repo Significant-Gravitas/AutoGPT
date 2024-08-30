@@ -36,9 +36,27 @@ export async function getFeaturedAgents(
   return featured;
 }
 
-
-export async function removeFeaturedAgent(agentId: string) {
+export async function getFeaturedAgent(agentId: string) {
   const api = new MarketplaceAPI();
-  // await api.removeFeaturedAgent(agentId);
+  const featured = await api.getFeaturedAgent(agentId);
+  console.debug(`Getting featured agent ${featured.agentId}`);
+  return featured;
+}
+
+export async function addFeaturedAgent(
+  agentId: string,
+  categories: string[] = ["featured"],
+) {
+  const api = new MarketplaceAPI();
+  await api.addFeaturedAgent(agentId, categories);
+  console.debug(`Adding featured agent ${agentId}`);
+}
+
+export async function removeFeaturedAgent(
+  agentId: string,
+  categories: string[] = ["featured"],
+) {
+  const api = new MarketplaceAPI();
+  await api.removeFeaturedAgent(agentId, categories);
   console.debug(`Removing featured agent ${agentId}`);
 }

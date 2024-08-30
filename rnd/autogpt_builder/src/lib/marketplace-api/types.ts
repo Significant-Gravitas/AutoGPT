@@ -43,6 +43,22 @@ export type AgentList = {
   total_pages: number;
 };
 
+export type FeaturedAgentResponse = {
+  agentId: string;
+  featuredCategories: string[];
+  createdAt: string; // ISO8601 datetime string
+  updatedAt: string; // ISO8601 datetime string
+  isActive: boolean;
+};
+
+export type FeaturedAgentsList = {
+  agents: FeaturedAgentResponse[];
+  total_count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+};
+
 export type AgentDetail = Agent & {
   graph: Record<string, any>;
 };

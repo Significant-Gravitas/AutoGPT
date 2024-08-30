@@ -403,7 +403,7 @@ async def get_top_agents_by_downloads(
 
 async def set_agent_featured(
     agent_id: str, is_active: bool = True, featured_categories: list[str] = ["featured"]
-):
+) -> prisma.models.FeaturedAgent:
     """Set an agent as featured in the database.
 
     Args:
@@ -418,7 +418,7 @@ async def set_agent_featured(
         if not agent:
             raise AgentQueryError(f"Agent with ID {agent_id} not found.")
 
-        await prisma.models.FeaturedAgent.prisma().upsert(
+        featured = await prisma.models.FeaturedAgent.prisma().upsert(
             where={"agentId": agent_id},
             data={
                 "update": {
@@ -432,6 +432,7 @@ async def set_agent_featured(
                 },
             },
         )
+        return featured
 
     except prisma.errors.PrismaError as e:
         raise AgentQueryError(f"Database query failed: {str(e)}")
@@ -549,6 +550,26 @@ async def add_featured_category(
 
         return featured_agent
 
+    except prisma.errors.PrismaError as e:
+        raise AgentQueryError(f"Database query failed: {str(e)}")
+    except Exception as e:
+        raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
+
+
+async def get_agent_featured(agent_id: str) -> prisma.models.FeaturedAgent | None:
+    """Retrieve an agent's featured categories from the database.
+
+    Args:
+        agent_id (str): The ID of the agent.
+
+    Returns:
+        FeaturedAgentResponse: The list of featured agents.
+    """
+    try:
+        featured_agent = await prisma.models.FeaturedAgent.prisma().find_unique(
+            where={"agentId": agent_id},
+        )
+        return featured_agent
     except prisma.errors.PrismaError as e:
         raise AgentQueryError(f"Database query failed: {str(e)}")
     except Exception as e:

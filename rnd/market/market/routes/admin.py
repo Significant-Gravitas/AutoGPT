@@ -65,6 +65,28 @@ async def set_agent_featured(
         raise fastapi.HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/agent/featured/{agent_id}")
+async def get_agent_featured(
+    agent_id: str,
+    user: autogpt_libs.auth.User = fastapi.Depends(
+        autogpt_libs.auth.requires_admin_user
+    ),
+) -> market.model.FeaturedAgentResponse | None:
+    """
+    A basic endpoint to get an agent as featured in the database.
+    """
+    try:
+        agent = await market.db.get_agent_featured(agent_id)
+        if agent:
+            return market.model.FeaturedAgentResponse(**agent.model_dump())
+        else:
+            return None
+    except market.db.AgentQueryError as e:
+        raise fastapi.HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=500, detail=str(e))
+
+
 @router.delete("/agent/featured/{agent_id}")
 async def unset_agent_featured(
     agent_id: str,
@@ -72,14 +94,16 @@ async def unset_agent_featured(
     user: autogpt_libs.auth.User = fastapi.Depends(
         autogpt_libs.auth.requires_admin_user
     ),
-):
+) -> market.model.FeaturedAgentResponse | None:
     """
     A basic endpoint to unset an agent as featured in the database.
     """
     try:
-
-        await market.db.remove_featured_category(agent_id, category=category)
-        return fastapi.responses.Response(status_code=200)
+        featured = await market.db.remove_featured_category(agent_id, category=category)
+        if featured:
+            return market.model.FeaturedAgentResponse(**featured.model_dump())
+        else:
+            return None
     except market.db.AgentQueryError as e:
         raise fastapi.HTTPException(status_code=500, detail=str(e))
     except Exception as e:

@@ -6,6 +6,7 @@ import {
   AgentListResponse,
   AgentDetailResponse,
   AgentWithRank,
+  FeaturedAgentResponse,
 } from "./types";
 
 export default class MarketplaceAPI {
@@ -155,12 +156,38 @@ export default class MarketplaceAPI {
     });
   }
 
+  async addFeaturedAgent(
+    agentId: string,
+    categories: string[],
+  ): Promise<FeaturedAgentResponse> {
+    return this._post(`/admin/agent/featured/${agentId}`, {
+      categories: categories,
+    });
+  }
+
+  async removeFeaturedAgent(
+    agentId: string,
+    categories: string[],
+  ): Promise<FeaturedAgentResponse> {
+    return this._delete(`/admin/agent/featured/${agentId}`, {
+      categories: categories,
+    });
+  }
+
+  async getFeaturedAgent(agentId: string): Promise<FeaturedAgentResponse> {
+    return this._get(`/admin/agent/featured/${agentId}`);
+  }
+
   private async _get(path: string) {
     return this._request("GET", path);
   }
 
   private async _post(path: string, payload: { [key: string]: any }) {
     return this._request("POST", path, payload);
+  }
+
+  private async _delete(path: string, payload: { [key: string]: any }) {
+    return this._request("DELETE", path, payload);
   }
 
   private async _getBlob(path: string): Promise<Blob> {
@@ -178,7 +205,7 @@ export default class MarketplaceAPI {
   }
 
   private async _request(
-    method: "GET" | "POST" | "PUT" | "PATCH",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     payload?: { [key: string]: any },
   ) {
