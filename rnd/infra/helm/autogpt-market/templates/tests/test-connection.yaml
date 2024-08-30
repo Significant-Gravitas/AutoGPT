@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "autogpt-market.fullname" . }}-test-connection"
+  labels:
+    {{- include "autogpt-market.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['{{ include "autogpt-market.fullname" . }}:{{ .Values.service.port }}']
+  restartPolicy: Never
