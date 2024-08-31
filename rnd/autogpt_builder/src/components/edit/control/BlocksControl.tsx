@@ -16,6 +16,7 @@ import { PlusIcon } from "@radix-ui/react-icons";
 import { IconToyBrick } from "@/components/ui/icons";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { getPrimaryCategoryColor } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 interface BlocksControlProps {
   blocks: Block[];
@@ -38,13 +39,23 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   pinBlocksPopover,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  // Extract unique categories from blocks
+  const categories = Array.from(
+    new Set(
+      blocks.flatMap((block) => block.categories.map((cat) => cat.category)),
+    ),
+  );
 
   const filteredBlocks = blocks.filter(
     (block: Block) =>
-      block.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      beautifyString(block.name)
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase()),
+      (block.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        beautifyString(block.name)
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase())) &&
+      (!selectedCategory ||
+        block.categories.some((cat) => cat.category === selectedCategory)),
   );
 
   return (
@@ -86,6 +97,24 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               onChange={(e) => setSearchQuery(e.target.value)}
               data-id="blocks-control-search-input"
             />
+            <div className="mt-2 flex flex-wrap gap-2">
+              {categories.map((category) => (
+                <Badge
+                  key={category}
+                  variant={
+                    selectedCategory === category ? "default" : "outline"
+                  }
+                  className={`cursor-pointer ${getPrimaryCategoryColor([{ category, description: "" }])}`}
+                  onClick={() =>
+                    setSelectedCategory(
+                      selectedCategory === category ? null : category,
+                    )
+                  }
+                >
+                  {beautifyString(category)}
+                </Badge>
+              ))}
+            </div>
           </CardHeader>
           <CardContent className="p-1">
             <ScrollArea
