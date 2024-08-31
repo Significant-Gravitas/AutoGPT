@@ -12,6 +12,7 @@ security = HTTPBearer()
 async def auth_middleware(request: Request):
     if not settings.ENABLE_AUTH:
         # If authentication is disabled, allow the request to proceed
+        logging.warn("Auth disabled")
         return {}
 
     security = HTTPBearer()
