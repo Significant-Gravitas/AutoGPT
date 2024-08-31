@@ -8,14 +8,17 @@ interface OutputModalProps {
   isOpen: boolean;
   onClear: () => void;
   onClose: () => void;
-  output_data: NodeExecutionResult["output_data"][];
+  executionResults: {
+    execId: string;
+    data: NodeExecutionResult["output_data"];
+  }[];
 }
 
 const OutputModalComponent: FC<OutputModalProps> = ({
   isOpen,
   onClear,
   onClose,
-  output_data,
+  executionResults,
 }) => {
   if (!isOpen) {
     return null;
@@ -26,9 +29,9 @@ const OutputModalComponent: FC<OutputModalProps> = ({
       <div className="w-[500px] max-w-[90%] rounded-lg border-[1.5px] bg-white p-5">
         <strong>Output Data History</strong>
         <div className="my-2 max-h-[384px] flex-grow overflow-y-auto rounded-md border-[1.5px] p-2">
-          {output_data.map((data, i) => (
+          {executionResults.map((data, i) => (
             <>
-              <DataTable key={i} title="Execution" data={data} />
+              <DataTable key={i} title={data.execId} data={data.data} />
               <Separator />
             </>
           ))}

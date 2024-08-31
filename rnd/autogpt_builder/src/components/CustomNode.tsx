@@ -49,9 +49,12 @@ export type CustomNodeData = {
   connections: ConnectionData;
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
-  /** output_data contains outputs across multiple executions
+  /** executionResults contains outputs across multiple executions
    * with the last element being the most recent output */
-  output_data?: NodeExecutionResult["output_data"][];
+  executionResults?: {
+    execId: string;
+    data: NodeExecutionResult["output_data"];
+  }[];
   block_id: string;
   backend_id?: string;
   errors?: { [key: string]: string };
@@ -82,10 +85,10 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   const { setIsAnyModalOpen, getNextNodeId } = flowContext;
 
   useEffect(() => {
-    if (data.output_data || data.status) {
+    if (data.executionResults || data.status) {
       setIsOutputOpen(true);
     }
-  }, [data.output_data, data.status]);
+  }, [data.executionResults, data.status]);
 
   useEffect(() => {
     setIsOutputOpen(data.isOutputOpen);
@@ -322,7 +325,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   const hasConfigErrors =
     data.errors &&
     Object.entries(data.errors).some(([_, value]) => value !== null);
-  const outputData = data.output_data;
+  const outputData = data.executionResults?.at(-1)?.data;
   const hasOutputError =
     typeof outputData === "object" &&
     outputData !== null &&
@@ -455,12 +458,12 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       </div>
       {isOutputOpen && (
         <div className="nodrag m-3 break-words rounded-md border-[1.5px] p-2">
-          {(data.output_data?.length ?? 0) > 0 ? (
+          {(data.executionResults?.length ?? 0) > 0 ? (
             <>
               <DataTable
                 title="Latest Output"
                 truncateLongData
-                data={data.output_data!.at(-1) || {}}
+                data={data.executionResults!.at(-1)?.data || {}}
               />
               <Button
                 variant="ghost"
@@ -503,11 +506,11 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       <OutputModalComponent
         isOpen={isOutputModalOpen}
         onClear={() => {
-          updateNodeData(id, { output_data: [] });
+          updateNodeData(id, { executionResults: [] });
           setIsOutputModalOpen(false);
         }}
         onClose={() => setIsOutputModalOpen(false)}
-        output_data={data.output_data?.toReversed() || []}
+        executionResults={data.executionResults?.toReversed() || []}
       />
     </div>
   );
