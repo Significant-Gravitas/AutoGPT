@@ -14,6 +14,7 @@ from fastapi import (
     Depends,
     FastAPI,
     HTTPException,
+    Request,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -114,12 +115,12 @@ class AgentServer(AppService):
 
         router.add_api_route(
             path="/blocks",
-            endpoint=self.get_graph_blocks,  # type: ignore
+            endpoint=self.get_graph_blocks,
             methods=["GET"],
         )
         router.add_api_route(
             path="/blocks/{block_id}/execute",
-            endpoint=self.execute_graph_block,  # type: ignore
+            endpoint=self.execute_graph_block,
             methods=["POST"],
         )
         router.add_api_route(
@@ -184,7 +185,7 @@ class AgentServer(AppService):
         )
         router.add_api_route(
             path="/graphs/{graph_id}/execute",
-            endpoint=self.execute_graph,  # type: ignore
+            endpoint=self.execute_graph,
             methods=["POST"],
         )
         router.add_api_route(
@@ -199,7 +200,7 @@ class AgentServer(AppService):
         )
         router.add_api_route(
             path="/graphs/{graph_id}/schedules",
-            endpoint=self.create_schedule,  # type: ignore
+            endpoint=self.create_schedule,
             methods=["POST"],
         )
         router.add_api_route(
@@ -209,7 +210,7 @@ class AgentServer(AppService):
         )
         router.add_api_route(
             path="/graphs/schedules/{schedule_id}",
-            endpoint=self.update_schedule,  # type: ignore
+            endpoint=self.update_schedule,
             methods=["PUT"],
         )
 
@@ -219,12 +220,12 @@ class AgentServer(AppService):
             methods=["POST"],
         )
 
-        app.add_exception_handler(500, self.handle_internal_error)  # type: ignore
+        app.add_exception_handler(500, self.handle_internal_http_error)
 
         app.include_router(router)
 
         @app.websocket("/ws")
-        async def websocket_endpoint(websocket: WebSocket):  # type: ignore
+        async def websocket_endpoint(websocket: WebSocket):
             await self.websocket_router(websocket)
 
         uvicorn.run(app, host="0.0.0.0", port=8000)
@@ -267,11 +268,11 @@ class AgentServer(AppService):
         return get_service_client(ExecutionScheduler)
 
     @classmethod
-    def handle_internal_error(cls, request, exc):  # type: ignore
+    def handle_internal_http_error(cls, request: Request, exc: Exception):
         return JSONResponse(
             content={
-                "message": f"{request.url.path} call failure",  # type: ignore
-                "error": str(exc),  # type: ignore
+                "message": f"{request.method} {request.url.path} failed",
+                "error": str(exc),
             },
             status_code=500,
         )
@@ -341,13 +342,13 @@ class AgentServer(AppService):
 
     @classmethod
     def get_graph_blocks(cls) -> list[dict[Any, Any]]:
-        return [v.to_dict() for v in block.get_blocks().values()]  # type: ignore
+        return [v.to_dict() for v in block.get_blocks().values()]
 
     @classmethod
     def execute_graph_block(
         cls, block_id: str, data: BlockInput
     ) -> CompletedBlockOutput:
-        obj = block.get_block(block_id)  # type: ignore
+        obj = block.get_block(block_id)
         if not obj:
             raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
@@ -568,14 +569,14 @@ class AgentServer(AppService):
     ) -> dict[Any, Any]:
         execution_scheduler = self.execution_scheduler_client
         is_enabled = input_data.get("is_enabled", False)
-        execution_scheduler.update_schedule(schedule_id, is_enabled, user_id=user_id)  # type: ignore
+        execution_scheduler.update_schedule(schedule_id, is_enabled, user_id=user_id)
         return {"id": schedule_id}
 
     def get_execution_schedules(
         self, graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
     ) -> dict[str, str]:
         execution_scheduler = self.execution_scheduler_client
-        return execution_scheduler.get_execution_schedules(graph_id, user_id)  # type: ignore
+        return execution_scheduler.get_execution_schedules(graph_id, user_id)
 
     @expose
     def send_execution_update(self, execution_result_dict: dict[Any, Any]):
@@ -611,12 +612,12 @@ class AgentServer(AppService):
         try:
             updated_fields: dict[Any, Any] = {"config": [], "secrets": []}
             for key, value in updated_settings.get("config", {}).items():
-                if hasattr(settings.config, key):  # type: ignore
-                    setattr(settings.config, key, value)  # type: ignore
+                if hasattr(settings.config, key):
+                    setattr(settings.config, key, value)
                     updated_fields["config"].append(key)
             for key, value in updated_settings.get("secrets", {}).items():
-                if hasattr(settings.secrets, key):  # type: ignore
-                    setattr(settings.secrets, key, value)  # type: ignore
+                if hasattr(settings.secrets, key):
+                    setattr(settings.secrets, key, value)
                     updated_fields["secrets"].append(key)
             settings.save()
             return {
