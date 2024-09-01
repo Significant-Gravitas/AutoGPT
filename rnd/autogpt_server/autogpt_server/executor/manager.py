@@ -391,6 +391,11 @@ class Executor:
                 queue.add(node_exec)
 
             running_executions: dict[str, AsyncResult] = {}
+
+            def make_exec_callback(exec_data: NodeExecution):
+                node_id = exec_data.node_id
+                return lambda _: running_executions.pop(node_id)
+
             while not queue.empty():
                 if cancel.is_set():
                     return
@@ -409,7 +414,7 @@ class Executor:
                 running_executions[exec_data.node_id] = cls.executor.apply_async(
                     cls.on_node_execution,
                     (queue, exec_data),
-                    callback=lambda _: running_executions.pop(exec_data.node_id),
+                    callback=make_exec_callback(exec_data),
                 )
 
                 # Avoid terminating graph execution when some nodes are still running.
