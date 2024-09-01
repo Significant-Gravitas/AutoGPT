@@ -1,13 +1,11 @@
 from autogpt_server.util.service import (
     AppService,
-    PyroNameServer,
     expose,
     get_service_client,
 )
 
 
 class TestService(AppService):
-
     def run_service(self):
         super().run_service()
 
@@ -28,9 +26,8 @@ class TestService(AppService):
 
 
 def test_service_creation():
-    with PyroNameServer():
-        with TestService():
-            client = get_service_client(TestService)
-            assert client.add(5, 3) == 8
-            assert client.subtract(10, 4) == 6
-            assert client.fun_with_async(5, 3) == 8
+    with TestService():
+        client = get_service_client(TestService)
+        assert client.add(5, 3) == 8
+        assert client.subtract(10, 4) == 6
+        assert client.fun_with_async(5, 3) == 8
