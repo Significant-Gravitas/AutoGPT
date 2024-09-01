@@ -1,48 +1,44 @@
-import React, { FC, useEffect } from "react";
-import { createPortal } from "react-dom";
+import React, { FC } from "react";
 import { Button } from "./ui/button";
-import { Textarea } from "./ui/textarea";
+import { NodeExecutionResult } from "@/lib/autogpt-server-api/types";
+import DataTable from "./DataTable";
+import { Separator } from "@/components/ui/separator";
 
 interface OutputModalProps {
   isOpen: boolean;
   onClose: () => void;
-  value: string;
+  executionResults: {
+    execId: string;
+    data: NodeExecutionResult["output_data"];
+  }[];
 }
 
 const OutputModalComponent: FC<OutputModalProps> = ({
   isOpen,
   onClose,
-  value,
+  executionResults,
 }) => {
-  const [tempValue, setTempValue] = React.useState(value);
-
-  useEffect(() => {
-    if (isOpen) {
-      setTempValue(value);
-    }
-  }, [isOpen, value]);
-
   if (!isOpen) {
     return null;
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-white bg-opacity-60">
-      <div className="w-[1000px] max-w-[100%] rounded-lg bg-white p-5">
-        <center>
-          <h1 style={{ color: "black" }}>Full Output</h1>
-        </center>
-        <Textarea
-          className="h-[400px] w-full rounded border border-[#dfdfdf] bg-[#dfdfdf] p-2.5 text-black"
-          value={tempValue}
-          readOnly
-        />
+  return (
+    <div className="nodrag nowheel fixed inset-0 flex items-center justify-center bg-white bg-opacity-60">
+      <div className="w-[500px] max-w-[90%] rounded-lg border-[1.5px] bg-white p-5">
+        <strong>Output Data History</strong>
+        <div className="my-2 max-h-[384px] flex-grow overflow-y-auto rounded-md border-[1.5px] p-2">
+          {executionResults.map((data, i) => (
+            <>
+              <DataTable key={i} title={data.execId} data={data.data} />
+              <Separator />
+            </>
+          ))}
+        </div>
         <div className="mt-2.5 flex justify-end gap-2.5">
           <Button onClick={onClose}>Close</Button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
   );
 };
 

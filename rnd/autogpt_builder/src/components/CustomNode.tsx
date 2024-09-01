@@ -15,7 +15,7 @@ import {
   Category,
   NodeExecutionResult,
 } from "@/lib/autogpt-server-api/types";
-import { beautifyString, setNestedProperty } from "@/lib/utils";
+import { beautifyString, cn, setNestedProperty } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Copy, Trash2 } from "lucide-react";
@@ -25,6 +25,8 @@ import { NodeGenericInputField } from "./node-input-components";
 import SchemaTooltip from "./SchemaTooltip";
 import { getPrimaryCategoryColor } from "@/lib/utils";
 import { FlowContext } from "./Flow";
+import { Badge } from "./ui/badge";
+import DataTable from "./DataTable";
 
 type ParsedKey = { key: string; index?: number };
 
@@ -47,7 +49,12 @@ export type CustomNodeData = {
   connections: ConnectionData;
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
-  output_data?: NodeExecutionResult["output_data"];
+  /** executionResults contains outputs across multiple executions
+   * with the last element being the most recent output */
+  executionResults?: {
+    execId: string;
+    data: NodeExecutionResult["output_data"];
+  }[];
   block_id: string;
   backend_id?: string;
   errors?: { [key: string]: string };
@@ -61,7 +68,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
-  const [modalValue, setModalValue] = useState<string>("");
+  const [inputModalValue, setInputModalValue] = useState<string>("");
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const { updateNodeData, deleteElements, addNodes, getNode } = useReactFlow<
@@ -78,10 +85,10 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   const { setIsAnyModalOpen, getNextNodeId } = flowContext;
 
   useEffect(() => {
-    if (data.output_data || data.status) {
+    if (data.executionResults || data.status) {
       setIsOutputOpen(true);
     }
-  }, [data.output_data, data.status]);
+  }, [data.executionResults, data.status]);
 
   useEffect(() => {
     setIsOutputOpen(data.isOutputOpen);
@@ -240,7 +247,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     console.log(`Opening modal for key: ${key}`);
     setActiveKey(key);
     const value = getValue(key);
-    setModalValue(
+    setInputModalValue(
       typeof value === "object" ? JSON.stringify(value, null, 2) : value,
     );
     setIsModalOpen(true);
@@ -261,11 +268,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
 
   const handleOutputClick = () => {
     setIsOutputModalOpen(true);
-    setModalValue(
-      data.output_data
-        ? JSON.stringify(data.output_data, null, 2)
-        : "[no output (yet)]",
-    );
   };
 
   const handleHovered = () => {
@@ -323,7 +325,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   const hasConfigErrors =
     data.errors &&
     Object.entries(data.errors).some(([_, value]) => value !== null);
-  const outputData = data.output_data;
+  const outputData = data.executionResults?.at(-1)?.data;
   const hasOutputError =
     typeof outputData === "object" &&
     outputData !== null &&
@@ -455,32 +457,27 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         </div>
       </div>
       {isOutputOpen && (
-        <div className="node-output break-words" onClick={handleOutputClick}>
-          <p>
-            <strong>Status:</strong>{" "}
-            {typeof data.status === "object"
-              ? JSON.stringify(data.status)
-              : data.status || "N/A"}
-          </p>
-          <p>
-            <strong>Output Data:</strong>{" "}
-            {(() => {
-              const outputText =
-                typeof data.output_data === "object"
-                  ? JSON.stringify(data.output_data)
-                  : data.output_data;
-
-              if (!outputText) return "No output data";
-
-              return outputText.length > 100
-                ? `${outputText.slice(0, 100)}... Press To Read More`
-                : outputText;
-            })()}
-          </p>
+        <div className="nodrag m-3 break-words rounded-md border-[1.5px] p-2">
+          {(data.executionResults?.length ?? 0) > 0 ? (
+            <>
+              <DataTable
+                title="Latest Output"
+                truncateLongData
+                data={data.executionResults!.at(-1)?.data || {}}
+              />
+              <div className="flex justify-end">
+                <Button variant="ghost" onClick={handleOutputClick}>
+                  View More
+                </Button>
+              </div>
+            </>
+          ) : (
+            <span>No outputs yet</span>
+          )}
         </div>
       )}
       <div className="mt-2.5 flex items-center pb-4 pl-4">
-        <Switch onCheckedChange={toggleOutput} />
+        <Switch checked={isOutputOpen} onCheckedChange={toggleOutput} />
         <span className="m-1 mr-4">Output</span>
         {hasOptionalFields && (
           <>
@@ -488,18 +485,26 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
             <span className="m-1">Advanced</span>
           </>
         )}
+        {data.status && (
+          <Badge
+            variant="outline"
+            className={cn(data.status.toLowerCase(), "ml-auto mr-5")}
+          >
+            {data.status}
+          </Badge>
+        )}
       </div>
       <InputModalComponent
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={handleModalSave}
-        value={modalValue}
+        value={inputModalValue}
         key={activeKey}
       />
       <OutputModalComponent
         isOpen={isOutputModalOpen}
         onClose={() => setIsOutputModalOpen(false)}
-        value={modalValue}
+        executionResults={data.executionResults?.toReversed() || []}
       />
     </div>
   );
