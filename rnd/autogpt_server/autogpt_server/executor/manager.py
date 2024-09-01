@@ -2,6 +2,8 @@ import asyncio
 import logging
 from concurrent.futures import Future, ProcessPoolExecutor, TimeoutError
 from contextlib import contextmanager
+import signal
+import sys
 from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 
 if TYPE_CHECKING:
@@ -335,6 +337,14 @@ class Executor:
         cls.loop = asyncio.new_event_loop()
         cls.loop.run_until_complete(db.connect())
         cls.agent_server_client = get_agent_server_client()
+
+        # Set up shutdown handler
+        signal.signal(signal.SIGTERM, lambda _, __: cls.node_executor_stop())
+
+    @classmethod
+    def node_executor_stop(cls):
+        cls.loop.run_until_complete(db.disconnect())
+        sys.exit(0)
 
     @classmethod
     def on_node_execution(cls, q: ExecutionQueue[NodeExecution], data: NodeExecution):
