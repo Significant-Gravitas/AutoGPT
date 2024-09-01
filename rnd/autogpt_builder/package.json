@@ -25,6 +25,7 @@
     "@radix-ui/react-separator": "^1.1.0",
     "@radix-ui/react-slot": "^1.1.0",
     "@radix-ui/react-switch": "^1.1.0",
+    "@radix-ui/react-toast": "^1.2.1",
     "@radix-ui/react-tooltip": "^1.1.2",
     "@supabase/ssr": "^0.4.0",
     "@supabase/supabase-js": "^2.45.0",
@@ -50,6 +51,7 @@
     "react-shepherd": "^6.1.1",
     "tailwind-merge": "^2.3.0",
     "tailwindcss-animate": "^1.0.7",
+    "uuid": "^10.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

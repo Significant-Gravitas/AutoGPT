@@ -53,12 +53,11 @@ model AnalyticsTracker {
 }
 
 model FeaturedAgent {
-  id          String  @id @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agentId     String  @unique @db.Uuid
-  agent       Agents  @relation(fields: [agentId], references: [id])
-  is_featured Boolean @default(false)
-  category    String  @default("featured")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String   @id @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentId            String   @unique @db.Uuid
+  agent              Agents   @relation(fields: [agentId], references: [id])
+  isActive           Boolean  @default(false)
+  featuredCategories String[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }

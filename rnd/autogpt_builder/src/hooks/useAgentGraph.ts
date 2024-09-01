@@ -369,7 +369,6 @@ export default function useAgentGraph(
 
   const updateNodesWithExecutionData = useCallback(
     (executionData: NodeExecutionResult) => {
-      //todo kcze turning off beads
       if (passDataToBeads) {
         updateEdgeBeads(executionData);
       }
@@ -392,7 +391,16 @@ export default function useAgentGraph(
                 data: {
                   ...node.data,
                   status: executionData.status,
-                  output_data: executionData.output_data,
+                  executionResults:
+                    Object.keys(executionData.output_data).length > 0
+                      ? [
+                          ...(node.data.executionResults || []),
+                          {
+                            execId: executionData.node_exec_id,
+                            data: executionData.output_data,
+                          },
+                        ]
+                      : node.data.executionResults,
                   isOutputOpen: true,
                 },
               }
@@ -403,7 +411,7 @@ export default function useAgentGraph(
     [nodes],
   );
 
-  //kcze to utils? repeated in Flow
+  //TODO to utils? repeated in Flow
   const formatEdgeID = useCallback((conn: Link | Connection): string => {
     if ("sink_id" in conn) {
       return `${conn.source_id}_${conn.source_name}_${conn.sink_id}_${conn.sink_name}`;
@@ -667,6 +675,7 @@ export default function useAgentGraph(
                     ),
                     status: undefined,
                     backend_id: backendNode.id,
+                    executionResults: [],
                   },
                 }
               : null;
