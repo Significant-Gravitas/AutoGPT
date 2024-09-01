@@ -258,7 +258,7 @@ def validate_exec(
         If the data is valid, the first element will be the resolved input data, and
         the second element will be the block name.
     """
-    node_block: Block | None = get_block(node.block_id)  # type: ignore
+    node_block: Block | None = get_block(node.block_id)
     if not node_block:
         return None, f"Block for {node.block_id} not found."
 
@@ -285,7 +285,7 @@ def validate_exec(
             data[name] = convert(value, data_type)
 
     # Last validation: Validate the input values against the schema.
-    if error := node_block.input_schema.validate_data(data):  # type: ignore
+    if error := node_block.input_schema.validate_data(data):
         error_message = f"Input data doesn't match {node_block.name}: {error}"
         logger.error(error_message)
         return None, error_message
