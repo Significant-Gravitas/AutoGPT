@@ -111,12 +111,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     setIsAdvancedOpen(checked);
   };
 
-  const hasOptionalFields =
-    data.inputSchema &&
-    Object.keys(data.inputSchema.properties).some((key) => {
-      return !data.inputSchema.required?.includes(key);
-    });
-
   const generateOutputHandles = (schema: BlockIORootSchema) => {
     if (!schema?.properties) return null;
     const keys = Object.keys(schema.properties);
@@ -366,10 +360,19 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
 
   const errorClass =
     hasConfigErrors || hasOutputError ? "border-red-500 border-2" : "";
+
   const statusClass =
     hasConfigErrors || hasOutputError
       ? "failed"
       : (data.status?.toLowerCase() ?? "");
+
+  const hasAdvancedFields =
+    data.inputSchema &&
+    Object.entries(data.inputSchema.properties).some(([key, value]) => {
+      return (
+        value.nonAdvanced !== true && !data.inputSchema.required?.includes(key)
+      );
+    });
 
   return (
     <div
@@ -419,8 +422,12 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
               ([propKey, propSchema]) => {
                 const isRequired = data.inputSchema.required?.includes(propKey);
                 const isConnected = isHandleConnected(propKey);
+                const isAdvanced = !propSchema.nonAdvanced;
                 return (
-                  (isRequired || isAdvancedOpen || isConnected) && (
+                  (isRequired ||
+                    (isAdvancedOpen && isAdvanced) ||
+                    isConnected ||
+                    !isAdvanced) && (
                     <div key={propKey} onMouseOver={() => {}}>
                       <NodeHandle
                         keyName={propKey}
@@ -482,7 +489,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       <div className="mt-2.5 flex items-center pb-4 pl-4">
         <Switch onCheckedChange={toggleOutput} />
         <span className="m-1 mr-4">Output</span>
-        {hasOptionalFields && (
+        {hasAdvancedFields && (
           <>
             <Switch onCheckedChange={toggleAdvancedSettings} />
             <span className="m-1">Advanced</span>
