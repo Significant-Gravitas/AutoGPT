@@ -69,11 +69,8 @@ def execute_node(
         api_client.send_execution_update(exec_update.model_dump())
 
     node = wait(get_node(node_id))
-    if not node:
-        logger.error(f"Node {node_id} not found.")
-        return
 
-    node_block = get_block(node.block_id)  # type: ignore
+    node_block = get_block(node.block_id)
     if not node_block:
         logger.error(f"Block {node.block_id} not found.")
         return
@@ -161,9 +158,6 @@ def _enqueue_next_nodes(
             return enqueued_executions
 
         next_node = wait(get_node(next_node_id))
-        if not next_node:
-            logger.error(f"{prefix} Error, next node {next_node_id} not found.")
-            return enqueued_executions
 
         # Multiple node can register the same next node, we need this to be atomic
         # To avoid same execution to be enqueued multiple times,
