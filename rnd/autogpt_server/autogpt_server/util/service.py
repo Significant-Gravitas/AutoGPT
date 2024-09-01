@@ -55,10 +55,10 @@ class AppService(AppProcess):
         while True:
             time.sleep(10)
 
-    def __run_async(self, coro: Coroutine[T, Any, T]):
+    def __run_async(self, coro: Coroutine[Any, Any, T]):
         return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop)
 
-    def run_and_wait(self, coro: Coroutine[T, Any, T]) -> T:
+    def run_and_wait(self, coro: Coroutine[Any, Any, T]) -> T:
         future = self.__run_async(coro)
         return future.result()
 
@@ -100,7 +100,6 @@ def get_service_client(service_type: Type[AS]) -> AS:
     service_name = service_type.service_name
 
     class DynamicClient:
-
         @conn_retry
         def __init__(self):
             ns = pyro.locate_ns()
