@@ -133,7 +133,7 @@ def _enqueue_next_nodes(
     graph_exec_id: str,
     prefix: str,
 ) -> list[NodeExecution]:
-    def wait(f: Coroutine[T, Any, T]) -> T:
+    def wait(f: Coroutine[Any, Any, T]) -> T:
         return loop.run_until_complete(f)
 
     def add_enqueued_execution(
