@@ -24,9 +24,5 @@ class KeyedMutex:
         lock.acquire()
 
     def unlock(self, key: Any):
-        with self.locks_lock:
-            if key in self.locks:
-                lock = self.locks.pop(key)
-            else:
-                return
-        lock.release()
+        if lock := self.locks.get(key):
+            lock.release()
