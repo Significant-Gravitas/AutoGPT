@@ -1,4 +1,5 @@
 import os
+import signal
 import sys
 from abc import ABC, abstractmethod
 from multiprocessing import Process, set_start_method
@@ -13,6 +14,8 @@ class AppProcess(ABC):
     process: Optional[Process] = None
     set_start_method("spawn", force=True)
 
+    # Methods that are executed INSIDE the process #
+
     @abstractmethod
     def run(self):
         """
@@ -20,7 +23,16 @@ class AppProcess(ABC):
         """
         pass
 
+    def cleanup(self):
+        """
+        Implement this method on a subclass to do post-execution cleanup,
+        e.g. disconnecting from a database or terminating child processes.
+        """
+        pass
+
     def execute_run_command(self, silent):
+        signal.signal(signal.SIGTERM, self._self_terminate)
+
         try:
             if silent:
                 sys.stdout = open(os.devnull, "w")
@@ -28,6 +40,12 @@ class AppProcess(ABC):
             self.run()
         except KeyboardInterrupt or SystemExit as e:
             print(f"Process terminated: {e}")
+
+    def _self_terminate(self, signum: int, frame):
+        self.cleanup()
+        sys.exit(0)
+
+    # Methods that are executed OUTSIDE the process #
 
     def __enter__(self):
         self.start(background=True)

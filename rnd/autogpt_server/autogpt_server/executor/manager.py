@@ -414,12 +414,18 @@ class ExecutionManager(AppService):
         with ProcessPoolExecutor(
             max_workers=self.pool_size,
             initializer=Executor.on_graph_executor_start,
-        ) as executor:
-            logger.warning(
+        ) as self.executor:
+            logger.info(
                 f"Execution manager started with max-{self.pool_size} graph workers."
             )
             while True:
-                executor.submit(Executor.on_graph_execution, self.queue.get())
+                self.executor.submit(Executor.on_graph_execution, self.queue.get())
+
+    def cleanup(self):
+        logger.info("⏳ Shutting down graph executor pool...")
+        self.executor.shutdown()
+
+        super().cleanup()
 
     @property
     def agent_server_client(self) -> "AgentServer":

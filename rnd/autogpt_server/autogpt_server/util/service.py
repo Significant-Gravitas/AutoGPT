@@ -80,6 +80,11 @@ class AppService(AppProcess):
         # Run the main service (if it's not implemented, just sleep).
         self.run_service()
 
+    def cleanup(self):
+        if self.use_db:
+            logger.info("⏳ Disconnecting DB")
+            self.run_and_wait(db.disconnect())
+
     @conn_retry
     def __start_pyro(self):
         daemon = pyro.Daemon(host=pyro_host)
@@ -100,7 +105,6 @@ def get_service_client(service_type: Type[AS]) -> AS:
     service_name = service_type.service_name
 
     class DynamicClient:
-
         @conn_retry
         def __init__(self):
             ns = pyro.locate_ns()
