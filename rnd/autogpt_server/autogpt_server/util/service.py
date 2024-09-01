@@ -16,11 +16,21 @@ from autogpt_server.util.settings import Config
 logger = logging.getLogger(__name__)
 conn_retry = retry(stop=stop_after_delay(5), wait=wait_exponential(multiplier=0.1))
 T = TypeVar("T")
+C = TypeVar("C", bound=Callable)
 
 pyro_host = Config().pyro_host
 
 
-def expose(func: Callable) -> Callable:
+def expose(func: C) -> C:
+    """
+    Decorator to mark a method or class to be exposed for remote calls.
+
+    ## ⚠️ Gotcha
+    The types on the exposed function signature are respected **as long as they are
+    fully picklable**. This is not the case for Pydantic models, so if you really need
+    to pass a model, try dumping the model and passing the resulting dict instead.
+    """
+
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
@@ -29,7 +39,7 @@ def expose(func: Callable) -> Callable:
             logger.exception(msg)
             raise Exception(msg, e)
 
-    return pyro.expose(wrapper)
+    return pyro.expose(wrapper)  # type: ignore
 
 
 class PyroNameServer(AppProcess):
