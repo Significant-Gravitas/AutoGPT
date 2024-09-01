@@ -38,7 +38,7 @@ const InputModalComponent: FC<ModalProps> = ({
 
   return (
     <div className="nodrag fixed inset-0 flex items-center justify-center bg-white bg-opacity-60">
-      <div className="w-[500px] max-w-[90%] rounded-lg bg-white p-5">
+      <div className="w-[500px] max-w-[90%] rounded-lg border-[1.5px] bg-white p-5">
         <center>
           <h1>Enter input text</h1>
         </center>
