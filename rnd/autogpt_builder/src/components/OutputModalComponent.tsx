@@ -6,7 +6,6 @@ import { Separator } from "@/components/ui/separator";
 
 interface OutputModalProps {
   isOpen: boolean;
-  onClear: () => void;
   onClose: () => void;
   executionResults: {
     execId: string;
@@ -16,7 +15,6 @@ interface OutputModalProps {
 
 const OutputModalComponent: FC<OutputModalProps> = ({
   isOpen,
-  onClear,
   onClose,
   executionResults,
 }) => {
@@ -37,9 +35,6 @@ const OutputModalComponent: FC<OutputModalProps> = ({
           ))}
         </div>
         <div className="mt-2.5 flex justify-end gap-2.5">
-          <Button variant="destructive" onClick={onClear}>
-            Clear
-          </Button>
           <Button onClick={onClose}>Close</Button>
         </div>
       </div>

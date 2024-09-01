@@ -465,13 +465,11 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                 truncateLongData
                 data={data.executionResults!.at(-1)?.data || {}}
               />
-              <Button
-                variant="ghost"
-                className="mt-2"
-                onClick={handleOutputClick}
-              >
-                View More
-              </Button>
+              <div className="flex justify-end">
+                <Button variant="ghost" onClick={handleOutputClick}>
+                  View More
+                </Button>
+              </div>
             </>
           ) : (
             <span>No outputs yet</span>
@@ -505,10 +503,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       />
       <OutputModalComponent
         isOpen={isOutputModalOpen}
-        onClear={() => {
-          updateNodeData(id, { executionResults: [] });
-          setIsOutputModalOpen(false);
-        }}
         onClose={() => setIsOutputModalOpen(false)}
         executionResults={data.executionResults?.toReversed() || []}
       />
