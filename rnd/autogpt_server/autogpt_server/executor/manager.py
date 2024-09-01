@@ -61,7 +61,7 @@ def execute_node(
 
     asyncio.set_event_loop(loop)
 
-    def wait(f: Coroutine[T, Any, T]) -> T:
+    def wait(f: Coroutine[Any, Any, T]) -> T:
         return loop.run_until_complete(f)
 
     def update_execution(status: ExecutionStatus):
