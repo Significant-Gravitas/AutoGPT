@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 from autogpt_libs.auth import parse_jwt_token
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
@@ -37,15 +38,12 @@ def get_connection_manager():
     return _connection_manager
 
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(self, _: FastAPI):
     await event_queue.connect()
     manager = get_connection_manager()
     asyncio.create_task(event_broadcaster(manager))
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
+    yield
     await event_queue.close()
 
 
