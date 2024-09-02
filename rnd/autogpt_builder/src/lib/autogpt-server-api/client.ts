@@ -21,9 +21,11 @@ export default class AutoGPTServerAPI {
   constructor(
     baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
       "http://localhost:8000/api",
+    wsUrl: string = process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL ||
+      "ws://localhost:8001/ws",
   ) {
     this.baseUrl = baseUrl;
-    this.wsUrl = `ws://${new URL(this.baseUrl).host}/ws`;
+    this.wsUrl = wsUrl;
   }
 
   async createUser(): Promise<User> {
