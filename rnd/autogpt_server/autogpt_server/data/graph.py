@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uuid
 from pathlib import Path
 from typing import Any, Literal
@@ -12,9 +13,6 @@ from autogpt_server.data.block import BlockInput, get_block, get_blocks
 from autogpt_server.data.db import BaseDbModel, transaction
 from autogpt_server.data.user import DEFAULT_USER_ID
 from autogpt_server.util import json
-from autogpt_server.util.logging import configure_logging
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -492,7 +490,9 @@ async def import_packaged_templates() -> None:
 
         template = Graph.model_validate(template_data)
         if not template.is_template:
-            logging.warning(f"pre-packaged graph file {template_file} is not a template")
+            logging.warning(
+                f"pre-packaged graph file {template_file} is not a template"
+            )
             continue
         if (
             exists := next((t for t in templates_in_db if t.id == template.id), None)
