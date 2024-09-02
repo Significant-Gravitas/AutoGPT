@@ -405,11 +405,11 @@ def merge_execution_input(data: BlockInput) -> BlockInput:
 
 async def get_latest_execution(node_id: str, graph_eid: str) -> ExecutionResult | None:
     execution = await AgentNodeExecution.prisma().find_first(
-        where={  # type: ignore
+        where={
             "agentNodeId": node_id,
             "agentGraphExecutionId": graph_eid,
             "executionStatus": {"not": ExecutionStatus.INCOMPLETE},
-            "executionData": {"not": None},
+            "executionData": {"not": None},  # type: ignore
         },
         order={"queuedTime": "desc"},
         include=EXECUTION_RESULT_INCLUDE,
@@ -423,7 +423,7 @@ async def get_incomplete_executions(
     node_id: str, graph_eid: str
 ) -> list[ExecutionResult]:
     executions = await AgentNodeExecution.prisma().find_many(
-        where={  # type: ignore
+        where={
             "agentNodeId": node_id,
             "agentGraphExecutionId": graph_eid,
             "executionStatus": ExecutionStatus.INCOMPLETE,

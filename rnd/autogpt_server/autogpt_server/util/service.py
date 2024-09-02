@@ -70,7 +70,7 @@ class AppService(AppProcess):
         while True:
             time.sleep(10)
 
-    def __run_async(self, coro: Coroutine[T, Any, T]):
+    def __run_async(self, coro: Coroutine[Any, Any, T]):
         return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop)
 
     def run_and_wait(self, coro: Coroutine[Any, Any, T]) -> T:
