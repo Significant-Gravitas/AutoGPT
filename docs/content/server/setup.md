@@ -56,6 +56,16 @@ Poetry is a package manager for Python. You can install it by running the follow
 ```bash
 pip install poetry
 ```
+- Installing Docker and Docker Compose
+
+Docker containerizes applications, while Docker Compose orchestrates multi-container Docker applications.
+
+You can follow the steps here:
+
+If you need assistance installing docker:
+https://docs.docker.com/desktop/
+If you need assistance installing docker compose: 
+https://docs.docker.com/compose/install/
 
 ### Installing the dependencies
 
