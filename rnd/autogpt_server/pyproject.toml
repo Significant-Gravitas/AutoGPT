@@ -44,6 +44,9 @@ uvicorn = { extras = ["standard"], version = "^0.30.1" }
 websockets = "^12.0"
 youtube-transcript-api = "^0.6.2"
 
+aio-pika = "^9.4.3"
+redis = "^5.0.8"
+
 [tool.poetry.group.dev.dependencies]
 cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main", develop = true }
 poethepoet = "^0.26.1"
@@ -61,6 +64,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 app = "autogpt_server.app:main"
+ws = "autogpt_server.ws_app:main"
 cli = "autogpt_server.cli:main"
 format = "linter:format"
 lint = "linter:lint"
