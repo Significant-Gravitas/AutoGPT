@@ -276,12 +276,12 @@ AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
 # --------------------- Model functions --------------------- #
 
 
-async def get_node(node_id: str) -> Node | None:
+async def get_node(node_id: str) -> Node:
     node = await AgentNode.prisma().find_unique_or_raise(
         where={"id": node_id},
         include=AGENT_NODE_INCLUDE,
     )
-    return Node.from_db(node) if node else None
+    return Node.from_db(node)
 
 
 async def get_graphs_meta(
