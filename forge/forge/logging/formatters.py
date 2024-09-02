@@ -1,6 +1,4 @@
-import json
 import logging
-from typing import Dict, Any
 
 from colorama import Fore, Style
 from google.cloud.logging_v2.handlers import CloudLoggingFilter, StructuredLogHandler
@@ -86,34 +84,12 @@ class ForgeFormatter(FancyConsoleFormatter):
 
 class StructuredLoggingFormatter(StructuredLogHandler, logging.Formatter):
     def __init__(self):
+        # Set up CloudLoggingFilter to add diagnostic info to the log records
         self.cloud_logging_filter = CloudLoggingFilter()
+
+        # Init StructuredLogHandler
         super().__init__()
 
     def format(self, record: logging.LogRecord) -> str:
         self.cloud_logging_filter.filter(record)
-
-        # Extracts the standard fields
-        log_entry = self.get_standard_fields(record)
-
-        # Adds extra fields
-        log_entry.update(self.get_extra_fields(record))
-
-        return self.to_json(log_entry)
-
-    def get_standard_fields(self, record: logging.LogRecord) -> Dict[str, Any]:
-        return {
-            "severity": record.levelname,
-            "message": record.getMessage(),
-            "logger": record.name
-        }
-
-    def get_extra_fields(self, record: logging.LogRecord) -> Dict[str, Any]:
-        extra_fields = {}
-        for key, value in record.__dict__.items():
-            if key not in ["msg", "args", "levelname", "pathname", "lineno", "exc_info", "exc_text", "stack_info",
-                           "created", "msecs", "relativeCreated", "funcName", "levelno", "processName", "threadName"]:
-                extra_fields[key] = value
-        return extra_fields
-
-    def to_json(self, log_entry: Dict[str, Any]) -> str:
-        return json.dumps(log_entry)
+        return super().format(record)

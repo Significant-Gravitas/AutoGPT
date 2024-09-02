@@ -90,19 +90,25 @@ def execute_node(
     if exec_data is None:
         logger.error(
             "Skip execution, input validation error",
-            extra={**log_metadata, "error": error},
+            extra={
+                "json_fields": {**log_metadata, "error": error},
+            },
         )
         return
 
     # Execute the node
     exec_data_str = str(exec_data).encode("utf-8").decode("unicode_escape")
-    logger.info("Execute with input", extra={**log_metadata, "input": exec_data_str})
+    logger.info(
+        "Execute with input",
+        extra={"json_fields": {**log_metadata, "input": exec_data_str}},
+    )
     update_execution(ExecutionStatus.RUNNING)
 
     try:
         for output_name, output_data in node_block.execute(exec_data):
             logger.info(
-                "Received output", extra={**log_metadata, output_name: output_data}
+                "Received output",
+                extra={"json_fields": {**log_metadata, output_name: output_data}},
             )
             wait(upsert_execution_output(node_exec_id, output_name, output_data))
 
@@ -120,7 +126,10 @@ def execute_node(
 
     except Exception as e:
         error_msg = f"{e.__class__.__name__}: {e}"
-        logger.exception("failed with error", extra={**log_metadata, error: error_msg})
+        logger.exception(
+            "failed with error",
+            extra={"json_fields": {**log_metadata, error: error_msg}},
+        )
         wait(upsert_execution_output(node_exec_id, "error", error_msg))
         update_execution(ExecutionStatus.FAILED)
 
@@ -176,7 +185,9 @@ def _enqueue_next_nodes(
             logger.error(
                 f"Error, next node {next_node_id} not found.",
                 extra={
-                    **log_metadata,
+                    "json_fields": {
+                        **log_metadata,
+                    }
                 },
             )
             return enqueued_executions
@@ -218,7 +229,9 @@ def _enqueue_next_nodes(
                 logger.warning(
                     f"Skipped queueing {suffix}",
                     extra={
-                        **log_metadata,
+                        "json_fields": {
+                            **log_metadata,
+                        }
                     },
                 )
                 return enqueued_executions
@@ -227,7 +240,9 @@ def _enqueue_next_nodes(
             logger.info(
                 f"Enqueued {suffix}",
                 extra={
-                    **log_metadata,
+                    "json_fields": {
+                        **log_metadata,
+                    }
                 },
             )
             enqueued_executions.append(
@@ -373,7 +388,9 @@ class Executor:
             cls.logger.info(
                 "Start node execution",
                 extra={
-                    **log_metadata,
+                    "json_fields": {
+                        **log_metadata,
+                    }
                 },
             )
             for execution in execute_node(cls.loop, cls.agent_server_client, data):
@@ -381,7 +398,9 @@ class Executor:
             cls.logger.info(
                 "Finished node execution",
                 extra={
-                    **log_metadata,
+                    "json_fields": {
+                        **log_metadata,
+                    }
                 },
             )
         except Exception as e:
@@ -409,7 +428,9 @@ class Executor:
         cls.logger.info(
             "Start graph execution",
             extra={
-                **log_metadata,
+                "json_fields": {
+                    **log_metadata,
+                }
             },
         )
 
@@ -446,14 +467,18 @@ class Executor:
             cls.logger.info(
                 "Finished graph execution",
                 extra={
-                    **log_metadata,
+                    "json_fields": {
+                        **log_metadata,
+                    }
                 },
             )
         except Exception as e:
             cls.logger.exception(
                 f"Failed graph execution: {e}",
                 extra={
-                    **log_metadata,
+                    "json_fields": {
+                        **log_metadata,
+                    }
                 },
             )
 
