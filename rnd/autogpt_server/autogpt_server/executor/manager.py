@@ -8,7 +8,7 @@ from multiprocessing.pool import AsyncResult, Pool
 from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 
 if TYPE_CHECKING:
-    from autogpt_server.server.server import AgentServer
+    from autogpt_server.server.rest_api import AgentServer
 
 from autogpt_server.blocks.basic import InputBlock
 from autogpt_server.data import db
@@ -304,7 +304,7 @@ def validate_exec(
 
 
 def get_agent_server_client() -> "AgentServer":
-    from autogpt_server.server.server import AgentServer
+    from autogpt_server.server.rest_api import AgentServer
 
     return get_service_client(AgentServer)
 
@@ -440,6 +440,7 @@ class Executor:
 
 class ExecutionManager(AppService):
     def __init__(self):
+        self.use_redis = False
         self.pool_size = Config().num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
@@ -477,7 +478,6 @@ class ExecutionManager(AppService):
         if not graph:
             raise Exception(f"Graph #{graph_id} not found.")
         graph.validate_graph(for_run=True)
-
         nodes_input = []
         for node in graph.starting_nodes:
             input_data = {}

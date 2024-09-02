@@ -1,21 +1,57 @@
+import asyncio
 import time
 
 from autogpt_server.data import db
 from autogpt_server.data.block import Block, initialize_blocks
-from autogpt_server.data.execution import ExecutionStatus
+from autogpt_server.data.execution import ExecutionResult, ExecutionStatus
+from autogpt_server.data.queue import AsyncEventQueue
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server import AgentServer
-from autogpt_server.server.server import get_user_id
+from autogpt_server.server.rest_api import get_user_id
 from autogpt_server.util.service import PyroNameServer
 
 log = print
+
+
+class InMemoryAsyncEventQueue(AsyncEventQueue):
+    def __init__(self):
+        self.queue = asyncio.Queue()
+        self.connected = False
+        self.closed = False
+
+    async def connect(self):
+        if not self.connected:
+            self.connected = True
+        return
+
+    async def close(self):
+        self.closed = True
+        self.connected = False
+        return
+
+    async def put(self, execution_result: ExecutionResult):
+        if not self.connected:
+            raise RuntimeError("Queue is not connected")
+        await self.queue.put(execution_result)
+
+    async def get(self):
+        if self.closed:
+            return None
+        if not self.connected:
+            raise RuntimeError("Queue is not connected")
+        try:
+            item = await asyncio.wait_for(self.queue.get(), timeout=0.1)
+            return item
+        except asyncio.TimeoutError:
+            return None
 
 
 class SpinTestServer:
     def __init__(self):
         self.name_server = PyroNameServer()
         self.exec_manager = ExecutionManager()
-        self.agent_server = AgentServer()
+        self.in_memory_queue = InMemoryAsyncEventQueue()
+        self.agent_server = AgentServer(event_queue=self.in_memory_queue)
         self.scheduler = ExecutionScheduler()
 
     @staticmethod
