@@ -10,7 +10,7 @@ class CreateMediumPostBlock(Block):
     class Input(BlockSchema):
         author_id: BlockSecret = SecretField(
             key="medium_author_id",
-            description="""The Medium AuthorID of the user. You can get this by calling the /me endpoint of the Medium API.\n\ncurl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me" the response will contain the authorId field.""",
+            description="""The Medium AuthorID of the user. You can get this by calling the /me endpoint of the Medium API.\n\ncurl -H \"Authorization: Bearer YOUR_ACCESS_TOKEN\" https://api.medium.com/v1/me" the response will contain the authorId field.""",
             placeholder="Enter the author's Medium AuthorID",
         )
         title: str = SchemaField(
@@ -138,6 +138,13 @@ class CreateMediumPostBlock(Block):
         return response.json()
 
     def run(self, input_data: Input) -> BlockOutput:
+        missing_fields = [field for field in [
+            'title', 'content', 'content_format', 'tags', 'publish_status'
+        ] if not getattr(input_data, field)]
+        if missing_fields:
+            yield "error", f"Missing required fields: {', '.join(missing_fields)}"
+            return
+
         try:
             response = self.create_post(
                 input_data.api_key.get_secret_value(),
@@ -167,3 +174,4 @@ class CreateMediumPostBlock(Block):
             yield "error", f"Network error occurred while creating Medium post: {str(e)}"
         except Exception as e:
             yield "error", f"Error occurred while creating Medium post: {str(e)}"
+
