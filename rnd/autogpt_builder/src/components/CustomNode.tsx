@@ -370,7 +370,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     data.inputSchema &&
     Object.entries(data.inputSchema.properties).some(([key, value]) => {
       return (
-        value.nonAdvanced !== true && !data.inputSchema.required?.includes(key)
+        value.advanced === true && !data.inputSchema.required?.includes(key)
       );
     });
 
@@ -422,10 +422,10 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
               ([propKey, propSchema]) => {
                 const isRequired = data.inputSchema.required?.includes(propKey);
                 const isConnected = isHandleConnected(propKey);
-                const isAdvanced = !propSchema.nonAdvanced;
+                const isAdvanced = propSchema.advanced;
                 return (
                   (isRequired ||
-                    (isAdvancedOpen && isAdvanced) ||
+                    isAdvancedOpen ||
                     isConnected ||
                     !isAdvanced) && (
                     <div key={propKey} onMouseOver={() => {}}>

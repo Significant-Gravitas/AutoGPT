@@ -109,7 +109,7 @@ def SchemaField(
     title: Optional[str] = None,
     description: Optional[str] = None,
     placeholder: Optional[str] = None,
-    non_advanced: Optional[bool] = None,
+    advanced: Optional[bool] = None,
     secret: bool = False,
     exclude: bool = False,
     **kwargs,
@@ -119,8 +119,8 @@ def SchemaField(
         json_extra["placeholder"] = placeholder
     if secret:
         json_extra["secret"] = True
-    if non_advanced:
-        json_extra["nonAdvanced"] = True
+    if advanced:
+        json_extra["advanced"] = True
 
     return Field(
         default,
