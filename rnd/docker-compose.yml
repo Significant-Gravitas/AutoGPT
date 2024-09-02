@@ -6,7 +6,6 @@ services:
       POSTGRES_USER: agpt_user
       POSTGRES_PASSWORD: pass123
       POSTGRES_DB: agpt_local
-      PGUSER: 5432
     healthcheck:
       test: pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB
       interval: 10s
@@ -14,3 +13,51 @@ services:
       retries: 5
     ports:
       - "5432:5432"
+
+  redis:
+    image: redis:latest
+    command: redis-server --requirepass password
+    ports:
+      - "6379:6379"
+
+  rest_server:
+    build:
+      context: ../
+      dockerfile: rnd/autogpt_server/Dockerfile
+    develop:
+      watch:
+        - path: ./
+          target: rnd/autogpt_server/
+          action: rebuild
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=password
+      - AUTH_ENABLED=false
+    ports:
+      - "8000:8000"
+
+  ws_server:
+    build:
+      context: ../
+      dockerfile: rnd/autogpt_server/Dockerfile.ws
+    develop:
+      watch:
+        - path: ./
+          target: rnd/autogpt_server/
+          action: rebuild
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=password
+      - AUTH_ENABLED=false
+    ports:
+      - "8001:8001"

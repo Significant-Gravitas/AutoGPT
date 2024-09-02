@@ -2,6 +2,9 @@ from autogpt_server.util.service import AppService, expose, get_service_client
 
 
 class TestService(AppService):
+    def __init__(self):
+        self.use_redis = False
+
     def run_service(self):
         super().run_service()
 
