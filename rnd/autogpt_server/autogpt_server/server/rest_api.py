@@ -1,4 +1,3 @@
-import asyncio
 import inspect
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -6,21 +5,11 @@ from functools import wraps
 from typing import Annotated, Any, Dict
 
 import uvicorn
-from autogpt_libs.auth.jwt_utils import parse_jwt_token
 from autogpt_libs.auth.middleware import auth_middleware
-from fastapi import (
-    APIRouter,
-    Body,
-    Depends,
-    FastAPI,
-    HTTPException,
-    WebSocket,
-    WebSocketDisconnect,
-)
+from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-import autogpt_server.server.ws_api
 from autogpt_server.data import block, db
 from autogpt_server.data import graph as graph_db
 from autogpt_server.data import user as user_db
@@ -30,15 +19,11 @@ from autogpt_server.data.execution import (
     get_execution_results,
     list_executions,
 )
-from autogpt_server.data.user import DEFAULT_USER_ID, get_or_create_user
+from autogpt_server.data.queue import AsyncEventQueue, AsyncRedisEventQueue
+from autogpt_server.data.user import get_or_create_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
-from autogpt_server.server.conn_manager import ConnectionManager
-from autogpt_server.server.model import (
-    CreateGraph,
-    Methods,
-    SetGraphActiveVersion,
-    WsMessage,
-)
+from autogpt_server.server.model import CreateGraph, SetGraphActiveVersion
+from autogpt_server.util.auth import get_user_id
 from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
@@ -46,37 +31,24 @@ from autogpt_server.util.settings import Settings
 settings = Settings()
 
 
-def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
-    if not payload:
-        # This handles the case when authentication is disabled
-        return DEFAULT_USER_ID
-
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="User ID not found in token")
-    return user_id
-
-
 class AgentServer(AppService):
-    event_queue: asyncio.Queue[ExecutionResult] = asyncio.Queue()
-    manager = ConnectionManager()
     mutex = KeyedMutex()
     use_db = False
+    use_redis = True
     _test_dependency_overrides = {}
 
-    async def event_broadcaster(self):
-        while True:
-            event: ExecutionResult = await self.event_queue.get()
-            await self.manager.send_execution_result(event)
+    def __init__(self, event_queue: AsyncEventQueue | None = None):
+        self.event_queue = event_queue or AsyncRedisEventQueue()
 
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
         await db.connect()
+        self.run_and_wait(self.event_queue.connect())
         await block.initialize_blocks()
         if await user_db.create_default_user(settings.config.enable_auth):
             await graph_db.import_packaged_templates()
-        asyncio.create_task(self.event_broadcaster())
         yield
+        await self.event_queue.close()
         await db.disconnect()
 
     def run_service(self):
@@ -223,10 +195,6 @@ class AgentServer(AppService):
 
         app.include_router(router)
 
-        @app.websocket("/ws")
-        async def websocket_endpoint(websocket: WebSocket):  # type: ignore
-            await self.websocket_router(websocket)
-
         uvicorn.run(app, host="0.0.0.0", port=8000)
 
     def set_test_dependency_overrides(self, overrides: dict):
@@ -275,64 +243,6 @@ class AgentServer(AppService):
             },
             status_code=500,
         )
-
-    async def authenticate_websocket(self, websocket: WebSocket) -> str:
-        if settings.config.enable_auth.lower() == "true":
-            token = websocket.query_params.get("token")
-            if not token:
-                await websocket.close(code=4001, reason="Missing authentication token")
-                return ""
-
-            try:
-                payload = parse_jwt_token(token)
-                user_id = payload.get("sub")
-                if not user_id:
-                    await websocket.close(code=4002, reason="Invalid token")
-                    return ""
-                return user_id
-            except ValueError:
-                await websocket.close(code=4003, reason="Invalid token")
-                return ""
-        else:
-            return user_db.DEFAULT_USER_ID
-
-    async def websocket_router(self, websocket: WebSocket):
-        user_id = await self.authenticate_websocket(websocket)
-        if not user_id:
-            return
-        await self.manager.connect(websocket)
-        try:
-            while True:
-                data = await websocket.receive_text()
-                message = WsMessage.model_validate_json(data)
-                if message.method == Methods.SUBSCRIBE:
-                    await autogpt_server.server.ws_api.handle_subscribe(
-                        websocket, self.manager, message
-                    )
-
-                elif message.method == Methods.UNSUBSCRIBE:
-                    await autogpt_server.server.ws_api.handle_unsubscribe(
-                        websocket, self.manager, message
-                    )
-
-                elif message.method == Methods.ERROR:
-                    print("WebSocket Error message received:", message.data)
-
-                else:
-                    print(
-                        f"Message type {message.method} is not processed by the server"
-                    )
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.ERROR,
-                            success=False,
-                            error="Message type is not processed by the server",
-                        ).model_dump_json()
-                    )
-
-        except WebSocketDisconnect:
-            self.manager.disconnect(websocket)
-            print("Client Disconnected")
 
     @classmethod
     async def get_or_create_user_route(cls, user_data: dict = Depends(auth_middleware)):
