@@ -27,8 +27,15 @@ from autogpt_server.data.execution import (
     upsert_execution_output,
 )
 from autogpt_server.data.graph import Graph, Link, Node, get_graph, get_node
+from autogpt_server.util import json
 from autogpt_server.util.function import error_logged, time_measured
 from autogpt_server.util.logging import configure_logging
+from autogpt_server.util.metrics import (
+    metric_graph_count,
+    metric_graph_timing,
+    metric_node_payload,
+    metric_node_timing,
+)
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Config
 from autogpt_server.util.type import convert
@@ -36,11 +43,19 @@ from autogpt_server.util.type import convert
 logger = logging.getLogger(__name__)
 
 
-def get_log_metadata(graph_eid: str, node_eid: str, block_name: str = "-") -> dict:
+def get_log_metadata(
+    graph_eid: str,
+    graph_id: str,
+    node_eid: str,
+    node_id: str,
+    block_name: str,
+) -> dict:
     return {
         "component": "ExecutionManager",
         "graph_eid": graph_eid,
+        "graph_id": graph_id,
         "node_eid": node_eid,
+        "node_id": node_id,
         "block_name": block_name,
     }
 
@@ -65,6 +80,7 @@ def execute_node(
         The subsequent node to be enqueued, or None if there is no subsequent node.
     """
     graph_exec_id = data.graph_exec_id
+    graph_id = data.graph_id
     node_exec_id = data.node_exec_id
     node_id = data.node_id
 
@@ -85,9 +101,15 @@ def execute_node(
         return
 
     # Sanity check: validate the execution input.
-    log_metadata = get_log_metadata(graph_exec_id, node_exec_id, node_block.name)
-    exec_data, error = validate_exec(node, data.data, resolve_input=False)
-    if exec_data is None:
+    log_metadata = get_log_metadata(
+        graph_eid=graph_exec_id,
+        graph_id=graph_id,
+        node_eid=node_exec_id,
+        node_id=node_id,
+        block_name=node_block.name,
+    )
+    input_data, error = validate_exec(node, data.data, resolve_input=False)
+    if input_data is None:
         logger.error(
             "Skip execution, input validation error",
             extra={
@@ -97,20 +119,23 @@ def execute_node(
         return
 
     # Execute the node
-    exec_data_str = str(exec_data).encode("utf-8").decode("unicode_escape")
+    input_data_str = json.dumps(input_data)
+    metric_node_payload("input_size", len(input_data_str), tags=log_metadata)
     logger.info(
         "Executed node with input",
-        extra={"json_fields": {**log_metadata, "input": exec_data_str}},
+        extra={"json_fields": {**log_metadata, "input": input_data_str}},
     )
     update_execution(ExecutionStatus.RUNNING)
 
     try:
-        for output_name, output_data in node_block.execute(exec_data):
+        for output_name, output_data in node_block.execute(input_data):
+            output_data_str = json.dumps(output_data)
+            metric_node_payload("output_size", len(output_data_str), tags=log_metadata)
             logger.info(
                 "Node produced output",
-                extra={"json_fields": {**log_metadata, output_name: output_data}},
+                extra={"json_fields": {**log_metadata, output_name: output_data_str}},
             )
-            wait(upsert_execution_output(node_exec_id, output_name, output_data))
+            wait(upsert_execution_output(node_exec_id, output_name, output_data_str))
 
             for execution in _enqueue_next_nodes(
                 api_client=api_client,
@@ -118,6 +143,7 @@ def execute_node(
                 node=node,
                 output=(output_name, output_data),
                 graph_exec_id=graph_exec_id,
+                graph_id=graph_id,
                 log_metadata=log_metadata,
             ):
                 yield execution
@@ -151,6 +177,7 @@ def _enqueue_next_nodes(
     node: Node,
     output: BlockData,
     graph_exec_id: str,
+    graph_id: str,
     log_metadata: dict,
 ) -> list[NodeExecution]:
     def wait(f: Coroutine[Any, Any, T]) -> T:
@@ -165,6 +192,7 @@ def _enqueue_next_nodes(
         api_client.send_execution_update(exec_update.model_dump())
         return NodeExecution(
             graph_exec_id=graph_exec_id,
+            graph_id=graph_id,
             node_exec_id=node_exec_id,
             node_id=node_id,
             data=data,
@@ -374,21 +402,31 @@ class Executor:
     @classmethod
     @error_logged
     def on_node_execution(cls, q: ExecutionQueue[NodeExecution], data: NodeExecution):
-        timing_info, _ = cls._on_node_execution(q, data)
+        log_metadata = get_log_metadata(
+            graph_eid=data.graph_exec_id,
+            graph_id=data.graph_id,
+            node_eid=data.node_exec_id,
+            node_id=data.node_id,
+            block_name="-",
+        )
+        timing_info, _ = cls._on_node_execution(q, data, log_metadata)
+        metric_node_timing("walltime", timing_info.wall_time, tags=log_metadata)
+        metric_node_timing("cputime", timing_info.cpu_time, tags=log_metadata)
         cls.loop.run_until_complete(
             update_node_execution_stats(
                 data.node_exec_id,
                 {
-                    "wall_time": timing_info.wall_time,
-                    "cpu_time": timing_info.cpu_time,
+                    "walltime": timing_info.wall_time,
+                    "cputime": timing_info.cpu_time,
                 },
             )
         )
 
     @classmethod
     @time_measured
-    def _on_node_execution(cls, q: ExecutionQueue[NodeExecution], data: NodeExecution):
-        log_metadata = get_log_metadata(data.graph_exec_id, data.node_exec_id)
+    def _on_node_execution(
+        cls, q: ExecutionQueue[NodeExecution], data: NodeExecution, log_metadata: dict
+    ):
         try:
             cls.logger.info(
                 "Start node execution",
@@ -432,22 +470,32 @@ class Executor:
     @classmethod
     @error_logged
     def on_graph_execution(cls, data: GraphExecution):
-        timing_info, node_executions = cls._on_graph_execution(data)
+        log_metadata = get_log_metadata(
+            graph_eid=data.graph_exec_id,
+            graph_id=data.graph_id,
+            node_id="*",
+            node_eid="*",
+            block_name="-",
+        )
+        timing_info, node_count = cls._on_graph_execution(data, log_metadata)
+        metric_graph_timing("walltime", timing_info.wall_time, tags=log_metadata)
+        metric_graph_timing("cputime", timing_info.cpu_time, tags=log_metadata)
+        metric_graph_count("nodecount", node_count, tags=log_metadata)
+
         cls.loop.run_until_complete(
             update_graph_execution_stats(
                 data.graph_exec_id,
                 {
-                    "wall_time": timing_info.wall_time,
-                    "cpu_time": timing_info.cpu_time,
-                    "node_executed": node_executions,
+                    "walltime": timing_info.wall_time,
+                    "cputime": timing_info.cpu_time,
+                    "nodecount": node_count,
                 },
             )
         )
 
     @classmethod
     @time_measured
-    def _on_graph_execution(cls, graph_data: GraphExecution) -> int:
-        log_metadata = get_log_metadata(graph_data.graph_exec_id, "*")
+    def _on_graph_execution(cls, graph_data: GraphExecution, log_metadata: dict) -> int:
         cls.logger.info(
             "Start graph execution",
             extra={
@@ -579,6 +627,7 @@ class ExecutionManager(AppService):
             starting_node_execs.append(
                 NodeExecution(
                     graph_exec_id=node_exec.graph_exec_id,
+                    graph_id=node_exec.graph_id,
                     node_exec_id=node_exec.node_exec_id,
                     node_id=node_exec.node_id,
                     data=node_exec.input_data,
@@ -592,6 +641,7 @@ class ExecutionManager(AppService):
             self.agent_server_client.send_execution_update(exec_update.model_dump())
 
         graph_exec = GraphExecution(
+            graph_id=graph_id,
             graph_exec_id=graph_exec_id,
             start_node_execs=starting_node_execs,
         )
