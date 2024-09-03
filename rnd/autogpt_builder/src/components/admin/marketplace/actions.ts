@@ -1,4 +1,5 @@
 "use server";
+import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import MarketplaceAPI from "@/lib/marketplace-api";
 
 export async function approveAgent(
@@ -59,4 +60,21 @@ export async function removeFeaturedAgent(
   const api = new MarketplaceAPI();
   await api.removeFeaturedAgent(agentId, categories);
   console.debug(`Removing featured agent ${agentId}`);
+}
+
+export async function getCategories() {
+  const api = new MarketplaceAPI();
+  const categories = await api.getCategories();
+  console.debug(`Getting categories ${categories.unique_categories.length}`);
+  return categories;
+}
+
+export async function getNotFeaturedAgents(
+  page: number = 1,
+  pageSize: number = 100,
+) {
+  const api = new MarketplaceAPI();
+  const agents = await api.getNotFeaturedAgents(page, pageSize);
+  console.debug(`Getting not featured agents ${agents.agents.length}`);
+  return agents;
 }
