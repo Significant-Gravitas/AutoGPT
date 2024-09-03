@@ -19,11 +19,21 @@ conn_retry = retry(
     stop=stop_after_attempt(30), wait=wait_exponential(multiplier=1, min=1, max=30)
 )
 T = TypeVar("T")
+C = TypeVar("C", bound=Callable)
 
 pyro_host = Config().pyro_host
 
 
-def expose(func: Callable) -> Callable:
+def expose(func: C) -> C:
+    """
+    Decorator to mark a method or class to be exposed for remote calls.
+
+    ## ⚠️ Gotcha
+    The types on the exposed function signature are respected **as long as they are
+    fully picklable**. This is not the case for Pydantic models, so if you really need
+    to pass a model, try dumping the model and passing the resulting dict instead.
+    """
+
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
@@ -32,7 +42,7 @@ def expose(func: Callable) -> Callable:
             logger.exception(msg)
             raise Exception(msg, e)
 
-    return pyro.expose(wrapper)
+    return pyro.expose(wrapper)  # type: ignore
 
 
 class PyroNameServer(AppProcess):
@@ -60,10 +70,10 @@ class AppService(AppProcess):
         while True:
             time.sleep(10)
 
-    def __run_async(self, coro: Coroutine[T, Any, T]):
+    def __run_async(self, coro: Coroutine[Any, Any, T]):
         return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop)
 
-    def run_and_wait(self, coro: Coroutine[T, Any, T]) -> T:
+    def run_and_wait(self, coro: Coroutine[Any, Any, T]) -> T:
         future = self.__run_async(coro)
         return future.result()
 
@@ -101,7 +111,7 @@ class AppService(AppProcess):
         ns = pyro.locate_ns(host=pyro_host, port=9090)
         uri = daemon.register(self)
         ns.register(self.service_name, uri)
-        logger.warning(f"Service [{self.service_name}] Ready. Object URI = {uri}")
+        logger.info(f"Service [{self.service_name}] Ready. Object URI = {uri}")
         daemon.requestLoop()
 
     def __start_async_loop(self):

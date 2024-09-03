@@ -42,7 +42,7 @@ def write_pid(pid: int):
 
 class MainApp(AppProcess):
     def run(self):
-        app.main(silent=True)  # type: ignore
+        app.main(silent=True)
 
 
 @click.group()
@@ -66,12 +66,12 @@ def start():
         os.remove(get_pid_path())
 
     print("Starting server")
-    pid = MainApp().start(background=True, silent=True)  # type: ignore
+    pid = MainApp().start(background=True, silent=True)
     print(f"Server running in process: {pid}")
 
     write_pid(pid)
     print("done")
-    os._exit(status=0)  # type: ignore
+    os._exit(status=0)
 
 
 @main.command()
