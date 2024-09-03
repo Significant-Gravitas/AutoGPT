@@ -27,7 +27,7 @@ class TestService(AppService):
 
 
 @pytest.mark.asyncio(scope="session")
-def test_service_creation(server):
+async def test_service_creation(server):
     with TestService():
         client = get_service_client(TestService)
         assert client.add(5, 3) == 8
