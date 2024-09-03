@@ -499,7 +499,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={handleModalSave}
-        initialValue={inputModalValue}
+        defaultValue={inputModalValue}
         key={activeKey}
       />
       <OutputModalComponent

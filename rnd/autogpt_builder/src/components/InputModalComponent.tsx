@@ -10,7 +10,7 @@ interface ModalProps {
   onClose: () => void;
   onSave: (value: string) => void;
   title?: string;
-  initialValue: string;
+  defaultValue: string;
 }
 
 const InputModalComponent: FC<ModalProps> = ({
@@ -18,17 +18,17 @@ const InputModalComponent: FC<ModalProps> = ({
   onClose,
   onSave,
   title,
-  initialValue,
+  defaultValue,
 }) => {
-  const [tempValue, setTempValue] = useState(initialValue);
+  const [tempValue, setTempValue] = useState(defaultValue);
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      setTempValue(initialValue);
+      setTempValue(defaultValue);
       setIsMaximized(false);
     }
-  }, [isOpen, initialValue]);
+  }, [isOpen, defaultValue]);
 
   const handleSave = () => {
     onSave(tempValue);
