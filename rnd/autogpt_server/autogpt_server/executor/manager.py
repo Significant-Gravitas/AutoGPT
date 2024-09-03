@@ -104,7 +104,7 @@ def execute_node(
     try:
         for output_name, output_data in node_block.execute(exec_data):
             logger.info(
-                "Received output",
+                "Node produced output",
                 extra={"json_fields": {**log_metadata, output_name: output_data}},
             )
             wait(upsert_execution_output(node_exec_id, output_name, output_data))
@@ -124,7 +124,7 @@ def execute_node(
     except Exception as e:
         error_msg = f"{e.__class__.__name__}: {e}"
         logger.exception(
-            "failed with error",
+            "Node execution failed with error",
             extra={"json_fields": {**log_metadata, error: error_msg}},
         )
         wait(upsert_execution_output(node_exec_id, "error", error_msg))
