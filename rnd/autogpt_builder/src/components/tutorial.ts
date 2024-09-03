@@ -131,6 +131,16 @@ export const startTutorial = (
     }
   }
 
+  // Define the fitViewToScreen function
+  const fitViewToScreen = () => {
+    const fitViewButton = document.querySelector(
+      ".react-flow__controls-fitview",
+    ) as HTMLButtonElement;
+    if (fitViewButton) {
+      fitViewButton.click();
+    }
+  };
+
   injectStyles();
 
   tour.addStep({
@@ -197,7 +207,7 @@ export const startTutorial = (
   tour.addStep({
     id: "focus-new-block",
     title: "New Block",
-    text: "This is a Math Block. Let’s go over how it works.",
+    text: "This is the Calculator Block! Let's go over how it works.",
     attachTo: { element: `[data-id="custom-node-1"]`, on: "top" },
     beforeShowPromise: () => waitForElement('[data-id="custom-node-1"]'),
     buttons: [
@@ -207,7 +217,10 @@ export const startTutorial = (
       },
     ],
     when: {
-      show: () => setPinBlocksPopover(false),
+      show: () => {
+        setPinBlocksPopover(false);
+        fitViewToScreen();
+      },
     },
   });
 
@@ -315,11 +328,28 @@ export const startTutorial = (
   });
 
   tour.addStep({
+    id: "wait-for-processing",
+    title: "Processing",
+    text: "Let's wait for the block to finish being processed...",
+    attachTo: { element: '[data-id="badge-1-QUEUED"]', on: "bottom" },
+    buttons: [],
+    beforeShowPromise: () => waitForElement('[data-id="badge-1-QUEUED"]'),
+    when: {
+      show: () => {
+        fitViewToScreen();
+        waitForElement('[data-id="badge-1-COMPLETED"]').then(() => {
+          tour.next();
+        });
+      },
+    },
+  });
+
+  tour.addStep({
     id: "check-output",
     title: "Check the Output",
     text: "Check here to see the output of the block after running the flow.",
-    attachTo: { element: ".node-output", on: "bottom" },
-    beforeShowPromise: () => waitForElement(".node-output"),
+    attachTo: { element: '[data-id="latest-output"]', on: "bottom" },
+    beforeShowPromise: () => waitForElement('[data-id="latest-output"]'),
     buttons: [
       {
         text: "Back",
@@ -330,6 +360,11 @@ export const startTutorial = (
         action: tour.next,
       },
     ],
+    when: {
+      show: () => {
+        fitViewToScreen();
+      },
+    },
   });
 
   tour.addStep({
@@ -345,6 +380,7 @@ export const startTutorial = (
     ],
     when: {
       show: () => {
+        fitViewToScreen();
         waitForElement('[data-id="custom-node-2"]').then(() => {
           tour.next();
         });
@@ -382,6 +418,7 @@ export const startTutorial = (
     },
     when: {
       show: () => {
+        fitViewToScreen();
         resetConnectionState(); // Reset state when revisiting this step
         tour.modal.show();
         const outputPin = document.querySelector(
@@ -438,7 +475,7 @@ export const startTutorial = (
     id: "congratulations",
     title: "Congratulations!",
     text: "You have successfully created your first flow. Watch for the outputs in the blocks!",
-    beforeShowPromise: () => waitForElement(".node-output"),
+    beforeShowPromise: () => waitForElement('[data-id="latest-output"]'),
     when: {
       show: () => tour.modal.hide(),
     },
