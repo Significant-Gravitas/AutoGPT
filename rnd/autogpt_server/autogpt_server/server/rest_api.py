@@ -1,4 +1,3 @@
-import asyncio
 import inspect
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -6,21 +5,11 @@ from functools import wraps
 from typing import Annotated, Any, Dict
 
 import uvicorn
-from autogpt_libs.auth.jwt_utils import parse_jwt_token
 from autogpt_libs.auth.middleware import auth_middleware
-from fastapi import (
-    APIRouter,
-    Body,
-    Depends,
-    FastAPI,
-    HTTPException,
-    WebSocket,
-    WebSocketDisconnect,
-)
+from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-import autogpt_server.server.ws_api
 from autogpt_server.data import block, db
 from autogpt_server.data import graph as graph_db
 from autogpt_server.data import user as user_db
@@ -30,15 +19,11 @@ from autogpt_server.data.execution import (
     get_execution_results,
     list_executions,
 )
-from autogpt_server.data.user import DEFAULT_USER_ID, get_or_create_user
+from autogpt_server.data.queue import AsyncEventQueue, AsyncRedisEventQueue
+from autogpt_server.data.user import get_or_create_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
-from autogpt_server.server.conn_manager import ConnectionManager
-from autogpt_server.server.model import (
-    CreateGraph,
-    Methods,
-    SetGraphActiveVersion,
-    WsMessage,
-)
+from autogpt_server.server.model import CreateGraph, SetGraphActiveVersion
+from autogpt_server.util.auth import get_user_id
 from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
@@ -46,37 +31,24 @@ from autogpt_server.util.settings import Settings
 settings = Settings()
 
 
-def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
-    if not payload:
-        # This handles the case when authentication is disabled
-        return DEFAULT_USER_ID
-
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="User ID not found in token")
-    return user_id
-
-
 class AgentServer(AppService):
-    event_queue: asyncio.Queue[ExecutionResult] = asyncio.Queue()
-    manager = ConnectionManager()
     mutex = KeyedMutex()
     use_db = False
+    use_redis = True
     _test_dependency_overrides = {}
 
-    async def event_broadcaster(self):
-        while True:
-            event: ExecutionResult = await self.event_queue.get()
-            await self.manager.send_execution_result(event)
+    def __init__(self, event_queue: AsyncEventQueue | None = None):
+        self.event_queue = event_queue or AsyncRedisEventQueue()
 
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
         await db.connect()
+        self.run_and_wait(self.event_queue.connect())
         await block.initialize_blocks()
         if await user_db.create_default_user(settings.config.enable_auth):
             await graph_db.import_packaged_templates()
-        asyncio.create_task(self.event_broadcaster())
         yield
+        await self.event_queue.close()
         await db.disconnect()
 
     def run_service(self):
@@ -114,12 +86,12 @@ class AgentServer(AppService):
 
         router.add_api_route(
             path="/blocks",
-            endpoint=self.get_graph_blocks,  # type: ignore
+            endpoint=self.get_graph_blocks,
             methods=["GET"],
         )
         router.add_api_route(
             path="/blocks/{block_id}/execute",
-            endpoint=self.execute_graph_block,  # type: ignore
+            endpoint=self.execute_graph_block,
             methods=["POST"],
         )
         router.add_api_route(
@@ -184,7 +156,7 @@ class AgentServer(AppService):
         )
         router.add_api_route(
             path="/graphs/{graph_id}/execute",
-            endpoint=self.execute_graph,  # type: ignore
+            endpoint=self.execute_graph,
             methods=["POST"],
         )
         router.add_api_route(
@@ -199,7 +171,7 @@ class AgentServer(AppService):
         )
         router.add_api_route(
             path="/graphs/{graph_id}/schedules",
-            endpoint=self.create_schedule,  # type: ignore
+            endpoint=self.create_schedule,
             methods=["POST"],
         )
         router.add_api_route(
@@ -209,7 +181,7 @@ class AgentServer(AppService):
         )
         router.add_api_route(
             path="/graphs/schedules/{schedule_id}",
-            endpoint=self.update_schedule,  # type: ignore
+            endpoint=self.update_schedule,
             methods=["PUT"],
         )
 
@@ -219,13 +191,9 @@ class AgentServer(AppService):
             methods=["POST"],
         )
 
-        app.add_exception_handler(500, self.handle_internal_error)  # type: ignore
+        app.add_exception_handler(500, self.handle_internal_http_error)
 
         app.include_router(router)
-
-        @app.websocket("/ws")
-        async def websocket_endpoint(websocket: WebSocket):  # type: ignore
-            await self.websocket_router(websocket)
 
         uvicorn.run(app, host="0.0.0.0", port=8000)
 
@@ -267,72 +235,14 @@ class AgentServer(AppService):
         return get_service_client(ExecutionScheduler)
 
     @classmethod
-    def handle_internal_error(cls, request, exc):  # type: ignore
+    def handle_internal_http_error(cls, request: Request, exc: Exception):
         return JSONResponse(
             content={
-                "message": f"{request.url.path} call failure",  # type: ignore
-                "error": str(exc),  # type: ignore
+                "message": f"{request.method} {request.url.path} failed",
+                "error": str(exc),
             },
             status_code=500,
         )
-
-    async def authenticate_websocket(self, websocket: WebSocket) -> str:
-        if settings.config.enable_auth.lower() == "true":
-            token = websocket.query_params.get("token")
-            if not token:
-                await websocket.close(code=4001, reason="Missing authentication token")
-                return ""
-
-            try:
-                payload = parse_jwt_token(token)
-                user_id = payload.get("sub")
-                if not user_id:
-                    await websocket.close(code=4002, reason="Invalid token")
-                    return ""
-                return user_id
-            except ValueError:
-                await websocket.close(code=4003, reason="Invalid token")
-                return ""
-        else:
-            return user_db.DEFAULT_USER_ID
-
-    async def websocket_router(self, websocket: WebSocket):
-        user_id = await self.authenticate_websocket(websocket)
-        if not user_id:
-            return
-        await self.manager.connect(websocket)
-        try:
-            while True:
-                data = await websocket.receive_text()
-                message = WsMessage.model_validate_json(data)
-                if message.method == Methods.SUBSCRIBE:
-                    await autogpt_server.server.ws_api.handle_subscribe(
-                        websocket, self.manager, message
-                    )
-
-                elif message.method == Methods.UNSUBSCRIBE:
-                    await autogpt_server.server.ws_api.handle_unsubscribe(
-                        websocket, self.manager, message
-                    )
-
-                elif message.method == Methods.ERROR:
-                    print("WebSocket Error message received:", message.data)
-
-                else:
-                    print(
-                        f"Message type {message.method} is not processed by the server"
-                    )
-                    await websocket.send_text(
-                        WsMessage(
-                            method=Methods.ERROR,
-                            success=False,
-                            error="Message type is not processed by the server",
-                        ).model_dump_json()
-                    )
-
-        except WebSocketDisconnect:
-            self.manager.disconnect(websocket)
-            print("Client Disconnected")
 
     @classmethod
     async def get_or_create_user_route(cls, user_data: dict = Depends(auth_middleware)):
@@ -341,13 +251,13 @@ class AgentServer(AppService):
 
     @classmethod
     def get_graph_blocks(cls) -> list[dict[Any, Any]]:
-        return [v.to_dict() for v in block.get_blocks().values()]  # type: ignore
+        return [v.to_dict() for v in block.get_blocks().values()]
 
     @classmethod
     def execute_graph_block(
         cls, block_id: str, data: BlockInput
     ) -> CompletedBlockOutput:
-        obj = block.get_block(block_id)  # type: ignore
+        obj = block.get_block(block_id)
         if not obj:
             raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
@@ -568,14 +478,14 @@ class AgentServer(AppService):
     ) -> dict[Any, Any]:
         execution_scheduler = self.execution_scheduler_client
         is_enabled = input_data.get("is_enabled", False)
-        execution_scheduler.update_schedule(schedule_id, is_enabled, user_id=user_id)  # type: ignore
+        execution_scheduler.update_schedule(schedule_id, is_enabled, user_id=user_id)
         return {"id": schedule_id}
 
     def get_execution_schedules(
         self, graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
     ) -> dict[str, str]:
         execution_scheduler = self.execution_scheduler_client
-        return execution_scheduler.get_execution_schedules(graph_id, user_id)  # type: ignore
+        return execution_scheduler.get_execution_schedules(graph_id, user_id)
 
     @expose
     def send_execution_update(self, execution_result_dict: dict[Any, Any]):
@@ -611,12 +521,12 @@ class AgentServer(AppService):
         try:
             updated_fields: dict[Any, Any] = {"config": [], "secrets": []}
             for key, value in updated_settings.get("config", {}).items():
-                if hasattr(settings.config, key):  # type: ignore
-                    setattr(settings.config, key, value)  # type: ignore
+                if hasattr(settings.config, key):
+                    setattr(settings.config, key, value)
                     updated_fields["config"].append(key)
             for key, value in updated_settings.get("secrets", {}).items():
-                if hasattr(settings.secrets, key):  # type: ignore
-                    setattr(settings.secrets, key, value)  # type: ignore
+                if hasattr(settings.secrets, key):
+                    setattr(settings.secrets, key, value)
                     updated_fields["secrets"].append(key)
             settings.save()
             return {

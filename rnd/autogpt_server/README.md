@@ -32,8 +32,14 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
    ```sh
    poetry install
    ```
+
+4. Copy .env.example to .env
+
+   ```sh
+   cp .env.example .env
+   ```
    
-4. Generate the Prisma client
+5. Generate the Prisma client
 
    ```sh
    poetry run prisma generate
@@ -49,20 +55,45 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
    > Then run the generation again. The path *should* look something like this:  
    > `<some path>/pypoetry/virtualenvs/autogpt-server-TQIRSwR6-py3.12/bin/prisma`
 
-5. Migrate the database. Be careful because this deletes current data in the database.
+6. Migrate the database. Be careful because this deletes current data in the database.
 
    ```sh
-   poetry run prisma migrate dev
+   docker compose up postgres -d
+   poetry run prisma migrate dev --schema postgres/schema.prisma
    ```
 
 ## Running The Server
 
 ### Starting the server directly
 
-Run the following command:
+Run the following command to build the dockerfiles:
 
 ```sh
-poetry run app
+docker compose build
+```
+
+Run the following command to run the app:
+
+```sh
+docker compose up
+```
+
+Run the following to automatically rebuild when code changes, in another terminal:
+
+```sh
+docker compose watch
+```
+
+Run the following command to shut down:
+
+```sh
+docker compose down
+```
+
+If you run into issues with dangling orphans, try:
+
+```sh
+docker-compose down --volumes --remove-orphans && docker-compose up --force-recreate --renew-anon-volumes --remove-orphans  
 ```
 
 ## Testing

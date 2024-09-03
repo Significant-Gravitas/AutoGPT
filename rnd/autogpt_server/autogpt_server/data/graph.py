@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uuid
 from pathlib import Path
 from typing import Any, Literal
@@ -12,6 +13,8 @@ from autogpt_server.data.block import BlockInput, get_block, get_blocks
 from autogpt_server.data.db import BaseDbModel, transaction
 from autogpt_server.data.user import DEFAULT_USER_ID
 from autogpt_server.util import json
+
+logger = logging.getLogger(__name__)
 
 
 class Link(BaseDbModel):
@@ -276,12 +279,12 @@ AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
 # --------------------- Model functions --------------------- #
 
 
-async def get_node(node_id: str) -> Node | None:
+async def get_node(node_id: str) -> Node:
     node = await AgentNode.prisma().find_unique_or_raise(
         where={"id": node_id},
         include=AGENT_NODE_INCLUDE,
     )
-    return Node.from_db(node) if node else None
+    return Node.from_db(node)
 
 
 async def get_graphs_meta(
@@ -481,17 +484,19 @@ TEMPLATES_DIR = Path(__file__).parent.parent.parent / "graph_templates"
 async def import_packaged_templates() -> None:
     templates_in_db = await get_graphs_meta(filter_by="template")
 
-    print("Loading templates...")
+    logging.info("Loading templates...")
     for template_file in TEMPLATES_DIR.glob("*.json"):
         template_data = json.loads(template_file.read_bytes())
 
         template = Graph.model_validate(template_data)
         if not template.is_template:
-            print(f"WARNING: pre-packaged graph file {template_file} is not a template")
+            logging.warning(
+                f"pre-packaged graph file {template_file} is not a template"
+            )
             continue
         if (
             exists := next((t for t in templates_in_db if t.id == template.id), None)
         ) and exists.version >= template.version:
             continue
         await create_graph(template, DEFAULT_USER_ID)
-        print(f"Loaded template '{template.name}' ({template.id})")
+        logging.info(f"Loaded template '{template.name}' ({template.id})")

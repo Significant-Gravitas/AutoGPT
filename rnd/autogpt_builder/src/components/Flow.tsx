@@ -181,7 +181,6 @@ const FlowEditor: React.FC<{
         data: {
           ...node.data,
           status: undefined,
-          output_data: undefined,
           isOutputOpen: false,
         },
       }));
@@ -478,7 +477,7 @@ const FlowEditor: React.FC<{
                 data: {
                   ...node.data,
                   status: undefined, // Reset status
-                  output_data: undefined, // Clear output data
+                  executionResults: undefined, // Clear output data
                 },
               };
             });
