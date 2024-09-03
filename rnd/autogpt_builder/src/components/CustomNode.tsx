@@ -495,10 +495,11 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         )}
       </div>
       <InputModalComponent
+        title={activeKey ? `Enter ${beautifyString(activeKey)}` : undefined}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={handleModalSave}
-        value={inputModalValue}
+        defaultValue={inputModalValue}
         key={activeKey}
       />
       <OutputModalComponent
