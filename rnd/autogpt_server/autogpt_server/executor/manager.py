@@ -21,8 +21,8 @@ from autogpt_server.data.execution import (
     merge_execution_input,
     parse_execution_output,
     update_execution_status,
-    update_node_execution_stats,
     update_graph_execution_stats,
+    update_node_execution_stats,
     upsert_execution_input,
     upsert_execution_output,
 )
