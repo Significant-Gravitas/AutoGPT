@@ -8,6 +8,6 @@ def test():
 
     result = subprocess.run(["pytest"] + sys.argv[1:], check=False)
 
-    subprocess.run(["docker-compose", "down"], check=True)
+    subprocess.run(["docker-compose", "stop"], check=True)
 
     sys.exit(result.returncode)
