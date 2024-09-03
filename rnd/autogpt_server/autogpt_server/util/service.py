@@ -103,7 +103,7 @@ class AppService(AppProcess):
         ns = pyro.locate_ns(host=pyro_host, port=9090)
         uri = daemon.register(self)
         ns.register(self.service_name, uri)
-        logger.warning(f"Service [{self.service_name}] Ready. Object URI = {uri}")
+        logger.info(f"Service [{self.service_name}] Ready. Object URI = {uri}")
         daemon.requestLoop()
 
     def __start_async_loop(self):
