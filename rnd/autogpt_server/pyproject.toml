@@ -68,7 +68,6 @@ ws = "autogpt_server.ws_app:main"
 cli = "autogpt_server.cli:main"
 format = "linter:format"
 lint = "linter:lint"
-schema = "linter:schema"
 
 # https://poethepoet.natn.io/index.html
 [tool.poe]
