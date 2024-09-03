@@ -1,7 +1,7 @@
 import asyncio
+import atexit
 import logging
-import signal
-import sys
+import os
 from concurrent.futures import Future, ProcessPoolExecutor, TimeoutError
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
@@ -371,12 +371,12 @@ class Executor:
         cls.agent_server_client = get_agent_server_client()
 
         # Set up shutdown handler
-        signal.signal(signal.SIGTERM, lambda _, __: cls.node_executor_stop())
+        atexit.register(cls.on_node_executor_stop)
 
     @classmethod
-    def node_executor_stop(cls):
+    def on_node_executor_stop(cls):
+        logger.info(f"[on_node_executor_stop {os.getpid()}] ⏳ Disconnecting DB...")
         cls.loop.run_until_complete(db.disconnect())
-        sys.exit(0)
 
     @classmethod
     def on_node_execution(cls, q: ExecutionQueue[NodeExecution], data: NodeExecution):
@@ -417,7 +417,17 @@ class Executor:
             max_workers=cls.pool_size,
             initializer=cls.on_node_executor_start,
         )
-        cls.logger.info(f"Graph executor started with max-{cls.pool_size} node workers")
+
+        # Set up shutdown handler
+        atexit.register(cls.on_graph_executor_stop)
+
+    @classmethod
+    def on_graph_executor_stop(cls):
+        logger.info(
+            f"[on_graph_executor_stop {os.getpid()}] "
+            "⏳ Shutting down node executor pool..."
+        )
+        cls.executor.shutdown(cancel_futures=True)
 
     @classmethod
     def on_graph_execution(cls, graph_data: GraphExecution):
@@ -495,23 +505,23 @@ class ExecutionManager(AppService):
         self.queue = ExecutionQueue[GraphExecution]()
         self.use_redis = False
 
-    # def __del__(self):
-    #     self.sync_manager.shutdown()
-
     def run_service(self):
-        with ProcessPoolExecutor(
+        self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
             initializer=Executor.on_graph_executor_start,
-        ) as self.executor:
-            logger.info(
-                f"Execution manager started with max-{self.pool_size} graph workers."
+        )
+        logger.info(f"ExecutionManager started with max-{self.pool_size} graph workers")
+        while True:
+            exec_data = self.queue.get()
+            logger.debug(
+                f"[ExecutionManager] Dispatching graph execution "
+                f"{exec_data.graph_exec_id}"
             )
-            while True:
-                self.executor.submit(Executor.on_graph_execution, self.queue.get())
+            self.executor.submit(Executor.on_graph_execution, exec_data)
 
     def cleanup(self):
-        logger.info("⏳ Shutting down graph executor pool...")
-        self.executor.shutdown()
+        logger.info(f"[{__class__.__name__}] ⏳ Shutting down graph executor pool...")
+        self.executor.shutdown(cancel_futures=True)
 
         super().cleanup()
 
