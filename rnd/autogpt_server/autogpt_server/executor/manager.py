@@ -96,7 +96,7 @@ def execute_node(
     # Execute the node
     exec_data_str = str(exec_data).encode("utf-8").decode("unicode_escape")
     logger.info(
-        "Execute with input",
+        "Executed node with input",
         extra={"json_fields": {**log_metadata, "input": exec_data_str}},
     )
     update_execution(ExecutionStatus.RUNNING)
