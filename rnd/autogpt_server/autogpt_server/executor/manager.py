@@ -28,7 +28,7 @@ from autogpt_server.data.execution import (
 )
 from autogpt_server.data.graph import Graph, Link, Node, get_graph, get_node
 from autogpt_server.util import json
-from autogpt_server.util.function import error_logged, time_measured
+from autogpt_server.util.decorator import error_logged, time_measured
 from autogpt_server.util.logging import configure_logging
 from autogpt_server.util.metrics import (
     metric_graph_count,
