@@ -1,6 +1,7 @@
+// THIS FILE IS AUTO-GENERATED, RUN `poetry run schema` TO UPDATE
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {

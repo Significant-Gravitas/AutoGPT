@@ -3,9 +3,9 @@ services:
   postgres:
     image: ankane/pgvector:latest
     environment:
-      POSTGRES_USER: agpt_user
-      POSTGRES_PASSWORD: pass123
-      POSTGRES_DB: agpt_local
+      - POSTGRES_USER=agpt_user
+      - POSTGRES_PASSWORD=pass123
+      - POSTGRES_DB=agpt_local
     healthcheck:
       test: pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB
       interval: 10s
@@ -13,12 +13,16 @@ services:
       retries: 5
     ports:
       - "5432:5432"
+    networks:
+      - app-network
 
   redis:
     image: redis:latest
     command: redis-server --requirepass password
     ports:
       - "6379:6379"
+    networks:
+      - app-network
 
   rest_server:
     build:
@@ -40,6 +44,8 @@ services:
       - AUTH_ENABLED=false
     ports:
       - "8000:8000"
+    networks:
+      - app-network
 
   ws_server:
     build:
@@ -61,3 +67,9 @@ services:
       - AUTH_ENABLED=false
     ports:
       - "8001:8001"
+    networks:
+      - app-network
+
+networks:
+     app-network:
+       driver: bridge
