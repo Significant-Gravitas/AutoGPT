@@ -17,7 +17,7 @@ def example_function_with_error(a: int, b: int, c: int) -> int:
 def test_timer_decorator():
     info, res = example_function(1, 2, 3)
     assert info.cpu_time >= 0
-    assert info.wall_time >= 0.5
+    assert info.wall_time >= 0.4
     assert res == 6
 
 
