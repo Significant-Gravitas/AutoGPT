@@ -10,6 +10,10 @@ async function AdminMarketplace() {
 
   return (
     <>
+      <p>
+        You may have to refresh the page to see the latest changes, this is due
+        to the actions and buttons not being hooked to the state yet.
+      </p>
       <AdminMarketplaceAgentList agents={reviewableAgents.agents} />
       <Separator className="my-4" />
       <AdminFeaturedAgentsControl className="mt-4" />
