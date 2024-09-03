@@ -12,7 +12,7 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "5432:5432"
+      - "5433:5432"
     networks:
       - app-network-test
 
