@@ -21,10 +21,13 @@ from autogpt_server.data.execution import (
     merge_execution_input,
     parse_execution_output,
     update_execution_status,
+    update_node_execution_stats,
+    update_graph_execution_stats,
     upsert_execution_input,
     upsert_execution_output,
 )
 from autogpt_server.data.graph import Graph, Link, Node, get_graph, get_node
+from autogpt_server.util.function import error_logged, time_measured
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Config
 from autogpt_server.util.type import convert
@@ -331,7 +334,22 @@ class Executor:
         cls.agent_server_client = get_agent_server_client()
 
     @classmethod
+    @error_logged
     def on_node_execution(cls, q: ExecutionQueue[NodeExecution], data: NodeExecution):
+        timing_info, _ = cls.__on_node_execution(q, data)
+        cls.loop.run_until_complete(
+            update_node_execution_stats(
+                data.node_exec_id,
+                {
+                    "wall_time": timing_info.wall_time,
+                    "cpu_time": timing_info.cpu_time,
+                },
+            )
+        )
+
+    @classmethod
+    @time_measured
+    def __on_node_execution(cls, q: ExecutionQueue[NodeExecution], data: NodeExecution):
         prefix = get_log_prefix(data.graph_exec_id, data.node_exec_id)
         try:
             logger.warning(f"{prefix} Start node execution")
@@ -343,6 +361,8 @@ class Executor:
 
     @classmethod
     def on_graph_executor_start(cls):
+        cls.loop = asyncio.new_event_loop()
+        cls.loop.run_until_complete(db.connect())
         cls.pool_size = Config().num_node_workers
         cls.executor = ProcessPoolExecutor(
             max_workers=cls.pool_size,
@@ -351,9 +371,26 @@ class Executor:
         logger.warning(f"Graph executor started with max-{cls.pool_size} node workers.")
 
     @classmethod
-    def on_graph_execution(cls, graph_data: GraphExecution):
+    @error_logged
+    def on_graph_execution(cls, data: GraphExecution):
+        timing_info, node_executions = cls.__on_graph_execution(data)
+        cls.loop.run_until_complete(
+            update_graph_execution_stats(
+                data.graph_exec_id,
+                {
+                    "wall_time": timing_info.wall_time,
+                    "cpu_time": timing_info.cpu_time,
+                    "node_executed": node_executions,
+                },
+            )
+        )
+
+    @classmethod
+    @time_measured
+    def __on_graph_execution(cls, graph_data: GraphExecution) -> int:
         prefix = get_log_prefix(graph_data.graph_exec_id, "*")
         logger.warning(f"{prefix} Start graph execution")
+        node_executed = 0
 
         try:
             queue = ExecutionQueue[NodeExecution]()
@@ -381,6 +418,7 @@ class Executor:
                 while queue.empty() and futures:
                     for node_id, future in list(futures.items()):
                         if future.done():
+                            node_executed += 1
                             del futures[node_id]
                         elif queue.empty():
                             cls.wait_future(future)
@@ -388,6 +426,8 @@ class Executor:
             logger.warning(f"{prefix} Finished graph execution")
         except Exception as e:
             logger.exception(f"{prefix} Failed graph execution: {e}")
+
+        return node_executed
 
     @classmethod
     def wait_future(cls, future: Future, timeout: int | None = 3):

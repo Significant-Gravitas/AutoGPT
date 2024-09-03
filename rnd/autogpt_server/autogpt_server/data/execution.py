@@ -257,6 +257,20 @@ async def upsert_execution_output(
     )
 
 
+async def update_graph_execution_stats(graph_exec_id: str, stats: dict[str, Any]):
+    await AgentGraphExecution.prisma().update(
+        where={"id": graph_exec_id},
+        data={"stats": json.dumps(stats)},
+    )
+
+
+async def update_node_execution_stats(node_exec_id: str, stats: dict[str, Any]):
+    await AgentNodeExecution.prisma().update(
+        where={"id": node_exec_id},
+        data={"stats": json.dumps(stats)},
+    )
+
+
 async def update_execution_status(
     node_exec_id: str, status: ExecutionStatus, execution_data: BlockInput | None = None
 ) -> ExecutionResult:
