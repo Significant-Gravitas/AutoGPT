@@ -1,5 +1,4 @@
 import os
-import re
 import subprocess
 
 directory = os.path.dirname(os.path.realpath(__file__))
@@ -26,4 +25,3 @@ def format():
     run("isort", "--profile", "black", ".")
     run("black", ".")
     run("pyright", ".")
-

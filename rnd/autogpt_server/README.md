@@ -101,7 +101,7 @@ docker-compose down --volumes --remove-orphans && docker-compose up --force-recr
 To run the tests:
 
 ```sh
-poetry run pytest
+poetry run test
 ```
 
 ## Development
