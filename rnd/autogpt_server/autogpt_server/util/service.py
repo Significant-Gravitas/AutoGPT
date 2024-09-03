@@ -89,8 +89,11 @@ class AppService(AppProcess):
 
     def cleanup(self):
         if self.use_db:
-            logger.info("⏳ Disconnecting DB")
+            logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting DB...")
             self.run_and_wait(db.disconnect())
+        if self.use_redis:
+            logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting Redis...")
+            self.run_and_wait(self.event_queue.close())
 
     @conn_retry
     def __start_pyro(self):
