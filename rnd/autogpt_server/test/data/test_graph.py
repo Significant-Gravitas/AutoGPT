@@ -66,3 +66,51 @@ async def test_graph_creation(server: SpinTestServer):
 
     assert len(created_graph.subgraphs) == 1
     assert len(created_graph.subgraph_map) == len(created_graph.nodes) == 3
+
+
+@pytest.mark.asyncio(scope="session")
+async def test_get_input_schema(server: SpinTestServer):
+    value_block = StoreValueBlock().id
+
+    graph = Graph(
+        name="TestInputSchema",
+        description="Test input schema",
+        nodes=[
+            Node(id="node_1", block_id=value_block),
+        ],
+        links=[],
+    )
+
+    create_graph = CreateGraph(graph=graph)
+    created_graph = await server.agent_server.create_graph(
+        create_graph, False, DEFAULT_USER_ID
+    )
+
+    input_schema = created_graph.get_input_schema()
+
+    assert len(input_schema) == 1
+
+    assert f"{created_graph.nodes[0].id}.input" in input_schema
+
+
+@pytest.mark.asyncio(scope="session")
+async def test_get_input_schema_none_required(server: SpinTestServer):
+    value_block = StoreValueBlock().id
+
+    graph = Graph(
+        name="TestInputSchema",
+        description="Test input schema",
+        nodes=[
+            Node(id="node_1", block_id=value_block, input_default={"input": "value"}),
+        ],
+        links=[],
+    )
+
+    create_graph = CreateGraph(graph=graph)
+    created_graph = await server.agent_server.create_graph(
+        create_graph, False, DEFAULT_USER_ID
+    )
+
+    input_schema = created_graph.get_input_schema()
+
+    assert input_schema == {}
