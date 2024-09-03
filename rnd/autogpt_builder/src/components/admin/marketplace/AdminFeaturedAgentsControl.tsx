@@ -1,9 +1,10 @@
 import { Button } from "@/components/ui/button";
-import { getFeaturedAgents, removeFeaturedAgent } from "./actions";
+import { getFeaturedAgents, removeFeaturedAgent, getCategories, getUserAgents, getAllAgents, getNotFeaturedAgents } from "./actions";
 
-import { Agent, AgentListResponse } from "@/lib/marketplace-api";
-import { DataTable } from "@/components/ui/data-table";
+
 import FeaturedAgentsTable from "./FeaturedAgentsTable";
+import { AdminAddFeaturedAgentDialog } from "./AdminAddFeaturedAgentDialog";
+
 
 export default async function AdminFeaturedAgentsControl({
   className,
@@ -30,13 +31,15 @@ export default async function AdminFeaturedAgentsControl({
 
   const agents = await getFeaturedAgents(page, pageSize);
 
+  const categories = await getCategories();
+
+  const notFeaturedAgents = await getNotFeaturedAgents();
+
   return (
     <div className={`flex flex-col gap-4 ${className}`}>
       <div className="mb-4 flex justify-between">
         <h3 className="text-lg font-semibold">Featured Agent Controls</h3>
-        <Button variant="outline" size="sm">
-          Add Featured Agent
-        </Button>
+        <AdminAddFeaturedAgentDialog categories={categories.unique_categories} agents={notFeaturedAgents.agents} />
       </div>
       <FeaturedAgentsTable agents={agents.agents} globalActions={[
         {
@@ -53,6 +56,12 @@ export default async function AdminFeaturedAgentsControl({
         },
 
       ]} />
-    </div>
+    </div >
   );
+}
+
+// Function to handle adding the featured agent
+async function addFeaturedAgent(agentId: string, categories: string[]) {
+  // Implement the logic to add the featured agent
+  // This could involve calling an API or updating state
 }
