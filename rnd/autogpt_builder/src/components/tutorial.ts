@@ -133,7 +133,9 @@ export const startTutorial = (
 
   // Define the fitViewToScreen function
   const fitViewToScreen = () => {
-    const fitViewButton = document.querySelector('.react-flow__controls-fitview') as HTMLButtonElement;
+    const fitViewButton = document.querySelector(
+      ".react-flow__controls-fitview",
+    ) as HTMLButtonElement;
     if (fitViewButton) {
       fitViewButton.click();
     }
@@ -338,8 +340,8 @@ export const startTutorial = (
         waitForElement('[data-id="badge-1-COMPLETED"]').then(() => {
           tour.next();
         });
-      }
-    }
+      },
+    },
   });
 
   tour.addStep({
@@ -361,8 +363,8 @@ export const startTutorial = (
     when: {
       show: () => {
         fitViewToScreen();
-      }
-    }
+      },
+    },
   });
 
   tour.addStep({
