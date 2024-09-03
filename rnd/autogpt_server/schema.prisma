@@ -1,4 +1,6 @@
 // THIS FILE IS AUTO-GENERATED, RUN `poetry run schema` TO UPDATE
+// THIS FILE IS AUTO-GENERATED, RUN `poetry run schema` TO UPDATE
+// THIS FILE IS AUTO-GENERATED, RUN `poetry run schema` TO UPDATE
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -12,11 +14,11 @@ generator client {
 
 // User model to mirror Auth provider users
 model User {
-  id            String   @id // This should match the Supabase user ID
-  email         String   @unique
-  name          String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id        String   @id // This should match the Supabase user ID
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
   AgentGraphs                  AgentGraph[]
