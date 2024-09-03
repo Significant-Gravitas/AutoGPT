@@ -1,59 +1,106 @@
-import React, { FC, useEffect, useRef } from "react";
+import React, { FC, useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
+import { Maximize2, Minimize2, Clipboard } from "lucide-react";
+import { createPortal } from "react-dom";
+import { toast } from "./ui/use-toast";
 
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (value: string) => void;
-  value: string;
+  title?: string;
+  defaultValue: string;
 }
 
 const InputModalComponent: FC<ModalProps> = ({
   isOpen,
   onClose,
   onSave,
-  value,
+  title,
+  defaultValue,
 }) => {
-  const [tempValue, setTempValue] = React.useState(value);
-  const textAreaRef = useRef<HTMLTextAreaElement>(null);
+  const [tempValue, setTempValue] = useState(defaultValue);
+  const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      setTempValue(value);
-      if (textAreaRef.current) {
-        textAreaRef.current.select();
-      }
+      setTempValue(defaultValue);
+      setIsMaximized(false);
     }
-  }, [isOpen, value]);
+  }, [isOpen, defaultValue]);
 
   const handleSave = () => {
     onSave(tempValue);
     onClose();
   };
 
+  const toggleSize = () => {
+    setIsMaximized(!isMaximized);
+  };
+
+  const copyValue = () => {
+    navigator.clipboard.writeText(tempValue).then(() => {
+      toast({
+        title: "Input value copied to clipboard!",
+        duration: 2000,
+      });
+    });
+  };
+
   if (!isOpen) {
     return null;
   }
 
-  return (
-    <div className="nodrag fixed inset-0 flex items-center justify-center bg-white bg-opacity-60">
-      <div className="w-[500px] max-w-[90%] rounded-lg border-[1.5px] bg-white p-5">
-        <center>
-          <h1>Enter input text</h1>
-        </center>
+  const modalContent = (
+    <div
+      id="modal-content"
+      className={`fixed rounded-lg border-[1.5px] bg-white p-5 ${
+        isMaximized ? "inset-[128px] flex flex-col" : `w-[90%] max-w-[800px]`
+      }`}
+    >
+      <h2 className="mb-4 text-center text-lg font-semibold">
+        {title || "Enter input text"}
+      </h2>
+      <div className="nowheel relative flex-grow">
         <Textarea
-          ref={textAreaRef}
-          className="h-[200px] w-full rounded border border-[#dfdfdf] bg-[#dfdfdf] p-2.5 text-black"
+          className="h-full min-h-[200px] w-full resize-none"
           value={tempValue}
           onChange={(e) => setTempValue(e.target.value)}
         />
-        <div className="mt-2.5 flex justify-end gap-2.5">
-          <Button onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave}>Save</Button>
+        <div className="absolute bottom-2 right-2 flex space-x-2">
+          <Button onClick={copyValue} size="icon" variant="outline">
+            <Clipboard size={18} />
+          </Button>
+          <Button onClick={toggleSize} size="icon" variant="outline">
+            {isMaximized ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+          </Button>
         </div>
       </div>
+      <div className="mt-4 flex justify-end space-x-2">
+        <Button onClick={onClose} variant="outline">
+          Cancel
+        </Button>
+        <Button onClick={handleSave}>Save</Button>
+      </div>
     </div>
+  );
+
+  return (
+    <>
+      {isMaximized ? (
+        createPortal(
+          <div className="fixed inset-0 flex items-center justify-center bg-white bg-opacity-60">
+            {modalContent}
+          </div>,
+          document.body,
+        )
+      ) : (
+        <div className="nodrag fixed inset-0 flex items-center justify-center bg-white bg-opacity-60">
+          {modalContent}
+        </div>
+      )}
+    </>
   );
 };
 
