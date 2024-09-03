@@ -574,3 +574,31 @@ async def get_agent_featured(agent_id: str) -> prisma.models.FeaturedAgent | Non
         raise AgentQueryError(f"Database query failed: {str(e)}")
     except Exception as e:
         raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
+
+
+async def get_all_categories() -> market.model.CategoriesResponse:
+    """
+    Retrieve all unique categories from the database.
+
+    Returns:
+        CategoriesResponse: A list of unique categories.
+    """
+    try:
+        categories = await prisma.client.get_client().query_first(
+            query="""
+SELECT ARRAY_AGG(DISTINCT category ORDER BY category) AS unique_categories
+FROM (
+  SELECT UNNEST(categories) AS category
+  FROM "Agents"
+) subquery;
+""",
+            model=market.model.CategoriesResponse,
+        )
+        if not categories:
+            raise AgentQueryError("No categories found")
+
+        return categories
+    except prisma.errors.PrismaError as e:
+        raise AgentQueryError(f"Database query failed: {str(e)}")
+    except Exception as e:
+        raise AgentQueryError(f"Unexpected error occurred: {str(e)}")

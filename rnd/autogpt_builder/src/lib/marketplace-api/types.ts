@@ -72,3 +72,7 @@ export type AgentListResponse = AgentList;
 export type AgentDetailResponse = AgentDetail;
 
 export type AgentResponse = Agent;
+
+export type UniqueCategoriesResponse = {
+  unique_categories: string[];
+};

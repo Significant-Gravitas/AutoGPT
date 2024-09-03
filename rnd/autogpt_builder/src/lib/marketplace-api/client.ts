@@ -7,6 +7,7 @@ import {
   AgentDetailResponse,
   AgentWithRank,
   FeaturedAgentResponse,
+  UniqueCategoriesResponse,
 } from "./types";
 
 export default class MarketplaceAPI {
@@ -160,9 +161,11 @@ export default class MarketplaceAPI {
     agentId: string,
     categories: string[],
   ): Promise<FeaturedAgentResponse> {
-    return this._post(`/admin/agent/featured/${agentId}`, {
+    const response = await this._post(`/admin/agent/featured/${agentId}`, {
       categories: categories,
     });
+    console.debug(`Adding featured agent ${agentId}`, response.request);
+    return response;
   }
 
   async removeFeaturedAgent(
@@ -176,6 +179,10 @@ export default class MarketplaceAPI {
 
   async getFeaturedAgent(agentId: string): Promise<FeaturedAgentResponse> {
     return this._get(`/admin/agent/featured/${agentId}`);
+  }
+
+  async getCategories(): Promise<UniqueCategoriesResponse> {
+    return this._get("/admin/categories");
   }
 
   private async _get(path: string) {
