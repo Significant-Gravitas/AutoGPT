@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 
 if TYPE_CHECKING:
-    from autogpt_server.server.server import AgentServer
+    from autogpt_server.server.rest_api import AgentServer
 
 from autogpt_server.blocks.basic import InputBlock
 from autogpt_server.data import db
@@ -67,7 +67,7 @@ def execute_node(
 
     asyncio.set_event_loop(loop)
 
-    def wait(f: Coroutine[T, Any, T]) -> T:
+    def wait(f: Coroutine[Any, Any, T]) -> T:
         return loop.run_until_complete(f)
 
     def update_execution(status: ExecutionStatus):
@@ -75,11 +75,8 @@ def execute_node(
         api_client.send_execution_update(exec_update.model_dump())
 
     node = wait(get_node(node_id))
-    if not node:
-        logger.error(f"Node {node_id} not found.")
-        return
 
-    node_block = get_block(node.block_id)  # type: ignore
+    node_block = get_block(node.block_id)
     if not node_block:
         logger.error(f"Block {node.block_id} not found.")
         return
@@ -153,7 +150,7 @@ def _enqueue_next_nodes(
     graph_exec_id: str,
     log_metadata: dict,
 ) -> list[NodeExecution]:
-    def wait(f: Coroutine[T, Any, T]) -> T:
+    def wait(f: Coroutine[Any, Any, T]) -> T:
         return loop.run_until_complete(f)
 
     def add_enqueued_execution(
@@ -181,16 +178,6 @@ def _enqueue_next_nodes(
             return enqueued_executions
 
         next_node = wait(get_node(next_node_id))
-        if not next_node:
-            logger.error(
-                f"Error, next node {next_node_id} not found.",
-                extra={
-                    "json_fields": {
-                        **log_metadata,
-                    }
-                },
-            )
-            return enqueued_executions
 
         # Multiple node can register the same next node, we need this to be atomic
         # To avoid same execution to be enqueued multiple times,
@@ -307,7 +294,7 @@ def validate_exec(
         If the data is valid, the first element will be the resolved input data, and
         the second element will be the block name.
     """
-    node_block: Block | None = get_block(node.block_id)  # type: ignore
+    node_block: Block | None = get_block(node.block_id)
     if not node_block:
         return None, f"Block for {node.block_id} not found."
 
@@ -334,7 +321,7 @@ def validate_exec(
             data[name] = convert(value, data_type)
 
     # Last validation: Validate the input values against the schema.
-    if error := node_block.input_schema.validate_data(data):  # type: ignore
+    if error := node_block.input_schema.validate_data(data):
         error_message = f"Input data doesn't match {node_block.name}: {error}"
         logger.error(error_message)
         return None, error_message
@@ -343,7 +330,7 @@ def validate_exec(
 
 
 def get_agent_server_client() -> "AgentServer":
-    from autogpt_server.server.server import AgentServer
+    from autogpt_server.server.rest_api import AgentServer
 
     return get_service_client(AgentServer)
 
@@ -496,6 +483,7 @@ class ExecutionManager(AppService):
     def __init__(self):
         self.pool_size = Config().num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
+        self.use_redis = False
 
     # def __del__(self):
     #     self.sync_manager.shutdown()
@@ -523,7 +511,6 @@ class ExecutionManager(AppService):
         if not graph:
             raise Exception(f"Graph #{graph_id} not found.")
         graph.validate_graph(for_run=True)
-
         nodes_input = []
         for node in graph.starting_nodes:
             input_data = {}

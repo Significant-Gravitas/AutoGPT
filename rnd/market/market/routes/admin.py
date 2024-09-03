@@ -46,7 +46,7 @@ async def create_agent_entry(
 @router.post("/agent/featured/{agent_id}")
 async def set_agent_featured(
     agent_id: str,
-    category: str = "featured",
+    category: list[str] = ["featured"],
     user: autogpt_libs.auth.User = fastapi.Depends(
         autogpt_libs.auth.requires_admin_user
     ),
@@ -56,7 +56,7 @@ async def set_agent_featured(
     """
     try:
         await market.db.set_agent_featured(
-            agent_id, is_featured=True, category=category
+            agent_id, is_active=True, featured_categories=category
         )
         return fastapi.responses.Response(status_code=200)
     except market.db.AgentQueryError as e:
@@ -77,9 +77,8 @@ async def unset_agent_featured(
     A basic endpoint to unset an agent as featured in the database.
     """
     try:
-        await market.db.set_agent_featured(
-            agent_id, is_featured=False, category=category
-        )
+
+        await market.db.remove_featured_category(agent_id, category=category)
         return fastapi.responses.Response(status_code=200)
     except market.db.AgentQueryError as e:
         raise fastapi.HTTPException(status_code=500, detail=str(e))
@@ -159,7 +158,7 @@ async def review_submission(
     user: autogpt_libs.auth.User = fastapi.Depends(
         autogpt_libs.auth.requires_admin_user
     ),
-):
+) -> prisma.models.Agents | None:
     """
     A basic endpoint to review a submission in the database.
     """
@@ -167,13 +166,13 @@ async def review_submission(
         f"Reviewing submission: {review_request.agent_id}, {review_request.version}"
     )
     try:
-        # await market.db.update_agent_entry(
-        #     agent_id=review_request.agent_id,
-        #     version=review_request.version,
-        #     submission_state=review_request.status,
-        #     comments=review_request.comments,
-        # )
-        return fastapi.responses.Response(status_code=200)
+        agent = await market.db.update_agent_entry(
+            agent_id=review_request.agent_id,
+            version=review_request.version,
+            submission_state=review_request.status,
+            comments=review_request.comments,
+        )
+        return agent
     except market.db.AgentQueryError as e:
         raise fastapi.HTTPException(status_code=500, detail=str(e))
     except Exception as e:

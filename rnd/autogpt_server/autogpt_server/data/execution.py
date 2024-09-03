@@ -9,7 +9,11 @@ from prisma.models import (
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
 )
-from prisma.types import AgentGraphExecutionWhereInput
+from prisma.types import (
+    AgentGraphExecutionInclude,
+    AgentGraphExecutionWhereInput,
+    AgentNodeExecutionInclude,
+)
 from pydantic import BaseModel
 
 from autogpt_server.data.block import BlockData, BlockInput, CompletedBlockOutput
@@ -108,11 +112,22 @@ class ExecutionResult(BaseModel):
 
 # --------------------- Model functions --------------------- #
 
-EXECUTION_RESULT_INCLUDE = {
+EXECUTION_RESULT_INCLUDE: AgentNodeExecutionInclude = {
     "Input": True,
     "Output": True,
     "AgentNode": True,
     "AgentGraphExecution": True,
+}
+
+GRAPH_EXECUTION_INCLUDE: AgentGraphExecutionInclude = {
+    "AgentNodeExecutions": {
+        "include": {
+            "Input": True,
+            "Output": True,
+            "AgentNode": True,
+            "AgentGraphExecution": True,
+        }
+    }
 }
 
 
@@ -148,9 +163,7 @@ async def create_graph_execution(
             },
             "userId": user_id,
         },
-        include={
-            "AgentNodeExecutions": {"include": EXECUTION_RESULT_INCLUDE}  # type: ignore
-        },
+        include=GRAPH_EXECUTION_INCLUDE,
     )
 
     return result.id, [
@@ -263,7 +276,7 @@ async def update_execution_status(
     res = await AgentNodeExecution.prisma().update(
         where={"id": node_exec_id},
         data=data,  # type: ignore
-        include=EXECUTION_RESULT_INCLUDE,  # type: ignore
+        include=EXECUTION_RESULT_INCLUDE,
     )
     if not res:
         raise ValueError(f"Execution {node_exec_id} not found.")
@@ -282,7 +295,7 @@ async def list_executions(graph_id: str, graph_version: int | None = None) -> li
 async def get_execution_results(graph_exec_id: str) -> list[ExecutionResult]:
     executions = await AgentNodeExecution.prisma().find_many(
         where={"agentGraphExecutionId": graph_exec_id},
-        include=EXECUTION_RESULT_INCLUDE,  # type: ignore
+        include=EXECUTION_RESULT_INCLUDE,
         order=[
             {"queuedTime": "asc"},
             {"addedTime": "asc"},  # Fallback: Incomplete execs has no queuedTime.
@@ -372,14 +385,14 @@ def merge_execution_input(data: BlockInput) -> BlockInput:
 
 async def get_latest_execution(node_id: str, graph_eid: str) -> ExecutionResult | None:
     execution = await AgentNodeExecution.prisma().find_first(
-        where={  # type: ignore
+        where={
             "agentNodeId": node_id,
             "agentGraphExecutionId": graph_eid,
             "executionStatus": {"not": ExecutionStatus.INCOMPLETE},
-            "executionData": {"not": None},
+            "executionData": {"not": None},  # type: ignore
         },
         order={"queuedTime": "desc"},
-        include=EXECUTION_RESULT_INCLUDE,  # type: ignore
+        include=EXECUTION_RESULT_INCLUDE,
     )
     if not execution:
         return None
@@ -390,11 +403,11 @@ async def get_incomplete_executions(
     node_id: str, graph_eid: str
 ) -> list[ExecutionResult]:
     executions = await AgentNodeExecution.prisma().find_many(
-        where={  # type: ignore
+        where={
             "agentNodeId": node_id,
             "agentGraphExecutionId": graph_eid,
             "executionStatus": ExecutionStatus.INCOMPLETE,
         },
-        include=EXECUTION_RESULT_INCLUDE,  # type: ignore
+        include=EXECUTION_RESULT_INCLUDE,
     )
     return [ExecutionResult.from_db(execution) for execution in executions]
