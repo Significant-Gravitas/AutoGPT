@@ -76,7 +76,7 @@ export function DataTable<TData, TValue>({
 
   return (
     <div>
-      <div className="flex items-center py-4 gap-2">
+      <div className="flex items-center gap-2 py-4">
         {filterColumn && (
           <Input
             placeholder={filterPlaceholder}
@@ -97,15 +97,16 @@ export function DataTable<TData, TValue>({
                 <div className="flex items-center">
                   {cloneElement(action.component, {
                     onClick: () => {
-                      const filteredSelectedRows = table.getFilteredSelectedRowModel().rows.map((row) => row.original);
+                      const filteredSelectedRows = table
+                        .getFilteredSelectedRowModel()
+                        .rows.map((row) => row.original);
                       action.action(filteredSelectedRows);
-                    }
+                    },
                   })}
                 </div>
               </Fragment>
             );
-          })
-        }
+          })}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -146,9 +147,9 @@ export function DataTable<TData, TValue>({
                       {header.isPlaceholder
                         ? null
                         : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
                     </TableHead>
                   );
                 })}

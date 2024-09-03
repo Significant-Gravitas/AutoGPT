@@ -1,10 +1,30 @@
 "use client";
 
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { MultiSelector, MultiSelectorContent, MultiSelectorInput, MultiSelectorItem, MultiSelectorList, MultiSelectorTrigger } from "@/components/ui/multiselect";
+import {
+  MultiSelector,
+  MultiSelectorContent,
+  MultiSelectorInput,
+  MultiSelectorItem,
+  MultiSelectorList,
+  MultiSelectorTrigger,
+} from "@/components/ui/multiselect";
 import { Controller, useForm } from "react-hook-form";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useState } from "react";
 import { addFeaturedAgent } from "./actions";
 import { Agent } from "@/lib/marketplace-api/types";
@@ -14,13 +34,23 @@ type FormData = {
   categories: string[];
 };
 
-
-export const AdminAddFeaturedAgentDialog = ({ categories, agents }: { categories: string[], agents: Agent[] }) => {
-
+export const AdminAddFeaturedAgentDialog = ({
+  categories,
+  agents,
+}: {
+  categories: string[];
+  agents: Agent[];
+}) => {
   const [selectedAgent, setSelectedAgent] = useState<string>("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
-  const { control, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
+  const {
+    control,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors },
+  } = useForm<FormData>({
     defaultValues: {
       agent: "",
       categories: [],
@@ -58,7 +88,7 @@ export const AdminAddFeaturedAgentDialog = ({ categories, agents }: { categories
                   </SelectTrigger>
                   <SelectContent>
                     {/* Populate with agents */}
-                    {agents.map(agent => (
+                    {agents.map((agent) => (
                       <SelectItem key={agent.id} value={agent.id}>
                         {agent.name}
                       </SelectItem>
@@ -85,7 +115,7 @@ export const AdminAddFeaturedAgentDialog = ({ categories, agents }: { categories
                 </MultiSelectorTrigger>
                 <MultiSelectorContent>
                   <MultiSelectorList>
-                    {categories.map(category => (
+                    {categories.map((category) => (
                       <MultiSelectorItem key={category} value={category}>
                         {category}
                       </MultiSelectorItem>
@@ -97,14 +127,17 @@ export const AdminAddFeaturedAgentDialog = ({ categories, agents }: { categories
           />
         </div>
         <DialogFooter>
-          <Button type="submit" onClick={async () => {
-            // Handle adding the featured agent
-            await addFeaturedAgent(selectedAgent, selectedCategories);
-          }}>
+          <Button
+            type="submit"
+            onClick={async () => {
+              // Handle adding the featured agent
+              await addFeaturedAgent(selectedAgent, selectedCategories);
+            }}
+          >
             Add
           </Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog >
+    </Dialog>
   );
 };

@@ -1,10 +1,15 @@
 import { Button } from "@/components/ui/button";
-import { getFeaturedAgents, removeFeaturedAgent, getCategories, getUserAgents, getAllAgents, getNotFeaturedAgents } from "./actions";
-
+import {
+  getFeaturedAgents,
+  removeFeaturedAgent,
+  getCategories,
+  getUserAgents,
+  getAllAgents,
+  getNotFeaturedAgents,
+} from "./actions";
 
 import FeaturedAgentsTable from "./FeaturedAgentsTable";
 import { AdminAddFeaturedAgentDialog } from "./AdminAddFeaturedAgentDialog";
-
 
 export default async function AdminFeaturedAgentsControl({
   className,
@@ -39,24 +44,25 @@ export default async function AdminFeaturedAgentsControl({
     <div className={`flex flex-col gap-4 ${className}`}>
       <div className="mb-4 flex justify-between">
         <h3 className="text-lg font-semibold">Featured Agent Controls</h3>
-        <AdminAddFeaturedAgentDialog categories={categories.unique_categories} agents={notFeaturedAgents.agents} />
+        <AdminAddFeaturedAgentDialog
+          categories={categories.unique_categories}
+          agents={notFeaturedAgents.agents}
+        />
       </div>
-      <FeaturedAgentsTable agents={agents.agents} globalActions={[
-        {
-          component: (
-            <Button>
-              Remove
-            </Button>
-          ),
-          action: async (rows) => {
-            "use server";
-            const all = rows.map((row) => removeFeaturedAgent(row.id));
-            await Promise.all(all);
+      <FeaturedAgentsTable
+        agents={agents.agents}
+        globalActions={[
+          {
+            component: <Button>Remove</Button>,
+            action: async (rows) => {
+              "use server";
+              const all = rows.map((row) => removeFeaturedAgent(row.id));
+              await Promise.all(all);
+            },
           },
-        },
-
-      ]} />
-    </div >
+        ]}
+      />
+    </div>
   );
 }
 

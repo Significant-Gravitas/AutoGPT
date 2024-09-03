@@ -77,7 +77,10 @@ export const columns: ColumnDef<Agent>[] = [
       const handleEdit = async () => {
         console.log("edit");
       };
-      const removeFeaturedAgentWithId = removeFeaturedAgent.bind(null, row.original.id);
+      const removeFeaturedAgentWithId = removeFeaturedAgent.bind(
+        null,
+        row.original.id,
+      );
       return (
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={handleRemove}>
@@ -92,8 +95,13 @@ export const columns: ColumnDef<Agent>[] = [
   },
 ];
 
-export default function FeaturedAgentsTable({ agents, globalActions }: { agents: Agent[], globalActions: GlobalActions<Agent>[] }) {
-
+export default function FeaturedAgentsTable({
+  agents,
+  globalActions,
+}: {
+  agents: Agent[];
+  globalActions: GlobalActions<Agent>[];
+}) {
   return (
     <DataTable
       columns={columns}
