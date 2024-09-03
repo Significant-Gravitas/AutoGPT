@@ -23,7 +23,7 @@ from autogpt_server.data.queue import AsyncEventQueue, AsyncRedisEventQueue
 from autogpt_server.data.user import get_or_create_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.model import CreateGraph, SetGraphActiveVersion
-from autogpt_server.util.auth import get_user_id
+from autogpt_server.util.auth import generate_state_token, get_user_id, store_state_token, verify_state_token
 from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
@@ -184,11 +184,20 @@ class AgentServer(AppService):
             endpoint=self.update_schedule,
             methods=["PUT"],
         )
-
         router.add_api_route(
             path="/settings",
             endpoint=self.update_configuration,
             methods=["POST"],
+        )
+        router.add_api_route(
+            path="/oauth/init/{provider}",
+            endpoint=self.oauth_init,
+            methods=["GET"],
+        )
+        router.add_api_route(
+            path="/oauth/callback/{provider}",
+            endpoint=self.oauth_callback,
+            methods=["GET"],
         )
 
         app.add_exception_handler(500, self.handle_internal_http_error)
@@ -535,3 +544,22 @@ class AgentServer(AppService):
             }
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
+
+    @classmethod
+    async def oauth_init(cls, provider: str, user_id: Annotated[str, Depends(get_user_id)]):
+        if provider not in ["google", "discord", "notion", "github"]:
+            raise HTTPException(status_code=400, detail="Unsupported provider")
+        
+        state_token = generate_state_token()
+        await store_state_token(state_token, user_id)
+        
+        #TODO auth_url
+        return {"state": state_token, "auth_url": f"https://{provider}.com/oauth?state={state_token}"}
+
+    @classmethod
+    async def oauth_callback(cls, provider: str, state: str, code: str):
+        if await verify_state_token(state):
+            #TODO exchange the code for an access token/fetch user information
+            return {"message": "Authentication successful"}
+        else:
+            raise HTTPException(status_code=400, detail="Invalid state token")

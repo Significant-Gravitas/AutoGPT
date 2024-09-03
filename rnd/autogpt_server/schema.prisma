@@ -188,3 +188,12 @@ model AgentGraphExecutionSchedule {
 
   @@index([isEnabled])
 }
+
+// Anti-CRSF state token for the OAuth
+model StateToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
