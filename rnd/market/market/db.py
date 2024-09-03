@@ -600,12 +600,9 @@ async def get_not_featured_agents(
                 "Agents"."submissionDate",
                 "Agents".search::text AS search
             FROM "Agents"
-            WHERE NOT EXISTS (
-                SELECT 1 
-                FROM "FeaturedAgent"
-                WHERE "Agents"."id" = "FeaturedAgent"."agentId"
-            )
-            AND "Agents"."submissionStatus" = 'APPROVED'
+            LEFT JOIN "FeaturedAgent" ON "Agents"."id" = "FeaturedAgent"."agentId"
+            WHERE ("FeaturedAgent"."agentId" IS NULL OR "FeaturedAgent"."featuredCategories" = '{{}}')
+                AND "Agents"."submissionStatus" = 'APPROVED'
             ORDER BY "Agents"."createdAt" DESC
             LIMIT {page_size} OFFSET {page_size * (page - 1)}
             """,
