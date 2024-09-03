@@ -25,6 +25,10 @@ class AppProcess(ABC):
             if silent:
                 sys.stdout = open(os.devnull, "w")
                 sys.stderr = open(os.devnull, "w")
+            else:
+                from .logging import configure_logging
+
+                configure_logging()
             self.run()
         except KeyboardInterrupt or SystemExit as e:
             print(f"Process terminated: {e}")
