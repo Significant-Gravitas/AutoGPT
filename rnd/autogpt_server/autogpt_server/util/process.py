@@ -1,9 +1,12 @@
+import logging
 import os
 import signal
 import sys
 from abc import ABC, abstractmethod
 from multiprocessing import Process, set_start_method
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class AppProcess(ABC):
@@ -42,8 +45,8 @@ class AppProcess(ABC):
 
                 configure_logging()
             self.run()
-        except KeyboardInterrupt or SystemExit as e:
-            print(f"Process terminated: {e}")
+        except (KeyboardInterrupt, SystemExit):
+            logger.info(f"[{self.__class__.__name__}] Terminated; quitting...")
 
     def _self_terminate(self, signum: int, frame):
         self.cleanup()
