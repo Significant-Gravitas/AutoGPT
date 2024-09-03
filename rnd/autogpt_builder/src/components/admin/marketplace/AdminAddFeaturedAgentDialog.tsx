@@ -79,7 +79,7 @@ export const AdminAddFeaturedAgentDialog = ({
                 <Select
                   onValueChange={(value) => {
                     field.onChange(value);
-                    setSelectedAgent(value); // Update selected agent
+                    setSelectedAgent(value);
                   }}
                   value={field.value || ""}
                 >
@@ -98,7 +98,6 @@ export const AdminAddFeaturedAgentDialog = ({
               </div>
             )}
           />
-          {/* TODO: Add category selection */}
           <Controller
             name="categories"
             control={control}
@@ -107,7 +106,7 @@ export const AdminAddFeaturedAgentDialog = ({
                 values={field.value || []}
                 onValuesChange={(values) => {
                   field.onChange(values);
-                  setSelectedCategories(values); // Update selected categories
+                  setSelectedCategories(values);
                 }}
               >
                 <MultiSelectorTrigger>

@@ -74,9 +74,9 @@ export const columns: ColumnDef<Agent>[] = [
       const handleRemove = async () => {
         await removeFeaturedAgentWithId();
       };
-      const handleEdit = async () => {
-        console.log("edit");
-      };
+      // const handleEdit = async () => {
+      //   console.log("edit");
+      // };
       const removeFeaturedAgentWithId = removeFeaturedAgent.bind(
         null,
         row.original.id,
@@ -86,9 +86,9 @@ export const columns: ColumnDef<Agent>[] = [
           <Button variant="outline" size="sm" onClick={handleRemove}>
             Remove
           </Button>
-          <Button variant="outline" size="sm" onClick={handleEdit}>
+          {/* <Button variant="outline" size="sm" onClick={handleEdit}>
             Edit
-          </Button>
+          </Button> */}
         </div>
       );
     },
