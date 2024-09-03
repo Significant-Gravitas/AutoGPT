@@ -12,7 +12,6 @@ class TimingInfo(BaseModel):
     wall_time: float
 
 
-# Shared execution and measurement logic
 def _start_measurement() -> Tuple[float, float]:
     return time.time(), os.times()[0] + os.times()[1]
 
