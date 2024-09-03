@@ -576,6 +576,48 @@ async def get_agent_featured(agent_id: str) -> prisma.models.FeaturedAgent | Non
         raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
 
 
+async def get_not_featured_agents(
+    page: int = 1, page_size: int = 10
+) -> typing.List[prisma.models.Agents]:
+    """
+    Retrieve a list of not featured agents from the database.
+    """
+    try:
+        agents = await prisma.client.get_client().query_raw(
+            query=f"""
+            SELECT 
+                "Agents".id, 
+                "Agents"."createdAt", 
+                "Agents"."updatedAt", 
+                "Agents".version, 
+                "Agents".name, 
+                LEFT("Agents".description, 500) AS description, 
+                "Agents".author, 
+                "Agents".keywords, 
+                "Agents".categories, 
+                "Agents".graph,
+                "Agents"."submissionStatus",
+                "Agents"."submissionDate",
+                "Agents".search::text AS search
+            FROM "Agents"
+            WHERE NOT EXISTS (
+                SELECT 1 
+                FROM "FeaturedAgent"
+                WHERE "Agents"."id" = "FeaturedAgent"."agentId"
+            )
+            AND "Agents"."submissionStatus" = 'APPROVED'
+            ORDER BY "Agents"."createdAt" DESC
+            LIMIT {page_size} OFFSET {page_size * (page - 1)}
+            """,
+            model=prisma.models.Agents,
+        )
+        return agents
+    except prisma.errors.PrismaError as e:
+        raise AgentQueryError(f"Database query failed: {str(e)}")
+    except Exception as e:
+        raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
+
+
 async def get_all_categories() -> market.model.CategoriesResponse:
     """
     Retrieve all unique categories from the database.

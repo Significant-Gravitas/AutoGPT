@@ -164,7 +164,6 @@ export default class MarketplaceAPI {
     const response = await this._post(`/admin/agent/featured/${agentId}`, {
       categories: categories,
     });
-    console.debug(`Adding featured agent ${agentId}`, response.request);
     return response;
   }
 
@@ -179,6 +178,15 @@ export default class MarketplaceAPI {
 
   async getFeaturedAgent(agentId: string): Promise<FeaturedAgentResponse> {
     return this._get(`/admin/agent/featured/${agentId}`);
+  }
+
+  async getNotFeaturedAgents(
+    page: number = 1,
+    pageSize: number = 10,
+  ): Promise<AgentListResponse> {
+    return this._get(
+      `/admin/agent/not-featured?page=${page}&page_size=${pageSize}`,
+    );
   }
 
   async getCategories(): Promise<UniqueCategoriesResponse> {
