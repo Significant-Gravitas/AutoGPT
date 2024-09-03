@@ -457,7 +457,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         </div>
       </div>
       {isOutputOpen && (
-        <div className="nodrag m-3 break-words rounded-md border-[1.5px] p-2">
+        <div data-id="latest-output" className="nodrag m-3 break-words rounded-md border-[1.5px] p-2">
           {(data.executionResults?.length ?? 0) > 0 ? (
             <>
               <DataTable
@@ -488,6 +488,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         {data.status && (
           <Badge
             variant="outline"
+            data-id={`badge-${id}-${data.status}`} 
             className={cn(data.status.toLowerCase(), "ml-auto mr-5")}
           >
             {data.status}
