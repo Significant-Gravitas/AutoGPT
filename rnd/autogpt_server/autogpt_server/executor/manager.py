@@ -374,7 +374,7 @@ class Executor:
     @classmethod
     @error_logged
     def on_node_execution(cls, q: ExecutionQueue[NodeExecution], data: NodeExecution):
-        timing_info, _ = cls.__on_node_execution(q, data)
+        timing_info, _ = cls._on_node_execution(q, data)
         cls.loop.run_until_complete(
             update_node_execution_stats(
                 data.node_exec_id,
@@ -387,7 +387,7 @@ class Executor:
 
     @classmethod
     @time_measured
-    def __on_node_execution(cls, q: ExecutionQueue[NodeExecution], data: NodeExecution):
+    def _on_node_execution(cls, q: ExecutionQueue[NodeExecution], data: NodeExecution):
         log_metadata = get_log_metadata(data.graph_exec_id, data.node_exec_id)
         try:
             cls.logger.info(
@@ -432,7 +432,7 @@ class Executor:
     @classmethod
     @error_logged
     def on_graph_execution(cls, data: GraphExecution):
-        timing_info, node_executions = cls.__on_graph_execution(data)
+        timing_info, node_executions = cls._on_graph_execution(data)
         cls.loop.run_until_complete(
             update_graph_execution_stats(
                 data.graph_exec_id,
@@ -446,7 +446,7 @@ class Executor:
 
     @classmethod
     @time_measured
-    def __on_graph_execution(cls, graph_data: GraphExecution) -> int:
+    def _on_graph_execution(cls, graph_data: GraphExecution) -> int:
         log_metadata = get_log_metadata(graph_data.graph_exec_id, "*")
         cls.logger.info(
             "Start graph execution",
