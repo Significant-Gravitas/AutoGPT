@@ -564,6 +564,7 @@ class Executor:
                     #   Re-enqueueing the data back to the queue will disrupt the order.
                     execution.wait()
 
+                logger.debug(f"Dispatching execution of node {exec_data.node_id}")
                 running_executions[exec_data.node_id] = cls.executor.apply_async(
                     cls.on_node_execution,
                     (queue, exec_data),
@@ -572,14 +573,26 @@ class Executor:
 
                 # Avoid terminating graph execution when some nodes are still running.
                 while queue.empty() and running_executions:
-                    for execution in list(running_executions.values()):
+                    logger.debug(
+                        "Queue empty; running nodes: "
+                        f"{list(running_executions.keys())}"
+                    )
+                    for node_id, execution in list(running_executions.items()):
                         if cancel.is_set():
                             return n_node_executions
 
                         if not queue.empty():
+                            logger.debug(
+                                "Queue no longer empty! Returning to dispatching loop."
+                            )
                             break  # yield to parent loop to execute new queue items
 
+                        logger.debug(f"Waiting on execution of node {node_id}")
                         execution.wait(3)
+                        logger.debug(
+                            f"State of execution of node {node_id} after waiting: "
+                            f"{'DONE' if execution.ready() else 'RUNNING'}"
+                        )
 
             cls.logger.info(
                 "Finished graph execution",
