@@ -197,7 +197,7 @@ class AIStructuredResponseGeneratorBlock(Block):
             except Exception as e:
                 return {}, f"JSON decode error: {e}"
 
-        logger.warning(f"LLM request: {prompt}")
+        logger.info(f"LLM request: {prompt}")
         retry_prompt = ""
         model = input_data.model
         api_key = (
@@ -213,7 +213,7 @@ class AIStructuredResponseGeneratorBlock(Block):
                     prompt=prompt,
                     json_format=bool(input_data.expected_format),
                 )
-                logger.warning(f"LLM attempt-{retry_count} response: {response_text}")
+                logger.info(f"LLM attempt-{retry_count} response: {response_text}")
 
                 if input_data.expected_format:
                     parsed_dict, parsed_error = parse_response(response_text)
