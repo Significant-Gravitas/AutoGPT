@@ -34,8 +34,10 @@ services:
           target: rnd/autogpt_server/
           action: rebuild
     depends_on:
-      - postgres
-      - redis
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
       - REDIS_HOST=redis
