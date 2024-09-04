@@ -437,10 +437,10 @@ class AgentServer(AppService):
         cls,
         graph_id: str,
         user_id: Annotated[str, Depends(get_user_id)],
-    ) -> dict[Any, Any]:
+    ) -> list[graph_db.InputSchemaItem]:
         try:
             graph = await graph_db.get_graph(graph_id, user_id=user_id)
-            return graph.get_input_schema() if graph else {}
+            return graph.get_input_schema() if graph else []
         except Exception:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
