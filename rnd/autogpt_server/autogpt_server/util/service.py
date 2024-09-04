@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import threading
 import time
 from abc import abstractmethod
@@ -13,6 +14,7 @@ from autogpt_server.data import db
 from autogpt_server.data.queue import AsyncEventQueue, AsyncRedisEventQueue
 from autogpt_server.util.process import AppProcess
 from autogpt_server.util.settings import Config
+import Pyro5.api
 
 logger = logging.getLogger(__name__)
 conn_retry = retry(
@@ -60,6 +62,9 @@ class AppService(AppProcess):
     use_db: bool = True
     use_redis: bool = False
 
+    def __init__(self, port):
+        self.port = port
+        self.uri = None
     @classmethod
     @property
     def service_name(cls) -> str:
@@ -99,11 +104,11 @@ class AppService(AppProcess):
 
     @conn_retry
     def __start_pyro(self):
-        daemon = pyro.Daemon(host=pyro_host)
-        ns = pyro.locate_ns(host=pyro_host, port=9090)
-        uri = daemon.register(self)
-        ns.register(self.service_name, uri)
-        logger.info(f"Service [{self.service_name}] Ready. Object URI = {uri}")
+        host = Config().pyro_host
+        daemon = Pyro5.api.Daemon(host=host, port=self.port)
+        self.uri = daemon.register(self, objectId=self.service_name)
+
+        logger.info(f"Service in start pyro [{self.service_name}] Ready. Object URI = {self.uri}")
         daemon.requestLoop()
 
     def __start_async_loop(self):
@@ -113,16 +118,19 @@ class AppService(AppProcess):
 AS = TypeVar("AS", bound=AppService)
 
 
-def get_service_client(service_type: Type[AS]) -> AS:
+def get_service_client(service_type: Type[AS], port: int) -> AS:
     service_name = service_type.service_name
 
     class DynamicClient:
         @conn_retry
         def __init__(self):
-            ns = pyro.locate_ns()
-            uri = ns.lookup(service_name)
-            self.proxy = pyro.Proxy(uri)
+            host = os.environ.get(f"{service_name.upper()}_HOST", "localhost")
+            uri = f"PYRO:{service_type.service_name}@{host}:{port}"
+            logger.info(f"Connecting to service [{service_name}]. URI = {uri}")
+            self.proxy = Pyro5.api.Proxy(uri)
+            # Attempt to bind to ensure the connection is established
             self.proxy._pyroBind()
+            logger.info(f"Successfully connected to service [{service_name}]")
 
         def __getattr__(self, name: str) -> Callable[..., Any]:
             return getattr(self.proxy, name)

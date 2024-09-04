@@ -363,7 +363,7 @@ def validate_exec(
 def get_agent_server_client() -> "AgentServer":
     from autogpt_server.server.rest_api import AgentServer
 
-    return get_service_client(AgentServer)
+    return get_service_client(AgentServer, 8004)
 
 
 class Executor:
@@ -569,6 +569,7 @@ class Executor:
 
 class ExecutionManager(AppService):
     def __init__(self):
+        super().__init__(port=8002)
         self.pool_size = Config().num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
         self.use_redis = False

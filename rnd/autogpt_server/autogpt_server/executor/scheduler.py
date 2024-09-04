@@ -19,13 +19,14 @@ def log(msg, **kwargs):
 
 class ExecutionScheduler(AppService):
     def __init__(self, refresh_interval=10):
+        super().__init__(port=8003)
         self.last_check = datetime.min
         self.refresh_interval = refresh_interval
         self.use_redis = False
 
     @property
     def execution_manager_client(self) -> ExecutionManager:
-        return get_service_client(ExecutionManager)
+        return get_service_client(ExecutionManager, 8002)
 
     def run_service(self):
         scheduler = BackgroundScheduler()

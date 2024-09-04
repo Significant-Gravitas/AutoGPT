@@ -24,26 +24,59 @@ services:
     networks:
       - app-network
 
-  rest_server:
+  agent_server:
     build:
       context: ../
       dockerfile: rnd/autogpt_server/Dockerfile
+      target: server
     develop:
       watch:
         - path: ./
           target: rnd/autogpt_server/
           action: rebuild
     depends_on:
-      - postgres
-      - redis
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=password
       - AUTH_ENABLED=false
+      - PYRO_HOST=0.0.0.0
+      - EXECUTIONMANAGER_HOST=execution_manager
     ports:
       - "8000:8000"
+    networks:
+      - app-network
+
+  execution_manager:
+    build:
+      context: ../
+      dockerfile: rnd/autogpt_server/Dockerfile
+      target: manager
+    develop:
+      watch:
+        - path: ./
+          target: rnd/autogpt_server/
+          action: rebuild
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=password
+      - AUTH_ENABLED=false
+      - PYRO_HOST=0.0.0.0
+      - AGENTSERVER_HOST=agent_server
+    ports:
+      - "8002:8002"
     networks:
       - app-network
 
@@ -65,6 +98,7 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=password
       - AUTH_ENABLED=false
+      - PYRO_HOST=0.0.0.0
     ports:
       - "8001:8001"
     networks:

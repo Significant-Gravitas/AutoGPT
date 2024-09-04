@@ -1,4 +1,5 @@
 import inspect
+import logging
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from functools import wraps
@@ -38,6 +39,7 @@ class AgentServer(AppService):
     _test_dependency_overrides = {}
 
     def __init__(self, event_queue: AsyncEventQueue | None = None):
+        super().__init__(port=8004)
         self.event_queue = event_queue or AsyncRedisEventQueue()
 
     @asynccontextmanager
@@ -233,11 +235,11 @@ class AgentServer(AppService):
 
     @property
     def execution_manager_client(self) -> ExecutionManager:
-        return get_service_client(ExecutionManager)
+        return get_service_client(ExecutionManager, 8002)
 
     @property
     def execution_scheduler_client(self) -> ExecutionScheduler:
-        return get_service_client(ExecutionScheduler)
+        return get_service_client(ExecutionScheduler,8003)
 
     @classmethod
     def handle_internal_http_error(cls, request: Request, exc: Exception):

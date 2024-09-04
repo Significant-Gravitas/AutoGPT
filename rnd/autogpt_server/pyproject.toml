@@ -65,6 +65,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.scripts]
 app = "autogpt_server.app:main"
 ws = "autogpt_server.ws_app:main"
+manager = "autogpt_server.app:execution_manager"
 cli = "autogpt_server.cli:main"
 format = "linter:format"
 lint = "linter:lint"
