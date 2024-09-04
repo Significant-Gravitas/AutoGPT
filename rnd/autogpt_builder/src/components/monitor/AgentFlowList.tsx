@@ -105,7 +105,9 @@ export const AgentFlowList = ({
             <DialogContent>
               <DialogHeader>
                 <DialogTitle className="sr-only">Import Agent</DialogTitle>
-                <h2 className="text-lg font-semibold">Import an Agent (template) from a file</h2>
+                <h2 className="text-lg font-semibold">
+                  Import an Agent (template) from a file
+                </h2>
               </DialogHeader>
               <AgentImportForm />
             </DialogContent>
