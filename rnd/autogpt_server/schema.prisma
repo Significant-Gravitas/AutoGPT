@@ -11,11 +11,11 @@ generator client {
 
 // User model to mirror Auth provider users
 model User {
-  id            String   @id // This should match the Supabase user ID
-  email         String   @unique
-  name          String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id        String   @id // This should match the Supabase user ID
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
   AgentGraphs                  AgentGraph[]
@@ -123,6 +123,8 @@ model AgentGraphExecution {
   // Link to User model
   userId String
   user   User   @relation(fields: [userId], references: [id])
+
+  stats String? // JSON serialized object
 }
 
 // This model describes the execution of an AgentNode.
@@ -147,6 +149,8 @@ model AgentNodeExecution {
   queuedTime      DateTime?
   startedTime     DateTime?
   endedTime       DateTime?
+
+  stats String? // JSON serialized object
 }
 
 // This model describes the output of an AgentNodeExecution.
