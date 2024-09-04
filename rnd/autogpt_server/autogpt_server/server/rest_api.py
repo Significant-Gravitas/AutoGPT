@@ -151,6 +151,11 @@ class AgentServer(AppService):
             methods=["PUT"],
         )
         router.add_api_route(
+            path="/graphs/{graph_id}/input_schema",
+            endpoint=self.get_graph_input_schema,
+            methods=["GET"],
+        )
+        router.add_api_route(
             path="/graphs/{graph_id}/execute",
             endpoint=self.execute_graph,
             methods=["POST"],
@@ -441,6 +446,18 @@ class AgentServer(AppService):
 
         # Retrieve & return canceled graph execution in its final state
         return await execution_db.get_execution_results(graph_exec_id)
+
+    @classmethod
+    async def get_graph_input_schema(
+        cls,
+        graph_id: str,
+        user_id: Annotated[str, Depends(get_user_id)],
+    ) -> list[graph_db.InputSchemaItem]:
+        try:
+            graph = await graph_db.get_graph(graph_id, user_id=user_id)
+            return graph.get_input_schema() if graph else []
+        except Exception:
+            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
     @classmethod
     async def list_graph_runs(

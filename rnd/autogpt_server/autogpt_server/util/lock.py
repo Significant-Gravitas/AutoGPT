@@ -12,21 +12,20 @@ class KeyedMutex:
     """
 
     def __init__(self):
-        self.locks: dict[Any, Lock] = ExpiringDict(max_len=6000, max_age_seconds=60)
+        self.locks: dict[Any, tuple[Lock, int]] = ExpiringDict(
+            max_len=6000, max_age_seconds=60
+        )
         self.locks_lock = Lock()
 
     def lock(self, key: Any):
         with self.locks_lock:
-            if key not in self.locks:
-                self.locks[key] = (lock := Lock())
-            else:
-                lock = self.locks[key]
+            lock, request_count = self.locks.get(key, (Lock(), 0))
+            self.locks[key] = (lock, request_count + 1)
         lock.acquire()
 
     def unlock(self, key: Any):
         with self.locks_lock:
-            if key in self.locks:
-                lock = self.locks.pop(key)
-            else:
-                return
+            lock, request_count = self.locks.pop(key)
+            if request_count > 1:
+                self.locks[key] = (lock, request_count - 1)
         lock.release()

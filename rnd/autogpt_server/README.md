@@ -59,7 +59,7 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
 
    ```sh
    docker compose up postgres -d
-   poetry run prisma migrate dev --schema postgres/schema.prisma
+   poetry run prisma migrate dev 
    ```
 
 ## Running The Server
@@ -101,7 +101,7 @@ docker-compose down --volumes --remove-orphans && docker-compose up --force-recr
 To run the tests:
 
 ```sh
-poetry run pytest
+poetry run test
 ```
 
 ## Development

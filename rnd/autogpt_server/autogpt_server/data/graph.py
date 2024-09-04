@@ -1,17 +1,27 @@
 import asyncio
+import logging
 import uuid
 from pathlib import Path
 from typing import Any, Literal
 
 import prisma.types
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink
-from pydantic import PrivateAttr
+from pydantic import BaseModel, PrivateAttr
+from pydantic_core import PydanticUndefinedType
 
 from autogpt_server.blocks.basic import InputBlock, OutputBlock
 from autogpt_server.data.block import BlockInput, get_block, get_blocks
 from autogpt_server.data.db import BaseDbModel, transaction
 from autogpt_server.data.user import DEFAULT_USER_ID
 from autogpt_server.util import json
+
+logger = logging.getLogger(__name__)
+
+
+class InputSchemaItem(BaseModel):
+    node_id: str
+    description: str | None = None
+    title: str | None = None
 
 
 class Link(BaseDbModel):
@@ -231,6 +241,43 @@ class Graph(GraphMeta):
                 link.is_static = True  # Each value block output should be static.
 
             # TODO: Add type compatibility check here.
+
+    def get_input_schema(self) -> list[InputSchemaItem]:
+        """
+        Walks the graph and returns all the inputs that are either not:
+        - static
+        - provided by parent node
+        """
+        input_schema = []
+        for node in self.nodes:
+            block = get_block(node.block_id)
+            if not block:
+                continue
+
+            for input_name, input_schema_item in (
+                block.input_schema.jsonschema().get("properties", {}).items()
+            ):
+                # Check if the input is not static and not provided by a parent node
+                if (
+                    input_name not in node.input_default
+                    and not any(
+                        link.sink_name == input_name for link in node.input_links
+                    )
+                    and isinstance(
+                        block.input_schema.model_fields.get(input_name).default,
+                        PydanticUndefinedType,
+                    )
+                ):
+
+                    input_schema.append(
+                        InputSchemaItem(
+                            node_id=node.id,
+                            description=input_schema_item.get("description"),
+                            title=input_schema_item.get("title"),
+                        )
+                    )
+
+        return input_schema
 
     @staticmethod
     def from_db(graph: AgentGraph):
@@ -481,17 +528,19 @@ TEMPLATES_DIR = Path(__file__).parent.parent.parent / "graph_templates"
 async def import_packaged_templates() -> None:
     templates_in_db = await get_graphs_meta(filter_by="template")
 
-    print("Loading templates...")
+    logging.info("Loading templates...")
     for template_file in TEMPLATES_DIR.glob("*.json"):
         template_data = json.loads(template_file.read_bytes())
 
         template = Graph.model_validate(template_data)
         if not template.is_template:
-            print(f"WARNING: pre-packaged graph file {template_file} is not a template")
+            logging.warning(
+                f"pre-packaged graph file {template_file} is not a template"
+            )
             continue
         if (
             exists := next((t for t in templates_in_db if t.id == template.id), None)
         ) and exists.version >= template.version:
             continue
         await create_graph(template, DEFAULT_USER_ID)
-        print(f"Loaded template '{template.name}' ({template.id})")
+        logging.info(f"Loaded template '{template.name}' ({template.id})")

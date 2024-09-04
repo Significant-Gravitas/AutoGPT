@@ -91,8 +91,7 @@ In order to setup the database, you need to run the following commands, in the s
 
    ```sh
    docker compose up postgres -d
-   poetry run prisma migrate dev --schema postgres/schema.prisma
-   docker compose down
+   poetry run prisma migrate dev
    ```
 After deploying the migration, to ensure that the database schema is correctly mapped to your codebase, allowing the application to interact with the database properly, you need to generate the Prisma database model:
 
