@@ -90,10 +90,10 @@ const Monitor = () => {
       <FlowRunsList
         className={column2}
         flows={flows}
-        runs={(selectedFlow
+        runs={[...(selectedFlow
           ? flowRuns.filter((v) => v.graphID == selectedFlow.id)
           : flowRuns
-        ).toSorted((a, b) => Number(a.startTime) - Number(b.startTime))}
+        )].sort((a, b) => Number(a.startTime) - Number(b.startTime))}
         selectedRun={selectedRun}
         onSelectRun={(r) => setSelectedRun(r.id == selectedRun?.id ? null : r)}
       />
