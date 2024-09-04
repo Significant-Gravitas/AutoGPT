@@ -114,13 +114,15 @@ def SchemaField(
     exclude: bool = False,
     **kwargs,
 ) -> T:
-    json_extra: dict[str, Any] = {}
-    if placeholder:
-        json_extra["placeholder"] = placeholder
-    if secret:
-        json_extra["secret"] = True
-    if advanced:
-        json_extra["advanced"] = True
+    json_extra = {
+        k: v
+        for k, v in {
+            "placeholder": placeholder,
+            "secret": secret,
+            "advanced": advanced,
+        }.items()
+        if v is not None
+    }
 
     return Field(
         default,
