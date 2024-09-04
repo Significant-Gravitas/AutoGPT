@@ -181,10 +181,10 @@ export const startTutorial = (
   tour.addStep({
     id: "scroll-block-menu",
     title: "Scroll Down or Search",
-    text: 'Scroll down or search in the blocks menu for the "Math Block" and press the "+" to add the block.',
+    text: 'Scroll down or search in the blocks menu for the "Calculator Block" and press the "+" to add the block.',
     attachTo: {
       element: '[data-id="blocks-control-popover-content"]',
-      on: "bottom",
+      on: "right",
     },
     buttons: [],
     beforeShowPromise: () =>
@@ -208,7 +208,7 @@ export const startTutorial = (
     id: "focus-new-block",
     title: "New Block",
     text: "This is the Calculator Block! Let's go over how it works.",
-    attachTo: { element: `[data-id="custom-node-1"]`, on: "top" },
+    attachTo: { element: `[data-id="custom-node-1"]`, on: "left" },
     beforeShowPromise: () => waitForElement('[data-id="custom-node-1"]'),
     buttons: [
       {
@@ -282,7 +282,7 @@ export const startTutorial = (
   tour.addStep({
     id: "enter-number-1",
     title: "Enter a Number",
-    text: "Enter a number here to try the Math Block!",
+    text: "Enter a number here to try the Calculator Block!",
     attachTo: { element: "#a", on: "right" },
     buttons: [
       {
@@ -391,7 +391,7 @@ export const startTutorial = (
   tour.addStep({
     id: "focus-second-block",
     title: "Focus on the New Block",
-    text: "This is your copied Math Block. Now, let’s move it to the side of the first block.",
+    text: "This is your copied Calculator Block. Now, let’s move it to the side of the first block.",
     attachTo: { element: `[data-id="custom-node-2"]`, on: "top" },
     beforeShowPromise: () => waitForElement('[data-id="custom-node-2"]'),
     buttons: [
@@ -405,7 +405,7 @@ export const startTutorial = (
   tour.addStep({
     id: "connect-blocks-output",
     title: "Connect the Blocks: Output",
-    text: "Now, let’s connect the output of the first Math Block to the input of the second Math Block. Drag from the output pin of the first block to the input pin (A) of the second block.",
+    text: "Now, let’s connect the output of the first Calculator Block to the input of the second Calculator Block. Drag from the output pin of the first block to the input pin (A) of the second block.",
     attachTo: { element: '[data-id="1-1-result-source"]', on: "bottom" },
     buttons: [
       {
@@ -465,7 +465,7 @@ export const startTutorial = (
   tour.addStep({
     id: "press-run-again",
     title: "Press Run Again",
-    text: "Now, press the Run button again to execute the flow with the new Math Block added!",
+    text: "Now, press the Run button again to execute the flow with the new Calculator Block added!",
     attachTo: { element: '[data-id="control-button-2"]', on: "right" },
     advanceOn: { selector: '[data-id="control-button-2"]', event: "click" },
     buttons: [],
