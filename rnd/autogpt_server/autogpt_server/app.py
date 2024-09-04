@@ -1,19 +1,13 @@
 from multiprocessing import freeze_support, set_start_method
+from typing import TYPE_CHECKING
 
 import Pyro5.api as pyro
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from autogpt_server.executor import ExecutionManager, ExecutionScheduler
-from autogpt_server.server import AgentServer
-from autogpt_server.util.process import AppProcess
-from autogpt_server.util.service import PyroNameServer
+from .util.logging import configure_logging
 
-
-def get_config_and_secrets():
-    from autogpt_server.util.settings import Settings
-
-    settings = Settings()
-    return settings
+if TYPE_CHECKING:
+    from autogpt_server.util.process import AppProcess
 
 
 @retry(stop=stop_after_attempt(30), wait=wait_exponential(multiplier=1, min=1, max=30))
@@ -22,7 +16,7 @@ def wait_for_nameserver():
     print("NameServer is ready")
 
 
-def run_processes(processes: list[AppProcess], **kwargs):
+def run_processes(processes: list["AppProcess"], **kwargs):
     """
     Execute all processes in the app. The last process is run in the foreground.
     """
@@ -48,6 +42,11 @@ def run_processes(processes: list[AppProcess], **kwargs):
 def main(**kwargs):
     set_start_method("spawn", force=True)
     freeze_support()
+    configure_logging()
+
+    from autogpt_server.executor import ExecutionManager, ExecutionScheduler
+    from autogpt_server.server import AgentServer
+    from autogpt_server.util.service import PyroNameServer
 
     run_processes(
         [

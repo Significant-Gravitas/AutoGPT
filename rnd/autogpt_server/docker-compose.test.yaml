@@ -1,0 +1,21 @@
+version: "3"
+services:
+  postgres-test:
+    image: ankane/pgvector:latest
+    environment:
+      - POSTGRES_USER=agpt_user
+      - POSTGRES_PASSWORD=pass123
+      - POSTGRES_DB=agpt_local
+    healthcheck:
+      test: pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5433:5432"
+    networks:
+      - app-network-test
+
+networks:
+     app-network-test:
+       driver: bridge

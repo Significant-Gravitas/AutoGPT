@@ -18,7 +18,6 @@ def log(msg, **kwargs):
 
 
 class ExecutionScheduler(AppService):
-
     def __init__(self, refresh_interval=10):
         self.last_check = datetime.min
         self.refresh_interval = refresh_interval
@@ -38,7 +37,8 @@ class ExecutionScheduler(AppService):
     def __refresh_jobs_from_db(self, scheduler: BackgroundScheduler):
         schedules = self.run_and_wait(model.get_active_schedules(self.last_check))
         for schedule in schedules:
-            self.last_check = max(self.last_check, schedule.last_updated)
+            if schedule.last_updated:
+                self.last_check = max(self.last_check, schedule.last_updated)
 
             if not schedule.is_enabled:
                 log(f"Removing recurring job {schedule.id}: {schedule.schedule}")
