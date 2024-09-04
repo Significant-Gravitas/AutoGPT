@@ -1,9 +1,6 @@
-from autogpt_server.util.service import (
-    AppService,
-    PyroNameServer,
-    expose,
-    get_service_client,
-)
+import pytest
+
+from autogpt_server.util.service import AppService, expose, get_service_client
 
 
 class TestService(AppService):
@@ -29,10 +26,10 @@ class TestService(AppService):
         return self.run_and_wait(add_async(a, b))
 
 
-def test_service_creation():
-    with PyroNameServer():
-        with TestService():
-            client = get_service_client(TestService)
-            assert client.add(5, 3) == 8
-            assert client.subtract(10, 4) == 6
-            assert client.fun_with_async(5, 3) == 8
+@pytest.mark.asyncio(scope="session")
+async def test_service_creation(server):
+    with TestService():
+        client = get_service_client(TestService)
+        assert client.add(5, 3) == 8
+        assert client.subtract(10, 4) == 6
+        assert client.fun_with_async(5, 3) == 8

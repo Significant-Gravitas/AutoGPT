@@ -124,6 +124,8 @@ model AgentGraphExecution {
   // Link to User model
   userId String
   user   User   @relation(fields: [userId], references: [id])
+
+  stats String? // JSON serialized object
 }
 
 // This model describes the execution of an AgentNode.
@@ -148,6 +150,8 @@ model AgentNodeExecution {
   queuedTime      DateTime?
   startedTime     DateTime?
   endedTime       DateTime?
+
+  stats String? // JSON serialized object
 }
 
 // This model describes the output of an AgentNodeExecution.
