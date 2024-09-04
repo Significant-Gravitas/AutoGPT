@@ -3,13 +3,12 @@ import {
   getFeaturedAgents,
   removeFeaturedAgent,
   getCategories,
-  getUserAgents,
-  getAllAgents,
   getNotFeaturedAgents,
 } from "./actions";
 
 import FeaturedAgentsTable from "./FeaturedAgentsTable";
 import { AdminAddFeaturedAgentDialog } from "./AdminAddFeaturedAgentDialog";
+import { revalidatePath } from "next/cache";
 
 export default async function AdminFeaturedAgentsControl({
   className,
@@ -58,16 +57,11 @@ export default async function AdminFeaturedAgentsControl({
               "use server";
               const all = rows.map((row) => removeFeaturedAgent(row.id));
               await Promise.all(all);
+              revalidatePath("/marketplace");
             },
           },
         ]}
       />
     </div>
   );
-}
-
-// Function to handle adding the featured agent
-async function addFeaturedAgent(agentId: string, categories: string[]) {
-  // Implement the logic to add the featured agent
-  // This could involve calling an API or updating state
 }

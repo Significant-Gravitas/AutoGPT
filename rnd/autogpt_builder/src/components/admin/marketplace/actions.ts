@@ -1,6 +1,7 @@
 "use server";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import MarketplaceAPI from "@/lib/marketplace-api";
+import { revalidatePath } from "next/cache";
 
 export async function approveAgent(
   agentId: string,
@@ -10,6 +11,7 @@ export async function approveAgent(
   const api = new MarketplaceAPI();
   await api.approveAgentSubmission(agentId, version, comment);
   console.debug(`Approving agent ${agentId}`);
+  revalidatePath("/marketplace");
 }
 
 export async function rejectAgent(
@@ -20,6 +22,7 @@ export async function rejectAgent(
   const api = new MarketplaceAPI();
   await api.rejectAgentSubmission(agentId, version, comment);
   console.debug(`Rejecting agent ${agentId}`);
+  revalidatePath("/marketplace");
 }
 
 export async function getReviewableAgents() {
@@ -51,6 +54,7 @@ export async function addFeaturedAgent(
   const api = new MarketplaceAPI();
   await api.addFeaturedAgent(agentId, categories);
   console.debug(`Adding featured agent ${agentId}`);
+  revalidatePath("/marketplace");
 }
 
 export async function removeFeaturedAgent(
@@ -60,6 +64,7 @@ export async function removeFeaturedAgent(
   const api = new MarketplaceAPI();
   await api.removeFeaturedAgent(agentId, categories);
   console.debug(`Removing featured agent ${agentId}`);
+  revalidatePath("/marketplace");
 }
 
 export async function getCategories() {

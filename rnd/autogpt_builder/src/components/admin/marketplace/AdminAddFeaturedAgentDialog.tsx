@@ -3,6 +3,7 @@
 import {
   Dialog,
   DialogContent,
+  DialogClose,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -126,15 +127,21 @@ export const AdminAddFeaturedAgentDialog = ({
           />
         </div>
         <DialogFooter>
-          <Button
-            type="submit"
-            onClick={async () => {
-              // Handle adding the featured agent
-              await addFeaturedAgent(selectedAgent, selectedCategories);
-            }}
-          >
-            Add
-          </Button>
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
+          <DialogClose asChild>
+            <Button
+              type="submit"
+              onClick={async () => {
+                // Handle adding the featured agent
+                await addFeaturedAgent(selectedAgent, selectedCategories);
+                // close the dialog
+              }}
+            >
+              Add
+            </Button>
+          </DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>
