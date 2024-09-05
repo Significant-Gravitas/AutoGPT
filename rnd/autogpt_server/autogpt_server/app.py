@@ -18,10 +18,9 @@ def run_processes(*processes: "AppProcess", **kwargs):
 
         # Run the last process in the foreground
         processes[-1].start(background=False, **kwargs)
-    except Exception as e:
+    finally:
         for process in processes:
             process.stop()
-        raise e
 
 
 def main(**kwargs):
