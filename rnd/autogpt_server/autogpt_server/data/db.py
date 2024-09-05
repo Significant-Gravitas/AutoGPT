@@ -1,11 +1,10 @@
 import asyncio
 import os
-
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from dotenv import load_dotenv
-from prisma import Prisma, errors
+from prisma import Prisma
 from pydantic import BaseModel, Field, field_validator
 
 load_dotenv()

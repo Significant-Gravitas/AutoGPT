@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 
 from autogpt_server.data import db, graph

@@ -1,7 +1,7 @@
+from multiprocessing import set_start_method
 from typing import TYPE_CHECKING
 
 from .util.logging import configure_logging
-from multiprocessing import set_start_method
 
 if TYPE_CHECKING:
     from autogpt_server.util.process import AppProcess
