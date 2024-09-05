@@ -34,7 +34,12 @@ import ConnectionLine from "./ConnectionLine";
 import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
-import { IconPlay, IconRedo2, IconUndo2 } from "@/components/ui/icons";
+import {
+  IconPlay,
+  IconRedo2,
+  IconSquare,
+  IconUndo2,
+} from "@/components/ui/icons";
 import { startTutorial } from "./tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { v4 as uuidv4 } from "uuid";
@@ -75,7 +80,9 @@ const FlowEditor: React.FC<{
     availableNodes,
     getOutputType,
     requestSave,
-    requestSaveRun,
+    requestSaveAndRun,
+    requestStopRun,
+    isRunning,
     nodes,
     setNodes,
     edges,
@@ -542,9 +549,9 @@ const FlowEditor: React.FC<{
       onClick: handleRedo,
     },
     {
-      label: "Run",
-      icon: <IconPlay />,
-      onClick: requestSaveRun,
+      label: !isRunning ? "Run" : "Stop",
+      icon: !isRunning ? <IconPlay /> : <IconSquare />,
+      onClick: !isRunning ? requestSaveAndRun : requestStopRun,
     },
   ];
 
