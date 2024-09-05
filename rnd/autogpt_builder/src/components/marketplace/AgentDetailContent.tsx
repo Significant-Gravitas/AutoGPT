@@ -11,7 +11,10 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AgentDetailResponse, InstallationLocation } from "@/lib/marketplace-api";
+import {
+  AgentDetailResponse,
+  InstallationLocation,
+} from "@/lib/marketplace-api";
 import dynamic from "next/dynamic";
 import { Node, Edge } from "@xyflow/react";
 import MarketplaceAPI from "@/lib/marketplace-api";
