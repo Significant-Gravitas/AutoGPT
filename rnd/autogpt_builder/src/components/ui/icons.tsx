@@ -406,6 +406,40 @@ export const IconPlay = createIcon((props) => (
 ));
 
 /**
+ * Square icon component.
+ *
+ * @component IconSquare
+ * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
+ * @returns {JSX.Element} - The square icon.
+ *
+ * @example
+ * // Default usage this is the standard usage
+ * <IconSquare />
+ *
+ * @example
+ * // With custom color and size these should be used sparingly and only when necessary
+ * <IconSquare className="text-primary" size="lg" />
+ *
+ * @example
+ * // With custom size and onClick handler
+ * <IconSquare size="sm" onClick={handleOnClick} />
+ */
+export const IconSquare = createIcon((props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+  </svg>
+));
+
+/**
  * Package2 icon component.
  *
  * @component IconPackage2

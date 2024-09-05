@@ -34,10 +34,16 @@ import ConnectionLine from "./ConnectionLine";
 import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
-import { IconPlay, IconRedo2, IconUndo2 } from "@/components/ui/icons";
+import {
+  IconPlay,
+  IconRedo2,
+  IconSquare,
+  IconUndo2,
+} from "@/components/ui/icons";
 import { startTutorial } from "./tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { v4 as uuidv4 } from "uuid";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -74,13 +80,17 @@ const FlowEditor: React.FC<{
     availableNodes,
     getOutputType,
     requestSave,
-    requestSaveRun,
+    requestSaveAndRun,
+    requestStopRun,
+    isRunning,
     nodes,
     setNodes,
     edges,
     setEdges,
   } = useAgentGraph(flowID, template, visualizeBeads !== "no");
 
+  const router = useRouter();
+  const pathname = usePathname();
   const initialPositionRef = useRef<{
     [key: string]: { x: number; y: number };
   }>({});
@@ -97,7 +107,7 @@ const FlowEditor: React.FC<{
     // If resetting tutorial
     if (params.get("resetTutorial") === "true") {
       localStorage.removeItem("shepherd-tour"); // Clear tutorial flag
-      window.location.href = window.location.pathname; // Redirect to clear URL parameters
+      router.push(pathname);
     } else {
       // Otherwise, start tutorial if conditions are met
       const shouldStartTutorial = !localStorage.getItem("shepherd-tour");
@@ -539,9 +549,9 @@ const FlowEditor: React.FC<{
       onClick: handleRedo,
     },
     {
-      label: "Run",
-      icon: <IconPlay />,
-      onClick: requestSaveRun,
+      label: !isRunning ? "Run" : "Stop",
+      icon: !isRunning ? <IconPlay /> : <IconSquare />,
+      onClick: !isRunning ? requestSaveAndRun : requestStopRun,
     },
   ];
 

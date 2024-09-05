@@ -84,6 +84,9 @@ class AIStructuredResponseGeneratorBlock(Block):
         api_key: BlockSecret = SecretField(value="")
         sys_prompt: str = ""
         retry: int = 3
+        prompt_values: dict[str, str] = SchemaField(
+            advanced=False, default={}, description="Values used to fill in the prompt."
+        )
 
     class Output(BlockSchema):
         response: dict[str, str]
@@ -166,6 +169,11 @@ class AIStructuredResponseGeneratorBlock(Block):
         def trim_prompt(s: str) -> str:
             lines = s.strip().split("\n")
             return "\n".join([line.strip().lstrip("|") for line in lines])
+
+        values = input_data.prompt_values
+        if values:
+            input_data.prompt = input_data.prompt.format(**values)
+            input_data.sys_prompt = input_data.sys_prompt.format(**values)
 
         if input_data.sys_prompt:
             prompt.append({"role": "system", "content": input_data.sys_prompt})
@@ -252,6 +260,9 @@ class AITextGeneratorBlock(Block):
         api_key: BlockSecret = SecretField(value="")
         sys_prompt: str = ""
         retry: int = 3
+        prompt_values: dict[str, str] = SchemaField(
+            advanced=False, default={}, description="Values used to fill in the prompt."
+        )
 
     class Output(BlockSchema):
         response: str
