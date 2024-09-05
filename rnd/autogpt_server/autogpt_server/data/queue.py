@@ -41,7 +41,7 @@ class AsyncRedisEventQueue(AsyncEventQueue):
     def __init__(self):
         self.host = os.getenv("REDIS_HOST", "localhost")
         self.port = int(os.getenv("REDIS_PORT", "6379"))
-        self.password = os.getenv("REDIS_PASSWORD", None)
+        self.password = os.getenv("REDIS_PASSWORD", "password")
         self.queue_name = os.getenv("REDIS_QUEUE", "execution_events")
         self.connection = None
 
