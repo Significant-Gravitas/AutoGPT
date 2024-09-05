@@ -6,6 +6,9 @@ from abc import ABC, abstractmethod
 from multiprocessing import Process, set_start_method
 from typing import Optional
 
+from autogpt_server.util.logging import configure_logging
+from autogpt_server.util.metrics import sentry_init
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,6 +19,10 @@ class AppProcess(ABC):
 
     process: Optional[Process] = None
     set_start_method("spawn", force=True)
+
+    set_start_method("spawn", force=True)
+    configure_logging()
+    sentry_init()
 
     # Methods that are executed INSIDE the process #
 
@@ -33,6 +40,12 @@ class AppProcess(ABC):
         """
         pass
 
+    def health_check(self):
+        """
+        A method to check the health of the process.
+        """
+        pass
+
     def execute_run_command(self, silent):
         signal.signal(signal.SIGTERM, self._self_terminate)
 
@@ -40,10 +53,6 @@ class AppProcess(ABC):
             if silent:
                 sys.stdout = open(os.devnull, "w")
                 sys.stderr = open(os.devnull, "w")
-            else:
-                from .logging import configure_logging
-
-                configure_logging()
             self.run()
         except (KeyboardInterrupt, SystemExit):
             logger.info(f"[{self.__class__.__name__}] Terminated; quitting...")
@@ -82,6 +91,7 @@ class AppProcess(ABC):
             **proc_args,
         )
         self.process.start()
+        self.health_check()
         return self.process.pid or 0
 
     def stop(self):

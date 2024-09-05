@@ -38,12 +38,6 @@ from autogpt_server.data.graph import Graph, Link, Node, get_graph, get_node
 from autogpt_server.util import json
 from autogpt_server.util.decorator import error_logged, time_measured
 from autogpt_server.util.logging import configure_logging
-from autogpt_server.util.metrics import (
-    metric_graph_count,
-    metric_graph_timing,
-    metric_node_payload,
-    metric_node_timing,
-)
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Config
 from autogpt_server.util.type import convert
@@ -73,7 +67,10 @@ ExecutionStream = Generator[NodeExecution, None, None]
 
 
 def execute_node(
-    loop: asyncio.AbstractEventLoop, api_client: "AgentServer", data: NodeExecution
+    loop: asyncio.AbstractEventLoop,
+    api_client: "AgentServer",
+    data: NodeExecution,
+    execution_stats: dict[str, Any] | None = None,
 ) -> ExecutionStream:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
@@ -83,6 +80,7 @@ def execute_node(
         loop: The event loop to run the async functions.
         api_client: The client to send execution updates to the server.
         data: The execution data for executing the current node.
+        execution_stats: The execution statistics to be updated.
 
     Returns:
         The subsequent node to be enqueued, or None if there is no subsequent node.
@@ -126,17 +124,18 @@ def execute_node(
 
     # Execute the node
     input_data_str = json.dumps(input_data)
-    metric_node_payload("input_size", len(input_data_str), tags=log_metadata)
+    input_size = len(input_data_str)
     logger.info(
         "Executed node with input",
         extra={"json_fields": {**log_metadata, "input": input_data_str}},
     )
     update_execution(ExecutionStatus.RUNNING)
 
+    output_size = 0
     try:
         for output_name, output_data in node_block.execute(input_data):
             output_data_str = json.dumps(output_data)
-            metric_node_payload("output_size", len(output_data_str), tags=log_metadata)
+            output_size += len(output_data_str)
             logger.info(
                 "Node produced output",
                 extra={"json_fields": {**log_metadata, output_name: output_data_str}},
@@ -166,6 +165,11 @@ def execute_node(
         update_execution(ExecutionStatus.FAILED)
 
         raise e
+
+    finally:
+        if execution_stats is not None:
+            execution_stats["input_size"] = input_size
+            execution_stats["output_size"] = output_size
 
 
 @contextmanager
@@ -428,46 +432,53 @@ class Executor:
 
     @classmethod
     @error_logged
-    def on_node_execution(cls, q: ExecutionQueue[NodeExecution], data: NodeExecution):
+    def on_node_execution(
+        cls, q: ExecutionQueue[NodeExecution], node_exec: NodeExecution
+    ):
         log_metadata = get_log_metadata(
-            graph_eid=data.graph_exec_id,
-            graph_id=data.graph_id,
-            node_eid=data.node_exec_id,
-            node_id=data.node_id,
+            graph_eid=node_exec.graph_exec_id,
+            graph_id=node_exec.graph_id,
+            node_eid=node_exec.node_exec_id,
+            node_id=node_exec.node_id,
             block_name="-",
         )
-        timing_info, _ = cls._on_node_execution(q, data, log_metadata)
-        metric_node_timing("walltime", timing_info.wall_time, tags=log_metadata)
-        metric_node_timing("cputime", timing_info.cpu_time, tags=log_metadata)
+
+        execution_stats = {}
+        timing_info, _ = cls._on_node_execution(
+            q, node_exec, log_metadata, execution_stats
+        )
+        execution_stats["walltime"] = timing_info.wall_time
+        execution_stats["cputime"] = timing_info.cpu_time
+
         cls.loop.run_until_complete(
-            update_node_execution_stats(
-                data.node_exec_id,
-                {
-                    "walltime": timing_info.wall_time,
-                    "cputime": timing_info.cpu_time,
-                },
-            )
+            update_node_execution_stats(node_exec.node_exec_id, execution_stats)
         )
 
     @classmethod
     @time_measured
     def _on_node_execution(
-        cls, q: ExecutionQueue[NodeExecution], data: NodeExecution, log_metadata: dict
+        cls,
+        q: ExecutionQueue[NodeExecution],
+        node_exec: NodeExecution,
+        log_metadata: dict,
+        stats: dict[str, Any] | None = None,
     ):
         try:
             logger.info(
-                f"Start node execution {data.node_exec_id}",
+                f"Start node execution {node_exec.node_exec_id}",
                 extra={"json_fields": {**log_metadata}},
             )
-            for execution in execute_node(cls.loop, cls.agent_server_client, data):
+            for execution in execute_node(
+                cls.loop, cls.agent_server_client, node_exec, stats
+            ):
                 q.add(execution)
             logger.info(
-                f"Finished node execution {data.node_exec_id}",
+                f"Finished node execution {node_exec.node_exec_id}",
                 extra={"json_fields": {**log_metadata}},
             )
         except Exception as e:
             logger.exception(
-                f"Failed node execution {data.node_exec_id}: {e}",
+                f"Failed node execution {node_exec.node_exec_id}: {e}",
                 extra={
                     **log_metadata,
                 },
@@ -506,22 +517,21 @@ class Executor:
 
     @classmethod
     @error_logged
-    def on_graph_execution(cls, data: GraphExecution, cancel: threading.Event):
+    def on_graph_execution(cls, graph_exec: GraphExecution, cancel: threading.Event):
         log_metadata = get_log_metadata(
-            graph_eid=data.graph_exec_id,
-            graph_id=data.graph_id,
+            graph_eid=graph_exec.graph_exec_id,
+            graph_id=graph_exec.graph_id,
             node_id="*",
             node_eid="*",
             block_name="-",
         )
-        timing_info, node_count = cls._on_graph_execution(data, cancel, log_metadata)
-        metric_graph_timing("walltime", timing_info.wall_time, tags=log_metadata)
-        metric_graph_timing("cputime", timing_info.cpu_time, tags=log_metadata)
-        metric_graph_count("nodecount", node_count, tags=log_metadata)
+        timing_info, node_count = cls._on_graph_execution(
+            graph_exec, cancel, log_metadata
+        )
 
         cls.loop.run_until_complete(
             update_graph_execution_stats(
-                data.graph_exec_id,
+                graph_exec.graph_exec_id,
                 {
                     "walltime": timing_info.wall_time,
                     "cputime": timing_info.cpu_time,
@@ -639,7 +649,7 @@ class Executor:
 
 class ExecutionManager(AppService):
     def __init__(self):
-        self.use_redis = False
+        self.use_db = True
         self.pool_size = Config().num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
