@@ -14,7 +14,6 @@ class AppProcess(ABC):
     """
 
     process: Optional[Process] = None
-    set_start_method("spawn", force=True)
 
     set_start_method("spawn", force=True)
     configure_logging()
