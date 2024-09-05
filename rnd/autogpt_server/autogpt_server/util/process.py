@@ -1,7 +1,7 @@
 import os
 import sys
 from abc import ABC, abstractmethod
-from multiprocessing import Process
+from multiprocessing import Process, set_start_method
 from typing import Optional
 
 
@@ -11,6 +11,7 @@ class AppProcess(ABC):
     """
 
     process: Optional[Process] = None
+    set_start_method("spawn", force=True)
 
     @abstractmethod
     def run(self):
