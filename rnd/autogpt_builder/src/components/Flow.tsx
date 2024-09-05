@@ -38,6 +38,7 @@ import { IconPlay, IconRedo2, IconUndo2 } from "@/components/ui/icons";
 import { startTutorial } from "./tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { v4 as uuidv4 } from "uuid";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -81,6 +82,8 @@ const FlowEditor: React.FC<{
     setEdges,
   } = useAgentGraph(flowID, template, visualizeBeads !== "no");
 
+  const router = useRouter();
+  const pathname = usePathname();
   const initialPositionRef = useRef<{
     [key: string]: { x: number; y: number };
   }>({});
@@ -97,7 +100,7 @@ const FlowEditor: React.FC<{
     // If resetting tutorial
     if (params.get("resetTutorial") === "true") {
       localStorage.removeItem("shepherd-tour"); // Clear tutorial flag
-      window.location.href = window.location.pathname; // Redirect to clear URL parameters
+      router.push(pathname);
     } else {
       // Otherwise, start tutorial if conditions are met
       const shouldStartTutorial = !localStorage.getItem("shepherd-tour");
