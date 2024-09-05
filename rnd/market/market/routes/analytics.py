@@ -6,7 +6,7 @@ import market.model
 router = fastapi.APIRouter()
 
 
-@router.post("/analytics/agent-installed")
+@router.post("/agent-installed")
 async def agent_installed_endpoint(
     event_data: market.model.AgentInstalledFromMarketplaceEventData,
 ):

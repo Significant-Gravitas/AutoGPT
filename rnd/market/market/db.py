@@ -653,7 +653,7 @@ async def create_agent_installed_event(
                 "installedAgentId": event_data.installed_agent_id,
                 "marketplaceAgentId": event_data.marketplace_agent_id,
                 "installationLocation": prisma.enums.InstallationLocation(
-                    event_data.installation_location
+                    event_data.installation_location.name
                 ),
             }
         )

@@ -195,7 +195,10 @@ export default class MarketplaceAPI {
   }
 
   async makeAnalyticsEvent(event: AnalyticsEvent) {
-    return this._post("/analytics", event);
+    if (event.event_name === "agent_installed_from_marketplace") {
+      return this._post("/analytics/agent-installed", event.event_data);
+    }
+    throw new Error("Invalid event name");
   }
 
   private async _get(path: string) {
