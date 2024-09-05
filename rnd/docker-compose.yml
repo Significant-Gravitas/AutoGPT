@@ -47,6 +47,7 @@ services:
       - AUTH_ENABLED=false
       - PYRO_HOST=0.0.0.0
       - EXECUTIONMANAGER_HOST=execution_manager
+      - EXECUTIONSCHEDULER_HOST=execution_scheduler
     ports:
       - "8000:8000"
     networks:

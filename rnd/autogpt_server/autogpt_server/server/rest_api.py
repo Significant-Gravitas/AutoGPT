@@ -1,5 +1,4 @@
 import inspect
-import logging
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from functools import wraps
@@ -239,7 +238,7 @@ class AgentServer(AppService):
 
     @property
     def execution_scheduler_client(self) -> ExecutionScheduler:
-        return get_service_client(ExecutionScheduler,8003)
+        return get_service_client(ExecutionScheduler, 8003)
 
     @classmethod
     def handle_internal_http_error(cls, request: Request, exc: Exception):

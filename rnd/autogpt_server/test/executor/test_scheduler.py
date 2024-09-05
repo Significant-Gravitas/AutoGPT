@@ -13,7 +13,7 @@ async def test_agent_schedule(server: SpinTestServer):
     test_user = await create_test_user()
     test_graph = await graph.create_graph(create_test_graph(), user_id=test_user.id)
 
-    scheduler = get_service_client(ExecutionScheduler,8002)
+    scheduler = get_service_client(ExecutionScheduler, 8002)
 
     schedules = scheduler.get_execution_schedules(test_graph.id, test_user.id)
     assert len(schedules) == 0

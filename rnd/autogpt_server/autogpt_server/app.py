@@ -1,13 +1,10 @@
 from multiprocessing import freeze_support, set_start_method
 from typing import TYPE_CHECKING
-
-import Pyro5.api as pyro
-from tenacity import retry, stop_after_attempt, wait_exponential
-
 from .util.logging import configure_logging
 
 if TYPE_CHECKING:
     from autogpt_server.util.process import AppProcess
+
 
 def run_processes(processes: list["AppProcess"], **kwargs):
     """
@@ -26,16 +23,17 @@ def main(**kwargs):
     freeze_support()
     configure_logging()
 
-    from autogpt_server.executor import ExecutionScheduler
     from autogpt_server.server import AgentServer
-    from autogpt_server.util.service import PyroNameServer
+    from autogpt_server.executor import ExecutionScheduler
 
     run_processes(
         [
+            ExecutionScheduler(),
             AgentServer(),
         ],
         **kwargs
     )
+
 
 def execution_manager(**kwargs):
     set_start_method("spawn", force=True)
@@ -50,6 +48,7 @@ def execution_manager(**kwargs):
         ],
         **kwargs
     )
+
 
 if __name__ == "__main__":
     main()

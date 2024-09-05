@@ -6,6 +6,7 @@ import time
 from abc import abstractmethod
 from typing import Any, Callable, Coroutine, Type, TypeVar, cast
 
+import Pyro5.api
 from Pyro5 import api as pyro
 from Pyro5 import nameserver
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -14,7 +15,6 @@ from autogpt_server.data import db
 from autogpt_server.data.queue import AsyncEventQueue, AsyncRedisEventQueue
 from autogpt_server.util.process import AppProcess
 from autogpt_server.util.settings import Config
-import Pyro5.api
 
 logger = logging.getLogger(__name__)
 conn_retry = retry(
@@ -65,6 +65,7 @@ class AppService(AppProcess):
     def __init__(self, port):
         self.port = port
         self.uri = None
+
     @classmethod
     @property
     def service_name(cls) -> str:
@@ -108,7 +109,9 @@ class AppService(AppProcess):
         daemon = Pyro5.api.Daemon(host=host, port=self.port)
         self.uri = daemon.register(self, objectId=self.service_name)
 
-        logger.info(f"Service in start pyro [{self.service_name}] Ready. Object URI = {self.uri}")
+        logger.info(
+            f"Service in start pyro [{self.service_name}] Ready. Object URI = {self.uri}"
+        )
         daemon.requestLoop()
 
     def __start_async_loop(self):
