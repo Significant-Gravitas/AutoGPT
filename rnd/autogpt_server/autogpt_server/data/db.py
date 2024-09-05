@@ -1,3 +1,4 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from uuid import uuid4
@@ -11,17 +12,33 @@ load_dotenv()
 PRISMA_SCHEMA = os.getenv("PRISMA_SCHEMA", "schema.prisma")
 os.environ["PRISMA_SCHEMA_PATH"] = PRISMA_SCHEMA
 
-prisma = Prisma(auto_register=True)
+prisma, conn_id = Prisma(auto_register=True), ""
 
 
-async def connect():
-    if not prisma.is_connected():
-        await prisma.connect()
+async def connect(call_count=0):
+    global conn_id
+    if not conn_id:
+        conn_id = str(uuid4())
+
+    try:
+        print(f"[Prisma-{conn_id}] Acquiring connection..")
+        if not prisma.is_connected():
+            await prisma.connect()
+        print(f"[Prisma-{conn_id}] Connection acquired!")
+    except Exception as e:
+        if call_count <= 5:
+            print(f"[Prisma-{conn_id}] Connection failed: {e}. Retrying now..")
+            await asyncio.sleep(call_count)
+            await connect(call_count + 1)
+        else:
+            raise e
 
 
 async def disconnect():
     if prisma.is_connected():
+        print(f"[Prisma-{conn_id}] Releasing connection.")
         await prisma.disconnect()
+        print(f"[Prisma-{conn_id}] Connection released.")
 
 
 @asynccontextmanager
