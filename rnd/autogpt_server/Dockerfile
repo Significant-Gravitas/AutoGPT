@@ -43,4 +43,4 @@ FROM server_base as server
 ENV PORT=8000
 ENV DATABASE_URL=""
 
-CMD ["poetry", "run", "app"]
+CMD ["poetry", "run", "rest"]
