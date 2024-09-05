@@ -4,6 +4,9 @@ from abc import ABC, abstractmethod
 from multiprocessing import Process, set_start_method
 from typing import Optional
 
+from autogpt_server.util.logging import configure_logging
+from autogpt_server.util.metrics import sentry_init
+
 
 class AppProcess(ABC):
     """
@@ -12,6 +15,10 @@ class AppProcess(ABC):
 
     process: Optional[Process] = None
     set_start_method("spawn", force=True)
+
+    set_start_method("spawn", force=True)
+    configure_logging()
+    sentry_init()
 
     @abstractmethod
     def run(self):
@@ -31,10 +38,6 @@ class AppProcess(ABC):
             if silent:
                 sys.stdout = open(os.devnull, "w")
                 sys.stderr = open(os.devnull, "w")
-            else:
-                from .logging import configure_logging
-
-                configure_logging()
             self.run()
         except KeyboardInterrupt or SystemExit as e:
             print(f"Process terminated: {e}")
