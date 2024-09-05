@@ -1,5 +1,4 @@
-from abc import ABC, abstractmethod
-from typing import Any, Generic, List, TypeVar
+from typing import Any, List
 
 from pydantic import Field
 
@@ -238,15 +237,93 @@ class InputBlock(Block):
         yield "result", input_data.value
 
 
-class OutputBlock(InputOutputBlockBase[Any]):
+class OutputBlock(Block):
+    """
+    Records the output of the graph for users to see.
+
+    Attributes:
+        recorded_value: The value to be recorded as output.
+        name: The name of the output.
+        description: The description of the output.
+        fmt_string: The format string to be used to format the recorded_value.
+
+    Outputs:
+        output: The formatted recorded_value if fmt_string is provided and the recorded_value
+                can be formatted, otherwise the raw recorded_value.
+
+    Behavior:
+        If fmt_string is provided and the recorded_value is of a type that can be formatted,
+        the block attempts to format the recorded_value using the fmt_string.
+        If formatting fails or no fmt_string is provided, the raw recorded_value is output.
+    """
+
+    class Input(BlockSchema):
+        recorded_value: Any = SchemaField(
+            description="The value to be recorded as output."
+        )
+        name: str = SchemaField(description="The name of the output.")
+        description: str = SchemaField(description="The description of the output.")
+        fmt_string: str = SchemaField(
+            description="The format string to be used to format the recorded_value."
+        )
+
+    class Output(BlockSchema):
+        output: Any = SchemaField(description="The value recorded as output.")
+
     def __init__(self):
         super().__init__(
+            id="363ae599-353e-4804-937e-b2ee3cef3da4",
+            description=(
+                "This block records the graph output. It takes a value to record, "
+                "with a name, description, and optional format string. If a format "
+                "string is given, it tries to format the recorded value. The "
+                "formatted (or raw, if formatting fails) value is then output. "
+                "This block is key for capturing and presenting final results or "
+                "important intermediate outputs of the graph execution."
+            ),
+            input_schema=OutputBlock.Input,
+            output_schema=OutputBlock.Output,
+            test_input=[
+                {
+                    "recorded_value": "Hello, World!",
+                    "name": "output_1",
+                    "description": "This is a test output.",
+                    "fmt_string": "{value}",
+                },
+                {
+                    "recorded_value": 42,
+                    "name": "output_2",
+                    "description": "This is another test output.",
+                    "fmt_string": "{value}",
+                },
+                {
+                    "recorded_value": MockObject(value="!!", key="key"),
+                    "name": "output_3",
+                    "description": "This is a test output with a mock object.",
+                    "fmt_string": "{value}",
+                },
+            ],
+            test_output=[
+                ("output", "Hello, World!"),
+                ("output", 42),
+                ("output", MockObject(value="!!", key="key")),
+            ],
             categories={BlockCategory.OUTPUT, BlockCategory.BASIC},
             ui_type=BlockUIType.OUTPUT,
         )
 
-    def block_id(self) -> str:
-        return "363ae599-353e-4804-937e-b2ee3cef3da4"
+    def run(self, input_data: Input) -> BlockOutput:
+        """
+        Attempts to format the recorded_value using the fmt_string if provided.
+        If formatting fails or no fmt_string is given, returns the original recorded_value.
+        """
+        if input_data.fmt_string:
+            try:
+                yield "output", input_data.fmt_string.format(input_data.recorded_value)
+            except Exception:
+                yield "output", input_data.recorded_value
+        else:
+            yield "output", input_data.recorded_value
 
 
 class AddToDictionaryBlock(Block):
