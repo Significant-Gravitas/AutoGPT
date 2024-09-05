@@ -20,6 +20,12 @@ class AppProcess(ABC):
         """
         pass
 
+    def health_check(self):
+        """
+        A method to check the health of the process.
+        """
+        pass
+
     def execute_run_command(self, silent):
         try:
             if silent:
@@ -61,6 +67,7 @@ class AppProcess(ABC):
             **proc_args,
         )
         self.process.start()
+        self.health_check()
         return self.process.pid or 0
 
     def stop(self):
