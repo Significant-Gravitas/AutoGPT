@@ -1,4 +1,3 @@
-from multiprocessing import freeze_support, set_start_method
 from typing import TYPE_CHECKING
 
 from .util.logging import configure_logging
