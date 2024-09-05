@@ -284,7 +284,6 @@ Example: ["pandas==1.3.0", "numpy", "matplotlib"]""",
             input_schema=self.Input,
             output_schema=self.Output,
             disabled=True,
-
         )
         self.fast_executor = FastPythonExecutionBlock()
         self.flexible_executor = FlexiblePythonExecutionBlock()
