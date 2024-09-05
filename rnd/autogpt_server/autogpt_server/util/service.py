@@ -53,6 +53,14 @@ class PyroNameServer(AppProcess):
         except KeyboardInterrupt:
             print("Shutting down NameServer")
 
+    @conn_retry
+    def _wait_for_ns(self):
+        pyro.locate_ns(host="localhost", port=9090)
+        print("NameServer is ready")
+
+    def health_check(self):
+        self._wait_for_ns()
+
 
 class AppService(AppProcess):
     shared_event_loop: asyncio.AbstractEventLoop
