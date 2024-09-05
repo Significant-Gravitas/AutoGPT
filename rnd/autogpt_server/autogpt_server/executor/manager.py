@@ -3,6 +3,8 @@ import atexit
 import logging
 import multiprocessing
 import os
+import signal
+import sys
 import threading
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
@@ -47,6 +49,7 @@ from autogpt_server.util.settings import Config
 from autogpt_server.util.type import convert
 
 logger = logging.getLogger(__name__)
+multiprocessing.log_to_stderr(logging.DEBUG)
 
 
 def get_log_metadata(
@@ -408,13 +411,27 @@ class Executor:
         cls.loop.run_until_complete(db.connect())
         cls.agent_server_client = get_agent_server_client()
 
-        # Set up shutdown handler
+        # Set up shutdown handlers
+        cls.shutdown = False
+        cls.shutdown_lock = threading.Lock()
         atexit.register(cls.on_node_executor_stop)
+        signal.signal(signal.SIGTERM, lambda _, __: cls.stop_node_executor())
+
+    @classmethod
+    def stop_node_executor(cls):
+        cls.on_node_executor_stop()
+        sys.exit(0)
 
     @classmethod
     def on_node_executor_stop(cls):
-        logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB...")
-        cls.loop.run_until_complete(db.disconnect())
+        # Prevent multiple calls to on_node_executor_stop from messing up the cleanup
+        with cls.shutdown_lock:
+            if cls.shutdown:
+                return
+            cls.shutdown = True
+            logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB...")
+            cls.loop.run_until_complete(db.disconnect())
+            logger.info(f"[on_node_executor_stop {cls.pid}] ✅ Finished cleanup")
 
     @classmethod
     @error_logged
