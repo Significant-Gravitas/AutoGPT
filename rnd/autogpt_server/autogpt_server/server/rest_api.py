@@ -29,7 +29,6 @@ settings = Settings()
 
 class AgentServer(AppService):
     mutex = KeyedMutex()
-    use_db = False
     use_redis = True
     _test_dependency_overrides = {}
 
