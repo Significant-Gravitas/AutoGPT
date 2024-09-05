@@ -1,8 +1,16 @@
+from datetime import UTC, datetime, timedelta
+import secrets
 from typing import cast
 
 from supabase import Client
 
-from .types import Credentials, OAuth2Credentials, UserMetadata, UserMetadataRaw
+from .types import (
+    Credentials,
+    OAuth2Credentials,
+    StateToken,
+    UserMetadata,
+    UserMetadataRaw,
+)
 
 
 class SupabaseIntegrationCredentialsStore:
@@ -72,6 +80,52 @@ class SupabaseIntegrationCredentialsStore:
             c for c in self.get_all_creds(user_id) if c.id != credentials_id
         ]
         self._set_user_integration_creds(user_id, filtered_credentials)
+
+    async def store_state_token(self, user_id: str, provider: str) -> str:
+        state = secrets.token_urlsafe(32)
+        expires_at = datetime.now(UTC) + timedelta(minutes=10)
+
+        state_token = StateToken(
+            state=state, provider=provider, expires_at=int(expires_at.timestamp())
+        )
+
+        user_metadata = self._get_user_metadata(user_id)
+        state_tokens = user_metadata.get("state_tokens", [])
+        state_tokens.append(state_token.model_dump())
+        user_metadata["state_tokens"] = state_tokens
+
+        self.supabase.auth.admin.update_user_by_id(
+            user_id, {"user_metadata": user_metadata}
+        )
+
+        return state
+
+    async def verify_state_token(self, user_id: str, state: str, provider: str) -> bool:
+        user_metadata = self._get_user_metadata(user_id)
+        state_tokens = user_metadata.get("state_tokens", [])
+
+        now = datetime.now(UTC)
+        valid_token = next(
+            (
+                token
+                for token in state_tokens
+                if token["state"] == state
+                and token["provider"] == provider
+                and token["expires_at"] > now.timestamp()
+            ),
+            None,
+        )
+
+        if valid_token:
+            # Remove the used token
+            state_tokens.remove(valid_token)
+            user_metadata["state_tokens"] = state_tokens
+            self.supabase.auth.admin.update_user_by_id(
+                user_id, {"user_metadata": user_metadata}
+            )
+            return True
+
+        return False
 
     def _set_user_integration_creds(
         self, user_id: str, credentials: list[Credentials]

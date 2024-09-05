@@ -1,3 +1,4 @@
+import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Path, Query, Body
@@ -25,13 +26,16 @@ async def login(
     provider: Annotated[str, Path(title="The provider to initiate an OAuth flow for")],
     user_id: Annotated[str, Depends(get_user_id)],
     request: Request,
+    store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
     scopes: Annotated[
         str, Query(title="Comma-separated list of authorization scopes")
     ] = "",
 ):
     handler = _get_provider_oauth_handler(request, provider)
 
-    state = user_id  # You might want to use a more secure state
+    # Generate and store a secure random state token
+    state = await store.store_state_token(user_id, provider)
+
     requested_scopes = scopes.split(",") if scopes else []
     login_url = handler.get_login_url(requested_scopes, state)
 
@@ -49,7 +53,9 @@ async def callback(
 ):
     handler = _get_provider_oauth_handler(request, provider)
 
-    # TODO: check state
+    # Verify the state token
+    if not await store.verify_state_token(user_id, state, provider):
+        raise HTTPException(status_code=400, detail="Invalid or expired state token")
 
     try:
         credentials = handler.exchange_code_for_tokens(code)
