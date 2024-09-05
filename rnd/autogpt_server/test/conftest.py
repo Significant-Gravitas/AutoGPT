@@ -1,6 +1,7 @@
+from multiprocessing import set_start_method
+
 import pytest
 
-from multiprocessing import set_start_method
 from autogpt_server.util.test import SpinTestServer
 
 
