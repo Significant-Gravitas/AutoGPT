@@ -3,7 +3,13 @@ from typing import Any, Generic, List, TypeVar
 
 from pydantic import Field
 
-from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from autogpt_server.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockUIType,
+)
 from autogpt_server.data.model import SchemaField
 from autogpt_server.util.mock import MockObject
 
@@ -176,7 +182,10 @@ class InputOutputBlockBase(Block, ABC, Generic[T]):
 
 class InputBlock(InputOutputBlockBase[Any]):
     def __init__(self):
-        super().__init__(categories={BlockCategory.INPUT, BlockCategory.BASIC})
+        super().__init__(
+            categories={BlockCategory.INPUT, BlockCategory.BASIC},
+            ui_type=BlockUIType.INPUT,
+        )
 
     def block_id(self) -> str:
         return "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b"
@@ -184,7 +193,10 @@ class InputBlock(InputOutputBlockBase[Any]):
 
 class OutputBlock(InputOutputBlockBase[Any]):
     def __init__(self):
-        super().__init__(categories={BlockCategory.OUTPUT, BlockCategory.BASIC})
+        super().__init__(
+            categories={BlockCategory.OUTPUT, BlockCategory.BASIC},
+            ui_type=BlockUIType.OUTPUT,
+        )
 
     def block_id(self) -> str:
         return "363ae599-353e-4804-937e-b2ee3cef3da4"
@@ -323,3 +335,24 @@ class AddToListBlock(Block):
             yield "updated_list", updated_list
         except Exception as e:
             yield "error", f"Failed to add entry to list: {str(e)}"
+
+
+class StickyNoteBlock(Block):
+    class Input(BlockSchema):
+        text: str = SchemaField(description="The text to display in the sticky note.")
+
+    class Output(BlockSchema): ...
+
+    def __init__(self):
+        super().__init__(
+            id="31d1064e-7446-4693-o7d4-65e5ca9110d1",
+            description="This block is used to display a sticky note with the given text.",
+            categories={BlockCategory.BASIC},
+            input_schema=StickyNoteBlock.Input,
+            output_schema=StickyNoteBlock.Output,
+            test_input={"text": "Hello, World!"},
+            test_output=None,
+            ui_type=BlockUIType.STICKYNOTE,
+        )
+
+    def run(self, input_data: Input) -> BlockOutput: ...
